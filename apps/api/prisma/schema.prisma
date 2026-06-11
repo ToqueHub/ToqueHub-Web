@@ -1,0 +1,485 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UnitType {
+  MASS
+  VOLUME
+  COUNT
+  PACKAGE
+  OTHER
+}
+
+enum StockMovementType {
+  IN
+  OUT
+  CORRECTION
+  INVENTORY
+  PRODUCTION
+  LOSS
+  TRANSFER
+  RECEPTION
+}
+
+enum InventoryStatus {
+  DRAFT
+  VALIDATED
+}
+
+enum AuditAction {
+  MODULE_STOCKS_INSTALLED
+  MODULE_STOCKS_UNINSTALLED
+  CATEGORY_CREATED
+  CATEGORY_UPDATED
+  CATEGORY_ARCHIVED
+  UNIT_CREATED
+  UNIT_UPDATED
+  UNIT_ARCHIVED
+  SUPPLIER_CREATED
+  SUPPLIER_UPDATED
+  SUPPLIER_ARCHIVED
+  PRODUCT_CREATED
+  PRODUCT_UPDATED
+  PRODUCT_ARCHIVED
+  SITE_CREATED
+  SITE_UPDATED
+  SITE_ARCHIVED
+  LOCATION_CREATED
+  LOCATION_UPDATED
+  LOCATION_ARCHIVED
+  LOT_CREATED
+  LOT_UPDATED
+  MOVEMENT_CREATED
+  TRANSFER_CREATED
+  INVENTORY_CREATED
+  INVENTORY_UPDATED
+  INVENTORY_VALIDATED
+}
+
+model Organization {
+  id                String   @id @default(uuid()) @db.Uuid
+  name              String
+  code              String?  @unique
+  establishmentType String?
+  teamSize          String?
+  logoDataUrl       String?  @db.Text
+  mainSiteName      String?
+  stocksInstalledAt DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  users           User[]
+  categories      Category[]
+  units           Unit[]
+  products        Product[]
+  suppliers       Supplier[]
+  sites           Site[]
+  locations       Location[]
+  lots            Lot[]
+  stocks          Stock[]
+  stockMovements  StockMovement[]
+  inventories     Inventory[]
+  auditLogs       AuditLog[]
+  unitConversions UnitConversion[]
+
+  @@map("organizations")
+}
+
+model User {
+  id             String   @id @default(uuid()) @db.Uuid
+  username       String?  @unique
+  email          String   @unique
+  passwordHash   String
+  firstName      String?
+  lastName       String?
+  isActive       Boolean  @default(true)
+  organizationId String?  @db.Uuid
+  roleId         String   @db.Uuid
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization?   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  role         Role            @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  movements    StockMovement[] @relation("StockMovementCreatedBy")
+  inventories  Inventory[]     @relation("InventoryCreatedBy")
+  auditLogs    AuditLog[]
+
+  @@index([organizationId])
+  @@index([roleId])
+  @@map("users")
+}
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  description String?
+  users       User[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique
+  description String?
+  roles       RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String @db.Uuid
+  permissionId String @db.Uuid
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model Category {
+  id             String    @id @default(uuid()) @db.Uuid
+  name           String
+  description    String?
+  isArchived     Boolean   @default(false)
+  archivedAt     DateTime?
+  organizationId String    @db.Uuid
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  products     Product[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([isArchived])
+  @@map("categories")
+}
+
+model Unit {
+  id             String    @id @default(uuid()) @db.Uuid
+  name           String
+  symbol         String
+  type           UnitType  @default(OTHER)
+  isArchived     Boolean   @default(false)
+  archivedAt     DateTime?
+  organizationId String    @db.Uuid
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  products        Product[]
+  movements       StockMovement[]
+  fromConversions UnitConversion[] @relation("UnitConversionFrom")
+  toConversions   UnitConversion[] @relation("UnitConversionTo")
+
+  @@unique([organizationId, symbol])
+  @@index([organizationId])
+  @@index([isArchived])
+  @@map("units")
+}
+
+model UnitConversion {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  fromUnitId     String   @db.Uuid
+  toUnitId       String   @db.Uuid
+  factor         Decimal  @db.Decimal(18, 6)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fromUnit     Unit         @relation("UnitConversionFrom", fields: [fromUnitId], references: [id], onDelete: Cascade)
+  toUnit       Unit         @relation("UnitConversionTo", fields: [toUnitId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, fromUnitId, toUnitId])
+  @@index([organizationId])
+  @@map("unit_conversions")
+}
+
+model Product {
+  id                String    @id @default(uuid()) @db.Uuid
+  name              String
+  sku               String?
+  description       String?
+  averagePrice      Decimal   @default(0) @db.Decimal(12, 4)
+  minimumStock      Decimal   @default(0) @db.Decimal(12, 3)
+  isArchived        Boolean   @default(false)
+  archivedAt        DateTime?
+  organizationId    String    @db.Uuid
+  categoryId        String?   @db.Uuid
+  unitId            String    @db.Uuid
+  primarySupplierId String?   @db.Uuid
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category        Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  unit            Unit            @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  primarySupplier Supplier?       @relation("ProductPrimarySupplier", fields: [primarySupplierId], references: [id], onDelete: SetNull)
+  stocks          Stock[]
+  movements       StockMovement[]
+  lots            Lot[]
+  inventoryLines  InventoryLine[]
+
+  @@unique([organizationId, name])
+  @@unique([organizationId, sku])
+  @@index([organizationId])
+  @@index([categoryId])
+  @@index([unitId])
+  @@index([primarySupplierId])
+  @@index([isArchived])
+  @@map("products")
+}
+
+model Supplier {
+  id             String    @id @default(uuid()) @db.Uuid
+  name           String
+  contactName    String?
+  email          String?
+  phone          String?
+  address        String?
+  notes          String?   @db.Text
+  isArchived     Boolean   @default(false)
+  archivedAt     DateTime?
+  organizationId String    @db.Uuid
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lots            Lot[]
+  movements       StockMovement[]
+  primaryProducts Product[]       @relation("ProductPrimarySupplier")
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([isArchived])
+  @@map("suppliers")
+}
+
+model Site {
+  id             String    @id @default(uuid()) @db.Uuid
+  name           String
+  description    String?
+  isArchived     Boolean   @default(false)
+  archivedAt     DateTime?
+  organizationId String    @db.Uuid
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization         Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  locations            Location[]
+  stocks               Stock[]
+  lots                 Lot[]
+  sourceMovements      StockMovement[] @relation("StockMovementSourceSite")
+  destinationMovements StockMovement[] @relation("StockMovementDestinationSite")
+  inventories          Inventory[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([isArchived])
+  @@map("sites")
+}
+
+model Location {
+  id             String    @id @default(uuid()) @db.Uuid
+  name           String
+  description    String?
+  isArchived     Boolean   @default(false)
+  archivedAt     DateTime?
+  organizationId String    @db.Uuid
+  siteId         String    @db.Uuid
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization         Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site                 Site            @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  stocks               Stock[]
+  lots                 Lot[]
+  sourceMovements      StockMovement[] @relation("StockMovementSourceLocation")
+  destinationMovements StockMovement[] @relation("StockMovementDestinationLocation")
+  inventories          Inventory[]
+
+  @@unique([organizationId, siteId, name])
+  @@index([organizationId])
+  @@index([siteId])
+  @@index([isArchived])
+  @@map("locations")
+}
+
+model Lot {
+  id             String    @id @default(uuid()) @db.Uuid
+  lotNumber      String
+  productId      String    @db.Uuid
+  supplierId     String?   @db.Uuid
+  organizationId String    @db.Uuid
+  receivedAt     DateTime  @default(now())
+  expiresAt      DateTime?
+  siteId         String?   @db.Uuid
+  locationId     String?   @db.Uuid
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product      Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  supplier     Supplier?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  site         Site?           @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  location     Location?       @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  stocks       Stock[]
+  movements    StockMovement[]
+
+  @@unique([organizationId, lotNumber, productId])
+  @@index([organizationId])
+  @@index([productId])
+  @@index([supplierId])
+  @@index([siteId])
+  @@index([locationId])
+  @@map("lots")
+}
+
+model Stock {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  productId      String   @db.Uuid
+  lotId          String?  @db.Uuid
+  siteId         String?  @db.Uuid
+  locationId     String?  @db.Uuid
+  quantity       Decimal  @db.Decimal(12, 3)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  lot          Lot?         @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  site         Site?        @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  location     Location?    @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, productId, lotId, siteId, locationId])
+  @@index([organizationId])
+  @@index([productId])
+  @@index([lotId])
+  @@index([siteId])
+  @@index([locationId])
+  @@map("stocks")
+}
+
+model StockMovement {
+  id                    String            @id @default(uuid()) @db.Uuid
+  organizationId        String            @db.Uuid
+  productId             String            @db.Uuid
+  lotId                 String?           @db.Uuid
+  supplierId            String?           @db.Uuid
+  type                  StockMovementType
+  quantity              Decimal           @db.Decimal(12, 3)
+  inputQuantity         Decimal?          @db.Decimal(12, 3)
+  unitId                String?           @db.Uuid
+  unitSymbolSnapshot    String?
+  reason                String?
+  sourceSiteId          String?           @db.Uuid
+  sourceLocationId      String?           @db.Uuid
+  destinationSiteId     String?           @db.Uuid
+  destinationLocationId String?           @db.Uuid
+  movementDate          DateTime          @default(now())
+  createdById           String?           @db.Uuid
+  inventoryId           String?           @db.Uuid
+  createdAt             DateTime          @default(now())
+
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product             Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  lot                 Lot?         @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  supplier            Supplier?    @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  unit                Unit?        @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  sourceSite          Site?        @relation("StockMovementSourceSite", fields: [sourceSiteId], references: [id], onDelete: SetNull)
+  sourceLocation      Location?    @relation("StockMovementSourceLocation", fields: [sourceLocationId], references: [id], onDelete: SetNull)
+  destinationSite     Site?        @relation("StockMovementDestinationSite", fields: [destinationSiteId], references: [id], onDelete: SetNull)
+  destinationLocation Location?    @relation("StockMovementDestinationLocation", fields: [destinationLocationId], references: [id], onDelete: SetNull)
+  createdBy           User?        @relation("StockMovementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  inventory           Inventory?   @relation(fields: [inventoryId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([productId])
+  @@index([lotId])
+  @@index([supplierId])
+  @@index([sourceSiteId])
+  @@index([sourceLocationId])
+  @@index([destinationSiteId])
+  @@index([destinationLocationId])
+  @@index([createdAt])
+  @@index([movementDate])
+  @@map("stock_movements")
+}
+
+model Inventory {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  name           String
+  inventoryDate  DateTime        @default(now())
+  comment        String?
+  siteId         String?         @db.Uuid
+  locationId     String?         @db.Uuid
+  status         InventoryStatus @default(DRAFT)
+  validatedAt    DateTime?
+  createdById    String?         @db.Uuid
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site         Site?           @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  location     Location?       @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  createdBy    User?           @relation("InventoryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  lines        InventoryLine[]
+  movements    StockMovement[]
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([inventoryDate])
+  @@map("inventories")
+}
+
+model InventoryLine {
+  id                  String   @id @default(uuid()) @db.Uuid
+  inventoryId         String   @db.Uuid
+  productId           String   @db.Uuid
+  lotId               String?  @db.Uuid
+  theoreticalQuantity Decimal  @db.Decimal(12, 3)
+  countedQuantity     Decimal? @db.Decimal(12, 3)
+  varianceQuantity    Decimal? @db.Decimal(12, 3)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  inventory Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([inventoryId, productId, lotId])
+  @@index([inventoryId])
+  @@index([productId])
+  @@map("inventory_lines")
+}
+
+model AuditLog {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @db.Uuid
+  userId         String?     @db.Uuid
+  action         AuditAction
+  entityType     String
+  entityId       String?
+  entityName     String?
+  details        Json?
+  createdAt      DateTime    @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([action])
+  @@index([entityType])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

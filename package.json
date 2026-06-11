@@ -1,0 +1,34 @@
+{
+  "name": "toquehub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Open source, self-hosted ERP core for professional kitchens.",
+  "license": "AGPL-3.0-only",
+  "packageManager": "npm@10.9.2",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev": "npm run dev --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "format": "prettier --write .",
+    "api:dev": "npm run start:dev -w apps/api",
+    "web:dev": "npm run dev -w apps/web",
+    "prisma:generate": "npm run prisma:generate -w apps/api",
+    "prisma:migrate": "npm run prisma:migrate -w apps/api",
+    "prisma:reset": "npm run prisma:reset -w apps/api --",
+    "prisma:seed": "npm run prisma:seed -w apps/api",
+    "db:setup:local": "./scripts/setup-local-postgres.sh"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.29",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=20.11.0"
+  }
+}
