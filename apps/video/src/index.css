@@ -1,0 +1,18 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap');
+
+html,
+body {
+  margin: 0;
+  background: #080b11;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #f8fafc;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.remotion-player {
+  background: #080b11;
+}
+

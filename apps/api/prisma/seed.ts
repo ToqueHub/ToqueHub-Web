@@ -3,9 +3,13 @@ import { hash } from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
-const roleNames = ['SUPER_ADMIN', 'Administrateur', 'Manager', 'Utilisateur', 'Chef', 'Second', 'Magasinier', 'Lecture seule'];
+const roleNames = ['Administrateur', 'Manager', 'Utilisateur'];
 const permissions = [
   'auth.login',
+  'users.manage',
+  'roles.manage',
+  'permissions.manage',
+  'dev.switch',
   'catalog.read',
   'catalog.write',
   'suppliers.read',
@@ -15,7 +19,6 @@ const permissions = [
   'stocks.inventory.validate',
   'stocks.audit.read',
   'stocks.audit.export',
-  'users.manage',
 ];
 
 async function main() {
@@ -45,7 +48,7 @@ async function main() {
     ),
   );
 
-  const adminRole = roles.find((role) => role.name === 'SUPER_ADMIN');
+  const adminRole = roles.find((role) => role.name === 'Administrateur');
   if (!adminRole) throw new Error('Admin role not created');
 
   await Promise.all(
@@ -124,10 +127,39 @@ async function main() {
       username: 'admin',
       email: 'admin@toquehub.local',
       passwordHash: await hash('toquehub', 12),
-      firstName: 'Admin',
-      lastName: 'ToqueHub',
+      firstName: 'Paul',
+      lastName: 'Breton',
       organizationId: organization.id,
       roleId: adminRole.id,
+      isPrimaryAdmin: true,
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { email: 'manager@toquehub.local' },
+    update: {},
+    create: {
+      username: 'manager',
+      email: 'manager@toquehub.local',
+      passwordHash: await hash('toquehub', 12),
+      firstName: 'Jean',
+      lastName: 'Dupont',
+      organizationId: organization.id,
+      roleId: roles.find((role) => role.name === 'Manager')!.id,
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { email: 'user@toquehub.local' },
+    update: {},
+    create: {
+      username: 'utilisateur',
+      email: 'user@toquehub.local',
+      passwordHash: await hash('toquehub', 12),
+      firstName: 'Marie',
+      lastName: 'Martin',
+      organizationId: organization.id,
+      roleId: roles.find((role) => role.name === 'Utilisateur')!.id,
     },
   });
 }

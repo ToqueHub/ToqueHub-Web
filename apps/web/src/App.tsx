@@ -45,7 +45,17 @@ export function App() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       try {
-        setSession(JSON.parse(raw) as UserSession);
+        const storedSession = JSON.parse(raw) as UserSession;
+        void api.me(storedSession.accessToken)
+          .then((freshUser) => {
+            const refreshedSession = { ...storedSession, user: { ...storedSession.user, ...freshUser } };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(refreshedSession));
+            setSession(refreshedSession);
+          })
+          .catch(() => {
+            localStorage.removeItem(STORAGE_KEY);
+            setSession(null);
+          });
       } catch {
         localStorage.removeItem(STORAGE_KEY);
       }
@@ -90,7 +100,10 @@ export function App() {
   }
 
   if (session && route !== 'login') {
-    return <Dashboard session={session} onLogout={handleLogout} />;
+    return         <Dashboard session={session} onLogout={handleLogout} onSessionSwitch={(nextSession) => {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSession));
+          setSession(nextSession);
+        }} />;
   }
 
   if (route === 'login') {

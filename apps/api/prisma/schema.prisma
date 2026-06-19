@@ -7,6 +7,199 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum TechnicalSheetStatus {
+  DRAFT
+  ACTIVE
+  VALIDATED
+  ARCHIVED
+}
+
+enum TechnicalSheetHistoryAction {
+  CREATED
+  GENERAL_UPDATED
+  INGREDIENTS_UPDATED
+  ALLERGENS_UPDATED
+  STEPS_UPDATED
+  COST_RECALCULATED
+  DUPLICATED
+  ARCHIVED
+  STATUS_CHANGED
+  SIMULATION_CREATED
+  EXPORT_CREATED
+}
+
+enum TechnicalSheetExportFormat {
+  PDF
+  CSV
+  PRINT
+}
+
+enum ProductionOrderStatus {
+  PLANNED
+  VALIDATED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ProductionPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum ProductionMaterialStatus {
+  OK
+  POTENTIAL_SHORTAGE
+  INSUFFICIENT_STOCK
+  PRODUCT_ARCHIVED
+  UNIT_NOT_CONVERTIBLE
+  STOCK_UNKNOWN
+}
+
+enum ProductionAlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum ProductionAlertCode {
+  NOT_STARTED
+  LATE
+  MISSING_MATERIAL
+  STAFFING_SHORTAGE
+  UNASSIGNED_COLLABORATOR
+  NO_RESPONSIBLE
+  DESTOCKING_PENDING
+  QUALITY_CONTROL_MISSING
+  ABSENT_COLLABORATOR
+  QUANTITY_VARIANCE
+  UNIT_NOT_CONVERTIBLE
+  PRODUCT_ARCHIVED
+  STOCK_UNKNOWN
+}
+
+enum ProductionHistoryAction {
+  CREATED
+  UPDATED
+  VALIDATED
+  CANCELLED
+  STATUS_CHANGED
+  ASSIGNMENT_ADDED
+  ASSIGNMENT_REMOVED
+  ALERT_OVERRIDE_CONFIRMED
+  DESTOCKING_PROPOSED
+  DESTOCKING_CONFIRMED
+  EXPORT_GENERATED
+  REALIZATION_CLOSED
+  QUALITY_CONTROL_UPDATED
+  REALIZED_PORTIONS_UPDATED
+}
+
+enum ProductionExportFormat {
+  PDF
+  EXCEL
+  PRINT
+}
+
+enum ProductionExportType {
+  PRODUCTION_SHEET
+  MATERIAL_REQUIREMENTS
+  TEAM_ASSIGNMENTS
+}
+
+enum ProductionDestockingStatus {
+  PROPOSED
+  CONFIRMED
+  CANCELLED
+}
+
+enum MenuStatus {
+  DRAFT
+  VALIDATED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum MenuServiceType {
+  BREAKFAST
+  LUNCH
+  DINNER
+  SNACK
+  EVENT
+  BUFFET
+}
+
+enum MenuSectionType {
+  STARTER
+  MAIN
+  SIDE
+  CHEESE
+  DESSERT
+  DRINK
+  OTHER
+}
+
+enum MenuCycleStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum MenuVariantMode {
+  DERIVED
+  COMPLETE
+}
+
+enum MenuGuestGroupType {
+  RESIDENTS
+  PATIENTS
+  STUDENTS
+  CLIENTS
+  STAFF
+  GUESTS
+  OTHER
+}
+
+enum MenuProductionGenerationMode {
+  DETAILED
+  GROUPED
+}
+
+enum MenuExportFormat {
+  PDF
+  EXCEL
+  PRINT
+}
+
+enum MenuExportAudience {
+  KITCHEN
+  DINING_ROOM
+  RESIDENTS
+  PATIENTS
+  PUBLIC_DISPLAY
+}
+
+enum MenuHistoryAction {
+  CREATED
+  UPDATED
+  VALIDATED
+  PUBLISHED
+  ARCHIVED
+  PRODUCTION_GENERATED
+  EXPORT_GENERATED
+  CYCLE_REPLICATED
+  MANUAL_RESYNC
+  GUESTS_UPDATED
+  VARIANTS_UPDATED
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  DISABLED
+}
+
 enum UnitType {
   MASS
   VOLUME
@@ -31,9 +224,132 @@ enum InventoryStatus {
   VALIDATED
 }
 
+enum HrEmployeeStatus {
+  ACTIVE
+  ABSENT
+  SUSPENDED
+  DEPARTED
+}
+
+enum HrHistoryEventType {
+  CREATED
+  UPDATED
+  STATUS_CHANGED
+  DEPARTMENT_CHANGED
+  POSITION_CHANGED
+  USER_LINKED
+  USER_UNLINKED
+  MANAGER_CHANGED
+  ROTATION_ASSIGNED
+  ROTATION_REMOVED
+  ROTATION_CHANGED
+  ARCHIVED
+}
+
+enum HrRotationStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum HrAbsenceType {
+  CONGE
+  RTT
+  MALADIE
+  FORMATION
+  ACCIDENT
+  EXCEPTIONNELLE
+  REPOS
+  AUTRE
+}
+
+enum HrAbsenceStatus {
+  DRAFT
+  REQUESTED
+  PENDING
+  APPROVED
+  REFUSED
+  CANCELLED
+}
+
+enum PlanningAssignmentStatus {
+  PLANNED
+  CONFIRMED
+  MODIFIED
+  CANCELLED
+  REPLACED
+}
+
+enum PlanningAssignmentOrigin {
+  MANUAL
+  AUTO_GENERATION
+  TEMPLATE
+  REPLACEMENT
+  DRAG_DROP
+}
+
+enum PlanningReplacementStatus {
+  TO_PROCESS
+  PROPOSED
+  ACCEPTED
+  REFUSED
+  DONE
+  CANCELLED
+}
+
+enum PlanningNeedPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum PlanningConflictSeverity {
+  BLOCKING
+  STRONG_WARNING
+  INFO
+}
+
+enum PlanningNotificationStatus {
+  UNREAD
+  READ
+}
+
+enum PlanningHistoryAction {
+  PLANNING_CREATED
+  ASSIGNMENT_ADDED
+  ASSIGNMENT_UPDATED
+  ASSIGNMENT_MOVED
+  ASSIGNMENT_DELETED
+  ABSENCE_IMPACT
+  REPLACEMENT_PROPOSED
+  REPLACEMENT_DONE
+  TEMPLATE_APPLIED
+  GENERATION_STARTED
+  GENERATION_APPLIED
+  CONFLICT_IGNORED
+  EXPORT_GENERATED
+  NOTIFICATION_CREATED
+}
+
+enum PlanningExportFormat {
+  PDF
+  EXCEL
+  PRINT
+}
+
+enum PlanningExportScope {
+  DAY
+  WEEK
+  MONTH
+}
+
 enum AuditAction {
+  MODULE_HR_INSTALLED
+  MODULE_HR_UNINSTALLED
   MODULE_STOCKS_INSTALLED
   MODULE_STOCKS_UNINSTALLED
+  MODULE_RNM_PRICES_INSTALLED
+  MODULE_RNM_PRICES_UNINSTALLED
   CATEGORY_CREATED
   CATEGORY_UPDATED
   CATEGORY_ARCHIVED
@@ -59,65 +375,171 @@ enum AuditAction {
   INVENTORY_CREATED
   INVENTORY_UPDATED
   INVENTORY_VALIDATED
+  PLANNING_MODULE_INSTALLED
+  PLANNING_MODULE_UNINSTALLED
+  MODULE_TECHNICAL_SHEETS_INSTALLED
+  MODULE_TECHNICAL_SHEETS_UNINSTALLED
+  MODULE_PRODUCTION_INSTALLED
+  MODULE_PRODUCTION_UNINSTALLED
+  MODULE_MENUS_INSTALLED
+  MODULE_MENUS_UNINSTALLED
 }
 
 model Organization {
-  id                String   @id @default(uuid()) @db.Uuid
-  name              String
-  code              String?  @unique
-  establishmentType String?
-  teamSize          String?
-  logoDataUrl       String?  @db.Text
-  mainSiteName      String?
-  stocksInstalledAt DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                         String    @id @default(uuid()) @db.Uuid
+  name                       String
+  code                       String?   @unique
+  establishmentType          String?
+  teamSize                   String?
+  logoDataUrl                String?   @db.Text
+  mainSiteName               String?
+  stocksInstalledAt          DateTime?
+  rnmPricesInstalledAt       DateTime?
+  hrInstalledAt              DateTime?
+  planningInstalledAt        DateTime?
+  technicalSheetsInstalledAt DateTime?
+  productionInstalledAt      DateTime?
+  menusInstalledAt           DateTime?
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
 
-  users           User[]
-  categories      Category[]
-  units           Unit[]
-  products        Product[]
-  suppliers       Supplier[]
-  sites           Site[]
-  locations       Location[]
-  lots            Lot[]
-  stocks          Stock[]
-  stockMovements  StockMovement[]
-  inventories     Inventory[]
-  auditLogs       AuditLog[]
-  unitConversions UnitConversion[]
+  users                          User[]
+  categories                     Category[]
+  units                          Unit[]
+  products                       Product[]
+  suppliers                      Supplier[]
+  sites                          Site[]
+  locations                      Location[]
+  lots                           Lot[]
+  stocks                         Stock[]
+  stockMovements                 StockMovement[]
+  inventories                    Inventory[]
+  auditLogs                      AuditLog[]
+  rnmFavorites                   RnmProductFavorite[]
+  unitConversions                UnitConversion[]
+  hrDepartments                  HrDepartment[]
+  hrPositions                    HrPosition[]
+  employees                      HrEmployee[]
+  employeeHistory                HrEmployeeHistory[]
+  hrRotations                    HrRotation[]
+  hrRotationAssignments          HrRotationAssignment[]
+  hrAbsences                     HrAbsence[]
+  hrSkills                       HrSkill[]
+  planningAssignments            PlanningAssignment[]
+  planningReplacements           PlanningReplacement[]
+  planningNeeds                  PlanningOperationalNeed[]
+  planningTemplates              PlanningTemplate[]
+  planningTemplateApplications   PlanningTemplateApplication[]
+  planningGenerations            PlanningGeneration[]
+  planningConflicts              PlanningConflict[]
+  planningNotifications          PlanningNotification[]
+  planningHistory                PlanningHistory[]
+  planningExports                PlanningExport[]
+  recipeCategories               TechnicalSheetCategory[]
+  technicalSheets                TechnicalSheet[]
+  technicalSheetIngredients      TechnicalSheetIngredient[]
+  technicalSheetSteps            TechnicalSheetStep[]
+  technicalSheetAllergens        TechnicalSheetAllergen[]
+  technicalSheetCostSnapshots    TechnicalSheetCostSnapshot[]
+  technicalSheetSimulations      TechnicalSheetSimulation[]
+  technicalSheetExports          TechnicalSheetExport[]
+  technicalSheetHistory          TechnicalSheetHistory[]
+  productionOrders               ProductionOrder[]
+  productionMaterialRequirements ProductionMaterialRequirement[]
+  productionAssignments          ProductionAssignment[]
+  productionAlerts               ProductionAlert[]
+  productionAlertOverrides       ProductionAlertOverride[]
+  productionHistory              ProductionHistory[]
+  productionExports              ProductionExport[]
+  productionRealizations         ProductionRealization[]
+  productionDestockingProposals  ProductionDestockingProposal[]
+  productionDestockingLines      ProductionDestockingLine[]
+  productionDestockingMovements  ProductionDestockingMovement[]
+  menuDiets                      MenuDiet[]
+  menus                          Menu[]
+  menuItems                      MenuItem[]
+  menuVariants                   MenuVariant[]
+  menuGuestGroups                MenuGuestGroup[]
+  menuGuestForecasts             MenuGuestForecast[]
+  menuCycles                     MenuCycle[]
+  menuCycleItems                 MenuCycleItem[]
+  menuExports                    MenuExport[]
+  menuHistory                    MenuHistory[]
+  menuProductionLinks            MenuProductionLink[]
+  planningViewPreferences        PlanningViewPreference[]
+  dashboardPreferences            DashboardPreference[]
 
   @@map("organizations")
 }
 
 model User {
-  id             String   @id @default(uuid()) @db.Uuid
-  username       String?  @unique
-  email          String   @unique
+  id             String     @id @default(uuid()) @db.Uuid
+  username       String?    @unique
+  email          String     @unique
   passwordHash   String
   firstName      String?
   lastName       String?
-  isActive       Boolean  @default(true)
-  organizationId String?  @db.Uuid
-  roleId         String   @db.Uuid
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  status         UserStatus @default(ACTIVE)
+  isActive       Boolean    @default(true)
+  isPrimaryAdmin Boolean    @default(false)
+  lastLoginAt    DateTime?
+  organizationId String?    @db.Uuid
+  roleId         String     @db.Uuid
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 
-  organization Organization?   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  role         Role            @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  movements    StockMovement[] @relation("StockMovementCreatedBy")
-  inventories  Inventory[]     @relation("InventoryCreatedBy")
-  auditLogs    AuditLog[]
+  organization                   Organization?                  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  role                           Role                           @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  movements                      StockMovement[]                @relation("StockMovementCreatedBy")
+  inventories                    Inventory[]                    @relation("InventoryCreatedBy")
+  auditLogs                      AuditLog[]
+  rnmFavorites                   RnmProductFavorite[]
+  hrEmployee                     HrEmployee?
+  hrHistory                      HrEmployeeHistory[]
+  hrRotationAssignments          HrRotationAssignment[]
+  validatedHrAbsences            HrAbsence[]                    @relation("HrAbsenceValidator")
+  createdPlanningAssignments     PlanningAssignment[]           @relation("PlanningAssignmentCreatedBy")
+  updatedPlanningAssignments     PlanningAssignment[]           @relation("PlanningAssignmentUpdatedBy")
+  requestedPlanningReplacements  PlanningReplacement[]          @relation("PlanningReplacementRequestedBy")
+  acceptedPlanningReplacements   PlanningReplacement[]          @relation("PlanningReplacementAcceptedBy")
+  createdPlanningNeeds           PlanningOperationalNeed[]      @relation("PlanningNeedCreatedBy")
+  createdPlanningTemplates       PlanningTemplate[]             @relation("PlanningTemplateCreatedBy")
+  appliedPlanningTemplates       PlanningTemplateApplication[]  @relation("PlanningTemplateAppliedBy")
+  launchedPlanningGenerations    PlanningGeneration[]           @relation("PlanningGenerationLaunchedBy")
+  appliedPlanningGenerations     PlanningGeneration[]           @relation("PlanningGenerationAppliedBy")
+  resolvedPlanningConflicts      PlanningConflict[]             @relation("PlanningConflictResolvedBy")
+  recipientPlanningNotifications PlanningNotification[]         @relation("PlanningNotificationRecipientUser")
+  actorPlanningHistory           PlanningHistory[]              @relation("PlanningHistoryActor")
+  planningExports                PlanningExport[]               @relation("PlanningExportRequestedBy")
+  createdTechnicalSheetHistory   TechnicalSheetHistory[]        @relation("TechnicalSheetHistoryActor")
+  planningViewPreferences        PlanningViewPreference[]
+  createdProductionOrders        ProductionOrder[]              @relation("ProductionOrderCreatedBy")
+  updatedProductionOrders        ProductionOrder[]              @relation("ProductionOrderUpdatedBy")
+  completedProductionOrders      ProductionOrder[]              @relation("ProductionOrderCompletedBy")
+  productionAlertOverrides       ProductionAlertOverride[]      @relation("ProductionAlertOverrideConfirmedBy")
+  actorProductionHistory         ProductionHistory[]            @relation("ProductionHistoryActor")
+  productionExports              ProductionExport[]             @relation("ProductionExportRequestedBy")
+  createdMenus                   Menu[]                         @relation("MenuCreatedBy")
+  updatedMenus                   Menu[]                         @relation("MenuUpdatedBy")
+  actorMenuHistory               MenuHistory[]                  @relation("MenuHistoryActor")
+  menuExports                    MenuExport[]                   @relation("MenuExportRequestedBy")
+  confirmedDestockingProposals   ProductionDestockingProposal[] @relation("ProductionDestockingConfirmedBy")
+  dashboardPreferences          DashboardPreference[]
 
   @@index([organizationId])
   @@index([roleId])
+  @@index([status])
+  @@index([isPrimaryAdmin])
   @@map("users")
 }
 
 model Role {
-  id          String   @id @default(uuid()) @db.Uuid
-  name        String   @unique
+  id          String           @id @default(uuid()) @db.Uuid
+  name        String           @unique
   description String?
+  isSystem    Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
   users       User[]
   permissions RolePermission[]
 
@@ -125,8 +547,8 @@ model Role {
 }
 
 model Permission {
-  id          String   @id @default(uuid()) @db.Uuid
-  key         String   @unique
+  id          String           @id @default(uuid()) @db.Uuid
+  key         String           @unique
   description String?
   roles       RolePermission[]
 
@@ -134,13 +556,31 @@ model Permission {
 }
 
 model RolePermission {
-  roleId       String @db.Uuid
-  permissionId String @db.Uuid
+  roleId       String     @db.Uuid
+  permissionId String     @db.Uuid
   role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
   permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
   @@id([roleId, permissionId])
   @@map("role_permissions")
+}
+
+model DashboardPreference {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @db.Uuid
+  organizationId String   @db.Uuid
+  layout         Json
+  hiddenWidgetIds String[] @default([])
+  pinnedWidgetIds String[] @default([])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+  @@map("dashboard_preferences")
 }
 
 model Category {
@@ -173,11 +613,14 @@ model Unit {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  products        Product[]
-  movements       StockMovement[]
-  fromConversions UnitConversion[] @relation("UnitConversionFrom")
-  toConversions   UnitConversion[] @relation("UnitConversionTo")
+  organization                   Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  products                       Product[]
+  movements                      StockMovement[]
+  fromConversions                UnitConversion[]                @relation("UnitConversionFrom")
+  toConversions                  UnitConversion[]                @relation("UnitConversionTo")
+  technicalSheetIngredients      TechnicalSheetIngredient[]
+  productionMaterialRequirements ProductionMaterialRequirement[]
+  productionDestockingLines      ProductionDestockingLine[]
 
   @@unique([organizationId, symbol])
   @@index([organizationId])
@@ -219,14 +662,17 @@ model Product {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  category        Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  unit            Unit            @relation(fields: [unitId], references: [id], onDelete: Restrict)
-  primarySupplier Supplier?       @relation("ProductPrimarySupplier", fields: [primarySupplierId], references: [id], onDelete: SetNull)
-  stocks          Stock[]
-  movements       StockMovement[]
-  lots            Lot[]
-  inventoryLines  InventoryLine[]
+  organization              Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category                  Category?                       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  unit                      Unit                            @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  primarySupplier           Supplier?                       @relation("ProductPrimarySupplier", fields: [primarySupplierId], references: [id], onDelete: SetNull)
+  stocks                    Stock[]
+  movements                 StockMovement[]
+  lots                      Lot[]
+  technicalSheetIngredients TechnicalSheetIngredient[]
+  inventoryLines            InventoryLine[]
+  productionRequirements    ProductionMaterialRequirement[]
+  productionDestockingLines ProductionDestockingLine[]
 
   @@unique([organizationId, name])
   @@unique([organizationId, sku])
@@ -252,10 +698,11 @@ model Supplier {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  lots            Lot[]
-  movements       StockMovement[]
-  primaryProducts Product[]       @relation("ProductPrimarySupplier")
+  organization           Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lots                   Lot[]
+  movements              StockMovement[]
+  productionRequirements ProductionMaterialRequirement[]
+  primaryProducts        Product[]                       @relation("ProductPrimarySupplier")
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -273,13 +720,22 @@ model Site {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  organization         Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  locations            Location[]
-  stocks               Stock[]
-  lots                 Lot[]
-  sourceMovements      StockMovement[] @relation("StockMovementSourceSite")
-  destinationMovements StockMovement[] @relation("StockMovementDestinationSite")
-  inventories          Inventory[]
+  organization                 Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  locations                    Location[]
+  stocks                       Stock[]
+  lots                         Lot[]
+  sourceMovements              StockMovement[]               @relation("StockMovementSourceSite")
+  destinationMovements         StockMovement[]               @relation("StockMovementDestinationSite")
+  inventories                  Inventory[]
+  employees                    HrEmployee[]
+  planningAssignments          PlanningAssignment[]
+  planningNeeds                PlanningOperationalNeed[]
+  planningTemplates            PlanningTemplate[]
+  planningTemplateApplications PlanningTemplateApplication[]
+  planningGenerations          PlanningGeneration[]
+  planningExports              PlanningExport[]
+  menus                        Menu[]
+  menuCycles                   MenuCycle[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -390,17 +846,18 @@ model StockMovement {
   inventoryId           String?           @db.Uuid
   createdAt             DateTime          @default(now())
 
-  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  product             Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
-  lot                 Lot?         @relation(fields: [lotId], references: [id], onDelete: SetNull)
-  supplier            Supplier?    @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  unit                Unit?        @relation(fields: [unitId], references: [id], onDelete: SetNull)
-  sourceSite          Site?        @relation("StockMovementSourceSite", fields: [sourceSiteId], references: [id], onDelete: SetNull)
-  sourceLocation      Location?    @relation("StockMovementSourceLocation", fields: [sourceLocationId], references: [id], onDelete: SetNull)
-  destinationSite     Site?        @relation("StockMovementDestinationSite", fields: [destinationSiteId], references: [id], onDelete: SetNull)
-  destinationLocation Location?    @relation("StockMovementDestinationLocation", fields: [destinationLocationId], references: [id], onDelete: SetNull)
-  createdBy           User?        @relation("StockMovementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  inventory           Inventory?   @relation(fields: [inventoryId], references: [id], onDelete: SetNull)
+  organization                  Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product                       Product                        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  lot                           Lot?                           @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  supplier                      Supplier?                      @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  unit                          Unit?                          @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  sourceSite                    Site?                          @relation("StockMovementSourceSite", fields: [sourceSiteId], references: [id], onDelete: SetNull)
+  sourceLocation                Location?                      @relation("StockMovementSourceLocation", fields: [sourceLocationId], references: [id], onDelete: SetNull)
+  destinationSite               Site?                          @relation("StockMovementDestinationSite", fields: [destinationSiteId], references: [id], onDelete: SetNull)
+  destinationLocation           Location?                      @relation("StockMovementDestinationLocation", fields: [destinationLocationId], references: [id], onDelete: SetNull)
+  createdBy                     User?                          @relation("StockMovementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  inventory                     Inventory?                     @relation(fields: [inventoryId], references: [id], onDelete: SetNull)
+  productionDestockingMovements ProductionDestockingMovement[]
 
   @@index([organizationId])
   @@index([productId])
@@ -460,6 +917,1472 @@ model InventoryLine {
   @@index([inventoryId])
   @@index([productId])
   @@map("inventory_lines")
+}
+
+model RnmProductFavorite {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  userId         String   @db.Uuid
+  rnmProductId   String
+  productName    String?
+  category       String?
+  sector         String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, rnmProductId])
+  @@index([organizationId])
+  @@index([userId])
+  @@map("rnm_product_favorites")
+}
+
+model HrDepartment {
+  id             String    @id @default(uuid()) @db.Uuid
+  name           String
+  description    String?
+  isArchived     Boolean   @default(false)
+  archivedAt     DateTime?
+  organizationId String    @db.Uuid
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization        Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employees           HrEmployee[]
+  rotations           HrRotation[]
+  requiredSkills      HrDepartmentSkill[]
+  planningAssignments PlanningAssignment[]
+  planningNeeds       PlanningOperationalNeed[]
+  planningTemplates   PlanningTemplate[]
+  planningExports     PlanningExport[]
+  productionOrders    ProductionOrder[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([isArchived])
+  @@map("hr_departments")
+}
+
+model HrPosition {
+  id             String    @id @default(uuid()) @db.Uuid
+  name           String
+  description    String?
+  isArchived     Boolean   @default(false)
+  archivedAt     DateTime?
+  organizationId String    @db.Uuid
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization        Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employees           HrEmployee[]
+  requiredSkills      HrPositionSkill[]
+  planningAssignments PlanningAssignment[]
+  planningNeeds       PlanningOperationalNeed[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([isArchived])
+  @@map("hr_positions")
+}
+
+model HrEmployee {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  firstName      String
+  lastName       String
+  photoDataUrl   String?          @db.Text
+  email          String?
+  phone          String?
+  address        String?          @db.Text
+  birthDate      DateTime?
+  hireDate       DateTime
+  departmentId   String           @db.Uuid
+  positionId     String           @db.Uuid
+  mainSiteId     String?          @db.Uuid
+  employeeNumber String?
+  notes          String?          @db.Text
+  status         HrEmployeeStatus @default(ACTIVE)
+  userId         String?          @unique @db.Uuid
+  managerId      String?          @db.Uuid
+  isArchived     Boolean          @default(false)
+  archivedAt     DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization                Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  department                  HrDepartment             @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  position                    HrPosition               @relation(fields: [positionId], references: [id], onDelete: Restrict)
+  mainSite                    Site?                    @relation(fields: [mainSiteId], references: [id], onDelete: SetNull)
+  user                        User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  manager                     HrEmployee?              @relation("HrManager", fields: [managerId], references: [id], onDelete: SetNull)
+  reports                     HrEmployee[]             @relation("HrManager")
+  history                     HrEmployeeHistory[]
+  rotationAssignments         HrRotationAssignment[]
+  skills                      HrEmployeeSkill[]
+  absences                    HrAbsence[]
+  planningAssignments         PlanningAssignment[]
+  replacedPlanningAssignments PlanningReplacement[]    @relation("PlanningReplacementAbsentEmployee")
+  replacementAssignments      PlanningReplacement[]    @relation("PlanningReplacementEmployee")
+  planningNotifications       PlanningNotification[]   @relation("PlanningNotificationRecipientEmployee")
+  planningViewPreferences     PlanningViewPreference[]
+  planningExports             PlanningExport[]
+  assignedProductionOrders    ProductionOrder[]        @relation("ProductionOrderResponsible")
+  productionAssignments       ProductionAssignment[]
+
+  @@unique([organizationId, email])
+  @@unique([organizationId, employeeNumber])
+  @@index([organizationId])
+  @@index([departmentId])
+  @@index([positionId])
+  @@index([mainSiteId])
+  @@index([managerId])
+  @@index([status])
+  @@index([isArchived])
+  @@map("hr_employees")
+}
+
+model HrEmployeeHistory {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @db.Uuid
+  employeeId     String             @db.Uuid
+  userId         String?            @db.Uuid
+  type           HrHistoryEventType
+  label          String
+  details        Json?
+  createdAt      DateTime           @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee     HrEmployee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([employeeId])
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("hr_employee_history")
+}
+
+model HrRotation {
+  id                           String           @id @default(uuid()) @db.Uuid
+  organizationId               String           @db.Uuid
+  name                         String
+  description                  String?          @db.Text
+  departmentId                 String?          @db.Uuid
+  cycleLengthWeeks             Int              @default(1)
+  cycle                        Json
+  weeklyHoursMinutesAverage    Int              @default(0)
+  weeklyPresenceMinutesAverage Int              @default(0)
+  workedDaysAverage            Float            @default(0)
+  restDaysAverage              Float            @default(0)
+  averageDailyPresenceMinutes  Int              @default(0)
+  status                       HrRotationStatus @default(ACTIVE)
+  isArchived                   Boolean          @default(false)
+  archivedAt                   DateTime?
+  createdAt                    DateTime         @default(now())
+  updatedAt                    DateTime         @updatedAt
+
+  organization        Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  department          HrDepartment?          @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  assignments         HrRotationAssignment[]
+  planningAssignments PlanningAssignment[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([departmentId])
+  @@index([status])
+  @@index([isArchived])
+  @@map("hr_rotations")
+}
+
+model HrRotationAssignment {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  rotationId     String    @db.Uuid
+  employeeId     String    @db.Uuid
+  startDate      DateTime?
+  endDate        DateTime?
+  createdById    String?   @db.Uuid
+  endedById      String?   @db.Uuid
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  rotation     HrRotation   @relation(fields: [rotationId], references: [id], onDelete: Restrict)
+  employee     HrEmployee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([rotationId])
+  @@index([employeeId])
+  @@index([endDate])
+  @@map("hr_rotation_assignments")
+}
+
+model HrSkill {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  name           String
+  description    String?   @db.Text
+  isArchived     Boolean   @default(false)
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization  Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employees     HrEmployeeSkill[]
+  positions     HrPositionSkill[]
+  departments   HrDepartmentSkill[]
+  planningNeeds PlanningOperationalNeed[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([isArchived])
+  @@map("hr_skills")
+}
+
+model HrEmployeeSkill {
+  employeeId String   @db.Uuid
+  skillId    String   @db.Uuid
+  level      Int      @default(1)
+  createdAt  DateTime @default(now())
+
+  employee HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  skill    HrSkill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([employeeId, skillId])
+  @@index([skillId])
+  @@map("hr_employee_skills")
+}
+
+model HrPositionSkill {
+  positionId String  @db.Uuid
+  skillId    String  @db.Uuid
+  required   Boolean @default(true)
+
+  position HrPosition @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  skill    HrSkill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([positionId, skillId])
+  @@index([skillId])
+  @@map("hr_position_skills")
+}
+
+model HrDepartmentSkill {
+  departmentId String  @db.Uuid
+  skillId      String  @db.Uuid
+  required     Boolean @default(false)
+
+  department HrDepartment @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  skill      HrSkill      @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([departmentId, skillId])
+  @@index([skillId])
+  @@map("hr_department_skills")
+}
+
+model HrAbsence {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  employeeId     String          @db.Uuid
+  type           HrAbsenceType
+  status         HrAbsenceStatus @default(REQUESTED)
+  startDate      DateTime
+  endDate        DateTime
+  reason         String?
+  comment        String?         @db.Text
+  validatorId    String?         @db.Uuid
+  validatedAt    DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee             HrEmployee            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  validator            User?                 @relation("HrAbsenceValidator", fields: [validatorId], references: [id], onDelete: SetNull)
+  planningAssignments  PlanningAssignment[]
+  planningReplacements PlanningReplacement[]
+
+  @@index([organizationId])
+  @@index([employeeId])
+  @@index([type])
+  @@index([status])
+  @@index([startDate])
+  @@index([endDate])
+  @@map("hr_absences")
+}
+
+model PlanningAssignment {
+  id                    String                   @id @default(uuid()) @db.Uuid
+  organizationId        String                   @db.Uuid
+  employeeId            String                   @db.Uuid
+  departmentId          String                   @db.Uuid
+  positionId            String                   @db.Uuid
+  siteId                String?                  @db.Uuid
+  rotationId            String?                  @db.Uuid
+  absenceId             String?                  @db.Uuid
+  date                  DateTime
+  startTime             DateTime
+  endTime               DateTime
+  breakMinutes          Int                      @default(0)
+  status                PlanningAssignmentStatus @default(PLANNED)
+  origin                PlanningAssignmentOrigin @default(MANUAL)
+  comment               String?                  @db.Text
+  allowCriticalOverride Boolean                  @default(false)
+  overrideReason        String?                  @db.Text
+  createdById           String?                  @db.Uuid
+  updatedById           String?                  @db.Uuid
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+
+  organization          Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee              HrEmployee             @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  department            HrDepartment           @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  position              HrPosition             @relation(fields: [positionId], references: [id], onDelete: Restrict)
+  site                  Site?                  @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  rotation              HrRotation?            @relation(fields: [rotationId], references: [id], onDelete: SetNull)
+  absence               HrAbsence?             @relation(fields: [absenceId], references: [id], onDelete: SetNull)
+  createdBy             User?                  @relation("PlanningAssignmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy             User?                  @relation("PlanningAssignmentUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  replacements          PlanningReplacement[]
+  conflicts             PlanningConflict[]
+  productionAssignments ProductionAssignment[]
+
+  @@index([organizationId])
+  @@index([employeeId])
+  @@index([departmentId])
+  @@index([positionId])
+  @@index([siteId])
+  @@index([date])
+  @@index([startTime])
+  @@index([endTime])
+  @@index([status])
+  @@map("planning_assignments")
+}
+
+model PlanningReplacement {
+  id                    String                    @id @default(uuid()) @db.Uuid
+  organizationId        String                    @db.Uuid
+  assignmentId          String?                   @db.Uuid
+  absenceId             String?                   @db.Uuid
+  absentEmployeeId      String                    @db.Uuid
+  replacementEmployeeId String?                   @db.Uuid
+  status                PlanningReplacementStatus @default(TO_PROCESS)
+  score                 Int                       @default(0)
+  rationale             Json?
+  requestedById         String?                   @db.Uuid
+  acceptedById          String?                   @db.Uuid
+  acceptedAt            DateTime?
+  comment               String?                   @db.Text
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+
+  organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignment          PlanningAssignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  absence             HrAbsence?          @relation(fields: [absenceId], references: [id], onDelete: SetNull)
+  absentEmployee      HrEmployee          @relation("PlanningReplacementAbsentEmployee", fields: [absentEmployeeId], references: [id], onDelete: Restrict)
+  replacementEmployee HrEmployee?         @relation("PlanningReplacementEmployee", fields: [replacementEmployeeId], references: [id], onDelete: SetNull)
+  requestedBy         User?               @relation("PlanningReplacementRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  acceptedBy          User?               @relation("PlanningReplacementAcceptedBy", fields: [acceptedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([assignmentId])
+  @@index([absenceId])
+  @@index([absentEmployeeId])
+  @@index([replacementEmployeeId])
+  @@index([status])
+  @@map("planning_replacements")
+}
+
+model PlanningOperationalNeed {
+  id              String               @id @default(uuid()) @db.Uuid
+  organizationId  String               @db.Uuid
+  departmentId    String               @db.Uuid
+  siteId          String?              @db.Uuid
+  positionId      String?              @db.Uuid
+  requiredSkillId String?              @db.Uuid
+  label           String
+  startDate       DateTime
+  endDate         DateTime?
+  startTime       String
+  endTime         String
+  requiredCount   Int
+  priority        PlanningNeedPriority @default(NORMAL)
+  comment         String?              @db.Text
+  createdById     String?              @db.Uuid
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  department    HrDepartment @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  site          Site?        @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  position      HrPosition?  @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  requiredSkill HrSkill?     @relation(fields: [requiredSkillId], references: [id], onDelete: SetNull)
+  createdBy     User?        @relation("PlanningNeedCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([departmentId])
+  @@index([siteId])
+  @@index([positionId])
+  @@index([requiredSkillId])
+  @@index([startDate])
+  @@index([priority])
+  @@map("planning_operational_needs")
+}
+
+model PlanningTemplate {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  name           String
+  description    String?   @db.Text
+  periodType     String
+  departmentId   String?   @db.Uuid
+  siteId         String?   @db.Uuid
+  content        Json
+  isArchived     Boolean   @default(false)
+  archivedAt     DateTime?
+  createdById    String?   @db.Uuid
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  department   HrDepartment?                 @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  site         Site?                         @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  createdBy    User?                         @relation("PlanningTemplateCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  applications PlanningTemplateApplication[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([departmentId])
+  @@index([siteId])
+  @@index([isArchived])
+  @@map("planning_templates")
+}
+
+model PlanningTemplateApplication {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  templateId     String    @db.Uuid
+  siteId         String?   @db.Uuid
+  startDate      DateTime
+  endDate        DateTime
+  preview        Json?
+  applied        Boolean   @default(false)
+  appliedById    String?   @db.Uuid
+  appliedAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  template     PlanningTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  site         Site?            @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  appliedBy    User?            @relation("PlanningTemplateAppliedBy", fields: [appliedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([templateId])
+  @@index([siteId])
+  @@index([startDate])
+  @@index([endDate])
+  @@map("planning_template_applications")
+}
+
+model PlanningGeneration {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  siteId         String?   @db.Uuid
+  startDate      DateTime
+  endDate        DateTime
+  parameters     Json?
+  preview        Json
+  applied        Boolean   @default(false)
+  launchedById   String?   @db.Uuid
+  appliedById    String?   @db.Uuid
+  appliedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site         Site?        @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  launchedBy   User?        @relation("PlanningGenerationLaunchedBy", fields: [launchedById], references: [id], onDelete: SetNull)
+  appliedBy    User?        @relation("PlanningGenerationAppliedBy", fields: [appliedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([siteId])
+  @@index([startDate])
+  @@index([endDate])
+  @@index([applied])
+  @@map("planning_generations")
+}
+
+model PlanningConflict {
+  id             String                   @id @default(uuid()) @db.Uuid
+  organizationId String                   @db.Uuid
+  assignmentId   String?                  @db.Uuid
+  severity       PlanningConflictSeverity
+  code           String
+  label          String
+  details        Json?
+  resolvedAt     DateTime?
+  resolvedById   String?                  @db.Uuid
+  resolutionNote String?                  @db.Text
+  createdAt      DateTime                 @default(now())
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignment   PlanningAssignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  resolvedBy   User?               @relation("PlanningConflictResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([assignmentId])
+  @@index([severity])
+  @@index([code])
+  @@index([createdAt])
+  @@map("planning_conflicts")
+}
+
+model PlanningNotification {
+  id                  String                     @id @default(uuid()) @db.Uuid
+  organizationId      String                     @db.Uuid
+  recipientUserId     String?                    @db.Uuid
+  recipientEmployeeId String?                    @db.Uuid
+  title               String
+  message             String                     @db.Text
+  eventType           String
+  entityType          String?
+  entityId            String?
+  status              PlanningNotificationStatus @default(UNREAD)
+  readAt              DateTime?
+  createdAt           DateTime                   @default(now())
+
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  recipientUser     User?        @relation("PlanningNotificationRecipientUser", fields: [recipientUserId], references: [id], onDelete: SetNull)
+  recipientEmployee HrEmployee?  @relation("PlanningNotificationRecipientEmployee", fields: [recipientEmployeeId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([recipientUserId])
+  @@index([recipientEmployeeId])
+  @@index([status])
+  @@index([eventType])
+  @@index([createdAt])
+  @@map("planning_notifications")
+}
+
+model PlanningHistory {
+  id             String                @id @default(uuid()) @db.Uuid
+  organizationId String                @db.Uuid
+  actorUserId    String?               @db.Uuid
+  action         PlanningHistoryAction
+  entityType     String
+  entityId       String?
+  label          String
+  oldValue       Json?
+  newValue       Json?
+  archivedPeriod String?
+  isArchived     Boolean               @default(false)
+  createdAt      DateTime              @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actorUser    User?        @relation("PlanningHistoryActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([actorUserId])
+  @@index([action])
+  @@index([entityType])
+  @@index([isArchived])
+  @@index([archivedPeriod])
+  @@index([createdAt])
+  @@map("planning_history")
+}
+
+model PlanningExport {
+  id             String               @id @default(uuid()) @db.Uuid
+  organizationId String               @db.Uuid
+  requestedById  String?              @db.Uuid
+  format         PlanningExportFormat
+  scope          PlanningExportScope
+  startDate      DateTime
+  endDate        DateTime
+  siteId         String?              @db.Uuid
+  departmentId   String?              @db.Uuid
+  employeeId     String?              @db.Uuid
+  filters        Json?
+  status         String               @default("PREPARED")
+  fileUrl        String?
+  createdAt      DateTime             @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requestedBy  User?         @relation("PlanningExportRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  site         Site?         @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  department   HrDepartment? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  employee     HrEmployee?   @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([requestedById])
+  @@index([format])
+  @@index([scope])
+  @@index([startDate])
+  @@index([endDate])
+  @@index([siteId])
+  @@index([departmentId])
+  @@index([employeeId])
+  @@map("planning_exports")
+}
+
+model PlanningViewPreference {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  userId         String   @db.Uuid
+  employeeId     String?  @db.Uuid
+  view           String
+  filters        Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employee     HrEmployee?  @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, userId, view])
+  @@index([organizationId])
+  @@index([employeeId])
+  @@map("planning_view_preferences")
+}
+
+model TechnicalSheetCategory {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  name           String
+  description    String?   @db.Text
+  color          String?
+  isArchived     Boolean   @default(false)
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  recipes      TechnicalSheet[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([isArchived])
+  @@map("technical_sheet_categories")
+}
+
+model TechnicalSheet {
+  id                     String               @id @default(uuid()) @db.Uuid
+  organizationId         String               @db.Uuid
+  categoryId             String?              @db.Uuid
+  sourceTechnicalSheetId String?              @db.Uuid
+  name                   String
+  description            String?              @db.Text
+  photoUrl               String?              @db.Text
+  photoDataUrl           String?              @db.Text
+  referencePortions      Decimal              @default(1) @db.Decimal(12, 3)
+  preparationTimeMinutes Int?                 @default(0)
+  cookingTimeMinutes     Int?                 @default(0)
+  totalTimeMinutes       Int?                 @default(0)
+  status                 TechnicalSheetStatus @default(DRAFT)
+  totalCost              Decimal              @default(0) @db.Decimal(12, 4)
+  costPerPortion         Decimal              @default(0) @db.Decimal(12, 4)
+  costPerKg              Decimal?             @db.Decimal(12, 4)
+  costPerLiter           Decimal?             @db.Decimal(12, 4)
+  hasNonCalculableLines  Boolean              @default(false)
+  lastCostCalculationAt  DateTime?
+  isArchived             Boolean              @default(false)
+  archivedAt             DateTime?
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+
+  organization         Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category             TechnicalSheetCategory?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  sourceTechnicalSheet TechnicalSheet?              @relation("TechnicalSheetDuplication", fields: [sourceTechnicalSheetId], references: [id], onDelete: SetNull)
+  duplicates           TechnicalSheet[]             @relation("TechnicalSheetDuplication")
+  ingredients          TechnicalSheetIngredient[]
+  steps                TechnicalSheetStep[]
+  costSnapshots        TechnicalSheetCostSnapshot[]
+  simulations          TechnicalSheetSimulation[]
+  exports              TechnicalSheetExport[]
+  history              TechnicalSheetHistory[]
+  productionOrders     ProductionOrder[]
+  menuItems            MenuItem[]
+  menuVariantReplacements MenuVariantReplacement[]
+  menuCycleItems       MenuCycleItem[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([categoryId])
+  @@index([status])
+  @@index([isArchived])
+  @@index([updatedAt])
+  @@map("technical_sheets")
+}
+
+model TechnicalSheetIngredient {
+  id                        String   @id @default(uuid()) @db.Uuid
+  organizationId            String   @db.Uuid
+  technicalSheetId          String   @db.Uuid
+  productId                 String   @db.Uuid
+  unitId                    String   @db.Uuid
+  quantity                  Decimal  @db.Decimal(12, 3)
+  comment                   String?  @db.Text
+  order                     Int      @default(0)
+  unitPriceSnapshot         Decimal? @db.Decimal(12, 4)
+  cost                      Decimal? @db.Decimal(12, 4)
+  isCalculable              Boolean  @default(true)
+  nonCalculableReason       String?  @db.Text
+  productNameSnapshot       String?
+  unitSymbolSnapshot        String?
+  productUnitIdSnapshot     String?  @db.Uuid
+  productUnitSymbolSnapshot String?
+  productArchivedSnapshot   Boolean  @default(false)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  organization           Organization                       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  technicalSheet         TechnicalSheet                     @relation(fields: [technicalSheetId], references: [id], onDelete: Cascade)
+  product                Product                            @relation(fields: [productId], references: [id], onDelete: Restrict)
+  unit                   Unit                               @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  allergens              TechnicalSheetIngredientAllergen[]
+  productionRequirements ProductionMaterialRequirement[]
+
+  @@index([organizationId])
+  @@index([technicalSheetId])
+  @@index([productId])
+  @@index([unitId])
+  @@map("technical_sheet_ingredients")
+}
+
+model TechnicalSheetStep {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String   @db.Uuid
+  technicalSheetId String   @db.Uuid
+  order            Int
+  title            String
+  description      String   @db.Text
+  estimatedMinutes Int?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  technicalSheet TechnicalSheet @relation(fields: [technicalSheetId], references: [id], onDelete: Cascade)
+
+  @@unique([technicalSheetId, order])
+  @@index([organizationId])
+  @@index([technicalSheetId])
+  @@map("technical_sheet_steps")
+}
+
+model TechnicalSheetAllergen {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  name           String
+  description    String?   @db.Text
+  isArchived     Boolean   @default(false)
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization                       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ingredients  TechnicalSheetIngredientAllergen[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([isArchived])
+  @@map("technical_sheet_allergens")
+}
+
+model TechnicalSheetIngredientAllergen {
+  ingredientId String @db.Uuid
+  allergenId   String @db.Uuid
+
+  ingredient TechnicalSheetIngredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  allergen   TechnicalSheetAllergen   @relation(fields: [allergenId], references: [id], onDelete: Cascade)
+
+  @@id([ingredientId, allergenId])
+  @@index([allergenId])
+  @@map("technical_sheet_ingredient_allergens")
+}
+
+model TechnicalSheetCostSnapshot {
+  id                    String   @id @default(uuid()) @db.Uuid
+  organizationId        String   @db.Uuid
+  technicalSheetId      String   @db.Uuid
+  totalCost             Decimal  @db.Decimal(12, 4)
+  costPerPortion        Decimal  @db.Decimal(12, 4)
+  costPerKg             Decimal? @db.Decimal(12, 4)
+  costPerLiter          Decimal? @db.Decimal(12, 4)
+  hasNonCalculableLines Boolean  @default(false)
+  lineDetails           Json?
+  createdAt             DateTime @default(now())
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  technicalSheet TechnicalSheet @relation(fields: [technicalSheetId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([technicalSheetId])
+  @@index([createdAt])
+  @@map("technical_sheet_cost_snapshots")
+}
+
+model TechnicalSheetSimulation {
+  id                    String   @id @default(uuid()) @db.Uuid
+  organizationId        String   @db.Uuid
+  technicalSheetId      String   @db.Uuid
+  requestedPortions     Decimal  @db.Decimal(12, 3)
+  factor                Decimal  @db.Decimal(12, 6)
+  totalEstimatedCost    Decimal  @default(0) @db.Decimal(12, 4)
+  hasNonCalculableLines Boolean  @default(false)
+  lines                 Json
+  allergenNames         String[] @default([])
+  createdById           String?  @db.Uuid
+  createdAt             DateTime @default(now())
+
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  technicalSheet TechnicalSheet         @relation(fields: [technicalSheetId], references: [id], onDelete: Cascade)
+  exports        TechnicalSheetExport[]
+
+  @@index([organizationId])
+  @@index([technicalSheetId])
+  @@index([createdAt])
+  @@map("technical_sheet_simulations")
+}
+
+model TechnicalSheetExport {
+  id               String                     @id @default(uuid()) @db.Uuid
+  organizationId   String                     @db.Uuid
+  technicalSheetId String                     @db.Uuid
+  simulationId     String?                    @db.Uuid
+  format           TechnicalSheetExportFormat
+  filename         String
+  payload          Json?
+  createdById      String?                    @db.Uuid
+  createdAt        DateTime                   @default(now())
+
+  organization   Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  technicalSheet TechnicalSheet            @relation(fields: [technicalSheetId], references: [id], onDelete: Cascade)
+  simulation     TechnicalSheetSimulation? @relation(fields: [simulationId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([technicalSheetId])
+  @@index([simulationId])
+  @@index([createdAt])
+  @@map("technical_sheet_exports")
+}
+
+model TechnicalSheetHistory {
+  id               String                      @id @default(uuid()) @db.Uuid
+  organizationId   String                      @db.Uuid
+  technicalSheetId String                      @db.Uuid
+  userId           String?                     @db.Uuid
+  action           TechnicalSheetHistoryAction
+  summary          String
+  details          Json?
+  createdAt        DateTime                    @default(now())
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  technicalSheet TechnicalSheet @relation(fields: [technicalSheetId], references: [id], onDelete: Cascade)
+  user           User?          @relation("TechnicalSheetHistoryActor", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([technicalSheetId])
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("technical_sheet_history")
+}
+
+model ProductionOrder {
+  id                    String                @id @default(uuid()) @db.Uuid
+  organizationId        String                @db.Uuid
+  number                String
+  name                  String
+  technicalSheetId      String                @db.Uuid
+  productionDate        DateTime
+  plannedTime           String
+  status                ProductionOrderStatus @default(PLANNED)
+  priority              ProductionPriority    @default(NORMAL)
+  serviceId             String?               @db.Uuid
+  responsibleEmployeeId String?               @db.Uuid
+  plannedPortions       Decimal               @db.Decimal(12, 3)
+  realizedPortions      Decimal?              @db.Decimal(12, 3)
+  estimatedCost         Decimal               @default(0) @db.Decimal(12, 4)
+  actualCost            Decimal?              @db.Decimal(12, 4)
+  comments              String?               @db.Text
+  source                String                @default("MANUAL")
+  createdById           String?               @db.Uuid
+  updatedById           String?               @db.Uuid
+  completedById         String?               @db.Uuid
+  completedAt           DateTime?
+  cancelledAt           DateTime?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  organization        Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  technicalSheet      TechnicalSheet                  @relation(fields: [technicalSheetId], references: [id], onDelete: Restrict)
+  service             HrDepartment?                   @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  responsibleEmployee HrEmployee?                     @relation("ProductionOrderResponsible", fields: [responsibleEmployeeId], references: [id], onDelete: SetNull)
+  createdBy           User?                           @relation("ProductionOrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy           User?                           @relation("ProductionOrderUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  completedBy         User?                           @relation("ProductionOrderCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+  requirements        ProductionMaterialRequirement[]
+  assignments         ProductionAssignment[]
+  alerts              ProductionAlert[]
+  history             ProductionHistory[]
+  exports             ProductionExport[]
+  realization         ProductionRealization?
+  destockingProposals ProductionDestockingProposal[]
+  menuProductionLinks MenuProductionLink[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId])
+  @@index([technicalSheetId])
+  @@index([productionDate])
+  @@index([status])
+  @@index([priority])
+  @@index([serviceId])
+  @@index([responsibleEmployeeId])
+  @@map("production_orders")
+}
+
+model ProductionMaterialRequirement {
+  id                         String                   @id @default(uuid()) @db.Uuid
+  organizationId             String                   @db.Uuid
+  orderId                    String                   @db.Uuid
+  technicalSheetIngredientId String?                  @db.Uuid
+  productId                  String                   @db.Uuid
+  unitId                     String                   @db.Uuid
+  supplierId                 String?                  @db.Uuid
+  requiredQuantity           Decimal                  @db.Decimal(12, 3)
+  stockAvailable             Decimal?                 @db.Decimal(12, 3)
+  varianceQuantity           Decimal?                 @db.Decimal(12, 3)
+  status                     ProductionMaterialStatus @default(STOCK_UNKNOWN)
+  estimatedCost              Decimal?                 @db.Decimal(12, 4)
+  productNameSnapshot        String
+  unitSymbolSnapshot         String
+  supplierNameSnapshot       String?
+  details                    Json?
+  createdAt                  DateTime                 @default(now())
+  updatedAt                  DateTime                 @updatedAt
+
+  organization             Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order                    ProductionOrder            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  technicalSheetIngredient TechnicalSheetIngredient?  @relation(fields: [technicalSheetIngredientId], references: [id], onDelete: SetNull)
+  product                  Product                    @relation(fields: [productId], references: [id], onDelete: Restrict)
+  unit                     Unit                       @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  supplier                 Supplier?                  @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  destockingLines          ProductionDestockingLine[]
+
+  @@index([organizationId])
+  @@index([orderId])
+  @@index([productId])
+  @@index([status])
+  @@map("production_material_requirements")
+}
+
+model ProductionAssignment {
+  id                   String   @id @default(uuid()) @db.Uuid
+  organizationId       String   @db.Uuid
+  orderId              String   @db.Uuid
+  employeeId           String   @db.Uuid
+  planningAssignmentId String?  @db.Uuid
+  mission              String?
+  plannedMinutes       Int?
+  actualMinutes        Int?
+  isLead               Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order              ProductionOrder     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  employee           HrEmployee          @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  planningAssignment PlanningAssignment? @relation(fields: [planningAssignmentId], references: [id], onDelete: SetNull)
+
+  @@unique([orderId, employeeId])
+  @@index([organizationId])
+  @@index([employeeId])
+  @@index([planningAssignmentId])
+  @@map("production_assignments")
+}
+
+model ProductionAlert {
+  id             String                  @id @default(uuid()) @db.Uuid
+  organizationId String                  @db.Uuid
+  orderId        String?                 @db.Uuid
+  code           ProductionAlertCode
+  severity       ProductionAlertSeverity
+  title          String
+  message        String                  @db.Text
+  details        Json?
+  isActive       Boolean                 @default(true)
+  createdAt      DateTime                @default(now())
+  resolvedAt     DateTime?
+
+  organization Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order        ProductionOrder?          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  overrides    ProductionAlertOverride[]
+
+  @@index([organizationId])
+  @@index([orderId])
+  @@index([code])
+  @@index([severity])
+  @@index([isActive])
+  @@map("production_alerts")
+}
+
+model ProductionAlertOverride {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  alertId        String   @db.Uuid
+  confirmedById  String?  @db.Uuid
+  reason         String   @db.Text
+  snapshot       Json?
+  createdAt      DateTime @default(now())
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  alert        ProductionAlert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  confirmedBy  User?           @relation("ProductionAlertOverrideConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([alertId])
+  @@index([confirmedById])
+  @@map("production_alert_overrides")
+}
+
+model ProductionRealization {
+  id                    String    @id @default(uuid()) @db.Uuid
+  organizationId        String    @db.Uuid
+  orderId               String    @unique @db.Uuid
+  realizedPortions      Decimal   @db.Decimal(12, 3)
+  actualStartTime       DateTime?
+  actualEndTime         DateTime?
+  losses                Decimal?  @db.Decimal(12, 3)
+  variance              Json?
+  yieldPercent          Decimal?  @db.Decimal(7, 3)
+  qualityControlDone    Boolean   @default(false)
+  qualityControlDetails Json?
+  varianceCauses        String?   @db.Text
+  comments              String?   @db.Text
+  managerValidated      Boolean   @default(false)
+  destockingConfirmed   Boolean   @default(false)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order        ProductionOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("production_realizations")
+}
+
+model ProductionDestockingProposal {
+  id               String                     @id @default(uuid()) @db.Uuid
+  organizationId   String                     @db.Uuid
+  orderId          String                     @db.Uuid
+  status           ProductionDestockingStatus @default(PROPOSED)
+  proposedAt       DateTime                   @default(now())
+  confirmedAt      DateTime?
+  confirmedById    String?                    @db.Uuid
+  confirmationNote String?                    @db.Text
+  snapshot         Json?
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+
+  organization Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order        ProductionOrder                @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  confirmedBy  User?                          @relation("ProductionDestockingConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
+  lines        ProductionDestockingLine[]
+  movements    ProductionDestockingMovement[]
+
+  @@index([organizationId])
+  @@index([orderId])
+  @@index([status])
+  @@map("production_destocking_proposals")
+}
+
+model ProductionDestockingLine {
+  id                  String   @id @default(uuid()) @db.Uuid
+  organizationId      String   @db.Uuid
+  proposalId          String   @db.Uuid
+  requirementId       String?  @db.Uuid
+  productId           String   @db.Uuid
+  unitId              String   @db.Uuid
+  proposedQuantity    Decimal  @db.Decimal(12, 3)
+  confirmedQuantity   Decimal? @db.Decimal(12, 3)
+  productNameSnapshot String
+  unitSymbolSnapshot  String
+  createdAt           DateTime @default(now())
+
+  organization Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  proposal     ProductionDestockingProposal   @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  requirement  ProductionMaterialRequirement? @relation(fields: [requirementId], references: [id], onDelete: SetNull)
+  product      Product                        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  unit         Unit                           @relation(fields: [unitId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([proposalId])
+  @@index([productId])
+  @@map("production_destocking_lines")
+}
+
+model ProductionDestockingMovement {
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @db.Uuid
+  proposalId      String   @db.Uuid
+  stockMovementId String   @db.Uuid
+  createdAt       DateTime @default(now())
+
+  organization  Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  proposal      ProductionDestockingProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  stockMovement StockMovement                @relation(fields: [stockMovementId], references: [id], onDelete: Restrict)
+
+  @@unique([proposalId, stockMovementId])
+  @@index([organizationId])
+  @@index([stockMovementId])
+  @@map("production_destocking_movements")
+}
+
+model ProductionHistory {
+  id             String                  @id @default(uuid()) @db.Uuid
+  organizationId String                  @db.Uuid
+  orderId        String?                 @db.Uuid
+  actorUserId    String?                 @db.Uuid
+  action         ProductionHistoryAction
+  summary        String
+  details        Json?
+  createdAt      DateTime                @default(now())
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order        ProductionOrder? @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  actorUser    User?            @relation("ProductionHistoryActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([orderId])
+  @@index([actorUserId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("production_history")
+}
+
+model ProductionExport {
+  id             String                 @id @default(uuid()) @db.Uuid
+  organizationId String                 @db.Uuid
+  requestedById  String?                @db.Uuid
+  type           ProductionExportType
+  format         ProductionExportFormat
+  startDate      DateTime?
+  endDate        DateTime?
+  serviceId      String?                @db.Uuid
+  orderId        String?                @db.Uuid
+  filename       String
+  filters        Json?
+  snapshot       Json
+  fileUrl        String?
+  createdAt      DateTime               @default(now())
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requestedBy  User?            @relation("ProductionExportRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  order        ProductionOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([requestedById])
+  @@index([type])
+  @@index([format])
+  @@index([startDate])
+  @@index([endDate])
+  @@index([serviceId])
+  @@index([orderId])
+  @@map("production_exports")
+}
+
+model MenuDiet {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  name           String
+  description    String?   @db.Text
+  isArchived     Boolean   @default(false)
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  variants       MenuVariant[]
+  guestForecasts MenuGuestForecast[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([isArchived])
+  @@map("menu_diets")
+}
+
+model Menu {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  name           String
+  date           DateTime
+  service        MenuServiceType
+  siteId         String?         @db.Uuid
+  description    String?         @db.Text
+  expectedGuests Int             @default(0)
+  status         MenuStatus      @default(DRAFT)
+  cycleId        String?         @db.Uuid
+  cycleWeek      Int?
+  cycleDay       Int?
+  sourceMenuId   String?         @db.Uuid
+  productionGeneratedAt DateTime?
+  productionDirtySince  DateTime?
+  publishedSnapshot Json?
+  createdById    String?         @db.Uuid
+  updatedById    String?         @db.Uuid
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site         Site?        @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  cycle        MenuCycle?   @relation(fields: [cycleId], references: [id], onDelete: SetNull)
+  sourceMenu   Menu?        @relation("MenuSource", fields: [sourceMenuId], references: [id], onDelete: SetNull)
+  generatedMenus Menu[]     @relation("MenuSource")
+  createdBy    User?        @relation("MenuCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy    User?        @relation("MenuUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  items        MenuItem[]
+  variants     MenuVariant[]
+  guestForecasts MenuGuestForecast[]
+  exports      MenuExport[]
+  history      MenuHistory[]
+  productionLinks MenuProductionLink[]
+
+  @@index([organizationId])
+  @@index([date])
+  @@index([service])
+  @@index([siteId])
+  @@index([status])
+  @@index([cycleId])
+  @@map("menus")
+}
+
+model MenuItem {
+  id               String          @id @default(uuid()) @db.Uuid
+  organizationId   String          @db.Uuid
+  menuId           String          @db.Uuid
+  section          MenuSectionType
+  technicalSheetId String          @db.Uuid
+  position         Int             @default(0)
+  portionsOverride Decimal?        @db.Decimal(12, 3)
+  notes            String?         @db.Text
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  menu           Menu           @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  technicalSheet TechnicalSheet @relation(fields: [technicalSheetId], references: [id], onDelete: Restrict)
+  replacements   MenuVariantReplacement[]
+
+  @@index([organizationId])
+  @@index([menuId])
+  @@index([technicalSheetId])
+  @@index([section])
+  @@map("menu_items")
+}
+
+model MenuVariant {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  menuId         String          @db.Uuid
+  dietId         String          @db.Uuid
+  mode           MenuVariantMode @default(DERIVED)
+  name           String
+  expectedGuests Int             @default(0)
+  notes          String?         @db.Text
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  menu         Menu         @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  diet         MenuDiet     @relation(fields: [dietId], references: [id], onDelete: Restrict)
+  replacements MenuVariantReplacement[]
+
+  @@unique([menuId, dietId])
+  @@index([organizationId])
+  @@index([dietId])
+  @@map("menu_variants")
+}
+
+model MenuVariantReplacement {
+  id                         String   @id @default(uuid()) @db.Uuid
+  variantId                  String   @db.Uuid
+  menuItemId                 String?  @db.Uuid
+  section                    MenuSectionType?
+  replacementTechnicalSheetId String  @db.Uuid
+  position                   Int      @default(0)
+  notes                      String?  @db.Text
+  createdAt                  DateTime @default(now())
+
+  variant                  MenuVariant    @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  menuItem                 MenuItem?      @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  replacementTechnicalSheet TechnicalSheet @relation(fields: [replacementTechnicalSheetId], references: [id], onDelete: Restrict)
+
+  @@index([variantId])
+  @@index([menuItemId])
+  @@index([replacementTechnicalSheetId])
+  @@map("menu_variant_replacements")
+}
+
+model MenuGuestGroup {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @db.Uuid
+  name           String
+  type           MenuGuestGroupType @default(OTHER)
+  description    String?            @db.Text
+  isArchived     Boolean            @default(false)
+  archivedAt     DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  forecasts    MenuGuestForecast[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([isArchived])
+  @@map("menu_guest_groups")
+}
+
+model MenuGuestForecast {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  menuId         String   @db.Uuid
+  guestGroupId   String   @db.Uuid
+  dietId         String?  @db.Uuid
+  count          Int
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  menu         Menu         @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  guestGroup   MenuGuestGroup @relation(fields: [guestGroupId], references: [id], onDelete: Restrict)
+  diet         MenuDiet?    @relation(fields: [dietId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([menuId])
+  @@index([guestGroupId])
+  @@index([dietId])
+  @@map("menu_guest_forecasts")
+}
+
+model MenuCycle {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  name           String
+  description    String?         @db.Text
+  durationWeeks  Int
+  siteId         String?         @db.Uuid
+  status         MenuCycleStatus @default(ACTIVE)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site         Site?        @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  items        MenuCycleItem[]
+  menus        Menu[]
+  history      MenuHistory[]
+
+  @@index([organizationId])
+  @@index([siteId])
+  @@index([status])
+  @@map("menu_cycles")
+}
+
+model MenuCycleItem {
+  id               String          @id @default(uuid()) @db.Uuid
+  organizationId   String          @db.Uuid
+  cycleId          String          @db.Uuid
+  weekNumber       Int
+  dayOfWeek        Int
+  service          MenuServiceType
+  section          MenuSectionType
+  technicalSheetId String          @db.Uuid
+  position         Int             @default(0)
+  notes            String?         @db.Text
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  cycle          MenuCycle      @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  technicalSheet TechnicalSheet @relation(fields: [technicalSheetId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([cycleId])
+  @@index([technicalSheetId])
+  @@index([weekNumber, dayOfWeek, service])
+  @@map("menu_cycle_items")
+}
+
+model MenuProductionLink {
+  id                String   @id @default(uuid()) @db.Uuid
+  organizationId    String   @db.Uuid
+  menuId            String   @db.Uuid
+  productionOrderId String   @db.Uuid
+  generationMode    MenuProductionGenerationMode
+  snapshot          Json?
+  createdAt         DateTime @default(now())
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  menu            Menu            @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  productionOrder ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Restrict)
+
+  @@unique([menuId, productionOrderId])
+  @@index([organizationId])
+  @@index([productionOrderId])
+  @@map("menu_production_links")
+}
+
+model MenuExport {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @db.Uuid
+  menuId         String?            @db.Uuid
+  requestedById  String?            @db.Uuid
+  format         MenuExportFormat
+  audience       MenuExportAudience
+  filename       String
+  filters        Json?
+  snapshot       Json
+  fileUrl        String?
+  createdAt      DateTime           @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  menu         Menu?        @relation(fields: [menuId], references: [id], onDelete: SetNull)
+  requestedBy  User?        @relation("MenuExportRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([menuId])
+  @@index([requestedById])
+  @@index([format])
+  @@index([audience])
+  @@map("menu_exports")
+}
+
+model MenuHistory {
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @db.Uuid
+  menuId         String?           @db.Uuid
+  cycleId        String?           @db.Uuid
+  actorUserId    String?           @db.Uuid
+  action         MenuHistoryAction
+  summary        String
+  details        Json?
+  createdAt      DateTime          @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  menu         Menu?        @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  cycle        MenuCycle?   @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  actorUser    User?        @relation("MenuHistoryActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([menuId])
+  @@index([cycleId])
+  @@index([actorUserId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("menu_history")
 }
 
 model AuditLog {

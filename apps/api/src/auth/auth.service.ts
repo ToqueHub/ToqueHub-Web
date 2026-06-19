@@ -1,7 +1,7 @@
 import { ConflictException, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { Prisma, UnitType, AuditAction } from '@prisma/client';
+import { Prisma, UnitType, AuditAction, UserStatus, Permission } from '@prisma/client';
 import { compare, hash } from 'bcryptjs';
 import type { AuthenticatedUser } from './authenticated-user';
 import { PrismaService } from '../prisma/prisma.service';
@@ -78,8 +78,11 @@ export class AuthService {
           passwordHash: await hash(dto.password, 12),
           organizationId: organization.id,
           roleId: role.id,
+          isPrimaryAdmin: true,
+          status: UserStatus.ACTIVE,
+          isActive: true,
         },
-        include: { role: true, organization: true },
+        include: { role: { include: { permissions: { include: { permission: true } } } }, organization: true },
       });
     });
 
@@ -121,6 +124,9 @@ export class AuthService {
         lastName: dto.lastName,
         passwordHash: await hash(dto.password, 12),
         roleId: role.id,
+        isPrimaryAdmin: true,
+        status: UserStatus.ACTIVE,
+        isActive: true,
       },
       include: { role: true },
     });
@@ -172,7 +178,7 @@ export class AuthService {
       return tx.user.update({
         where: { id: user.id },
         data: { organizationId: organization.id },
-        include: { role: true, organization: true },
+        include: { role: { include: { permissions: { include: { permission: true } } } }, organization: true },
       });
     });
 
@@ -291,26 +297,108 @@ export class AuthService {
     return this.getDashboardSummary(user);
   }
 
+  async installRnmPricesApplication(user: AuthenticatedUser) {
+    if (!user.organizationId) {
+      throw new ForbiddenException('Organization setup is required before installing applications');
+    }
+    const organization = await this.prisma.organization.update({
+      where: { id: user.organizationId },
+      data: { rnmPricesInstalledAt: new Date() },
+    });
+    await this.prisma.auditLog.create({ data: { organizationId: organization.id, userId: user.id, action: AuditAction.MODULE_RNM_PRICES_INSTALLED, entityType: 'Module', entityId: 'rnm-prices', entityName: 'Cours des Produits' } });
+    return this.getDashboardSummary(user);
+  }
+
+  async uninstallRnmPricesApplication(user: AuthenticatedUser) {
+    if (!user.organizationId) {
+      throw new ForbiddenException('Organization setup is required before uninstalling applications');
+    }
+    await this.prisma.organization.update({ where: { id: user.organizationId }, data: { rnmPricesInstalledAt: null } });
+    await this.prisma.auditLog.create({ data: { organizationId: user.organizationId, userId: user.id, action: AuditAction.MODULE_RNM_PRICES_UNINSTALLED, entityType: 'Module', entityId: 'rnm-prices', entityName: 'Cours des Produits' } });
+    return this.getDashboardSummary(user);
+  }
+
+  async installHrApplication(user: AuthenticatedUser) {
+    if (!user.organizationId) throw new ForbiddenException('Organization setup is required before installing applications');
+    const organizationId = user.organizationId;
+    await this.prisma.$transaction(async (tx) => {
+      await tx.organization.update({ where: { id: organizationId }, data: { hrInstalledAt: new Date() } });
+      await tx.hrDepartment.createMany({ data: ['Cuisine', 'Pâtisserie', 'Administration', 'Entretien', 'Soins', 'Animation', 'Direction', 'Magasin'].map((name) => ({ organizationId, name })), skipDuplicates: true });
+      await tx.hrPosition.createMany({ data: ['Chef de cuisine', 'Second de cuisine', 'Commis', 'Pâtissier', 'Magasinier', 'Agent polyvalent', 'Directeur', 'Infirmier', 'Animateur'].map((name) => ({ organizationId, name })), skipDuplicates: true });
+      await tx.auditLog.create({ data: { organizationId, userId: user.id, action: AuditAction.MODULE_HR_INSTALLED, entityType: 'Module', entityId: 'hr', entityName: 'RH' } });
+    });
+    return this.getDashboardSummary(user);
+  }
+
+  async uninstallHrApplication(user: AuthenticatedUser) {
+    if (!user.organizationId) throw new ForbiddenException('Organization setup is required before uninstalling applications');
+    await this.prisma.organization.update({ where: { id: user.organizationId }, data: { hrInstalledAt: null } });
+    await this.prisma.auditLog.create({ data: { organizationId: user.organizationId, userId: user.id, action: AuditAction.MODULE_HR_UNINSTALLED, entityType: 'Module', entityId: 'hr', entityName: 'RH' } });
+    return this.getDashboardSummary(user);
+  }
+
+  async installPlanningApplication(user: AuthenticatedUser) {
+    if (!user.organizationId) throw new ForbiddenException('Organization setup is required before installing applications');
+    await this.prisma.organization.update({ where: { id: user.organizationId }, data: { planningInstalledAt: new Date() } });
+    await this.prisma.auditLog.create({ data: { organizationId: user.organizationId, userId: user.id, action: AuditAction.PLANNING_MODULE_INSTALLED, entityType: 'Module', entityId: 'planning', entityName: 'Planning' } });
+    return this.getDashboardSummary(user);
+  }
+
+  async installProductionApplication(user: AuthenticatedUser) {
+    if (!user.organizationId) throw new ForbiddenException('Organization setup is required before installing applications');
+    const organization = await this.prisma.organization.findUnique({ where: { id: user.organizationId } });
+    if (!organization?.stocksInstalledAt || !organization?.technicalSheetsInstalledAt) {
+      throw new ForbiddenException('Stocks and Technical Sheets must be installed before Production');
+    }
+    await this.prisma.organization.update({ where: { id: user.organizationId }, data: { productionInstalledAt: new Date() } });
+    await this.prisma.auditLog.create({ data: { organizationId: user.organizationId, userId: user.id, action: AuditAction.MODULE_PRODUCTION_INSTALLED, entityType: 'Module', entityId: 'production', entityName: 'Production' } });
+    return this.getDashboardSummary(user);
+  }
+
+  async uninstallProductionApplication(user: AuthenticatedUser) {
+    if (!user.organizationId) throw new ForbiddenException('Organization setup is required before uninstalling applications');
+    await this.prisma.organization.update({ where: { id: user.organizationId }, data: { productionInstalledAt: null } });
+    await this.prisma.auditLog.create({ data: { organizationId: user.organizationId, userId: user.id, action: AuditAction.MODULE_PRODUCTION_UNINSTALLED, entityType: 'Module', entityId: 'production', entityName: 'Production' } });
+    return this.getDashboardSummary(user);
+  }
+
+  async uninstallPlanningApplication(user: AuthenticatedUser) {
+    if (!user.organizationId) throw new ForbiddenException('Organization setup is required before uninstalling applications');
+    await this.prisma.organization.update({ where: { id: user.organizationId }, data: { planningInstalledAt: null } });
+    await this.prisma.auditLog.create({ data: { organizationId: user.organizationId, userId: user.id, action: AuditAction.PLANNING_MODULE_UNINSTALLED, entityType: 'Module', entityId: 'planning', entityName: 'Planning' } });
+    return this.getDashboardSummary(user);
+  }
+
   async getDashboardSummary(user: AuthenticatedUser) {
     if (!user.organizationId) {
       throw new ForbiddenException('Organization setup is required before reading dashboard summary');
     }
 
-    const [currentUser, productCount, supplierCount, movementCount] = await Promise.all([
+    const [currentUser, productCount, supplierCount, movementCount, hrCollaborators, technicalSheets] = await Promise.all([
       this.prisma.user.findUnique({
         where: { id: user.id },
-        include: { role: true, organization: true },
+        include: { role: { include: { permissions: { include: { permission: true } } } }, organization: true },
       }),
       this.prisma.product.count({ where: { organizationId: user.organizationId } }),
       this.prisma.supplier.count({ where: { organizationId: user.organizationId } }),
       this.prisma.stockMovement.count({ where: { organizationId: user.organizationId } }),
+      this.prisma.hrEmployee.count({ where: { organizationId: user.organizationId, isArchived: false } }),
+      this.prisma.technicalSheet.count({ where: { organizationId: user.organizationId, isArchived: false } }),
     ]);
 
     if (!currentUser?.organization) {
       throw new ForbiddenException('Organization setup is required before reading dashboard summary');
     }
 
-    const installedApplications = currentUser.organization.stocksInstalledAt ? ['stocks'] : [];
+    const installedApplications = [
+      ...(currentUser.organization.stocksInstalledAt ? ['stocks'] : []),
+      ...(currentUser.organization.rnmPricesInstalledAt ? ['rnm-prices'] : []),
+      ...(currentUser.organization.hrInstalledAt ? ['hr'] : []),
+      ...(currentUser.organization.planningInstalledAt ? ['planning'] : []),
+      ...(currentUser.organization.technicalSheetsInstalledAt ? ['technical-sheets'] : []),
+      ...(currentUser.organization.productionInstalledAt ? ['production'] : []),
+      ...(currentUser.organization.menusInstalledAt ? ['menus'] : []),
+    ];
     const checklist = {
       applicationInstalled: installedApplications.length > 0,
       firstProductCreated: productCount > 0,
@@ -318,6 +406,9 @@ export class AuthService {
       stockMovementCreated: movementCount > 0,
     };
     const completedCount = Object.values(checklist).filter(Boolean).length;
+    const activeUsersCount = await this.prisma.user.count({ where: { organizationId: user.organizationId, status: { not: UserStatus.DISABLED }, isActive: true } });
+
+    const userPermissions = currentUser.role.permissions.map((rp) => rp.permission.key).sort();
 
     return {
       user: this.serializeUser(currentUser),
@@ -330,7 +421,8 @@ export class AuthService {
         mainSiteName: currentUser.organization.mainSiteName,
       },
       installedApplications,
-      counts: { products: productCount, suppliers: supplierCount, stockMovements: movementCount },
+      counts: { products: productCount, suppliers: supplierCount, stockMovements: movementCount, activeUsers: activeUsersCount, hrCollaborators, technicalSheets },
+      permissions: userPermissions,
       progress: { percent: completedCount * 25, checklist },
     };
   }
@@ -341,12 +433,18 @@ export class AuthService {
       include: { role: true, organization: true },
     });
 
-    if (!user || !user.isActive) throw new UnauthorizedException('Invalid credentials');
+    if (!user || !user.isActive || user.status === UserStatus.DISABLED) throw new UnauthorizedException('Invalid credentials');
 
     const passwordMatches = await compare(dto.password, user.passwordHash);
     if (!passwordMatches) throw new UnauthorizedException('Invalid credentials');
 
-    return this.createSession(user);
+    const updatedLoginUser = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date(), status: user.status === UserStatus.INVITED ? UserStatus.ACTIVE : user.status, isActive: true },
+      include: { role: true, organization: true },
+    });
+
+    return this.createSession(updatedLoginUser);
   }
 
   private async seedConversions(tx: Prisma.TransactionClient, organizationId: string) {
@@ -399,7 +497,11 @@ export class AuthService {
     firstName: string | null;
     lastName: string | null;
     organizationId: string | null;
-    role: { name: string };
+    role: { name: string; permissions?: Array<{ permission: Pick<Permission, 'key'> }> };
+    status?: UserStatus;
+    isActive?: boolean;
+    isPrimaryAdmin?: boolean;
+    lastLoginAt?: Date | null;
     organization: {
       name: string;
       establishmentType: string | null;
@@ -407,6 +509,12 @@ export class AuthService {
       logoDataUrl: string | null;
       mainSiteName: string | null;
       stocksInstalledAt: Date | null;
+      rnmPricesInstalledAt: Date | null;
+      hrInstalledAt: Date | null;
+      planningInstalledAt?: Date | null;
+      technicalSheetsInstalledAt?: Date | null;
+      productionInstalledAt?: Date | null;
+      menusInstalledAt?: Date | null;
     } | null;
   }) {
     return {
@@ -422,8 +530,21 @@ export class AuthService {
       logoUrl: user.organization?.logoDataUrl ?? null,
       logoDataUrl: user.organization?.logoDataUrl ?? null,
       mainSiteName: user.organization?.mainSiteName ?? null,
-      installedApplications: user.organization?.stocksInstalledAt ? ['stocks'] : [],
+      installedApplications: [
+        ...(user.organization?.stocksInstalledAt ? ['stocks'] : []),
+        ...(user.organization?.rnmPricesInstalledAt ? ['rnm-prices'] : []),
+        ...(user.organization?.hrInstalledAt ? ['hr'] : []),
+        ...(user.organization?.planningInstalledAt ? ['planning'] : []),
+        ...(user.organization?.technicalSheetsInstalledAt ? ['technical-sheets'] : []),
+        ...(user.organization?.productionInstalledAt ? ['production'] : []),
+        ...(user.organization?.menusInstalledAt ? ['menus'] : []),
+      ],
       role: user.role.name,
+      status: 'status' in user ? user.status : undefined,
+      isActive: 'isActive' in user ? user.isActive : undefined,
+      isPrimaryAdmin: 'isPrimaryAdmin' in user ? user.isPrimaryAdmin : undefined,
+      lastLoginAt: 'lastLoginAt' in user ? user.lastLoginAt : undefined,
+      permissions: user.role.permissions?.map((rp) => rp.permission.key).sort() ?? [],
     };
   }
 
@@ -434,7 +555,11 @@ export class AuthService {
     firstName: string | null;
     lastName: string | null;
     organizationId: string | null;
-    role: { name: string };
+    role: { name: string; permissions?: Array<{ permission: Pick<Permission, 'key'> }> };
+    status?: UserStatus;
+    isActive?: boolean;
+    isPrimaryAdmin?: boolean;
+    lastLoginAt?: Date | null;
     organization?: {
       name: string;
       establishmentType: string | null;
@@ -442,6 +567,12 @@ export class AuthService {
       logoDataUrl: string | null;
       mainSiteName: string | null;
       stocksInstalledAt: Date | null;
+      rnmPricesInstalledAt: Date | null;
+      hrInstalledAt: Date | null;
+      planningInstalledAt?: Date | null;
+      technicalSheetsInstalledAt?: Date | null;
+      productionInstalledAt?: Date | null;
+      menusInstalledAt?: Date | null;
     } | null;
   }) {
     const payload = {

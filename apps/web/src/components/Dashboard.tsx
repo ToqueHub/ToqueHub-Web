@@ -2,11 +2,29 @@ import type { FormEvent, ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
+  Avatar,
+  Box,
+  Chip,
+  FormControlLabel,
+  Switch as MuiSwitch,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TextField,
+} from '@mui/material';
+import {
+  CalendarCheck,
+  Calculator,
+  CalendarDays,
   LayoutDashboard,
   Package,
   History,
   ChefHat,
   UsersRound,
+  UserRound,
   FileText,
   Calendar,
   Thermometer,
@@ -36,11 +54,40 @@ import {
   Download,
   ClipboardList,
   Warehouse,
+  Workflow,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  UserPlus,
+  Edit3,
+  Ban,
+  Crown,
+  Shield,
+  RefreshCw,
+  LineChart,
+  Heart,
+  Pin,
+  Building2,
+  BriefcaseBusiness,
+  Factory,
+  Utensils,
 } from 'lucide-react';
-import { api } from '../api/client';
+import { ArchitectureCenter } from './ArchitectureCenter';
+import { UsersPage, UserForm } from './UsersPage';
+import { CoursProduitsApp } from './CoursProduitsApp';
+import { HrApp } from './HrApp';
+import { PlanningApp } from './PlanningApp';
+import { TechnicalSheetsApp } from './TechnicalSheetsApp';
+import { ProductionApp } from './ProductionApp';
+import { MenusApp } from './MenusApp';
+
+import { ApiError, api } from '../api/client';
 import type {
   Category,
   DashboardSummary,
+  ModularDashboard,
+  ModularDashboardPreferences,
+  DashboardWidget,
   AuditEntry,
   Inventory,
   Location,
@@ -52,6 +99,18 @@ import type {
   Supplier,
   Unit,
   UserSession,
+  CoreUser,
+  CoreRole,
+  CorePermission,
+  UserStatus,
+  HrCollaborator,
+  HrCollaboratorPayload,
+  HrDepartment,
+  HrPosition,
+  HrReferencePayload,
+  HrSummary,
+  HrRotation,
+  HrRotationPayload,
 } from '../types';
 
 const movementLabels: Record<StockMovementType, string> = {
@@ -68,6 +127,26 @@ const movementLabels: Record<StockMovementType, string> = {
 };
 
 const apps = [
+  {
+    id: 'rnm-prices',
+    icon: LineChart,
+    title: 'Cours des Produits',
+    category: 'Veille économique',
+    price: 'Gratuit',
+    gradient: 'linear-gradient(135deg, #22c55e 0%, #2563eb 100%)',
+    developer: 'ToqueHub Core',
+    rating: '4.9',
+    ratingCount: 'RNM',
+    ageLimit: '3+',
+    size: 'Temps réel',
+    tagline: 'Suivez les cours du marché alimentaire FranceAgriMer et analysez l’évolution des prix de milliers de produits.',
+    description: 'Cours des Produits transforme ToqueHub en centre de veille économique alimentaire. Les données RNM FranceAgriMer sont consultées en temps réel via le backend ToqueHub, sans import ni duplication dans vos référentiels métier.\n\nFonctionnalités clés :\n- Catalogue RNM, recherche, secteurs, catégories et pagination.\n- Fiches produits avec dernières cotations et historique graphique.\n- Favoris personnels persistés, conservés après désinstallation.\n- Historique global filtrable pour suivre les tendances de marché.',
+    screenshots: ['Tableau de bord RNM', 'Fiche cotations', 'Historique prix'],
+    changelog: 'Lancement V1 avec proxy RNM, favoris utilisateur et navigation complète.',
+    version: 'v1.0.0',
+    compatibility: 'ToqueHub Core v0.1.0+',
+    status: 'Disponible',
+  },
   {
     id: 'stocks',
     icon: Package,
@@ -89,44 +168,44 @@ const apps = [
     status: 'Disponible',
   },
   {
-    id: 'recipes',
+    id: 'technical-sheets',
     icon: FileText,
-    title: 'Recettes',
-    category: 'Fiches Techniques',
+    title: 'Fiches Techniques',
+    category: 'Cuisine & Coûts matières',
     price: 'Gratuit',
     gradient: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
     developer: 'ToqueHub Core',
-    rating: '4.8',
-    ratingCount: '94',
+    rating: '4.9',
+    ratingCount: 'V1',
     ageLimit: '3+',
     size: '2.4 Mo',
-    tagline: 'Fiches techniques de cuisine et calcul automatique des coûts de revient.',
-    description: 'Le module de Recettes vous permet de structurer vos préparations culinaires de manière professionnelle.\n\nFonctionnalités clés :\n- Création de fiches techniques avec ingrédients liés à votre inventaire.\n- Calcul instantané des coûts matières et de la marge brute par portion.\n- Gestion des allergènes et valeurs nutritionnelles.\n- Export PDF élégant pour impression en cuisine.',
-    screenshots: ['Fiche technique', 'Coûts de revient', 'Base de recettes'],
-    changelog: 'Optimisation de l\'affichage sur tablette de cuisine.',
-    version: 'v0.9.1',
-    compatibility: 'ToqueHub Core v0.1.0+',
-    status: 'Bientôt disponible',
+    tagline: 'Référentiel culinaire central connecté aux produits, unités et prix d’achat Stocks.',
+    description: 'Fiches Techniques centralise vos préparations professionnelles sans créer de référentiel produit parallèle. Les lignes d’ingrédients pointent exclusivement vers les produits Stocks, les coûts utilisent les prix d’achat Stocks, et la V1 couvre catégories recettes, allergènes par ligne, étapes, historique, duplication, archivage, production théorique et exports PDF/CSV.\n\nDépendance stricte : le module Stocks doit être installé avant Fiches Techniques.',
+    screenshots: ['Tableau de bord', 'Fiche technique', 'Production théorique'],
+    changelog: 'Lancement V1 avec préchargement catégories recettes et allergènes standards.',
+    version: 'v1.0.0',
+    compatibility: 'ToqueHub Core v0.1.0+ + Stocks obligatoire',
+    status: 'Disponible',
   },
   {
     id: 'production',
-    icon: Calendar,
+    icon: Factory,
     title: 'Production',
-    category: 'Planification',
+    category: 'Orchestration cuisine',
     price: 'Gratuit',
-    gradient: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+    gradient: 'linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)',
     developer: 'ToqueHub Core',
-    rating: '4.7',
-    ratingCount: '48',
+    rating: '4.9',
+    ratingCount: 'V1',
     ageLimit: '3+',
     size: '3.1 Mo',
-    tagline: 'Planifiez vos sessions de production et automatisez vos bons d\'économat.',
-    description: 'Planifiez votre production quotidienne ou hebdomadaire en fonction de vos prévisions de vente.\n\nFonctionnalités clés :\n- Planification de production de recettes à grande échelle.\n- Calcul automatique des besoins en matières premières (Bons d\'économat).\n- Suivi de la réalisation et des rendements de production.\n- Historique des sessions de préparation culinaire.',
-    screenshots: ['Calendrier de production', 'Bon d\'économat', 'Suivi de rendement'],
-    changelog: 'Intégration avec le module de planification hebdomadaire.',
-    version: 'v0.8.0',
-    compatibility: 'ToqueHub Core v0.1.0+',
-    status: 'Bientôt disponible',
+    tagline: 'Transformez vos fiches techniques en ordres de fabrication pilotables, alertés et historisés.',
+    description: 'Production orchestre les données existantes sans recréer de référentiel métier : fiches techniques, produits, stocks, collaborateurs, services, postes et plannings restent propriétaires de leurs modules.\n\nFonctionnalités clés V1 :\n- Création manuelle d’ordres depuis les fiches techniques.\n- Recalcul automatique des portions, besoins matières, coûts et allergènes.\n- Workflow manuel Planifiée / Validée / En cours / Terminée / Annulée.\n- Alertes critiques contournables uniquement avec confirmation historisée.\n- Affectations RH et service optionnels.\n- Réalisation détaillée, déstockage proposé puis confirmé via Stocks.\n- Exports historisés avec snapshot figé.',
+    screenshots: ['Tableau de bord Production', 'Besoins matières', 'Réalisation et exports'],
+    changelog: 'Lancement V1 complet avec cockpit opérationnel, calendrier, affectations, alertes, exports et historique.',
+    version: 'v1.0.0',
+    compatibility: 'ToqueHub Core v0.1.0+ + Stocks et Fiches Techniques requis, RH/Planning optionnels',
+    status: 'Disponible',
   },
   {
     id: 'haccp',
@@ -180,25 +259,67 @@ const apps = [
     ratingCount: '23',
     ageLimit: '3+',
     size: '1.5 Mo',
-    tagline: 'Gérez vos équipes de cuisine, plannings et rôles.',
-    description: 'Organisez les plannings et rôles de votre personnel en cuisine pour optimiser la productivité.',
-    screenshots: ['Plannings', 'Profils équipe', 'Rôles'],
-    changelog: 'Ajustements mineurs d\'ergonomie de planning.',
-    version: 'v0.5.0',
+    tagline: 'Centralisez les informations de vos collaborateurs et structurez votre organisation.',
+    description: 'RH devient le référentiel humain central de l’établissement : collaborateurs avec ou sans compte ToqueHub, services, postes, organigramme, historique et liaison unique avec les utilisateurs Core.',
+    screenshots: ['Tableau de bord RH', 'Collaborateurs', 'Organigramme'],
+    changelog: 'Lancement V1 avec services et postes de départ créés automatiquement à l’installation.',
+    version: 'v1.0.0',
     compatibility: 'ToqueHub Core v0.1.0+',
-    status: 'Bientôt disponible',
-  }
+    status: 'Disponible',
+  },
+  {
+    id: 'planning',
+    icon: CalendarCheck,
+    title: 'Planning',
+    category: 'Planification & RH',
+    price: 'Gratuit',
+    gradient: 'linear-gradient(135deg, #0ea5e9 0%, #7c3aed 100%)',
+    developer: 'ToqueHub Core',
+    rating: '4.9',
+    ratingCount: 'Planning',
+    ageLimit: '3+',
+    size: '2.1 Mo',
+    tagline: 'Pilotez plannings jour/semaine/mois, affectations, absences RH, remplacements et besoins opérationnels.',
+    description: 'Planning devient le centre opérationnel de ToqueHub sans dupliquer la RH. Il consomme collaborateurs, services, postes, roulements, absences et compétences pour générer des affectations déterministes, contrôler les conflits RH, proposer des remplacements et préparer exports PDF/Excel/impression.',
+    screenshots: ['Tableau de bord Planning', 'Vue hebdomadaire', 'Remplacements et besoins'],
+    changelog: 'Lancement V1 avec vues complètes, génération déterministe, alertes, historique et exports préparés.',
+    version: 'v1.0.0',
+    compatibility: 'ToqueHub Core v0.1.0+ + module RH recommandé',
+    status: 'Disponible',
+  },
+  {
+    id: 'menus',
+    icon: Utensils,
+    title: 'Menus',
+    category: 'Planification culinaire',
+    price: 'Gratuit',
+    gradient: 'linear-gradient(135deg, #f97316 0%, #db2777 100%)',
+    developer: 'ToqueHub Core',
+    rating: '4.9',
+    ratingCount: 'Menus',
+    ageLimit: '3+',
+    size: '2.8 Mo',
+    tagline: 'Planifiez repas, cycles, variantes, convives et productions depuis vos fiches techniques existantes.',
+    description: 'Menus organise la planification culinaire sans créer recettes, produits, ingrédients, stocks ou collaborateurs. Chaque préparation référence une fiche technique existante ; coûts et allergènes sont lus depuis Fiches Techniques, puis les productions sont générées dans Production.\n\nDépendances strictes : Fiches Techniques et Production doivent être installés avant Menus.',
+    screenshots: ['Tableau de bord Menus', 'Calendrier alimentaire', 'Génération Production'],
+    changelog: 'Lancement V1 avec menus, cycles, régimes, convives, exports, historique et génération Production.',
+    version: 'v1.0.0',
+    compatibility: 'ToqueHub Core v0.1.0+ + Fiches Techniques et Production obligatoires',
+    status: 'Disponible',
+  },
 ];
 
-type ActiveTab = 'overview' | 'applications' | 'settings' | 'stocks-dashboard' | 'inventory' | 'movements' | 'products' | 'categories' | 'units' | 'suppliers' | 'inventories' | 'locations' | 'audit';
-type Confirmation = 'install-stocks' | 'uninstall-stocks' | null;
+type ActiveTab = 'overview' | 'applications' | 'settings' | 'organization-general' | 'users' | 'architecture' | 'stocks-dashboard' | 'inventory' | 'movements' | 'products' | 'categories' | 'units' | 'suppliers' | 'inventories' | 'locations' | 'audit' | 'rnm-dashboard' | 'rnm-history' | 'rnm-favorites' | 'rnm-about' | 'hr-dashboard' | 'hr-collaborators' | 'hr-departments' | 'hr-positions' | 'hr-rotations' | 'hr-orgchart' | 'planning-dashboard' | 'planning-day' | 'planning-week' | 'planning-month' | 'planning-assignments' | 'planning-absences' | 'planning-replacements' | 'planning-templates' | 'planning-requirements' | 'technical-sheets-dashboard' | 'technical-sheets-recipes' | 'technical-sheets-categories' | 'technical-sheets-costs' | 'technical-sheets-allergens' | 'technical-sheets-production' | 'production-dashboard' | 'production-orders' | 'production-calendar' | 'production-today' | 'production-assignments' | 'production-materials' | 'production-exports' | 'production-history' | 'menus-dashboard' | 'menus-list' | 'menus-calendar' | 'menus-cycles' | 'menus-diets' | 'menus-guests' | 'menus-exports' | 'menus-history';
+
+type Confirmation = 'install-stocks' | 'uninstall-stocks' | 'uninstall-rnm-prices' | 'uninstall-technical-sheets' | 'uninstall-production' | 'uninstall-menus' | null;
 
 interface DashboardProps {
   session: UserSession;
   onLogout: () => void;
+  onSessionSwitch?: (session: UserSession) => void;
 }
 
-export function Dashboard({ session, onLogout }: DashboardProps) {
+export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps) {
   const token = session.accessToken;
   
   // Data State
@@ -213,14 +334,51 @@ export function Dashboard({ session, onLogout }: DashboardProps) {
   const [inventories, setInventories] = useState<Inventory[]>([]);
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
   const [dashboardSummary, setDashboardSummary] = useState<DashboardSummary>();
+  const [modularDashboard, setModularDashboard] = useState<ModularDashboard>();
+  const [users, setUsers] = useState<CoreUser[]>([]);
+  const [roles, setRoles] = useState<CoreRole[]>([]);
+  const [permissions, setPermissions] = useState<CorePermission[]>([]);
+  const [devSwitchEnabled, setDevSwitchEnabled] = useState(false);
+  const [hrSummary, setHrSummary] = useState<HrSummary>();
+  const [hrCollaborators, setHrCollaborators] = useState<HrCollaborator[]>([]);
+  const [hrDepartments, setHrDepartments] = useState<HrDepartment[]>([]);
+  const [hrPositions, setHrPositions] = useState<HrPosition[]>([]);
+  const [hrRotations, setHrRotations] = useState<HrRotation[]>([]);
   
   // UI State
   const [error, setError] = useState<string>();
   const [success, setSuccess] = useState<string>();
   const [isLoading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
+  const [stocksMenuExpanded, setStocksMenuExpanded] = useState(() => {
+    const stocksTabs = [
+      'stocks-dashboard', 'inventory', 'movements', 'products', 'categories',
+      'units', 'suppliers', 'inventories', 'locations', 'audit'
+    ];
+    return stocksTabs.includes('overview'); // initially 'overview', but let's default to false unless configured differently
+  });
+  const [rnmMenuExpanded, setRnmMenuExpanded] = useState(() => false);
+  const [hrMenuExpanded, setHrMenuExpanded] = useState(() => false);
+  const [planningMenuExpanded, setPlanningMenuExpanded] = useState(() => false);
+  const [productionMenuExpanded, setProductionMenuExpanded] = useState(() => false);
+  const [menusMenuExpanded, setMenusMenuExpanded] = useState(() => false);
+  const [technicalSheetsMenuExpanded, setTechnicalSheetsMenuExpanded] = useState(() => false);
+  const [appSearchQuery, setAppSearchQuery] = useState('');
+  const [showAppSearch, setShowAppSearch] = useState(false);
+  const [pinnedApps, setPinnedApps] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem('toquehub_pinned_apps');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [profileDropdownMode, setProfileDropdownMode] = useState<'main' | 'users'>('main');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [installedApps, setInstalledApps] = useState<string[]>(session.user.installedApplications ?? []);
+  const isAdmin = ['ADMIN', 'SUPER_ADMIN', 'ADMINISTRATEUR'].includes(session.user.role?.toUpperCase());
 
   // Modal Visibility State
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -254,6 +412,8 @@ export function Dashboard({ session, onLogout }: DashboardProps) {
     return (localStorage.getItem('toquehub_dashboard_layout') as any) || 'split';
   });
   const [showCustomizeModal, setShowCustomizeModal] = useState(false);
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [editingUser, setEditingUser] = useState<CoreUser | null>(null);
 
   // Search & Filter States
   const [inventorySearch, setInventorySearch] = useState('');
@@ -272,9 +432,10 @@ export function Dashboard({ session, onLogout }: DashboardProps) {
     setLoading(true);
     setError(undefined);
     try {
-      const [summaryResult, nextCategories, nextUnits, nextProducts, nextSuppliers, nextStocks, nextMovements, nextSites, nextLocations, nextInventories, nextAuditEntries] =
+      const [summaryResult, modularDashboardResult, nextCategories, nextUnits, nextProducts, nextSuppliers, nextStocks, nextMovements, nextSites, nextLocations, nextInventories, nextAuditEntries, usersResult, rolesResult, devConfig, hrData] =
         await Promise.all([
           api.dashboardSummary(token).catch(() => undefined),
+          api.modularDashboard(token).catch(() => undefined),
           api.categories(token),
           api.units(token),
           api.products(token),
@@ -285,10 +446,19 @@ export function Dashboard({ session, onLogout }: DashboardProps) {
           api.locations(token).catch(() => []),
           api.inventories(token).catch(() => []),
           api.audit(token).catch(() => []),
+          api.users(token).catch(() => []),
+          api.roles(token).catch(() => []),
+          api.devSwitchConfig(token).catch(() => ({ enabled: false })),
+          api.hrBootstrap(token).catch(() => undefined),
         ]);
       if (summaryResult) {
         setDashboardSummary(summaryResult);
         setInstalledApps(summaryResult.installedApplications ?? []);
+      }
+      if (modularDashboardResult) {
+        setModularDashboard(modularDashboardResult);
+        setDashboardTheme((modularDashboardResult.preferences.theme as typeof dashboardTheme) ?? 'emerald');
+        setLayoutMode(modularDashboardResult.preferences.layoutMode ?? 'split');
       }
       setCategories(nextCategories);
       setUnits(nextUnits);
@@ -300,7 +470,33 @@ export function Dashboard({ session, onLogout }: DashboardProps) {
       setLocations(nextLocations);
       setInventories(nextInventories);
       setAuditEntries(nextAuditEntries);
+      if (Array.isArray(usersResult)) {
+        setUsers(usersResult);
+      } else {
+        setUsers(usersResult.users ?? []);
+        if (usersResult.roles) setRoles(usersResult.roles);
+        if (usersResult.permissions) setPermissions(usersResult.permissions);
+        if (typeof usersResult.devSwitchEnabled === 'boolean') setDevSwitchEnabled(usersResult.devSwitchEnabled);
+      }
+      if (Array.isArray(rolesResult)) {
+        setRoles(rolesResult);
+      } else {
+        setRoles(rolesResult.roles ?? []);
+        if (rolesResult.permissions) setPermissions(rolesResult.permissions);
+      }
+      setDevSwitchEnabled(Boolean(devConfig.enabled));
+      if (hrData) {
+        setHrSummary(hrData.summary);
+        setHrCollaborators(hrData.collaborators ?? []);
+        setHrDepartments(hrData.departments ?? []);
+        setHrPositions(hrData.positions ?? []);
+        setHrRotations(hrData.rotations ?? []);
+      }
     } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        onLogout();
+        return;
+      }
       setError(err instanceof Error ? err.message : 'Erreur inconnue');
     } finally {
       setLoading(false);
@@ -309,10 +505,272 @@ export function Dashboard({ session, onLogout }: DashboardProps) {
 
   useEffect(() => {
     void refresh();
+    const interval = window.setInterval(() => void refresh(), 5 * 60 * 1000);
+    return () => window.clearInterval(interval);
   }, []);
 
 
   const stocksInstalled = installedApps.includes('stocks');
+  const rnmInstalled = installedApps.includes('rnm-prices');
+  const hrInstalled = installedApps.includes('hr');
+  const planningInstalled = installedApps.includes('planning') || installedApps.includes('hr');
+  const technicalSheetsInstalled = installedApps.includes('technical-sheets');
+  const productionInstalled = installedApps.includes('production');
+  const menusInstalled = installedApps.includes('menus');
+
+  const isStocksTab = useMemo(() => {
+    const stocksTabs = [
+      'stocks-dashboard', 'inventory', 'movements', 'products', 'categories',
+      'units', 'suppliers', 'inventories', 'locations', 'audit'
+    ];
+    return stocksTabs.includes(activeTab);
+  }, [activeTab]);
+
+  const isRnmTab = useMemo(() => ['rnm-dashboard', 'rnm-history', 'rnm-favorites', 'rnm-about'].includes(activeTab), [activeTab]);
+  const isHrTab = useMemo(() => ['hr-dashboard', 'hr-collaborators', 'hr-departments', 'hr-positions', 'hr-rotations', 'hr-orgchart'].includes(activeTab), [activeTab]);
+  const isPlanningTab = useMemo(() => ['planning-dashboard', 'planning-day', 'planning-week', 'planning-month', 'planning-assignments', 'planning-absences', 'planning-replacements', 'planning-templates', 'planning-requirements'].includes(activeTab), [activeTab]);
+  const isTechnicalSheetsTab = useMemo(() => ['technical-sheets-dashboard', 'technical-sheets-recipes', 'technical-sheets-categories', 'technical-sheets-costs', 'technical-sheets-allergens', 'technical-sheets-production'].includes(activeTab), [activeTab]);
+  const isProductionTab = useMemo(() => ['production-dashboard', 'production-orders', 'production-calendar', 'production-today', 'production-assignments', 'production-materials', 'production-exports', 'production-history'].includes(activeTab), [activeTab]);
+  const isMenusTab = useMemo(() => ['menus-dashboard', 'menus-list', 'menus-calendar', 'menus-cycles', 'menus-diets', 'menus-guests', 'menus-exports', 'menus-history'].includes(activeTab), [activeTab]);
+
+  useEffect(() => {
+    if (isMenusTab) {
+      setMenusMenuExpanded(true);
+    }
+  }, [isMenusTab]);
+
+  useEffect(() => {
+    if (isProductionTab) {
+      setProductionMenuExpanded(true);
+    }
+  }, [isProductionTab]);
+
+  useEffect(() => {
+    if (isStocksTab) {
+      setStocksMenuExpanded(true);
+    }
+  }, [isStocksTab]);
+
+  useEffect(() => {
+    if (isRnmTab) {
+      setRnmMenuExpanded(true);
+    }
+  }, [isRnmTab]);
+
+  useEffect(() => {
+    if (isHrTab) {
+      setHrMenuExpanded(true);
+    }
+  }, [isHrTab]);
+
+  useEffect(() => {
+    if (isPlanningTab) {
+      setPlanningMenuExpanded(true);
+    }
+  }, [isPlanningTab]);
+
+  useEffect(() => {
+    if (isTechnicalSheetsTab) {
+      setTechnicalSheetsMenuExpanded(true);
+    }
+  }, [isTechnicalSheetsTab]);
+
+  useEffect(() => {
+    if (!profileMenuOpen) return;
+    const handleDocumentClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.sidebar-footer-profile-container')) {
+        setProfileMenuOpen(false);
+        setProfileDropdownMode('main');
+      }
+    };
+    document.addEventListener('click', handleDocumentClick);
+    return () => document.removeEventListener('click', handleDocumentClick);
+  }, [profileMenuOpen]);
+
+  const togglePinApp = (appId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPinnedApps(prev => {
+      const next = prev.includes(appId) ? prev.filter(id => id !== appId) : [...prev, appId];
+      localStorage.setItem('toquehub_pinned_apps', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const userInitials = useMemo(() => {
+    const fn = session.user.firstName || '';
+    const ln = session.user.lastName || '';
+    if (fn || ln) {
+      return `${fn[0] ?? ''}${ln[0] ?? ''}`.toUpperCase();
+    }
+    return session.user.username?.substring(0, 2).toUpperCase() || 'TH';
+  }, [session.user]);
+
+  const userFullName = useMemo(() => {
+    const fn = session.user.firstName || '';
+    const ln = session.user.lastName || '';
+    return `${fn} ${ln}`.trim() || session.user.username || 'Utilisateur';
+  }, [session.user]);
+
+  const allApps = useMemo(() => [
+    {
+      id: 'stocks',
+      title: 'Stocks',
+      icon: Package,
+      installed: stocksInstalled,
+      expanded: stocksMenuExpanded,
+      setExpanded: setStocksMenuExpanded,
+      isActive: isStocksTab,
+      defaultTab: 'stocks-dashboard',
+      submenu: [
+        { tab: 'stocks-dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
+        { tab: 'products', label: 'Produits', icon: ChefHat },
+        { tab: 'categories', label: 'Catégories', icon: Layers },
+        { tab: 'units', label: 'Unités', icon: Scale },
+        { tab: 'suppliers', label: 'Fournisseurs', icon: UsersRound },
+        { tab: 'inventory', label: 'Stocks', icon: Package },
+        { tab: 'inventories', label: 'Inventaires', icon: ClipboardList },
+        { tab: 'movements', label: 'Mouvements', icon: ArrowRight },
+        { tab: 'locations', label: 'Sites & emplacements', icon: MapPin },
+        { tab: 'audit', label: 'Audit', icon: ShieldCheck },
+      ]
+    },
+    {
+      id: 'hr',
+      title: 'RH',
+      icon: UsersRound,
+      installed: hrInstalled,
+      expanded: hrMenuExpanded,
+      setExpanded: setHrMenuExpanded,
+      isActive: isHrTab,
+      defaultTab: 'hr-dashboard',
+      submenu: [
+        { tab: 'hr-dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
+        { tab: 'hr-collaborators', label: 'Collaborateurs', icon: UsersRound },
+        { tab: 'hr-departments', label: 'Services', icon: Building2 },
+        { tab: 'hr-positions', label: 'Postes', icon: BriefcaseBusiness },
+        { tab: 'hr-rotations', label: 'Roulements', icon: RefreshCw },
+        { tab: 'hr-orgchart', label: 'Organigramme', icon: Workflow },
+      ]
+    },
+    {
+      id: 'planning',
+      title: 'Planning',
+      icon: CalendarCheck,
+      installed: planningInstalled,
+      expanded: planningMenuExpanded,
+      setExpanded: setPlanningMenuExpanded,
+      isActive: isPlanningTab,
+      defaultTab: 'planning-dashboard',
+      submenu: [
+        { tab: 'planning-dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
+        { tab: 'planning-day', label: 'Journalier', icon: CalendarDays },
+        { tab: 'planning-week', label: 'Hebdomadaire', icon: CalendarCheck },
+        { tab: 'planning-month', label: 'Mensuel', icon: Calendar },
+        { tab: 'planning-assignments', label: 'Affectations', icon: ClipboardList },
+        { tab: 'planning-absences', label: 'Absences', icon: Ban },
+        { tab: 'planning-replacements', label: 'Remplacements', icon: RefreshCw },
+        { tab: 'planning-templates', label: 'Modèles', icon: Layers },
+        { tab: 'planning-requirements', label: 'Besoins opérationnels', icon: ClipboardList },
+      ]
+    },
+    {
+      id: 'technical-sheets',
+      title: 'Fiches Techniques',
+      icon: FileText,
+      installed: technicalSheetsInstalled,
+      expanded: technicalSheetsMenuExpanded,
+      setExpanded: setTechnicalSheetsMenuExpanded,
+      isActive: isTechnicalSheetsTab,
+      defaultTab: 'technical-sheets-dashboard',
+      submenu: [
+        { tab: 'technical-sheets-dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
+        { tab: 'technical-sheets-recipes', label: 'Fiches techniques', icon: FileText },
+        { tab: 'technical-sheets-categories', label: 'Catégories recettes', icon: ClipboardList },
+        { tab: 'technical-sheets-costs', label: 'Coûts', icon: Calculator },
+        { tab: 'technical-sheets-allergens', label: 'Allergènes', icon: AlertCircle },
+        { tab: 'technical-sheets-production', label: 'Production théorique', icon: ChefHat },
+      ]
+    },
+    {
+      id: 'production',
+      title: 'Production',
+      icon: Factory,
+      installed: productionInstalled,
+      expanded: productionMenuExpanded,
+      setExpanded: setProductionMenuExpanded,
+      isActive: isProductionTab,
+      defaultTab: 'production-dashboard',
+      submenu: [
+        { tab: 'production-dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
+        { tab: 'production-orders', label: 'Ordres de production', icon: ClipboardList },
+        { tab: 'production-calendar', label: 'Calendrier', icon: Calendar },
+        { tab: 'production-today', label: 'Productions du jour', icon: CalendarDays },
+        { tab: 'production-assignments', label: 'Affectations', icon: UsersRound },
+        { tab: 'production-materials', label: 'Besoins matières', icon: Package },
+        { tab: 'production-exports', label: 'Exports & Documents', icon: Download },
+        { tab: 'production-history', label: 'Historique', icon: History },
+      ]
+    },
+    {
+      id: 'menus',
+      title: 'Menus',
+      icon: Utensils,
+      installed: menusInstalled,
+      expanded: menusMenuExpanded,
+      setExpanded: setMenusMenuExpanded,
+      isActive: isMenusTab,
+      defaultTab: 'menus-dashboard',
+      submenu: [
+        { tab: 'menus-dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
+        { tab: 'menus-list', label: 'Menus', icon: ClipboardList },
+        { tab: 'menus-calendar', label: 'Calendrier', icon: Calendar },
+        { tab: 'menus-cycles', label: 'Cycles', icon: RefreshCw },
+        { tab: 'menus-diets', label: 'Régimes alimentaires', icon: UsersRound },
+        { tab: 'menus-guests', label: 'Convives', icon: UsersRound },
+        { tab: 'menus-exports', label: 'Exports', icon: Download },
+        { tab: 'menus-history', label: 'Historique', icon: History },
+      ]
+    },
+    {
+      id: 'rnm-prices',
+      title: 'Cours des Produits',
+      icon: LineChart,
+      installed: rnmInstalled,
+      expanded: rnmMenuExpanded,
+      setExpanded: setRnmMenuExpanded,
+      isActive: isRnmTab,
+      defaultTab: 'rnm-dashboard',
+      submenu: [
+        { tab: 'rnm-dashboard', label: 'Tableau de bord', icon: LineChart },
+        { tab: 'rnm-history', label: 'Historique', icon: History },
+        { tab: 'rnm-favorites', label: 'Favoris', icon: Heart },
+        { tab: 'rnm-about', label: 'À propos', icon: Info },
+      ]
+    }
+  ], [
+    stocksInstalled, stocksMenuExpanded, isStocksTab,
+    hrInstalled, hrMenuExpanded, isHrTab,
+    planningInstalled, planningMenuExpanded, isPlanningTab,
+    technicalSheetsInstalled, technicalSheetsMenuExpanded, isTechnicalSheetsTab,
+    productionInstalled, productionMenuExpanded, isProductionTab,
+    menusInstalled, menusMenuExpanded, isMenusTab,
+    rnmInstalled, rnmMenuExpanded, isRnmTab
+  ]);
+
+  const installedAppsList = useMemo(() => allApps.filter(app => app.installed), [allApps]);
+
+  const filteredInstalledApps = useMemo(() => {
+    if (!appSearchQuery.trim()) return installedAppsList;
+    return installedAppsList.filter(app =>
+      app.title.toLowerCase().includes(appSearchQuery.toLowerCase())
+    );
+  }, [installedAppsList, appSearchQuery]);
+
+  const favoriteAppsList = useMemo(() => {
+    return installedAppsList.filter(app => pinnedApps.includes(app.id));
+  }, [installedAppsList, pinnedApps]);
+
   const organizationName = session.user.organizationName ?? 'votre établissement';
   const firstName = session.user.firstName?.trim() || session.user.username?.trim() || 'Bienvenue';
   
@@ -330,6 +788,103 @@ export function Dashboard({ session, onLogout }: DashboardProps) {
   
   const completed = dashboardSummary?.progress ? Math.round((dashboardSummary.progress.percent / 100) * progressItems.length) : progressItems.filter((item) => item.done).length;
   const progress = dashboardSummary?.progress?.percent ?? Math.round((completed / progressItems.length) * 100);
+  const activeUsersCount = dashboardSummary?.counts.activeUsers ?? users.filter((user) => user.status === 'ACTIVE' || (user as any).isActive === true).length;
+  const canWriteHr = isAdmin || ['MANAGER', 'RESPONSABLE'].includes(session.user.role?.toUpperCase());
+  const hrActiveCollaboratorsCount = dashboardSummary?.counts.hrCollaborators ?? dashboardSummary?.counts.collaborators ?? hrSummary?.counts?.collaborators ?? hrCollaborators.filter((collaborator) => !isArchived(collaborator)).length;
+  const dashboardZones = modularDashboard?.zones;
+  const dashboardWidgets = modularDashboard?.widgets ?? [];
+  const dashboardRefreshLabel = modularDashboard?.generatedAt ? new Date(modularDashboard.generatedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—';
+
+  const stockValue = useMemo(() => stocks.reduce((sum, stock) => sum + numeric(stock.currentQuantity ?? stock.quantity) * numeric(stock.value ?? stock.product.averagePurchasePrice ?? stock.product.weightedAveragePrice), 0), [stocks]);
+  const monthStart = useMemo(() => {
+    const d = new Date();
+    d.setDate(1);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+  const movementsThisMonth = useMemo(() => movements.filter((m) => new Date(m.createdAt) >= monthStart).length, [movements, monthStart]);
+  const topConsumed = useMemo(() => Object.values(movements.filter((m) => ['LOSS', 'OUT', 'EXIT', 'PRODUCTION', 'CORRECTION', 'INVENTORY'].includes(m.type)).reduce<Record<string, { name: string; qty: number; unit?: string }>>((acc, m) => {
+    const key = m.product.id;
+    acc[key] = acc[key] ?? { name: m.product.name, qty: 0, unit: m.product.unit?.symbol };
+    acc[key].qty += Math.abs(numeric(m.quantity));
+    return acc;
+  }, {})).sort((a, b) => b.qty - a.qty).slice(0, 5), [movements]);
+
+  async function persistDashboardPreferences(next: Partial<ModularDashboardPreferences>) {
+    const saved = await api.updateDashboardPreferences(token, next);
+    setModularDashboard(saved);
+    setDashboardTheme((saved.preferences.theme as typeof dashboardTheme) ?? 'emerald');
+    setLayoutMode(saved.preferences.layoutMode ?? 'split');
+  }
+
+  async function toggleDashboardWidget(widgetId: string, visible: boolean) {
+    const currentHidden = modularDashboard?.preferences.hiddenWidgetIds ?? [];
+    const hiddenWidgetIds = visible ? currentHidden.filter((id) => id !== widgetId) : Array.from(new Set([...currentHidden, widgetId]));
+    await persistDashboardPreferences({ hiddenWidgetIds });
+  }
+
+  async function toggleDashboardPin(widgetId: string) {
+    const currentPinned = modularDashboard?.preferences.pinnedWidgetIds ?? [];
+    const pinnedWidgetIds = currentPinned.includes(widgetId) ? currentPinned.filter((id) => id !== widgetId) : [...currentPinned, widgetId];
+    await persistDashboardPreferences({ pinnedWidgetIds });
+  }
+
+  async function resetDashboardCore() {
+    const saved = await api.resetDashboardPreferences(token);
+    setModularDashboard(saved);
+    setDashboardTheme((saved.preferences.theme as typeof dashboardTheme) ?? 'emerald');
+    setLayoutMode(saved.preferences.layoutMode ?? 'split');
+    setSuccess('Dashboard réinitialisé sur la configuration Core. Les modules installés et leurs données sont conservés.');
+  }
+
+  async function refreshUsers() {
+    const [usersResult, rolesResult, devConfig] = await Promise.all([
+      api.users(token),
+      api.roles(token).catch(() => roles),
+      api.devSwitchConfig(token).catch(() => ({ enabled: devSwitchEnabled })),
+    ]);
+    if (Array.isArray(usersResult)) {
+      setUsers(usersResult);
+    } else {
+      setUsers(usersResult.users ?? []);
+      if (usersResult.roles) setRoles(usersResult.roles);
+      if (usersResult.permissions) setPermissions(usersResult.permissions);
+    }
+    if (Array.isArray(rolesResult)) setRoles(rolesResult);
+    else {
+      setRoles(rolesResult.roles ?? []);
+      if (rolesResult.permissions) setPermissions(rolesResult.permissions);
+    }
+    setDevSwitchEnabled(Boolean(devConfig.enabled));
+  }
+
+  async function handleCreateUser(payload: { firstName: string; lastName: string; email: string; role: string; temporaryPassword: string }) {
+    await submit(() => api.createUser(token, payload), 'Utilisateur créé. Le mot de passe temporaire ne sera plus affiché.');
+    setShowUserModal(false);
+    await refreshUsers();
+  }
+
+  async function handleUpdateUser(id: string, payload: { firstName?: string; lastName?: string; email?: string; role?: string; status?: string }) {
+    await submit(() => api.updateUser(token, id, payload), 'Utilisateur mis à jour.');
+    setEditingUser(null);
+    await refreshUsers();
+  }
+
+  async function handleDisableUser(user: CoreUser) {
+    if (!window.confirm(`Désactiver ${displayUserName(user)} ? Le compte restera visible pour l’historique.`)) return;
+    await submit(() => api.disableUser(token, user.id), 'Utilisateur désactivé.');
+    await refreshUsers();
+  }
+
+  async function handleUpdateRolePermissions(roleKey: string, nextPermissions: string[]) {
+    await submit(() => api.updateRolePermissions(token, roleKey, nextPermissions), 'Permissions du rôle mises à jour.');
+    await refreshUsers();
+  }
+
+  async function handleDevSwitch(userId: string) {
+    const nextSession = await api.devSwitch(token, userId);
+    onSessionSwitch?.(nextSession);
+  }
 
   async function installStocks() {
     setAppActionLoading(true);
@@ -370,8 +925,84 @@ export function Dashboard({ session, onLogout }: DashboardProps) {
     }
   }
 
+  async function uninstallRnmPrices() {
+    setAppActionLoading(true);
+    setError(undefined);
+    setSuccess(undefined);
+    try {
+      const summary = await api.uninstallRnmPrices(token);
+      setDashboardSummary((prev) => ({ ...prev, ...summary } as DashboardSummary));
+      setInstalledApps(summary.installedApplications ?? installedApps.filter((app) => app !== 'rnm-prices'));
+      if (isRnmTab) setActiveTab('applications');
+      setSuccess('L’application Cours des Produits a été retirée de l’interface. Vos favoris RNM sont conservés.');
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Suppression de Cours des Produits impossible.');
+    } finally {
+      setAppActionLoading(false);
+      setConfirmation(null);
+    }
+  }
+
+  async function uninstallTechnicalSheets() {
+    setAppActionLoading(true);
+    setError(undefined);
+    setSuccess(undefined);
+    try {
+      const summary = await api.uninstallTechnicalSheets(token);
+      setDashboardSummary((prev) => ({ ...prev, ...summary } as DashboardSummary));
+      setInstalledApps(summary.installedApplications ?? installedApps.filter((app) => app !== 'technical-sheets'));
+      if (isTechnicalSheetsTab) setActiveTab('applications');
+      setSuccess('L’application Fiches Techniques a été retirée de l’interface. Les fiches, historiques, coûts et simulations sont conservés.');
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Suppression de Fiches Techniques impossible.');
+    } finally {
+      setAppActionLoading(false);
+      setConfirmation(null);
+    }
+  }
+
+  async function uninstallProduction() {
+    setAppActionLoading(true);
+    setError(undefined);
+    setSuccess(undefined);
+    try {
+      const summary = await api.uninstallProduction(token);
+      setDashboardSummary((prev) => ({ ...prev, ...summary } as DashboardSummary));
+      setInstalledApps(summary.installedApplications ?? installedApps.filter((app) => app !== 'production'));
+      if (isProductionTab) setActiveTab('applications');
+      setSuccess('L’application Production a été retirée de l’interface. Les ordres et historiques existants sont conservés.');
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Suppression de Production impossible.');
+    } finally {
+      setAppActionLoading(false);
+      setConfirmation(null);
+    }
+  }
+
+  async function uninstallMenus() {
+    setAppActionLoading(true);
+    setError(undefined);
+    setSuccess(undefined);
+    try {
+      const summary = await api.uninstallMenus(token);
+      setDashboardSummary((prev) => ({ ...prev, ...summary } as DashboardSummary));
+      setInstalledApps(summary.installedApplications ?? installedApps.filter((app) => app !== 'menus'));
+      if (isMenusTab) setActiveTab('applications');
+      setSuccess('L’application Menus a été retirée de l’interface. Les menus, cycles, convives, exports et historiques sont conservés.');
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Suppression de Menus impossible.');
+    } finally {
+      setAppActionLoading(false);
+      setConfirmation(null);
+    }
+  }
+
   async function triggerInstallApp(appId: string) {
-    if (appId !== 'stocks') return;
+    if (!['stocks', 'rnm-prices', 'hr', 'planning', 'technical-sheets', 'production', 'menus'].includes(appId)) return;
     setInstallingAppId(appId);
     setInstallProgress(0);
 
@@ -390,11 +1021,20 @@ export function Dashboard({ session, onLogout }: DashboardProps) {
       setError(undefined);
       setSuccess(undefined);
       try {
-        const summary = await api.installStocks(token);
-        setDashboardSummary(summary);
-        setInstalledApps(summary.installedApplications ?? ['stocks']);
-        setSuccess('L’application Stocks a été installée avec succès. Lancez l’assistant de préremplissage pour ajouter catégories, unités et emplacements métier.');
-        setShowPrefillWizard(true);
+        if (appId === 'technical-sheets' && !stocksInstalled) throw new Error('Installez Stocks avant Fiches Techniques.');
+        if (appId === 'production' && (!stocksInstalled || !technicalSheetsInstalled)) throw new Error('Installez Stocks et Fiches Techniques avant Production. RH et Planning restent optionnels.');
+        if (appId === 'menus' && (!technicalSheetsInstalled || !productionInstalled)) throw new Error('Installez Fiches Techniques et Production avant Menus. Menus ne fonctionne pas en mode autonome.');
+        const summary = appId === 'rnm-prices' ? await api.installRnmPrices(token) : appId === 'hr' ? await api.installHr(token) : appId === 'planning' ? await api.installPlanning(token) : appId === 'technical-sheets' ? await api.installTechnicalSheets(token) : appId === 'production' ? await api.installProduction(token) : appId === 'menus' ? await api.installMenus(token) : await api.installStocks(token);
+        setDashboardSummary((prev) => ({ ...prev, ...summary } as DashboardSummary));
+        setInstalledApps(summary.installedApplications ?? (appId === 'rnm-prices' ? ['rnm-prices'] : appId === 'hr' ? ['hr'] : appId === 'planning' ? ['planning'] : appId === 'technical-sheets' ? ['technical-sheets'] : appId === 'production' ? ['production'] : appId === 'menus' ? ['menus'] : ['stocks']));
+        setSuccess(appId === 'rnm-prices' ? 'L’application Cours des Produits a été installée. La navigation RNM est maintenant visible.' : appId === 'hr' ? 'L’application RH a été installée. Services et postes de départ sont disponibles.' : appId === 'planning' ? 'L’application Planning a été installée. Les vues opérationnelles consomment désormais le référentiel RH.' : appId === 'technical-sheets' ? 'L’application Fiches Techniques a été installée. Catégories recettes et allergènes standards sont disponibles.' : appId === 'production' ? 'L’application Production a été installée. Les ordres peuvent être créés depuis les fiches techniques sans dupliquer les référentiels.' : appId === 'menus' ? 'L’application Menus a été installée. Planification, cycles, convives et génération Production sont disponibles.' : 'L’application Stocks a été installée avec succès. Lancez l’assistant de préremplissage pour ajouter catégories, unités et emplacements métier.');
+        if (appId === 'stocks') setShowPrefillWizard(true);
+        if (appId === 'rnm-prices') setActiveTab('rnm-dashboard');
+        if (appId === 'hr') setActiveTab('hr-dashboard');
+        if (appId === 'planning') setActiveTab('planning-dashboard');
+        if (appId === 'technical-sheets') setActiveTab('technical-sheets-dashboard');
+        if (appId === 'production') setActiveTab('production-dashboard');
+        if (appId === 'menus') setActiveTab('menus-dashboard');
         await refresh();
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Erreur lors de l’installation.');
@@ -430,6 +1070,97 @@ export function Dashboard({ session, onLogout }: DashboardProps) {
   }
 
   // Submit wrappers
+  async function refreshHr() {
+    const data = await api.hrBootstrap(token);
+    setHrSummary(data.summary);
+    setHrCollaborators(data.collaborators ?? []);
+    setHrDepartments(data.departments ?? []);
+      setHrPositions(data.positions ?? []);
+      setHrRotations(data.rotations ?? []);
+  }
+
+  async function handleCreateHrCollaborator(payload: HrCollaboratorPayload) {
+    await submit(() => api.createHrCollaborator(token, payload), 'Collaborateur RH créé.');
+    await refreshHr();
+  }
+
+  async function handleUpdateHrCollaborator(id: string, payload: Partial<HrCollaboratorPayload>) {
+    await submit(() => api.updateHrCollaborator(token, id, payload), 'Collaborateur RH mis à jour.');
+    await refreshHr();
+  }
+
+  async function handleArchiveHrCollaborator(id: string) {
+    if (!window.confirm('Archiver ce collaborateur ? Son historique et ses relations seront conservés.')) return;
+    await submit(() => api.archiveHrCollaborator(token, id), 'Collaborateur RH archivé.');
+    await refreshHr();
+  }
+
+  async function handleCreateHrDepartment(payload: HrReferencePayload) {
+    await submit(() => api.createHrDepartment(token, payload), 'Service RH créé.');
+    await refreshHr();
+  }
+
+  async function handleUpdateHrDepartment(id: string, payload: HrReferencePayload) {
+    await submit(() => api.updateHrDepartment(token, id, payload), 'Service RH mis à jour.');
+    await refreshHr();
+  }
+
+  async function handleArchiveHrDepartment(id: string) {
+    await submit(() => api.archiveHrDepartment(token, id), 'Service RH archivé.');
+    await refreshHr();
+  }
+
+  async function handleCreateHrPosition(payload: HrReferencePayload) {
+    await submit(() => api.createHrPosition(token, payload), 'Poste RH créé.');
+    await refreshHr();
+  }
+
+  async function handleUpdateHrPosition(id: string, payload: HrReferencePayload) {
+    await submit(() => api.updateHrPosition(token, id, payload), 'Poste RH mis à jour.');
+    await refreshHr();
+  }
+
+  async function handleArchiveHrPosition(id: string) {
+    await submit(() => api.archiveHrPosition(token, id), 'Poste RH archivé.');
+    await refreshHr();
+  }
+
+  async function handleCreateHrRotation(payload: HrRotationPayload) {
+    await submit(() => api.createHrRotation(token, payload), 'Roulement créé.');
+    await refreshHr();
+  }
+
+  async function handleUpdateHrRotation(id: string, payload: Partial<HrRotationPayload>) {
+    await submit(() => api.updateHrRotation(token, id, payload), 'Roulement mis à jour.');
+    await refreshHr();
+  }
+
+  async function handleArchiveHrRotation(id: string) {
+    if (!window.confirm('Archiver ce roulement ? Les assignations historiques seront conservées.')) return;
+    await submit(() => api.archiveHrRotation(token, id), 'Roulement archivé.');
+    await refreshHr();
+  }
+
+  async function handleAssignHrRotation(rotationId: string, employeeId: string, startDate?: string) {
+    await submit(() => api.assignHrRotation(token, rotationId, { employeeId, startDate }), 'Collaborateur assigné au roulement.');
+    await refreshHr();
+  }
+
+  async function handleRemoveHrRotationAssignment(rotationId: string, employeeId: string) {
+    await submit(() => api.removeHrRotationAssignment(token, rotationId, employeeId), 'Collaborateur retiré du roulement.');
+    await refreshHr();
+  }
+
+  async function handleSetHrCollaboratorRotation(employeeId: string, rotationId: string, startDate?: string) {
+    await submit(() => api.setHrCollaboratorRotation(token, employeeId, { rotationId, startDate }), 'Roulement du collaborateur modifié.');
+    await refreshHr();
+  }
+
+  async function handleRemoveHrCollaboratorRotation(employeeId: string) {
+    await submit(() => api.removeHrCollaboratorRotation(token, employeeId), 'Roulement actif retiré.');
+    await refreshHr();
+  }
+
   async function handleCreateCategory(payload: { name: string; description?: string }) {
     await submit(() => api.createCategory(token, payload), 'Catégorie créée avec succès.');
     setShowCategoryModal(false);
@@ -532,6 +1263,9 @@ export function Dashboard({ session, onLogout }: DashboardProps) {
     overview: 'Dashboard',
     applications: 'Toque Store',
     settings: 'Paramètres',
+    'organization-general': 'Organisation',
+    users: 'Utilisateurs',
+    architecture: 'Architecture',
     'stocks-dashboard': 'Stocks',
     inventory: 'Stocks',
     movements: 'Mouvements',
@@ -542,10 +1276,51 @@ export function Dashboard({ session, onLogout }: DashboardProps) {
     inventories: 'Inventaires',
     locations: 'Sites & emplacements',
     audit: 'Audit',
+    'rnm-dashboard': 'Cours des Produits',
+    'rnm-history': 'Historique RNM',
+    'rnm-favorites': 'Favoris RNM',
+    'rnm-about': 'À propos',
+    'hr-dashboard': 'RH',
+    'hr-collaborators': 'Collaborateurs',
+    'hr-departments': 'Services RH',
+    'hr-positions': 'Postes RH',
+    'hr-rotations': 'Roulements',
+    'hr-orgchart': 'Organigramme',
+    'planning-dashboard': 'Planning',
+    'planning-day': 'Planning journalier',
+    'planning-week': 'Planning hebdomadaire',
+    'planning-month': 'Planning mensuel',
+    'planning-assignments': 'Affectations',
+    'planning-absences': 'Absences',
+    'planning-replacements': 'Remplacements',
+    'planning-templates': 'Modèles',
+    'planning-requirements': 'Besoins opérationnels',
+    'technical-sheets-dashboard': 'Fiches Techniques',
+    'technical-sheets-recipes': 'Fiches techniques',
+    'technical-sheets-categories': 'Catégories recettes',
+    'technical-sheets-costs': 'Coûts fiches techniques',
+    'technical-sheets-allergens': 'Allergènes',
+    'technical-sheets-production': 'Production théorique',
+    'production-dashboard': 'Production',
+    'production-orders': 'Ordres de production',
+    'production-calendar': 'Calendrier Production',
+    'production-today': 'Productions du jour',
+    'production-assignments': 'Affectations Production',
+    'production-materials': 'Besoins matières',
+    'production-exports': 'Exports & Documents',
+    'production-history': 'Historique Production',
+    'menus-dashboard': 'Menus',
+    'menus-list': 'Menus planifiés',
+    'menus-calendar': 'Calendrier Menus',
+    'menus-cycles': 'Cycles Menus',
+    'menus-diets': 'Régimes alimentaires',
+    'menus-guests': 'Convives Menus',
+    'menus-exports': 'Exports Menus',
+    'menus-history': 'Historique Menus',
   }[activeTab];
 
   return (
-    <div className="app-layout">
+    <div className={`app-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       {/* Mobile Header */}
       <header className="mobile-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -558,16 +1333,24 @@ export function Dashboard({ session, onLogout }: DashboardProps) {
       </header>
 
       {/* Sidebar Navigation */}
-      <aside className={`sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
+      <aside className={`sidebar ${mobileMenuOpen ? 'mobile-open' : ''} ${sidebarCollapsed ? 'desktop-hidden' : ''}`}>
         <div className="sidebar-brand">
           <div className="sidebar-logo">
             <ChefHat />
           </div>
           <span className="sidebar-title">TOQUE<span>HUB</span></span>
+          <button
+            type="button"
+            className="sidebar-collapse-btn"
+            onClick={() => setSidebarCollapsed(true)}
+            aria-label="Masquer le menu latéral"
+            title="Masquer le menu"
+          >
+            <ChevronLeft size={18} color="#ffffff" strokeWidth={2.4} />
+          </button>
         </div>
 
         <nav className="sidebar-nav">
-          <div className="sidebar-section-title">Pilotage</div>
           <div
             className={`sidebar-item ${activeTab === 'overview' ? 'active' : ''}`}
             onClick={() => goToTab('overview')}
@@ -575,119 +1358,270 @@ export function Dashboard({ session, onLogout }: DashboardProps) {
             <LayoutDashboard />
             Dashboard
           </div>
+
+          <div className="sidebar-section-title">Organisation</div>
+          <div
+            className={`sidebar-item ${activeTab === 'organization-general' ? 'active' : ''}`}
+            onClick={() => goToTab('organization-general')}
+          >
+            <Settings />
+            Général
+          </div>
+          {isAdmin ? (
+            <div
+              className={`sidebar-item ${activeTab === 'users' ? 'active' : ''}`}
+              onClick={() => goToTab('users')}
+            >
+              <UsersRound />
+              Utilisateurs
+            </div>
+          ) : null}
           <div
             className={`sidebar-item ${activeTab === 'applications' ? 'active' : ''}`}
             onClick={() => goToTab('applications')}
           >
             <ShoppingBag />
-            Toque Store
+            Applications
           </div>
-          <div
-            className={`sidebar-item ${activeTab === 'settings' ? 'active' : ''}`}
-            onClick={() => goToTab('settings')}
-          >
-            <Settings />
-            Paramètres
+          <div className="sidebar-item-locked">
+            <div className="locked-left"><ShieldCheck /> Audit</div>
+            <span className="sidebar-badge-soon">Futur</span>
           </div>
 
-          {stocksInstalled ? (
+          {isAdmin ? (
             <>
-              <div className="sidebar-section-title">Stocks</div>
+              <div className="sidebar-section-title">Administration</div>
               <div
-                className={`sidebar-item ${activeTab === 'stocks-dashboard' ? 'active' : ''}`}
-                onClick={() => goToTab('stocks-dashboard')}
+                className={`sidebar-item ${activeTab === 'architecture' ? 'active' : ''}`}
+                onClick={() => goToTab('architecture')}
               >
-                <LayoutDashboard />
-                Stocks
-              </div>
-              <div
-                className={`sidebar-item ${activeTab === 'products' ? 'active' : ''}`}
-                onClick={() => goToTab('products')}
-              >
-                <ChefHat />
-                Produits
-              </div>
-              <div
-                className={`sidebar-item ${activeTab === 'categories' ? 'active' : ''}`}
-                onClick={() => goToTab('categories')}
-              >
-                <Layers />
-                Catégories
-              </div>
-              <div
-                className={`sidebar-item ${activeTab === 'units' ? 'active' : ''}`}
-                onClick={() => goToTab('units')}
-              >
-                <Scale />
-                Unités
-              </div>
-              <div
-                className={`sidebar-item ${activeTab === 'suppliers' ? 'active' : ''}`}
-                onClick={() => goToTab('suppliers')}
-              >
-                <UsersRound />
-                Fournisseurs
-              </div>
-              <div
-                className={`sidebar-item ${activeTab === 'inventory' ? 'active' : ''}`}
-                onClick={() => goToTab('inventory')}
-              >
-                <Package />
-                Stocks lecture seule
-              </div>
-              <div
-                className={`sidebar-item ${activeTab === 'inventories' ? 'active' : ''}`}
-                onClick={() => goToTab('inventories')}
-              >
-                <ClipboardList />
-                Inventaires
-              </div>
-              <div
-                className={`sidebar-item ${activeTab === 'movements' ? 'active' : ''}`}
-                onClick={() => goToTab('movements')}
-              >
-                <ArrowRight />
-                Mouvements
-              </div>
-              <div
-                className={`sidebar-item ${activeTab === 'locations' ? 'active' : ''}`}
-                onClick={() => goToTab('locations')}
-              >
-                <MapPin />
-                Sites & emplacements
-              </div>
-              <div
-                className={`sidebar-item ${activeTab === 'audit' ? 'active' : ''}`}
-                onClick={() => goToTab('audit')}
-              >
-                <ShieldCheck />
-                Audit
+                <Workflow />
+                Architecture
               </div>
             </>
           ) : null}
+
+          {/* Applications list divider / search */}
+          <div className="sidebar-section-title-row">
+            <div className="sidebar-section-title" style={{ margin: 0 }}>Applications installées</div>
+            <button
+              className={`sidebar-search-toggle-btn ${showAppSearch || appSearchQuery ? 'active' : ''}`}
+              onClick={() => {
+                setShowAppSearch(!showAppSearch);
+                if (showAppSearch) {
+                  setAppSearchQuery('');
+                }
+              }}
+              title="Rechercher une application"
+            >
+              <Search size={13} />
+            </button>
+          </div>
+          
+          <AnimatePresence>
+            {(showAppSearch || appSearchQuery) && (
+              <motion.div
+                className="sidebar-search"
+                initial={{ opacity: 0, height: 0, marginTop: 0, marginBottom: 0 }}
+                animate={{ opacity: 1, height: 'auto', marginTop: 4, marginBottom: 8 }}
+                exit={{ opacity: 0, height: 0, marginTop: 0, marginBottom: 0 }}
+                transition={{ duration: 0.15 }}
+                style={{ overflow: 'hidden' }}
+              >
+                <input
+                  type="text"
+                  placeholder="Rechercher…"
+                  value={appSearchQuery}
+                  onChange={(e) => setAppSearchQuery(e.target.value)}
+                  className="sidebar-search-input"
+                  autoFocus
+                />
+                {appSearchQuery && (
+                  <button className="search-clear-btn" onClick={() => setAppSearchQuery('')}>
+                    <X size={12} />
+                  </button>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+
+
+          {/* Dynamic Installed Apps */}
+          <div className="sidebar-group-installed">
+            {filteredInstalledApps.length > 0 ? (
+              filteredInstalledApps.map((app) => {
+                const IconComponent = app.icon;
+                return (
+                  <div key={app.id} className="sidebar-app-group">
+                    <div
+                      className={`sidebar-item ${app.isActive ? 'active' : ''}`}
+                      onClick={() => {
+                        app.setExpanded(!app.expanded);
+                        if (!app.isActive) {
+                          goToTab(app.defaultTab as ActiveTab);
+                        }
+                      }}
+                    >
+                      <IconComponent />
+                      <span>{app.title}</span>
+                      
+
+
+                      {app.expanded ? <ChevronDown size={14} className="expand-indicator" /> : <ChevronRight size={14} className="expand-indicator" />}
+                    </div>
+                    {app.expanded && (
+                      <div className="sidebar-submenu">
+                        {app.submenu.map((sub) => {
+                          const SubIcon = sub.icon;
+                          return (
+                            <div
+                              key={`sub-${app.id}-${sub.tab}`}
+                              className={`sidebar-item ${activeTab === sub.tab ? 'active' : ''}`}
+                              onClick={() => goToTab(sub.tab as ActiveTab)}
+                            >
+                              <SubIcon />
+                              {sub.label}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            ) : (
+              <div className="sidebar-no-apps">
+                {appSearchQuery ? 'Aucune application trouvée' : 'Aucune application installée'}
+              </div>
+            )}
+          </div>
         </nav>
 
+        {/* User Profile and Dropdown */}
         <div className="sidebar-footer">
-          <div className="sidebar-user">
-            <div className="sidebar-avatar">
-              {firstName.substring(0, 2).toUpperCase()}
-            </div>
-            <div className="sidebar-user-info">
-              <span className="sidebar-user-name">{firstName}</span>
-              <span className="sidebar-user-org">{organizationName}</span>
+          <div className="sidebar-footer-profile-container">
+            <AnimatePresence>
+              {profileMenuOpen && (
+                <motion.div
+                  className="profile-dropdown-menu"
+                  initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  {profileDropdownMode === 'main' ? (
+                    <div className="profile-dropdown-inner">
+                      <div className="dropdown-user-header">
+                        <div className="dropdown-avatar">{userInitials}</div>
+                        <div className="dropdown-user-details">
+                          <span className="dropdown-user-name">{userFullName}</span>
+                          <span className="dropdown-user-org">{organizationName}</span>
+                        </div>
+                      </div>
+                      
+                      <div className="dropdown-divider" />
+                      
+                      <button className="dropdown-item" onClick={() => { goToTab('organization-general'); setProfileMenuOpen(false); }}>
+                        <UserRound size={14} />
+                        <span>Mon profil</span>
+                      </button>
+
+                      {devSwitchEnabled && isAdmin && (
+                        <button className="dropdown-item" onClick={() => setProfileDropdownMode('users')}>
+                          <RefreshCw size={14} />
+                          <span>Changer d'utilisateur</span>
+                          <ChevronRight size={14} style={{ marginLeft: 'auto', opacity: 0.5 }} />
+                        </button>
+                      )}
+
+                      <button className="dropdown-item" onClick={() => { goToTab('organization-general'); setProfileMenuOpen(false); }}>
+                        <Settings size={14} />
+                        <span>Paramètres</span>
+                      </button>
+
+                      <div className="dropdown-divider" />
+
+                      <button className="dropdown-item text-danger" onClick={() => { onLogout(); setProfileMenuOpen(false); }}>
+                        <LogOut size={14} />
+                        <span>Déconnexion</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="profile-dropdown-inner">
+                      <div className="dropdown-submenu-header">
+                        <button className="back-btn" onClick={() => setProfileDropdownMode('main')}>
+                          <ChevronLeft size={14} />
+                        </button>
+                        <span>Changer d'utilisateur</span>
+                      </div>
+                      
+                      <div className="dropdown-divider" />
+                      
+                      <div className="dropdown-users-list">
+                        {users.map((user) => (
+                          <button
+                            key={user.id}
+                            className={`dropdown-user-item ${user.id === session.user.id ? 'active' : ''}`}
+                            onClick={() => {
+                              if (user.id !== session.user.id && user.status !== 'DISABLED') {
+                                void handleDevSwitch(user.id);
+                                setProfileMenuOpen(false);
+                                setProfileDropdownMode('main');
+                              }
+                            }}
+                            disabled={user.status === 'DISABLED'}
+                          >
+                            <div className="user-item-avatar">
+                              {((user.firstName?.[0] ?? '') + (user.lastName?.[0] ?? '')).toUpperCase() || 'U'}
+                            </div>
+                            <div className="user-item-info">
+                              <span className="user-item-name">{displayUserName(user)}</span>
+                              <span className="user-item-role">{roleLabel(user.role)}</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div
+              className={`sidebar-user-profile ${profileMenuOpen ? 'active' : ''}`}
+              onClick={() => setProfileMenuOpen(!profileMenuOpen)}
+            >
+              <div className="sidebar-avatar">
+                {userInitials}
+              </div>
+              <div className="sidebar-user-info">
+                <span className="sidebar-user-name">{userFullName}</span>
+                <span className="sidebar-user-org">{organizationName}</span>
+              </div>
+              <ChevronDown size={14} className="profile-chevron" style={{ transform: profileMenuOpen ? 'rotate(180deg)' : 'none' }} />
             </div>
           </div>
-          <button className="btn btn-secondary" onClick={onLogout} style={{ width: '100%', justifyContent: 'center' }}>
-            <LogOut size={16} />
-            Déconnexion
-          </button>
         </div>
       </aside>
 
       {/* Main Content Pane */}
       <main className="main-content">
         <header className="topbar-modern">
-          <h2 className="topbar-title">{tabTitle}</h2>
+          <div className="topbar-left">
+            {sidebarCollapsed && (
+              <button
+                type="button"
+                className="sidebar-reopen-btn"
+                onClick={() => setSidebarCollapsed(false)}
+                aria-label="Afficher le menu latéral"
+                title="Afficher le menu"
+              >
+                <ChevronRight size={18} color="#111827" strokeWidth={2.4} />
+              </button>
+            )}
+            <h2 className="topbar-title">{tabTitle}</h2>
+          </div>
           <div className="topbar-actions">
             {activeTab === 'overview' && (
               <button
@@ -699,6 +1633,7 @@ export function Dashboard({ session, onLogout }: DashboardProps) {
                 Personnaliser
               </button>
             )}
+
             <div className="status-badge">
               <div className="status-dot"></div>
               Instance Locale
@@ -728,11 +1663,19 @@ export function Dashboard({ session, onLogout }: DashboardProps) {
             </div>
           )}
           {success && (
-            <div className="alert-modern success">
+            <div className="alert-modern success dismissible">
               <CheckCircle2 />
               <div>
                 <strong>Succès : </strong> {success}
               </div>
+              <button
+                type="button"
+                className="alert-dismiss"
+                onClick={() => setSuccess(undefined)}
+                aria-label="Fermer la notification de succès"
+              >
+                <X size={16} />
+              </button>
             </div>
           )}
 
@@ -749,69 +1692,166 @@ export function Dashboard({ session, onLogout }: DashboardProps) {
               {/* TAB OVERVIEW */}
               {activeTab === 'overview' && (
                 <>
-                  <div className={`welcome-hero theme-${dashboardTheme}`}>
-                    <span className="welcome-tag">ToqueHub · Plateforme Cuisine</span>
-                    <h1 className="welcome-title">Bonjour {firstName} 👋</h1>
-                    <p className="welcome-desc">
-                      Bienvenue dans l'espace de gestion de <strong>{organizationName}</strong>. Votre ERP de cuisine open source local et souverain est entièrement fonctionnel.
-                    </p>
-                  </div>
-
-                  {stocksInstalled && visibleWidgets.metrics && (
-                    <StocksDashboardPage
-                      products={products}
-                      suppliers={suppliers}
-                      stocks={stocks}
-                      movements={movements}
-                      onCreateMovement={() => setShowMovementModal(true)}
-                      onOpenStocks={() => setActiveTab('inventory')}
+                  {dashboardZones ? (
+                    <ModularDashboardOverview
+                      zones={dashboardZones}
+                      theme={dashboardTheme}
+                      firstName={firstName}
+                      organizationName={organizationName}
+                      refreshLabel={dashboardRefreshLabel}
+                      onNavigate={goToTab}
+                      onTogglePin={toggleDashboardPin}
                     />
-                  )}
+                  ) : (
+                    <>
+                      <div className={`welcome-hero theme-${dashboardTheme}`}>
+                        <h1 className="welcome-title">Bonjour {firstName} 👋</h1>
+                        <p className="welcome-desc">
+                          Bienvenue dans l'espace de gestion de <strong>{organizationName}</strong>. Votre ERP de cuisine open source local et souverain est entièrement fonctionnel.
+                        </p>
+                      </div>
 
-                  {(visibleWidgets.progress || visibleWidgets.apps) && (
-                    <div className={`double-panel ${layoutMode === 'stacked' ? 'layout-stacked' : ''}`}>
-                      {/* Setup Progress */}
-                      {visibleWidgets.progress && (
-                        <div className="card-modern">
-                          <div className="card-title-container">
-                            <span className="card-title"><Clock size={18} /> Progression du paramétrage</span>
-                            <span className="badge badge-reception" style={{ fontSize: '0.8rem' }}>{progress}%</span>
-                          </div>
-                          <div className="progress-bar-bg" style={{ marginBottom: '1.5rem' }}>
-                            <div className="progress-bar-fill" style={{ width: `${progress}%` }}></div>
-                          </div>
-                          <div className="progress-list">
-                            {progressItems.map((item, idx) => (
-                              <div key={idx} className={`progress-item ${item.done ? 'done' : ''}`}>
-                                <div className="progress-icon">{item.done ? '✓' : idx + 1}</div>
-                                <span className="progress-text">{item.label}</span>
-                              </div>
-                            ))}
-                          </div>
+                      {visibleWidgets.metrics && (
+                        <div className="metrics-grid" style={{ marginTop: '1.5rem' }}>
+                          {stocksInstalled ? (
+                            <>
+                              <Metric icon={<ChefHat size={20} />} value={products.filter(p => !isArchived(p)).length} label="Produits actifs" tone="orange" delay={1} />
+                              <Metric icon={<UsersRound size={20} />} value={suppliers.filter(s => !isArchived(s)).length} label="Fournisseurs actifs" tone="blue" delay={2} />
+                              <Metric icon={<TrendingUp size={20} />} value={`${stockValue.toFixed(2)} €`} label="Valeur théorique" tone="emerald" delay={3} />
+                              <Metric icon={<History size={20} />} value={movementsThisMonth} label="Mouvements du mois" tone="purple" delay={4} />
+                            </>
+                          ) : (
+                            <>
+                              <Metric icon={<Boxes size={20} />} value={installedApps.length} label="Applications" tone="orange" delay={1} />
+                              <Metric icon={<UsersRound size={20} />} value={hrActiveCollaboratorsCount} label="Collaborateurs" tone="blue" delay={2} />
+                              <Metric icon={<ShieldCheck size={20} />} value={activeUsersCount} label="Utilisateurs" tone="emerald" delay={3} />
+                              <Metric icon={<Clock size={20} />} value={`${progress}%`} label="Paramétrage" tone="purple" delay={4} />
+                            </>
+                          )}
                         </div>
                       )}
 
-                      {/* Applications Installed */}
-                      {visibleWidgets.apps && (
-                        <div className="card-modern">
-                          <span className="card-title" style={{ marginBottom: '1.25rem' }}><Boxes size={18} /> Applications installées</span>
-                          <div className="installed-app-summary">
-                            <div className="metric-icon-wrapper emerald">
-                              <Package />
+                      <div className="dashboard-widget-grid" style={{ marginTop: '1.5rem' }}>
+                        {stocksInstalled && (
+                          <>
+                            <div className="card-modern dashboard-widget-card">
+                              <div className="card-title-container">
+                                <span className="card-title"><History size={18}/> Derniers mouvements</span>
+                                <button className="btn btn-secondary btn-sm" onClick={() => setActiveTab('inventory')}>Détails</button>
+                              </div>
+                              <MiniMovements movements={movements.slice(0, 6)} />
                             </div>
-                            <div>
-                              <strong>{installedApps.length > 0 ? `${installedApps.length} application active` : 'Aucune application active'}</strong>
-                              <p style={{ color: 'var(--text-muted)', marginTop: '0.35rem', fontSize: '0.9rem' }}>
-                                {stocksInstalled ? '📦 Stocks est installé pour votre organisation.' : 'Démarrez en installant votre première application métier.'}
-                              </p>
+
+                            <div className="card-modern dashboard-widget-card">
+                              <span className="card-title"><TrendingUp size={18}/> Produits consommés</span>
+                              <div className="progress-list" style={{ marginTop: '1rem' }}>
+                                {topConsumed.length ? (
+                                  topConsumed.map((p) => (
+                                    <div className="progress-item-modern" key={p.name}>
+                                      <span className="progress-text-modern">{p.name}</span>
+                                      <span className="progress-val-modern">{p.qty.toFixed(2)} {p.unit}</span>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <EmptyMini title="Aucune consommation" text="Les mouvements de sortie alimenteront ce classement." icon="📈" />
+                                )}
+                              </div>
                             </div>
-                          </div>
-                          <button className="btn btn-primary" style={{ marginTop: '1.25rem' }} onClick={manageApplications}>
-                            Gérer les applications <ArrowRight size={16} />
+                          </>
+                        )}
+
+                        {/* Production Widget */}
+                        <div className="card-modern dashboard-widget-card">
+                          <span className="card-title"><Factory size={18} /> Production</span>
+                          {productionInstalled ? (
+                            <div className="installed-app-summary">
+                              <div className="metric-icon-wrapper orange"><Factory /></div>
+                              <div>
+                                <strong style={{ fontSize: '1.7rem' }}>0</strong>
+                                <p className="muted">productions aujourd'hui · portions prévues et retards.</p>
+                              </div>
+                            </div>
+                          ) : (
+                            <EmptyMini title="Production" text="Installez le module Production pour planifier vos ordres de fabrication." icon="🚧" />
+                          )}
+                          <button className="btn btn-primary" style={{ marginTop: 'auto' }} onClick={() => goToTab(productionInstalled ? 'production-dashboard' : 'applications')}>
+                            {productionInstalled ? 'Ouvrir' : 'Installer'} <ArrowRight size={16} />
                           </button>
                         </div>
-                      )}
-                    </div>
+
+                        {/* Menus Widget */}
+                        <div className="card-modern dashboard-widget-card">
+                          <span className="card-title"><Utensils size={18} /> Menus</span>
+                          {menusInstalled ? (
+                            <div className="installed-app-summary">
+                              <div className="metric-icon-wrapper purple"><Utensils /></div>
+                              <div>
+                                <strong style={{ fontSize: '1.7rem' }}>0</strong>
+                                <p className="muted">menus aujourd’hui · convives et coût moyen.</p>
+                              </div>
+                            </div>
+                          ) : (
+                            <EmptyMini title="Menus" text="Installez le module Menus pour planifier les repas et convives." icon="🚧" />
+                          )}
+                          <button className="btn btn-primary" style={{ marginTop: 'auto' }} onClick={() => goToTab(menusInstalled ? 'menus-dashboard' : 'applications')}>
+                            {menusInstalled ? 'Ouvrir' : 'Installer'} <ArrowRight size={16} />
+                          </button>
+                        </div>
+
+                        {/* Collaborateurs Widget */}
+                        <div className="card-modern dashboard-widget-card">
+                          <span className="card-title"><UsersRound size={18} /> Collaborateurs</span>
+                          <div className="installed-app-summary">
+                            <div className={`metric-icon-wrapper ${hrInstalled ? 'purple' : 'gray'}`}><UsersRound /></div>
+                            <div>
+                              <strong style={{ fontSize: '1.7rem' }}>{hrActiveCollaboratorsCount}</strong>
+                              <p className="muted">{hrInstalled ? 'collaborateurs actifs dans le référentiel RH.' : 'Installez RH pour centraliser vos collaborateurs.'}</p>
+                            </div>
+                          </div>
+                          <button className="btn btn-primary" style={{ marginTop: 'auto' }} onClick={() => goToTab(hrInstalled ? 'hr-collaborators' : 'applications')}>
+                            {hrInstalled ? 'Gérer' : 'Installer'} <ArrowRight size={16} />
+                          </button>
+                        </div>
+
+                        {/* Progression Widget */}
+                        {visibleWidgets.progress && (
+                          <div className="card-modern dashboard-widget-card">
+                            <div className="card-title-container">
+                              <span className="card-title"><Clock size={18} /> Paramétrage</span>
+                              <span className="badge badge-reception" style={{ fontSize: '0.8rem' }}>{progress}%</span>
+                            </div>
+                            <div className="progress-bar-bg" style={{ marginBottom: '1.5rem', height: '6px', borderRadius: '3px', background: 'var(--border-color, rgba(255,255,255,0.08))', overflow: 'hidden' }}>
+                              <div className="progress-bar-fill" style={{ height: '100%', width: `${progress}%`, background: 'var(--color-primary, #10b981)', borderRadius: '3px' }}></div>
+                            </div>
+                            <div className="progress-list">
+                              {progressItems.map((item, idx) => (
+                                <div key={idx} className={`progress-item ${item.done ? 'done' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem', fontSize: '0.85rem' }}>
+                                  <div className="progress-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px', borderRadius: '50%', background: item.done ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255,255,255,0.04)', color: item.done ? '#10b981' : 'var(--text-muted)' }}>{item.done ? '✓' : idx + 1}</div>
+                                  <span className="progress-text" style={{ color: item.done ? 'var(--text-primary)' : 'var(--text-muted)' }}>{item.label}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Applications Widget */}
+                        {visibleWidgets.apps && (
+                          <div className="card-modern dashboard-widget-card">
+                            <span className="card-title" style={{ marginBottom: '1.25rem' }}><Boxes size={18} /> Applications</span>
+                            <div className="installed-app-summary">
+                              <div className="metric-icon-wrapper emerald"><Package /></div>
+                              <div>
+                                <strong style={{ fontSize: '1.7rem' }}>{installedApps.length} active{installedApps.length > 1 ? 's' : ''}</strong>
+                                <p className="muted">{stocksInstalled ? 'Stocks est actif pour votre organisation.' : 'Installez votre première application.'}</p>
+                              </div>
+                            </div>
+                            <button className="btn btn-primary" style={{ marginTop: 'auto' }} onClick={manageApplications}>
+                              Gérer <ArrowRight size={16} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </>
                   )}
                 </>
               )}
@@ -825,13 +1865,134 @@ export function Dashboard({ session, onLogout }: DashboardProps) {
                   onInstallApp={(appId) => triggerInstallApp(appId)}
                   installingAppId={installingAppId}
                   installProgress={installProgress}
-                  onUninstallApp={() => setConfirmation('uninstall-stocks')}
+                  onUninstallApp={(appId) => setConfirmation(appId === 'rnm-prices' ? 'uninstall-rnm-prices' : appId === 'technical-sheets' ? 'uninstall-technical-sheets' : appId === 'production' ? 'uninstall-production' : appId === 'menus' ? 'uninstall-menus' : 'uninstall-stocks')}
+                />
+              )}
+
+              {isRnmTab && rnmInstalled && (
+                <CoursProduitsApp
+                  token={token}
+                  initialTab={activeTab === 'rnm-history' ? 'history' : activeTab === 'rnm-favorites' ? 'favorites' : activeTab === 'rnm-about' ? 'about' : 'dashboard'}
+                  onNavigate={(next) => setActiveTab(next === 'history' ? 'rnm-history' : next === 'favorites' ? 'rnm-favorites' : next === 'about' ? 'rnm-about' : 'rnm-dashboard')}
+                />
+              )}
+
+              {isHrTab && hrInstalled && (
+                <HrApp
+                  tab={activeTab === 'hr-collaborators' ? 'collaborators' : activeTab === 'hr-departments' ? 'departments' : activeTab === 'hr-positions' ? 'positions' : activeTab === 'hr-rotations' ? 'rotations' : activeTab === 'hr-orgchart' ? 'orgchart' : 'dashboard'}
+                  summary={hrSummary}
+                  collaborators={hrCollaborators}
+                  departments={hrDepartments}
+                  positions={hrPositions}
+                  rotations={hrRotations}
+                  users={users}
+                  sites={sites}
+                  canWrite={canWriteHr}
+                  loading={isLoading}
+                  onNavigate={(next) => setActiveTab(next === 'collaborators' ? 'hr-collaborators' : next === 'departments' ? 'hr-departments' : next === 'positions' ? 'hr-positions' : next === 'rotations' ? 'hr-rotations' : next === 'orgchart' ? 'hr-orgchart' : 'hr-dashboard')}
+                  onCreateCollaborator={handleCreateHrCollaborator}
+                  onUpdateCollaborator={handleUpdateHrCollaborator}
+                  onArchiveCollaborator={handleArchiveHrCollaborator}
+                  onCreateDepartment={handleCreateHrDepartment}
+                  onUpdateDepartment={handleUpdateHrDepartment}
+                  onArchiveDepartment={handleArchiveHrDepartment}
+                  onCreatePosition={handleCreateHrPosition}
+                  onUpdatePosition={handleUpdateHrPosition}
+                  onArchivePosition={handleArchiveHrPosition}
+                  onCreateRotation={handleCreateHrRotation}
+                  onUpdateRotation={handleUpdateHrRotation}
+                  onArchiveRotation={handleArchiveHrRotation}
+                  onAssignRotation={handleAssignHrRotation}
+                  onRemoveRotationAssignment={handleRemoveHrRotationAssignment}
+                  onSetCollaboratorRotation={handleSetHrCollaboratorRotation}
+                  onRemoveCollaboratorRotation={handleRemoveHrCollaboratorRotation}
+                />
+              )}
+
+              {isPlanningTab && planningInstalled && (
+                <PlanningApp
+                  token={token}
+                  session={session}
+                  tab={activeTab === 'planning-day' ? 'day' : activeTab === 'planning-week' ? 'week' : activeTab === 'planning-month' ? 'month' : activeTab === 'planning-assignments' ? 'assignments' : activeTab === 'planning-absences' ? 'absences' : activeTab === 'planning-replacements' ? 'replacements' : activeTab === 'planning-templates' ? 'templates' : activeTab === 'planning-requirements' ? 'requirements' : 'dashboard'}
+                  collaborators={hrCollaborators}
+                  departments={hrDepartments}
+                  positions={hrPositions}
+                  rotations={hrRotations}
+                  sites={activeSites}
+                  canWrite={canWriteHr}
+                  onNavigate={(next) => setActiveTab(next === 'day' ? 'planning-day' : next === 'week' ? 'planning-week' : next === 'month' ? 'planning-month' : next === 'assignments' ? 'planning-assignments' : next === 'absences' ? 'planning-absences' : next === 'replacements' ? 'planning-replacements' : next === 'templates' ? 'planning-templates' : next === 'requirements' ? 'planning-requirements' : 'planning-dashboard')}
+                />
+              )}
+
+              {isTechnicalSheetsTab && technicalSheetsInstalled && (
+                <TechnicalSheetsApp
+                  token={token}
+                  tab={activeTab === 'technical-sheets-recipes' ? 'recipes' : activeTab === 'technical-sheets-categories' ? 'categories' : activeTab === 'technical-sheets-costs' ? 'costs' : activeTab === 'technical-sheets-allergens' ? 'allergens' : activeTab === 'technical-sheets-production' ? 'production' : 'dashboard'}
+                  stocksInstalled={stocksInstalled}
+                  products={products}
+                  units={units}
+                  onNavigate={(next) => setActiveTab(next === 'recipes' ? 'technical-sheets-recipes' : next === 'categories' ? 'technical-sheets-categories' : next === 'costs' ? 'technical-sheets-costs' : next === 'allergens' ? 'technical-sheets-allergens' : next === 'production' ? 'technical-sheets-production' : 'technical-sheets-dashboard')}
+                  onInstalled={(apps) => {
+                    if (apps) setInstalledApps(apps);
+                    void refresh();
+                  }}
+                />
+              )}
+
+              {isProductionTab && productionInstalled && (
+                <ProductionApp
+                  token={token}
+                  session={session}
+                  tab={activeTab === 'production-orders' ? 'orders' : activeTab === 'production-calendar' ? 'calendar' : activeTab === 'production-today' ? 'today' : activeTab === 'production-assignments' ? 'assignments' : activeTab === 'production-materials' ? 'materials' : activeTab === 'production-exports' ? 'exports' : activeTab === 'production-history' ? 'history' : 'dashboard'}
+                  products={products}
+                  units={units}
+                  stocks={stocks}
+                  collaborators={hrCollaborators}
+                  departments={hrDepartments}
+                  onNavigate={(next) => setActiveTab(next === 'orders' ? 'production-orders' : next === 'calendar' ? 'production-calendar' : next === 'today' ? 'production-today' : next === 'assignments' ? 'production-assignments' : next === 'materials' ? 'production-materials' : next === 'exports' ? 'production-exports' : next === 'history' ? 'production-history' : 'production-dashboard')}
+                />
+              )}
+
+              {isMenusTab && menusInstalled && (
+                <MenusApp
+                  token={token}
+                  session={session}
+                  tab={activeTab === 'menus-list' ? 'menus' : activeTab === 'menus-calendar' ? 'calendar' : activeTab === 'menus-cycles' ? 'cycles' : activeTab === 'menus-diets' ? 'diets' : activeTab === 'menus-guests' ? 'guests' : activeTab === 'menus-exports' ? 'exports' : activeTab === 'menus-history' ? 'history' : 'dashboard'}
+                  sites={activeSites}
+                  canManage={canWriteHr}
+                  onNavigate={(next) => setActiveTab(next === 'menus' ? 'menus-list' : next === 'calendar' ? 'menus-calendar' : next === 'cycles' ? 'menus-cycles' : next === 'diets' ? 'menus-diets' : next === 'guests' ? 'menus-guests' : next === 'exports' ? 'menus-exports' : next === 'history' ? 'menus-history' : 'menus-dashboard')}
+                  onInstalled={(apps) => { if (apps) setInstalledApps(apps); void refresh(); }}
                 />
               )}
 
               {/* TAB SETTINGS */}
               {activeTab === 'settings' && (
-                <SettingsPage session={session} dashboardSummary={dashboardSummary} />
+                <SettingsPage session={session} dashboardSummary={dashboardSummary} onOpenUsers={() => goToTab('users')} />
+              )}
+              {activeTab === 'organization-general' && (
+                <SettingsPage session={session} dashboardSummary={dashboardSummary} onOpenUsers={() => goToTab('users')} />
+              )}
+              {activeTab === 'users' && isAdmin && (
+                <UsersPage
+                  users={users}
+                  roles={roles}
+                  permissions={permissions}
+                  currentUserId={session.user.id}
+                  loading={isLoading}
+                  onRefresh={refreshUsers}
+                  onCreate={() => setShowUserModal(true)}
+                  onEdit={(user) => setEditingUser(user)}
+                  onDisable={handleDisableUser}
+                  onUpdateRolePermissions={handleUpdateRolePermissions}
+                />
+              )}
+              {activeTab === 'users' && !isAdmin && (
+                <div className="card-modern"><span className="card-title">Accès réservé</span><p>Seul un Administrateur peut gérer les utilisateurs.</p></div>
+              )}
+
+              {/* TAB ARCHITECTURE */}
+              {activeTab === 'architecture' && isAdmin && (
+                <ArchitectureCenter session={session} />
               )}
 
               {/* TAB STOCKS DASHBOARD */}
@@ -1384,6 +2545,16 @@ export function Dashboard({ session, onLogout }: DashboardProps) {
         <PrefillWizard onSubmit={handlePrefillStocks} onClose={() => setShowPrefillWizard(false)} />
       </Modal>
 
+      <Modal isOpen={showUserModal} onClose={() => setShowUserModal(false)} title="Créer un utilisateur">
+        <UserForm roles={roles} onSubmitCreate={handleCreateUser} onClose={() => setShowUserModal(false)} />
+      </Modal>
+
+      <Modal isOpen={editingUser !== null} onClose={() => setEditingUser(null)} title="Modifier un utilisateur">
+        {editingUser && (
+          <UserForm user={editingUser} roles={roles} onSubmitUpdate={(payload) => handleUpdateUser(editingUser.id, payload)} onClose={() => setEditingUser(null)} />
+        )}
+      </Modal>
+
       {/* App Store Detailed Modal Sheet */}
       <Modal isOpen={selectedStoreApp !== null} onClose={() => setSelectedStoreApp(null)} title="Fiche Module - Toque Store">
         {selectedStoreApp && (
@@ -1394,13 +2565,18 @@ export function Dashboard({ session, onLogout }: DashboardProps) {
             progress={installProgress}
             onInstall={() => triggerInstallApp(selectedStoreApp.id)}
             onOpen={() => {
-      if (selectedStoreApp.id === 'stocks') {
-        setActiveTab('stocks-dashboard');
-      }
+              if (selectedStoreApp.id === 'stocks') setActiveTab('stocks-dashboard');
+              if (selectedStoreApp.id === 'rnm-prices') setActiveTab('rnm-dashboard');
+              if (selectedStoreApp.id === 'technical-sheets') setActiveTab('technical-sheets-dashboard');
+              if (selectedStoreApp.id === 'production') setActiveTab('production-dashboard');
+              if (selectedStoreApp.id === 'menus') setActiveTab('menus-dashboard');
               setSelectedStoreApp(null);
             }}
             onUninstall={() => {
-              setConfirmation('uninstall-stocks');
+              if (selectedStoreApp.id === 'menus') setConfirmation('uninstall-menus');
+              else if (selectedStoreApp.id === 'production') setConfirmation('uninstall-production');
+              else if (selectedStoreApp.id === 'technical-sheets') setConfirmation('uninstall-technical-sheets');
+              else setConfirmation(selectedStoreApp.id === 'rnm-prices' ? 'uninstall-rnm-prices' : 'uninstall-stocks');
               setSelectedStoreApp(null);
             }}
             onClose={() => setSelectedStoreApp(null)}
@@ -1419,18 +2595,66 @@ export function Dashboard({ session, onLogout }: DashboardProps) {
         onConfirm={uninstallStocks}
       />
 
+      <ConfirmationModal
+        isOpen={confirmation === 'uninstall-technical-sheets'}
+        title="Supprimer l’application Fiches Techniques ?"
+        text="L’entrée disparaîtra de la navigation, mais les fiches, historiques, coûts et simulations seront conservés."
+        confirmLabel="Supprimer"
+        danger
+        loading={appActionLoading}
+        onCancel={() => setConfirmation(null)}
+        onConfirm={uninstallTechnicalSheets}
+      />
+
+      <ConfirmationModal
+        isOpen={confirmation === 'uninstall-rnm-prices'}
+        title="Supprimer l’application Cours des Produits ?"
+        text="L’entrée disparaîtra de la navigation, mais vos favoris RNM personnels seront conservés pour une réactivation ultérieure."
+        confirmLabel="Supprimer"
+        danger
+        loading={appActionLoading}
+        onCancel={() => setConfirmation(null)}
+        onConfirm={uninstallRnmPrices}
+      />
+
+      <ConfirmationModal
+        isOpen={confirmation === 'uninstall-production'}
+        title="Supprimer l’application Production ?"
+        text="L’entrée disparaîtra de la navigation, mais les ordres, besoins, exports et historiques de production seront conservés."
+        confirmLabel="Supprimer"
+        danger
+        loading={appActionLoading}
+        onCancel={() => setConfirmation(null)}
+        onConfirm={uninstallProduction}
+      />
+
+      <ConfirmationModal
+        isOpen={confirmation === 'uninstall-menus'}
+        title="Supprimer l’application Menus ?"
+        text="L’entrée disparaîtra de la navigation, mais les menus, cycles, convives, exports et historiques seront conservés pour une réactivation ultérieure."
+        confirmLabel="Supprimer"
+        danger
+        loading={appActionLoading}
+        onCancel={() => setConfirmation(null)}
+        onConfirm={uninstallMenus}
+      />
+
       <Modal isOpen={showCustomizeModal} onClose={() => setShowCustomizeModal(false)} title="Personnaliser le Dashboard">
         <CustomizeDashboardForm
           theme={dashboardTheme}
           visibleWidgets={visibleWidgets}
           layoutMode={layoutMode}
+          dashboardWidgets={dashboardWidgets}
+          hiddenWidgetIds={modularDashboard?.preferences.hiddenWidgetIds ?? []}
+          pinnedWidgetIds={modularDashboard?.preferences.pinnedWidgetIds ?? []}
+          onToggleWidget={(widgetId, visible) => void toggleDashboardWidget(widgetId, visible)}
+          onTogglePin={(widgetId) => void toggleDashboardPin(widgetId)}
+          onResetCore={() => void resetDashboardCore()}
           onSave={(newTheme, newWidgets, newLayout) => {
             setDashboardTheme(newTheme);
             setVisibleWidgets(newWidgets);
             setLayoutMode(newLayout);
-            localStorage.setItem('toquehub_dashboard_theme', newTheme);
-            localStorage.setItem('toquehub_dashboard_widgets', JSON.stringify(newWidgets));
-            localStorage.setItem('toquehub_dashboard_layout', newLayout);
+            void persistDashboardPreferences({ theme: newTheme, layoutMode: newLayout });
             setShowCustomizeModal(false);
           }}
           onClose={() => setShowCustomizeModal(false)}
@@ -1479,6 +2703,112 @@ async function exportAuditCsv(token: string) {
   link.download = `audit-stocks-${new Date().toISOString().slice(0, 10)}.csv`;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function ModularDashboardOverview({ zones, theme, firstName, organizationName, refreshLabel, onNavigate, onTogglePin }: { zones: ModularDashboard['zones']; theme: string; firstName: string; organizationName: string; refreshLabel: string; onNavigate: (tab: ActiveTab) => void; onTogglePin: (widgetId: string) => Promise<void> }) {
+  const zoneMeta = {
+    kpi: { title: 'KPI', icon: TrendingUp, desc: 'Indicateurs synthétiques Core et modules installés.' },
+    activity: { title: 'Activité', icon: History, desc: 'Flux récents, actions à suivre et états vides.' },
+    analytics: { title: 'Analyses', icon: LineChart, desc: 'Tendances disponibles sans logique métier dans le Core.' },
+    alerts: { title: 'Alertes', icon: AlertCircle, desc: 'Points d’attention inter-modules.' },
+  } as const;
+
+  return (
+    <div className="modular-dashboard-shell">
+      <div className={`welcome-hero theme-${theme}`}>
+        <span className="welcome-tag">Dashboard modulaire · Refresh global 5 min · {refreshLabel}</span>
+        <h1 className="welcome-title">Bonjour {firstName} 👋</h1>
+        <p className="welcome-desc">
+          Vue intelligente de <strong>{organizationName}</strong>. Les widgets sont fournis par le registry Core, filtrés par applications installées et permissions de lecture.
+        </p>
+      </div>
+      {(Object.keys(zoneMeta) as Array<keyof typeof zoneMeta>).map((zone) => {
+        const meta = zoneMeta[zone];
+        const Icon = meta.icon;
+        const widgets = zones[zone] ?? [];
+        return (
+          <section className={`dashboard-zone dashboard-zone-${zone}`} key={zone}>
+            <div className="section-header-modern">
+              <div className="section-info">
+                <span className="card-title"><Icon size={18} /> {meta.title}</span>
+                <span className="section-tagline">{meta.desc}</span>
+              </div>
+            </div>
+            {widgets.length ? (
+              <div className={zone === 'kpi' ? 'metrics-grid' : 'dashboard-widget-grid'}>
+                {widgets.map((widget) => <DashboardWidgetCard key={widget.id} widget={widget} onNavigate={onNavigate} onTogglePin={onTogglePin} compact={zone === 'kpi'} />)}
+              </div>
+            ) : (
+              <div className="card-modern"><EmptyMini title={`Zone ${meta.title} vide`} text="Aucun widget visible avec vos applications installées et permissions actuelles." icon="🧩" /></div>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function dashboardWidgetModule(widget: Pick<DashboardWidget, 'module'> & { appId?: string; moduleLabel?: string; id?: string }) {
+  return String(widget.module ?? widget.appId ?? widget.moduleLabel ?? widget.id?.split('.')[0] ?? 'core').toLowerCase();
+}
+
+function DashboardWidgetCard({ widget, onNavigate, onTogglePin, compact }: { widget: DashboardWidget; onNavigate: (tab: ActiveTab) => void; onTogglePin: (widgetId: string) => Promise<void>; compact?: boolean }) {
+  const moduleKey = dashboardWidgetModule(widget);
+  const value = widget.data?.value ?? widget.data?.count ?? widget.data?.total ?? widget.data?.label ?? '—';
+  const subtitle = String(widget.data?.subtitle ?? widget.data?.description ?? widget.emptyMessage ?? (widget.comingSoon ? 'Module à venir' : 'Données disponibles dès première utilisation.'));
+  const target = moduleTargetTab(moduleKey);
+  const Icon = widgetIcon(moduleKey);
+  if (compact) {
+    return <Metric icon={<Icon size={20} />} value={String(value)} label={widget.title} tone={widgetTone(moduleKey)} />;
+  }
+  return (
+    <motion.div className="card-modern dashboard-widget-card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+      <div className="card-title-container">
+        <span className="card-title"><Icon size={18} /> {widget.title}</span>
+      </div>
+      {widget.empty || widget.comingSoon ? (
+        <EmptyMini title={widget.emptyTitle ?? (widget.comingSoon ? 'Bientôt disponible' : 'Aucune donnée')} text={subtitle} icon={widget.comingSoon ? '🚧' : '🧩'} />
+      ) : (
+        <div className="installed-app-summary">
+          <div className={`metric-icon-wrapper ${widgetTone(moduleKey)}`}><Icon /></div>
+          <div><strong style={{ fontSize: '1.7rem' }}>{String(value)}</strong><p className="muted">{subtitle}</p></div>
+        </div>
+      )}
+      {target && <button className="btn btn-primary" style={{ marginTop: '1rem' }} onClick={() => onNavigate(target)}>Ouvrir <ArrowRight size={16} /></button>}
+    </motion.div>
+  );
+}
+
+function widgetIcon(module?: string) {
+  const moduleKey = String(module ?? 'core').toLowerCase();
+  if (moduleKey.includes('stock')) return Package;
+  if (moduleKey.includes('production')) return Factory;
+  if (moduleKey.includes('menu')) return Utensils;
+  if (moduleKey.includes('hr')) return UsersRound;
+  if (moduleKey.includes('planning')) return CalendarCheck;
+  if (moduleKey.includes('technical')) return FileText;
+  if (moduleKey.includes('rnm')) return LineChart;
+  return LayoutDashboard;
+}
+
+function widgetTone(module?: string) {
+  const moduleKey = String(module ?? 'core').toLowerCase();
+  if (moduleKey.includes('production') || moduleKey.includes('technical')) return 'orange';
+  if (moduleKey.includes('planning') || moduleKey.includes('rnm')) return 'blue';
+  if (moduleKey.includes('menu')) return 'purple';
+  return 'emerald';
+}
+
+function moduleTargetTab(module?: string): ActiveTab | undefined {
+  const moduleKey = String(module ?? 'core').toLowerCase();
+  if (moduleKey.includes('stock')) return 'stocks-dashboard';
+  if (moduleKey.includes('production')) return 'production-dashboard';
+  if (moduleKey.includes('menu')) return 'menus-dashboard';
+  if (moduleKey.includes('hr')) return 'hr-dashboard';
+  if (moduleKey.includes('planning')) return 'planning-dashboard';
+  if (moduleKey.includes('technical')) return 'technical-sheets-dashboard';
+  if (moduleKey.includes('rnm')) return 'rnm-dashboard';
+  return undefined;
 }
 
 function StocksDashboardPage({ products, suppliers, stocks, movements, onCreateMovement, onOpenStocks }: { products: Product[]; suppliers: Supplier[]; stocks: Stock[]; movements: StockMovement[]; onCreateMovement: () => void; onOpenStocks: () => void }) {
@@ -1588,7 +2918,47 @@ function EmptyMini({ title, text, icon = "📦" }: { title: string; text: string
     </div>
   );
 }
-function MiniMovements({ movements }: { movements: StockMovement[] }) { return movements.length ? <div className="table-wrapper"><table className="table-modern"><tbody>{movements.map(m => <tr key={m.id}><td>{new Date(m.createdAt).toLocaleDateString('fr-FR')}</td><td>{m.product.name}</td><td><span className="badge badge-production">{movementLabels[m.type]}</span></td><td>{movementSign(m.type)}{m.quantity} {m.product.unit?.symbol}</td><td>{m.createdBy?.email ?? '—'}</td></tr>)}</tbody></table></div> : <EmptyMini title="Aucun mouvement" text="Enregistrez une réception, sortie, perte, correction, inventaire, production ou transfert." />; }
+function MiniMovements({ movements }: { movements: StockMovement[] }) {
+  return movements.length ? (
+    <div className="dashboard-activity-feed">
+      {movements.map((m) => {
+        const dateStr = new Date(m.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+        const timeStr = new Date(m.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+        const typeClass = {
+          RECEPTION: 'feed-in',
+          IN: 'feed-in',
+          ENTRY: 'feed-in',
+          OUT: 'feed-out',
+          EXIT: 'feed-out',
+          PRODUCTION: 'feed-production',
+          LOSS: 'feed-out',
+          CORRECTION: 'feed-correction',
+          INVENTORY: 'feed-inventory',
+          TRANSFER: 'feed-production',
+        }[m.type] || 'feed-in';
+        return (
+          <div key={m.id} className="feed-item">
+            <div className={`feed-dot ${typeClass}`} />
+            <div className="feed-content">
+              <div className="feed-header">
+                <span className="feed-title">{m.product.name}</span>
+                <span className={`feed-qty ${typeClass}`}>
+                  {movementSign(m.type)}{m.quantity} {m.product.unit?.symbol ?? ''}
+                </span>
+              </div>
+              <div className="feed-footer">
+                <span className="feed-label">{movementLabels[m.type]}</span>
+                <span className="feed-time">{dateStr} · {timeStr}</span>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  ) : (
+    <EmptyMini title="Aucun mouvement" text="Enregistrez une réception, sortie, perte, correction, inventaire, production ou transfert." />
+  );
+}
 
 function UnitsPage({ units, search, setSearch, showArchived, setShowArchived, onCreate }: { units: Unit[]; search: string; setSearch: (v: string) => void; showArchived: boolean; setShowArchived: (v: boolean) => void; onCreate: () => void }) { return <ReferencePage title="Unités" subtitle="Unités principales et conversions simples compatibles (kg/g, L/mL)." search={search} setSearch={setSearch} showArchived={showArchived} setShowArchived={setShowArchived} onCreate={onCreate} createLabel="Ajouter une unité"><div className="table-wrapper"><table className="table-modern"><thead><tr><th>Nom</th><th>Symbole</th><th>Type</th><th>Conversion</th><th>Statut</th></tr></thead><tbody>{units.map(u => <tr key={u.id}><td>{u.name}</td><td><span className="badge badge-reception">{u.symbol}</span></td><td>{u.type ?? u.unitType ?? 'Compatible'}</td><td>{u.baseFactor ? `× ${u.baseFactor}` : 'Standard'}</td><td>{isArchived(u) ? 'Archivé' : 'Actif'}</td></tr>)}</tbody></table></div>{!units.length && <EmptyMini title="Aucune unité" text="Préremplissez kg, g, L, mL, pièce, carton…" />}</ReferencePage>; }
 
@@ -1621,7 +2991,7 @@ function ApplicationsPage({
   onInstallApp: (appId: string) => void;
   installingAppId: string | null;
   installProgress: number;
-  onUninstallApp: () => void;
+  onUninstallApp: (appId: string) => void;
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -1632,7 +3002,7 @@ function ApplicationsPage({
     );
   }, [searchQuery]);
 
-  const featuredApp = apps[0]; // Stocks is featured
+  const featuredApp = apps[0]; // Cours des Produits is featured
 
   return (
     <div className="applications-page" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -1644,7 +3014,7 @@ function ApplicationsPage({
             <span className="store-featured-tag">À LA UNE · INDISPENSABLE</span>
             <h1 className="store-featured-title">Module {featuredApp.title}</h1>
             <p className="store-featured-desc">
-              {featuredApp.tagline} Suivez avec exactitude vos marchandises, enregistrez vos réceptions fournisseurs et analysez vos pertes.
+              {featuredApp.tagline} Consultez les cotations FranceAgriMer en temps réel sans importer de données RNM dans ToqueHub.
             </p>
             <div style={{ display: 'flex', gap: '0.75rem' }}>
               <button 
@@ -1683,7 +3053,7 @@ function ApplicationsPage({
                 color: 'white'
               }}
             >
-              <Package size={64} />
+              <LineChart size={64} />
             </div>
           </div>
         </div>
@@ -1893,7 +3263,73 @@ function AppStoreDetailSheet({
   );
 }
 
-function SettingsPage({ session, dashboardSummary }: { session: UserSession; dashboardSummary?: DashboardSummary }) {
+function displayUserName(user: Pick<CoreUser, 'firstName' | 'lastName' | 'email'>) {
+  const fullName = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim();
+  return fullName || user.email;
+}
+
+function roleLabel(role: string) {
+  const labels: Record<string, string> = { ADMIN: 'Administrateur', SUPER_ADMIN: 'Administrateur', MANAGER: 'Manager', USER: 'Utilisateur' };
+  return labels[role] ?? role;
+}
+
+function statusLabel(status?: string) {
+  const labels: Record<string, string> = { ACTIVE: 'Actif', INVITED: 'Invité', DISABLED: 'Désactivé' };
+  return labels[status ?? ''] ?? status ?? '—';
+}
+
+function formatLastLogin(value?: string | null) {
+  if (!value) return 'Jamais connecté';
+  return new Date(value).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function normalizePermission(permission: CorePermission | string): CorePermission {
+  return typeof permission === 'string' ? { key: permission, label: permission } : permission;
+}
+
+function roleKey(role: CoreRole) {
+  return role.name ?? role.label ?? role.key ?? role.id ?? 'role';
+}
+
+function roleValue(role: CoreRole) {
+  return role.name ?? role.label ?? role.key ?? '';
+}
+
+function permissionKey(permission: string | CorePermission) {
+  return typeof permission === 'string' ? permission : permission.key;
+}
+
+function DevSwitch({ users, currentUserId, onSwitch, onCreate }: { users: CoreUser[]; currentUserId: string; onSwitch: (userId: string) => Promise<void>; onCreate: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  async function choose(userId: string) {
+    setSwitching(true);
+    try { await onSwitch(userId); } finally { setSwitching(false); setOpen(false); }
+  }
+  return (
+    <div className="dev-switch">
+      <button className="btn btn-secondary dev-switch-trigger" onClick={() => setOpen(!open)}>
+        <RefreshCw size={14} /> Mode démo <ChevronDown size={14} />
+      </button>
+      {open && (
+        <div className="dev-switch-menu">
+          <span className="dev-switch-label">Switch utilisateur — développement</span>
+          {users.map((user) => (
+            <button key={user.id} onClick={() => choose(user.id)} disabled={switching || user.id === currentUserId || user.status === 'DISABLED'}>
+              <span>{displayUserName(user)}</span>
+              <small>{roleLabel(user.role)} · {statusLabel(user.status)}</small>
+            </button>
+          ))}
+          <button onClick={onCreate} className="dev-switch-create"><UserPlus size={14} /> Créer un utilisateur</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
+function SettingsPage({ session, dashboardSummary, onOpenUsers }: { session: UserSession; dashboardSummary?: DashboardSummary; onOpenUsers?: () => void }) {
   const organization = dashboardSummary?.organization;
   return (
     <div className="settings-page">
@@ -1911,6 +3347,9 @@ function SettingsPage({ session, dashboardSummary }: { session: UserSession; das
             <div><span>Équipe</span><strong>{organization?.teamSize ?? session.user.teamSize ?? 'Non renseigné'}</strong></div>
             <div><span>Site principal</span><strong>{organization?.mainSiteName ?? session.user.mainSiteName ?? 'Site principal'}</strong></div>
           </div>
+          <button className="btn btn-primary" style={{ marginTop: '1.25rem' }} onClick={onOpenUsers}>
+            <UsersRound size={16} /> Gérer les utilisateurs
+          </button>
         </div>
         <div className="card-modern">
           <span className="card-title">Plateforme modulaire</span>
@@ -2342,9 +3781,123 @@ function InventoryForm({ sites, locations, onSubmit, onClose }: { sites: Site[];
 function PrefillWizard({ onSubmit, onClose }: { onSubmit: (payload: { categories?: boolean; units?: boolean; sites?: boolean; locations?: boolean; examples?: boolean }) => Promise<void>; onClose: () => void }) {
   const [payload, setPayload] = useState({ categories: true, units: true, sites: true, locations: true, examples: false });
   const [submitting, setSubmitting] = useState(false);
-  async function submitForm(e: FormEvent) { e.preventDefault(); setSubmitting(true); try { await onSubmit(payload); } finally { setSubmitting(false); } }
-  const items: Array<[keyof typeof payload, string, string]> = [['categories', 'Catégories courantes', 'Épicerie, frais, surgelés, boissons…'], ['units', 'Unités courantes', 'kg, g, L, mL, pièce, carton…'], ['sites', 'Sites', 'Restaurant principal, cuisine centrale…'], ['locations', 'Emplacements internes', 'Réserve sèche, chambres froides, quai…'], ['examples', 'Exemples métier', 'Quelques produits et mouvements de démonstration']];
-  return <form onSubmit={submitForm} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}><p className="section-tagline">Préremplissez votre établissement sans supprimer les données existantes.</p>{items.map(([key, title, desc]) => <label key={key} className="wizard-option"><input type="checkbox" checked={payload[key]} onChange={e => setPayload(p => ({ ...p, [key]: e.target.checked }))} /><span><strong>{title}</strong><small>{desc}</small></span></label>)}<div className="modal-footer" style={{ margin: '1rem -1.75rem -1.75rem' }}><button type="button" className="btn btn-secondary" onClick={onClose}>Plus tard</button><button className="btn btn-primary" disabled={submitting}>{submitting ? 'Préremplissage…' : 'Lancer le préremplissage'}</button></div></form>;
+
+  async function submitForm(e: FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      await onSubmit(payload);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const items: Array<{
+    key: keyof typeof payload;
+    title: string;
+    desc: string;
+    icon: ReactNode;
+    colorClass: string;
+  }> = [
+    {
+      key: 'categories',
+      title: 'Catégories courantes',
+      desc: 'Épicerie, frais, surgelés, boissons…',
+      icon: <Layers size={20} />,
+      colorClass: 'tone-emerald'
+    },
+    {
+      key: 'units',
+      title: 'Unités courantes',
+      desc: 'kg, g, L, mL, pièce, carton…',
+      icon: <Scale size={20} />,
+      colorClass: 'tone-purple'
+    },
+    {
+      key: 'sites',
+      title: 'Sites de stockage',
+      desc: 'Restaurant principal, cuisine centrale…',
+      icon: <Warehouse size={20} />,
+      colorClass: 'tone-blue'
+    },
+    {
+      key: 'locations',
+      title: 'Emplacements internes',
+      desc: 'Réserve sèche, chambres froides, quai…',
+      icon: <MapPin size={20} />,
+      colorClass: 'tone-orange'
+    },
+    {
+      key: 'examples',
+      title: 'Exemples métier',
+      desc: 'Quelques produits et mouvements de démonstration pour démarrer',
+      icon: <Sparkles size={20} />,
+      colorClass: 'tone-warning'
+    }
+  ];
+
+  return (
+    <form onSubmit={submitForm} className="prefill-wizard-form">
+      <div className="prefill-wizard-header">
+        <Info size={18} />
+        <p>Préremplissez votre établissement en sélectionnant les données de base à initialiser. Vos données existantes ne seront pas supprimées.</p>
+      </div>
+
+      <motion.div
+        className="prefill-options-list"
+        initial="hidden"
+        animate="show"
+        variants={{
+          hidden: { opacity: 0 },
+          show: {
+            opacity: 1,
+            transition: {
+              staggerChildren: 0.05
+            }
+          }
+        }}
+      >
+        {items.map(({ key, title, desc, icon, colorClass }) => {
+          const isChecked = payload[key];
+          return (
+            <motion.div
+              key={key}
+              variants={{
+                hidden: { opacity: 0, y: 8 },
+                show: { opacity: 1, y: 0 }
+              }}
+              transition={{ type: 'spring', stiffness: 300, damping: 24 }}
+              className={`prefill-option-card ${isChecked ? 'checked' : ''}`}
+              onClick={() => setPayload(p => ({ ...p, [key]: !p[key] }))}
+            >
+              <div className="prefill-shine-effect" />
+              <div className={`prefill-option-icon-wrapper ${colorClass}`}>
+                {icon}
+              </div>
+              <div className="prefill-info">
+                <span className="prefill-title">{title}</span>
+                <span className="prefill-desc">{desc}</span>
+              </div>
+              <div className="prefill-checkbox-custom">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </div>
+            </motion.div>
+          );
+        })}
+      </motion.div>
+
+      <div className="modal-footer" style={{ margin: '1.5rem -1.75rem -1.75rem', background: '#f8fafc', borderTop: '1px solid #f1f5f9' }}>
+        <button type="button" className="btn btn-secondary" onClick={onClose}>
+          Plus tard
+        </button>
+        <button className="btn btn-primary" disabled={submitting} style={{ minWidth: '180px' }}>
+          {submitting ? 'Préremplissage…' : 'Lancer le préremplissage'}
+        </button>
+      </div>
+    </form>
+  );
 }
 
 // Movement Form
@@ -2532,6 +4085,12 @@ interface CustomizeDashboardFormProps {
   theme: 'emerald' | 'blue' | 'amber' | 'dark';
   visibleWidgets: { metrics: boolean; progress: boolean; apps: boolean };
   layoutMode: 'split' | 'stacked';
+  dashboardWidgets: DashboardWidget[];
+  hiddenWidgetIds: string[];
+  pinnedWidgetIds: string[];
+  onToggleWidget: (widgetId: string, visible: boolean) => void;
+  onTogglePin: (widgetId: string) => void;
+  onResetCore: () => void;
   onSave: (
     theme: 'emerald' | 'blue' | 'amber' | 'dark',
     visibleWidgets: { metrics: boolean; progress: boolean; apps: boolean },
@@ -2544,6 +4103,12 @@ function CustomizeDashboardForm({
   theme: initialTheme,
   visibleWidgets: initialWidgets,
   layoutMode: initialLayout,
+  dashboardWidgets,
+  hiddenWidgetIds,
+  pinnedWidgetIds,
+  onToggleWidget,
+  onTogglePin,
+  onResetCore,
   onSave,
   onClose,
 }: CustomizeDashboardFormProps) {
@@ -2642,6 +4207,34 @@ function CustomizeDashboardForm({
           </div>
         </div>
       </div>
+
+      {dashboardWidgets.length > 0 && (
+        <div className="customizer-section">
+          <span className="customizer-section-title">Widgets modulaires par zone</span>
+          <div className="customizer-toggle-list">
+            {dashboardWidgets.map((widget) => {
+              const visible = !hiddenWidgetIds.includes(widget.id);
+              const pinned = pinnedWidgetIds.includes(widget.id);
+              return (
+                <div className="customizer-toggle-row" key={widget.id}>
+                  <div className="customizer-toggle-info">
+                    <span className="customizer-toggle-label">{widget.title}</span>
+                    <span className="customizer-toggle-desc">{widget.zone.toUpperCase()} · {dashboardWidgetModule(widget)}{widget.comingSoon ? ' · À venir' : ''}</span>
+                  </div>
+                  <button className="btn btn-secondary btn-sm" type="button" onClick={() => onTogglePin(widget.id)}><Pin size={14} /> {pinned ? 'Désépingler' : 'Épingler'}</button>
+                  <label className="switch-control">
+                    <input type="checkbox" checked={visible} onChange={(event) => onToggleWidget(widget.id, event.target.checked)} />
+                    <span className="slider-round" />
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+          <button className="btn btn-secondary" type="button" onClick={onResetCore} style={{ marginTop: '1rem' }}>
+            <RefreshCw size={16} /> Réinitialiser Core uniquement
+          </button>
+        </div>
+      )}
 
       {/* Layout Mode */}
       <div className="customizer-section">

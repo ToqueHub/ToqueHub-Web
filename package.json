@@ -17,6 +17,7 @@
     "format": "prettier --write .",
     "api:dev": "npm run start:dev -w apps/api",
     "web:dev": "npm run dev -w apps/web",
+    "landing:dev": "npm run dev -w apps/landing",
     "prisma:generate": "npm run prisma:generate -w apps/api",
     "prisma:migrate": "npm run prisma:migrate -w apps/api",
     "prisma:reset": "npm run prisma:reset -w apps/api --",
