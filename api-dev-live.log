@@ -1,0 +1,555 @@
+
+> toquehub@0.1.0 api:dev
+> npm run start:dev -w apps/api
+
+
+> @toquehub/api@0.1.0 start:dev
+> nest start --watch
+
+[2J[3J[H[[90m16:26:32[0m] Starting compilation in watch mode...
+
+[[90m16:26:40[0m] Found 0 errors. Watching for file changes.
+
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [NestFactory] Starting Nest application...
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [InstanceLoader] AppModule dependencies initialized +26ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [InstanceLoader] PrismaModule dependencies initialized +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [InstanceLoader] PassportModule dependencies initialized +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [InstanceLoader] ConfigHostModule dependencies initialized +40ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [InstanceLoader] JwtModule dependencies initialized +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [InstanceLoader] JwtModule dependencies initialized +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [InstanceLoader] ConfigModule dependencies initialized +3ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [InstanceLoader] SystemModule dependencies initialized +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [InstanceLoader] HrModule dependencies initialized +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [InstanceLoader] MenusModule dependencies initialized +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [InstanceLoader] StocksModule dependencies initialized +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [InstanceLoader] ArchitectureModule dependencies initialized +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [InstanceLoader] PlanningModule dependencies initialized +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [InstanceLoader] TechnicalSheetsModule dependencies initialized +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [InstanceLoader] ProductionModule dependencies initialized +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [InstanceLoader] DashboardModule dependencies initialized +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [InstanceLoader] RnmPricesModule dependencies initialized +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [InstanceLoader] UsersModule dependencies initialized +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [InstanceLoader] AuthModule dependencies initialized +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RoutesResolver] AuthController {/api/auth}: +138ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/auth/bootstrap-admin, POST} route +5ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/auth/setup-organization, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/auth/complete-onboarding, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/auth/dashboard-summary, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/auth/apps/stocks/install, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/auth/apps/stocks/prefill, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/auth/apps/stocks/uninstall, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/auth/apps/hr/install, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/auth/apps/hr/uninstall, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/auth/apps/planning/install, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/auth/apps/planning/uninstall, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/auth/apps/production/install, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/auth/apps/production/uninstall, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/auth/apps/rnm-prices/install, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/auth/apps/rnm-prices/uninstall, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/auth/dev-switch/config, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/auth/dev-switch/:userId, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/auth/login, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/auth/me, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RoutesResolver] UsersController {/api}: +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/users, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/users, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/users/:id, PATCH} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/users/:id/disable, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/roles, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/roles/:roleName/permissions, PATCH} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/dev-switch/config, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/dev-switch, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RoutesResolver] StocksController {/api}: +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/stocks/install, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/stocks/uninstall, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/stocks/dashboard, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/categories, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/categories, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/categories/:id, PATCH} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/categories/:id/archive, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/units, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/units, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/units/:id, PATCH} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/units/:id/archive, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/unit-conversions, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/suppliers, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/suppliers, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/suppliers/:id, PATCH} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/suppliers/:id/archive, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/products, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/products, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/products/:id, PATCH} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/products/:id/archive, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/sites, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/sites, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/sites/:id, PATCH} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/sites/:id/archive, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/locations, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/locations, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/locations/:id, PATCH} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/locations/:id/archive, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/lots, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/lots, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/stocks, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/stock-movements, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/stock-movements, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/inventories, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/inventories, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/inventories/:id/counts, PATCH} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/inventories/:id/validate, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/audit, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/audit.csv, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RoutesResolver] SystemController {/api/system}: +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/system/status, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RoutesResolver] ArchitectureController {/api/architecture}: +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/architecture, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/architecture/summary, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/architecture/modules, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/architecture/data-map, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/architecture/relations, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/architecture/schema, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/architecture/duplicates, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/architecture/impact, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/architecture/impact/:module, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/architecture/documentation, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RoutesResolver] RnmPricesController {/api/rnm-prices}: +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/rnm-prices/install, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/rnm-prices/uninstall, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/rnm-prices/stats, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/rnm-prices/products, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/rnm-prices/products/:id, GET} route +5ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/rnm-prices/products/:id/history, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/rnm-prices/history, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/rnm-prices/favorites, GET} route +3ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/rnm-prices/favorites, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/rnm-prices/favorites/:productId, DELETE} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RoutesResolver] HrController {/api/hr}: +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/install, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/uninstall, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/dashboard, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/onboarding, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/onboarding/recompute, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/onboarding/complete-services, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/onboarding/complete-positions, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/onboarding/unlock-employees, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/onboarding/complete-first-employee, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/onboarding/complete, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/org-chart, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/users/available, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/departments, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/departments, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/departments/bulk, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/departments/:id, PATCH} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/departments/:id/archive, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/positions, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/positions, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/positions/bulk, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/positions/:id, PATCH} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/positions/:id/archive, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/rotations/available-employees, GET} route +2ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/rotations, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/rotations/:id, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/rotations, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/rotations/:id, PATCH} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/rotations/:id/archive, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/rotations/:id/available-employees, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/rotations/:id/assignments, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/rotations/:id/assignments, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/rotations/:id/assignments/:employeeId/remove, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/rotations/:id/assignments/:employeeId, DELETE} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/employees, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/employees/:id, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/employees, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/employees/:id, PATCH} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/employees/:id/rotation, PATCH} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/employees/:id/rotation, DELETE} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/employees/:id/documents, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/employees/:id/documents/:documentId, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/employees/:id/documents/:documentId, PATCH} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/employees/:id/documents/:documentId, DELETE} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/hr/employees/:id/archive, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RoutesResolver] PlanningController {/api/planning}: +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/bootstrap, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/dashboard, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/assignments, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/assignments, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/assignments/:id, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/assignments/:id, PATCH} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/assignments/:id/move, PATCH} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/assignments/:id, DELETE} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/requirements, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/requirements, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/requirements/:id, PATCH} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/requirements/:id, DELETE} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/needs, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/absences, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/absences, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/absences/:id, PATCH} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/replacements, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/replacements/propose, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/replacements/:id/accept, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/templates, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/templates, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/templates/:id/apply, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/generate, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/generate/:id/apply, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/history, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/history/archive, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/notifications, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/notifications/:id/read, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/exports, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/skills, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/skills, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/planning/employees/:id/skills, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RoutesResolver] TechnicalSheetsController {/api/technical-sheets}: +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/technical-sheets/install, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/technical-sheets/uninstall, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/technical-sheets/dashboard, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/technical-sheets/categories, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/technical-sheets/categories, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/technical-sheets/categories/:id, PATCH} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/technical-sheets/categories/:id/archive, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/technical-sheets/allergens, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/technical-sheets/allergens, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/technical-sheets/allergens/:id, PATCH} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/technical-sheets/allergens/:id/archive, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/technical-sheets/recipes, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/technical-sheets/recipes, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/technical-sheets/recipes/:id, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/technical-sheets/recipes/:id, PATCH} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/technical-sheets/recipes/:id/archive, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/technical-sheets/recipes/:id/duplicate, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/technical-sheets/recipes/:id/recalculate-cost, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/technical-sheets/recipes/:id/history, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/technical-sheets/costs, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/technical-sheets/production/simulate, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/technical-sheets/production/:id/export.csv, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/technical-sheets/production/:id/export.pdf, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RoutesResolver] ProductionController {/api/production}: +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/production/install, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/production/uninstall, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/production/dashboard, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/production/orders, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/production/orders, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/production/orders/:id, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/production/orders/:id, PATCH} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/production/orders/:id/status, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/production/orders/:id/recalculate, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/production/orders/:id/assignments, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/production/orders/:id/assignments/:assignmentId, DELETE} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/production/orders/:id/realization, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/production/orders/:id/destocking/propose, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/production/destocking/:proposalId/confirm, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/production/materials, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/production/today, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/production/calendar, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/production/history, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/production/exports, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/production/exports, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RoutesResolver] MenusController {/api/menus}: +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/install, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/uninstall, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/dashboard, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/menus, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/menus, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/menus/:id, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/menus/:id, PATCH} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/menus/:id/status, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/menus/:id/guests, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/menus/:id/variants, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/menus/:id/variants/:variantId, PATCH} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/menus/:id/generate-productions, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/calendar, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/cycles, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/cycles, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/cycles/:id, PATCH} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/cycles/:id/replicate, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/diets, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/diets, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/diets/:id, PATCH} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/guest-groups, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/guest-groups, POST} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/guest-groups/:id, PATCH} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/exports, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/exports, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/menus/history, GET} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RoutesResolver] DashboardController {/api/dashboard}: +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/dashboard, GET} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/dashboard/preferences, PATCH} route +0ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [RouterExplorer] Mapped {/api/dashboard/preferences/reset, POST} route +1ms
+[Nest] 8076  - 23/06/2026 16:26:43     LOG [NestApplication] Nest application successfully started +39ms
+[Nest] 8076  - 23/06/2026 16:38:53    WARN [ExpressAdapter] Content-Type doesn't match Reply body, you might need a custom ExceptionFilter for non-JSON responses
+[Nest] 8076  - 23/06/2026 16:39:15    WARN [ExpressAdapter] Content-Type doesn't match Reply body, you might need a custom ExceptionFilter for non-JSON responses
+[Nest] 8076  - 23/06/2026 16:39:58    WARN [ExpressAdapter] Content-Type doesn't match Reply body, you might need a custom ExceptionFilter for non-JSON responses
+[2J[3J[H[[90m16:43:27[0m] File change detected. Starting incremental compilation...
+
+[[90m16:43:30[0m] Found 0 errors. Watching for file changes.
+
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [NestFactory] Starting Nest application...
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [InstanceLoader] AppModule dependencies initialized +31ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [InstanceLoader] PrismaModule dependencies initialized +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [InstanceLoader] PassportModule dependencies initialized +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [InstanceLoader] ConfigHostModule dependencies initialized +29ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [InstanceLoader] JwtModule dependencies initialized +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [InstanceLoader] JwtModule dependencies initialized +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [InstanceLoader] ConfigModule dependencies initialized +3ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [InstanceLoader] SystemModule dependencies initialized +2ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [InstanceLoader] HrModule dependencies initialized +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [InstanceLoader] MenusModule dependencies initialized +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [InstanceLoader] StocksModule dependencies initialized +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [InstanceLoader] ArchitectureModule dependencies initialized +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [InstanceLoader] PlanningModule dependencies initialized +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [InstanceLoader] TechnicalSheetsModule dependencies initialized +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [InstanceLoader] ProductionModule dependencies initialized +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [InstanceLoader] DashboardModule dependencies initialized +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [InstanceLoader] RnmPricesModule dependencies initialized +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [InstanceLoader] UsersModule dependencies initialized +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [InstanceLoader] AuthModule dependencies initialized +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RoutesResolver] AuthController {/api/auth}: +122ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/auth/bootstrap-admin, POST} route +3ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/auth/setup-organization, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/auth/complete-onboarding, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/auth/dashboard-summary, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/auth/apps/stocks/install, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/auth/apps/stocks/prefill, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/auth/apps/stocks/uninstall, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/auth/apps/hr/install, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/auth/apps/hr/uninstall, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/auth/apps/planning/install, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/auth/apps/planning/uninstall, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/auth/apps/production/install, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/auth/apps/production/uninstall, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/auth/apps/rnm-prices/install, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/auth/apps/rnm-prices/uninstall, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/auth/dev-switch/config, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/auth/dev-switch/:userId, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/auth/login, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/auth/me, GET} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RoutesResolver] UsersController {/api}: +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/users, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/users, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/users/:id, PATCH} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/users/:id/disable, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/roles, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/roles/:roleName/permissions, PATCH} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/dev-switch/config, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/dev-switch, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RoutesResolver] StocksController {/api}: +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/stocks/install, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/stocks/uninstall, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/stocks/dashboard, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/categories, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/categories, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/categories/:id, PATCH} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/categories/:id/archive, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/units, GET} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/units, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/units/:id, PATCH} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/units/:id/archive, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/unit-conversions, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/suppliers, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/suppliers, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/suppliers/:id, PATCH} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/suppliers/:id/archive, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/products, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/products, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/products/:id, PATCH} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/products/:id/archive, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/sites, GET} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/sites, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/sites/:id, PATCH} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/sites/:id/archive, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/locations, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/locations, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/locations/:id, PATCH} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/locations/:id/archive, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/lots, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/lots, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/stocks, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/stock-movements, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/stock-movements, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/inventories, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/inventories, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/inventories/:id/counts, PATCH} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/inventories/:id/validate, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/audit, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/audit.csv, GET} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RoutesResolver] SystemController {/api/system}: +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/system/status, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RoutesResolver] ArchitectureController {/api/architecture}: +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/architecture, GET} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/architecture/summary, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/architecture/modules, GET} route +3ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/architecture/data-map, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/architecture/relations, GET} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/architecture/schema, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/architecture/duplicates, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/architecture/impact, GET} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/architecture/impact/:module, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/architecture/documentation, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RoutesResolver] RnmPricesController {/api/rnm-prices}: +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/rnm-prices/install, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/rnm-prices/uninstall, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/rnm-prices/stats, GET} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/rnm-prices/products, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/rnm-prices/products/:id, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/rnm-prices/products/:id/history, GET} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/rnm-prices/history, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/rnm-prices/favorites, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/rnm-prices/favorites, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/rnm-prices/favorites/:productId, DELETE} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RoutesResolver] HrController {/api/hr}: +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/install, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/uninstall, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/dashboard, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/onboarding, GET} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/onboarding/recompute, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/onboarding/complete-services, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/onboarding/complete-positions, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/onboarding/unlock-employees, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/onboarding/complete-first-employee, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/onboarding/complete, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/org-chart, GET} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/users/available, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/departments, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/departments, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/departments/bulk, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/departments/:id, PATCH} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/departments/:id/archive, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/positions, GET} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/positions, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/positions/bulk, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/positions/:id, PATCH} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/positions/:id/archive, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/rotations/available-employees, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/rotations, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/rotations/:id, GET} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/rotations, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/rotations/:id, PATCH} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/rotations/:id/archive, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/rotations/:id/available-employees, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/rotations/:id/assignments, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/rotations/:id/assignments, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/rotations/:id/assignments/:employeeId/remove, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/rotations/:id/assignments/:employeeId, DELETE} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/employees, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/employees/:id, GET} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/employees, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/employees/:id, PATCH} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/employees/:id/rotation, PATCH} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/employees/:id/rotation, DELETE} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/employees/:id/documents, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/employees/:id/documents/:documentId, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/employees/:id/documents/:documentId, PATCH} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/employees/:id/documents/:documentId, DELETE} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/hr/employees/:id/archive, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RoutesResolver] PlanningController {/api/planning}: +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/bootstrap, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/dashboard, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/assignments, GET} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/assignments, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/assignments/:id, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/assignments/:id, PATCH} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/assignments/:id/move, PATCH} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/assignments/:id, DELETE} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/requirements, GET} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/requirements, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/requirements/:id, PATCH} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/requirements/:id, DELETE} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/needs, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/absences, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/absences, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/absences/:id, PATCH} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/replacements, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/replacements/propose, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/replacements/:id/accept, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/templates, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/templates, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/templates/:id/apply, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/generate, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/generate/:id/apply, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/history, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/history/archive, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/notifications, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/notifications/:id/read, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/exports, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/skills, GET} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/skills, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/planning/employees/:id/skills, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RoutesResolver] TechnicalSheetsController {/api/technical-sheets}: +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/technical-sheets/install, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/technical-sheets/uninstall, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/technical-sheets/dashboard, GET} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/technical-sheets/categories, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/technical-sheets/categories, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/technical-sheets/categories/:id, PATCH} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/technical-sheets/categories/:id/archive, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/technical-sheets/allergens, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/technical-sheets/allergens, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/technical-sheets/allergens/:id, PATCH} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/technical-sheets/allergens/:id/archive, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/technical-sheets/recipes, GET} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/technical-sheets/recipes, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/technical-sheets/recipes/:id, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/technical-sheets/recipes/:id, PATCH} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/technical-sheets/recipes/:id/archive, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/technical-sheets/recipes/:id/duplicate, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/technical-sheets/recipes/:id/recalculate-cost, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/technical-sheets/recipes/:id/history, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/technical-sheets/costs, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/technical-sheets/production/simulate, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/technical-sheets/production/:id/export.csv, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/technical-sheets/production/:id/export.pdf, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RoutesResolver] ProductionController {/api/production}: +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/production/install, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/production/uninstall, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/production/dashboard, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/production/orders, GET} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/production/orders, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/production/orders/:id, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/production/orders/:id, PATCH} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/production/orders/:id/status, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/production/orders/:id/recalculate, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/production/orders/:id/assignments, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/production/orders/:id/assignments/:assignmentId, DELETE} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/production/orders/:id/realization, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/production/orders/:id/destocking/propose, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/production/destocking/:proposalId/confirm, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/production/materials, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/production/today, GET} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/production/calendar, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/production/history, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/production/exports, GET} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/production/exports, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RoutesResolver] MenusController {/api/menus}: +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/install, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/uninstall, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/dashboard, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/menus, GET} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/menus, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/menus/:id, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/menus/:id, PATCH} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/menus/:id/status, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/menus/:id/guests, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/menus/:id/variants, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/menus/:id/variants/:variantId, PATCH} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/menus/:id/generate-productions, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/calendar, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/cycles, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/cycles, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/cycles/:id, PATCH} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/cycles/:id/replicate, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/diets, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/diets, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/diets/:id, PATCH} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/guest-groups, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/guest-groups, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/guest-groups/:id, PATCH} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/exports, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/exports, POST} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/menus/history, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RoutesResolver] DashboardController {/api/dashboard}: +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/dashboard, GET} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/dashboard/preferences, PATCH} route +1ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [RouterExplorer] Mapped {/api/dashboard/preferences/reset, POST} route +0ms
+[Nest] 23676  - 23/06/2026 16:43:33     LOG [NestApplication] Nest application successfully started +20ms

@@ -1,0 +1,346 @@
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import type React from 'react';
+import { AlertCircle, BriefcaseBusiness, CalendarDays, FileText, GraduationCap, History, NotebookText, Search, ShieldCheck, UserRound, UsersRound, X } from 'lucide-react';
+import type { CoreUser, HrCollaborator, HrCollaboratorPayload, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, HrRotation, Site } from '../../../types';
+import { HR_CATALOG } from '../../../hr-catalog';
+
+type TabId = 'profile' | 'professional' | 'contracts' | 'documents' | 'trainings' | 'organization' | 'history';
+export type PendingHrDocumentUpload = { file: File; category: string; notes?: string; expiresAt?: string };
+
+const tabs: Array<{ id: TabId; label: string }> = [
+  { id: 'profile', label: 'Profil' },
+  { id: 'professional', label: 'Professionnel' },
+  { id: 'contracts', label: 'Contrat & salaire' },
+  { id: 'documents', label: 'Documents' },
+  { id: 'trainings', label: 'Formations' },
+  { id: 'organization', label: 'Organisation' },
+  { id: 'history', label: 'Historique' },
+];
+
+const statusOptions = [
+  { value: 'ACTIVE', label: 'Actif' },
+  { value: 'ABSENT', label: 'Absent' },
+  { value: 'SUSPENDED', label: 'Suspendu' },
+  { value: 'DEPARTED', label: 'Départ' },
+];
+
+export function CollaboratorModal({ collaborator, collaborators, departments, positions, users, sites, rotations, onClose, onSubmit, onViewDocument, onDownloadDocument, onReplaceDocument, onDeleteDocument }: { collaborator?: HrCollaborator; collaborators: HrCollaborator[]; departments: HrDepartment[]; positions: HrPosition[]; users: CoreUser[]; sites: Site[]; rotations?: HrRotation[]; onClose: () => void; onSubmit: (payload: HrCollaboratorPayload, documents: PendingHrDocumentUpload[]) => Promise<void>; onViewDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onDownloadDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument?: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument?: (employeeId: string, documentId: string) => Promise<void> }) {
+  const [activeTab, setActiveTab] = useState<TabId>('profile');
+  const [submitting, setSubmitting] = useState(false);
+  const [positionResetMessage, setPositionResetMessage] = useState('');
+  const [dirty, setDirty] = useState(false);
+  const [errors, setErrors] = useState<Partial<Record<TabId, string>>>({});
+  const [submitError, setSubmitError] = useState('');
+  const [primaryLanguage, setPrimaryLanguage] = useState('');
+  const [secondaryLanguage, setSecondaryLanguage] = useState('');
+  const [pendingDocuments, setPendingDocuments] = useState<PendingHrDocumentUpload[]>([]);
+  const [selectedTrainings, setSelectedTrainings] = useState<string[]>([]);
+  const [customTraining, setCustomTraining] = useState('');
+  const [form, setForm] = useState<HrCollaboratorPayload>({
+    photoUrl: collaborator?.photoUrl ?? collaborator?.photoDataUrl ?? '',
+    firstName: collaborator?.firstName ?? '',
+    lastName: collaborator?.lastName ?? '',
+    email: collaborator?.email ?? '',
+    phone: collaborator?.phone ?? '',
+    address: collaborator?.address ?? '',
+    birthDate: toInputDate(collaborator?.birthDate),
+    hireDate: toInputDate(collaborator?.hireDate) || new Date().toISOString().slice(0, 10),
+    departmentId: collaborator?.departmentId ?? collaborator?.department?.id ?? '',
+    positionId: collaborator?.positionId ?? collaborator?.position?.id ?? '',
+    secondaryPositionIds: collaborator?.secondaryPositionIds ?? collaborator?.secondaryPositions?.map((position) => position.id) ?? [],
+    siteId: collaborator?.mainSiteId ?? collaborator?.siteId ?? collaborator?.mainSite?.id ?? collaborator?.site?.id ?? '',
+    employeeNumber: collaborator?.employeeNumber ?? '',
+    notes: cleanLegacyHrNotes(collaborator?.notes),
+    status: collaborator?.status === 'LEFT' ? 'DEPARTED' : collaborator?.status ?? 'ACTIVE',
+    userId: collaborator?.userId ?? collaborator?.user?.id ?? '',
+    managerId: collaborator?.managerId ?? collaborator?.manager?.id ?? '',
+    contractType: collaborator?.activeContract?.contractType ?? collaborator?.contractType ?? '',
+    contractEndDate: toInputDate(collaborator?.activeContract?.endDate) || toInputDate(collaborator?.contractEndDate),
+    trialEndDate: toInputDate(collaborator?.activeContract?.trialEndDate) || toInputDate(collaborator?.trialEndDate),
+    contractWeeklyMinutes: collaborator?.activeContract?.weeklyHours ?? collaborator?.contractWeeklyMinutes ?? null,
+    hourlyRate: collaborator?.currentCompensation?.hourlyRate ?? collaborator?.hourlyRate ?? null,
+    currency: collaborator?.currentCompensation?.currency ?? collaborator?.currency ?? 'EUR',
+    rateEffectiveDate: toInputDate(collaborator?.currentCompensation?.effectiveFrom) || toInputDate(collaborator?.rateEffectiveDate),
+    nextReviewDate: toInputDate(collaborator?.nextSalaryReview?.dueDate) || toInputDate(collaborator?.nextReviewDate),
+    reviewFrequency: collaborator?.nextSalaryReview?.frequencyMonths === 1 ? 'MONTHLY' : collaborator?.nextSalaryReview?.frequencyMonths === 3 ? 'QUARTERLY' : collaborator?.nextSalaryReview?.frequencyMonths === 12 ? 'YEARLY' : collaborator?.reviewFrequency ?? '',
+  });
+
+  const activeDepartments = departments.filter((department) => !isArchived(department));
+  const activePositions = positions.filter((position) => !isArchived(position));
+  const selectedDepartment = activeDepartments.find((department) => department.id === form.departmentId);
+  const primaryPositions = useMemo(() => activePositions.filter((position) => positionBelongsToDepartment(position, selectedDepartment)), [activePositions, selectedDepartment]);
+  const availableManagers = collaborators.filter((item) => item.id !== collaborator?.id && !isArchived(item));
+  const availableUsers = users.filter((user) => user.status !== 'DISABLED' || user.id === form.userId);
+  const currentRotation = activeRotation(collaborator);
+
+  const set = <K extends keyof HrCollaboratorPayload>(key: K, value: HrCollaboratorPayload[K]) => {
+    setDirty(true);
+    setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  useEffect(() => {
+    if (!form.departmentId || !form.positionId) return;
+    if (primaryPositions.some((position) => position.id === form.positionId)) return;
+    setForm((prev) => ({ ...prev, positionId: '', secondaryPositionIds: (prev.secondaryPositionIds ?? []).filter((id) => id !== prev.positionId) }));
+    setDirty(true);
+    setPositionResetMessage("Le poste principal a été vidé car il n'appartient pas au nouveau service.");
+  }, [form.departmentId, form.positionId, primaryPositions]);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    const nextErrors = validate(form);
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) {
+      setActiveTab(Object.keys(nextErrors)[0] as TabId);
+      return;
+    }
+    setSubmitting(true);
+    setSubmitError('');
+    try {
+      await onSubmit(cleanPayload(form), pendingDocuments);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Impossible d'enregistrer le collaborateur.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="modal-overlay">
+      <form className="modal-card hr-modal hr-collaborator-modal" onSubmit={submit}>
+        <div className="modal-header hr-modal-sticky">
+          <div>
+            <h2>{collaborator ? 'Modifier le collaborateur' : 'Nouveau collaborateur'}</h2>
+            <p className="muted">Minimum : prénom, nom, date d'embauche, établissement si nécessaire, service et poste.</p>
+          </div>
+          <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Fermer"><X size={18} /></button>
+        </div>
+        <div className="hr-collaborator-tabs">
+          {tabs.map((tab) => (
+            <button key={tab.id} type="button" className={activeTab === tab.id ? 'active' : ''} onClick={() => setActiveTab(tab.id)}>
+              {tab.label}{errors[tab.id] ? <span className="hr-tab-error" /> : null}
+            </button>
+          ))}
+        </div>
+        <div className="hr-collaborator-body">
+          {activeTab === 'profile' ? <ProfileTab form={form} set={set} primaryLanguage={primaryLanguage} secondaryLanguage={secondaryLanguage} onPrimaryLanguage={(value) => { setPrimaryLanguage(value); setDirty(true); }} onSecondaryLanguage={(value) => { setSecondaryLanguage(value); setDirty(true); }} /> : null}
+          {activeTab === 'professional' ? <ProfessionalTab form={form} set={set} departments={activeDepartments} positions={primaryPositions} allPositions={activePositions} selectedDepartment={selectedDepartment} sites={sites} managers={availableManagers} users={availableUsers} positionResetMessage={positionResetMessage} clearPositionResetMessage={() => setPositionResetMessage('')} /> : null}
+          {activeTab === 'contracts' ? <ContractsTab form={form} set={set} collaborator={collaborator} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /> : null}
+          {activeTab === 'documents' ? <DocumentsTab collaborator={collaborator} pendingDocuments={pendingDocuments} onDocumentsChange={(documents) => { setPendingDocuments(documents); setDirty(true); }} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /> : null}
+          {activeTab === 'trainings' ? <TrainingsTab selectedTrainings={selectedTrainings} onSelectedTrainings={(trainings) => { setSelectedTrainings(trainings); setDirty(true); }} customTraining={customTraining} onCustomTraining={setCustomTraining} /> : null}
+          {activeTab === 'organization' ? <OrganizationTab collaborator={collaborator} rotations={rotations ?? []} currentRotation={currentRotation} /> : null}
+          {activeTab === 'history' ? <HistoryTab history={collaborator?.history ?? []} /> : null}
+        </div>
+        <div className="modal-actions hr-modal-footer">
+          <span className={submitError ? 'hr-inline-error' : 'muted'}>{submitError || (dirty ? 'Modifications non enregistrées' : 'Aucune modification')}</span>
+          <div className="row-actions">
+            <button type="button" className="btn btn-secondary" onClick={onClose}>Annuler</button>
+            <button className="btn btn-primary" disabled={submitting}>{submitting ? 'Enregistrement...' : 'Enregistrer'}</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function ProfileTab({ form, set, primaryLanguage, secondaryLanguage, onPrimaryLanguage, onSecondaryLanguage }: TabProps & { primaryLanguage: string; secondaryLanguage: string; onPrimaryLanguage: (value: string) => void; onSecondaryLanguage: (value: string) => void }) {
+  return <TabPanel icon={<UserRound size={18} />} title="Profil">
+    <div className="hr-form-grid">
+      <input className="span-2" placeholder="URL photo optionnelle" value={form.photoUrl ?? ''} onChange={(e) => set('photoUrl', e.target.value)} />
+      <input placeholder="Prénom *" value={form.firstName} onChange={(e) => set('firstName', e.target.value)} required />
+      <input placeholder="Nom *" value={form.lastName} onChange={(e) => set('lastName', e.target.value)} required />
+      <input type="email" placeholder="Email" value={form.email ?? ''} onChange={(e) => set('email', e.target.value)} />
+      <input placeholder="Téléphone" value={form.phone ?? ''} onChange={(e) => set('phone', e.target.value)} />
+      <input className="span-2" placeholder="Adresse" value={form.address ?? ''} onChange={(e) => set('address', e.target.value)} />
+      <input placeholder="Code postal" disabled />
+      <input placeholder="Ville" disabled />
+      <input placeholder="Pays" disabled />
+      <label>Date de naissance<input type="date" value={form.birthDate ?? ''} onChange={(e) => set('birthDate', e.target.value)} /></label>
+      <input placeholder="Langue principale" value={primaryLanguage} onChange={(e) => onPrimaryLanguage(e.target.value)} />
+      <input placeholder="Langue secondaire" value={secondaryLanguage} onChange={(e) => onSecondaryLanguage(e.target.value)} />
+      <input placeholder="Contact d'urgence" disabled />
+    </div>
+  </TabPanel>;
+}
+
+function ProfessionalTab({ form, set, departments, positions, allPositions, selectedDepartment, sites, managers, users, positionResetMessage, clearPositionResetMessage }: TabProps & { departments: HrDepartment[]; positions: HrPosition[]; allPositions: HrPosition[]; selectedDepartment?: HrDepartment; sites: Site[]; managers: HrCollaborator[]; users: CoreUser[]; positionResetMessage: string; clearPositionResetMessage: () => void }) {
+  return <TabPanel icon={<BriefcaseBusiness size={18} />} title="Professionnel">
+    <div className="hr-form-grid">
+      <label>Date d'embauche *<input type="date" value={form.hireDate} onChange={(e) => set('hireDate', e.target.value)} required /></label>
+      <label>Établissement<select value={form.siteId ?? ''} onChange={(e) => set('siteId', e.target.value)} disabled={!sites.length}><option value="">{sites.length ? '-' : 'Aucun établissement configuré'}</option>{sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}</select></label>
+      <label>Service principal *<select value={form.departmentId} onChange={(e) => { set('departmentId', e.target.value); clearPositionResetMessage(); }} required><option value="">-</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
+      <label>Poste principal *<select value={form.positionId} onChange={(e) => set('positionId', e.target.value)} required disabled={!form.departmentId}><option value="">{form.departmentId ? 'Choisir un poste' : "Choisir d'abord un service"}</option>{positions.map((position) => <option key={position.id} value={position.id}>{position.name}</option>)}</select></label>
+      {positionResetMessage ? <div className="hr-inline-warning span-2"><AlertCircle size={14} /> {positionResetMessage}</div> : null}
+      <label>Responsable direct<select value={form.managerId ?? ''} onChange={(e) => set('managerId', e.target.value)}><option value="">-</option>{managers.map((manager) => <option key={manager.id} value={manager.id}>{fullName(manager)}</option>)}</select></label>
+      <input placeholder="Numéro de matricule" value={form.employeeNumber ?? ''} onChange={(e) => set('employeeNumber', e.target.value)} />
+      <SecondaryPositionSelector positions={allPositions} selectedIds={form.secondaryPositionIds ?? []} mainPositionId={form.positionId} selectedDepartment={selectedDepartment} onChange={(ids) => set('secondaryPositionIds', ids)} />
+      <label>Statut du collaborateur<select value={form.status} onChange={(e) => set('status', e.target.value)}>{statusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></label>
+      <textarea className="span-2" placeholder="Notes professionnelles" value={form.notes ?? ''} onChange={(e) => set('notes', e.target.value)} />
+      <label className="span-2">Compte ToqueHub associé<select value={form.userId ?? ''} onChange={(e) => set('userId', e.target.value)}><option value="">Aucun compte associé</option>{users.map((user) => <option key={user.id} value={user.id}>{displayUser(user)}</option>)}</select></label>
+    </div>
+  </TabPanel>;
+}
+
+function ContractsTab({ form, set, collaborator, onViewDocument, onDownloadDocument, onReplaceDocument, onDeleteDocument }: TabProps & { collaborator?: HrCollaborator; onViewDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onDownloadDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument?: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument?: (employeeId: string, documentId: string) => Promise<void> }) {
+  const weekly = form.contractWeeklyMinutes ?? collaborator?.activeContract?.weeklyHours ?? null;
+  const rate = form.hourlyRate ?? collaborator?.currentCompensation?.hourlyRate ?? null;
+  const weeklyHours = weekly != null ? weekly / 60 : null;
+  const weeklyGross = rate != null && weeklyHours != null ? rate * weeklyHours : null;
+  return <TabPanel icon={<ShieldCheck size={18} />} title="Contrats & rémunération">
+    <div className="hr-form-grid">
+      <label>Type de contrat<select value={form.contractType ?? ''} onChange={(e) => set('contractType', e.target.value)}><option value="">-</option><option value="CDI">CDI</option><option value="CDD">CDD</option><option value="INTERIM">Intérim</option><option value="APPRENTICESHIP">Apprentissage</option><option value="INTERNSHIP">Stage</option><option value="OTHER">Autre</option></select></label>
+      <label>Date de fin<input type="date" value={form.contractEndDate ?? ''} onChange={(e) => set('contractEndDate', e.target.value)} /></label>
+      <label>Fin de période d'essai<input type="date" value={form.trialEndDate ?? ''} onChange={(e) => set('trialEndDate', e.target.value)} /></label>
+      <label>Durée hebdo contractuelle (h)<input type="number" min={0} step={0.5} value={form.contractWeeklyMinutes != null ? (form.contractWeeklyMinutes / 60).toFixed(2) : ''} onChange={(e) => { const hours = parseFloat(e.target.value); set('contractWeeklyMinutes', Number.isFinite(hours) && hours >= 0 ? Math.round(hours * 60) : null); }} /></label>
+      <label>Taux horaire<input type="number" min={0} step={0.01} value={form.hourlyRate ?? ''} onChange={(e) => set('hourlyRate', e.target.value ? parseFloat(e.target.value) : null)} /></label>
+      <label>Devise<select value={form.currency ?? 'EUR'} onChange={(e) => set('currency', e.target.value)}><option value="EUR">EUR</option><option value="USD">USD</option><option value="GBP">GBP</option><option value="CHF">CHF</option></select></label>
+      <label>Date d'effet<input type="date" value={form.rateEffectiveDate ?? ''} onChange={(e) => set('rateEffectiveDate', e.target.value)} /></label>
+      <label>Prochaine revalorisation<input type="date" value={form.nextReviewDate ?? ''} onChange={(e) => set('nextReviewDate', e.target.value)} /></label>
+      <label>Fréquence<select value={form.reviewFrequency ?? ''} onChange={(e) => set('reviewFrequency', e.target.value)}><option value="">-</option><option value="MONTHLY">Mensuelle</option><option value="QUARTERLY">Trimestrielle</option><option value="YEARLY">Annuelle</option><option value="CUSTOM">Personnalisée</option></select></label>
+    </div>
+    {weeklyGross != null ? <div className="hr-salary-preview"><strong>Estimation brute salarié</strong><span>Salaire hebdomadaire brut : <strong>{weeklyGross.toFixed(2)} {form.currency}</strong></span><span>Salaire mensuel brut estimé : <strong>{((weeklyGross * 52) / 12).toFixed(2)} {form.currency}</strong></span><span>Salaire annuel brut estimé : <strong>{(weeklyGross * 52).toFixed(2)} {form.currency}</strong></span><small>Estimation basée uniquement sur la durée hebdomadaire contractuelle et le taux horaire. Hors congés payés, primes, majorations, absences et charges patronales.</small><small>Coût employeur estimé : non disponible pour l'instant.</small></div> : null}
+    <ContractHistory collaborator={collaborator} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} />
+    <DataTable title="Historique salarial" rows={(collaborator?.compensations ?? []).map((item) => [`${Number(item.hourlyRate).toFixed(2)} ${item.currency}`, formatDate(item.effectiveFrom), formatDate(item.effectiveTo), item.reason ?? '-'])} empty="Aucune rémunération dédiée enregistrée." />
+    <DataTable title="Revalorisations" rows={(collaborator?.salaryReviews ?? []).map((review) => [formatDate(review.dueDate), review.status, review.proposedHourlyRate ? `${review.proposedHourlyRate}` : '-', review.notes ?? '-'])} empty="Aucune revalorisation planifiée." />
+  </TabPanel>;
+}
+
+function DocumentsTab({ collaborator, pendingDocuments, onDocumentsChange, onViewDocument, onDownloadDocument, onReplaceDocument, onDeleteDocument }: { collaborator?: HrCollaborator; pendingDocuments: PendingHrDocumentUpload[]; onDocumentsChange: (documents: PendingHrDocumentUpload[]) => void; onViewDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onDownloadDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument?: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument?: (employeeId: string, documentId: string) => Promise<void> }) {
+  const updateDocument = (index: number, patch: Partial<PendingHrDocumentUpload>) => onDocumentsChange(pendingDocuments.map((document, i) => i === index ? { ...document, ...patch } : document));
+  return <TabPanel icon={<FileText size={18} />} title="Documents">
+    <DocumentRegistry collaborator={collaborator} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} />
+    <div className="hr-upload-box">
+      <label className="btn btn-secondary">
+        Joindre des PDF
+        <input type="file" accept="application/pdf,.pdf" multiple onChange={(event) => onDocumentsChange([...(event.target.files ?? [])].map((file) => ({ file, category: 'OTHER' })))} />
+      </label>
+      <span className="muted">Les fichiers choisis seront enregistrés et rattachés à leur catégorie.</span>
+    </div>
+    {pendingDocuments.length ? <div className="hr-pending-documents">{pendingDocuments.map((doc, index) => (
+      <div key={`${doc.file.name}-${index}`} className="hr-pending-document">
+        <div><strong>{doc.file.name}</strong><span>{formatBytes(doc.file.size)}</span></div>
+        <select value={doc.category} onChange={(event) => updateDocument(index, { category: event.target.value })}>
+          <option value="CONTRACT">Contrat</option>
+          <option value="AMENDMENT">Avenant</option>
+          <option value="CERTIFICATION">Formation / certification</option>
+          <option value="DIPLOMA">Diplôme</option>
+          <option value="IDENTITY">Identité</option>
+          <option value="ADMINISTRATIVE">Administratif</option>
+          <option value="OTHER">Autre</option>
+        </select>
+        <input placeholder="Note optionnelle" value={doc.notes ?? ''} onChange={(event) => updateDocument(index, { notes: event.target.value })} />
+        <button type="button" className="icon-btn danger" onClick={() => onDocumentsChange(pendingDocuments.filter((_, i) => i !== index))}><X size={14} /></button>
+      </div>
+    ))}</div> : null}
+  </TabPanel>;
+}
+
+function DocumentRegistry({ collaborator, onViewDocument, onDownloadDocument, onReplaceDocument, onDeleteDocument }: { collaborator?: HrCollaborator; onViewDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onDownloadDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument?: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument?: (employeeId: string, documentId: string) => Promise<void> }) {
+  const documents = collaborator?.documents ?? [];
+  if (!collaborator || !documents.length) return <DataTable title="Documents RH" rows={[]} empty="Aucun document enregistré dans HrDocument." />;
+  return <div className="hr-contract-history"><strong>Documents RH</strong>{documents.map((document) => <div key={document.id} className="hr-contract-history-row"><div><span>{document.originalName}</span><small>{document.category} · {formatBytes(document.sizeBytes)} · {document.expiresAt ? formatDate(document.expiresAt) : 'Sans échéance'}</small></div><DocumentActions employeeId={collaborator.id} document={document} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /></div>)}</div>;
+}
+
+function ContractHistory({ collaborator, onViewDocument, onDownloadDocument, onReplaceDocument, onDeleteDocument }: { collaborator?: HrCollaborator; onViewDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onDownloadDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument?: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument?: (employeeId: string, documentId: string) => Promise<void> }) {
+  const contractDocuments = (collaborator?.documents ?? []).filter((document) => document.category === 'CONTRACT' || document.category === 'AMENDMENT');
+  const latestDocumentId = contractDocuments[0]?.id;
+  const technicalContracts = collaborator?.contracts ?? [];
+  if (!technicalContracts.length && !contractDocuments.length) return <DataTable title="Historique des contrats" rows={[]} empty="Aucun contrat dédié enregistré." />;
+  return <div className="hr-contract-history"><strong>Historique des contrats</strong>{technicalContracts.map((contract) => <div key={contract.id} className="hr-contract-history-row"><div><span>{contract.contractType}</span><small>Effet : {formatDate(contract.startDate)} · Fin : {formatDate(contract.endDate)} · {contract.status}</small></div><em>Aucun fichier lié</em></div>)}{contractDocuments.map((document) => <div key={document.id} className="hr-contract-history-row"><div><span>{document.category === 'AMENDMENT' ? 'Avenant' : 'Contrat PDF'}</span><small>Effet : {formatDate(document.createdAt)} · Fin : {formatDate(document.expiresAt)} · {document.id === latestDocumentId ? 'Actif' : 'Ancien'} · {document.originalName}</small></div><DocumentActions employeeId={collaborator!.id} document={document} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /></div>)}</div>;
+}
+
+function DocumentActions({ employeeId, document, onViewDocument, onDownloadDocument, onReplaceDocument, onDeleteDocument }: { employeeId: string; document: HrDocument; onViewDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onDownloadDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument?: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument?: (employeeId: string, documentId: string) => Promise<void> }) {
+  return <div className="row-actions hr-document-actions">
+    {onViewDocument ? <button type="button" className="btn btn-secondary" onClick={() => onViewDocument(employeeId, document)}>Voir</button> : null}
+    {onDownloadDocument ? <button type="button" className="btn btn-secondary" onClick={() => onDownloadDocument(employeeId, document)}>Télécharger</button> : null}
+    {onReplaceDocument ? <label className="btn btn-secondary">Remplacer<input type="file" accept="application/pdf,.pdf" onChange={(event) => { const file = event.target.files?.[0]; if (file) void onReplaceDocument(employeeId, document.id, file); event.currentTarget.value = ''; }} /></label> : null}
+    {onDeleteDocument ? <button type="button" className="icon-btn danger" onClick={() => onDeleteDocument(employeeId, document.id)}><X size={14} /></button> : null}
+  </div>;
+}
+
+const suggestedTrainings = ['HACCP', 'Sécurité incendie', 'Gestes et postures', 'Accueil client', 'Hygiène alimentaire'];
+
+function TrainingsTab({ selectedTrainings, onSelectedTrainings, customTraining, onCustomTraining }: { selectedTrainings: string[]; onSelectedTrainings: (trainings: string[]) => void; customTraining: string; onCustomTraining: (value: string) => void }) {
+  const toggle = (training: string) => onSelectedTrainings(selectedTrainings.includes(training) ? selectedTrainings.filter((item) => item !== training) : [...selectedTrainings, training]);
+  const addCustom = () => {
+    const name = customTraining.trim();
+    if (!name || selectedTrainings.some((item) => normalizeLabel(item) === normalizeLabel(name))) return;
+    onSelectedTrainings([...selectedTrainings, name]);
+    onCustomTraining('');
+  };
+  return <TabPanel icon={<GraduationCap size={18} />} title="Formations">
+    <div className="hr-checkbox-group compact">
+      {suggestedTrainings.map((training) => <label key={training} className="hr-checkbox-label"><input type="checkbox" checked={selectedTrainings.includes(training)} onChange={() => toggle(training)} />{training}</label>)}
+    </div>
+    <div className="hr-position-custom">
+      <input placeholder="Ajouter une formation personnalisée..." value={customTraining} onChange={(event) => onCustomTraining(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addCustom(); } }} />
+      <button type="button" className="btn btn-secondary" onClick={addCustom}>Ajouter</button>
+    </div>
+    {selectedTrainings.length ? <div className="hr-position-tags">{selectedTrainings.map((training) => <span key={training} className="badge badge-reception">{training}<button type="button" className="icon-btn" onClick={() => toggle(training)}><X size={12} /></button></span>)}</div> : <p className="muted">Aucune formation sélectionnée.</p>}
+  </TabPanel>;
+}
+
+function OrganizationTab({ collaborator, currentRotation }: { collaborator?: HrCollaborator; rotations: HrRotation[]; currentRotation?: HrRotation | null }) {
+  const contractMinutes = collaborator?.activeContract?.weeklyHours ?? collaborator?.contractWeeklyMinutes ?? null;
+  const rotationMinutes = currentRotation ? rotationMetrics(currentRotation).averageWeeklyMinutes : null;
+  return <TabPanel icon={<UsersRound size={18} />} title="Organisation de travail">
+    <div className="hr-summary-list">
+      <InfoRow label="Service principal" value={collaborator?.department?.name} />
+      <InfoRow label="Poste principal" value={collaborator?.position?.name} />
+      <InfoRow label="Postes secondaires" value={collaborator?.secondaryPositions?.map((p) => p.name).join(', ')} />
+      <InfoRow label="Roulement actif" value={currentRotation?.name} />
+      <InfoRow label="Durée hebdo roulement" value={rotationMinutes != null ? formatMinutes(rotationMinutes) : undefined} />
+      <InfoRow label="Durée hebdo contractuelle" value={contractMinutes != null ? formatMinutes(contractMinutes) : undefined} />
+      <InfoRow label="Écart contrat / roulement" value={contractMinutes != null && rotationMinutes != null ? formatMinutes(Math.abs(contractMinutes - rotationMinutes)) : undefined} />
+      <InfoRow label="Établissement" value={collaborator?.mainSite?.name ?? collaborator?.site?.name} />
+      <InfoRow label="Responsable direct" value={collaborator?.manager ? fullName(collaborator.manager) : undefined} />
+    </div>
+  </TabPanel>;
+}
+
+function HistoryTab({ history }: { history: HrHistoryEntry[] }) {
+  return <TabPanel icon={<History size={18} />} title="Historique">
+    {history.length === 0 ? <p className="muted">L'historique RH apparaîtra ici.</p> : <div className="hr-history">{history.map((entry) => <div key={entry.id ?? `${entry.createdAt}-${entry.type}`}><strong>{entry.label ?? entry.type}</strong><span>{entry.description}</span><small>{formatDate(entry.createdAt)}</small></div>)}</div>}
+  </TabPanel>;
+}
+
+function SecondaryPositionSelector({ positions, selectedIds, mainPositionId, selectedDepartment, onChange }: { positions: HrPosition[]; selectedIds: string[]; mainPositionId?: string | null; selectedDepartment?: HrDepartment; onChange: (ids: string[]) => void }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+  const normalizedSearch = normalizeLabel(search);
+  const selected = positions.filter((position) => selectedIds.includes(position.id));
+  const available = positions
+    .filter((position) => position.id !== mainPositionId && !isArchived(position))
+    .filter((position) => !normalizedSearch || normalizeLabel(position.name).includes(normalizedSearch))
+    .sort((a, b) => Number(positionBelongsToDepartment(b, selectedDepartment)) - Number(positionBelongsToDepartment(a, selectedDepartment)) || a.name.localeCompare(b.name));
+  useEffect(() => { function handleClick(e: MouseEvent) { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); } if (open) { document.addEventListener('mousedown', handleClick); return () => document.removeEventListener('mousedown', handleClick); } }, [open]);
+  const toggle = (id: string) => onChange(selectedIds.includes(id) ? selectedIds.filter((item) => item !== id) : [...new Set([...selectedIds, id])]);
+  return <div className="hr-secondary-selector span-2" ref={ref}>
+    <label>Postes secondaires</label>
+    <button type="button" className="hr-secondary-trigger" onClick={() => setOpen((value) => !value)}>
+      {selected.length ? <div className="hr-secondary-badges">{selected.map((position) => <span key={position.id} className="badge">{position.name}<span onClick={(e) => { e.stopPropagation(); toggle(position.id); }}><X size={10} /></span></span>)}</div> : <span className="muted">+ Ajouter un poste secondaire</span>}
+    </button>
+    {open ? <div className="hr-secondary-popover"><div className="hr-secondary-search"><Search size={14} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher un poste..." autoFocus /></div><div className="hr-secondary-list">{available.map((position) => <label key={position.id} className="hr-secondary-item"><input type="checkbox" checked={selectedIds.includes(position.id)} onChange={() => toggle(position.id)} />{position.name}{positionBelongsToDepartment(position, selectedDepartment) ? <small>Service principal</small> : null}</label>)}</div></div> : null}
+  </div>;
+}
+
+type TabProps = { form: HrCollaboratorPayload; set: <K extends keyof HrCollaboratorPayload>(key: K, value: HrCollaboratorPayload[K]) => void };
+
+function TabPanel({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) { return <section className="hr-tab-panel"><h3>{icon}{title}</h3>{children}</section>; }
+function DataTable({ title, rows, empty }: { title: string; rows: string[][]; empty: string }) { return <div className="hr-data-table"><strong>{title}</strong>{rows.length ? <table><tbody>{rows.map((row, index) => <tr key={index}>{row.map((cell, i) => <td key={i}>{cell}</td>)}</tr>)}</tbody></table> : <p className="muted">{empty}</p>}</div>; }
+function InfoRow({ label, value }: { label: string; value?: string | null }) { return <div><span>{label}</span><strong>{value || '-'}</strong></div>; }
+function validate(form: HrCollaboratorPayload) { const errors: Partial<Record<TabId, string>> = {}; if (!form.firstName.trim() || !form.lastName.trim()) errors.profile = 'Prénom et nom obligatoires'; if (!form.hireDate || !form.departmentId || !form.positionId) errors.professional = 'Champs professionnels obligatoires'; return errors; }
+function cleanPayload(form: HrCollaboratorPayload): HrCollaboratorPayload { return { ...form, email: form.email || undefined, phone: form.phone || undefined, address: form.address || undefined, birthDate: form.birthDate || undefined, siteId: form.siteId || undefined, employeeNumber: form.employeeNumber || undefined, notes: form.notes || undefined, userId: form.userId || undefined, managerId: form.managerId || undefined, secondaryPositionIds: form.secondaryPositionIds?.length ? form.secondaryPositionIds : undefined, contractType: form.contractType || undefined, contractEndDate: form.contractEndDate || undefined, trialEndDate: form.trialEndDate || undefined, contractWeeklyMinutes: form.contractWeeklyMinutes ?? undefined, hourlyRate: form.hourlyRate ?? undefined, currency: form.currency || undefined, rateEffectiveDate: form.rateEffectiveDate || undefined, nextReviewDate: form.nextReviewDate || undefined, reviewFrequency: form.reviewFrequency || undefined }; }
+function positionBelongsToDepartment(position: HrPosition, department?: HrDepartment) { if (!department) return false; if (position.departmentId) return position.departmentId === department.id; const catalog = HR_CATALOG.find((item) => normalizeLabel(item.name) === normalizeLabel(department.name)); return Boolean(catalog?.positions.some((name) => normalizeLabel(name) === normalizeLabel(position.name))); }
+function activeRotation(collaborator?: HrCollaborator) { return collaborator?.activeRotation ?? collaborator?.activeRotationAssignment?.rotation ?? collaborator?.rotationAssignment?.rotation ?? null; }
+function rotationMetrics(rotation: HrRotation) { const metrics = rotation.metrics as any; return { averageWeeklyMinutes: metrics?.averageWeeklyMinutes ?? metrics?.weeklyMinutes ?? metrics?.weeklyHoursMinutesAverage ?? 0 }; }
+function displayUser(user: Pick<CoreUser, 'firstName' | 'lastName' | 'email'>) { return `${`${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email} - ${user.email}`; }
+function fullName(item: { firstName?: string | null; lastName?: string | null }) { return `${item.firstName ?? ''} ${item.lastName ?? ''}`.trim() || 'Collaborateur'; }
+function isArchived(item: { isArchived?: boolean; archivedAt?: string | null }) { return Boolean(item.isArchived || item.archivedAt); }
+function normalizeLabel(value?: string | null) { return (value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim(); }
+function cleanLegacyHrNotes(value?: string | null) { return value && /Documents PDF à joindre|Documents PDF a joindre|Formations:/i.test(value) ? '' : value ?? ''; }
+function toInputDate(value?: string | null) { return value ? new Date(value).toISOString().slice(0, 10) : ''; }
+function formatDate(value?: string | null) { return value ? new Intl.DateTimeFormat('fr-FR').format(new Date(value)) : '-'; }
+function formatMinutes(value?: number | null) { if (value == null) return '-'; const hours = Math.floor(value / 60); const minutes = Math.round(value % 60); return `${hours}h${minutes.toString().padStart(2, '0')}`; }
+function formatBytes(value?: number | null) { if (!value) return '-'; if (value < 1024 * 1024) return `${Math.round(value / 1024)} Ko`; return `${(value / 1024 / 1024).toFixed(1)} Mo`; }

@@ -32,6 +32,7 @@ import type {
   HrCollaborator,
   HrCollaboratorPayload,
   HrDepartment,
+  HrDocument,
   HrPosition,
   HrReferencePayload,
   HrSummary,
@@ -630,13 +631,14 @@ export const api = {
     return request<UserSession>('/dev-switch', { method: 'POST', body: JSON.stringify({ userId }) }, token);
   },
   async hrBootstrap(token: string) {
-    const [rawSummary, collaborators, departments, positions, rotations, availableUsers] = await Promise.all([
-      request<any>('/hr/dashboard', {}, token),
-      request<HrCollaborator[]>('/hr/employees?includeArchived=true&pageSize=200', {}, token),
-      request<HrDepartment[]>('/hr/departments?includeArchived=true&pageSize=200', {}, token),
-      request<HrPosition[]>('/hr/positions?includeArchived=true&pageSize=200', {}, token),
+    const [rawSummary, collaborators, departments, positions, rotations, availableUsers, onboarding] = await Promise.all([
+      request<any>('/hr/dashboard', {}, token).catch(() => ({})),
+      request<HrCollaborator[]>('/hr/employees?includeArchived=true&pageSize=200', {}, token).catch(() => []),
+      request<HrDepartment[]>('/hr/departments?includeArchived=true&pageSize=200', {}, token).catch(() => []),
+      request<HrPosition[]>('/hr/positions?includeArchived=true&pageSize=200', {}, token).catch(() => []),
       request<HrRotation[]>('/hr/rotations?includeArchived=true&pageSize=200', {}, token).catch(() => []),
       request<CoreUser[]>('/hr/users/available', {}, token).catch(() => []),
+      request<any>('/hr/onboarding', {}, token).catch(() => null),
     ]);
     const summary: HrSummary = {
       counts: {
@@ -652,7 +654,7 @@ export const api = {
       latestCollaborators: rawSummary.latestCollaborators ?? rawSummary.latestEmployees ?? [],
       departmentDistribution: rawSummary.departmentDistribution,
     };
-    return { summary, collaborators, departments, positions, rotations, availableUsers };
+    return { summary, collaborators, departments, positions, rotations, availableUsers, onboarding };
   },
   createHrCollaborator(token: string, payload: HrCollaboratorPayload) {
     return request<HrCollaborator>('/hr/employees', { method: 'POST', body: JSON.stringify(toHrEmployeePayload(payload)) }, token);
@@ -663,8 +665,67 @@ export const api = {
   archiveHrCollaborator(token: string, id: string) {
     return request<HrCollaborator>(`/hr/employees/${id}/archive`, { method: 'POST' }, token);
   },
+  uploadHrCollaboratorDocument(token: string, employeeId: string, payload: { file: File; category: string; notes?: string; expiresAt?: string }) {
+    const body = new FormData();
+    body.set('file', payload.file);
+    body.set('category', payload.category);
+    if (payload.notes) body.set('notes', payload.notes);
+    if (payload.expiresAt) body.set('expiresAt', payload.expiresAt);
+    return fetch(`${API_URL}/api/hr/employees/${employeeId}/documents`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    }).then(async (response) => {
+      if (!response.ok) throw new ApiError(await response.text(), response.status);
+      return response.json() as Promise<HrDocument>;
+    });
+  },
+  deleteHrCollaboratorDocument(token: string, employeeId: string, documentId: string) {
+    return request<{ deleted: boolean }>(`/hr/employees/${employeeId}/documents/${documentId}`, { method: 'DELETE' }, token);
+  },
+  replaceHrCollaboratorDocument(token: string, employeeId: string, documentId: string, file: File) {
+    const body = new FormData();
+    body.set('file', file);
+    return fetch(`${API_URL}/api/hr/employees/${employeeId}/documents/${documentId}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    }).then(async (response) => {
+      if (!response.ok) throw new ApiError(await response.text(), response.status);
+      return response.json() as Promise<HrDocument>;
+    });
+  },
+  async viewHrCollaboratorDocument(token: string, employeeId: string, document: HrDocument) {
+    const response = await fetch(`${API_URL}/api/hr/employees/${employeeId}/documents/${document.id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new ApiError(await response.text(), response.status);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    globalThis.open(url, '_blank', 'noopener,noreferrer');
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  },
+  async downloadHrCollaboratorDocument(token: string, employeeId: string, document: HrDocument) {
+    const response = await fetch(`${API_URL}/api/hr/employees/${employeeId}/documents/${document.id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new ApiError(await response.text(), response.status);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = globalThis.document.createElement('a');
+    link.href = url;
+    link.download = document.originalName || document.filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  },
+  hrCollaboratorDocumentUrl(employeeId: string, documentId: string) {
+    return `${API_URL}/api/hr/employees/${employeeId}/documents/${documentId}`;
+  },
   createHrDepartment(token: string, payload: HrReferencePayload) {
     return request<HrDepartment>('/hr/departments', { method: 'POST', body: JSON.stringify(payload) }, token);
+  },
+  createHrDepartmentsBulk(token: string, names: string[]) {
+    return request<{ created: number; skipped: number }>('/hr/departments/bulk', { method: 'POST', body: JSON.stringify({ names }) }, token);
   },
   updateHrDepartment(token: string, id: string, payload: HrReferencePayload) {
     return request<HrDepartment>(`/hr/departments/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
@@ -675,20 +736,33 @@ export const api = {
   createHrPosition(token: string, payload: HrReferencePayload) {
     return request<HrPosition>('/hr/positions', { method: 'POST', body: JSON.stringify(payload) }, token);
   },
+  createHrPositionsBulk(token: string, items: string[] | HrReferencePayload[]) {
+    const body = typeof items[0] === 'object' ? { names: [], references: items } : { names: items };
+    return request<{ created: number; skipped: number }>('/hr/positions/bulk', { method: 'POST', body: JSON.stringify(body) }, token);
+  },
   updateHrPosition(token: string, id: string, payload: HrReferencePayload) {
     return request<HrPosition>(`/hr/positions/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
   },
   archiveHrPosition(token: string, id: string) {
     return request<HrPosition>(`/hr/positions/${id}/archive`, { method: 'POST' }, token);
   },
+  completeHrServices(token: string, names: string[] = []) {
+    return request<any>('/hr/onboarding/complete-services', { method: 'POST', body: JSON.stringify({ names }) }, token);
+  },
+  completeHrPositions(token: string) {
+    return request<any>('/hr/onboarding/complete-positions', { method: 'POST' }, token);
+  },
+  unlockHrEmployees(token: string) {
+    return request<any>('/hr/onboarding/unlock-employees', { method: 'POST' }, token);
+  },
   listHrRotations(token: string) {
     return request<HrRotation[]>('/hr/rotations?includeArchived=true&pageSize=200', {}, token);
   },
   createHrRotation(token: string, payload: HrRotationPayload) {
-    return request<HrRotation>('/hr/rotations', { method: 'POST', body: JSON.stringify(payload) }, token);
+    return request<HrRotation>('/hr/rotations', { method: 'POST', body: JSON.stringify(toHrRotationPayload(payload)) }, token);
   },
   updateHrRotation(token: string, id: string, payload: Partial<HrRotationPayload>) {
-    return request<HrRotation>(`/hr/rotations/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
+    return request<HrRotation>(`/hr/rotations/${id}`, { method: 'PATCH', body: JSON.stringify(toHrRotationPayload(payload)) }, token);
   },
   archiveHrRotation(token: string, id: string) {
     return request<HrRotation>(`/hr/rotations/${id}/archive`, { method: 'POST' }, token);
@@ -744,3 +818,20 @@ function toHrEmployeePayload(payload: Partial<HrCollaboratorPayload>) {
   return { ...rest, photoDataUrl: payload.photoDataUrl ?? photoUrl, mainSiteId: payload.mainSiteId ?? siteId };
 }
 
+function toHrRotationPayload(payload: Partial<HrRotationPayload>) {
+  return {
+    name: payload.name,
+    description: payload.description || undefined,
+    departmentId: payload.departmentId || undefined,
+    cycleLengthWeeks: Math.min(4, Math.max(1, Number(payload.cycleWeeks ?? payload.weeks?.length ?? 1))),
+    weeks: payload.weeks?.map((week) => ({
+      weekNumber: week.weekIndex,
+      days: week.days.map((day) => ({
+        type: day.mode === 'REST' ? 'REST' : 'WORK',
+        startTime: day.mode === 'REST' ? undefined : day.startTime || undefined,
+        endTime: day.mode === 'REST' ? undefined : day.endTime || undefined,
+        breakMinutes: Number(day.breakMinutes ?? 0),
+      })),
+    })),
+  };
+}

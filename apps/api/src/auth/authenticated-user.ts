@@ -3,4 +3,5 @@ export interface AuthenticatedUser {
   email: string;
   organizationId: string | null;
   role: string;
+  employeeId?: string | null;
 }

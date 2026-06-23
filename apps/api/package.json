@@ -8,6 +8,7 @@
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "jest",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:reset": "prisma migrate reset --skip-seed",
@@ -33,11 +34,15 @@
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.7",
+    "@nestjs/testing": "^11.1.27",
     "@types/bcryptjs": "^2.4.6",
     "@types/express": "^5.0.2",
+    "@types/jest": "^30.0.0",
     "@types/passport-jwt": "^4.0.1",
+    "jest": "^30.4.2",
     "prisma": "^6.8.2",
     "source-map-support": "^0.5.21",
+    "ts-jest": "^29.4.11",
     "tsx": "^4.19.4"
   }
 }

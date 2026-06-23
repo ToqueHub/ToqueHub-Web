@@ -244,11 +244,62 @@ enum HrHistoryEventType {
   ROTATION_REMOVED
   ROTATION_CHANGED
   ARCHIVED
+  CONTRACT_CREATED
+  CONTRACT_ENDED
+  CONTRACT_DELETED
+  COMPENSATION_CREATED
+  COMPENSATION_ENDED
+  REVIEW_CREATED
+  REVIEW_POSTPONED
+  REVIEW_COMPLETED
+  ONBOARDING_STEP_COMPLETED
 }
 
 enum HrRotationStatus {
   ACTIVE
   ARCHIVED
+}
+
+enum HrOnboardingStatus {
+  NOT_STARTED
+  SERVICES_IN_PROGRESS
+  SERVICES_COMPLETED
+  POSITIONS_IN_PROGRESS
+  POSITIONS_COMPLETED
+  EMPLOYEES_UNLOCKED
+  FIRST_EMPLOYEE_CREATED
+  COMPLETED
+}
+
+enum HrContractStatus {
+  DRAFT
+  UPCOMING
+  ACTIVE
+  ENDED
+  ARCHIVED
+}
+
+enum HrSalaryReviewStatus {
+  UPCOMING
+  DUE_SOON
+  DUE
+  COMPLETED
+  POSTPONED
+  IGNORED
+}
+
+enum HrDocumentCategory {
+  IDENTITY
+  CONTRACT
+  AMENDMENT
+  RESIDENCE_PERMIT
+  WORK_PERMIT
+  SICK_LEAVE
+  MEDICAL_CERTIFICATE
+  CERTIFICATION
+  DIPLOMA
+  ADMINISTRATIVE
+  OTHER
 }
 
 enum HrAbsenceType {
@@ -421,6 +472,9 @@ model Organization {
   hrPositions                    HrPosition[]
   employees                      HrEmployee[]
   employeeHistory                HrEmployeeHistory[]
+  hrOnboardingProgress           HrOnboardingProgress?
+  hrEmploymentContracts          HrEmploymentContract[]
+  hrDocuments                    HrDocument[]
   hrRotations                    HrRotation[]
   hrRotationAssignments          HrRotationAssignment[]
   hrAbsences                     HrAbsence[]
@@ -467,7 +521,7 @@ model Organization {
   menuHistory                    MenuHistory[]
   menuProductionLinks            MenuProductionLink[]
   planningViewPreferences        PlanningViewPreference[]
-  dashboardPreferences            DashboardPreference[]
+  dashboardPreferences           DashboardPreference[]
 
   @@map("organizations")
 }
@@ -496,6 +550,10 @@ model User {
   rnmFavorites                   RnmProductFavorite[]
   hrEmployee                     HrEmployee?
   hrHistory                      HrEmployeeHistory[]
+  createdHrContracts             HrEmploymentContract[]         @relation("HrContractCreatedBy")
+  createdHrCompensations         HrEmployeeCompensation[]       @relation("HrCompensationCreatedBy")
+  completedHrSalaryReviews       HrSalaryReview[]               @relation("HrSalaryReviewCompletedBy")
+  createdHrDocuments             HrDocument[]                   @relation("HrDocumentCreatedBy")
   hrRotationAssignments          HrRotationAssignment[]
   validatedHrAbsences            HrAbsence[]                    @relation("HrAbsenceValidator")
   createdPlanningAssignments     PlanningAssignment[]           @relation("PlanningAssignmentCreatedBy")
@@ -524,7 +582,7 @@ model User {
   actorMenuHistory               MenuHistory[]                  @relation("MenuHistoryActor")
   menuExports                    MenuExport[]                   @relation("MenuExportRequestedBy")
   confirmedDestockingProposals   ProductionDestockingProposal[] @relation("ProductionDestockingConfirmedBy")
-  dashboardPreferences          DashboardPreference[]
+  dashboardPreferences           DashboardPreference[]
 
   @@index([organizationId])
   @@index([roleId])
@@ -566,14 +624,14 @@ model RolePermission {
 }
 
 model DashboardPreference {
-  id             String   @id @default(uuid()) @db.Uuid
-  userId         String   @db.Uuid
-  organizationId String   @db.Uuid
-  layout         Json
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @db.Uuid
+  organizationId  String   @db.Uuid
+  layout          Json
   hiddenWidgetIds String[] @default([])
   pinnedWidgetIds String[] @default([])
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -951,6 +1009,7 @@ model HrDepartment {
 
   organization        Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   employees           HrEmployee[]
+  positions           HrPosition[]
   rotations           HrRotation[]
   requiredSkills      HrDepartmentSkill[]
   planningAssignments PlanningAssignment[]
@@ -972,63 +1031,81 @@ model HrPosition {
   isArchived     Boolean   @default(false)
   archivedAt     DateTime?
   organizationId String    @db.Uuid
+  departmentId   String?   @db.Uuid
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  organization        Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization        Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  department          HrDepartment?                 @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   employees           HrEmployee[]
+  secondaryEmployees  HrEmployeeSecondaryPosition[]
   requiredSkills      HrPositionSkill[]
   planningAssignments PlanningAssignment[]
   planningNeeds       PlanningOperationalNeed[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
+  @@index([departmentId])
   @@index([isArchived])
   @@map("hr_positions")
 }
 
 model HrEmployee {
-  id             String           @id @default(uuid()) @db.Uuid
-  organizationId String           @db.Uuid
-  firstName      String
-  lastName       String
-  photoDataUrl   String?          @db.Text
-  email          String?
-  phone          String?
-  address        String?          @db.Text
-  birthDate      DateTime?
-  hireDate       DateTime
-  departmentId   String           @db.Uuid
-  positionId     String           @db.Uuid
-  mainSiteId     String?          @db.Uuid
-  employeeNumber String?
-  notes          String?          @db.Text
-  status         HrEmployeeStatus @default(ACTIVE)
-  userId         String?          @unique @db.Uuid
-  managerId      String?          @db.Uuid
-  isArchived     Boolean          @default(false)
-  archivedAt     DateTime?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  id                    String           @id @default(uuid()) @db.Uuid
+  organizationId        String           @db.Uuid
+  firstName             String
+  lastName              String
+  photoDataUrl          String?          @db.Text
+  email                 String?
+  phone                 String?
+  address               String?          @db.Text
+  birthDate             DateTime?
+  hireDate              DateTime
+  departmentId          String           @db.Uuid
+  positionId            String           @db.Uuid
+  mainSiteId            String?          @db.Uuid
+  employeeNumber        String?
+  notes                 String?          @db.Text
+  status                HrEmployeeStatus @default(ACTIVE)
+  userId                String?          @unique @db.Uuid
+  managerId             String?          @db.Uuid
+  contractType          String?
+  contractEndDate       DateTime?
+  trialEndDate          DateTime?
+  contractWeeklyMinutes Int?
+  hourlyRate            Decimal?         @db.Decimal(10, 4)
+  currency              String?          @default("EUR")
+  rateEffectiveDate     DateTime?
+  nextReviewDate        DateTime?
+  reviewFrequency       String?
+  isArchived            Boolean          @default(false)
+  archivedAt            DateTime?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
 
-  organization                Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  department                  HrDepartment             @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  position                    HrPosition               @relation(fields: [positionId], references: [id], onDelete: Restrict)
-  mainSite                    Site?                    @relation(fields: [mainSiteId], references: [id], onDelete: SetNull)
-  user                        User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  manager                     HrEmployee?              @relation("HrManager", fields: [managerId], references: [id], onDelete: SetNull)
-  reports                     HrEmployee[]             @relation("HrManager")
+  organization                Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  department                  HrDepartment                  @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  position                    HrPosition                    @relation(fields: [positionId], references: [id], onDelete: Restrict)
+  mainSite                    Site?                         @relation(fields: [mainSiteId], references: [id], onDelete: SetNull)
+  user                        User?                         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  manager                     HrEmployee?                   @relation("HrManager", fields: [managerId], references: [id], onDelete: SetNull)
+  reports                     HrEmployee[]                  @relation("HrManager")
   history                     HrEmployeeHistory[]
   rotationAssignments         HrRotationAssignment[]
+  secondaryPositions          HrEmployeeSecondaryPosition[]
+  contracts                   HrEmploymentContract[]
+  compensations               HrEmployeeCompensation[]
+  salaryReviews               HrSalaryReview[]
+  documents                   HrDocument[]
   skills                      HrEmployeeSkill[]
   absences                    HrAbsence[]
   planningAssignments         PlanningAssignment[]
-  replacedPlanningAssignments PlanningReplacement[]    @relation("PlanningReplacementAbsentEmployee")
-  replacementAssignments      PlanningReplacement[]    @relation("PlanningReplacementEmployee")
-  planningNotifications       PlanningNotification[]   @relation("PlanningNotificationRecipientEmployee")
+  replacedPlanningAssignments PlanningReplacement[]         @relation("PlanningReplacementAbsentEmployee")
+  replacementAssignments      PlanningReplacement[]         @relation("PlanningReplacementEmployee")
+  planningNotifications       PlanningNotification[]        @relation("PlanningNotificationRecipientEmployee")
   planningViewPreferences     PlanningViewPreference[]
   planningExports             PlanningExport[]
-  assignedProductionOrders    ProductionOrder[]        @relation("ProductionOrderResponsible")
+  assignedProductionOrders    ProductionOrder[]             @relation("ProductionOrderResponsible")
   productionAssignments       ProductionAssignment[]
 
   @@unique([organizationId, email])
@@ -1041,6 +1118,18 @@ model HrEmployee {
   @@index([status])
   @@index([isArchived])
   @@map("hr_employees")
+}
+
+model HrEmployeeSecondaryPosition {
+  employeeId String   @db.Uuid
+  positionId String   @db.Uuid
+  createdAt  DateTime @default(now())
+
+  employee HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  position HrPosition @relation(fields: [positionId], references: [id], onDelete: Cascade)
+
+  @@id([employeeId, positionId])
+  @@map("hr_employee_secondary_positions")
 }
 
 model HrEmployeeHistory {
@@ -1063,6 +1152,122 @@ model HrEmployeeHistory {
   @@index([type])
   @@index([createdAt])
   @@map("hr_employee_history")
+}
+
+model HrOnboardingProgress {
+  id                     String             @id @default(uuid()) @db.Uuid
+  organizationId         String             @unique @db.Uuid
+  status                 HrOnboardingStatus @default(NOT_STARTED)
+  servicesCompletedAt    DateTime?
+  positionsCompletedAt   DateTime?
+  employeesUnlockedAt    DateTime?
+  firstEmployeeCreatedAt DateTime?
+  completedAt            DateTime?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([status])
+  @@map("hr_onboarding_progress")
+}
+
+model HrEmploymentContract {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  employeeId     String           @db.Uuid
+  contractType   String
+  startDate      DateTime         @default(now())
+  endDate        DateTime?
+  weeklyHours    Int?
+  trialStartDate DateTime?
+  trialEndDate   DateTime?
+  status         HrContractStatus @default(ACTIVE)
+  notes          String?          @db.Text
+  createdById    String?          @db.Uuid
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee     HrEmployee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("HrContractCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([employeeId])
+  @@index([status])
+  @@index([endDate])
+  @@map("hr_employment_contracts")
+}
+
+model HrEmployeeCompensation {
+  id            String    @id @default(uuid()) @db.Uuid
+  employeeId    String    @db.Uuid
+  hourlyRate    Decimal   @db.Decimal(10, 4)
+  currency      String    @default("EUR")
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+  reason        String?
+  notes         String?   @db.Text
+  createdById   String?   @db.Uuid
+  createdAt     DateTime  @default(now())
+
+  employee  HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  createdBy User?      @relation("HrCompensationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([employeeId])
+  @@index([effectiveFrom])
+  @@index([effectiveTo])
+  @@map("hr_employee_compensations")
+}
+
+model HrSalaryReview {
+  id                 String               @id @default(uuid()) @db.Uuid
+  employeeId         String               @db.Uuid
+  dueDate            DateTime
+  frequencyMonths    Int?
+  status             HrSalaryReviewStatus @default(UPCOMING)
+  proposedHourlyRate Decimal?             @db.Decimal(10, 4)
+  notes              String?              @db.Text
+  completedAt        DateTime?
+  completedById      String?              @db.Uuid
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  employee    HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  completedBy User?      @relation("HrSalaryReviewCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+
+  @@index([employeeId])
+  @@index([dueDate])
+  @@index([status])
+  @@map("hr_salary_reviews")
+}
+
+model HrDocument {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @db.Uuid
+  employeeId     String             @db.Uuid
+  category       HrDocumentCategory
+  filename       String
+  originalName   String
+  mimeType       String
+  sizeBytes      Int
+  storagePath    String
+  notes          String?            @db.Text
+  expiresAt      DateTime?
+  createdById    String?            @db.Uuid
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee     HrEmployee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("HrDocumentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([employeeId])
+  @@index([category])
+  @@index([expiresAt])
+  @@map("hr_documents")
 }
 
 model HrRotation {
@@ -1592,20 +1797,20 @@ model TechnicalSheet {
   createdAt              DateTime             @default(now())
   updatedAt              DateTime             @updatedAt
 
-  organization         Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  category             TechnicalSheetCategory?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  sourceTechnicalSheet TechnicalSheet?              @relation("TechnicalSheetDuplication", fields: [sourceTechnicalSheetId], references: [id], onDelete: SetNull)
-  duplicates           TechnicalSheet[]             @relation("TechnicalSheetDuplication")
-  ingredients          TechnicalSheetIngredient[]
-  steps                TechnicalSheetStep[]
-  costSnapshots        TechnicalSheetCostSnapshot[]
-  simulations          TechnicalSheetSimulation[]
-  exports              TechnicalSheetExport[]
-  history              TechnicalSheetHistory[]
-  productionOrders     ProductionOrder[]
-  menuItems            MenuItem[]
+  organization            Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category                TechnicalSheetCategory?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  sourceTechnicalSheet    TechnicalSheet?              @relation("TechnicalSheetDuplication", fields: [sourceTechnicalSheetId], references: [id], onDelete: SetNull)
+  duplicates              TechnicalSheet[]             @relation("TechnicalSheetDuplication")
+  ingredients             TechnicalSheetIngredient[]
+  steps                   TechnicalSheetStep[]
+  costSnapshots           TechnicalSheetCostSnapshot[]
+  simulations             TechnicalSheetSimulation[]
+  exports                 TechnicalSheetExport[]
+  history                 TechnicalSheetHistory[]
+  productionOrders        ProductionOrder[]
+  menuItems               MenuItem[]
   menuVariantReplacements MenuVariantReplacement[]
-  menuCycleItems       MenuCycleItem[]
+  menuCycleItems          MenuCycleItem[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -2114,39 +2319,39 @@ model MenuDiet {
 }
 
 model Menu {
-  id             String          @id @default(uuid()) @db.Uuid
-  organizationId String          @db.Uuid
-  name           String
-  date           DateTime
-  service        MenuServiceType
-  siteId         String?         @db.Uuid
-  description    String?         @db.Text
-  expectedGuests Int             @default(0)
-  status         MenuStatus      @default(DRAFT)
-  cycleId        String?         @db.Uuid
-  cycleWeek      Int?
-  cycleDay       Int?
-  sourceMenuId   String?         @db.Uuid
+  id                    String          @id @default(uuid()) @db.Uuid
+  organizationId        String          @db.Uuid
+  name                  String
+  date                  DateTime
+  service               MenuServiceType
+  siteId                String?         @db.Uuid
+  description           String?         @db.Text
+  expectedGuests        Int             @default(0)
+  status                MenuStatus      @default(DRAFT)
+  cycleId               String?         @db.Uuid
+  cycleWeek             Int?
+  cycleDay              Int?
+  sourceMenuId          String?         @db.Uuid
   productionGeneratedAt DateTime?
   productionDirtySince  DateTime?
-  publishedSnapshot Json?
-  createdById    String?         @db.Uuid
-  updatedById    String?         @db.Uuid
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  publishedSnapshot     Json?
+  createdById           String?         @db.Uuid
+  updatedById           String?         @db.Uuid
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  site         Site?        @relation(fields: [siteId], references: [id], onDelete: SetNull)
-  cycle        MenuCycle?   @relation(fields: [cycleId], references: [id], onDelete: SetNull)
-  sourceMenu   Menu?        @relation("MenuSource", fields: [sourceMenuId], references: [id], onDelete: SetNull)
-  generatedMenus Menu[]     @relation("MenuSource")
-  createdBy    User?        @relation("MenuCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  updatedBy    User?        @relation("MenuUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
-  items        MenuItem[]
-  variants     MenuVariant[]
-  guestForecasts MenuGuestForecast[]
-  exports      MenuExport[]
-  history      MenuHistory[]
+  organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site            Site?                @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  cycle           MenuCycle?           @relation(fields: [cycleId], references: [id], onDelete: SetNull)
+  sourceMenu      Menu?                @relation("MenuSource", fields: [sourceMenuId], references: [id], onDelete: SetNull)
+  generatedMenus  Menu[]               @relation("MenuSource")
+  createdBy       User?                @relation("MenuCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy       User?                @relation("MenuUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  items           MenuItem[]
+  variants        MenuVariant[]
+  guestForecasts  MenuGuestForecast[]
+  exports         MenuExport[]
+  history         MenuHistory[]
   productionLinks MenuProductionLink[]
 
   @@index([organizationId])
@@ -2170,9 +2375,9 @@ model MenuItem {
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
-  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  menu           Menu           @relation(fields: [menuId], references: [id], onDelete: Cascade)
-  technicalSheet TechnicalSheet @relation(fields: [technicalSheetId], references: [id], onDelete: Restrict)
+  organization   Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  menu           Menu                     @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  technicalSheet TechnicalSheet           @relation(fields: [technicalSheetId], references: [id], onDelete: Restrict)
   replacements   MenuVariantReplacement[]
 
   @@index([organizationId])
@@ -2194,9 +2399,9 @@ model MenuVariant {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  menu         Menu         @relation(fields: [menuId], references: [id], onDelete: Cascade)
-  diet         MenuDiet     @relation(fields: [dietId], references: [id], onDelete: Restrict)
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  menu         Menu                     @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  diet         MenuDiet                 @relation(fields: [dietId], references: [id], onDelete: Restrict)
   replacements MenuVariantReplacement[]
 
   @@unique([menuId, dietId])
@@ -2206,17 +2411,17 @@ model MenuVariant {
 }
 
 model MenuVariantReplacement {
-  id                         String   @id @default(uuid()) @db.Uuid
-  variantId                  String   @db.Uuid
-  menuItemId                 String?  @db.Uuid
-  section                    MenuSectionType?
-  replacementTechnicalSheetId String  @db.Uuid
-  position                   Int      @default(0)
-  notes                      String?  @db.Text
-  createdAt                  DateTime @default(now())
+  id                          String           @id @default(uuid()) @db.Uuid
+  variantId                   String           @db.Uuid
+  menuItemId                  String?          @db.Uuid
+  section                     MenuSectionType?
+  replacementTechnicalSheetId String           @db.Uuid
+  position                    Int              @default(0)
+  notes                       String?          @db.Text
+  createdAt                   DateTime         @default(now())
 
-  variant                  MenuVariant    @relation(fields: [variantId], references: [id], onDelete: Cascade)
-  menuItem                 MenuItem?      @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  variant                   MenuVariant    @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  menuItem                  MenuItem?      @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
   replacementTechnicalSheet TechnicalSheet @relation(fields: [replacementTechnicalSheetId], references: [id], onDelete: Restrict)
 
   @@index([variantId])
@@ -2236,7 +2441,7 @@ model MenuGuestGroup {
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   forecasts    MenuGuestForecast[]
 
   @@unique([organizationId, name])
@@ -2256,10 +2461,10 @@ model MenuGuestForecast {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  menu         Menu         @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  menu         Menu           @relation(fields: [menuId], references: [id], onDelete: Cascade)
   guestGroup   MenuGuestGroup @relation(fields: [guestGroupId], references: [id], onDelete: Restrict)
-  diet         MenuDiet?    @relation(fields: [dietId], references: [id], onDelete: SetNull)
+  diet         MenuDiet?      @relation(fields: [dietId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([menuId])
@@ -2279,8 +2484,8 @@ model MenuCycle {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  site         Site?        @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site         Site?           @relation(fields: [siteId], references: [id], onDelete: SetNull)
   items        MenuCycleItem[]
   menus        Menu[]
   history      MenuHistory[]
@@ -2317,13 +2522,13 @@ model MenuCycleItem {
 }
 
 model MenuProductionLink {
-  id                String   @id @default(uuid()) @db.Uuid
-  organizationId    String   @db.Uuid
-  menuId            String   @db.Uuid
-  productionOrderId String   @db.Uuid
+  id                String                       @id @default(uuid()) @db.Uuid
+  organizationId    String                       @db.Uuid
+  menuId            String                       @db.Uuid
+  productionOrderId String                       @db.Uuid
   generationMode    MenuProductionGenerationMode
   snapshot          Json?
-  createdAt         DateTime @default(now())
+  createdAt         DateTime                     @default(now())
 
   organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   menu            Menu            @relation(fields: [menuId], references: [id], onDelete: Cascade)

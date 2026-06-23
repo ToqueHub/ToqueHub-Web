@@ -323,8 +323,6 @@ export class AuthService {
     const organizationId = user.organizationId;
     await this.prisma.$transaction(async (tx) => {
       await tx.organization.update({ where: { id: organizationId }, data: { hrInstalledAt: new Date() } });
-      await tx.hrDepartment.createMany({ data: ['Cuisine', 'Pâtisserie', 'Administration', 'Entretien', 'Soins', 'Animation', 'Direction', 'Magasin'].map((name) => ({ organizationId, name })), skipDuplicates: true });
-      await tx.hrPosition.createMany({ data: ['Chef de cuisine', 'Second de cuisine', 'Commis', 'Pâtissier', 'Magasinier', 'Agent polyvalent', 'Directeur', 'Infirmier', 'Animateur'].map((name) => ({ organizationId, name })), skipDuplicates: true });
       await tx.auditLog.create({ data: { organizationId, userId: user.id, action: AuditAction.MODULE_HR_INSTALLED, entityType: 'Module', entityId: 'hr', entityName: 'RH' } });
     });
     return this.getDashboardSummary(user);

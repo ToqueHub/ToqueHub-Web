@@ -190,3 +190,10 @@ npm run prisma:seed
 ## Not in current scope
 
 Docker deployment, Raspberry Pi packaging, mobile applications and plugin systems are intentionally deferred.
+
+
+cd C:\Users\Arthur\Desktop\toquehub-RH-modul\toquehub-RH-modul
+npm run api:dev
+
+cd C:\Users\Arthur\Desktop\toquehub-RH-modul\toquehub-RH-modul
+npm run web:dev

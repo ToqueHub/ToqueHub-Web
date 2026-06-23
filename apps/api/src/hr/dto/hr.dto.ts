@@ -17,7 +17,17 @@ export class HrListQueryDto {
 
 export class UpsertHrReferenceDto {
   @IsString() @MaxLength(160) name!: string;
-  @IsOptional() @IsString() @MaxLength(500) description?: string;
+  @IsOptional() @IsString() @MaxLength(6000) description?: string;
+  @IsOptional() @IsUUID() departmentId?: string;
+}
+
+export class CreateHrReferencesDto {
+  @IsArray() @IsString({ each: true }) names!: string[];
+  @IsOptional() @ValidateNested({ each: true }) @Type(() => UpsertHrReferenceDto) @IsArray() references?: UpsertHrReferenceDto[];
+}
+
+export class CompleteHrServicesDto {
+  @IsOptional() @IsArray() @IsString({ each: true }) names?: string[];
 }
 
 export class UpsertHrEmployeeDto {
@@ -31,12 +41,22 @@ export class UpsertHrEmployeeDto {
   @IsString() hireDate!: string;
   @IsUUID() departmentId!: string;
   @IsUUID() positionId!: string;
+  @IsOptional() @IsArray() @IsUUID(undefined, { each: true }) secondaryPositionIds?: string[];
   @IsOptional() @IsUUID() mainSiteId?: string;
   @IsOptional() @IsString() @MaxLength(80) employeeNumber?: string;
   @IsOptional() @IsString() @MaxLength(4000) notes?: string;
   @IsOptional() @IsEnum(HrEmployeeStatus) status?: HrEmployeeStatus;
   @IsOptional() @IsUUID() userId?: string;
   @IsOptional() @IsUUID() managerId?: string;
+  @IsOptional() @IsString() contractType?: string;
+  @IsOptional() @IsString() contractEndDate?: string;
+  @IsOptional() @IsString() trialEndDate?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) contractWeeklyMinutes?: number;
+  @IsOptional() @Type(() => Number) hourlyRate?: number;
+  @IsOptional() @IsString() currency?: string;
+  @IsOptional() @IsString() rateEffectiveDate?: string;
+  @IsOptional() @IsString() nextReviewDate?: string;
+  @IsOptional() @IsString() reviewFrequency?: string;
 }
 
 export class HrRotationDayDto {

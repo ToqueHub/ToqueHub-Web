@@ -106,6 +106,7 @@ import type {
   HrCollaborator,
   HrCollaboratorPayload,
   HrDepartment,
+  HrDocument,
   HrPosition,
   HrReferencePayload,
   HrSummary,
@@ -344,6 +345,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [hrDepartments, setHrDepartments] = useState<HrDepartment[]>([]);
   const [hrPositions, setHrPositions] = useState<HrPosition[]>([]);
   const [hrRotations, setHrRotations] = useState<HrRotation[]>([]);
+  const [hrOnboarding, setHrOnboarding] = useState<any>(null);
   
   // UI State
   const [error, setError] = useState<string>();
@@ -491,6 +493,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         setHrDepartments(hrData.departments ?? []);
         setHrPositions(hrData.positions ?? []);
         setHrRotations(hrData.rotations ?? []);
+        setHrOnboarding(hrData.onboarding);
       }
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -646,11 +649,13 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       defaultTab: 'hr-dashboard',
       submenu: [
         { tab: 'hr-dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
-        { tab: 'hr-collaborators', label: 'Collaborateurs', icon: UsersRound },
         { tab: 'hr-departments', label: 'Services', icon: Building2 },
-        { tab: 'hr-positions', label: 'Postes', icon: BriefcaseBusiness },
-        { tab: 'hr-rotations', label: 'Roulements', icon: RefreshCw },
-        { tab: 'hr-orgchart', label: 'Organigramme', icon: Workflow },
+        ...(hrOnboarding?.servicesCompletedAt ? [{ tab: 'hr-positions' as const, label: 'Postes' as const, icon: BriefcaseBusiness }] : []),
+        ...(hrOnboarding?.employeesUnlockedAt ? [
+          { tab: 'hr-collaborators' as const, label: 'Collaborateurs' as const, icon: UsersRound },
+          { tab: 'hr-rotations' as const, label: 'Roulements' as const, icon: RefreshCw },
+          { tab: 'hr-orgchart' as const, label: 'Organigramme' as const, icon: Workflow },
+        ] : []),
       ]
     },
     {
@@ -750,7 +755,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     }
   ], [
     stocksInstalled, stocksMenuExpanded, isStocksTab,
-    hrInstalled, hrMenuExpanded, isHrTab,
+    hrInstalled, hrMenuExpanded, isHrTab, hrOnboarding,
     planningInstalled, planningMenuExpanded, isPlanningTab,
     technicalSheetsInstalled, technicalSheetsMenuExpanded, isTechnicalSheetsTab,
     productionInstalled, productionMenuExpanded, isProductionTab,
@@ -1060,9 +1065,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     setError(undefined);
     setSuccess(undefined);
     try {
-      await handler();
+      const result = await handler();
       setSuccess(message);
       await refresh();
+      return result;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Une erreur est survenue lors de l\'enregistrement.');
       throw err;
@@ -1075,18 +1081,46 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     setHrSummary(data.summary);
     setHrCollaborators(data.collaborators ?? []);
     setHrDepartments(data.departments ?? []);
-      setHrPositions(data.positions ?? []);
-      setHrRotations(data.rotations ?? []);
+    setHrPositions(data.positions ?? []);
+    setHrRotations(data.rotations ?? []);
+    setHrOnboarding(data.onboarding);
   }
 
   async function handleCreateHrCollaborator(payload: HrCollaboratorPayload) {
-    await submit(() => api.createHrCollaborator(token, payload), 'Collaborateur RH créé.');
+    const collaborator = await submit(() => api.createHrCollaborator(token, payload), 'Collaborateur RH créé.') as HrCollaborator;
     await refreshHr();
+    return collaborator;
   }
 
   async function handleUpdateHrCollaborator(id: string, payload: Partial<HrCollaboratorPayload>) {
-    await submit(() => api.updateHrCollaborator(token, id, payload), 'Collaborateur RH mis à jour.');
+    const collaborator = await submit(() => api.updateHrCollaborator(token, id, payload), 'Collaborateur RH mis à jour.') as HrCollaborator;
     await refreshHr();
+    return collaborator;
+  }
+
+  async function handleUploadHrCollaboratorDocument(employeeId: string, payload: { file: File; category: string; notes?: string; expiresAt?: string }) {
+    await submit(() => api.uploadHrCollaboratorDocument(token, employeeId, payload), 'Document RH enregistré.');
+    await refreshHr();
+  }
+
+  async function handleDeleteHrCollaboratorDocument(employeeId: string, documentId: string) {
+    if (!window.confirm('Supprimer ce document RH ?')) return;
+    await submit(() => api.deleteHrCollaboratorDocument(token, employeeId, documentId), 'Document RH supprimé.');
+    await refreshHr();
+  }
+
+  async function handleReplaceHrCollaboratorDocument(employeeId: string, documentId: string, file: File) {
+    const document = await submit(() => api.replaceHrCollaboratorDocument(token, employeeId, documentId, file), 'Document RH remplacé.') as HrDocument;
+    await refreshHr();
+    return document;
+  }
+
+  async function handleViewHrCollaboratorDocument(employeeId: string, document: HrDocument) {
+    await api.viewHrCollaboratorDocument(token, employeeId, document);
+  }
+
+  async function handleDownloadHrCollaboratorDocument(employeeId: string, document: HrDocument) {
+    await api.downloadHrCollaboratorDocument(token, employeeId, document);
   }
 
   async function handleArchiveHrCollaborator(id: string) {
@@ -1097,6 +1131,29 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
   async function handleCreateHrDepartment(payload: HrReferencePayload) {
     await submit(() => api.createHrDepartment(token, payload), 'Service RH créé.');
+    await refreshHr();
+  }
+
+  async function handleCreateHrDepartmentsBulk(names: string[]) {
+    const result = await submit(() => api.createHrDepartmentsBulk(token, names), `${names.length} services sélectionnés.`);
+    const created = typeof (result as any)?.created === 'number' ? (result as any).created : names.length;
+    const skipped = typeof (result as any)?.skipped === 'number' ? (result as any).skipped : 0;
+    setSuccess(`${created} service${created > 1 ? 's' : ''} créé${created > 1 ? 's' : ''}${skipped ? `, ${skipped} déjà présent${skipped > 1 ? 's' : ''}` : ''}.`);
+    await refreshHr();
+  }
+
+  async function handleCompleteHrServices(names?: string[]) {
+    await submit(() => api.completeHrServices(token, names ?? []), 'Étape Services validée.');
+    await refreshHr();
+  }
+
+  async function handleCompleteHrPositions() {
+    await submit(() => api.completeHrPositions(token), 'Étape Postes validée.');
+    await refreshHr();
+  }
+
+  async function handleUnlockHrEmployees() {
+    await submit(() => api.unlockHrEmployees(token), 'Collaborateurs débloqués.');
     await refreshHr();
   }
 
@@ -1112,6 +1169,14 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
   async function handleCreateHrPosition(payload: HrReferencePayload) {
     await submit(() => api.createHrPosition(token, payload), 'Poste RH créé.');
+    await refreshHr();
+  }
+
+  async function handleCreateHrPositionsBulk(items: HrReferencePayload[]) {
+    const result = await submit(() => api.createHrPositionsBulk(token, items), `${items.length} postes sélectionnés.`);
+    const created = typeof (result as any)?.created === 'number' ? (result as any).created : items.length;
+    const skipped = typeof (result as any)?.skipped === 'number' ? (result as any).skipped : 0;
+    setSuccess(`${created} poste${created > 1 ? 's' : ''} créé${created > 1 ? 's' : ''}${skipped ? `, ${skipped} déjà présent${skipped > 1 ? 's' : ''}` : ''}.`);
     await refreshHr();
   }
 
@@ -1887,16 +1952,24 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   rotations={hrRotations}
                   users={users}
                   sites={sites}
+                  onboarding={hrOnboarding}
                   canWrite={canWriteHr}
                   loading={isLoading}
                   onNavigate={(next) => setActiveTab(next === 'collaborators' ? 'hr-collaborators' : next === 'departments' ? 'hr-departments' : next === 'positions' ? 'hr-positions' : next === 'rotations' ? 'hr-rotations' : next === 'orgchart' ? 'hr-orgchart' : 'hr-dashboard')}
                   onCreateCollaborator={handleCreateHrCollaborator}
                   onUpdateCollaborator={handleUpdateHrCollaborator}
                   onArchiveCollaborator={handleArchiveHrCollaborator}
+                  onUploadCollaboratorDocument={handleUploadHrCollaboratorDocument}
+                  onDeleteCollaboratorDocument={handleDeleteHrCollaboratorDocument}
+                  onReplaceCollaboratorDocument={handleReplaceHrCollaboratorDocument}
+                  onViewCollaboratorDocument={handleViewHrCollaboratorDocument}
+                  onDownloadCollaboratorDocument={handleDownloadHrCollaboratorDocument}
                   onCreateDepartment={handleCreateHrDepartment}
+                  onCreateDepartmentsBulk={handleCreateHrDepartmentsBulk}
                   onUpdateDepartment={handleUpdateHrDepartment}
                   onArchiveDepartment={handleArchiveHrDepartment}
                   onCreatePosition={handleCreateHrPosition}
+                  onCreatePositionsBulk={handleCreateHrPositionsBulk}
                   onUpdatePosition={handleUpdateHrPosition}
                   onArchivePosition={handleArchiveHrPosition}
                   onCreateRotation={handleCreateHrRotation}
@@ -1906,6 +1979,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   onRemoveRotationAssignment={handleRemoveHrRotationAssignment}
                   onSetCollaboratorRotation={handleSetHrCollaboratorRotation}
                   onRemoveCollaboratorRotation={handleRemoveHrCollaboratorRotation}
+                  onCompleteServices={handleCompleteHrServices}
+                  onCompletePositions={handleCompleteHrPositions}
+                  onUnlockEmployees={handleUnlockHrEmployees}
                 />
               )}
 

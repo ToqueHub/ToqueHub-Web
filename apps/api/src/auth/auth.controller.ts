@@ -96,7 +96,7 @@ export class AuthController {
   @Post('apps/hr/install')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOkResponse({ description: 'Installs the RH application and creates default departments and positions.' })
+  @ApiOkResponse({ description: 'Installs the RH application and starts the guided setup.' })
   installHr(@CurrentUser() user: AuthenticatedUser) {
     return this.authService.installHrApplication(user);
   }

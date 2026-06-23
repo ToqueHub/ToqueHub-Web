@@ -164,7 +164,7 @@ export interface ModularDashboard {
   generatedAt: string;
 }
 
-export type HrCollaboratorStatus = 'ACTIVE' | 'ABSENT' | 'SUSPENDED' | 'LEFT';
+export type HrCollaboratorStatus = 'ACTIVE' | 'ABSENT' | 'SUSPENDED' | 'DEPARTED';
 
 export interface HrDepartment {
   id: string;
@@ -178,6 +178,8 @@ export interface HrPosition {
   id: string;
   name: string;
   description?: string | null;
+  departmentId?: string | null;
+  department?: HrDepartment | null;
   isArchived?: boolean;
   archivedAt?: string | null;
 }
@@ -270,6 +272,53 @@ export interface HrHistoryEntry {
   createdBy?: { email?: string | null; firstName?: string | null; lastName?: string | null } | null;
 }
 
+export interface HrEmploymentContract {
+  id: string;
+  contractType: string;
+  startDate: string;
+  endDate?: string | null;
+  weeklyHours?: number | null;
+  trialStartDate?: string | null;
+  trialEndDate?: string | null;
+  status: string;
+  notes?: string | null;
+  createdAt?: string | null;
+}
+
+export interface HrEmployeeCompensation {
+  id: string;
+  hourlyRate: number;
+  currency: string;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  reason?: string | null;
+  notes?: string | null;
+  createdAt?: string | null;
+}
+
+export interface HrSalaryReview {
+  id: string;
+  dueDate: string;
+  frequencyMonths?: number | null;
+  status: string;
+  proposedHourlyRate?: number | null;
+  notes?: string | null;
+  completedAt?: string | null;
+}
+
+export interface HrDocument {
+  id: string;
+  category: string;
+  filename: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  notes?: string | null;
+  expiresAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
 export interface HrCollaborator {
   id: string;
   photoDataUrl?: string | null;
@@ -294,6 +343,8 @@ export interface HrCollaborator {
   archivedAt?: string | null;
   department?: HrDepartment | null;
   position?: HrPosition | null;
+  secondaryPositionIds?: string[] | null;
+  secondaryPositions?: HrPosition[] | null;
   mainSite?: Site | null;
   site?: Site | null;
   user?: CoreUser | null;
@@ -301,6 +352,31 @@ export interface HrCollaborator {
   activeRotationAssignment?: HrRotationAssignment | null;
   rotationAssignment?: HrRotationAssignment | null;
   activeRotation?: HrRotation | null;
+  /** @deprecated Champs plats – utiliser activeContract */
+  contractType?: string | null;
+  /** @deprecated Champs plats – utiliser activeContract */
+  contractEndDate?: string | null;
+  /** @deprecated Champs plats – utiliser activeContract */
+  trialEndDate?: string | null;
+  /** @deprecated Champs plats – utiliser activeContract */
+  contractWeeklyMinutes?: number | null;
+  /** @deprecated Champs plats – utiliser currentCompensation */
+  hourlyRate?: number | null;
+  /** @deprecated Champs plats – utiliser currentCompensation */
+  currency?: string | null;
+  /** @deprecated Champs plats – utiliser currentCompensation */
+  rateEffectiveDate?: string | null;
+  /** @deprecated Champs plats – utiliser nextSalaryReview */
+  nextReviewDate?: string | null;
+  /** @deprecated Champs plats – utiliser nextSalaryReview */
+  reviewFrequency?: string | null;
+  activeContract?: HrEmploymentContract | null;
+  currentCompensation?: HrEmployeeCompensation | null;
+  nextSalaryReview?: HrSalaryReview | null;
+  contracts?: HrEmploymentContract[];
+  compensations?: HrEmployeeCompensation[];
+  salaryReviews?: HrSalaryReview[];
+  documents?: HrDocument[];
   history?: HrHistoryEntry[];
   createdAt?: string;
   updatedAt?: string;
@@ -317,6 +393,7 @@ export interface HrCollaboratorPayload {
   hireDate: string;
   departmentId: string;
   positionId: string;
+  secondaryPositionIds?: string[];
   siteId?: string;
   employeeNumber?: string;
   notes?: string;
@@ -325,11 +402,21 @@ export interface HrCollaboratorPayload {
   managerId?: string;
   mainSiteId?: string;
   photoDataUrl?: string;
+  contractType?: string;
+  contractEndDate?: string;
+  trialEndDate?: string;
+  contractWeeklyMinutes?: number | null;
+  hourlyRate?: number | null;
+  currency?: string;
+  rateEffectiveDate?: string;
+  nextReviewDate?: string;
+  reviewFrequency?: string;
 }
 
 export interface HrReferencePayload {
   name: string;
   description?: string;
+  departmentId?: string | null;
 }
 
 export interface HrSummary {
@@ -345,6 +432,19 @@ export interface HrSummary {
   };
   latestCollaborators?: HrCollaborator[];
   departmentDistribution?: Array<{ department: string; count: number }>;
+}
+
+export interface HrOnboardingProgress {
+  id: string;
+  organizationId: string;
+  status: string;
+  servicesCompletedAt?: string | null;
+  positionsCompletedAt?: string | null;
+  employeesUnlockedAt?: string | null;
+  firstEmployeeCreatedAt?: string | null;
+  completedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export type PlanningAlertLevel = 'critique' | 'attention' | 'information' | 'critical' | 'warning' | 'info';

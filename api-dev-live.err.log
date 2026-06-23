@@ -1,0 +1,49 @@
+[Nest] 8076  - 23/06/2026 16:38:53   ERROR [ExceptionsHandler] [Error: ENOENT: no such file or directory, stat 'C:\Users\Arthur\Desktop\toquehub-RH-modul\toquehub-RH-modul\apps\api\uploads\hr\9222d9ad-6e36-448a-a5c3-3861fa16af03\8ae0d116-5848-44f1-bdce-1a78cc9558c0\03f3ef16-086b-4c2a-a482-4b11d603cce3.pdf'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'stat',
+  path: 'C:\\Users\\Arthur\\Desktop\\toquehub-RH-modul\\toquehub-RH-modul\\apps\\api\\uploads\\hr\\9222d9ad-6e36-448a-a5c3-3861fa16af03\\8ae0d116-5848-44f1-bdce-1a78cc9558c0\\03f3ef16-086b-4c2a-a482-4b11d603cce3.pdf',
+  expose: false,
+  statusCode: 404,
+  status: 404
+}
+[Nest] 8076  - 23/06/2026 16:39:15   ERROR [ExceptionsHandler] [Error: ENOENT: no such file or directory, stat 'C:\Users\Arthur\Desktop\toquehub-RH-modul\toquehub-RH-modul\apps\api\uploads\hr\9222d9ad-6e36-448a-a5c3-3861fa16af03\8ae0d116-5848-44f1-bdce-1a78cc9558c0\03f3ef16-086b-4c2a-a482-4b11d603cce3.pdf'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'stat',
+  path: 'C:\\Users\\Arthur\\Desktop\\toquehub-RH-modul\\toquehub-RH-modul\\apps\\api\\uploads\\hr\\9222d9ad-6e36-448a-a5c3-3861fa16af03\\8ae0d116-5848-44f1-bdce-1a78cc9558c0\\03f3ef16-086b-4c2a-a482-4b11d603cce3.pdf',
+  expose: false,
+  statusCode: 404,
+  status: 404
+}
+[Nest] 8076  - 23/06/2026 16:39:58   ERROR [ExceptionsHandler] [Error: ENOENT: no such file or directory, stat 'C:\Users\Arthur\Desktop\toquehub-RH-modul\toquehub-RH-modul\apps\api\uploads\hr\9222d9ad-6e36-448a-a5c3-3861fa16af03\8ae0d116-5848-44f1-bdce-1a78cc9558c0\a48f5cd1-63ed-4c12-b573-d0d67cf96d9e.pdf'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'stat',
+  path: 'C:\\Users\\Arthur\\Desktop\\toquehub-RH-modul\\toquehub-RH-modul\\apps\\api\\uploads\\hr\\9222d9ad-6e36-448a-a5c3-3861fa16af03\\8ae0d116-5848-44f1-bdce-1a78cc9558c0\\a48f5cd1-63ed-4c12-b573-d0d67cf96d9e.pdf',
+  expose: false,
+  statusCode: 404,
+  status: 404
+}
+[Nest] 23676  - 23/06/2026 16:43:33   ERROR [NestApplication] Error: listen EADDRINUSE: address already in use :::3000 +2ms
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Users\Arthur\Desktop\toquehub-RH-modul\toquehub-RH-modul\node_modules\@nestjs\platform-express\adapters\express-adapter.js:115:32)
+    at C:\Users\Arthur\Desktop\toquehub-RH-modul\toquehub-RH-modul\node_modules\@nestjs\core\nest-application.js:190:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Users\Arthur\Desktop\toquehub-RH-modul\toquehub-RH-modul\node_modules\@nestjs\core\nest-application.js:180:16)
+    at async bootstrap (C:\Users\Arthur\Desktop\toquehub-RH-modul\toquehub-RH-modul\apps\api\src\main.ts:36:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3000
+}
+
+Node.js v22.22.2
