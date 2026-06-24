@@ -8329,15 +8329,17 @@ input:checked + .slider-round:before {
 .hr-wizard-overlay { align-items: center; }
 
 .hr-wizard-modal {
-  width: min(980px, calc(100vw - 2rem));
-  max-height: min(860px, calc(100vh - 2rem));
-  overflow: auto;
+  width: min(1180px, calc(100vw - 2rem));
+  height: min(820px, calc(100vh - 2rem));
+  max-height: calc(100vh - 2rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding-bottom: 0;
 }
 
 .hr-wizard-header {
-  position: sticky;
-  top: 0;
+  flex-shrink: 0;
   z-index: 3;
   background: white;
 }
@@ -8347,10 +8349,20 @@ input:checked + .slider-round:before {
 .hr-wizard-header p { margin: 0; color: #64748b; font-size: 0.85rem; }
 
 .hr-wizard-welcome {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  padding-top: 0.5rem;
+  padding: 0.5rem 1.5rem 0;
+}
+
+.hr-wizard-modal > .hr-catalog {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 1rem 1.5rem 0;
 }
 
 .hr-wizard-hero-card {
@@ -8482,6 +8494,15 @@ input:checked + .slider-round:before {
 
 .hr-position-accordion-body { padding: 0.5rem 1rem 1rem; background: #f8fafc; }
 
+.hr-position-card-grid {
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  margin-bottom: 0.85rem;
+}
+
+.hr-position-card {
+  min-height: 112px;
+}
+
 .hr-position-custom { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
 
 .hr-position-custom input { flex: 1; }
@@ -8494,6 +8515,19 @@ input:checked + .slider-round:before {
   .hr-wizard-bullets { grid-template-columns: 1fr; }
   .hr-wizard-hero-card { grid-template-columns: 1fr; }
   .hr-catalog-actions.sticky { flex-direction: column; align-items: stretch; }
+}
+
+@media (max-width: 760px) {
+  .modal-overlay.hr-wizard-overlay {
+    padding: 0;
+  }
+
+  .hr-wizard-modal {
+    width: 100vw;
+    height: 100vh;
+    max-height: 100vh;
+    border-radius: 0;
+  }
 }
 
 .hr-position-tags { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
@@ -8651,6 +8685,31 @@ input:checked + .slider-round:before {
   padding: 0.65rem 0.75rem;
   background: white;
   font-size: 0.88rem;
+}
+
+.hr-field-error-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.hr-form-grid input.hr-field-missing,
+.hr-form-grid select.hr-field-missing,
+.hr-form-grid textarea.hr-field-missing {
+  border-color: rgba(239, 68, 68, 0.48);
+  background: #fff7f7;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.08);
+}
+
+.hr-required-label {
+  color: #991b1b !important;
+}
+
+.hr-field-error-message {
+  color: #991b1b;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.25;
 }
 
 .hr-form-grid textarea {

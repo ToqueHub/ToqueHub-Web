@@ -741,13 +741,20 @@ function PositionCatalogSelector({ departments, initialSelection = {}, onSelecti
           <span className="badge badge-reception">{currentSuggestions.length} suggestions</span>
         </div>
         <div className="hr-position-accordion-body">
-          <div className="hr-checkbox-group compact">
-            {currentSuggestions.map((pos) => (
-              <label key={pos} className="hr-checkbox-label">
-                <input type="checkbox" checked={currentSelected.has(pos)} onChange={() => togglePosition(currentDepartment.id, pos)} />
-                {pos}
-              </label>
-            ))}
+          <div className="hr-catalog-grid hr-position-card-grid">
+            {currentSuggestions.map((pos) => {
+              const isSelected = currentSelected.has(pos);
+              return (
+                <button type="button" key={pos} className={`hr-catalog-card hr-position-card ${isSelected ? 'selected' : ''}`} onClick={() => togglePosition(currentDepartment.id, pos)}>
+                  <div className="hr-catalog-check">{isSelected ? <Check size={16} /> : <div className="hr-catalog-check-empty" />}</div>
+                  <div className="hr-catalog-body">
+                    <strong>{pos}</strong>
+                    <span>{currentDepartment.name}</span>
+                    <small>{buildJobDescription(pos, currentDepartment.name).split('\n').find((line) => line.trim().length > 80) ?? 'Poste rattaché au service sélectionné.'}</small>
+                  </div>
+                </button>
+              );
+            })}
           </div>
           <div className="hr-position-custom">
             <input placeholder={`Ajouter un poste personnalisé à ${currentDepartment.name}…`} value={customByDept[currentDepartment.id] ?? ''} onChange={(e) => setCustomByDept((prev) => ({ ...prev, [currentDepartment.id]: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') addCustom(currentDepartment.id); }} />
@@ -1331,14 +1338,14 @@ function CollaboratorSheet({ collaborator, rotations, canWrite, onClose, onEdit,
   const compatibleRotations = rotations.filter((rotation) => !isArchived(rotation) && (!rotationDepartment(rotation)?.id || rotationDepartment(rotation)?.id === (collaborator.departmentId ?? collaborator.department?.id)));
   const primaryContract = collaborator.activeContract ?? collaborator.contracts?.find((contract) => contract.status === 'ACTIVE') ?? collaborator.contracts?.[0];
   const contractType = primaryContract?.contractType ?? collaborator.contractType;
-  const contractWeeklyMinutes = primaryContract?.weeklyHours ?? collaborator.contractWeeklyMinutes;
+  const contractWeeklyMinutes = toFiniteNumber(primaryContract?.weeklyHours ?? collaborator.contractWeeklyMinutes);
   const contractEndDate = primaryContract?.endDate ?? collaborator.contractEndDate;
   const trialEndDate = primaryContract?.trialEndDate ?? collaborator.trialEndDate;
   const contractDocuments = (collaborator.documents ?? []).filter((document) => document.category === 'CONTRACT' || document.category === 'AMENDMENT');
   const hasContract = Boolean(contractType || contractDocuments.length);
   const hasDocuments = Boolean(collaborator.documents?.length);
   const hasTrainings = false;
-  const hourlyRate = collaborator.currentCompensation?.hourlyRate ?? collaborator.hourlyRate ?? null;
+  const hourlyRate = toFiniteNumber(collaborator.currentCompensation?.hourlyRate ?? collaborator.hourlyRate);
   const compensationCurrency = collaborator.currentCompensation?.currency ?? collaborator.currency ?? 'EUR';
   const contractWeeklyHours = contractWeeklyMinutes != null ? contractWeeklyMinutes / 60 : null;
   const weeklyGross = hourlyRate != null && contractWeeklyHours != null ? hourlyRate * contractWeeklyHours : null;
@@ -1453,11 +1460,11 @@ function CollaboratorSheet({ collaborator, rotations, canWrite, onClose, onEdit,
           <InfoBlock
             title="Rémunération"
             rows={[
-              [<ShieldCheck size={14} />, hourlyRate != null ? 'Taux horaire : ' + hourlyRate.toFixed(2) + ' ' + compensationCurrency : 'Taux horaire : Non renseigne'],
+              [<ShieldCheck size={14} />, 'Taux horaire : ' + formatMoneyAmount(hourlyRate, compensationCurrency, 'Non renseigne')],
               ...(weeklyGross != null ? [
-                [<CalendarDays size={14} />, 'Hebdomadaire brut : ' + weeklyGross.toFixed(2) + ' ' + compensationCurrency] as [React.ReactNode, React.ReactNode],
-                [<CalendarDays size={14} />, 'Mensuel brut estime : ' + ((weeklyGross * 52) / 12).toFixed(2) + ' ' + compensationCurrency] as [React.ReactNode, React.ReactNode],
-                [<CalendarDays size={14} />, 'Annuel brut estime : ' + (weeklyGross * 52).toFixed(2) + ' ' + compensationCurrency] as [React.ReactNode, React.ReactNode],
+                [<CalendarDays size={14} />, 'Hebdomadaire brut : ' + formatMoneyAmount(weeklyGross, compensationCurrency)] as [React.ReactNode, React.ReactNode],
+                [<CalendarDays size={14} />, 'Mensuel brut estime : ' + formatMoneyAmount((weeklyGross * 52) / 12, compensationCurrency)] as [React.ReactNode, React.ReactNode],
+                [<CalendarDays size={14} />, 'Annuel brut estime : ' + formatMoneyAmount(weeklyGross * 52, compensationCurrency)] as [React.ReactNode, React.ReactNode],
               ] : []),
               [<CalendarDays size={14} />, collaborator.currentCompensation?.effectiveFrom ? `Dernière revalorisation : ${formatDate(collaborator.currentCompensation.effectiveFrom)}` : collaborator.rateEffectiveDate ? `Dernière revalorisation : ${formatDate(collaborator.rateEffectiveDate)}` : 'Dernière revalorisation : —'],
               [<CalendarDays size={14} />, collaborator.nextSalaryReview?.dueDate ? `Prochaine revalorisation : ${formatDate(collaborator.nextSalaryReview.dueDate)}` : collaborator.nextReviewDate ? `Prochaine revalorisation : ${formatDate(collaborator.nextReviewDate)}` : 'Prochaine revalorisation : —'],
@@ -1512,6 +1519,8 @@ function weekMetrics(week: HrRotationWeek) { const work = week.days.filter((day)
 function cycleMetrics(weeks: HrRotationWeek[]) { const weekly = weeks.map(weekMetrics); const divisor = Math.max(1, weekly.length); return { averageWeeklyMinutes: Math.round(weekly.reduce((sum, item) => sum + item.totalMinutes, 0) / divisor), workedDays: Math.round(weekly.reduce((sum, item) => sum + item.workedDays, 0) / divisor), restDays: Math.round(weekly.reduce((sum, item) => sum + item.restDays, 0) / divisor), averagePresenceMinutes: Math.round(weekly.reduce((sum, item) => sum + item.averagePresenceMinutes, 0) / divisor) }; }
 function rotationMetrics(rotation: HrRotation) { const computed = cycleMetrics(normalizeWeeks(rotation)); const metrics = rotation.metrics as any; return { averageWeeklyMinutes: metrics?.averageWeeklyMinutes ?? metrics?.weeklyMinutes ?? metrics?.weeklyHoursMinutesAverage ?? computed.averageWeeklyMinutes, workedDays: metrics?.workedDays ?? metrics?.workedDaysAverage ?? computed.workedDays, restDays: metrics?.restDays ?? metrics?.restDaysAverage ?? computed.restDays, averagePresenceMinutes: metrics?.averagePresenceMinutes ?? metrics?.averageDailyPresenceMinutes ?? computed.averagePresenceMinutes }; }
 function formatMinutes(value?: number | null) { if (value === undefined || value === null || Number.isNaN(value)) return '—'; const hours = Math.floor(value / 60); const minutes = Math.round(value % 60); return `${hours}h${minutes.toString().padStart(2, '0')}`; }
+function toFiniteNumber(value: unknown): number | null { if (value === undefined || value === null || value === '') return null; const number = typeof value === 'number' ? value : Number(value); return Number.isFinite(number) ? number : null; }
+function formatMoneyAmount(value: unknown, currency = 'EUR', fallback = '—') { const number = toFiniteNumber(value); return number != null ? `${number.toFixed(2)} ${currency}` : fallback; }
 function EmptyState({ title, description, action }: { title: string; description: string; action?: React.ReactNode }) { return <div className="empty-state"><div className="empty-state-icon">👥</div><span className="empty-state-title">{title}</span><span className="empty-state-desc">{description}</span>{action}</div>; }
 function PersonRow({ collaborator, detail }: { collaborator: HrCollaborator; detail?: string }) { return <div className="hr-person-row"><AvatarInitial collaborator={collaborator} /><div><strong>{fullName(collaborator)}</strong><span>{collaborator.position?.name ?? '—'} · {collaborator.department?.name ?? '—'}</span></div><small>{detail}</small></div>; }
 function AvatarInitial({ collaborator }: { collaborator: HrCollaborator }) { const photo = collaborator.photoUrl ?? collaborator.photoDataUrl; return photo ? <img className="hr-avatar" src={photo} alt="" /> : <div className="hr-avatar">{`${collaborator.firstName?.[0] ?? ''}${collaborator.lastName?.[0] ?? ''}`.toUpperCase() || 'RH'}</div>; }
@@ -1705,4 +1714,3 @@ function formatDate(value?: string | null) { if (!value) return '—'; return ne
 function dateValue(value?: string | null) { return value ? new Date(value).getTime() : 0; }
 function toInputDate(value?: string | null) { return value ? new Date(value).toISOString().slice(0, 10) : ''; }
 function cleanLegacyHrNotes(value?: string | null) { return value && /Documents PDF a joindre|Documents PDF à joindre|Formations:/i.test(value) ? '' : value ?? ''; }
-

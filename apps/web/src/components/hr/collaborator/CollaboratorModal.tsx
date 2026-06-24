@@ -5,6 +5,8 @@ import type { CoreUser, HrCollaborator, HrCollaboratorPayload, HrDepartment, HrD
 import { HR_CATALOG } from '../../../hr-catalog';
 
 type TabId = 'profile' | 'professional' | 'contracts' | 'documents' | 'trainings' | 'organization' | 'history';
+type RequiredFieldId = 'firstName' | 'lastName' | 'departmentId' | 'positionId';
+type RequiredFieldErrors = Partial<Record<RequiredFieldId, string>>;
 export type PendingHrDocumentUpload = { file: File; category: string; notes?: string; expiresAt?: string };
 
 const tabs: Array<{ id: TabId; label: string }> = [
@@ -30,6 +32,7 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
   const [positionResetMessage, setPositionResetMessage] = useState('');
   const [dirty, setDirty] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<TabId, string>>>({});
+  const [requiredErrors, setRequiredErrors] = useState<RequiredFieldErrors>({});
   const [submitError, setSubmitError] = useState('');
   const [primaryLanguage, setPrimaryLanguage] = useState('');
   const [secondaryLanguage, setSecondaryLanguage] = useState('');
@@ -75,6 +78,13 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
 
   const set = <K extends keyof HrCollaboratorPayload>(key: K, value: HrCollaboratorPayload[K]) => {
     setDirty(true);
+    if (isRequiredField(key) && String(value ?? '').trim()) {
+      setRequiredErrors((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -88,8 +98,10 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    const nextRequiredErrors = validateRequiredFields(form);
     const nextErrors = validate(form);
     setErrors(nextErrors);
+    setRequiredErrors(nextRequiredErrors);
     if (Object.keys(nextErrors).length) {
       setActiveTab(Object.keys(nextErrors)[0] as TabId);
       return;
@@ -107,7 +119,7 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
 
   return (
     <div className="modal-overlay">
-      <form className="modal-card hr-modal hr-collaborator-modal" onSubmit={submit}>
+      <form className="modal-card hr-modal hr-collaborator-modal" onSubmit={submit} noValidate>
         <div className="modal-header hr-modal-sticky">
           <div>
             <h2>{collaborator ? 'Modifier le collaborateur' : 'Nouveau collaborateur'}</h2>
@@ -123,8 +135,8 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
           ))}
         </div>
         <div className="hr-collaborator-body">
-          {activeTab === 'profile' ? <ProfileTab form={form} set={set} primaryLanguage={primaryLanguage} secondaryLanguage={secondaryLanguage} onPrimaryLanguage={(value) => { setPrimaryLanguage(value); setDirty(true); }} onSecondaryLanguage={(value) => { setSecondaryLanguage(value); setDirty(true); }} /> : null}
-          {activeTab === 'professional' ? <ProfessionalTab form={form} set={set} departments={activeDepartments} positions={primaryPositions} allPositions={activePositions} selectedDepartment={selectedDepartment} sites={sites} managers={availableManagers} users={availableUsers} positionResetMessage={positionResetMessage} clearPositionResetMessage={() => setPositionResetMessage('')} /> : null}
+          {activeTab === 'profile' ? <ProfileTab form={form} set={set} requiredErrors={requiredErrors} primaryLanguage={primaryLanguage} secondaryLanguage={secondaryLanguage} onPrimaryLanguage={(value) => { setPrimaryLanguage(value); setDirty(true); }} onSecondaryLanguage={(value) => { setSecondaryLanguage(value); setDirty(true); }} /> : null}
+          {activeTab === 'professional' ? <ProfessionalTab form={form} set={set} requiredErrors={requiredErrors} departments={activeDepartments} positions={primaryPositions} allPositions={activePositions} selectedDepartment={selectedDepartment} sites={sites} managers={availableManagers} users={availableUsers} positionResetMessage={positionResetMessage} clearPositionResetMessage={() => setPositionResetMessage('')} /> : null}
           {activeTab === 'contracts' ? <ContractsTab form={form} set={set} collaborator={collaborator} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /> : null}
           {activeTab === 'documents' ? <DocumentsTab collaborator={collaborator} pendingDocuments={pendingDocuments} onDocumentsChange={(documents) => { setPendingDocuments(documents); setDirty(true); }} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /> : null}
           {activeTab === 'trainings' ? <TrainingsTab selectedTrainings={selectedTrainings} onSelectedTrainings={(trainings) => { setSelectedTrainings(trainings); setDirty(true); }} customTraining={customTraining} onCustomTraining={setCustomTraining} /> : null}
@@ -143,12 +155,16 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
   );
 }
 
-function ProfileTab({ form, set, primaryLanguage, secondaryLanguage, onPrimaryLanguage, onSecondaryLanguage }: TabProps & { primaryLanguage: string; secondaryLanguage: string; onPrimaryLanguage: (value: string) => void; onSecondaryLanguage: (value: string) => void }) {
+function ProfileTab({ form, set, requiredErrors, primaryLanguage, secondaryLanguage, onPrimaryLanguage, onSecondaryLanguage }: TabProps & { requiredErrors: RequiredFieldErrors; primaryLanguage: string; secondaryLanguage: string; onPrimaryLanguage: (value: string) => void; onSecondaryLanguage: (value: string) => void }) {
   return <TabPanel icon={<UserRound size={18} />} title="Profil">
     <div className="hr-form-grid">
       <input className="span-2" placeholder="URL photo optionnelle" value={form.photoUrl ?? ''} onChange={(e) => set('photoUrl', e.target.value)} />
-      <input placeholder="Prénom *" value={form.firstName} onChange={(e) => set('firstName', e.target.value)} required />
-      <input placeholder="Nom *" value={form.lastName} onChange={(e) => set('lastName', e.target.value)} required />
+      <RequiredFieldError message={requiredErrors.firstName}>
+        <input className={requiredErrors.firstName ? 'hr-field-missing' : undefined} placeholder="Prénom *" value={form.firstName} onChange={(e) => set('firstName', e.target.value)} required aria-invalid={Boolean(requiredErrors.firstName)} />
+      </RequiredFieldError>
+      <RequiredFieldError message={requiredErrors.lastName}>
+        <input className={requiredErrors.lastName ? 'hr-field-missing' : undefined} placeholder="Nom *" value={form.lastName} onChange={(e) => set('lastName', e.target.value)} required aria-invalid={Boolean(requiredErrors.lastName)} />
+      </RequiredFieldError>
       <input type="email" placeholder="Email" value={form.email ?? ''} onChange={(e) => set('email', e.target.value)} />
       <input placeholder="Téléphone" value={form.phone ?? ''} onChange={(e) => set('phone', e.target.value)} />
       <input className="span-2" placeholder="Adresse" value={form.address ?? ''} onChange={(e) => set('address', e.target.value)} />
@@ -163,13 +179,13 @@ function ProfileTab({ form, set, primaryLanguage, secondaryLanguage, onPrimaryLa
   </TabPanel>;
 }
 
-function ProfessionalTab({ form, set, departments, positions, allPositions, selectedDepartment, sites, managers, users, positionResetMessage, clearPositionResetMessage }: TabProps & { departments: HrDepartment[]; positions: HrPosition[]; allPositions: HrPosition[]; selectedDepartment?: HrDepartment; sites: Site[]; managers: HrCollaborator[]; users: CoreUser[]; positionResetMessage: string; clearPositionResetMessage: () => void }) {
+function ProfessionalTab({ form, set, requiredErrors, departments, positions, allPositions, selectedDepartment, sites, managers, users, positionResetMessage, clearPositionResetMessage }: TabProps & { requiredErrors: RequiredFieldErrors; departments: HrDepartment[]; positions: HrPosition[]; allPositions: HrPosition[]; selectedDepartment?: HrDepartment; sites: Site[]; managers: HrCollaborator[]; users: CoreUser[]; positionResetMessage: string; clearPositionResetMessage: () => void }) {
   return <TabPanel icon={<BriefcaseBusiness size={18} />} title="Professionnel">
     <div className="hr-form-grid">
       <label>Date d'embauche *<input type="date" value={form.hireDate} onChange={(e) => set('hireDate', e.target.value)} required /></label>
       <label>Établissement<select value={form.siteId ?? ''} onChange={(e) => set('siteId', e.target.value)} disabled={!sites.length}><option value="">{sites.length ? '-' : 'Aucun établissement configuré'}</option>{sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}</select></label>
-      <label>Service principal *<select value={form.departmentId} onChange={(e) => { set('departmentId', e.target.value); clearPositionResetMessage(); }} required><option value="">-</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
-      <label>Poste principal *<select value={form.positionId} onChange={(e) => set('positionId', e.target.value)} required disabled={!form.departmentId}><option value="">{form.departmentId ? 'Choisir un poste' : "Choisir d'abord un service"}</option>{positions.map((position) => <option key={position.id} value={position.id}>{position.name}</option>)}</select></label>
+      <label className={requiredErrors.departmentId ? 'hr-required-label' : undefined}>Service principal *<select className={requiredErrors.departmentId ? 'hr-field-missing' : undefined} value={form.departmentId} onChange={(e) => { set('departmentId', e.target.value); clearPositionResetMessage(); }} required aria-invalid={Boolean(requiredErrors.departmentId)}><option value="">-</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select>{requiredErrors.departmentId ? <small className="hr-field-error-message">{requiredErrors.departmentId}</small> : null}</label>
+      <label className={requiredErrors.positionId ? 'hr-required-label' : undefined}>Poste principal *<select className={requiredErrors.positionId ? 'hr-field-missing' : undefined} value={form.positionId} onChange={(e) => set('positionId', e.target.value)} required disabled={!form.departmentId} aria-invalid={Boolean(requiredErrors.positionId)}><option value="">{form.departmentId ? 'Choisir un poste' : "Choisir d'abord un service"}</option>{positions.map((position) => <option key={position.id} value={position.id}>{position.name}</option>)}</select>{requiredErrors.positionId ? <small className="hr-field-error-message">{requiredErrors.positionId}</small> : null}</label>
       {positionResetMessage ? <div className="hr-inline-warning span-2"><AlertCircle size={14} /> {positionResetMessage}</div> : null}
       <label>Responsable direct<select value={form.managerId ?? ''} onChange={(e) => set('managerId', e.target.value)}><option value="">-</option>{managers.map((manager) => <option key={manager.id} value={manager.id}>{fullName(manager)}</option>)}</select></label>
       <input placeholder="Numéro de matricule" value={form.employeeNumber ?? ''} onChange={(e) => set('employeeNumber', e.target.value)} />
@@ -207,12 +223,16 @@ function ContractsTab({ form, set, collaborator, onViewDocument, onDownloadDocum
 
 function DocumentsTab({ collaborator, pendingDocuments, onDocumentsChange, onViewDocument, onDownloadDocument, onReplaceDocument, onDeleteDocument }: { collaborator?: HrCollaborator; pendingDocuments: PendingHrDocumentUpload[]; onDocumentsChange: (documents: PendingHrDocumentUpload[]) => void; onViewDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onDownloadDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument?: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument?: (employeeId: string, documentId: string) => Promise<void> }) {
   const updateDocument = (index: number, patch: Partial<PendingHrDocumentUpload>) => onDocumentsChange(pendingDocuments.map((document, i) => i === index ? { ...document, ...patch } : document));
+  const appendDocuments = (files: FileList | null) => {
+    const nextDocuments = Array.from(files ?? []).map((file) => ({ file, category: 'OTHER' }));
+    if (nextDocuments.length) onDocumentsChange([...pendingDocuments, ...nextDocuments]);
+  };
   return <TabPanel icon={<FileText size={18} />} title="Documents">
     <DocumentRegistry collaborator={collaborator} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} />
     <div className="hr-upload-box">
       <label className="btn btn-secondary">
         Joindre des PDF
-        <input type="file" accept="application/pdf,.pdf" multiple onChange={(event) => onDocumentsChange([...(event.target.files ?? [])].map((file) => ({ file, category: 'OTHER' })))} />
+        <input type="file" accept="application/pdf,.pdf" multiple onChange={(event) => { appendDocuments(event.target.files); event.currentTarget.value = ''; }} />
       </label>
       <span className="muted">Les fichiers choisis seront enregistrés et rattachés à leur catégorie.</span>
     </div>
@@ -330,7 +350,21 @@ type TabProps = { form: HrCollaboratorPayload; set: <K extends keyof HrCollabora
 function TabPanel({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) { return <section className="hr-tab-panel"><h3>{icon}{title}</h3>{children}</section>; }
 function DataTable({ title, rows, empty }: { title: string; rows: string[][]; empty: string }) { return <div className="hr-data-table"><strong>{title}</strong>{rows.length ? <table><tbody>{rows.map((row, index) => <tr key={index}>{row.map((cell, i) => <td key={i}>{cell}</td>)}</tr>)}</tbody></table> : <p className="muted">{empty}</p>}</div>; }
 function InfoRow({ label, value }: { label: string; value?: string | null }) { return <div><span>{label}</span><strong>{value || '-'}</strong></div>; }
+function RequiredFieldError({ message, children }: { message?: string; children: React.ReactNode }) {
+  return <div className="hr-field-error-shell">{children}{message ? <small className="hr-field-error-message">{message}</small> : null}</div>;
+}
+
+function validateRequiredFields(form: HrCollaboratorPayload) {
+  const errors: RequiredFieldErrors = {};
+  if (!form.firstName.trim()) errors.firstName = 'Prénom obligatoire';
+  if (!form.lastName.trim()) errors.lastName = 'Nom obligatoire';
+  if (!form.departmentId) errors.departmentId = 'Service principal obligatoire';
+  if (!form.positionId) errors.positionId = 'Poste principal obligatoire';
+  return errors;
+}
+
 function validate(form: HrCollaboratorPayload) { const errors: Partial<Record<TabId, string>> = {}; if (!form.firstName.trim() || !form.lastName.trim()) errors.profile = 'Prénom et nom obligatoires'; if (!form.hireDate || !form.departmentId || !form.positionId) errors.professional = 'Champs professionnels obligatoires'; return errors; }
+function isRequiredField(key: keyof HrCollaboratorPayload): key is RequiredFieldId { return key === 'firstName' || key === 'lastName' || key === 'departmentId' || key === 'positionId'; }
 function cleanPayload(form: HrCollaboratorPayload): HrCollaboratorPayload { return { ...form, email: form.email || undefined, phone: form.phone || undefined, address: form.address || undefined, birthDate: form.birthDate || undefined, siteId: form.siteId || undefined, employeeNumber: form.employeeNumber || undefined, notes: form.notes || undefined, userId: form.userId || undefined, managerId: form.managerId || undefined, secondaryPositionIds: form.secondaryPositionIds?.length ? form.secondaryPositionIds : undefined, contractType: form.contractType || undefined, contractEndDate: form.contractEndDate || undefined, trialEndDate: form.trialEndDate || undefined, contractWeeklyMinutes: form.contractWeeklyMinutes ?? undefined, hourlyRate: form.hourlyRate ?? undefined, currency: form.currency || undefined, rateEffectiveDate: form.rateEffectiveDate || undefined, nextReviewDate: form.nextReviewDate || undefined, reviewFrequency: form.reviewFrequency || undefined }; }
 function positionBelongsToDepartment(position: HrPosition, department?: HrDepartment) { if (!department) return false; if (position.departmentId) return position.departmentId === department.id; const catalog = HR_CATALOG.find((item) => normalizeLabel(item.name) === normalizeLabel(department.name)); return Boolean(catalog?.positions.some((name) => normalizeLabel(name) === normalizeLabel(position.name))); }
 function activeRotation(collaborator?: HrCollaborator) { return collaborator?.activeRotation ?? collaborator?.activeRotationAssignment?.rotation ?? collaborator?.rotationAssignment?.rotation ?? null; }
