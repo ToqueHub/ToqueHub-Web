@@ -71,6 +71,12 @@ import {
   BriefcaseBusiness,
   Factory,
   Utensils,
+  KeyRound,
+  Server,
+  RotateCw,
+  ZoomIn,
+  ZoomOut,
+  Maximize,
 } from 'lucide-react';
 import { ArchitectureCenter } from './ArchitectureCenter';
 import { UsersPage, UserForm } from './UsersPage';
@@ -96,6 +102,9 @@ import type {
   Stock,
   StockMovement,
   StockMovementType,
+  StocksOcrExtraction,
+  StocksOcrLine,
+  StocksOcrStatus,
   Supplier,
   Unit,
   UserSession,
@@ -391,6 +400,15 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [showSiteModal, setShowSiteModal] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [showInventoryModal, setShowInventoryModal] = useState(false);
+  const [showOcrImportModal, setShowOcrImportModal] = useState(false);
+  const [showOcrReviewModal, setShowOcrReviewModal] = useState(false);
+  const [ocrStatuses, setOcrStatuses] = useState<StocksOcrStatus[]>([]);
+  const [selectedOcrExtraction, setSelectedOcrExtraction] = useState<StocksOcrExtraction | null>(null);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [ocrPollingActive, setOcrPollingActive] = useState(false);
+  const [productPrefillName, setProductPrefillName] = useState('');
+  const [supplierPrefillName, setSupplierPrefillName] = useState('');
+  const [apiKeysPanelHint, setApiKeysPanelHint] = useState(false);
   const [showPrefillWizard, setShowPrefillWizard] = useState(false);
   const [confirmation, setConfirmation] = useState<Confirmation>(null);
   const [appActionLoading, setAppActionLoading] = useState(false);
@@ -423,6 +441,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [movementSearch, setMovementSearch] = useState('');
   const [movementTypeFilter, setMovementTypeFilter] = useState('');
   const [productSearch, setProductSearch] = useState('');
+  const [productCategoryFilter, setProductCategoryFilter] = useState('');
+  const [productSupplierFilter, setProductSupplierFilter] = useState('');
   const [supplierSearch, setSupplierSearch] = useState('');
   const [unitSearch, setUnitSearch] = useState('');
   const [locationSearch, setLocationSearch] = useState('');
@@ -511,6 +531,21 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     const interval = window.setInterval(() => void refresh(), 5 * 60 * 1000);
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!ocrPollingActive || !ocrStatuses.length) return undefined;
+    const timer = window.setInterval(async () => {
+      const pending = ocrStatuses.filter((item) => !item.extraction && item.state !== 'erreur');
+      if (!pending.length) {
+        setOcrPollingActive(false);
+        return;
+      }
+      const refreshed = await Promise.all(ocrStatuses.map((item) => api.stocksOcrStatus(token, item.document.id).catch(() => item)));
+      setOcrStatuses(refreshed);
+      if (refreshed.every((item) => item.extraction || item.state === 'erreur')) setOcrPollingActive(false);
+    }, 2500);
+    return () => window.clearInterval(timer);
+  }, [ocrPollingActive, ocrStatuses, token]);
 
 
   const stocksInstalled = installedApps.includes('stocks');
@@ -797,7 +832,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const dashboardWidgets = modularDashboard?.widgets ?? [];
   const dashboardRefreshLabel = modularDashboard?.generatedAt ? new Date(modularDashboard.generatedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—';
 
-  const stockValue = useMemo(() => stocks.reduce((sum, stock) => sum + numeric(stock.currentQuantity ?? stock.quantity) * numeric(stock.value ?? stock.product.averagePurchasePrice ?? stock.product.weightedAveragePrice), 0), [stocks]);
+  const stockValue = useMemo(() => stocks.reduce((sum, stock) => sum + numeric(stock.stockValue ?? stock.value ?? numeric(stock.currentQuantity ?? stock.quantity) * numeric(stock.product.averagePrice ?? stock.product.averagePurchasePrice ?? stock.product.weightedAveragePrice)), 0), [stocks]);
   const monthStart = useMemo(() => {
     const d = new Date();
     d.setDate(1);
@@ -1253,19 +1288,110 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     setShowUnitModal(false);
   }
 
-  async function handleCreateProduct(payload: { name: string; sku?: string; unitId: string; categoryId?: string }) {
+  async function handleCreateProduct(payload: ProductFormPayload) {
     await submit(() => api.createProduct(token, payload), 'Produit créé avec succès.');
+    setProductPrefillName('');
     setShowProductModal(false);
+  }
+
+  async function handleUpdateProduct(productId: string, payload: ProductFormPayload) {
+    await submit(() => api.updateProduct(token, productId, payload), 'Fiche produit mise à jour.');
   }
 
   async function handleCreateSupplier(payload: { name: string; contactName?: string; email?: string; phone?: string }) {
     await submit(() => api.createSupplier(token, payload), 'Fournisseur créé avec succès.');
+    setSupplierPrefillName('');
     setShowSupplierModal(false);
   }
 
   async function handleCreateMovement(payload: { productId: string; supplierId?: string; type: StockMovementType; quantity: number; reason?: string; unitId?: string; lotId?: string; sourceSiteId?: string; sourceLocationId?: string; destinationSiteId?: string; destinationLocationId?: string; date?: string }) {
     await submit(() => api.createMovement(token, payload), 'Mouvement de stock enregistré.');
     setShowMovementModal(false);
+  }
+
+  async function handleUploadStocksOcr(files: File[]) {
+    setError(undefined);
+    setSuccess(undefined);
+    const config = await api.stocksOcrConfig(token);
+    if (!config.configured) {
+      setShowOcrImportModal(false);
+      setApiKeysPanelHint(true);
+      setActiveTab('organization-general');
+      setError('Ajoutez une clé API Mistral dans Organisation > Général > Clés API avant de lancer un import OCR Stocks.');
+      return;
+    }
+    const uploaded = await api.uploadStocksOcrDocuments(token, files);
+    const initialStatuses = uploaded.documents.map((document) => ({ document, ocr: null, extraction: null, state: 'upload' }));
+    setOcrStatuses(initialStatuses);
+    await api.analyzeStocksOcrBatch(token, uploaded.documents.map((document) => document.id));
+    const refreshed = await Promise.all(uploaded.documents.map((document) => api.stocksOcrStatus(token, document.id).catch(() => ({ document, ocr: null, extraction: null, state: 'en attente' }))));
+    setOcrStatuses(refreshed);
+    setOcrPollingActive(true);
+    setSuccess(`${uploaded.documents.length} document${uploaded.documents.length > 1 ? 's' : ''} envoyé${uploaded.documents.length > 1 ? 's' : ''} en analyse.`);
+  }
+
+  async function handleOpenOcrExtraction(extractionId: string) {
+    const extraction = await api.stocksOcrExtraction(token, extractionId);
+    setSelectedOcrExtraction(extraction);
+    setShowOcrReviewModal(true);
+  }
+
+  async function handleSaveOcrDraft(payload: StocksOcrExtraction['data']) {
+    if (!selectedOcrExtraction) return;
+    const saved = await api.saveStocksOcrCorrections(token, selectedOcrExtraction.id, payload);
+    setSelectedOcrExtraction(saved);
+    setSuccess('Brouillon OCR enregistré.');
+  }
+
+  async function handleCreateOcrReception(payload: StocksOcrExtraction['data']) {
+    if (!selectedOcrExtraction) return;
+    await submit(() => api.createStockReceptionFromOcr(token, selectedOcrExtraction.id, payload), 'La réception a été créée.');
+    setShowOcrReviewModal(false);
+    setShowOcrImportModal(false);
+    setSelectedOcrExtraction(null);
+  }
+
+  async function handleCreateOcrProductFromLine(line: StocksOcrLine, supplierId?: string | null) {
+    const name = ocrProductName(line);
+    if (!name) throw new Error('Nom produit OCR manquant.');
+    const reference = ocrProductReference(line);
+    const unitId = resolveOcrUnitId(units, line.unitId, line.unit);
+    if (!unitId) throw new Error(`Unité OCR "${line.unit || 'non renseignée'}" introuvable. Sélectionnez une unité sur la ligne ou ajoutez-la au référentiel.`);
+    const quantity = numeric(line.quantity);
+    const lineTotal = numeric(line.lineTotal ?? line.total);
+    const unitPrice = roundOcrPrice(lineTotal > 0 && quantity > 0 ? lineTotal / quantity : numeric(line.unitPrice));
+    const categoryId = await resolveOcrCategoryIdForCreate(token, line, categories, products, supplierId);
+    const existing = products.find((product) => (reference && product.sku === reference) || normalizeLookup(product.name) === normalizeLookup(name));
+    if (existing) {
+      const shouldUpdatePrice = Boolean(unitPrice && numeric(existing.averagePrice ?? existing.averagePurchasePrice ?? existing.weightedAveragePrice) <= 0);
+      const shouldUpdateCategory = Boolean(categoryId && !(existing.categoryId ?? existing.category?.id));
+      if (shouldUpdatePrice || shouldUpdateCategory) {
+        return await submit(
+          () => api.updateProduct(token, existing.id, {
+            name: existing.name,
+            sku: existing.sku ?? undefined,
+            unitId: existing.unitId || unitId,
+            categoryId: existing.categoryId ?? existing.category?.id ?? categoryId,
+            primarySupplierId: existing.primarySupplierId ?? existing.supplierId ?? supplierId ?? undefined,
+            averagePrice: shouldUpdatePrice ? unitPrice : numeric(existing.averagePrice ?? existing.averagePurchasePrice ?? existing.weightedAveragePrice),
+          }),
+          shouldUpdatePrice ? 'Prix produit mis à jour depuis l’OCR.' : 'Catégorie produit mise à jour depuis l’OCR.',
+        ) as Product;
+      }
+      return existing;
+    }
+    return await submit(
+      () => api.createProduct(token, { name, sku: reference || undefined, unitId, categoryId, primarySupplierId: supplierId || undefined, averagePrice: unitPrice }),
+      'Produit créé depuis l’OCR.',
+    ) as Product;
+  }
+
+  async function handleCreateOcrSupplier(name: string) {
+    const supplierName = name.trim();
+    if (!supplierName) throw new Error('Nom fournisseur OCR manquant.');
+    const existing = suppliers.find((supplier) => normalizeLookup(supplier.name) === normalizeLookup(supplierName));
+    if (existing) return existing;
+    return await submit(() => api.createSupplier(token, { name: supplierName }), 'Fournisseur créé depuis l’OCR.') as Supplier;
   }
 
   async function handleCreateSite(payload: { name: string; description?: string }) {
@@ -1325,12 +1451,21 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   }, [movements, movementSearch, movementTypeFilter]);
 
   const filteredProducts = useMemo(() => {
+    const search = productSearch.toLowerCase();
     return activeProducts.filter(p => {
-      return p.name.toLowerCase().includes(productSearch.toLowerCase()) || 
-             (p.sku && p.sku.toLowerCase().includes(productSearch.toLowerCase())) ||
-             (p.category?.name && p.category.name.toLowerCase().includes(productSearch.toLowerCase()));
+      const matchesSearch = p.name.toLowerCase().includes(search) || 
+             (p.sku && p.sku.toLowerCase().includes(search)) ||
+             (p.reference && p.reference.toLowerCase().includes(search)) ||
+             (p.category?.name && p.category.name.toLowerCase().includes(search)) ||
+             (p.primarySupplier?.name && p.primarySupplier.name.toLowerCase().includes(search)) ||
+             (p.supplier?.name && p.supplier.name.toLowerCase().includes(search));
+      const matchesCategory = !productCategoryFilter || (p.categoryId ?? p.category?.id) === productCategoryFilter;
+      const matchesSupplier = !productSupplierFilter || productSupplierId(p) === productSupplierFilter;
+      return matchesSearch && matchesCategory && matchesSupplier;
     });
-  }, [activeProducts, productSearch]);
+  }, [activeProducts, productSearch, productCategoryFilter, productSupplierFilter]);
+
+  const selectedProduct = useMemo(() => selectedProductId ? products.find((product) => product.id === selectedProductId) ?? null : null, [products, selectedProductId]);
 
   const filteredSuppliers = useMemo(() => {
     return activeSuppliers.filter(s => {
@@ -1977,6 +2112,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   canWrite={canWriteHr}
                   loading={isLoading}
                   onNavigate={(next) => setActiveTab(next === 'collaborators' ? 'hr-collaborators' : next === 'departments' ? 'hr-departments' : next === 'positions' ? 'hr-positions' : next === 'rotations' ? 'hr-rotations' : next === 'orgchart' ? 'hr-orgchart' : 'hr-dashboard')}
+                  onExitToOverview={() => setActiveTab('overview')}
                   onCreateCollaborator={handleCreateHrCollaborator}
                   onUpdateCollaborator={handleUpdateHrCollaborator}
                   onArchiveCollaborator={handleArchiveHrCollaborator}
@@ -2064,10 +2200,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
               {/* TAB SETTINGS */}
               {activeTab === 'settings' && (
-                <SettingsPage session={session} dashboardSummary={dashboardSummary} onOpenUsers={() => goToTab('users')} />
+                <SettingsPage session={session} token={token} dashboardSummary={dashboardSummary} focusApiKeys={apiKeysPanelHint} onApiKeysSaved={() => { setApiKeysPanelHint(false); void refresh(); }} onOpenUsers={() => goToTab('users')} />
               )}
               {activeTab === 'organization-general' && (
-                <SettingsPage session={session} dashboardSummary={dashboardSummary} onOpenUsers={() => goToTab('users')} />
+                <SettingsPage session={session} token={token} dashboardSummary={dashboardSummary} focusApiKeys={apiKeysPanelHint} onApiKeysSaved={() => { setApiKeysPanelHint(false); void refresh(); }} onOpenUsers={() => goToTab('users')} />
               )}
               {activeTab === 'users' && isAdmin && (
                 <UsersPage
@@ -2100,6 +2236,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   stocks={stocks}
                   movements={movements}
                   onCreateMovement={() => setShowMovementModal(true)}
+                  onImportOcr={() => setShowOcrImportModal(true)}
                   onOpenStocks={() => setActiveTab('inventory')}
                 />
               )}
@@ -2216,7 +2353,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                               <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '0.95rem', color: Number(stock.quantity) < 0 ? 'var(--danger)' : 'var(--text-main)' }}>
                                 {stock.currentQuantity ?? stock.quantity} {stock.product.unit?.symbol ?? ''}
                               </td>
-                              <td style={{ textAlign: 'right' }}>{numeric(stock.value ?? numeric(stock.quantity) * numeric(stock.product.averagePurchasePrice ?? stock.product.weightedAveragePrice)).toFixed(2)} €</td>
+                              <td style={{ textAlign: 'right' }}>{numeric(stock.stockValue ?? stock.value ?? numeric(stock.currentQuantity ?? stock.quantity) * numeric(stock.product.averagePrice ?? stock.product.averagePurchasePrice ?? stock.product.weightedAveragePrice)).toFixed(2)} €</td>
                               <td>{stock.product.minimumStock ?? stock.product.minStock ?? '—'}</td>
                               <td><span className={`badge ${stockStatus(stock).className}`}>{stockStatus(stock).label}</span></td>
                             </tr>
@@ -2360,12 +2497,25 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                         <Search />
                         <input
                           type="text"
-                          placeholder="Filtrer les produits par nom, code SKU ou catégorie..."
+                          placeholder="Filtrer les produits par nom, SKU, catégorie ou fournisseur..."
                           className="search-input"
                           value={productSearch}
                           onChange={(e) => setProductSearch(e.target.value)}
                         />
                       </div>
+                      <select value={productSupplierFilter} onChange={(e) => setProductSupplierFilter(e.target.value)} style={{ maxWidth: 260 }}>
+                        <option value="">Tous fournisseurs</option>
+                        {activeSuppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+                      </select>
+                      <select value={productCategoryFilter} onChange={(e) => setProductCategoryFilter(e.target.value)} style={{ maxWidth: 240 }}>
+                        <option value="">Toutes catégories</option>
+                        {activeCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                      </select>
+                      {(productSearch || productSupplierFilter || productCategoryFilter) ? (
+                        <button type="button" className="btn btn-secondary" onClick={() => { setProductSearch(''); setProductSupplierFilter(''); setProductCategoryFilter(''); }}>
+                          <X size={14} /> Réinitialiser
+                        </button>
+                      ) : null}
                     </div>
 
                     <div className="table-wrapper">
@@ -2374,18 +2524,21 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                           <tr>
                             <th>Nom du produit</th>
                             <th>Code SKU</th>
+                            <th>Fournisseur</th>
                             <th>Unité par défaut</th>
                             <th>Catégorie</th>
+                            <th style={{ textAlign: 'right' }}>P.M.P.</th>
+                            <th style={{ textAlign: 'right' }}>Stock mini</th>
                           </tr>
                         </thead>
                         <tbody>
                           {filteredProducts.length === 0 ? (
                             <tr>
-                              <td colSpan={8}>
+                              <td colSpan={7}>
                                 <div className="empty-state">
                                   <div className="empty-state-icon">🍳</div>
-                                  <span className="empty-state-title">Aucun produit référencé</span>
-                                  <span className="empty-state-desc">Commencez par ajouter un produit à votre catalogue pour l'utiliser dans votre inventaire.</span>
+                                  <span className="empty-state-title">Aucun produit trouvé</span>
+                                  <span className="empty-state-desc">Ajustez la recherche ou les filtres fournisseur/catégorie.</span>
                                   <button className="btn btn-primary" onClick={() => setShowProductModal(true)}>
                                     <Plus size={16} /> Ajouter un produit
                                   </button>
@@ -2394,9 +2547,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                             </tr>
                           ) : (
                             filteredProducts.map((p) => (
-                              <tr key={p.id}>
+                              <tr key={p.id} className="clickable-row" onClick={() => setSelectedProductId(p.id)}>
                                 <td style={{ fontWeight: 600 }}>{p.name}</td>
                                 <td style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>{p.sku || '—'}</td>
+                                <td>{p.primarySupplier?.name ?? p.supplier?.name ?? '—'}</td>
                                 <td>{p.unit?.name || '—'} ({p.unit?.symbol || ''})</td>
                                 <td>
                                   {p.category?.name ? (
@@ -2407,6 +2561,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                                     <span style={{ color: 'var(--text-muted)' }}>Non catégorisé</span>
                                   )}
                                 </td>
+                                <td style={{ textAlign: 'right', fontWeight: 700 }}>{numeric(p.averagePrice ?? p.averagePurchasePrice ?? p.weightedAveragePrice).toFixed(2)} €</td>
+                                <td style={{ textAlign: 'right' }}>{numeric(p.minimumStock ?? p.minStock) || '—'}</td>
                               </tr>
                             ))
                           )}
@@ -2603,14 +2759,27 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         <ProductForm
           categories={categories}
           units={units}
+          suppliers={suppliers}
+          initialName={productPrefillName}
           onSubmit={handleCreateProduct}
-          onClose={() => setShowProductModal(false)}
+          onClose={() => { setProductPrefillName(''); setShowProductModal(false); }}
         />
       </Modal>
 
+      <ProductDetailModal
+        product={selectedProduct}
+        stocks={stocks}
+        movements={movements}
+        categories={categories}
+        units={units}
+        suppliers={suppliers}
+        onClose={() => setSelectedProductId(null)}
+        onUpdate={handleUpdateProduct}
+      />
+
       {/* Supplier Modal */}
-      <Modal isOpen={showSupplierModal} onClose={() => setShowSupplierModal(false)} title="Créer un fournisseur">
-        <SupplierForm onSubmit={handleCreateSupplier} onClose={() => setShowSupplierModal(false)} />
+      <Modal isOpen={showSupplierModal} onClose={() => { setSupplierPrefillName(''); setShowSupplierModal(false); }} title="Créer un fournisseur">
+        <SupplierForm initialName={supplierPrefillName} onSubmit={handleCreateSupplier} onClose={() => { setSupplierPrefillName(''); setShowSupplierModal(false); }} />
       </Modal>
 
       {/* Movement Modal */}
@@ -2624,6 +2793,35 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           onSubmit={handleCreateMovement}
           onClose={() => setShowMovementModal(false)}
         />
+      </Modal>
+
+      <Modal isOpen={showOcrImportModal} onClose={() => setShowOcrImportModal(false)} title="Importer facture / BL" size="lg">
+        <StocksOcrImportPanel
+          statuses={ocrStatuses}
+          onUpload={handleUploadStocksOcr}
+          onOpenExtraction={handleOpenOcrExtraction}
+          onDownload={(documentId, filename) => api.downloadStocksDocument(token, documentId, filename)}
+        />
+      </Modal>
+
+      <Modal isOpen={showOcrReviewModal} onClose={() => setShowOcrReviewModal(false)} title="Valider la réception OCR" size="xl">
+        {selectedOcrExtraction && (
+          <StocksOcrReviewPanel
+            extraction={selectedOcrExtraction}
+            products={products}
+            categories={categories}
+            suppliers={suppliers}
+            units={units}
+            sites={sites}
+            locations={locations}
+            token={token}
+            onSaveDraft={handleSaveOcrDraft}
+            onCreateReception={handleCreateOcrReception}
+            onCreateProductFromLine={handleCreateOcrProductFromLine}
+            onCreateSupplierFromOcr={handleCreateOcrSupplier}
+            onClose={() => setShowOcrReviewModal(false)}
+          />
+        )}
       </Modal>
 
       <Modal isOpen={showSiteModal} onClose={() => setShowSiteModal(false)} title="Créer un site">
@@ -2840,6 +3038,236 @@ function numeric(value: string | number | null | undefined) {
   return Number.isFinite(next) ? next : 0;
 }
 
+function normalizeLookup(value?: string | null) {
+  return (value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function normalizeSearchText(value?: string | null) {
+  return (value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function normalizeProductSearchText(value?: string | null) {
+  return normalizeSearchText(value)
+    .replace(/\b(?:lot|dlc|ddm|prix|total|montant|tva|ht|ttc|net|brut|colis|carton|cartons|pieces|piece|unite|unites|kg|kgs|g|gr|l|litre|litres|ml|cl|x)\b/g, ' ')
+    .replace(/\b\d+(?:[.,]\d+)?\s*(?:kg|kgs|g|gr|l|ml|cl|pc|pcs|u|x)\b/g, ' ')
+    .replace(/\b\d{4,}\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function productTokens(value?: string | null) {
+  return normalizeProductSearchText(value).split(' ').filter((token) => token.length > 2 && !/^\d+$/.test(token));
+}
+
+function tokenSimilarity(a?: string | null, b?: string | null) {
+  const left = new Set(productTokens(a));
+  const right = new Set(productTokens(b));
+  if (!left.size || !right.size) return 0;
+  const common = [...left].filter((token) => right.has(token)).length;
+  const coverage = common / Math.min(left.size, right.size);
+  const dice = (2 * common) / (left.size + right.size);
+  return Math.max(dice, coverage * 0.92);
+}
+
+function productSupplierId(product: Product) {
+  return product.primarySupplierId ?? product.supplierId ?? product.primarySupplier?.id ?? product.supplier?.id ?? null;
+}
+
+function productUnitSymbol(product: Product) {
+  return product.unit?.symbol ?? '';
+}
+
+function scoreProductForOcrLine(line: StocksOcrLine, product: Product, supplierId?: string | null) {
+  const label = String(line.ocrLabel || line.label || '');
+  const reference = normalizeSearchText(line.reference);
+  const sku = normalizeSearchText(product.sku ?? product.reference);
+  const productName = String(product.name || '');
+  let score = Math.max(tokenSimilarity(label, productName), tokenSimilarity(normalizeProductSearchText(label), normalizeProductSearchText(productName)));
+  const labelSearch = normalizeSearchText(label);
+  if (sku && reference && sku === reference) score = Math.max(score, 0.99);
+  else if (sku && reference && (sku.includes(reference) || reference.includes(sku))) score = Math.max(score, 0.94);
+  else if (sku && labelSearch.includes(sku)) score = Math.max(score, 0.94);
+  if (supplierId && productSupplierId(product) === supplierId) score += 0.04;
+  if (line.unitId && product.unitId === line.unitId) score += 0.03;
+  return Math.min(1, score);
+}
+
+function productCandidateFromProduct(product: Product, score: number) {
+  return {
+    id: product.id,
+    name: product.name,
+    sku: product.sku ?? product.reference ?? null,
+    categoryId: product.categoryId ?? product.category?.id ?? null,
+    categoryName: product.category?.name ?? null,
+    unitId: product.unitId,
+    unitSymbol: productUnitSymbol(product),
+    supplierId: productSupplierId(product),
+    supplierName: product.primarySupplier?.name ?? product.supplier?.name ?? null,
+    score,
+  };
+}
+
+const OCR_FALLBACK_CATEGORY_NAME = 'À classer';
+const ocrFallbackCategoryCache = new Map<string, Promise<Category>>();
+
+const CATEGORY_KEYWORDS: Array<{ hints: string[]; aliases: string[] }> = [
+  { hints: ['boeuf', 'bœuf', 'veau', 'porc', 'agneau', 'volaille', 'poulet', 'dinde', 'canard', 'jambon', 'saucisse', 'steak', 'viande'], aliases: ['viande', 'viandes', 'boucherie', 'volaille', 'volailles'] },
+  { hints: ['poisson', 'saumon', 'thon', 'cabillaud', 'colin', 'merlu', 'crevette', 'moule', 'huitre', 'huître', 'surimi', 'maree', 'marée'], aliases: ['poisson', 'poissons', 'maree', 'marée', 'produits de la mer'] },
+  { hints: ['lait', 'beurre', 'creme', 'crème', 'fromage', 'yaourt', 'emmental', 'mozzarella', 'laitier'], aliases: ['cremerie', 'crèmerie', 'produits laitiers', 'laitier', 'fromage'] },
+  { hints: ['carotte', 'tomate', 'salade', 'oignon', 'pomme de terre', 'courgette', 'fruit', 'legume', 'légume', 'pomme', 'banane'], aliases: ['fruits', 'legumes', 'légumes', 'primeur', 'fruits et legumes', 'fruits et légumes'] },
+  { hints: ['pain', 'baguette', 'brioche', 'viennoiserie', 'croissant', 'patisserie', 'pâtisserie'], aliases: ['boulangerie', 'patisserie', 'pâtisserie', 'pain'] },
+  { hints: ['riz', 'pate', 'pâte', 'pates', 'pâtes', 'farine', 'sucre', 'huile', 'vinaigre', 'conserve', 'sauce', 'epice', 'épice'], aliases: ['epicerie', 'épicerie', 'sec', 'produits secs'] },
+  { hints: ['surg', 'surgele', 'surgelé', 'surgeles', 'surgelés', 'glace', 'congele', 'congelé'], aliases: ['surgeles', 'surgelés', 'surgelé', 'congelé'] },
+  { hints: ['eau', 'jus', 'soda', 'vin', 'biere', 'bière', 'cafe', 'café', 'boisson'], aliases: ['boisson', 'boissons', 'cave'] },
+  { hints: ['barquette', 'film', 'gant', 'papier', 'sac', 'gobelet', 'serviette', 'emballage'], aliases: ['emballage', 'emballages', 'non alimentaire', 'consommables'] },
+];
+
+function inferOcrCategoryId(line: StocksOcrLine, categories: Category[], products: Product[]) {
+  const candidateWithCategory = (line.productCandidates || [])
+    .map((candidate) => ({ candidate, score: numeric(candidate.score) }))
+    .filter(({ candidate, score }) => candidate.categoryId && score >= 0.58)
+    .sort((a, b) => b.score - a.score)[0]?.candidate;
+  if (candidateWithCategory?.categoryId) return candidateWithCategory.categoryId;
+
+  const label = String(line.ocrLabel || line.label || '');
+  const closestProduct = products
+    .filter((product) => !isArchived(product) && (product.categoryId || product.category?.id))
+    .map((product) => ({ product, score: scoreProductForOcrLine(line, product, null) }))
+    .filter((item) => item.score >= 0.55)
+    .sort((a, b) => b.score - a.score)[0]?.product;
+  if (closestProduct?.categoryId || closestProduct?.category?.id) return closestProduct.categoryId ?? closestProduct.category?.id ?? undefined;
+
+  const normalizedLabel = normalizeProductSearchText(label);
+  const keywordRule = CATEGORY_KEYWORDS.find((rule) => rule.hints.some((hint) => normalizedLabel.includes(normalizeProductSearchText(hint))));
+  if (keywordRule) {
+    const category = categories
+      .filter((item) => !isArchived(item))
+      .find((item) => {
+        const categoryText = normalizeProductSearchText(`${item.name} ${item.description ?? ''}`);
+        return keywordRule.aliases.some((alias) => categoryText.includes(normalizeProductSearchText(alias)));
+      });
+    if (category) return category.id;
+  }
+
+  const rankedCategory = categories
+    .filter((category) => !isArchived(category))
+    .map((category) => {
+      const haystack = `${category.name} ${category.description ?? ''}`;
+      return { category, score: Math.max(tokenSimilarity(label, haystack), normalizeProductSearchText(label).includes(normalizeProductSearchText(category.name)) ? 0.78 : 0) };
+    })
+    .filter((item) => item.score >= 0.32)
+    .sort((a, b) => b.score - a.score)[0]?.category;
+  return rankedCategory?.id;
+}
+
+function supplierMajorityCategoryId(supplierId: string | null | undefined, products: Product[]) {
+  if (!supplierId) return undefined;
+  const counts = new Map<string, number>();
+  for (const product of products) {
+    const categoryId = product.categoryId ?? product.category?.id;
+    if (isArchived(product) || productSupplierId(product) !== supplierId || !categoryId) continue;
+    counts.set(categoryId, (counts.get(categoryId) ?? 0) + 1);
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+}
+
+async function resolveOcrCategoryIdForCreate(token: string, line: StocksOcrLine, categories: Category[], products: Product[], supplierId?: string | null) {
+  const inferred = inferOcrCategoryId(line, categories, products) || supplierMajorityCategoryId(supplierId, products);
+  if (inferred) return inferred;
+  const fallback = categories.find((category) => {
+    const key = normalizeLookup(category.name);
+    return !isArchived(category) && ['aclasser', 'aclasser', 'autres', 'divers', 'sanscategorie', 'nonclasse'].includes(key);
+  });
+  if (fallback) return fallback.id;
+  const cacheKey = `${token}:${OCR_FALLBACK_CATEGORY_NAME}`;
+  if (!ocrFallbackCategoryCache.has(cacheKey)) {
+    ocrFallbackCategoryCache.set(cacheKey, api.createCategory(token, {
+      name: OCR_FALLBACK_CATEGORY_NAME,
+      description: 'Catégorie créée automatiquement pour les produits OCR sans correspondance fiable.',
+    }).catch(async () => {
+      const refreshed = await api.categories(token);
+      const existing = refreshed.find((category) => normalizeLookup(category.name) === normalizeLookup(OCR_FALLBACK_CATEGORY_NAME));
+      if (!existing) throw new Error('Impossible de créer ou retrouver la catégorie OCR par défaut.');
+      return existing;
+    }));
+  }
+  return (await ocrFallbackCategoryCache.get(cacheKey)!).id;
+}
+
+function enrichOcrProductMatches(data: StocksOcrExtraction['data'], products: Product[]): StocksOcrExtraction['data'] {
+  const supplierId = data.supplierId ?? data.supplier?.supplierId ?? null;
+  return {
+    ...data,
+    lines: (data.lines || []).map((line) => {
+      if (line.productId || line.ignored) return line;
+      const ranked = products
+        .filter((product) => !isArchived(product))
+        .map((product) => ({ product, score: scoreProductForOcrLine(line, product, supplierId) }))
+        .sort((a, b) => b.score - a.score);
+      const best = ranked[0];
+      const candidates = ranked.filter((candidate) => candidate.score >= 0.38).slice(0, 8).map((candidate) => productCandidateFromProduct(candidate.product, candidate.score));
+      if (!best || best.score < 0.58) return { ...line, productCandidates: candidates, matchingStatus: line.matchingStatus ?? 'NOT_FOUND', matchingScore: line.matchingScore ?? 0 };
+      const status = best.score >= 0.84 ? 'RECOGNIZED' : 'NEEDS_REVIEW';
+      return {
+        ...line,
+        productId: best.product.id,
+        productName: best.product.name,
+        unitId: best.product.unitId ?? line.unitId,
+        matchedUnitSymbol: productUnitSymbol(best.product) || line.matchedUnitSymbol,
+        matchingStatus: status,
+        matchingScore: best.score,
+        productCandidates: candidates,
+      };
+    }),
+  };
+}
+
+function resolveOcrUnitId(units: Unit[], unitId?: string | null, unitLabel?: string | null) {
+  if (unitId && units.some((unit) => unit.id === unitId)) return unitId;
+  const key = normalizeLookup(unitLabel);
+  if (!key) return '';
+  const aliases: Record<string, string[]> = {
+    kg: ['kg', 'kilogramme'],
+    g: ['g', 'gramme'],
+    l: ['l', 'litre'],
+    ml: ['ml', 'millilitre'],
+    pu: ['piece', 'pieces', 'u', 'unite', 'unites'],
+    u: ['piece', 'pieces', 'u', 'unite', 'unites'],
+    po: ['piece', 'pieces', 'u', 'unite', 'unites'],
+    pi: ['piece', 'pieces', 'u', 'unite', 'unites'],
+    col: ['carton', 'colis', 'caisse'],
+    colis: ['carton', 'colis', 'caisse'],
+    carton: ['carton', 'colis', 'caisse'],
+    paq: ['paquet', 'carton', 'piece', 'pieces'],
+    plq: ['plaquette', 'piece', 'pieces'],
+  };
+  const wanted = new Set([key, ...(aliases[key] ?? [])]);
+  return units.find((unit) => wanted.has(normalizeLookup(unit.symbol)) || wanted.has(normalizeLookup(unit.name)))?.id || '';
+}
+
+function resolveOcrReceptionUnits(data: StocksOcrExtraction['data'], units: Unit[]): StocksOcrExtraction['data'] {
+  return {
+    ...data,
+    lines: (data.lines || []).map((line) => ({
+      ...line,
+      unitId: line.unitId || resolveOcrUnitId(units, line.unitId, line.matchedUnitSymbol || line.unit) || null,
+    })),
+  };
+}
+
+function roundOcrPrice(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return undefined;
+  return Math.round(value * 10000) / 10000;
+}
+
+function ocrProductName(line: StocksOcrLine) {
+  return String(line.ocrLabel || line.label || '').trim().slice(0, 180);
+}
+
+function ocrProductReference(line: StocksOcrLine) {
+  return String(line.reference || '').trim().slice(0, 80);
+}
+
 function movementSign(type: StockMovementType) {
   return ['LOSS', 'OUT', 'EXIT'].includes(type) ? '-' : ['TRANSFER'].includes(type) ? '±' : '+';
 }
@@ -2970,8 +3398,8 @@ function moduleTargetTab(module?: string): ActiveTab | undefined {
   return undefined;
 }
 
-function StocksDashboardPage({ products, suppliers, stocks, movements, onCreateMovement, onOpenStocks }: { products: Product[]; suppliers: Supplier[]; stocks: Stock[]; movements: StockMovement[]; onCreateMovement: () => void; onOpenStocks: () => void }) {
-  const stockValue = stocks.reduce((sum, stock) => sum + numeric(stock.currentQuantity ?? stock.quantity) * numeric(stock.value ?? stock.product.averagePurchasePrice ?? stock.product.weightedAveragePrice), 0);
+function StocksDashboardPage({ products, suppliers, stocks, movements, onCreateMovement, onImportOcr, onOpenStocks }: { products: Product[]; suppliers: Supplier[]; stocks: Stock[]; movements: StockMovement[]; onCreateMovement: () => void; onImportOcr: () => void; onOpenStocks: () => void }) {
+  const stockValue = stocks.reduce((sum, stock) => sum + numeric(stock.stockValue ?? stock.value ?? numeric(stock.currentQuantity ?? stock.quantity) * numeric(stock.product.averagePrice ?? stock.product.averagePurchasePrice ?? stock.product.weightedAveragePrice)), 0);
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
   const movementsThisMonth = movements.filter((m) => new Date(m.createdAt) >= monthStart).length;
   const topConsumed = Object.values(movements.filter((m) => ['LOSS', 'OUT', 'EXIT', 'PRODUCTION', 'CORRECTION', 'INVENTORY'].includes(m.type)).reduce<Record<string, { name: string; qty: number; unit?: string }>>((acc, m) => {
@@ -2993,9 +3421,14 @@ function StocksDashboardPage({ products, suppliers, stocks, movements, onCreateM
         <p className="welcome-desc">
           Vue d’ensemble de votre stock. Toute variation passe par un mouvement tracé ; la page Stocks reste en lecture seule.
         </p>
-        <button className="btn btn-primary" onClick={onCreateMovement} style={{ marginTop: '1.25rem' }}>
-          <Plus size={16} /> Nouveau mouvement
-        </button>
+        <div className="stocks-reception-actions">
+          <button className="btn btn-primary" onClick={onImportOcr}>
+            <FileText size={16} /> Importer facture / BL
+          </button>
+          <button className="btn btn-secondary" onClick={onCreateMovement}>
+            <Plus size={16} /> Réception manuelle
+          </button>
+        </div>
       </motion.section>
       
       <div className="metrics-grid">
@@ -3507,33 +3940,396 @@ function DevSwitch({ users, currentUserId, onSwitch, onCreate }: { users: CoreUs
 
 
 
-function SettingsPage({ session, dashboardSummary, onOpenUsers }: { session: UserSession; dashboardSummary?: DashboardSummary; onOpenUsers?: () => void }) {
+function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKeysSaved, onOpenUsers }: { session: UserSession; token: string; dashboardSummary?: DashboardSummary; focusApiKeys?: boolean; onApiKeysSaved?: () => void; onOpenUsers?: () => void }) {
   const organization = dashboardSummary?.organization;
+  const initialConfigured = organization?.apiKeys?.mistral.configured ?? session.user.apiKeys?.mistral.configured ?? false;
+  const initialMasked = organization?.apiKeys?.mistral.masked ?? session.user.apiKeys?.mistral.masked;
+  const [mistralKey, setMistralKey] = useState('');
+  const [apiKeyConfigured, setApiKeyConfigured] = useState(initialConfigured);
+  const [apiKeyMasked, setApiKeyMasked] = useState<string | null | undefined>(initialMasked);
+  const [apiKeyMessage, setApiKeyMessage] = useState<string>();
+  const [apiKeyError, setApiKeyError] = useState<string>();
+  const [savingApiKey, setSavingApiKey] = useState(false);
+  const [activeSubTab, setActiveSubTab] = useState<'general' | 'users' | 'api-keys' | 'core'>(() => {
+    return focusApiKeys ? 'api-keys' : 'general';
+  });
+
+  useEffect(() => {
+    setApiKeyConfigured(initialConfigured);
+    setApiKeyMasked(initialMasked);
+  }, [initialConfigured, initialMasked]);
+
+  useEffect(() => {
+    if (focusApiKeys) {
+      setActiveSubTab('api-keys');
+    }
+  }, [focusApiKeys]);
+
+  async function saveApiKey() {
+    setSavingApiKey(true);
+    setApiKeyError(undefined);
+    setApiKeyMessage(undefined);
+    try {
+      const saved = await api.updateOrganizationApiKeys(token, { mistralApiKey: mistralKey.trim() || undefined });
+      setApiKeyConfigured(Boolean(saved?.mistral.configured));
+      setApiKeyMasked(saved?.mistral.masked);
+      setMistralKey('');
+      setApiKeyMessage(saved?.mistral.configured ? 'Clé Mistral enregistrée.' : 'Clé Mistral supprimée.');
+      onApiKeysSaved?.();
+    } catch (err) {
+      setApiKeyError(err instanceof Error ? err.message : 'Impossible d’enregistrer la clé API.');
+    } finally {
+      setSavingApiKey(false);
+    }
+  }
+
   return (
     <div className="settings-page">
-      <section className="welcome-hero settings-hero">
-        <span className="welcome-tag"><Settings size={14} /> Paramètres</span>
-        <h1>Environnement ToqueHub</h1>
-        <p>Les applications partagent la même organisation, les mêmes utilisateurs et les mêmes données. Cette page récapitule le contexte principal de votre instance.</p>
-      </section>
-      <div className="settings-grid">
-        <div className="card-modern">
-          <span className="card-title">Organisation</span>
-          <div className="settings-list">
-            <div><span>Nom</span><strong>{organization?.name ?? session.user.organizationName ?? 'Organisation'}</strong></div>
-            <div><span>Type</span><strong>{organization?.establishmentType ?? session.user.organizationType ?? 'Non renseigné'}</strong></div>
-            <div><span>Équipe</span><strong>{organization?.teamSize ?? session.user.teamSize ?? 'Non renseigné'}</strong></div>
-            <div><span>Site principal</span><strong>{organization?.mainSiteName ?? session.user.mainSiteName ?? 'Site principal'}</strong></div>
+      <section className="welcome-hero settings-hero" style={{ background: 'linear-gradient(135deg, #090d16 0%, #111827 100%)', border: '1px solid rgba(255, 255, 255, 0.05)', position: 'relative', overflow: 'hidden' }}>
+        <div className="settings-hero-grid">
+          <div className="settings-hero-left">
+            <span className="sovereign-badge-glow">
+              <span className="status-indicator-dot green"></span>
+              Souveraineté Locale & Chiffrement
+            </span>
+            <h1 style={{ color: 'white', margin: '0.5rem 0 0.25rem 0', fontSize: '2rem', fontWeight: 800 }}>Environnement ToqueHub</h1>
+            <p style={{ color: 'rgba(255, 255, 255, 0.7)', margin: 0, fontSize: '0.92rem', lineHeight: 1.5 }}>
+              Console d'administration locale et cloud souveraine. Vos applications partagent la même organisation, les mêmes utilisateurs et les mêmes données sécurisées.
+            </p>
           </div>
-          <button className="btn btn-primary" style={{ marginTop: '1.25rem' }} onClick={onOpenUsers}>
-            <UsersRound size={16} /> Gérer les utilisateurs
-          </button>
+          <div className="glass-terminal">
+            <div className="glass-terminal-header">
+              <div className="glass-terminal-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+              <span className="glass-terminal-title">toquehub-core ~ terminal</span>
+            </div>
+            <div className="glass-terminal-rows">
+              <div className="glass-terminal-row">
+                <span className="label">SYSTEM :</span>
+                <span className="value" style={{ color: '#10b981' }}>
+                  <span className="status-indicator-dot green"></span> OPÉRATIONNEL
+                </span>
+              </div>
+              <div className="glass-terminal-row">
+                <span className="label">INST. SOUVERAINETÉ :</span>
+                <span className="value" style={{ color: '#3b82f6' }}>
+                  <span className="status-indicator-dot blue"></span> 100% FRANÇAISE
+                </span>
+              </div>
+              <div className="glass-terminal-row">
+                <span className="label">SQLITE LOCAL BDD :</span>
+                <span className="value" style={{ color: '#8b5cf6' }}>
+                  <span className="status-indicator-dot purple"></span> CONNECTÉE
+                </span>
+              </div>
+              <div className="glass-terminal-row">
+                <span className="label">MISTRAL AI OCR :</span>
+                {apiKeyConfigured ? (
+                  <span className="value" style={{ color: '#10b981' }}>
+                    <span className="status-indicator-dot green"></span> CONFIGURÉ
+                  </span>
+                ) : (
+                  <span className="value" style={{ color: '#f97316' }}>
+                    <span className="status-indicator-dot orange"></span> NON DÉTECTÉ
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="card-modern">
-          <span className="card-title">Plateforme modulaire</span>
-          <p style={{ color: 'var(--text-muted)', lineHeight: 1.7 }}>
-            Installer ou supprimer une application modifie uniquement les fonctionnalités visibles dans l’interface. Les produits, fournisseurs, stocks, inventaires, mouvements et historiques restent conservés dans l’environnement de l’organisation.
-          </p>
+      </section>
+
+      <div className="settings-layout">
+        {/* Left Sidebar Menu */}
+        <div className="card-modern" style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          {[
+            { id: 'general' as const, label: 'Général', desc: 'Identité établissement', icon: Building2 },
+            { id: 'users' as const, label: 'Utilisateurs & Accès', desc: 'Comptes et permissions', icon: UsersRound },
+            { id: 'api-keys' as const, label: 'Clés API & IA', desc: 'Mistral & Outils OCR', icon: KeyRound },
+            { id: 'core' as const, label: 'Diagnostic & Core', desc: 'Statistiques & BDD', icon: Server },
+          ].map((tabItem) => {
+            const isActive = activeSubTab === tabItem.id;
+            return (
+              <button
+                key={tabItem.id}
+                type="button"
+                onClick={() => setActiveSubTab(tabItem.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  padding: '0.75rem 1rem',
+                  borderRadius: '12px',
+                  color: isActive ? '#10b981' : 'var(--text-muted)',
+                  background: isActive ? 'rgba(16, 185, 129, 0.05)' : 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.2s ease-in-out',
+                  outline: 'none',
+                  borderLeft: isActive ? '3px solid #10b981' : '3px solid transparent',
+                  paddingLeft: isActive ? 'calc(1rem - 3px)' : '1rem',
+                }}
+              >
+                <tabItem.icon size={18} style={{ flexShrink: 0, color: isActive ? '#10b981' : 'var(--text-muted)' }} />
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontSize: '0.88rem', fontWeight: 700 }}>{tabItem.label}</span>
+                  <span className="settings-sidebar-desc">{tabItem.desc}</span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Right Content Panel */}
+        <div className="settings-content">
+          {activeSubTab === 'general' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              <div className="card-modern" style={{ padding: '1.5rem' }}>
+                <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}><Building2 size={18} /> Détails de l'Organisation</span>
+                <p className="muted" style={{ fontSize: '0.85rem', marginBottom: '1.5rem' }}>Ces informations définissent l'identité et la taille de votre structure ToqueHub.</p>
+                
+                <div className="settings-grid-premium">
+                  <div className="info-card-premium">
+                    <div className="info-card-premium-header">
+                      <span className="info-card-premium-label">Nom Établissement</span>
+                      <span className="info-card-premium-icon"><Building2 size={16} /></span>
+                    </div>
+                    <div className="info-card-premium-value">
+                      {organization?.name ?? session.user.organizationName ?? 'Organisation'}
+                    </div>
+                  </div>
+                  
+                  <div className="info-card-premium">
+                    <div className="info-card-premium-header">
+                      <span className="info-card-premium-label">Secteur / Type</span>
+                      <span className="info-card-premium-icon"><BriefcaseBusiness size={16} /></span>
+                    </div>
+                    <div className="info-card-premium-value">
+                      {organization?.establishmentType ?? session.user.organizationType ?? 'Non renseigné'}
+                    </div>
+                  </div>
+                  
+                  <div className="info-card-premium">
+                    <div className="info-card-premium-header">
+                      <span className="info-card-premium-label">Taille de l'équipe</span>
+                      <span className="info-card-premium-icon"><UsersRound size={16} /></span>
+                    </div>
+                    <div className="info-card-premium-value">
+                      {organization?.teamSize ?? session.user.teamSize ?? 'Non renseigné'}
+                    </div>
+                  </div>
+                  
+                  <div className="info-card-premium">
+                    <div className="info-card-premium-header">
+                      <span className="info-card-premium-label">Site principal</span>
+                      <span className="info-card-premium-icon"><MapPin size={16} /></span>
+                    </div>
+                    <div className="info-card-premium-value">
+                      {organization?.mainSiteName ?? session.user.mainSiteName ?? 'Site principal'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="card-modern" style={{ padding: '1.5rem', background: 'linear-gradient(135deg, rgba(16,185,129,0.04) 0%, rgba(59,130,246,0.04) 100%)', border: '1px solid rgba(16,185,129,0.1)' }}>
+                <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', color: 'var(--text-main)' }}><ChefHat size={18} /> Plateforme modulaire</span>
+                <p style={{ color: 'var(--text-muted)', lineHeight: 1.7, fontSize: '0.88rem', margin: 0 }}>
+                  L'installation ou la désactivation d'un module modifie uniquement l'interface utilisateur. Tous vos produits, fournisseurs, historiques et configurations de stock restent stockés de manière permanente et sécurisée dans la base locale souveraine.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {activeSubTab === 'users' && (
+            <div className="card-modern" style={{ padding: '1.5rem' }}>
+              <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}><UsersRound size={18} /> Gestion des Accès</span>
+              <p className="muted" style={{ fontSize: '0.85rem', marginBottom: '1.5rem' }}>
+                Administrez les comptes des collaborateurs accédant à votre console de gestion ToqueHub.
+              </p>
+              
+              <div className="user-profile-premium">
+                <div className="user-profile-avatar">
+                  {(session.user.username ?? 'U').substring(0, 2).toUpperCase()}
+                </div>
+                <div className="user-profile-details">
+                  <span className="user-profile-name">{session.user.username}</span>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span className="user-profile-role-badge">
+                      <Crown size={12} /> {session.user.role}
+                    </span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      · {session.user.email ?? 'Aucun email configuré'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              <div style={{ padding: '1.5rem', background: '#f8fafc', borderRadius: '16px', border: '1px solid var(--light-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1.25rem', flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 300px' }}>
+                  <strong style={{ display: 'block', fontSize: '0.92rem', color: 'var(--text-main)', marginBottom: '0.25rem' }}>Console d'administration générale</strong>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                    Ajoutez de nouveaux profils collaborateurs, attribuez des rôles ou révoquez les accès temporaires.
+                  </span>
+                </div>
+                <button className="btn btn-primary" onClick={onOpenUsers} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 1.25rem', borderRadius: '10px' }}>
+                  <UsersRound size={16} /> Gérer les utilisateurs <ArrowRight size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {activeSubTab === 'api-keys' && (
+            <div className="card-modern" id="api-keys" style={{ padding: '1.5rem', ...(focusApiKeys ? { borderColor: 'rgba(245, 158, 11, 0.6)', boxShadow: '0 0 0 4px rgba(245, 158, 11, 0.12)' } : {}) }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div>
+                  <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}><KeyRound size={18} /> Clés API & IA</span>
+                  <p className="muted" style={{ fontSize: '0.82rem', margin: '0.25rem 0 0 0' }}>Configurez vos services d'intelligence artificielle locale.</p>
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.45rem',
+                      background: 'rgba(59, 130, 246, 0.08)',
+                      color: '#2563eb',
+                      border: '1px solid rgba(59, 130, 246, 0.15)',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      padding: '0.3rem 0.65rem',
+                      borderRadius: '20px',
+                    }}
+                  >
+                    <span style={{ display: 'inline-flex', borderRadius: '1.5px', overflow: 'hidden', width: '15px', height: '10px', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
+                      <span style={{ width: '33.3%', background: '#002395', height: '100%' }}></span>
+                      <span style={{ width: '33.3%', background: '#FFFFFF', height: '100%' }}></span>
+                      <span style={{ width: '33.3%', background: '#ED2939', height: '100%' }}></span>
+                    </span>
+                    Souveraineté Française
+                  </span>
+                  <span className={`badge ${apiKeyConfigured ? 'badge-reception' : 'badge-correction'}`}>
+                    {apiKeyConfigured ? 'Mistral activé' : 'Non configuré'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Logo container */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', background: '#f8fafc', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--light-border)', marginBottom: '1.5rem' }}>
+                <div style={{ background: 'white', padding: '0.6rem 1rem', borderRadius: '12px', border: '1px solid var(--light-border)', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
+                  <img
+                    src="/mistral-logo.png"
+                    alt="Mistral AI Logo"
+                    style={{
+                      height: '30px',
+                      objectFit: 'contain',
+                      filter: 'drop-shadow(0 2px 4px rgba(249, 115, 22, 0.1))',
+                    }}
+                  />
+                </div>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', lineHeight: 1.6, margin: 0, flex: 1 }}>
+                  <strong>Mistral AI</strong> est le leader français de l'IA. En configurant votre clé API, vous activez l'OCR intelligent de ToqueHub pour déchiffrer instantanément vos factures et bons de commande. Vos données restent hébergées en France.
+                </p>
+              </div>
+
+              {apiKeyMasked ? (
+                <div className="alert-modern info" style={{ marginBottom: '1.25rem', background: '#f0fdf4', borderColor: '#bbf7d0', color: '#166534' }}>
+                  <ShieldCheck size={16} style={{ color: '#10b981' }} />
+                  <span style={{ fontSize: '0.85rem' }}>Clé API active enregistrée : <code>{apiKeyMasked}</code></span>
+                </div>
+              ) : null}
+              {focusApiKeys ? <div className="alert-modern error" style={{ marginBottom: '1.25rem' }}><Info size={16} /> Veuillez ajouter une clé API Mistral pour activer l'extraction de factures.</div> : null}
+              {apiKeyError ? <div className="alert-modern error" style={{ marginBottom: '1.25rem' }}><AlertCircle size={16} /> {apiKeyError}</div> : null}
+              {apiKeyMessage ? <div className="alert-modern success" style={{ marginBottom: '1.25rem' }}><CheckCircle2 size={16} /> {apiKeyMessage}</div> : null}
+              
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontWeight: 700, fontSize: '0.85rem', marginBottom: '1.25rem', color: 'var(--text-main)' }}>
+                Clé API Mistral AI
+                <div className="api-key-input-container">
+                  <input
+                    type="password"
+                    placeholder={apiKeyConfigured ? 'Nouvelle clé ou laisser vide pour supprimer' : 'mistral-api-key-...'}
+                    value={mistralKey}
+                    onChange={(event) => setMistralKey(event.target.value)}
+                    autoFocus={focusApiKeys}
+                  />
+                </div>
+              </label>
+              
+              <button className="btn btn-primary" onClick={() => void saveApiKey()} disabled={savingApiKey} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 1.5rem', borderRadius: '10px' }}>
+                {savingApiKey ? 'Enregistrement…' : apiKeyConfigured && !mistralKey.trim() ? 'Supprimer la clé' : 'Sauvegarder la clé'}
+              </button>
+            </div>
+          )}
+
+          {activeSubTab === 'core' && (
+            <div className="card-modern" style={{ padding: '1.5rem' }}>
+              <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}><Server size={18} /> Diagnostic de l'Instance</span>
+              <p className="muted" style={{ fontSize: '0.85rem', marginBottom: '1.5rem' }}>
+                Vue d'ensemble technique et état de santé du serveur ToqueHub local.
+              </p>
+              
+              {/* Visual Stack Schema */}
+              <div className="tech-stack-container">
+                <div className="tech-stack-visual">
+                  <div className="tech-stack-node active">
+                    <div className="tech-stack-node-icon" style={{ background: 'rgba(59, 130, 246, 0.08)', color: '#3b82f6' }}>
+                      <Workflow size={20} />
+                    </div>
+                    <span className="tech-stack-node-title">Interface Web</span>
+                    <span className="tech-stack-node-desc">React 18 / Vite</span>
+                  </div>
+                  
+                  <div className="tech-stack-arrow">
+                    <ArrowRight size={18} />
+                  </div>
+                  
+                  <div className="tech-stack-node active">
+                    <div className="tech-stack-node-icon" style={{ background: 'rgba(139, 92, 246, 0.08)', color: '#8b5cf6' }}>
+                      <Server size={20} />
+                    </div>
+                    <span className="tech-stack-node-title">Next.js Core</span>
+                    <span className="tech-stack-node-desc">Node API Locale</span>
+                  </div>
+                  
+                  <div className="tech-stack-arrow">
+                    <ArrowRight size={18} />
+                  </div>
+                  
+                  <div className="tech-stack-node active">
+                    <div className="tech-stack-node-icon" style={{ background: 'rgba(16, 185, 129, 0.08)', color: '#10b981' }}>
+                      <ShieldCheck size={20} />
+                    </div>
+                    <span className="tech-stack-node-title">SQLite (Prisma)</span>
+                    <span className="tech-stack-node-desc">BDD Privée Chiffrée</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="settings-list">
+                <div>
+                  <span>Statut du Core</span>
+                  <strong style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                    <span className="status-indicator-dot green"></span> Actif & Connecté
+                  </strong>
+                </div>
+                <div>
+                  <span>Version du Logiciel</span>
+                  <strong>v0.1.0-alpha (instance_souveraine)</strong>
+                </div>
+                <div>
+                  <span>Base de Données locale</span>
+                  <strong>Prisma Client / SQLite (Opérationnel)</strong>
+                </div>
+                <div>
+                  <span>Hébergement & Souveraineté</span>
+                  <strong>Propriété exclusive de l'établissement (France)</strong>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -3578,9 +4374,10 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: ReactNode;
+  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
 }
 
-function Modal({ isOpen, onClose, title, children }: ModalProps) {
+function Modal({ isOpen, onClose, title, children, size }: ModalProps) {
   return (
     <AnimatePresence>
       {isOpen && (
@@ -3590,7 +4387,7 @@ function Modal({ isOpen, onClose, title, children }: ModalProps) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 15 }}
             transition={{ duration: 0.16, ease: 'easeOut' }}
-            className="modal-content-wrapper"
+            className={`modal-content-wrapper modal-${size || 'md'}`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="modal-header">
@@ -3755,20 +4552,50 @@ function UnitForm({ onSubmit, onClose }: UnitFormProps) {
 }
 
 // Product Form
+type ProductFormPayload = {
+  name: string;
+  sku?: string;
+  description?: string;
+  unitId: string;
+  categoryId?: string | null;
+  primarySupplierId?: string | null;
+  averagePrice?: number;
+  minimumStock?: number;
+};
+
 interface ProductFormProps {
   categories: Category[];
   units: Unit[];
-  onSubmit: (payload: { name: string; sku?: string; unitId: string; categoryId?: string }) => Promise<void>;
+  suppliers: Supplier[];
+  initialName?: string;
+  initialProduct?: Product | null;
+  submitLabel?: string;
+  onSubmit: (payload: ProductFormPayload) => Promise<void>;
   onClose: () => void;
 }
 
-function ProductForm({ categories, units, onSubmit, onClose }: ProductFormProps) {
-  const [name, setName] = useState('');
-  const [sku, setSku] = useState('');
-  const [unitId, setUnitId] = useState(units[0]?.id || '');
-  const [categoryId, setCategoryId] = useState('');
+function ProductForm({ categories, units, suppliers, initialName = '', initialProduct = null, submitLabel, onSubmit, onClose }: ProductFormProps) {
+  const [name, setName] = useState(initialProduct?.name ?? initialName);
+  const [sku, setSku] = useState(initialProduct?.sku ?? initialProduct?.reference ?? '');
+  const [description, setDescription] = useState(initialProduct?.description ?? '');
+  const [unitId, setUnitId] = useState(initialProduct?.unitId || units[0]?.id || '');
+  const [categoryId, setCategoryId] = useState(initialProduct?.categoryId ?? initialProduct?.category?.id ?? '');
+  const [supplierId, setSupplierId] = useState(initialProduct?.primarySupplierId ?? initialProduct?.supplierId ?? initialProduct?.primarySupplier?.id ?? initialProduct?.supplier?.id ?? '');
+  const [averagePrice, setAveragePrice] = useState(String(initialProduct ? numeric(initialProduct.averagePrice ?? initialProduct.averagePurchasePrice ?? initialProduct.weightedAveragePrice) || '' : ''));
+  const [minimumStock, setMinimumStock] = useState(String(initialProduct ? numeric(initialProduct.minimumStock ?? initialProduct.minStock) || '' : ''));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    setName(initialProduct?.name ?? initialName);
+    setSku(initialProduct?.sku ?? initialProduct?.reference ?? '');
+    setDescription(initialProduct?.description ?? '');
+    setUnitId(initialProduct?.unitId || units[0]?.id || '');
+    setCategoryId(initialProduct?.categoryId ?? initialProduct?.category?.id ?? '');
+    setSupplierId(initialProduct?.primarySupplierId ?? initialProduct?.supplierId ?? initialProduct?.primarySupplier?.id ?? initialProduct?.supplier?.id ?? '');
+    setAveragePrice(String(initialProduct ? numeric(initialProduct.averagePrice ?? initialProduct.averagePurchasePrice ?? initialProduct.weightedAveragePrice) || '' : ''));
+    setMinimumStock(String(initialProduct ? numeric(initialProduct.minimumStock ?? initialProduct.minStock) || '' : ''));
+  }, [initialName, initialProduct, units]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -3779,8 +4606,12 @@ function ProductForm({ categories, units, onSubmit, onClose }: ProductFormProps)
       await onSubmit({
         name: name.trim(),
         sku: sku.trim() || undefined,
+        description: description.trim() || undefined,
         unitId,
-        categoryId: categoryId || undefined,
+        categoryId: categoryId || (initialProduct ? null : undefined),
+        primarySupplierId: supplierId || (initialProduct ? null : undefined),
+        averagePrice: averagePrice ? Number(averagePrice) : undefined,
+        minimumStock: minimumStock ? Number(minimumStock) : undefined,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur lors de la création.');
@@ -3816,6 +4647,16 @@ function ProductForm({ categories, units, onSubmit, onClose }: ProductFormProps)
         />
       </label>
 
+      <label>
+        Description
+        <textarea
+          rows={3}
+          placeholder="Notes produit, conditionnement, marque, informations utiles..."
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+      </label>
+
       <div className="form-row">
         <label>
           Unité de mesure *
@@ -3837,26 +4678,171 @@ function ProductForm({ categories, units, onSubmit, onClose }: ProductFormProps)
         </label>
       </div>
 
+      <div className="form-row">
+        <label>
+          Fournisseur principal
+          <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+            <option value="">Non renseigné</option>
+            {suppliers.map((supplier) => (
+              <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Prix moyen pondéré (€)
+          <input type="number" min="0" step="0.0001" value={averagePrice} onChange={(e) => setAveragePrice(e.target.value)} />
+        </label>
+        <label>
+          Stock minimum
+          <input type="number" min="0" step="0.001" value={minimumStock} onChange={(e) => setMinimumStock(e.target.value)} />
+        </label>
+      </div>
+
       <div className="modal-footer" style={{ margin: '1.5rem -1.75rem -1.75rem', padding: '1rem 1.75rem' }}>
         <button type="button" className="btn btn-secondary" onClick={onClose} disabled={submitting}>
           Annuler
         </button>
         <button type="submit" className="btn btn-primary" disabled={submitting || !name.trim() || !unitId}>
-          {submitting ? 'Création...' : 'Créer le produit'}
+          {submitting ? 'Enregistrement...' : (submitLabel ?? 'Créer le produit')}
         </button>
       </div>
     </form>
   );
 }
 
+function ProductDetailModal({
+  product,
+  stocks,
+  movements,
+  categories,
+  units,
+  suppliers,
+  onClose,
+  onUpdate,
+}: {
+  product: Product | null;
+  stocks: Stock[];
+  movements: StockMovement[];
+  categories: Category[];
+  units: Unit[];
+  suppliers: Supplier[];
+  onClose: () => void;
+  onUpdate: (productId: string, payload: ProductFormPayload) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    setEditing(false);
+  }, [product?.id]);
+
+  if (!product) return null;
+
+  const productStocks = stocks.filter((stock) => stock.product?.id === product.id);
+  const productMovements = movements.filter((movement) => movement.product?.id === product.id).slice(0, 6);
+  const totalQuantity = productStocks.reduce((sum, stock) => sum + numeric(stock.currentQuantity ?? stock.quantity), 0);
+  const averagePrice = numeric(product.averagePrice ?? product.averagePurchasePrice ?? product.weightedAveragePrice);
+  const stockValue = productStocks.reduce((sum, stock) => sum + numeric(stock.stockValue ?? stock.value ?? numeric(stock.currentQuantity ?? stock.quantity) * averagePrice), 0);
+  const minimumStock = numeric(product.minimumStock ?? product.minStock);
+  const supplierName = product.primarySupplier?.name ?? product.supplier?.name ?? 'Non renseigné';
+
+  return (
+    <Modal isOpen={Boolean(product)} onClose={onClose} title={product.name} size="lg">
+      {editing ? (
+        <ProductForm
+          categories={categories}
+          units={units}
+          suppliers={suppliers}
+          initialProduct={product}
+          submitLabel="Enregistrer les modifications"
+          onSubmit={async (payload) => {
+            await onUpdate(product.id, payload);
+            setEditing(false);
+          }}
+          onClose={() => setEditing(false)}
+        />
+      ) : (
+        <div className="product-detail">
+          <div className="product-detail-hero">
+            <div>
+              <span className="product-detail-kicker">Fiche produit</span>
+              <h3>{product.name}</h3>
+              <div className="product-detail-badges">
+                <span className="badge badge-inventory">{product.sku || 'Sans SKU'}</span>
+                <span className="badge badge-production">{product.category?.name ?? 'Sans catégorie'}</span>
+                <span className="badge badge-reception">{product.unit?.name ?? 'Unité'} ({product.unit?.symbol ?? '—'})</span>
+              </div>
+            </div>
+            <button type="button" className="btn btn-primary" onClick={() => setEditing(true)}>
+              <Edit3 size={15} /> Modifier
+            </button>
+          </div>
+
+          <div className="product-detail-metrics">
+            <Metric icon={<Boxes size={18} />} value={totalQuantity.toFixed(3).replace(/\.?0+$/, '')} label="Quantité en stock" tone="blue" />
+            <Metric icon={<TrendingUp size={18} />} value={`${stockValue.toFixed(2)} €`} label="Valeur stock" tone="emerald" />
+            <Metric icon={<Scale size={18} />} value={`${averagePrice.toFixed(4)} €`} label="Prix moyen" tone="amber" />
+            <Metric icon={<AlertCircle size={18} />} value={minimumStock ? String(minimumStock) : '—'} label="Stock mini" tone="orange" />
+          </div>
+
+          <div className="product-detail-grid">
+            <div className="product-detail-panel">
+              <span className="product-detail-section-title">Informations</span>
+              <dl className="product-detail-list">
+                <div><dt>Fournisseur</dt><dd>{supplierName}</dd></div>
+                <div><dt>Catégorie</dt><dd>{product.category?.name ?? 'Non catégorisé'}</dd></div>
+                <div><dt>Unité</dt><dd>{product.unit?.name ?? '—'} ({product.unit?.symbol ?? '—'})</dd></div>
+                <div><dt>Prix moyen</dt><dd>{averagePrice.toFixed(4)} €</dd></div>
+              </dl>
+              {product.description ? <p className="product-detail-description">{product.description}</p> : null}
+            </div>
+
+            <div className="product-detail-panel">
+              <span className="product-detail-section-title">Stock par emplacement</span>
+              {productStocks.length ? (
+                <div className="product-detail-mini-table">
+                  {productStocks.map((stock) => (
+                    <div key={stock.id}>
+                      <span>{stock.site?.name ?? 'Site'} / {stock.location?.name ?? 'Emplacement'}</span>
+                      <strong>{numeric(stock.currentQuantity ?? stock.quantity).toFixed(3).replace(/\.?0+$/, '')}</strong>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyMini title="Aucun stock" text="Ce produit n’a pas encore de quantité enregistrée." />
+              )}
+            </div>
+          </div>
+
+          <div className="product-detail-panel">
+            <span className="product-detail-section-title">Derniers mouvements</span>
+            {productMovements.length ? (
+              <div className="product-detail-mini-table">
+                {productMovements.map((movement) => (
+                  <div key={movement.id}>
+                    <span>{movementLabels[movement.type] ?? movement.type} · {movement.date ? new Date(movement.date).toLocaleDateString('fr-FR') : '—'}</span>
+                    <strong>{movementSign(movement.type)}{numeric(movement.quantity).toFixed(3).replace(/\.?0+$/, '')}</strong>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyMini title="Aucun mouvement" text="Les réceptions et sorties apparaîtront ici." />
+            )}
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 // Supplier Form
 interface SupplierFormProps {
+  initialName?: string;
   onSubmit: (payload: { name: string; contactName?: string; email?: string; phone?: string; address?: string; notes?: string }) => Promise<void>;
   onClose: () => void;
 }
 
-function SupplierForm({ onSubmit, onClose }: SupplierFormProps) {
-  const [name, setName] = useState('');
+function SupplierForm({ initialName = '', onSubmit, onClose }: SupplierFormProps) {
+  const [name, setName] = useState(initialName);
   const [contactName, setContactName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -3864,6 +4850,10 @@ function SupplierForm({ onSubmit, onClose }: SupplierFormProps) {
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    setName(initialName);
+  }, [initialName]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -4076,6 +5066,880 @@ function PrefillWizard({ onSubmit, onClose }: { onSubmit: (payload: { categories
       </div>
     </form>
   );
+}
+
+function StocksOcrImportPanel({ statuses, onUpload, onOpenExtraction, onDownload }: { statuses: StocksOcrStatus[]; onUpload: (files: File[]) => Promise<void>; onOpenExtraction: (extractionId: string) => Promise<void>; onDownload: (documentId: string, filename: string) => Promise<void> }) {
+  const [files, setFiles] = useState<File[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string>();
+
+  async function submitFiles() {
+    if (!files.length) return;
+    setSubmitting(true);
+    setError(undefined);
+    try {
+      await onUpload(files);
+      setFiles([]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Le document n’a pas pu être analysé. Vérifiez qu’il est lisible et réessayez.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function removeFile(indexToRemove: number) {
+    setFiles((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+  }
+
+  return (
+    <div className="stocks-ocr-import">
+      {error ? <div className="alert-modern error" style={{ marginBottom: '1rem' }}><AlertCircle size={16} /> {error}</div> : null}
+      
+      <label
+        className="stocks-ocr-dropzone"
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          const dropped = Array.from(event.dataTransfer.files ?? []).slice(0, 8);
+          if (dropped.length) setFiles(dropped);
+        }}
+      >
+        <FileText size={32} style={{ color: '#10b981' }} />
+        <span>Déposer vos documents ici ou cliquer pour parcourir</span>
+        <small>Formats acceptés : PDF, PNG, JPEG, WEBP, HEIC (Jusqu'à 8 fichiers simultanés)</small>
+        <input
+          type="file"
+          accept="application/pdf,image/png,image/jpeg,image/webp,image/heic,image/heif,image/avif,.pdf,.png,.jpg,.jpeg,.webp,.heic,.heif,.avif"
+          multiple
+          onChange={(event) => {
+            const next = Array.from(event.target.files ?? []).slice(0, 8);
+            setFiles(next);
+          }}
+        />
+      </label>
+
+      {files.length ? (
+        <div style={{ marginTop: '1rem' }}>
+          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
+            Fichiers prêts pour l'analyse ({files.length})
+          </div>
+          <div className="stocks-ocr-file-list">
+            {files.map((file, idx) => (
+              <div key={`${file.name}-${file.size}-${idx}`} className="stocks-ocr-file-row">
+                <FileText size={18} style={{ color: '#64748b' }} />
+                <div className="stocks-ocr-file-row-details">
+                  <span>{file.name}</span>
+                  <small>{formatBytes(file.size)} · {fileTypeLabel(file)}</small>
+                </div>
+                <button type="button" className="stocks-ocr-file-remove" onClick={() => removeFile(idx)}>
+                  <X size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="modal-footer" style={{ margin: '1rem -1.75rem 0', padding: '1.25rem 1.75rem', background: '#fafbfe', borderTop: '1px solid var(--light-border)' }}>
+        <button className="btn btn-primary" disabled={!files.length || submitting} onClick={() => void submitFiles()} style={{ padding: '0.65rem 1.5rem', borderRadius: '10px' }}>
+          {submitting ? 'Préparation de l\'import…' : 'Lancer l’analyse OCR'}
+        </button>
+      </div>
+
+      {statuses.length ? (
+        <div style={{ marginTop: '1.5rem' }}>
+          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem' }}>
+            Suivi des analyses de l'instance ({statuses.length})
+          </div>
+          <div className="ocr-statuses-list">
+            {statuses.map((status) => {
+              const isError = status.state.toLowerCase().includes('err') || status.state === 'erreur';
+              const isSuccess = status.state === 'vérifier' || Boolean(status.extraction);
+              const isAnalyzing = status.state === 'analyse' || status.state === 'en cours';
+              const isPending = status.state === 'en attente';
+              
+              let fillClass = 'uploading';
+              let stateText = 'Téléchargement…';
+              if (isError) {
+                fillClass = 'error';
+                stateText = status.ocr?.errorMessage || 'Erreur d\'analyse';
+              } else if (isSuccess) {
+                fillClass = 'success';
+                stateText = 'Prêt à valider';
+              } else if (isAnalyzing) {
+                fillClass = 'analyzing';
+                stateText = 'Extraction Mistral AI…';
+              } else if (isPending) {
+                fillClass = 'pending';
+                stateText = 'Dans la file d\'attente';
+              }
+
+              return (
+                <div key={status.document.id} className="ocr-status-card" style={isSuccess ? { borderLeft: '3px solid #10b981' } : undefined}>
+                  <div className="ocr-status-card-info">
+                    <span className="ocr-status-card-title">{status.document.originalName}</span>
+                    <div className="ocr-status-card-meta">
+                      <span>{formatBytes(status.document.sizeBytes)}</span>
+                      <span>•</span>
+                      <span style={{ 
+                        color: isError ? 'var(--danger)' : isSuccess ? 'var(--success)' : 'var(--text-muted)',
+                        fontWeight: (isSuccess || isError) ? 700 : 'normal'
+                      }}>{stateText}</span>
+                    </div>
+                    <div className="ocr-status-progress-bar">
+                      <div className={`ocr-status-progress-fill ${fillClass}`}></div>
+                    </div>
+                  </div>
+                  
+                  <div className="ocr-status-card-actions">
+                    {status.extraction ? (
+                      <button className="btn btn-primary btn-sm" onClick={() => void onOpenExtraction(status.extraction!.id)} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', borderRadius: '8px' }}>
+                        Vérifier <ArrowRight size={12} />
+                      </button>
+                    ) : null}
+                    <button className="btn btn-secondary btn-sm" onClick={() => void onDownload(status.document.id, status.document.originalName)} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', borderRadius: '8px' }}>
+                      <Download size={12} /> Original
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function StocksOcrReviewPanel({ extraction, products, categories, suppliers, units, sites, locations, token, onSaveDraft, onCreateReception, onCreateProductFromLine, onCreateSupplierFromOcr, onClose }: { extraction: StocksOcrExtraction; products: Product[]; categories: Category[]; suppliers: Supplier[]; units: Unit[]; sites: Site[]; locations: Location[]; token: string; onSaveDraft: (payload: StocksOcrExtraction['data']) => Promise<void>; onCreateReception: (payload: StocksOcrExtraction['data']) => Promise<void>; onCreateProductFromLine: (line: StocksOcrLine, supplierId?: string | null) => Promise<Product>; onCreateSupplierFromOcr: (name: string) => Promise<Supplier>; onClose: () => void }) {
+  const [draft, setDraft] = useState(() => normalizeOcrReceptionData(extraction.data));
+  const [previewUrl, setPreviewUrl] = useState<string>();
+  const [showViewerModal, setShowViewerModal] = useState(false);
+  const [productPickerLineIndex, setProductPickerLineIndex] = useState<number | null>(null);
+  const [rotation, setRotation] = useState(0);
+  const [zoomScale, setZoomScale] = useState(1.0);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [submitting, setSubmitting] = useState<'draft' | 'create' | null>(null);
+  const [error, setError] = useState<string>();
+  const [creatingProductLineId, setCreatingProductLineId] = useState<string | null>(null);
+  const [creatingAllProducts, setCreatingAllProducts] = useState(false);
+  const [creatingSupplier, setCreatingSupplier] = useState(false);
+  const document = extraction.document ?? extraction.ocrDocument?.document;
+
+  function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (zoomScale <= 1.0) return;
+    e.preventDefault();
+    setIsDragging(true);
+    setDragStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }
+
+  function handlePointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (!isDragging) return;
+    e.preventDefault();
+    setPanOffset({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
+  }
+
+  function handlePointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    if (!isDragging) return;
+    setIsDragging(false);
+    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+  }
+
+  function resetViewer() {
+    setZoomScale(1.0);
+    setRotation(0);
+    setPanOffset({ x: 0, y: 0 });
+  }
+
+  useEffect(() => {
+    setDraft(enrichOcrProductMatches(resolveOcrReceptionUnits(normalizeOcrReceptionData(extraction.data), units), products));
+  }, [extraction, units]);
+
+  useEffect(() => {
+    let active = true;
+    if (!document?.id) return undefined;
+    api.viewStocksDocument(token, document.id).then((url) => {
+      if (active) setPreviewUrl(url);
+      else URL.revokeObjectURL(url);
+    }).catch(() => undefined);
+    return () => {
+      active = false;
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [document?.id, token]);
+
+  const activeLines = draft.lines.filter((line) => !line.ignored);
+  const missingProducts = activeLines.filter((line) => !line.productId).length;
+  const invalidQuantities = activeLines.filter((line) => numeric(line.quantity) <= 0).length;
+  const recognized = activeLines.filter((line) => line.matchingStatus === 'RECOGNIZED').length;
+  const needsReview = activeLines.filter((line) => line.matchingStatus === 'NEEDS_REVIEW').length;
+  const supplierCandidates = draft.supplierCandidates ?? draft.supplier?.candidates ?? [];
+  const supplierMatchStatus = draft.supplierId ? (draft.supplierMatchingStatus ?? draft.supplier?.matchingStatus ?? 'RECOGNIZED') : 'NOT_FOUND';
+  const supplierOcrName = draft.supplier?.name || draft.supplierName || '';
+
+  function updateLine(index: number, patch: Partial<StocksOcrLine>) {
+    setDraft((current) => ({ ...current, lines: current.lines.map((line, i) => i === index ? { ...line, ...patch } : line) }));
+  }
+
+  function removeLine(index: number) {
+    setDraft((current) => ({ ...current, lines: current.lines.map((line, i) => i === index ? { ...line, ignored: true } : line) }));
+  }
+
+  function assignProductToLine(index: number, product: Product, score = 1) {
+    updateLine(index, {
+      productId: product.id,
+      productName: product.name,
+      unitId: product.unitId,
+      matchedUnitSymbol: productUnitSymbol(product) || null,
+      matchingStatus: 'RECOGNIZED',
+      matchingScore: score,
+    });
+  }
+
+  async function submit(kind: 'draft' | 'create') {
+    setSubmitting(kind);
+    setError(undefined);
+    try {
+      if (kind === 'draft') await onSaveDraft(draft);
+      else await onCreateReception(draft);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'La réception OCR n’a pas pu être enregistrée.');
+    } finally {
+      setSubmitting(null);
+    }
+  }
+
+  async function createSupplierFromOcr() {
+    if (!supplierOcrName) return;
+    setCreatingSupplier(true);
+    setError(undefined);
+    try {
+      const supplier = await onCreateSupplierFromOcr(supplierOcrName);
+      setDraft((current) => ({ ...current, supplierId: supplier.id, supplierName: supplier.name, supplierMatchingStatus: 'RECOGNIZED', supplierMatchingScore: 1 }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Le fournisseur OCR n’a pas pu être créé.');
+    } finally {
+      setCreatingSupplier(false);
+    }
+  }
+
+  async function createProductFromLine(line: StocksOcrLine, index: number) {
+    const lineKey = line.id ?? `ocr-${index}`;
+    setCreatingProductLineId(lineKey);
+    setError(undefined);
+    try {
+      const product = await onCreateProductFromLine(line, draft.supplierId);
+      updateLine(index, {
+        productId: product.id,
+        productName: product.name,
+        unitId: product.unitId ?? line.unitId,
+        matchingStatus: 'RECOGNIZED',
+        matchingScore: 1,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Le produit OCR n’a pas pu être créé.');
+    } finally {
+      setCreatingProductLineId(null);
+    }
+  }
+
+  async function createAllMissingProducts() {
+    const linesToCreate = draft.lines
+      .map((line, index) => ({ line, index }))
+      .filter(({ line }) => !line.ignored && !line.productId);
+    if (!linesToCreate.length) return;
+    setCreatingAllProducts(true);
+    setError(undefined);
+    const createdByKey = new Map<string, Product>();
+    const failures: string[] = [];
+    for (const { line, index } of linesToCreate) {
+      const lineKey = line.id ?? `ocr-${index}`;
+      const label = String(line.ocrLabel || line.label || '').trim();
+      const reference = String(line.reference || '').trim();
+      const dedupeKey = reference ? `sku:${reference}` : `name:${normalizeLookup(label)}`;
+      try {
+        setCreatingProductLineId(lineKey);
+        const product = createdByKey.get(dedupeKey) ?? await onCreateProductFromLine(line, draft.supplierId);
+        createdByKey.set(dedupeKey, product);
+        updateLine(index, {
+          productId: product.id,
+          productName: product.name,
+          unitId: product.unitId ?? line.unitId,
+          matchingStatus: 'RECOGNIZED',
+          matchingScore: 1,
+        });
+      } catch (err) {
+        failures.push(label || `ligne ${index + 1}`);
+      }
+    }
+    setCreatingProductLineId(null);
+    setCreatingAllProducts(false);
+    if (failures.length) {
+      setError(`${failures.length} produit(s) n’ont pas pu être créés : ${failures.slice(0, 3).join(', ')}${failures.length > 3 ? '…' : ''}`);
+    }
+  }
+
+  return (
+    <div className="stocks-ocr-review" style={{ gridTemplateColumns: '1fr' }}>
+      <div className="stocks-ocr-editor">
+        {error ? <div className="alert-modern error" style={{ marginBottom: '0.5rem' }}><AlertCircle size={16} /> {error}</div> : null}
+        
+        <div className="stocks-ocr-summary">
+          <span className="badge badge-reception" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}>
+            <CheckCircle2 size={13} /> {recognized} reconnus
+          </span>
+          <span className="badge badge-correction" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}>
+            <Info size={13} /> {needsReview} à vérifier
+          </span>
+          <span className="badge badge-loss" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}>
+            <AlertCircle size={13} /> {missingProducts} non reconnus
+          </span>
+
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={!missingProducts || creatingAllProducts || creatingProductLineId !== null}
+            onClick={() => void createAllMissingProducts()}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderRadius: '8px', padding: '0.4rem 0.8rem', fontSize: '0.8rem', fontWeight: 650 }}
+          >
+            <Package size={13} />
+            {creatingAllProducts ? 'Création des produits…' : `Créer ${missingProducts === 1 ? 'le produit' : `les ${missingProducts} produits`}`}
+          </button>
+          
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => setShowViewerModal(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginLeft: 'auto', borderRadius: '8px', padding: '0.4rem 0.8rem', fontSize: '0.8rem', fontWeight: 650 }}
+          >
+            <FileText size={13} />
+            Afficher le document original
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div className="form-row">
+            <label style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-main)' }}>
+              Fournisseur sélectionné
+              <select value={draft.supplierId || ''} onChange={(e) => {
+                const supplier = suppliers.find((item) => item.id === e.target.value);
+                setDraft({ ...draft, supplierId: e.target.value || null, supplierName: (supplier?.name ?? supplierOcrName) || null, supplierMatchingStatus: e.target.value ? 'RECOGNIZED' : 'NOT_FOUND', supplierMatchingScore: e.target.value ? 1 : 0 });
+              }}>
+                <option value="">Non renseigné</option>
+                {suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+              </select>
+            </label>
+            <label style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-main)' }}>
+              Nom fournisseur OCR (extrait)
+              <input value={draft.supplierName || ''} onChange={(e) => setDraft({ ...draft, supplierName: e.target.value })} />
+            </label>
+          </div>
+
+          <div className="alert-modern" style={{ margin: 0, alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span className={`badge ${ocrMatchClass(supplierMatchStatus)}`}>{ocrMatchLabel(supplierMatchStatus)}</span>
+              {draft.supplierId ? `Fournisseur lié : ${suppliers.find((supplier) => supplier.id === draft.supplierId)?.name ?? draft.supplierName ?? 'sélectionné'}` : `Fournisseur OCR : ${supplierOcrName || 'non détecté'}`}
+            </span>
+            {!draft.supplierId && supplierOcrName ? (
+              <button type="button" className="btn btn-secondary btn-sm" disabled={creatingSupplier} onClick={() => void createSupplierFromOcr()}>
+                <Plus size={13} /> {creatingSupplier ? 'Création…' : 'Créer fournisseur'}
+              </button>
+            ) : null}
+            {!draft.supplierId && supplierCandidates.length ? (
+              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                {supplierCandidates.map((candidate) => (
+                  <button
+                    key={candidate.id}
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setDraft({ ...draft, supplierId: candidate.id, supplierName: candidate.name, supplierMatchingStatus: 'RECOGNIZED', supplierMatchingScore: candidate.score })}
+                  >
+                    {candidate.name}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="form-row">
+            <label style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-main)' }}>
+              N° Facture
+              <input value={draft.invoiceNumber || ''} onChange={(e) => setDraft({ ...draft, invoiceNumber: e.target.value })} placeholder="Ex: FR-8492" />
+            </label>
+            <label style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-main)' }}>
+              N° Bon de livraison
+              <input value={draft.deliveryNoteNumber || ''} onChange={(e) => setDraft({ ...draft, deliveryNoteNumber: e.target.value })} placeholder="Ex: BL-4919" />
+            </label>
+            <label style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-main)' }}>
+              N° Commande
+              <input value={draft.purchaseOrderNumber || ''} onChange={(e) => setDraft({ ...draft, purchaseOrderNumber: e.target.value })} placeholder="Ex: BC-8201" />
+            </label>
+          </div>
+
+          <div className="form-row">
+            <label style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-main)' }}>
+              Date document
+              <input type="date" value={dateInputValue(draft.documentDate)} onChange={(e) => setDraft({ ...draft, documentDate: e.target.value || null })} />
+            </label>
+            <label style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-main)' }}>
+              Date de livraison
+              <input type="date" value={dateInputValue(draft.deliveryDate)} onChange={(e) => setDraft({ ...draft, deliveryDate: e.target.value || null })} />
+            </label>
+            <label style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-main)' }}>
+              Total TTC (€)
+              <input type="number" step="0.01" value={draft.totalIncludingTax ?? ''} onChange={(e) => setDraft({ ...draft, totalIncludingTax: e.target.value ? Number(e.target.value) : null })} />
+            </label>
+          </div>
+
+          <div className="form-row">
+            <label style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-main)' }}>
+              Site destination
+              <select value={draft.siteId || ''} onChange={(e) => setDraft({ ...draft, siteId: e.target.value || null })}>
+                <option value="">Non précisé</option>
+                {sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
+              </select>
+            </label>
+            <label style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-main)' }}>
+              Emplacement destination
+              <select value={draft.locationId || ''} onChange={(e) => setDraft({ ...draft, locationId: e.target.value || null })}>
+                <option value="">Non précisé</option>
+                {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div className="table-wrapper stocks-ocr-lines" style={{ marginTop: '0.5rem' }}>
+          <table className="table-modern">
+            <thead>
+              <tr>
+                <th style={{ width: '22%' }}>Libellé OCR</th>
+                <th style={{ width: '28%' }}>Produit ToqueHub</th>
+                <th style={{ width: '8%' }}>Qté</th>
+                <th style={{ width: '10%' }}>Unité</th>
+                <th style={{ width: '8%' }}>P.U.</th>
+                <th style={{ width: '8%' }}>Total</th>
+                <th style={{ width: '10%' }}>Lot</th>
+                <th style={{ width: '12%' }}>DLC</th>
+                <th style={{ width: '6%' }}>Statut</th>
+                <th style={{ width: '4%' }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {draft.lines.map((line, index) => line.ignored ? null : (
+                <tr key={line.id ?? index}>
+                  <td>
+                    <input 
+                      value={line.ocrLabel || line.label || ''} 
+                      onChange={(e) => updateLine(index, { ocrLabel: e.target.value })} 
+                      title={line.ocrLabel || line.label || ''}
+                    />
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        className="ocr-product-picker-trigger"
+                        onClick={() => setProductPickerLineIndex(index)}
+                        title={line.productName || 'Rechercher un produit ToqueHub'}
+                      >
+                        <Search size={13} />
+                        <span>{line.productName || 'Rechercher / assigner'}</span>
+                      </button>
+                      {line.productId ? (
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          onClick={() => updateLine(index, { productId: null, productName: null, matchingStatus: 'NOT_FOUND', matchingScore: 0 })}
+                          title="Désassigner le produit"
+                        >
+                          <X size={13} />
+                        </button>
+                      ) : null}
+                      {!line.productId ? (
+                        <button 
+                          className="btn btn-secondary btn-sm" 
+                          disabled={creatingProductLineId === (line.id ?? `ocr-${index}`)}
+                          onClick={() => void createProductFromLine(line, index)}
+                          style={{ padding: '0.25rem 0.5rem', flexShrink: 0, borderRadius: '6px' }}
+                          title="Créer un nouveau produit"
+                        >
+                          {creatingProductLineId === (line.id ?? `ocr-${index}`) ? '…' : '+'}
+                        </button>
+                      ) : null}
+                    </div>
+                    {line.productCandidates?.length && line.matchingStatus !== 'RECOGNIZED' ? (
+                      <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', marginTop: '0.35rem' }}>
+                        {line.productCandidates.map((candidate) => (
+                          <button
+                            key={candidate.id}
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: '0.15rem 0.4rem', borderRadius: '6px', fontSize: '0.72rem' }}
+                            onClick={() => {
+                              const product = products.find((item) => item.id === candidate.id);
+                              if (product) assignProductToLine(index, product, numeric(candidate.score));
+                              else updateLine(index, { productId: candidate.id, productName: candidate.name, unitId: candidate.unitId ?? line.unitId, matchingStatus: 'RECOGNIZED', matchingScore: candidate.score });
+                            }}
+                          >
+                            {candidate.name}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </td>
+                  <td>
+                    <input type="number" min="0" step="0.001" value={line.quantity ?? ''} onChange={(e) => updateLine(index, { quantity: e.target.value ? Number(e.target.value) : null })} />
+                  </td>
+                  <td>
+                    <select value={line.unitId || ''} onChange={(e) => updateLine(index, { unitId: e.target.value || null })}>
+                      <option value="">Choisir</option>
+                      {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.symbol}</option>)}
+                    </select>
+                  </td>
+                  <td>
+                    <input type="number" step="0.0001" value={line.unitPrice ?? ''} onChange={(e) => updateLine(index, { unitPrice: e.target.value ? Number(e.target.value) : null })} />
+                  </td>
+                  <td>
+                    <input type="number" step="0.0001" value={line.lineTotal ?? line.total ?? ''} onChange={(e) => updateLine(index, { lineTotal: e.target.value ? Number(e.target.value) : null })} />
+                  </td>
+                  <td>
+                    <input value={line.lotNumber || ''} onChange={(e) => updateLine(index, { lotNumber: e.target.value })} />
+                  </td>
+                  <td>
+                    <input type="date" value={dateInputValue(line.bestBeforeDate)} onChange={(e) => updateLine(index, { bestBeforeDate: e.target.value || null })} />
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <span className={`badge ${ocrMatchClass(line.matchingStatus)}`}>
+                      {ocrMatchLabel(line.matchingStatus)}
+                    </span>
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <button type="button" className="icon-btn danger" onClick={() => removeLine(index)} title="Supprimer la ligne">
+                      <Trash2 size={14} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {(missingProducts || invalidQuantities) ? (
+          <div className="alert-modern error" style={{ margin: '0' }}>
+            <AlertCircle size={16} /> 
+            <span>
+              {missingProducts ? `${missingProducts} produit(s) non reconnu(s) dans ToqueHub. ` : ''}
+              {invalidQuantities ? `${invalidQuantities} quantité(s) invalides.` : ''}
+            </span>
+          </div>
+        ) : null}
+
+        <div className="modal-footer" style={{ margin: '1rem -1.75rem -1.75rem', padding: '1.25rem 1.75rem', background: '#fafbfe', borderTop: '1px solid var(--light-border)' }}>
+          <button className="btn btn-secondary" onClick={onClose} style={{ borderRadius: '10px' }}>Annuler</button>
+          <button className="btn btn-secondary" disabled={submitting !== null} onClick={() => void submit('draft')} style={{ borderRadius: '10px' }}>
+            {submitting === 'draft' ? 'Enregistrement…' : 'Enregistrer le brouillon'}
+          </button>
+          <button className="btn btn-primary" disabled={submitting !== null || missingProducts > 0 || invalidQuantities > 0} onClick={() => void submit('create')} style={{ borderRadius: '10px' }}>
+            {submitting === 'create' ? 'Création de la réception…' : 'Valider la réception'}
+          </button>
+        </div>
+      </div>
+
+      {/* Lightbox / Viewer Modal */}
+      <ProductAssignmentModal
+        isOpen={productPickerLineIndex !== null}
+        line={productPickerLineIndex !== null ? draft.lines[productPickerLineIndex] : null}
+        products={products}
+        categories={categories}
+        suppliers={suppliers}
+        units={units}
+        supplierId={draft.supplierId}
+        onClose={() => setProductPickerLineIndex(null)}
+        onSelect={(product, score) => {
+          if (productPickerLineIndex === null) return;
+          assignProductToLine(productPickerLineIndex, product, score);
+          setProductPickerLineIndex(null);
+        }}
+      />
+
+      <Modal isOpen={showViewerModal} onClose={() => { setShowViewerModal(false); resetViewer(); }} title={`Aperçu : ${document?.originalName || 'Document'}`} size="lg">
+        <div
+          style={{ overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '520px', background: '#0f172a', borderRadius: '12px', position: 'relative', border: '1px solid rgba(255,255,255,0.06)', cursor: zoomScale > 1.0 ? (isDragging ? 'grabbing' : 'grab') : 'default', touchAction: 'none', userSelect: 'none' }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+        >
+          <div style={{
+            transform: `translate(${panOffset.x}px, ${panOffset.y}px) rotate(${rotation}deg) scale(${zoomScale})`,
+            transition: isDragging ? 'none' : 'transform 0.2s ease-in-out',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '100%',
+            height: '100%',
+            padding: '1.5rem'
+          }}>
+            {previewUrl && document?.mimeType?.startsWith('image/') ? (
+              <img src={previewUrl} alt={document.originalName} draggable={false} style={{ maxWidth: '100%', maxHeight: '460px', objectFit: 'contain', borderRadius: '6px', pointerEvents: 'none' }} />
+            ) : null}
+            {previewUrl && document?.mimeType === 'application/pdf' ? (
+              <iframe src={previewUrl} title={document.originalName} style={{ width: '100%', height: '460px', border: 'none', borderRadius: '6px', background: 'white', pointerEvents: zoomScale > 1.0 ? 'none' : 'auto' }} />
+            ) : null}
+            {!previewUrl ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', color: 'rgba(255,255,255,0.4)' }}>
+                <FileText size={48} />
+                <span style={{ fontSize: '0.9rem' }}>Aperçu indisponible</span>
+              </div>
+            ) : null}
+          </div>
+          
+          {/* Controls Overlay */}
+          <div style={{
+            position: 'absolute',
+            bottom: '1rem',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(15, 23, 42, 0.85)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '30px',
+            padding: '0.4rem 0.8rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.6rem',
+            zIndex: 100,
+            boxShadow: '0 8px 20px rgba(0,0,0,0.4)'
+          }}>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setZoomScale(z => Math.min(z + 0.2, 3.0)); setPanOffset({ x: 0, y: 0 }); }} style={{ color: 'white', background: 'transparent', border: 'none', padding: '0.2rem', display: 'flex', cursor: 'pointer' }} title="Zoomer">
+              <ZoomIn size={15} />
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setZoomScale(z => { const next = Math.max(z - 0.2, 0.5); if (next <= 1.0) setPanOffset({ x: 0, y: 0 }); return next; }); }} style={{ color: 'white', background: 'transparent', border: 'none', padding: '0.2rem', display: 'flex', cursor: 'pointer' }} title="Dézoomer">
+              <ZoomOut size={15} />
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setRotation(r => (r + 90) % 360)} style={{ color: 'white', background: 'transparent', border: 'none', padding: '0.2rem', display: 'flex', cursor: 'pointer' }} title="Pivoter 90°">
+              <RotateCw size={15} />
+            </button>
+            <span style={{ height: '12px', width: '1px', background: 'rgba(255,255,255,0.2)' }}></span>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={resetViewer} style={{ color: 'white', background: 'transparent', border: 'none', padding: '0.15rem 0.4rem', fontSize: '0.72rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }} title="Réinitialiser">
+              <Maximize size={12} /> Reset
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+    </div>
+  );
+}
+
+function ProductAssignmentModal({
+  isOpen,
+  line,
+  products,
+  categories,
+  suppliers,
+  units,
+  supplierId,
+  onSelect,
+  onClose,
+}: {
+  isOpen: boolean;
+  line: StocksOcrLine | null;
+  products: Product[];
+  categories: Category[];
+  suppliers: Supplier[];
+  units: Unit[];
+  supplierId?: string | null;
+  onSelect: (product: Product, score: number) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [supplierFilter, setSupplierFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [unitFilter, setUnitFilter] = useState('');
+  const [matchFilter, setMatchFilter] = useState<'all' | 'best' | 'supplier' | 'uncategorized'>('all');
+
+  useEffect(() => {
+    if (!isOpen || !line) return;
+    setQuery(String(line.ocrLabel || line.label || '').trim());
+    setSupplierFilter(supplierId || '');
+    setCategoryFilter('');
+    setUnitFilter(line.unitId || '');
+    setMatchFilter('all');
+  }, [isOpen, line?.id, supplierId]);
+
+  const rankedProducts = useMemo(() => {
+    if (!line) return [];
+    const search = normalizeSearchText(query);
+    return products
+      .filter((product) => !isArchived(product))
+      .map((product) => {
+        const supplierName = product.primarySupplier?.name ?? product.supplier?.name ?? '';
+        const categoryName = product.category?.name ?? '';
+        const searchHaystack = normalizeSearchText(`${product.name} ${product.sku ?? product.reference ?? ''} ${supplierName} ${categoryName} ${product.unit?.symbol ?? ''}`);
+        const textMatch = !search || search.split(' ').every((part) => searchHaystack.includes(part));
+        const score = scoreProductForOcrLine(line, product, supplierId);
+        return { product, score, textMatch };
+      })
+      .filter(({ product, score, textMatch }) => {
+        if (supplierFilter && productSupplierId(product) !== supplierFilter) return false;
+        if (categoryFilter && (product.categoryId ?? product.category?.id) !== categoryFilter) return false;
+        if (unitFilter && product.unitId !== unitFilter) return false;
+        if (matchFilter === 'best' && score < 0.58) return false;
+        if (matchFilter === 'supplier' && (!supplierId || productSupplierId(product) !== supplierId)) return false;
+        if (matchFilter === 'uncategorized' && (product.categoryId || product.category?.id)) return false;
+        return textMatch || score >= 0.42;
+      })
+      .sort((a, b) => b.score - a.score || a.product.name.localeCompare(b.product.name))
+      .slice(0, 80);
+  }, [products, line, query, supplierFilter, categoryFilter, unitFilter, matchFilter, supplierId]);
+
+  if (!line) return null;
+
+  const ocrLabel = String(line.ocrLabel || line.label || '').trim();
+  const ocrReference = String(line.reference || '').trim();
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Assigner un produit ToqueHub" size="xl">
+      <div className="ocr-product-selector">
+        <div className="ocr-product-selector-context">
+          <div>
+            <span className="ocr-product-selector-kicker">Ligne OCR</span>
+            <strong>{ocrLabel || 'Libellé non renseigné'}</strong>
+          </div>
+          <div className="ocr-product-selector-meta">
+            {ocrReference ? <span>Réf. {ocrReference}</span> : null}
+            {line.quantity ? <span>Qté {line.quantity}</span> : null}
+            {line.unit || line.matchedUnitSymbol ? <span>{line.unit || line.matchedUnitSymbol}</span> : null}
+          </div>
+        </div>
+
+        <div className="ocr-product-selector-toolbar">
+          <div className="search-input-wrapper ocr-product-selector-search">
+            <Search size={16} />
+            <input className="search-input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Rechercher par nom, référence, fournisseur, catégorie..." autoFocus />
+          </div>
+          <select value={supplierFilter} onChange={(event) => setSupplierFilter(event.target.value)}>
+            <option value="">Tous fournisseurs</option>
+            {suppliers.filter((supplier) => !isArchived(supplier)).map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+          </select>
+          <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+            <option value="">Toutes catégories</option>
+            {categories.filter((category) => !isArchived(category)).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+          </select>
+          <select value={unitFilter} onChange={(event) => setUnitFilter(event.target.value)}>
+            <option value="">Toutes unités</option>
+            {units.filter((unit) => !isArchived(unit)).map((unit) => <option key={unit.id} value={unit.id}>{unit.name} ({unit.symbol})</option>)}
+          </select>
+          <select value={matchFilter} onChange={(event) => setMatchFilter(event.target.value as typeof matchFilter)}>
+            <option value="all">Tous scores</option>
+            <option value="best">Bons rapprochements</option>
+            <option value="supplier">Même fournisseur</option>
+            <option value="uncategorized">Sans catégorie</option>
+          </select>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setQuery(''); setSupplierFilter(''); setCategoryFilter(''); setUnitFilter(''); setMatchFilter('all'); }}>
+            <X size={13} /> Réinitialiser
+          </button>
+        </div>
+
+        <div className="ocr-product-selector-results">
+          {rankedProducts.map(({ product, score }) => {
+            const supplierName = product.primarySupplier?.name ?? product.supplier?.name ?? 'Sans fournisseur';
+            const categoryName = product.category?.name ?? 'Sans catégorie';
+            const scoreLabel = `${Math.round(score * 100)}%`;
+            return (
+              <button key={product.id} type="button" className="ocr-product-result" onClick={() => onSelect(product, score)}>
+                <div className="ocr-product-result-main">
+                  <span className="ocr-product-result-name">{product.name}</span>
+                  <span className="ocr-product-result-sub">
+                    {product.sku || product.reference ? `Réf. ${product.sku ?? product.reference} · ` : ''}
+                    {categoryName} · {supplierName}
+                  </span>
+                </div>
+                <div className="ocr-product-result-badges">
+                  <span className="badge badge-inventory">{product.unit?.symbol ?? '—'}</span>
+                  <span className={`badge ${score >= 0.84 ? 'badge-reception' : score >= 0.58 ? 'badge-correction' : 'badge-production'}`}>{scoreLabel}</span>
+                </div>
+              </button>
+            );
+          })}
+          {!rankedProducts.length ? (
+            <div className="ocr-product-selector-empty">
+              <Package size={24} />
+              <strong>Aucun produit trouvé</strong>
+              <span>Modifiez la recherche ou les filtres, puis créez le produit depuis la ligne OCR si aucun produit existant ne correspond.</span>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function normalizeOcrReceptionData(data: StocksOcrExtraction['data']): StocksOcrExtraction['data'] {
+  return {
+    supplier: data.supplier ?? null,
+    supplierId: data.supplierId ?? data.supplier?.supplierId ?? null,
+    supplierName: data.supplierName ?? data.supplier?.supplierName ?? data.supplier?.name ?? null,
+    supplierMatchingStatus: data.supplierMatchingStatus ?? data.supplier?.matchingStatus,
+    supplierMatchingScore: data.supplierMatchingScore ?? data.supplier?.matchingScore ?? null,
+    supplierCandidates: data.supplierCandidates ?? data.supplier?.candidates ?? [],
+    invoiceNumber: data.invoiceNumber ?? data.document?.invoiceNumber ?? null,
+    deliveryNoteNumber: data.deliveryNoteNumber ?? data.document?.deliveryNoteNumber ?? null,
+    purchaseOrderNumber: data.purchaseOrderNumber ?? data.document?.purchaseOrderNumber ?? null,
+    documentDate: data.documentDate ?? data.document?.documentDate ?? null,
+    deliveryDate: data.deliveryDate ?? data.document?.deliveryDate ?? null,
+    totalExcludingTax: data.totalExcludingTax ?? data.totals?.totalExcludingTax ?? null,
+    totalTax: data.totalTax ?? data.totals?.totalTax ?? null,
+    totalIncludingTax: data.totalIncludingTax ?? data.totals?.totalIncludingTax ?? null,
+    siteId: data.siteId ?? null,
+    locationId: data.locationId ?? null,
+    lines: (data.lines || []).map((line, index) => ({
+      ...line,
+      id: line.id ?? `ocr-${index}`,
+      ocrLabel: line.ocrLabel ?? line.label ?? '',
+      lineTotal: line.lineTotal ?? line.total ?? null,
+      ignored: line.ignored ?? false,
+    })),
+  };
+}
+
+function ocrStateClass(state: string) {
+  if (state.includes('erreur')) return 'badge-loss';
+  if (state.includes('vérifier')) return 'badge-reception';
+  if (state.includes('cours') || state.includes('attente')) return 'badge-correction';
+  return 'badge-production';
+}
+
+function ocrMatchClass(status?: string | null) {
+  if (status === 'RECOGNIZED') return 'badge-reception';
+  if (status === 'NEEDS_REVIEW') return 'badge-correction';
+  return 'badge-loss';
+}
+
+function ocrMatchLabel(status?: string | null) {
+  if (status === 'RECOGNIZED') return 'Reconnu';
+  if (status === 'NEEDS_REVIEW') return 'À vérifier';
+  return 'Non trouvé';
+}
+
+function dateInputValue(value?: string | null) {
+  return value ? String(value).slice(0, 10) : '';
+}
+
+function formatBytes(size: number) {
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} Ko`;
+  return `${(size / (1024 * 1024)).toFixed(1)} Mo`;
+}
+
+function fileTypeLabel(file: File) {
+  if (file.type) return file.type;
+  const ext = file.name.includes('.') ? file.name.split('.').pop()?.toUpperCase() : undefined;
+  return ext ? `.${ext}` : 'type inconnu';
 }
 
 // Movement Form

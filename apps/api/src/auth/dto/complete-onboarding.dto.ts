@@ -72,4 +72,10 @@ export class CompleteOnboardingDto {
   @IsString()
   @MaxLength(750_000)
   logoDataUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Optional Mistral API key used for OCR imports.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  mistralApiKey?: string;
 }

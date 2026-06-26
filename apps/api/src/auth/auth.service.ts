@@ -9,6 +9,7 @@ import { BootstrapAdminDto } from './dto/bootstrap-admin.dto';
 import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
 import { LoginDto } from './dto/login.dto';
 import { SetupOrganizationDto } from './dto/setup-organization.dto';
+import { UpdateOrganizationApiKeysDto } from './dto/api-keys.dto';
 
 type PrefillStocksDto = {
   categories?: boolean;
@@ -19,6 +20,7 @@ type PrefillStocksDto = {
 };
 
 const ADMIN_ROLES = ['SUPER_ADMIN', 'Administrateur'];
+const SETTINGS_ROLES = ['SUPER_ADMIN', 'Administrateur', 'ADMIN', 'Manager', 'MANAGER'];
 
 @Injectable()
 export class AuthService {
@@ -64,6 +66,8 @@ export class AuthService {
           teamSize: dto.teamSize,
           logoDataUrl: dto.logoDataUrl,
           mainSiteName: `${dto.organizationName} — Site principal`,
+          mistralApiKey: dto.mistralApiKey?.trim() || null,
+          mistralApiKeyUpdatedAt: dto.mistralApiKey?.trim() ? new Date() : null,
         },
       });
 
@@ -170,6 +174,8 @@ export class AuthService {
           teamSize: dto.teamSize,
           logoDataUrl: dto.logoDataUrl,
           mainSiteName: `${dto.name} — Site principal`,
+          mistralApiKey: dto.mistralApiKey?.trim() || null,
+          mistralApiKeyUpdatedAt: dto.mistralApiKey?.trim() ? new Date() : null,
         },
       });
 
@@ -183,6 +189,31 @@ export class AuthService {
     });
 
     return this.createSession(updatedUser);
+  }
+
+  async getOrganizationApiKeys(user: AuthenticatedUser) {
+    if (!user.organizationId) throw new ForbiddenException('Organization setup is required before reading API keys');
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: user.organizationId },
+      select: { mistralApiKey: true, mistralApiKeyUpdatedAt: true },
+    });
+    if (!organization) throw new ForbiddenException('Organization setup is required before reading API keys');
+    return this.serializeApiKeys(organization);
+  }
+
+  async updateOrganizationApiKeys(user: AuthenticatedUser, dto: UpdateOrganizationApiKeysDto) {
+    if (!user.organizationId) throw new ForbiddenException('Organization setup is required before updating API keys');
+    if (!SETTINGS_ROLES.includes(user.role)) throw new ForbiddenException('Only administrators and managers can update organization API keys');
+    const key = dto.mistralApiKey?.trim();
+    const organization = await this.prisma.organization.update({
+      where: { id: user.organizationId },
+      data: {
+        mistralApiKey: key || null,
+        mistralApiKeyUpdatedAt: key ? new Date() : null,
+      },
+      select: { mistralApiKey: true, mistralApiKeyUpdatedAt: true },
+    });
+    return this.serializeApiKeys(organization);
   }
 
   async getCurrentSession(user: AuthenticatedUser) {
@@ -440,6 +471,7 @@ export class AuthService {
         teamSize: currentUser.organization.teamSize,
         logoDataUrl: currentUser.organization.logoDataUrl,
         mainSiteName: currentUser.organization.mainSiteName,
+        apiKeys: this.serializeApiKeys(currentUser.organization),
       },
       installedApplications,
       counts: { products: productCount, suppliers: supplierCount, stockMovements: movementCount, activeUsers: activeUsersCount, hrCollaborators, technicalSheets },
@@ -542,6 +574,8 @@ export class AuthService {
       technicalSheetsInstalledAt?: Date | null;
       productionInstalledAt?: Date | null;
       menusInstalledAt?: Date | null;
+      mistralApiKey?: string | null;
+      mistralApiKeyUpdatedAt?: Date | null;
     } | null;
   }) {
     return {
@@ -557,6 +591,7 @@ export class AuthService {
       logoUrl: user.organization?.logoDataUrl ?? null,
       logoDataUrl: user.organization?.logoDataUrl ?? null,
       mainSiteName: user.organization?.mainSiteName ?? null,
+      apiKeys: user.organization ? this.serializeApiKeys(user.organization) : undefined,
       installedApplications: [
         ...(user.organization?.stocksInstalledAt ? ['stocks'] : []),
         ...(user.organization?.rnmPricesInstalledAt ? ['rnm-prices'] : []),
@@ -600,6 +635,8 @@ export class AuthService {
       technicalSheetsInstalledAt?: Date | null;
       productionInstalledAt?: Date | null;
       menusInstalledAt?: Date | null;
+      mistralApiKey?: string | null;
+      mistralApiKeyUpdatedAt?: Date | null;
     } | null;
   }) {
     const payload = {
@@ -616,5 +653,20 @@ export class AuthService {
       }),
       user: this.serializeUser({ ...user, organization: user.organization ?? null }),
     };
+  }
+
+  private serializeApiKeys(organization: { mistralApiKey?: string | null; mistralApiKeyUpdatedAt?: Date | null }) {
+    return {
+      mistral: {
+        configured: Boolean(organization.mistralApiKey),
+        masked: organization.mistralApiKey ? this.maskSecret(organization.mistralApiKey) : null,
+        updatedAt: organization.mistralApiKeyUpdatedAt ?? null,
+      },
+    };
+  }
+
+  private maskSecret(secret: string) {
+    if (secret.length <= 10) return '••••';
+    return `${secret.slice(0, 4)}••••${secret.slice(-4)}`;
   }
 }

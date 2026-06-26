@@ -224,6 +224,45 @@ enum InventoryStatus {
   VALIDATED
 }
 
+enum DocumentStatus {
+  UPLOADED
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+enum OcrProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum OcrExtractionType {
+  INVOICE
+  DELIVERY_NOTE
+  UNKNOWN
+}
+
+enum OcrBusinessExtractionStatus {
+  DRAFT
+  REVIEWED
+  VALIDATED
+  REJECTED
+}
+
+enum StockReceptionStatus {
+  DRAFT
+  VALIDATED
+  CANCELLED
+}
+
+enum StockReceptionLineMatchingStatus {
+  RECOGNIZED
+  NEEDS_REVIEW
+  NOT_FOUND
+}
+
 enum HrEmployeeStatus {
   ACTIVE
   ABSENT
@@ -451,6 +490,8 @@ model Organization {
   technicalSheetsInstalledAt DateTime?
   productionInstalledAt      DateTime?
   menusInstalledAt           DateTime?
+  mistralApiKey              String?   @db.Text
+  mistralApiKeyUpdatedAt     DateTime?
   createdAt                  DateTime  @default(now())
   updatedAt                  DateTime  @updatedAt
 
@@ -464,6 +505,10 @@ model Organization {
   lots                           Lot[]
   stocks                         Stock[]
   stockMovements                 StockMovement[]
+  documents                      Document[]
+  ocrDocuments                   OcrDocument[]
+  ocrBusinessExtractions         OcrBusinessExtraction[]
+  stockReceptions                StockReception[]
   inventories                    Inventory[]
   auditLogs                      AuditLog[]
   rnmFavorites                   RnmProductFavorite[]
@@ -545,6 +590,8 @@ model User {
   organization                   Organization?                  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   role                           Role                           @relation(fields: [roleId], references: [id], onDelete: Restrict)
   movements                      StockMovement[]                @relation("StockMovementCreatedBy")
+  uploadedDocuments              Document[]                     @relation("DocumentUploadedBy")
+  createdStockReceptions         StockReception[]               @relation("StockReceptionCreatedBy")
   inventories                    Inventory[]                    @relation("InventoryCreatedBy")
   auditLogs                      AuditLog[]
   rnmFavorites                   RnmProductFavorite[]
@@ -674,6 +721,7 @@ model Unit {
   organization                   Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   products                       Product[]
   movements                      StockMovement[]
+  stockReceptionLines            StockReceptionLine[]
   fromConversions                UnitConversion[]                @relation("UnitConversionFrom")
   toConversions                  UnitConversion[]                @relation("UnitConversionTo")
   technicalSheetIngredients      TechnicalSheetIngredient[]
@@ -726,6 +774,7 @@ model Product {
   primarySupplier           Supplier?                       @relation("ProductPrimarySupplier", fields: [primarySupplierId], references: [id], onDelete: SetNull)
   stocks                    Stock[]
   movements                 StockMovement[]
+  stockReceptionLines       StockReceptionLine[]
   lots                      Lot[]
   technicalSheetIngredients TechnicalSheetIngredient[]
   inventoryLines            InventoryLine[]
@@ -759,6 +808,7 @@ model Supplier {
   organization           Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   lots                   Lot[]
   movements              StockMovement[]
+  stockReceptions        StockReception[]
   productionRequirements ProductionMaterialRequirement[]
   primaryProducts        Product[]                       @relation("ProductPrimarySupplier")
 
@@ -782,6 +832,7 @@ model Site {
   locations                    Location[]
   stocks                       Stock[]
   lots                         Lot[]
+  stockReceptions              StockReception[]
   sourceMovements              StockMovement[]               @relation("StockMovementSourceSite")
   destinationMovements         StockMovement[]               @relation("StockMovementDestinationSite")
   inventories                  Inventory[]
@@ -816,6 +867,7 @@ model Location {
   site                 Site            @relation(fields: [siteId], references: [id], onDelete: Restrict)
   stocks               Stock[]
   lots                 Lot[]
+  stockReceptions      StockReception[]
   sourceMovements      StockMovement[] @relation("StockMovementSourceLocation")
   destinationMovements StockMovement[] @relation("StockMovementDestinationLocation")
   inventories          Inventory[]
@@ -847,6 +899,7 @@ model Lot {
   location     Location?       @relation(fields: [locationId], references: [id], onDelete: SetNull)
   stocks       Stock[]
   movements    StockMovement[]
+  stockReceptionLines StockReceptionLine[]
 
   @@unique([organizationId, lotNumber, productId])
   @@index([organizationId])
@@ -902,6 +955,7 @@ model StockMovement {
   movementDate          DateTime          @default(now())
   createdById           String?           @db.Uuid
   inventoryId           String?           @db.Uuid
+  stockReceptionLineId  String?           @db.Uuid
   createdAt             DateTime          @default(now())
 
   organization                  Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -915,6 +969,7 @@ model StockMovement {
   destinationLocation           Location?                      @relation("StockMovementDestinationLocation", fields: [destinationLocationId], references: [id], onDelete: SetNull)
   createdBy                     User?                          @relation("StockMovementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   inventory                     Inventory?                     @relation(fields: [inventoryId], references: [id], onDelete: SetNull)
+  stockReceptionLine            StockReceptionLine?            @relation(fields: [stockReceptionLineId], references: [id], onDelete: SetNull)
   productionDestockingMovements ProductionDestockingMovement[]
 
   @@index([organizationId])
@@ -925,9 +980,161 @@ model StockMovement {
   @@index([sourceLocationId])
   @@index([destinationSiteId])
   @@index([destinationLocationId])
+  @@index([stockReceptionLineId])
   @@index([createdAt])
   @@index([movementDate])
   @@map("stock_movements")
+}
+
+model Document {
+  id               String         @id @default(uuid()) @db.Uuid
+  organizationId   String         @db.Uuid
+  uploadedById     String?        @db.Uuid
+  internalFilename String
+  originalName     String
+  mimeType         String
+  sizeBytes        Int
+  storagePath      String
+  sourceModule     String
+  sourceType       String?
+  sourceId         String?        @db.Uuid
+  status           DocumentStatus @default(UPLOADED)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  organization           Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  uploadedBy             User?                   @relation("DocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+  ocrDocuments           OcrDocument[]
+  stockReceptions        StockReception[]
+
+  @@index([organizationId])
+  @@index([uploadedById])
+  @@index([status])
+  @@index([sourceModule, sourceType, sourceId])
+  @@map("documents")
+}
+
+model OcrDocument {
+  id                 String              @id @default(uuid()) @db.Uuid
+  organizationId     String              @db.Uuid
+  documentId         String              @unique @db.Uuid
+  provider           String
+  model              String
+  status             OcrProcessingStatus @default(PENDING)
+  rawText            String?             @db.Text
+  rawMarkdown        String?             @db.Text
+  rawJson            Json?
+  pageCount          Int?
+  processingDurationMs Int?
+  errorCode          String?
+  errorMessage       String?             @db.Text
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  document     Document                @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  extractions  OcrBusinessExtraction[]
+
+  @@index([organizationId])
+  @@index([documentId])
+  @@index([status])
+  @@map("ocr_documents")
+}
+
+model OcrBusinessExtraction {
+  id              String                      @id @default(uuid()) @db.Uuid
+  organizationId  String                      @db.Uuid
+  ocrDocumentId   String                      @db.Uuid
+  type            OcrExtractionType           @default(UNKNOWN)
+  status          OcrBusinessExtractionStatus @default(DRAFT)
+  extractedJson   Json
+  correctedJson   Json?
+  confidenceScore Decimal?                    @db.Decimal(5, 4)
+  createdAt       DateTime                    @default(now())
+  updatedAt       DateTime                    @updatedAt
+
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ocrDocument     OcrDocument        @relation(fields: [ocrDocumentId], references: [id], onDelete: Cascade)
+  stockReceptions StockReception[]
+
+  @@index([organizationId])
+  @@index([ocrDocumentId])
+  @@index([status])
+  @@map("ocr_business_extractions")
+}
+
+model StockReception {
+  id                 String               @id @default(uuid()) @db.Uuid
+  organizationId     String               @db.Uuid
+  supplierId         String?              @db.Uuid
+  supplierName       String?
+  documentId         String?              @db.Uuid
+  extractionId       String?              @db.Uuid
+  invoiceNumber      String?
+  deliveryNoteNumber String?
+  purchaseOrderNumber String?
+  documentDate       DateTime?
+  deliveryDate       DateTime?
+  totalExcludingTax  Decimal?             @db.Decimal(12, 4)
+  totalTax           Decimal?             @db.Decimal(12, 4)
+  totalIncludingTax  Decimal?             @db.Decimal(12, 4)
+  status             StockReceptionStatus @default(DRAFT)
+  createdById        String?              @db.Uuid
+  siteId             String?              @db.Uuid
+  locationId         String?              @db.Uuid
+  validatedAt        DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier     Supplier?                @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  document     Document?                @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  extraction   OcrBusinessExtraction?   @relation(fields: [extractionId], references: [id], onDelete: SetNull)
+  createdBy    User?                    @relation("StockReceptionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  site         Site?                    @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  location     Location?                @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  lines        StockReceptionLine[]
+
+  @@index([organizationId])
+  @@index([supplierId])
+  @@index([documentId])
+  @@index([extractionId])
+  @@index([status])
+  @@map("stock_receptions")
+}
+
+model StockReceptionLine {
+  id                  String                           @id @default(uuid()) @db.Uuid
+  receptionId         String                           @db.Uuid
+  productId           String?                          @db.Uuid
+  ocrLabel            String
+  reference           String?
+  quantity            Decimal?                         @db.Decimal(12, 3)
+  unit                String?
+  unitId              String?                          @db.Uuid
+  unitPrice           Decimal?                         @db.Decimal(12, 4)
+  lineTotal           Decimal?                         @db.Decimal(12, 4)
+  vatRate             Decimal?                         @db.Decimal(5, 2)
+  lotNumber           String?
+  bestBeforeDate      DateTime?
+  matchingStatus      StockReceptionLineMatchingStatus @default(NOT_FOUND)
+  matchingScore       Decimal?                         @db.Decimal(5, 4)
+  userCorrection      Json?
+  lotId               String?                          @db.Uuid
+  createdAt           DateTime                         @default(now())
+  updatedAt           DateTime                         @updatedAt
+
+  reception StockReception @relation(fields: [receptionId], references: [id], onDelete: Cascade)
+  product   Product?       @relation(fields: [productId], references: [id], onDelete: SetNull)
+  unitModel Unit?          @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  lot       Lot?           @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  movements StockMovement[]
+
+  @@index([receptionId])
+  @@index([productId])
+  @@index([unitId])
+  @@index([lotId])
+  @@map("stock_reception_lines")
 }
 
 model Inventory {

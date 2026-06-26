@@ -12,6 +12,7 @@ Phase 1 focuses only on **ToqueHub Core**: authentication, organizations, produc
 - PostgreSQL only for persistence.
 - All modules share the same business entities and database.
 - Stock is never edited directly by users: every change must create a `stock_movements` entry, while `stocks` is a projection for fast reads.
+- Stocks OCR reception workflow: see [docs/ocr-stocks.md](docs/ocr-stocks.md).
 
 ## Monorepo
 

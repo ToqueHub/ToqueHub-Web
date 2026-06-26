@@ -13,9 +13,13 @@ import type {
   Product,
   Site,
   Stock,
+  StockReception,
   StocksDashboard,
   StockMovement,
   StockMovementType,
+  StocksOcrConfig,
+  StocksOcrExtraction,
+  StocksOcrStatus,
   Supplier,
   SystemStatus,
   Unit,
@@ -145,6 +149,38 @@ function normalizeMenuPayload(payload: Partial<MenuPlanPayload>) {
   };
 }
 
+function normalizeOcrCorrectionPayload(payload: StocksOcrExtraction['data']) {
+  return {
+    supplierName: payload.supplierName || payload.supplier?.name || undefined,
+    supplierId: payload.supplierId || undefined,
+    invoiceNumber: payload.invoiceNumber || payload.document?.invoiceNumber || undefined,
+    deliveryNoteNumber: payload.deliveryNoteNumber || payload.document?.deliveryNoteNumber || undefined,
+    purchaseOrderNumber: payload.purchaseOrderNumber || payload.document?.purchaseOrderNumber || undefined,
+    documentDate: payload.documentDate || payload.document?.documentDate || undefined,
+    deliveryDate: payload.deliveryDate || payload.document?.deliveryDate || undefined,
+    totalExcludingTax: payload.totalExcludingTax ?? payload.totals?.totalExcludingTax ?? undefined,
+    totalTax: payload.totalTax ?? payload.totals?.totalTax ?? undefined,
+    totalIncludingTax: payload.totalIncludingTax ?? payload.totals?.totalIncludingTax ?? undefined,
+    siteId: payload.siteId || undefined,
+    locationId: payload.locationId || undefined,
+    lines: (payload.lines || []).map((line) => ({
+      id: line.id,
+      ignored: Boolean(line.ignored),
+      productId: line.productId || undefined,
+      unitId: line.unitId || undefined,
+      ocrLabel: line.ocrLabel || line.label || undefined,
+      reference: line.reference || undefined,
+      quantity: line.quantity ?? undefined,
+      unit: line.unit || undefined,
+      unitPrice: line.unitPrice ?? undefined,
+      lineTotal: line.lineTotal ?? line.total ?? undefined,
+      vatRate: line.vatRate ?? undefined,
+      lotNumber: line.lotNumber || undefined,
+      bestBeforeDate: line.bestBeforeDate || undefined,
+    })),
+  };
+}
+
 export const api = {
   status() {
     return request<SystemStatus>('/system/status');
@@ -173,6 +209,7 @@ export const api = {
     establishmentType?: string;
     teamSize?: string;
     logoDataUrl?: string;
+    mistralApiKey?: string;
   }) {
     return request<UserSession>('/auth/setup-organization', {
       method: 'POST',
@@ -190,6 +227,12 @@ export const api = {
   },
   dashboardSummary(token: string) {
     return request<DashboardSummary>('/auth/dashboard-summary', {}, token);
+  },
+  organizationApiKeys(token: string) {
+    return request<DashboardSummary['organization']['apiKeys']>('/auth/organization/api-keys', {}, token);
+  },
+  updateOrganizationApiKeys(token: string, payload: { mistralApiKey?: string }) {
+    return request<DashboardSummary['organization']['apiKeys']>('/auth/organization/api-keys', { method: 'POST', body: JSON.stringify(payload) }, token);
   },
   modularDashboard(token: string) {
     return request<ModularDashboard>('/dashboard', {}, token);
@@ -585,18 +628,18 @@ export const api = {
   },
   createProduct(
     token: string,
-    payload: { name: string; sku?: string; description?: string; unitId: string; categoryId?: string; supplierId?: string; primarySupplierId?: string; averagePurchasePrice?: number; minimumStock?: number },
+    payload: { name: string; sku?: string; description?: string; unitId: string; categoryId?: string | null; supplierId?: string | null; primarySupplierId?: string | null; averagePrice?: number; averagePurchasePrice?: number; minimumStock?: number },
   ) {
-    const { supplierId, averagePurchasePrice: _averagePurchasePrice, ...rest } = payload;
-    return request<Product>('/products', { method: 'POST', body: JSON.stringify({ ...rest, primarySupplierId: payload.primarySupplierId ?? supplierId }) }, token);
+    const { supplierId, averagePurchasePrice, ...rest } = payload;
+    return request<Product>('/products', { method: 'POST', body: JSON.stringify({ ...rest, averagePrice: payload.averagePrice ?? averagePurchasePrice, primarySupplierId: payload.primarySupplierId ?? supplierId }) }, token);
   },
   updateProduct(
     token: string,
     id: string,
-    payload: { name?: string; sku?: string; description?: string; unitId?: string; categoryId?: string; supplierId?: string; primarySupplierId?: string; averagePurchasePrice?: number; minimumStock?: number },
+    payload: { name?: string; sku?: string; description?: string; unitId?: string; categoryId?: string | null; supplierId?: string | null; primarySupplierId?: string | null; averagePrice?: number; averagePurchasePrice?: number; minimumStock?: number },
   ) {
-    const { supplierId, averagePurchasePrice: _averagePurchasePrice, ...rest } = payload;
-    return request<Product>(`/products/${id}`, { method: 'PATCH', body: JSON.stringify({ ...rest, primarySupplierId: payload.primarySupplierId ?? supplierId }) }, token);
+    const { supplierId, averagePurchasePrice, ...rest } = payload;
+    return request<Product>(`/products/${id}`, { method: 'PATCH', body: JSON.stringify({ ...rest, averagePrice: payload.averagePrice ?? averagePurchasePrice, primarySupplierId: payload.primarySupplierId ?? supplierId }) }, token);
   },
   archiveProduct(token: string, id: string) {
     return request<Product>(`/products/${id}/archive`, { method: 'POST' }, token);
@@ -649,6 +692,53 @@ export const api = {
   },
   stocksDashboard(token: string) {
     return request<StocksDashboard>('/stocks/dashboard', {}, token);
+  },
+  stocksOcrConfig(token: string) {
+    return request<StocksOcrConfig>('/stocks/ocr/config', {}, token);
+  },
+  uploadStocksOcrDocuments(token: string, files: File[]) {
+    const body = new FormData();
+    files.forEach((file) => body.append('files', file));
+    return fetch(`${API_URL}/api/stocks/ocr/documents`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    }).then(async (response) => {
+      if (!response.ok) throw new ApiError(await response.text(), response.status);
+      return response.json() as Promise<{ documents: StocksOcrStatus['document'][] }>;
+    });
+  },
+  analyzeStocksOcrBatch(token: string, documentIds: string[]) {
+    return request<{ jobs: Array<{ documentId: string; ocrDocumentId: string; status: string }> }>('/stocks/ocr/documents/analyze-batch', { method: 'POST', body: JSON.stringify({ documentIds }) }, token);
+  },
+  stocksOcrStatus(token: string, documentId: string) {
+    return request<StocksOcrStatus>(`/stocks/ocr/documents/${documentId}/status`, {}, token);
+  },
+  stocksOcrExtraction(token: string, extractionId: string) {
+    return request<StocksOcrExtraction>(`/stocks/ocr/extractions/${extractionId}`, {}, token);
+  },
+  saveStocksOcrCorrections(token: string, extractionId: string, payload: StocksOcrExtraction['data']) {
+    return request<StocksOcrExtraction>(`/stocks/ocr/extractions/${extractionId}/corrections`, { method: 'PATCH', body: JSON.stringify(normalizeOcrCorrectionPayload(payload)) }, token);
+  },
+  createStockReceptionFromOcr(token: string, extractionId: string, payload: StocksOcrExtraction['data']) {
+    return request<StockReception>(`/stocks/ocr/extractions/${extractionId}/reception`, { method: 'POST', body: JSON.stringify(normalizeOcrCorrectionPayload(payload)) }, token);
+  },
+  async viewStocksDocument(token: string, documentId: string) {
+    const response = await fetch(`${API_URL}/api/stocks/documents/${documentId}/download`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) throw new ApiError(await response.text(), response.status);
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+  },
+  async downloadStocksDocument(token: string, documentId: string, filename: string) {
+    const response = await fetch(`${API_URL}/api/stocks/documents/${documentId}/download`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) throw new ApiError(await response.text(), response.status);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = globalThis.document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
   },
   inventories(token: string) {
     return request<Inventory[]>('/inventories', {}, token);

@@ -10,6 +10,7 @@ import {
   Eye,
   EyeOff,
   ImagePlus,
+  KeyRound,
   LockKeyhole,
   Server,
   ShieldCheck,
@@ -30,7 +31,7 @@ interface FirstStartLandingProps {
   onBootstrapComplete: (session: UserSession) => void;
 }
 
-type OnboardingStep = 0 | 1 | 2 | 3 | 4 | 5;
+type OnboardingStep = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 type AdminForm = { username: string; firstName: string; lastName: string; email: string; password: string; confirm: string };
 type OrganizationForm = { name: string; type: string; teamSize: TeamSize; logo?: string };
 
@@ -41,7 +42,7 @@ const teamSizes: Array<{ label: string; value: TeamSize }> = [
   { label: '11 à 20 personnes', value: '11-20' },
   { label: 'Plus de 20 personnes', value: '20+' },
 ];
-const creationSteps = ['Création de l’organisation', 'Création du site principal', 'Configuration de l’administrateur', 'Finalisation'];
+const creationSteps = ['Création de l’organisation', 'Création du site principal', 'Configuration de l’administrateur', 'Préparation OCR IA', 'Finalisation'];
 
 function passwordScore(password: string) {
   let score = 0;
@@ -65,6 +66,7 @@ export function FirstStartLanding({
   const [admin, setAdmin] = useState<AdminForm>({ username: '', firstName: '', lastName: '', email: '', password: '', confirm: '' });
   const [organization, setOrganization] = useState<OrganizationForm>({ name: '', type: '', teamSize: '1-5' });
   const [showPassword, setShowPassword] = useState(false);
+  const [mistralApiKey, setMistralApiKey] = useState('');
   const [formError, setFormError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
   const [completedCreationSteps, setCompletedCreationSteps] = useState(0);
@@ -74,7 +76,7 @@ export function FirstStartLanding({
   const score = useMemo(() => passwordScore(admin.password), [admin.password]);
   const allowLogin = Boolean(status?.hasOrganization || status?.hasAdmin);
   const allowCreate = !status?.hasAdmin && !status?.hasOrganization;
-  const progress = (step / 4) * 100;
+  const progress = (step / 5) * 100;
 
   function goNext() {
     setFormError(undefined);
@@ -83,7 +85,7 @@ export function FirstStartLanding({
       setFormError('Le nom de l’établissement est requis.');
       return;
     }
-    if (step < 4) setStep((step + 1) as OnboardingStep);
+    if (step < 5) setStep((step + 1) as OnboardingStep);
   }
 
   document.title = "Bienvenue sur ToqueHub - Onboarding";
@@ -150,7 +152,7 @@ export function FirstStartLanding({
     }
 
     setSubmitting(true);
-    setStep(5);
+    setStep(6);
     setCompletedCreationSteps(0);
     try {
       await pause(350);
@@ -164,6 +166,7 @@ export function FirstStartLanding({
         establishmentType: (organization.type || undefined) as EstablishmentType | undefined,
         teamSize: (organization.teamSize || undefined) as TeamSize | undefined,
         logoDataUrl: organization.logo,
+        mistralApiKey: mistralApiKey.trim() || undefined,
       });
       setCompletedCreationSteps(1);
       await pause(300);
@@ -174,6 +177,8 @@ export function FirstStartLanding({
       await pause(450);
       setCompletedCreationSteps(4);
       await pause(250);
+      setCompletedCreationSteps(5);
+      await pause(250);
       onBootstrapComplete(finalSession);
     } catch (err) {
       setSubmitting(false);
@@ -183,7 +188,7 @@ export function FirstStartLanding({
     }
   }
 
-  const isFullWidth = step === 0 || step === 5;
+  const isFullWidth = step === 0 || step === 6;
 
   return (
     <div
@@ -286,7 +291,7 @@ export function FirstStartLanding({
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span className="badge badge-reception" style={{ background: 'var(--primary-bg-light)', color: 'var(--primary)' }}>
-                        Étape {step} / 4
+                        Étape {step} / 5
                       </span>
                       <span style={{ fontWeight: 800, fontSize: '0.85rem', color: 'var(--text-muted)' }}>{Math.round(progress)}%</span>
                     </div>
@@ -340,10 +345,17 @@ export function FirstStartLanding({
                         organization={organization}
                         fileInputRef={fileInputRef}
                         onFile={handleLogo}
+                        onSkip={() => setStep(5)}
+                      />
+                    )}
+                    {step === 5 && (
+                      <MistralKeyStep
+                        value={mistralApiKey}
+                        onChange={setMistralApiKey}
                         onSkip={createEnvironment}
                       />
                     )}
-                    {step === 5 && <CreationStep completed={completedCreationSteps} />}
+                    {step === 6 && <CreationStep completed={completedCreationSteps} />}
                   </motion.div>
                 </AnimatePresence>
               </div>
@@ -354,7 +366,7 @@ export function FirstStartLanding({
                   <button className="btn btn-secondary" onClick={goBack} disabled={submitting}>
                     <ArrowLeft size={16} /> Retour
                   </button>
-                  {step < 4 ? (
+                  {step < 5 ? (
                     <button className="btn btn-primary" onClick={goNext} style={{ marginLeft: 'auto' }}>
                       Continuer <ArrowRight size={16} />
                     </button>
@@ -686,6 +698,212 @@ function LogoStep({ organization, fileInputRef, onFile, onSkip }: LogoStepProps)
   );
 }
 
+interface MistralKeyStepProps {
+  value: string;
+  onChange: (value: string) => void;
+  onSkip: () => void;
+}
+
+function MistralKeyStep({ value, onChange, onSkip }: MistralKeyStepProps) {
+  const [showKey, setShowKey] = useState(false);
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: '2.5rem', alignItems: 'center', padding: '0.5rem 0' }}>
+      {/* Left Column - Presentation & Tech highlights */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              background: 'rgba(59, 130, 246, 0.08)',
+              color: '#2563eb',
+              border: '1px solid rgba(59, 130, 246, 0.15)',
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              padding: '0.3rem 0.65rem',
+              borderRadius: '20px',
+              textTransform: 'none',
+            }}
+          >
+            <span style={{ display: 'inline-flex', borderRadius: '1.5px', overflow: 'hidden', width: '15px', height: '10px', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
+              <span style={{ width: '33.3%', background: '#002395', height: '100%' }}></span>
+              <span style={{ width: '33.3%', background: '#FFFFFF', height: '100%' }}></span>
+              <span style={{ width: '33.3%', background: '#ED2939', height: '100%' }}></span>
+            </span>
+            Souveraineté Française
+          </span>
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.3rem',
+              background: 'rgba(16, 185, 129, 0.08)',
+              color: '#10b981',
+              border: '1px solid rgba(16, 185, 129, 0.15)',
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              padding: '0.3rem 0.65rem',
+              borderRadius: '20px',
+              textTransform: 'none',
+            }}
+          >
+            <Sparkles size={12} /> IA 100% Française
+          </span>
+        </div>
+
+        <div>
+          <h2 style={{ fontSize: '1.85rem', fontWeight: 900, letterSpacing: '-0.04em', lineHeight: 1.15, marginBottom: '0.5rem', color: 'var(--text-main)' }}>
+            Intelligence Artificielle <span style={{ color: '#f97316' }}>Mistral AI</span>
+          </h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', lineHeight: 1.5, margin: 0 }}>
+            ToqueHub intègre nativement Mistral, le fleuron de l'IA française. Toutes les requêtes et fichiers restent localisés et traités sur des serveurs hébergés en France (conformité RGPD totale).
+          </p>
+        </div>
+
+        {/* Animated Mistral Logo */}
+        <div style={{ display: 'flex', justifyContent: 'center', margin: '0.5rem 0' }}>
+          <div style={{ position: 'relative', width: '100%', minHeight: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <motion.div
+              style={{
+                position: 'absolute',
+                width: '120px',
+                height: '60px',
+                borderRadius: '50%',
+                background: 'radial-gradient(circle, rgba(249, 115, 22, 0.2) 0%, transparent 70%)',
+                filter: 'blur(12px)',
+              }}
+              animate={{ scale: [1, 1.2, 1] }}
+              transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
+            />
+            <motion.img
+              src="/mistral-logo.png"
+              alt="Mistral AI"
+              width="180"
+              animate={{ y: [0, -6, 0] }}
+              transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
+              style={{
+                filter: 'drop-shadow(0 6px 16px rgba(249, 115, 22, 0.25))',
+                objectFit: 'contain',
+                maxWidth: '100%',
+                zIndex: 2,
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Feature Highlights */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+          <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'start' }}>
+            <div style={{ display: 'grid', placeItems: 'center', width: '26px', height: '26px', borderRadius: '50%', background: 'rgba(59, 130, 246, 0.08)', color: '#2563eb', flexShrink: 0, marginTop: '2px' }}>
+              <Server size={13} />
+            </div>
+            <div>
+              <strong style={{ fontSize: '0.82rem', color: 'var(--text-main)', display: 'block' }}>Hébergement en France</strong>
+              <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>Aucun transfert de données hors du territoire français. Vos données financières et d'achats restent strictement privées.</span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'start' }}>
+            <div style={{ display: 'grid', placeItems: 'center', width: '26px', height: '26px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.08)', color: '#10b981', flexShrink: 0, marginTop: '2px' }}>
+              <ImagePlus size={13} />
+            </div>
+            <div>
+              <strong style={{ fontSize: '0.82rem', color: 'var(--text-main)', display: 'block' }}>OCR Intelligent & Analyse d'images</strong>
+              <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>Analyse les photos et PDFs de vos factures / bons de livraison et en extrait instantanément les lignes et prix.</span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'start' }}>
+            <div style={{ display: 'grid', placeItems: 'center', width: '26px', height: '26px', borderRadius: '50%', background: 'rgba(245, 158, 11, 0.08)', color: '#f59e0b', flexShrink: 0, marginTop: '2px' }}>
+              <ShieldCheck size={13} />
+            </div>
+            <div>
+              <strong style={{ fontSize: '0.82rem', color: 'var(--text-main)', display: 'block' }}>Évite la saisie manuelle et les erreurs</strong>
+              <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>L'IA remplit les réceptions de stock à votre place. Vous n'avez plus qu'à vérifier et valider en 1 clic.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Right Column - Input form */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', padding: '1.5rem', borderRadius: '18px', background: '#f8fafc', border: '1px solid var(--light-border)' }}>
+        <div>
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, margin: '0 0 0.35rem 0', color: 'var(--text-main)' }}>Activer l'OCR intelligent</h3>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', lineHeight: 1.45, margin: 0 }}>
+            Saisissez votre clé API ci-dessous. ToqueHub s'occupe de la connexion sécurisée aux services de Mistral AI.
+          </p>
+        </div>
+
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-main)' }}>
+          Clé API Mistral
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            <input
+              type={showKey ? 'text' : 'password'}
+              placeholder="mistral-..."
+              value={value}
+              onChange={(event) => onChange(event.target.value)}
+              style={{
+                width: '100%',
+                paddingRight: '2.5rem',
+                height: '42px',
+                borderRadius: '10px',
+                border: '1px solid var(--light-border)',
+                background: 'white',
+                fontSize: '0.88rem',
+              }}
+              autoFocus
+            />
+            <button
+              type="button"
+              onClick={() => setShowKey(!showKey)}
+              style={{
+                position: 'absolute',
+                right: '0.75rem',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--text-muted)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 0,
+              }}
+            >
+              {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
+        </label>
+
+        <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '-0.5rem' }}>
+          Obtenez une clé gratuite sur <a href="https://console.mistral.ai" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', fontWeight: 700, textDecoration: 'underline' }}>console.mistral.ai</a>
+        </span>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.75rem' }}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={onSkip}
+            style={{
+              height: '42px',
+              borderRadius: '10px',
+              justifyContent: 'center',
+              fontWeight: 700,
+              fontSize: '0.85rem',
+              background: 'white',
+              border: '1px solid var(--light-border)',
+              color: 'var(--text-main)',
+            }}
+          >
+            Passer cette étape
+          </button>
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.3 }}>
+            L'IA est optionnelle. Vous pourrez également configurer ou modifier votre clé plus tard dans vos paramètres.
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // 5. Creation Seeding Step
 function CreationStep({ completed }: { completed: number }) {
   return (
@@ -742,7 +960,7 @@ function CreationStep({ completed }: { completed: number }) {
 
 // Sidebar workflow stepper
 function OnboardingAside({ step, organization }: { step: OnboardingStep; organization: OrganizationForm }) {
-  const steps = ['Bienvenue', 'Administrateur', 'Établissement', 'Équipe', 'Personnalisation'];
+  const steps = ['Bienvenue', 'Administrateur', 'Établissement', 'Équipe', 'Personnalisation', 'IA Mistral'];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem', height: '100%', justifyContent: 'space-between' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>

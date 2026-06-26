@@ -11,6 +11,7 @@ export interface CompleteOnboardingPayload {
   establishmentType?: EstablishmentType;
   teamSize?: TeamSize;
   logoDataUrl?: string;
+  mistralApiKey?: string;
 }
 
 export interface SystemStatus {
@@ -49,6 +50,7 @@ export interface UserSession {
     logoDataUrl?: string | null;
     mainSiteName?: string | null;
     installedApplications?: string[];
+    apiKeys?: OrganizationApiKeys;
     role: string;
     status?: UserStatus;
     isPrimaryAdmin?: boolean;
@@ -115,6 +117,7 @@ export interface DashboardSummary {
     teamSize?: TeamSize | null;
     logoDataUrl?: string | null;
     mainSiteName?: string | null;
+    apiKeys?: OrganizationApiKeys;
   };
   installedApplications: string[];
   counts: { products: number; suppliers: number; stockMovements: number; activeUsers?: number; users?: number; collaborators?: number; hrCollaborators?: number };
@@ -127,6 +130,21 @@ export interface DashboardSummary {
       stockMovementCreated: boolean;
     };
   };
+}
+
+export interface OrganizationApiKeys {
+  mistral: {
+    configured: boolean;
+    masked?: string | null;
+    updatedAt?: string | null;
+  };
+}
+
+export interface StocksOcrConfig {
+  provider: string;
+  model: string;
+  configured: boolean;
+  source?: 'environment' | 'organization' | string | null;
 }
 
 export interface DashboardWidget {
@@ -944,6 +962,7 @@ export interface Product {
   unitId: string;
   supplierId?: string | null;
   primarySupplierId?: string | null;
+  averagePrice?: string | number | null;
   averagePurchasePrice?: string | number | null;
   weightedAveragePrice?: string | number | null;
   minimumStock?: string | number | null;
@@ -1351,6 +1370,7 @@ export interface Stock {
   quantity: string | number;
   currentQuantity?: string | number | null;
   value?: string | number | null;
+  stockValue?: string | number | null;
   product: Product;
   lot?: Lot | null;
   site?: Site | null;
@@ -1375,6 +1395,120 @@ export interface StockMovement {
   sourceLocation?: Location | null;
   destinationSite?: Site | null;
   destinationLocation?: Location | null;
+}
+
+export type OcrMatchingStatus = 'RECOGNIZED' | 'NEEDS_REVIEW' | 'NOT_FOUND';
+
+export interface StocksOcrDocument {
+  id: string;
+  originalName: string;
+  internalFilename: string;
+  mimeType: string;
+  sizeBytes: number;
+  status: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface StocksOcrLine {
+  id?: string;
+  ignored?: boolean;
+  ocrLabel?: string | null;
+  label?: string | null;
+  reference?: string | null;
+  quantity?: number | string | null;
+  unit?: string | null;
+  unitId?: string | null;
+  productId?: string | null;
+  productName?: string | null;
+  matchedUnitSymbol?: string | null;
+  unitPrice?: number | string | null;
+  lineTotal?: number | string | null;
+  total?: number | string | null;
+  vatRate?: number | string | null;
+  lotNumber?: string | null;
+  bestBeforeDate?: string | null;
+  matchingStatus?: OcrMatchingStatus | string;
+  matchingScore?: number | string | null;
+  productCandidates?: Array<{ id: string; name: string; sku?: string | null; categoryId?: string | null; categoryName?: string | null; unitId?: string | null; unitSymbol?: string | null; supplierId?: string | null; supplierName?: string | null; score: number | string }>;
+}
+
+export interface StocksOcrReceptionData {
+  supplierName?: string | null;
+  supplier?: {
+    name?: string | null;
+    supplierId?: string | null;
+    supplierName?: string | null;
+    matchingStatus?: OcrMatchingStatus | string;
+    matchingScore?: number | string | null;
+    candidates?: Array<{ id: string; name: string; score: number | string }>;
+  } | null;
+  supplierId?: string | null;
+  supplierMatchingStatus?: OcrMatchingStatus | string;
+  supplierMatchingScore?: number | string | null;
+  supplierCandidates?: Array<{ id: string; name: string; score: number | string }>;
+  invoiceNumber?: string | null;
+  deliveryNoteNumber?: string | null;
+  purchaseOrderNumber?: string | null;
+  documentDate?: string | null;
+  deliveryDate?: string | null;
+  totalExcludingTax?: number | string | null;
+  totalTax?: number | string | null;
+  totalIncludingTax?: number | string | null;
+  siteId?: string | null;
+  locationId?: string | null;
+  document?: {
+    invoiceNumber?: string | null;
+    deliveryNoteNumber?: string | null;
+    purchaseOrderNumber?: string | null;
+    documentDate?: string | null;
+    deliveryDate?: string | null;
+  };
+  totals?: {
+    totalExcludingTax?: number | string | null;
+    totalTax?: number | string | null;
+    totalIncludingTax?: number | string | null;
+  };
+  lines: StocksOcrLine[];
+}
+
+export interface StocksOcrExtraction {
+  id: string;
+  status: string;
+  type: string;
+  confidenceScore?: number | string | null;
+  extractedJson?: StocksOcrReceptionData;
+  correctedJson?: StocksOcrReceptionData | null;
+  data: StocksOcrReceptionData;
+  document?: StocksOcrDocument;
+  ocrDocument?: {
+    id: string;
+    status: string;
+    documentId: string;
+    document?: StocksOcrDocument;
+    errorMessage?: string | null;
+  };
+}
+
+export interface StocksOcrStatus {
+  document: StocksOcrDocument;
+  ocr?: {
+    id: string;
+    status: string;
+    errorMessage?: string | null;
+    extractions?: Array<{ id: string; status: string }>;
+  } | null;
+  extraction?: { id: string; status: string } | null;
+  state: string;
+}
+
+export interface StockReception {
+  id: string;
+  status: string;
+  supplierName?: string | null;
+  invoiceNumber?: string | null;
+  deliveryNoteNumber?: string | null;
+  lines?: Array<{ id: string; product?: Product | null; quantity?: string | number | null; movements?: StockMovement[] }>;
 }
 
 export interface InventoryLine {

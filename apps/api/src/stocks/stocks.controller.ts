@@ -1,11 +1,15 @@
-import { BadRequestException, Body, Controller, Get, Header, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Header, Param, Patch, Post, Query, Res, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
 import { CreateInventoryDto, UpdateInventoryCountsDto } from './dto/inventory.dto';
+import { AnalyzeBatchDto, SaveOcrCorrectionDto } from './dto/stocks-ocr.dto';
 import { ListQueryDto, UpsertCategoryDto, UpsertLocationDto, UpsertLotDto, UpsertProductDto, UpsertSiteDto, UpsertSupplierDto, UpsertUnitConversionDto, UpsertUnitDto } from './dto/stocks-reference.dto';
+import { StocksOcrService } from './stocks-ocr.service';
 import { StocksService } from './stocks.service';
 
 @ApiTags('stocks')
@@ -13,7 +17,7 @@ import { StocksService } from './stocks.service';
 @UseGuards(JwtAuthGuard)
 @Controller()
 export class StocksController {
-  constructor(private readonly stocksService: StocksService) {}
+  constructor(private readonly stocksService: StocksService, private readonly stocksOcrService: StocksOcrService) {}
 
   private org(user: AuthenticatedUser) {
     if (!user.organizationId) throw new BadRequestException('Organization setup is required before using stock endpoints');
@@ -24,6 +28,54 @@ export class StocksController {
   @Post('stocks/install') install(@CurrentUser() user: AuthenticatedUser) { return this.stocksService.installDefaults(this.org(user), this.actor(user)); }
   @Post('stocks/uninstall') uninstall(@CurrentUser() user: AuthenticatedUser) { return this.stocksService.uninstallFromInterface(this.org(user), this.actor(user)); }
   @Get('stocks/dashboard') dashboard(@CurrentUser() user: AuthenticatedUser) { return this.stocksService.dashboard(this.org(user)); }
+
+  @Post('stocks/ocr/documents')
+  @UseInterceptors(FilesInterceptor('files', 8, { limits: { files: 8, fileSize: 20 * 1024 * 1024 } }))
+  uploadOcrDocuments(@CurrentUser() user: AuthenticatedUser, @UploadedFiles() files: any[]) {
+    return this.stocksOcrService.uploadDocuments(this.org(user), this.actor(user), files);
+  }
+
+  @Get('stocks/ocr/config')
+  ocrConfig(@CurrentUser() user: AuthenticatedUser) {
+    return this.stocksOcrService.getOcrConfig(this.org(user), this.actor(user));
+  }
+
+  @Get('stocks/documents/:documentId/download')
+  async downloadStocksDocument(@CurrentUser() user: AuthenticatedUser, @Param('documentId') documentId: string, @Res() res: Response) {
+    const { document, absolutePath } = await this.stocksOcrService.getDocumentForDownload(this.org(user), this.actor(user), documentId);
+    res.setHeader('Content-Type', document.mimeType);
+    return res.download(absolutePath, document.originalName);
+  }
+
+  @Post('stocks/ocr/documents/:documentId/analyze')
+  analyzeOcrDocument(@CurrentUser() user: AuthenticatedUser, @Param('documentId') documentId: string) {
+    return this.stocksOcrService.analyzeDocument(this.org(user), this.actor(user), documentId);
+  }
+
+  @Post('stocks/ocr/documents/analyze-batch')
+  analyzeOcrBatch(@CurrentUser() user: AuthenticatedUser, @Body() dto: AnalyzeBatchDto) {
+    return this.stocksOcrService.analyzeBatch(this.org(user), this.actor(user), dto.documentIds);
+  }
+
+  @Get('stocks/ocr/documents/:documentId/status')
+  ocrDocumentStatus(@CurrentUser() user: AuthenticatedUser, @Param('documentId') documentId: string) {
+    return this.stocksOcrService.getStatus(this.org(user), this.actor(user), documentId);
+  }
+
+  @Get('stocks/ocr/extractions/:extractionId')
+  ocrExtraction(@CurrentUser() user: AuthenticatedUser, @Param('extractionId') extractionId: string) {
+    return this.stocksOcrService.getExtraction(this.org(user), this.actor(user), extractionId);
+  }
+
+  @Patch('stocks/ocr/extractions/:extractionId/corrections')
+  saveOcrCorrections(@CurrentUser() user: AuthenticatedUser, @Param('extractionId') extractionId: string, @Body() dto: SaveOcrCorrectionDto) {
+    return this.stocksOcrService.saveCorrections(this.org(user), this.actor(user), extractionId, dto);
+  }
+
+  @Post('stocks/ocr/extractions/:extractionId/reception')
+  createReceptionFromOcr(@CurrentUser() user: AuthenticatedUser, @Param('extractionId') extractionId: string, @Body() dto: SaveOcrCorrectionDto) {
+    return this.stocksOcrService.createReceptionFromExtraction(this.org(user), this.actor(user), extractionId, dto);
+  }
 
   @Get('categories') listCategories(@CurrentUser() u: AuthenticatedUser, @Query() q: ListQueryDto) { return this.stocksService.listCategories(this.org(u), q); }
   @Post('categories') createCategory(@CurrentUser() u: AuthenticatedUser, @Body() d: UpsertCategoryDto) { return this.stocksService.createCategory(this.org(u), this.actor(u), d); }

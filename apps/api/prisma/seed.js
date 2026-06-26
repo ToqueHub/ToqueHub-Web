@@ -17,6 +17,9 @@ const permissions = [
     'stocks.read',
     'stocks.write',
     'stocks.inventory.validate',
+    'stocks.receptions.create',
+    'stocks.ocr.import',
+    'stocks.ocr.validate',
     'stocks.audit.read',
     'stocks.audit.export',
 ];

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Archive,
   BriefcaseBusiness,
@@ -28,6 +28,8 @@ import {
   UserRound,
   UsersRound,
   X,
+  ChefHat,
+  ArrowRight,
 } from 'lucide-react';
 import type { CoreUser, HrCollaborator, HrCollaboratorPayload, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, HrReferencePayload, HrRotation, HrRotationDay, HrRotationPayload, HrRotationWeek, HrSummary, Site } from '../types';
 import { HR_CATALOG } from '../hr-catalog';
@@ -91,6 +93,7 @@ type HrAppProps = {
   onCompleteServices?: (names?: string[]) => Promise<void>;
   onCompletePositions?: () => Promise<void>;
   onUnlockEmployees?: () => Promise<void>;
+  onExitToOverview?: () => void;
 };
 
 export function HrApp({
@@ -132,6 +135,7 @@ export function HrApp({
   onCompleteServices,
   onCompletePositions,
   onUnlockEmployees,
+  onExitToOverview,
 }: HrAppProps) {
   const [collaboratorModal, setCollaboratorModal] = useState<HrCollaborator | 'new' | null>(null);
   const [selectedCollaborator, setSelectedCollaborator] = useState<HrCollaborator | null>(null);
@@ -214,7 +218,18 @@ export function HrApp({
       {loading ? <div className="card-modern">Chargement du référentiel RH…</div> : null}
 
       {tab === 'dashboard' ? (
-        <HrDashboard summary={summary} collaborators={collaborators} departments={departments} positions={positions} onOpenCollaborators={() => onNavigate('collaborators')} />
+        <HrDashboard
+          summary={summary}
+          collaborators={collaborators}
+          departments={departments}
+          positions={positions}
+          onOpenCollaborators={() => onNavigate('collaborators')}
+          canWrite={canWrite}
+          onboarding={onboarding}
+          onStartWizard={() => {
+            setWizardOpen(true);
+          }}
+        />
       ) : null}
 
       {tab === 'collaborators' ? (
@@ -354,13 +369,37 @@ export function HrApp({
             setWizardOpen(false);
             onNavigate('collaborators');
           }}
+          onClose={() => {
+            setWizardOpen(false);
+            if (onExitToOverview) {
+              onExitToOverview();
+            }
+          }}
         />
       ) : null}
     </div>
   );
 }
 
-function HrDashboard({ summary, collaborators, departments, positions, onOpenCollaborators }: { summary?: HrSummary; collaborators: HrCollaborator[]; departments: HrDepartment[]; positions: HrPosition[]; onOpenCollaborators: () => void }) {
+function HrDashboard({
+  summary,
+  collaborators,
+  departments,
+  positions,
+  onOpenCollaborators,
+  canWrite,
+  onboarding,
+  onStartWizard,
+}: {
+  summary?: HrSummary;
+  collaborators: HrCollaborator[];
+  departments: HrDepartment[];
+  positions: HrPosition[];
+  onOpenCollaborators: () => void;
+  canWrite: boolean;
+  onboarding?: any;
+  onStartWizard: () => void;
+}) {
   const activeCollaborators = collaborators.filter((collaborator) => !isArchived(collaborator));
   const latest = [...activeCollaborators].sort((a, b) => dateValue(b.hireDate) - dateValue(a.hireDate)).slice(0, 5);
   const distribution = useMemo(() => {
@@ -381,14 +420,13 @@ function HrDashboard({ summary, collaborators, departments, positions, onOpenCol
     const dueDate = c.nextSalaryReview?.dueDate || c.nextReviewDate;
     return dueDate && new Date(dueDate).getTime() - Date.now() < 60 * 24 * 60 * 60 * 1000 && new Date(dueDate).getTime() > Date.now();
   }).length;
-  const canWrite = false;
   const hasDepartments = departments.filter((d) => !isArchived(d)).length > 0;
   const hasPositions = positions.filter((p) => !isArchived(p)).length > 0;
   const hasCollaborators = activeCollaborators.length > 0;
-  const onboardingHasServices = hasDepartments;
-  const onboardingHasPositions = hasPositions;
-  const employeesUnlocked = hasCollaborators;
-  const onboardingComplete = true;
+  const onboardingHasServices = onboarding ? Boolean(onboarding.servicesCompletedAt) : hasDepartments;
+  const onboardingHasPositions = onboarding ? Boolean(onboarding.positionsCompletedAt) : hasPositions;
+  const employeesUnlocked = onboarding ? Boolean(onboarding.employeesUnlockedAt) : hasCollaborators;
+  const onboardingComplete = employeesUnlocked;
   const [configExpanded, setConfigExpanded] = useState(false);
   const onCreateDepartmentsBulk = async (_names: string[]) => {};
   const onCreatePositionsBulk = async (_items: HrReferencePayload[]) => {};
@@ -446,7 +484,17 @@ function HrDashboard({ summary, collaborators, departments, positions, onOpenCol
                 {onboardingHasPositions ? ` · ${positions.filter((p) => !isArchived(p)).length} postes` : ''}
               </p>
             </div>
-            <button type="button" className="btn btn-primary" onClick={() => setConfigExpanded(true)}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                if (!onboardingComplete) {
+                  onStartWizard();
+                } else {
+                  setConfigExpanded(true);
+                }
+              }}
+            >
               {onboardingComplete ? 'Déplier' : 'Continuer la configuration'}
             </button>
           </div>
@@ -475,6 +523,212 @@ function HrDashboard({ summary, collaborators, departments, positions, onOpenCol
   </>;
 }
 
+function HrIllustration() {
+  return (
+    <div style={{ position: 'relative', width: '100%', maxWidth: '340px' }}>
+      <div
+        className="card-modern"
+        style={{
+          background: '#0f172a',
+          color: 'white',
+          border: '1px solid rgba(255, 255, 255, 0.05)',
+          boxShadow: '0 30px 60px rgba(9, 13, 22, 0.25)',
+          padding: '1.5rem',
+          borderRadius: '20px',
+          textAlign: 'left',
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>Structure de l'Équipe</span>
+            <span className="badge badge-reception" style={{ fontSize: '0.72rem', textTransform: 'none', background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', borderColor: 'transparent' }}>Actif</span>
+          </div>
+
+          {[
+            { label: 'Services de cuisine & salle', val: 100, color: '#10b981' },
+            { label: 'Fiches de postes définies', val: 100, color: '#3b82f6' },
+            { label: 'Collaborateurs enregistrés', val: 100, color: '#f59e0b' },
+          ].map((item, idx) => (
+            <div
+              key={idx}
+              style={{
+                padding: '0.85rem 1rem',
+                borderRadius: '12px',
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid rgba(255, 255, 255, 0.03)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <span style={{ fontWeight: 700, fontSize: '0.8rem' }}>{item.label}</span>
+                <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Prêt</span>
+              </div>
+              <div className="progress-bar-bg" style={{ height: '5px', background: 'rgba(255, 255, 255, 0.1)' }}>
+                <div className="progress-bar-fill" style={{ width: `${item.val}%`, background: item.color }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WelcomeStep({ onStart, onClose }: { onStart: () => void; onClose?: () => void }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '3rem', alignItems: 'center', padding: '3.5rem 3rem', height: '100%', flexGrow: 1, position: 'relative' }}>
+      {onClose && (
+        <button
+          type="button"
+          onClick={onClose}
+          style={{
+            position: 'absolute',
+            top: '1.5rem',
+            right: '1.5rem',
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            color: 'var(--text-muted)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '0.5rem',
+            borderRadius: '50%',
+            transition: 'background 0.2s',
+            zIndex: 10,
+          }}
+          onMouseOver={(e) => e.currentTarget.style.background = '#f1f5f9'}
+          onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+          aria-label="Fermer"
+        >
+          <X size={20} />
+        </button>
+      )}
+      <div>
+        <span className="badge badge-reception" style={{ marginBottom: '1.25rem', display: 'inline-flex', fontSize: '0.8rem', gap: '0.35rem', border: '1px solid var(--light-border)', background: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>
+          <Sparkles size={14} color="#10b981" /> Configuration Guidée
+        </span>
+        <h1 style={{ fontSize: '2.5rem', fontWeight: 900, lineHeight: 1.1, letterSpacing: '-0.04em', marginBottom: '1.5rem', color: 'var(--text-main)' }}>
+          Bienvenue sur le module <span style={{ color: '#10b981' }}>Ressources Humaines</span>
+        </h1>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.98rem', lineHeight: 1.6, marginBottom: '2rem' }}>
+          Ici, vous pourrez gérer vos collaborateurs, vos services et vos postes. L'assistant va d'abord construire la structure RH de votre établissement, puis vous accompagner dans la création du premier collaborateur.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '2rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', flexShrink: 0 }}><Building2 size={16} /></div>
+            <span>Sélectionner les services de votre établissement</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', flexShrink: 0 }}><BriefcaseBusiness size={16} /></div>
+            <span>Créer les postes de travail associés par service</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', flexShrink: 0 }}><UserRound size={16} /></div>
+            <span>Ajouter votre premier collaborateur</span>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" onClick={onStart} style={{ padding: '0.8rem 1.5rem', fontSize: '0.92rem' }}>
+            Démarrer la configuration <ArrowRight size={18} />
+          </button>
+          {onClose && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={onClose}
+              style={{ padding: '0.8rem 1.5rem', fontSize: '0.92rem' }}
+            >
+              Faire plus tard
+            </button>
+          )}
+        </div>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
+        <HrIllustration />
+      </div>
+    </div>
+  );
+}
+
+function HrOnboardingAside({ step }: { step: 'services' | 'positions' | 'review' }) {
+  const steps = [
+    { key: 'welcome', label: 'Bienvenue' },
+    { key: 'services', label: 'Sélection des services' },
+    { key: 'positions', label: 'Création des postes' },
+    { key: 'review', label: 'Premier collaborateur' },
+  ];
+  const currentIdx = steps.findIndex((s) => s.key === step);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', height: '100%', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+          <ChefHat size={28} color="#10b981" />
+          <span style={{ fontWeight: 850, fontSize: '1.2rem', color: 'white', letterSpacing: '-0.03em' }}>
+            TOQUE<span style={{ color: '#10b981' }}>HUB</span> RH
+          </span>
+        </div>
+
+        <div>
+          <span style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', color: '#10b981', letterSpacing: '0.15em' }}>
+            Installation guidée
+          </span>
+          <h3 style={{ color: 'white', fontSize: '1.35rem', marginTop: '0.3rem', fontWeight: 800, lineHeight: 1.25 }}>
+            Assistant RH
+          </h3>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {steps.map((item, idx) => {
+            const isPast = idx < currentIdx;
+            const isCurrent = idx === currentIdx;
+            return (
+              <div
+                key={item.key}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.85rem',
+                  color: isPast || isCurrent ? 'white' : 'rgba(255, 255, 255, 0.35)',
+                  fontWeight: isCurrent ? 700 : 500,
+                  fontSize: '0.9rem',
+                }}
+              >
+                <div
+                  style={{
+                    width: '26px',
+                    height: '26px',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: isPast ? '#10b981' : isCurrent ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+                    border: isCurrent ? '1.5px solid #10b981' : '1px solid transparent',
+                    color: isPast ? 'white' : isCurrent ? '#10b981' : 'inherit',
+                    fontWeight: 800,
+                    fontSize: '0.78rem',
+                  }}
+                >
+                  {isPast ? '✓' : idx + 1}
+                </div>
+                <span>{item.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ padding: '1.25rem', borderRadius: '16px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+        <ShieldCheck size={20} color="#10b981" style={{ marginBottom: '0.4rem' }} />
+        <h4 style={{ color: 'white', fontSize: '0.85rem', fontWeight: 700 }}>Données de l'établissement</h4>
+        <p style={{ color: '#94a3b8', fontSize: '0.75rem', marginTop: '0.25rem', lineHeight: 1.45 }}>
+          Les services, postes et fiches des collaborateurs créés restent modifiables à tout moment.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function HrOnboardingWizard({
   collaborators,
   departments,
@@ -491,6 +745,7 @@ function HrOnboardingWizard({
   onCompletePositions,
   onUnlockEmployees,
   onFinished,
+  onClose,
 }: {
   collaborators: HrCollaborator[];
   departments: HrDepartment[];
@@ -507,6 +762,7 @@ function HrOnboardingWizard({
   onCompletePositions?: () => Promise<void>;
   onUnlockEmployees?: () => Promise<void>;
   onFinished: () => void;
+  onClose?: () => void;
 }) {
   const hasServices = Boolean(onboarding?.servicesCompletedAt);
   const hasPositions = Boolean(onboarding?.positionsCompletedAt);
@@ -545,62 +801,162 @@ function HrOnboardingWizard({
     : positions;
   const activeWizardCollaborators = collaborators.filter((collaborator) => !isArchived(collaborator));
   const stepIndex = step === 'welcome' ? 1 : step === 'services' ? 2 : step === 'positions' ? 3 : 4;
+  const progress = (stepIndex / 4) * 100;
 
   return (
-    <div className="modal-overlay hr-wizard-overlay">
+    <div
+      className="modal-overlay hr-wizard-overlay"
+      style={{
+        background: 'radial-gradient(circle at 10% 20%, rgba(16, 185, 129, 0.15) 0%, transparent 55%), radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.1) 0%, transparent 50%), rgba(15, 23, 42, 0.55)',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 9999,
+        padding: '2rem 1.5rem',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+      }}
+    >
+      {/* Decorative Blur Spheres */}
+      <div style={{ position: 'absolute', width: '560px', height: '560px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.05)', filter: 'blur(100px)', right: '-180px', top: '-180px', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', width: '420px', height: '420px', borderRadius: '50%', background: 'rgba(59, 130, 246, 0.05)', filter: 'blur(80px)', left: '-160px', bottom: '20px', pointerEvents: 'none' }} />
+
       <motion.div
         className="modal-card hr-wizard-modal"
         initial={{ opacity: 0, y: 18, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ type: 'spring', damping: 24, stiffness: 220 }}
+        style={{
+          width: '100%',
+          maxWidth: step === 'welcome' ? '920px' : '1080px',
+          height: 'min(720px, calc(100vh - 4rem))',
+          padding: 0,
+          borderRadius: '24px',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          background: 'white',
+          boxShadow: '0 30px 80px rgba(9, 13, 22, 0.08)',
+          border: 'none',
+          zIndex: 10,
+        }}
       >
-        <div className="modal-header hr-wizard-header">
-          <div>
-            <span className="welcome-tag">Assistant RH</span>
-            <h2>{step === 'welcome' ? 'Bienvenue sur le module Ressources Humaines' : step === 'services' ? 'Configuration initiale du module' : step === 'positions' ? 'Creation des postes' : 'Premier collaborateur'}</h2>
-            <p>{stepIndex} / 4</p>
-          </div>
-        </div>
-
         {step === 'welcome' ? (
-          <div className="hr-wizard-welcome">
-            <div className="hr-wizard-hero-card">
-              <div className="hr-wizard-icon"><UsersRound size={32} /></div>
-              <div>
-                <span className="welcome-tag">Configuration guidee</span>
-                <p>
-                  Ici, vous pourrez gerer vos collaborateurs, vos services et vos postes. L'assistant va d'abord construire la structure RH, puis vous accompagner vers la creation du premier collaborateur.
-                </p>
+          <WelcomeStep onStart={() => setStep('services')} onClose={onClose} />
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 2fr', height: '100%', width: '100%', minHeight: 0, flexGrow: 1 }}>
+            {/* Sidebar */}
+            <div style={{ background: '#0f172a', color: 'white', padding: '2.5rem 2rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%', minHeight: 0 }}>
+              <HrOnboardingAside step={step} />
+            </div>
+
+            {/* Main Content Area */}
+            <div style={{ padding: '2.5rem', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto', minHeight: 0, justifyContent: 'space-between' }}>
+              {/* Stepper Progress bar */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexShrink: 0, position: 'relative' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', flexDirection: 'column', flexGrow: 1 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span className="badge badge-reception" style={{ background: 'rgba(16, 185, 129, 0.08)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.15)', textTransform: 'none', fontSize: '0.8rem' }}>
+                      Étape {stepIndex} / 4
+                    </span>
+                    <span style={{ fontWeight: 800, fontSize: '0.85rem', color: 'var(--text-muted)', marginRight: onClose ? '2.5rem' : '0' }}>{Math.round(progress)}%</span>
+                  </div>
+                  <div className="progress-bar-bg" style={{ height: '6px', background: '#f1f5f9', borderRadius: '3px', overflow: 'hidden', marginRight: onClose ? '2.5rem' : '0' }}>
+                    <div className="progress-bar-fill" style={{ width: `${progress}%`, height: '100%', background: '#10b981', borderRadius: '3px' }}></div>
+                  </div>
+                </div>
+
+                {onClose && (
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    style={{
+                      position: 'absolute',
+                      right: 0,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: 'var(--text-muted)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '0.5rem',
+                      borderRadius: '50%',
+                      transition: 'background 0.2s',
+                    }}
+                    onMouseOver={(e) => e.currentTarget.style.background = '#f1f5f9'}
+                    onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                    aria-label="Fermer"
+                  >
+                    <X size={20} />
+                  </button>
+                )}
+              </div>
+
+              {/* Step rendering with AnimatePresence */}
+              <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={step}
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    transition={{ duration: 0.16 }}
+                    style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}
+                  >
+                    {step === 'services' && (
+                      <ServiceCatalogGrid
+                        initialNames={selectedServiceNames}
+                        onBack={() => setStep('welcome')}
+                        onSubmit={async (names) => {
+                          setSelectedServiceNames(names);
+                          sessionStorage.setItem(HR_WIZARD_SERVICES_KEY, JSON.stringify(names));
+                          await onCreateDepartmentsBulk(names);
+                          if (onCompleteServices) await onCompleteServices(names);
+                          setStep('positions');
+                        }}
+                      />
+                    )}
+                    {step === 'positions' && (
+                      <PositionCatalogSelector
+                        departments={wizardDepartments}
+                        initialSelection={selectedPositionsByDept}
+                        onSelectionChange={setSelectedPositionsByDept}
+                        onBack={() => setStep('services')}
+                        onSubmit={async (items) => {
+                          await onCreatePositionsBulk(items);
+                          if (onCompletePositions) await onCompletePositions();
+                          setStep('review');
+                        }}
+                      />
+                    )}
+                    {step === 'review' && (
+                      <OnboardingCollaboratorStep
+                        departments={wizardDepartments}
+                        positions={wizardPositions}
+                        collaborators={activeWizardCollaborators}
+                        employeesUnlocked={employeesUnlockedInWizard}
+                        onBack={() => setStep('positions')}
+                        onCreate={() => setCreatingCollaborator(true)}
+                        onUnlockEmployees={async () => {
+                          if (onUnlockEmployees) await onUnlockEmployees();
+                          setEmployeesUnlockedInWizard(true);
+                        }}
+                        onFinished={onFinished}
+                      />
+                    )}
+                  </motion.div>
+                </AnimatePresence>
               </div>
             </div>
-            <div className="hr-wizard-bullets">
-              <span><Building2 size={16} /> Choisir les services</span>
-              <span><BriefcaseBusiness size={16} /> Creer les postes par service</span>
-              <span><UserRound size={16} /> Ajouter le premier collaborateur</span>
-            </div>
-            <div className="hr-catalog-actions sticky">
-              <span className="muted">Vous pourrez modifier cette structure plus tard.</span>
-              <button className="btn btn-primary" onClick={() => setStep('services')}>Suivant</button>
-            </div>
           </div>
-        ) : step === 'services' ? (
-          <ServiceCatalogGrid initialNames={selectedServiceNames} onBack={() => setStep('welcome')} onSubmit={async (names) => { setSelectedServiceNames(names); sessionStorage.setItem(HR_WIZARD_SERVICES_KEY, JSON.stringify(names)); await onCreateDepartmentsBulk(names); if (onCompleteServices) await onCompleteServices(names); setStep('positions'); }} />
-        ) : step === 'positions' ? (
-          <PositionCatalogSelector departments={wizardDepartments} initialSelection={selectedPositionsByDept} onSelectionChange={setSelectedPositionsByDept} onBack={() => setStep('services')} onSubmit={async (items) => { await onCreatePositionsBulk(items); if (onCompletePositions) await onCompletePositions(); setStep('review'); }} />
-        ) : (
-          <OnboardingCollaboratorStep
-            departments={wizardDepartments}
-            positions={wizardPositions}
-            collaborators={activeWizardCollaborators}
-            employeesUnlocked={employeesUnlockedInWizard}
-            onBack={() => setStep('positions')}
-            onCreate={() => setCreatingCollaborator(true)}
-            onUnlockEmployees={async () => {
-              if (onUnlockEmployees) await onUnlockEmployees();
-              setEmployeesUnlockedInWizard(true);
-            }}
-            onFinished={onFinished}
-          />
         )}
         {creatingCollaborator ? (
           <CollaboratorDossierModal
@@ -641,40 +997,82 @@ function ServiceCatalogGrid({ initialNames = [], onBack, onSubmit }: { initialNa
   const visibleCatalog = HR_CATALOG.filter((item) => `${item.name} ${item.description} ${item.examplePositions.join(' ')}`.toLowerCase().includes(serviceQuery.trim().toLowerCase()));
   const canAddCustom = customName.trim().length > 0 && !selectedNames.some((name) => name.toLowerCase() === customName.trim().toLowerCase());
   return (
-    <div className="hr-catalog">
-      <p className="muted" style={{ marginBottom: 12 }}>Sélectionnez les services présents dans votre établissement. Vous pourrez ajouter des services personnalisés plus tard.</p>
-      <div className="search-input-wrapper hr-wizard-search"><Search /><input className="search-input" value={serviceQuery} onChange={(event) => setServiceQuery(event.target.value)} placeholder="Rechercher un service : cafe, cuisine, direction..." /></div>
-      <div className="hr-catalog-grid">
-        {visibleCatalog.map((item) => {
-          const isSelected = selected.has(item.id);
-          return (
-            <button type="button" key={item.id} className={`hr-catalog-card ${isSelected ? 'selected' : ''}`} onClick={() => toggle(item.id)}>
-              <div className="hr-catalog-check">{isSelected ? <Check size={16} /> : <div className="hr-catalog-check-empty" />}</div>
-              <div className="hr-catalog-body">
-                <strong>{item.name}</strong>
-                <span>{item.description}</span>
-                {item.examplePositions.length ? <small>Ex. : {item.examplePositions.join(', ')}</small> : null}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-      <div className="hr-catalog-custom">
-        <input placeholder="Ajouter un service personnalisé…" value={customName} onChange={(e) => setCustomName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && canAddCustom) { setSelected((prev) => new Set([...prev, `custom-${customName.trim()}`])); setCustomName(''); } }} />
-        <button type="button" className="btn btn-secondary" disabled={!canAddCustom} onClick={() => { if (canAddCustom) { setSelected((prev) => new Set([...prev, `custom-${customName.trim()}`])); setCustomName(''); } }}>Ajouter</button>
-      </div>
-      {customSelectedNames.length ? (
-        <div className="hr-catalog-tags">
-          {customSelectedNames.map((name) => (
-            <span key={name} className="badge badge-reception">{name} <button type="button" className="icon-btn" onClick={() => toggle(`custom-${name}`)}><X size={12} /></button></span>
-          ))}
+    <div className="hr-catalog" style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between' }}>
+      <div>
+        <p className="muted" style={{ marginBottom: 16, fontSize: '0.9rem' }}>Sélectionnez les services présents dans votre établissement. Vous pourrez en ajouter d'autres plus tard.</p>
+        <div className="search-input-wrapper hr-wizard-search" style={{ border: '1px solid #cbd5e1', borderRadius: '12px', padding: '0.25rem 0.75rem', background: '#f8fafc', marginBottom: '1.25rem' }}>
+          <Search size={18} style={{ color: '#64748b' }} />
+          <input className="search-input" value={serviceQuery} onChange={(event) => setServiceQuery(event.target.value)} placeholder="Rechercher un service : cafe, cuisine, direction..." style={{ border: 'none', background: 'transparent', boxShadow: 'none', height: '38px', fontSize: '0.9rem' }} />
         </div>
-      ) : null}
-      <div className="hr-catalog-actions sticky">
-        <span className="muted">{selected.size} service{selected.size > 1 ? 's' : ''} sélectionné{selected.size > 1 ? 's' : ''}</span>
-        <div className="row-actions">
-          {onBack ? <button type="button" className="btn btn-secondary" disabled={submitting} onClick={onBack}>Retour</button> : null}
-          <button className="btn btn-primary" disabled={selected.size === 0 || submitting} onClick={async () => { setSubmitting(true); try { await onSubmit(selectedNames); } finally { setSubmitting(false); } }}>
+        <div className="hr-catalog-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
+          {visibleCatalog.map((item) => {
+            const isSelected = selected.has(item.id);
+            return (
+              <button
+                type="button"
+                key={item.id}
+                className={`hr-catalog-card ${isSelected ? 'selected' : ''}`}
+                onClick={() => toggle(item.id)}
+                style={{
+                  border: isSelected ? '2px solid #10b981' : '1px solid #e2e8f0',
+                  borderRadius: '16px',
+                  padding: '1.25rem',
+                  background: isSelected ? 'rgba(16, 185, 129, 0.04)' : 'white',
+                  boxShadow: isSelected ? '0 10px 25px rgba(16,185,129,0.06)' : '0 2px 4px rgba(0,0,0,0.02)',
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '0.75rem',
+                  cursor: 'pointer',
+                }}
+              >
+                <div
+                  className="hr-catalog-check"
+                  style={{
+                    background: isSelected ? '#10b981' : '#f1f5f9',
+                    color: isSelected ? 'white' : 'transparent',
+                    borderRadius: '8px',
+                    width: '24px',
+                    height: '24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: isSelected ? 'none' : '2px solid #cbd5e1',
+                    flexShrink: 0,
+                    marginTop: '2px',
+                  }}
+                >
+                  {isSelected ? <Check size={14} strokeWidth={3} /> : null}
+                </div>
+                <div className="hr-catalog-body" style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <strong style={{ fontSize: '0.95rem', color: '#1e293b', fontWeight: 700 }}>{item.name}</strong>
+                  <span style={{ fontSize: '0.82rem', color: '#64748b', lineHeight: 1.35 }}>{item.description}</span>
+                  {item.examplePositions.length ? <small style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.25rem' }}>Ex. : {item.examplePositions.join(', ')}</small> : null}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        <div className="hr-catalog-custom" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+          <input placeholder="Ajouter un service personnalisé…" value={customName} onChange={(e) => setCustomName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && canAddCustom) { setSelected((prev) => new Set([...prev, `custom-${customName.trim()}`])); setCustomName(''); } }} style={{ borderRadius: '10px', height: '44px', border: '1px solid #cbd5e1', padding: '0 0.75rem', flex: 1 }} />
+          <button type="button" className="btn btn-secondary" disabled={!canAddCustom} onClick={() => { if (canAddCustom) { setSelected((prev) => new Set([...prev, `custom-${customName.trim()}`])); setCustomName(''); } }} style={{ height: '44px', borderRadius: '10px' }}>Ajouter</button>
+        </div>
+        {customSelectedNames.length ? (
+          <div className="hr-catalog-tags" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '1.25rem' }}>
+            {customSelectedNames.map((name) => (
+              <span key={name} className="badge badge-reception" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.35rem 0.65rem' }}>
+                {name}
+                <button type="button" className="icon-btn" onClick={() => toggle(`custom-${name}`)} style={{ border: 'none', background: 'transparent', display: 'inline-flex', padding: 0, cursor: 'pointer', color: '#ef4444' }}><X size={12} /></button>
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+      <div className="hr-catalog-actions sticky" style={{ borderTop: '1px solid #eef2f7', background: 'rgba(255,255,255,0.9)', padding: '1rem 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+        <span style={{ fontSize: '0.88rem', color: '#64748b', fontWeight: 500 }}>{selected.size} service{selected.size > 1 ? 's' : ''} sélectionné{selected.size > 1 ? 's' : ''}</span>
+        <div className="row-actions" style={{ display: 'flex', gap: '0.75rem' }}>
+          {onBack ? <button type="button" className="btn btn-secondary" disabled={submitting} onClick={onBack} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Retour</button> : null}
+          <button className="btn btn-primary" disabled={selected.size === 0 || submitting} onClick={async () => { setSubmitting(true); try { await onSubmit(selectedNames); } finally { setSubmitting(false); } }} style={{ borderRadius: '10px', padding: '0.5rem 1.5rem' }}>
             {submitting ? 'Création…' : 'Valider et créer les services'}
           </button>
         </div>
@@ -722,54 +1120,129 @@ function PositionCatalogSelector({ departments, initialSelection = {}, onSelecti
   const payload = () => activeDepartments.flatMap((department) => [...(selectedByDept[department.id] ?? new Set<string>())].map((name) => ({ name, departmentId: department.id, description: buildJobDescription(name, department.name) })));
   if (!currentDepartment) return <EmptyState title="Aucun service actif" description="Créez d’abord les services avant de sélectionner les postes." />;
   return (
-    <div className="hr-catalog">
-      <p className="muted" style={{ marginBottom: 12 }}>Sélectionnez les postes pour chaque service. Le parcours avance service par service pour construire une base RH propre.</p>
-      <div className="hr-position-stepper">
-        {activeDepartments.map((department, index) => (
-          <button key={department.id} type="button" className={index === currentIndex ? 'active' : ''} onClick={() => setCurrentIndex(index)}>
-            {index + 1}. {department.name}
-            {(selectedByDept[department.id]?.size ?? 0) ? <span>{selectedByDept[department.id]?.size}</span> : null}
-          </button>
-        ))}
-      </div>
-      <div className="hr-position-accordion-item">
-        <div className="hr-position-accordion-header">
-          <div>
-            <strong>{currentDepartment.name}</strong>
-            <span className="muted">Étape {currentIndex + 1} sur {activeDepartments.length} · {currentSelected.size} poste{currentSelected.size > 1 ? 's' : ''} sélectionné{currentSelected.size > 1 ? 's' : ''}</span>
-          </div>
-          <span className="badge badge-reception">{currentSuggestions.length} suggestions</span>
+    <div className="hr-catalog" style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between' }}>
+      <div>
+        <p className="muted" style={{ marginBottom: 16, fontSize: '0.9rem' }}>Sélectionnez les postes pour chaque service. Le parcours avance service par service.</p>
+        <div className="hr-position-stepper" style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
+          {activeDepartments.map((department, index) => {
+            const isActive = index === currentIndex;
+            const isDone = (selectedByDept[department.id]?.size ?? 0) > 0;
+            return (
+              <button
+                key={department.id}
+                type="button"
+                className={isActive ? 'active' : ''}
+                onClick={() => setCurrentIndex(index)}
+                style={{
+                  padding: '0.4rem 0.8rem',
+                  fontSize: '0.85rem',
+                  borderRadius: '8px',
+                  border: isActive ? '1px solid #10b981' : isDone ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid #e2e8f0',
+                  background: isActive ? 'rgba(16, 185, 129, 0.08)' : isDone ? 'rgba(16, 185, 129, 0.02)' : '#f8fafc',
+                  color: isActive ? '#10b981' : 'var(--text-main)',
+                  fontWeight: isActive ? 700 : 500,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  cursor: 'pointer',
+                }}
+              >
+                {index + 1}. {department.name}
+                {isDone ? (
+                  <span style={{ fontSize: '0.72rem', background: '#10b981', color: 'white', padding: '0.05rem 0.35rem', borderRadius: '10px', fontWeight: 800 }}>
+                    {selectedByDept[department.id]?.size}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
         </div>
-        <div className="hr-position-accordion-body">
-          <div className="hr-catalog-grid hr-position-card-grid">
-            {currentSuggestions.map((pos) => {
-              const isSelected = currentSelected.has(pos);
-              return (
-                <button type="button" key={pos} className={`hr-catalog-card hr-position-card ${isSelected ? 'selected' : ''}`} onClick={() => togglePosition(currentDepartment.id, pos)}>
-                  <div className="hr-catalog-check">{isSelected ? <Check size={16} /> : <div className="hr-catalog-check-empty" />}</div>
-                  <div className="hr-catalog-body">
-                    <strong>{pos}</strong>
-                    <span>{currentDepartment.name}</span>
-                    <small>{buildJobDescription(pos, currentDepartment.name).split('\n').find((line) => line.trim().length > 80) ?? 'Poste rattaché au service sélectionné.'}</small>
-                  </div>
-                </button>
-              );
-            })}
+        <div className="hr-position-accordion-item" style={{ border: '1px solid #e2e8f0', borderRadius: '16px', overflow: 'hidden', background: '#f8fafc', marginBottom: '1.5rem' }}>
+          <div className="hr-position-accordion-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.25rem', background: 'white', borderBottom: '1px solid #e2e8f0' }}>
+            <div>
+              <strong style={{ fontSize: '0.95rem', color: '#1e293b' }}>{currentDepartment.name}</strong>
+              <span style={{ fontSize: '0.8rem', color: '#64748b', marginLeft: '0.5rem' }}>
+                Étape {currentIndex + 1} sur {activeDepartments.length} · {currentSelected.size} poste{currentSelected.size > 1 ? 's' : ''} sélectionné{currentSelected.size > 1 ? 's' : ''}
+              </span>
+            </div>
+            <span className="badge badge-reception" style={{ fontSize: '0.75rem', background: 'rgba(59, 130, 246, 0.08)', color: '#2563eb', border: '1px solid rgba(59, 130, 246, 0.15)', textTransform: 'none' }}>
+              {currentSuggestions.length} suggestion{currentSuggestions.length > 1 ? 's' : ''}
+            </span>
           </div>
-          <div className="hr-position-custom">
-            <input placeholder={`Ajouter un poste personnalisé à ${currentDepartment.name}…`} value={customByDept[currentDepartment.id] ?? ''} onChange={(e) => setCustomByDept((prev) => ({ ...prev, [currentDepartment.id]: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') addCustom(currentDepartment.id); }} />
-            <button type="button" className="btn btn-secondary" onClick={() => addCustom(currentDepartment.id)}>Ajouter</button>
+          <div className="hr-position-accordion-body" style={{ padding: '1.25rem' }}>
+            <div className="hr-catalog-grid hr-position-card-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
+              {currentSuggestions.map((pos) => {
+                const isSelected = currentSelected.has(pos);
+                return (
+                  <button
+                    type="button"
+                    key={pos}
+                    className={`hr-catalog-card hr-position-card ${isSelected ? 'selected' : ''}`}
+                    onClick={() => togglePosition(currentDepartment.id, pos)}
+                    style={{
+                      border: isSelected ? '2px solid #10b981' : '1px solid #e2e8f0',
+                      borderRadius: '14px',
+                      padding: '1rem',
+                      background: isSelected ? 'rgba(16, 185, 129, 0.04)' : 'white',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'flex-start',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      minHeight: '100px',
+                      justifyContent: 'space-between',
+                      boxShadow: isSelected ? '0 10px 25px rgba(16,185,129,0.04)' : 'none',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', marginBottom: '0.35rem' }}>
+                      <strong style={{ fontSize: '0.9rem', color: '#1e293b', fontWeight: 700 }}>{pos}</strong>
+                      <div
+                        className="hr-catalog-check"
+                        style={{
+                          background: isSelected ? '#10b981' : '#f1f5f9',
+                          color: isSelected ? 'white' : 'transparent',
+                          borderRadius: '6px',
+                          width: '20px',
+                          height: '20px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          border: isSelected ? 'none' : '2px solid #cbd5e1',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {isSelected ? <Check size={12} strokeWidth={3} /> : null}
+                      </div>
+                    </div>
+                    <small style={{ fontSize: '0.75rem', color: '#94a3b8', lineHeight: 1.3 }}>
+                      {buildJobDescription(pos, currentDepartment.name).split('\n').find((line) => line.trim().length > 50) ?? 'Poste rattaché au service sélectionné.'}
+                    </small>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="hr-position-custom" style={{ display: 'flex', gap: '0.5rem' }}>
+              <input
+                placeholder={`Ajouter un poste personnalisé à ${currentDepartment.name}…`}
+                value={customByDept[currentDepartment.id] ?? ''}
+                onChange={(e) => setCustomByDept((prev) => ({ ...prev, [currentDepartment.id]: e.target.value }))}
+                onKeyDown={(e) => { if (e.key === 'Enter') addCustom(currentDepartment.id); }}
+                style={{ borderRadius: '10px', height: '40px', border: '1px solid #cbd5e1', padding: '0 0.75rem', flex: 1 }}
+              />
+              <button type="button" className="btn btn-secondary" onClick={() => addCustom(currentDepartment.id)} style={{ height: '40px', borderRadius: '10px' }}>Ajouter</button>
+            </div>
           </div>
         </div>
       </div>
-      <div className="hr-catalog-actions sticky">
-        <span className="muted">{totalSelected} poste{totalSelected > 1 ? 's' : ''} sélectionné{totalSelected > 1 ? 's' : ''}</span>
-        <div className="row-actions">
-          <button type="button" className="btn btn-secondary" disabled={submitting} onClick={() => currentIndex === 0 ? onBack?.() : setCurrentIndex((index) => Math.max(index - 1, 0))}>Retour</button>
+      <div className="hr-catalog-actions sticky" style={{ borderTop: '1px solid #eef2f7', background: 'rgba(255,255,255,0.9)', padding: '1rem 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+        <span style={{ fontSize: '0.88rem', color: '#64748b', fontWeight: 500 }}>{totalSelected} poste{totalSelected > 1 ? 's' : ''} sélectionné{totalSelected > 1 ? 's' : ''}</span>
+        <div className="row-actions" style={{ display: 'flex', gap: '0.75rem' }}>
+          <button type="button" className="btn btn-secondary" disabled={submitting} onClick={() => currentIndex === 0 ? onBack?.() : setCurrentIndex((index) => Math.max(index - 1, 0))} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Retour</button>
           {!isLast ? (
-            <button type="button" className="btn btn-primary" disabled={submitting} onClick={() => setCurrentIndex((index) => Math.min(index + 1, activeDepartments.length - 1))}>Suivant</button>
+            <button type="button" className="btn btn-primary" disabled={submitting} onClick={() => setCurrentIndex((index) => Math.min(index + 1, activeDepartments.length - 1))} style={{ borderRadius: '10px', padding: '0.5rem 1.5rem' }}>Suivant</button>
           ) : (
-            <button className="btn btn-primary" disabled={totalSelected === 0 || submitting} onClick={async () => { setSubmitting(true); try { await onSubmit(payload()); } finally { setSubmitting(false); } }}>
+            <button className="btn btn-primary" disabled={totalSelected === 0 || submitting} onClick={async () => { setSubmitting(true); try { await onSubmit(payload()); } finally { setSubmitting(false); } }} style={{ borderRadius: '10px', padding: '0.5rem 1.5rem' }}>
               {submitting ? 'Création…' : 'Terminer et créer les postes'}
             </button>
           )}
@@ -797,31 +1270,61 @@ function OnboardingCollaboratorStep({ departments, positions, collaborators, emp
     onCreate();
   }
   return (
-    <div className="hr-catalog">
-      <p className="muted" style={{ marginBottom: 12 }}>Validez la structure choisie, puis ajoutez un ou plusieurs collaborateurs avec leur service et leur poste.</p>
-      <div className="hr-review-grid">
-        <div className="card-modern" style={{ padding: 16 }}>
-          <span className="card-title"><Building2 size={16} /> Services retenus ({activeDepartments.length})</span>
-          <div className="hr-position-tags">{activeDepartments.map((d) => <span key={d.id} className="badge badge-reception">{d.name}</span>)}</div>
+    <div className="hr-catalog" style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between' }}>
+      <div>
+        <p className="muted" style={{ marginBottom: 16, fontSize: '0.9rem' }}>Validez la structure choisie, puis ajoutez un ou plusieurs collaborateurs avec leur service et leur poste.</p>
+        <div className="hr-review-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+          <div className="card-modern" style={{ padding: '1.25rem', borderRadius: '16px', background: '#f8fafc', border: '1px solid #cbd5e1' }}>
+            <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-main)' }}><Building2 size={16} color="#10b981" /> Services retenus ({activeDepartments.length})</span>
+            <div className="hr-position-tags" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.75rem' }}>{activeDepartments.map((d) => <span key={d.id} className="badge badge-reception" style={{ padding: '0.35rem 0.6rem' }}>{d.name}</span>)}</div>
+          </div>
+          <div className="card-modern" style={{ padding: '1.25rem', borderRadius: '16px', background: '#f8fafc', border: '1px solid #cbd5e1' }}>
+            <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-main)' }}><BriefcaseBusiness size={16} color="#3b82f6" /> Postes créés ({activePositions.length})</span>
+            <div className="hr-position-tags" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.75rem' }}>{activePositions.map((p) => <span key={p.id} className="badge" style={{ padding: '0.35rem 0.6rem' }}>{p.name}</span>)}</div>
+          </div>
         </div>
-        <div className="card-modern" style={{ padding: 16 }}>
-          <span className="card-title"><BriefcaseBusiness size={16} /> Postes crees ({activePositions.length})</span>
-          <div className="hr-position-tags">{activePositions.map((p) => <span key={p.id} className="badge">{p.name}</span>)}</div>
+        <div
+          className="hr-wizard-hero-card"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'auto 1fr',
+            gap: '1.25rem',
+            alignItems: 'center',
+            padding: '1.5rem',
+            border: '1px solid rgba(16, 185, 129, 0.18)',
+            borderRadius: '16px',
+            background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.06) 0%, rgba(59, 130, 246, 0.04) 100%)',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.01)',
+            marginBottom: '1.5rem',
+          }}
+        >
+          <div
+            className="hr-wizard-icon"
+            style={{
+              width: '56px',
+              height: '56px',
+              display: 'grid',
+              placeItems: 'center',
+              borderRadius: '14px',
+              background: 'linear-gradient(135deg, #10b981 0%, #3b82f6 100%)',
+              color: 'white',
+              boxShadow: '0 10px 25px rgba(16, 185, 129, 0.2)',
+            }}
+          >
+            <UserRound size={28} />
+          </div>
+          <div style={{ textAlign: 'left' }}>
+            <span className="welcome-tag" style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', color: '#10b981', letterSpacing: '0.05em' }}>Dernière étape</span>
+            <p style={{ margin: '0.2rem 0 0', color: 'var(--text-main)', fontSize: '0.9rem', lineHeight: 1.45 }}>{collaborators.length ? `${collaborators.length} collaborateur${collaborators.length > 1 ? 's' : ''} déjà créé${collaborators.length > 1 ? 's' : ''}. Vous pouvez en ajouter un autre ou terminer l'initialisation.` : 'Créez le premier collaborateur pour finaliser la base RH initiale.'}</p>
+          </div>
         </div>
       </div>
-      <div className="hr-wizard-hero-card">
-        <div className="hr-wizard-icon"><UserRound size={30} /></div>
-        <div>
-          <span className="welcome-tag">Derniere etape</span>
-          <p>{collaborators.length ? `${collaborators.length} collaborateur${collaborators.length > 1 ? 's' : ''} deja cree${collaborators.length > 1 ? 's' : ''}. Vous pouvez en ajouter un autre ou terminer l'initialisation.` : 'Creez le premier collaborateur pour finaliser la base RH initiale.'}</p>
-        </div>
-      </div>
-      <div className="hr-catalog-actions sticky">
-        <span className="muted">{collaborators.length} collaborateur{collaborators.length > 1 ? 's' : ''} actif{collaborators.length > 1 ? 's' : ''}</span>
-        <div className="row-actions">
-          <button type="button" className="btn btn-secondary" disabled={unlocking || finishing} onClick={onBack}>Retour</button>
-          <button type="button" className="btn btn-secondary" disabled={unlocking || finishing} onClick={unlockAndCreate}>{unlocking ? 'Validation...' : collaborators.length ? 'Ajouter un autre collaborateur' : 'Ajouter un collaborateur'}</button>
-          <button type="button" className="btn btn-primary" disabled={!collaborators.length || unlocking || finishing} onClick={async () => { setFinishing(true); try { onFinished(); } finally { setFinishing(false); } }}>
+      <div className="hr-catalog-actions sticky" style={{ borderTop: '1px solid #eef2f7', background: 'rgba(255,255,255,0.9)', padding: '1rem 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+        <span style={{ fontSize: '0.88rem', color: '#64748b', fontWeight: 500 }}>{collaborators.length} collaborateur{collaborators.length > 1 ? 's' : ''} actif{collaborators.length > 1 ? 's' : ''}</span>
+        <div className="row-actions" style={{ display: 'flex', gap: '0.75rem' }}>
+          <button type="button" className="btn btn-secondary" disabled={unlocking || finishing} onClick={onBack} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Retour</button>
+          <button type="button" className="btn btn-secondary" disabled={unlocking || finishing} onClick={unlockAndCreate} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem', borderColor: '#10b981', color: '#059669', background: 'rgba(16, 185, 129, 0.02)' }}>{unlocking ? 'Validation...' : collaborators.length ? 'Ajouter un autre collaborateur' : 'Ajouter un collaborateur'}</button>
+          <button type="button" className="btn btn-primary" disabled={!collaborators.length || unlocking || finishing} onClick={async () => { setFinishing(true); try { onFinished(); } finally { setFinishing(false); } }} style={{ borderRadius: '10px', padding: '0.5rem 1.5rem' }}>
             Terminer l'initialisation
           </button>
         </div>

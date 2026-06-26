@@ -106,11 +106,17 @@ export class UpsertProductDto {
 
   @IsOptional()
   @IsUUID()
-  categoryId?: string;
+  categoryId?: string | null;
 
   @IsOptional()
   @IsUUID()
-  primarySupplierId?: string;
+  primarySupplierId?: string | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  averagePrice?: number;
 
   @IsOptional()
   @Type(() => Number)

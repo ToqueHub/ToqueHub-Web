@@ -9,6 +9,7 @@ import { UsersService } from '../users/users.service';
 import { BootstrapAdminDto } from './dto/bootstrap-admin.dto';
 import { SetupOrganizationDto } from './dto/setup-organization.dto';
 import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
+import { UpdateOrganizationApiKeysDto } from './dto/api-keys.dto';
 import { LoginDto } from './dto/login.dto';
 
 export class PrefillStocksDto {
@@ -67,6 +68,22 @@ export class AuthController {
   @ApiOkResponse({ description: 'Returns organization, installed apps and onboarding progress for the dashboard.' })
   dashboardSummary(@CurrentUser() user: AuthenticatedUser) {
     return this.authService.getDashboardSummary(user);
+  }
+
+  @Get('organization/api-keys')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOkResponse({ description: 'Returns masked organization API key configuration.' })
+  organizationApiKeys(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.getOrganizationApiKeys(user);
+  }
+
+  @Post('organization/api-keys')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOkResponse({ description: 'Updates organization API keys used server-side.' })
+  updateOrganizationApiKeys(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateOrganizationApiKeysDto) {
+    return this.authService.updateOrganizationApiKeys(user, dto);
   }
 
   @Post('apps/stocks/install')
