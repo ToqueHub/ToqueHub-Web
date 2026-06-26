@@ -477,6 +477,7 @@ export interface PlanningAssignment {
   status?: string | null;
   origin?: string | null;
   comment?: string | null;
+  businessStatus?: string | null;
   collaborator?: HrCollaborator | null;
   employee?: HrCollaborator | null;
   department?: HrDepartment | null;
@@ -492,15 +493,24 @@ export interface PlanningRequirement {
   id: string;
   date?: string | null;
   startDate?: string | null;
+  endDate?: string | null;
   departmentId?: string | null;
   serviceId?: string | null;
   siteId?: string | null;
   positionId?: string | null;
+  label?: string | null;
+  season?: string | null;
+  seasonLabel?: string | null;
+  timeSlot?: string | null;
+  timeSlotLabel?: string | null;
+  alertImpact?: string | null;
+  metadata?: Record<string, unknown> | null;
   startTime?: string | null;
   endTime?: string | null;
   requiredCount?: number | string | null;
   requiredSkills?: string[];
   priority?: string | null;
+  comment?: string | null;
   department?: HrDepartment | null;
   service?: HrDepartment | null;
   position?: HrPosition | null;
@@ -533,10 +543,101 @@ export interface PlanningTemplate {
   id: string;
   name: string;
   description?: string | null;
+  periodType?: string | null;
+  templateType?: string | null;
+  type?: string | null;
+  source?: string | null;
   siteId?: string | null;
   departmentId?: string | null;
-  lines?: Array<Partial<PlanningAssignment> & { dayOfWeek?: number; requiredCount?: number }>;
+  positionId?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  breakMinutes?: number | null;
+  paidBreak?: boolean | null;
+  businessStatus?: string | null;
+  employeeIds?: string[];
+  defaultEmployeeIds?: string[];
+  content?: Record<string, any>;
+  days?: PlanningTemplateDay[];
+  lines?: Array<Partial<PlanningAssignment> & { dayOfWeek?: number; requiredCount?: number; label?: string }>;
   createdAt?: string | null;
+}
+
+export interface PlanningTemplateDay {
+  key?: string;
+  dayOfWeek: number;
+  mode: 'WORK' | 'REST' | string;
+  startTime?: string | null;
+  endTime?: string | null;
+  breakMinutes?: number | null;
+  departmentId?: string | null;
+  positionId?: string | null;
+  siteId?: string | null;
+}
+
+export interface PlanningDayPresetPayload {
+  name: string;
+  description?: string;
+  startTime: string;
+  endTime: string;
+  departmentId?: string;
+  positionId?: string;
+  siteId?: string;
+  breakMinutes?: number;
+  paidBreak?: boolean;
+  businessStatus?: string;
+}
+
+export interface PlanningWeeklyRotationPayload {
+  name: string;
+  description?: string;
+  departmentId?: string;
+  siteId?: string;
+  days?: PlanningTemplateDay[] | Record<string, PlanningTemplateDay>;
+}
+
+export interface PlanningEmployeeTemplateAssignment {
+  employeeId: string;
+  dayPresetIds: string[];
+  weeklyRotationIds: string[];
+  defaultWeeklyRotationId?: string | null;
+  persistence?: string;
+}
+
+export type PlanningPeriodStatusCode = 'DRAFT' | 'CONTROLLED' | 'PUBLISHED' | 'MODIFIED_AFTER_PUBLICATION' | 'LOCKED';
+
+export interface PlanningPeriodStatus {
+  status: PlanningPeriodStatusCode | string;
+  label: string;
+  period: { startDate: string; endDate: string; siteId?: string | null; key?: string };
+  lastControlledAt?: string | null;
+  publishedAt?: string | null;
+  lockedAt?: string | null;
+  modifiedAfterPublicationAt?: string | null;
+  blockingAlerts?: number;
+  warningAlerts?: number;
+  publishable?: boolean;
+  locked?: boolean;
+  modifiedAfterLock?: boolean;
+  storage?: string;
+  temporary?: boolean;
+  latestEvent?: Record<string, any> | null;
+}
+
+export interface PlanningPeriodActionPayload {
+  startDate: string;
+  endDate: string;
+  siteId?: string;
+  force?: boolean;
+  note?: string;
+}
+
+export interface PlanningPeriodActionResult {
+  periodStatus: PlanningPeriodStatus;
+  control?: Record<string, any>;
+  publishable?: boolean;
+  event?: Record<string, any>;
+  placeholder?: boolean;
 }
 
 export interface PlanningHistoryEntry {
@@ -556,9 +657,18 @@ export interface PlanningSummary {
   understaffedServices?: number;
   replacementsNeeded?: number;
   weeklyPlannedHours?: number;
+  plannedMinutes?: number;
+  plannedHours?: number;
+  estimatedCost?: number;
+  overtimeMinutes?: number;
+  overtimeHours?: number;
+  activeAlerts?: number;
+  priorityAlerts?: number;
+  actionsToProcess?: number;
 }
 
 export interface PlanningBootstrap {
+  meta?: Record<string, any>;
   summary?: PlanningSummary;
   stats?: Record<string, number>;
   collaborators?: HrCollaborator[];
@@ -575,9 +685,17 @@ export interface PlanningBootstrap {
   replacementProposals?: PlanningReplacementProposal[];
   replacements?: PlanningReplacementProposal[];
   templates?: PlanningTemplate[];
+  templateApplications?: Array<Record<string, any>>;
   alerts?: PlanningAlert[];
+  conflicts?: PlanningAlert[];
   history?: PlanningHistoryEntry[];
+  historyHuman?: Array<Record<string, any>>;
   notifications?: PlanningAlert[];
+  dashboard?: Record<string, any>;
+  planning?: { month?: Record<string, any>; assignmentsByDate?: Record<string, PlanningAssignment[]>; periodStatus?: PlanningPeriodStatus };
+  settings?: Record<string, any>;
+  attendance?: Record<string, any>;
+  periodStatus?: PlanningPeriodStatus;
 }
 
 export interface PlanningGenerationResult {

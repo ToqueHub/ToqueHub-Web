@@ -5,6 +5,7 @@ build
 .vite
 coverage
 *.tsbuildinfo
+apps/api/uploads/
 .env
 .env.*
 !.env.example

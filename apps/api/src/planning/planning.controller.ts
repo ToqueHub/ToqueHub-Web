@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { AcceptReplacementDto, ApplyPlanningTemplateDto, GeneratePlanningDto, MovePlanningAssignmentDto, PlanningQueryDto, PrepareExportDto, SetEmployeeSkillsDto, UpsertHrAbsenceDto, UpsertHrSkillDto, UpsertPlanningAssignmentDto, UpsertPlanningNeedDto, UpsertPlanningTemplateDto } from './dto/planning.dto';
+import { AcceptReplacementDto, ApplyPlanningRotationDto, ApplyPlanningTemplateDto, GeneratePlanningDto, MovePlanningAssignmentDto, PlanningContextQueryDto, PlanningPeriodActionDto, PlanningQueryDto, PlanningRotationPreviewDto, PrepareExportDto, SetEmployeePlanningTemplatesDto, SetEmployeeSkillsDto, UpsertDayPlanningAssignmentDto, UpsertDayPresetDto, UpsertHrAbsenceDto, UpsertHrSkillDto, UpsertPlanningAssignmentDto, UpsertPlanningNeedDto, UpsertPlanningTemplateDto, UpsertWeeklyRotationDto } from './dto/planning.dto';
 import { PlanningService } from './planning.service';
 
 @ApiTags('planning')
@@ -15,11 +15,16 @@ export class PlanningController {
   private org(user: AuthenticatedUser) { if (!user.organizationId) throw new BadRequestException('Organization setup is required before using Planning endpoints'); return user.organizationId; }
   private actor(user: AuthenticatedUser) { return { id: user.id, role: user.role }; }
 
-  @Get('bootstrap') bootstrap(@CurrentUser() user: AuthenticatedUser) { return this.planningService.bootstrap(this.org(user)); }
-  @Get('dashboard') dashboard(@CurrentUser() user: AuthenticatedUser) { return this.planningService.dashboard(this.org(user)); }
+  @Get('bootstrap') bootstrap(@CurrentUser() user: AuthenticatedUser, @Query() q: PlanningContextQueryDto) { return this.planningService.bootstrap(this.org(user), q); }
+  @Get('context') context(@CurrentUser() user: AuthenticatedUser, @Query() q: PlanningContextQueryDto) { return this.planningService.context(this.org(user), q); }
+  @Get('dashboard') dashboard(@CurrentUser() user: AuthenticatedUser, @Query() q: PlanningContextQueryDto) { return this.planningService.dashboard(this.org(user), q); }
+  @Post('period/control') controlPeriod(@CurrentUser() user: AuthenticatedUser, @Body() dto: PlanningPeriodActionDto) { return this.planningService.controlPeriod(this.org(user), this.actor(user), dto); }
+  @Post('period/publish') publishPeriod(@CurrentUser() user: AuthenticatedUser, @Body() dto: PlanningPeriodActionDto) { return this.planningService.publishPeriod(this.org(user), this.actor(user), dto); }
+  @Post('period/lock') lockPeriod(@CurrentUser() user: AuthenticatedUser, @Body() dto: PlanningPeriodActionDto) { return this.planningService.lockPeriod(this.org(user), this.actor(user), dto); }
 
   @Get('assignments') assignments(@CurrentUser() user: AuthenticatedUser, @Query() q: PlanningQueryDto) { return this.planningService.listAssignments(this.org(user), q); }
   @Post('assignments') createAssignment(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertPlanningAssignmentDto) { return this.planningService.createAssignment(this.org(user), this.actor(user), dto); }
+  @Post('assignments/upsert-day') upsertDayAssignment(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertDayPlanningAssignmentDto) { return this.planningService.upsertDayAssignment(this.org(user), this.actor(user), dto); }
   @Get('assignments/:id') assignment(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.planningService.getAssignment(this.org(user), id); }
   @Patch('assignments/:id') updateAssignment(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpsertPlanningAssignmentDto) { return this.planningService.updateAssignment(this.org(user), this.actor(user), id, dto); }
   @Patch('assignments/:id/move') moveAssignment(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: MovePlanningAssignmentDto) { return this.planningService.moveAssignment(this.org(user), this.actor(user), id, dto); }
@@ -41,6 +46,17 @@ export class PlanningController {
 
   @Get('templates') templates(@CurrentUser() user: AuthenticatedUser, @Query() q: PlanningQueryDto) { return this.planningService.listTemplates(this.org(user), q); }
   @Post('templates') createTemplate(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertPlanningTemplateDto) { return this.planningService.createTemplate(this.org(user), this.actor(user), dto); }
+  @Get('templates/day-presets') dayPresets(@CurrentUser() user: AuthenticatedUser, @Query() q: PlanningQueryDto) { return this.planningService.listDayPresets(this.org(user), q); }
+  @Post('templates/day-presets') createDayPreset(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertDayPresetDto) { return this.planningService.createDayPreset(this.org(user), this.actor(user), dto); }
+  @Patch('templates/day-presets/:id') updateDayPreset(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpsertDayPresetDto) { return this.planningService.updateDayPreset(this.org(user), this.actor(user), id, dto); }
+  @Delete('templates/day-presets/:id') deleteDayPreset(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.planningService.archiveTemplate(this.org(user), this.actor(user), id, 'DAY_PRESET'); }
+  @Get('templates/weekly-rotations') weeklyRotations(@CurrentUser() user: AuthenticatedUser, @Query() q: PlanningQueryDto) { return this.planningService.listWeeklyRotationTemplates(this.org(user), q); }
+  @Post('templates/weekly-rotations') createWeeklyRotation(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertWeeklyRotationDto) { return this.planningService.createWeeklyRotationTemplate(this.org(user), this.actor(user), dto); }
+  @Patch('templates/weekly-rotations/:id') updateWeeklyRotation(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpsertWeeklyRotationDto) { return this.planningService.updateWeeklyRotationTemplate(this.org(user), this.actor(user), id, dto); }
+  @Delete('templates/weekly-rotations/:id') deleteWeeklyRotation(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.planningService.archiveTemplate(this.org(user), this.actor(user), id, 'WEEKLY_ROTATION'); }
+  @Post('templates/employee-assignments') setEmployeeTemplates(@CurrentUser() user: AuthenticatedUser, @Body() dto: SetEmployeePlanningTemplatesDto) { return this.planningService.setEmployeeTemplateAssignments(this.org(user), this.actor(user), dto); }
+  @Patch('templates/:id') updateTemplate(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpsertPlanningTemplateDto) { return this.planningService.updateTemplate(this.org(user), this.actor(user), id, dto); }
+  @Delete('templates/:id') deleteTemplate(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.planningService.archiveTemplate(this.org(user), this.actor(user), id); }
   @Post('templates/:id/apply') applyTemplate(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: ApplyPlanningTemplateDto) { return this.planningService.applyTemplate(this.org(user), this.actor(user), id, dto); }
 
   @Post('generate') generate(@CurrentUser() user: AuthenticatedUser, @Body() dto: GeneratePlanningDto) { return this.planningService.generate(this.org(user), this.actor(user), dto); }
@@ -53,6 +69,11 @@ export class PlanningController {
   @Post('notifications/:id/read') readNotification(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.planningService.markNotificationRead(this.org(user), id); }
 
   @Post('exports') prepareExport(@CurrentUser() user: AuthenticatedUser, @Body() dto: PrepareExportDto) { return this.planningService.prepareExport(this.org(user), this.actor(user), dto); }
+
+  @Get('rotations') rotations(@CurrentUser() user: AuthenticatedUser, @Query() q: PlanningQueryDto) { return this.planningService.listPlanningRotations(this.org(user), q); }
+  @Get('employees/:id/rotations') employeeRotations(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.planningService.getEmployeePlanningRotations(this.org(user), id); }
+  @Post('rotations/:id/preview') rotationPreview(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: PlanningRotationPreviewDto) { return this.planningService.applyWeeklyRotationPreview(this.org(user), id, dto); }
+  @Post('rotations/:id/apply') rotationApply(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: ApplyPlanningRotationDto) { return this.planningService.applyWeeklyRotation(this.org(user), this.actor(user), id, dto); }
 
   @Get('skills') skills(@CurrentUser() user: AuthenticatedUser) { return this.planningService.listSkills(this.org(user)); }
   @Post('skills') createSkill(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertHrSkillDto) { return this.planningService.createSkill(this.org(user), this.actor(user), dto); }

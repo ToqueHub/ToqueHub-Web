@@ -310,9 +310,9 @@ const apps = [
   },
 ];
 
-type ActiveTab = 'overview' | 'applications' | 'settings' | 'organization-general' | 'users' | 'architecture' | 'stocks-dashboard' | 'inventory' | 'movements' | 'products' | 'categories' | 'units' | 'suppliers' | 'inventories' | 'locations' | 'audit' | 'rnm-dashboard' | 'rnm-history' | 'rnm-favorites' | 'rnm-about' | 'hr-dashboard' | 'hr-collaborators' | 'hr-departments' | 'hr-positions' | 'hr-rotations' | 'hr-orgchart' | 'planning-dashboard' | 'planning-day' | 'planning-week' | 'planning-month' | 'planning-assignments' | 'planning-absences' | 'planning-replacements' | 'planning-templates' | 'planning-requirements' | 'technical-sheets-dashboard' | 'technical-sheets-recipes' | 'technical-sheets-categories' | 'technical-sheets-costs' | 'technical-sheets-allergens' | 'technical-sheets-production' | 'production-dashboard' | 'production-orders' | 'production-calendar' | 'production-today' | 'production-assignments' | 'production-materials' | 'production-exports' | 'production-history' | 'menus-dashboard' | 'menus-list' | 'menus-calendar' | 'menus-cycles' | 'menus-diets' | 'menus-guests' | 'menus-exports' | 'menus-history';
+type ActiveTab = 'overview' | 'applications' | 'settings' | 'organization-general' | 'users' | 'architecture' | 'stocks-dashboard' | 'inventory' | 'movements' | 'products' | 'categories' | 'units' | 'suppliers' | 'inventories' | 'locations' | 'audit' | 'rnm-dashboard' | 'rnm-history' | 'rnm-favorites' | 'rnm-about' | 'hr-dashboard' | 'hr-collaborators' | 'hr-departments' | 'hr-positions' | 'hr-rotations' | 'hr-orgchart' | 'planning-dashboard' | 'planning-planning' | 'planning-settings' | 'planning-attendance' | 'planning-day' | 'planning-week' | 'planning-month' | 'planning-assignments' | 'planning-absences' | 'planning-replacements' | 'planning-templates' | 'planning-requirements' | 'technical-sheets-dashboard' | 'technical-sheets-recipes' | 'technical-sheets-categories' | 'technical-sheets-costs' | 'technical-sheets-allergens' | 'technical-sheets-production' | 'production-dashboard' | 'production-orders' | 'production-calendar' | 'production-today' | 'production-assignments' | 'production-materials' | 'production-exports' | 'production-history' | 'menus-dashboard' | 'menus-list' | 'menus-calendar' | 'menus-cycles' | 'menus-diets' | 'menus-guests' | 'menus-exports' | 'menus-history';
 
-type Confirmation = 'install-stocks' | 'uninstall-stocks' | 'uninstall-rnm-prices' | 'uninstall-technical-sheets' | 'uninstall-production' | 'uninstall-menus' | null;
+type Confirmation = 'install-stocks' | 'uninstall-stocks' | 'uninstall-rnm-prices' | 'uninstall-planning' | 'uninstall-technical-sheets' | 'uninstall-production' | 'uninstall-menus' | null;
 
 interface DashboardProps {
   session: UserSession;
@@ -516,10 +516,12 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const stocksInstalled = installedApps.includes('stocks');
   const rnmInstalled = installedApps.includes('rnm-prices');
   const hrInstalled = installedApps.includes('hr');
-  const planningInstalled = installedApps.includes('planning') || installedApps.includes('hr');
+  const rhPlanningReadiness = getRhPlanningReadiness(hrInstalled, hrDepartments, hrPositions, hrCollaborators);
+  const planningInstalled = installedApps.includes('planning');
   const technicalSheetsInstalled = installedApps.includes('technical-sheets');
   const productionInstalled = installedApps.includes('production');
   const menusInstalled = installedApps.includes('menus');
+  const planningPrerequisiteMessage = rhPlanningReadiness.ready ? undefined : rhPlanningReadiness.message;
 
   const isStocksTab = useMemo(() => {
     const stocksTabs = [
@@ -531,7 +533,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
   const isRnmTab = useMemo(() => ['rnm-dashboard', 'rnm-history', 'rnm-favorites', 'rnm-about'].includes(activeTab), [activeTab]);
   const isHrTab = useMemo(() => ['hr-dashboard', 'hr-collaborators', 'hr-departments', 'hr-positions', 'hr-rotations', 'hr-orgchart'].includes(activeTab), [activeTab]);
-  const isPlanningTab = useMemo(() => ['planning-dashboard', 'planning-day', 'planning-week', 'planning-month', 'planning-assignments', 'planning-absences', 'planning-replacements', 'planning-templates', 'planning-requirements'].includes(activeTab), [activeTab]);
+  const isPlanningTab = useMemo(() => ['planning-dashboard', 'planning-planning', 'planning-settings', 'planning-attendance', 'planning-day', 'planning-week', 'planning-month', 'planning-assignments', 'planning-absences', 'planning-replacements', 'planning-templates', 'planning-requirements'].includes(activeTab), [activeTab]);
   const isTechnicalSheetsTab = useMemo(() => ['technical-sheets-dashboard', 'technical-sheets-recipes', 'technical-sheets-categories', 'technical-sheets-costs', 'technical-sheets-allergens', 'technical-sheets-production'].includes(activeTab), [activeTab]);
   const isProductionTab = useMemo(() => ['production-dashboard', 'production-orders', 'production-calendar', 'production-today', 'production-assignments', 'production-materials', 'production-exports', 'production-history'].includes(activeTab), [activeTab]);
   const isMenusTab = useMemo(() => ['menus-dashboard', 'menus-list', 'menus-calendar', 'menus-cycles', 'menus-diets', 'menus-guests', 'menus-exports', 'menus-history'].includes(activeTab), [activeTab]);
@@ -668,15 +670,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       isActive: isPlanningTab,
       defaultTab: 'planning-dashboard',
       submenu: [
-        { tab: 'planning-dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
-        { tab: 'planning-day', label: 'Journalier', icon: CalendarDays },
-        { tab: 'planning-week', label: 'Hebdomadaire', icon: CalendarCheck },
-        { tab: 'planning-month', label: 'Mensuel', icon: Calendar },
-        { tab: 'planning-assignments', label: 'Affectations', icon: ClipboardList },
-        { tab: 'planning-absences', label: 'Absences', icon: Ban },
-        { tab: 'planning-replacements', label: 'Remplacements', icon: RefreshCw },
-        { tab: 'planning-templates', label: 'Modèles', icon: Layers },
-        { tab: 'planning-requirements', label: 'Besoins opérationnels', icon: ClipboardList },
+        { tab: 'planning-dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { tab: 'planning-planning', label: 'Planning', icon: Calendar },
+        { tab: 'planning-settings', label: 'Paramétrage', icon: Settings },
+        { tab: 'planning-attendance', label: 'Émargement', icon: FileText },
       ]
     },
     {
@@ -949,6 +946,25 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     }
   }
 
+  async function uninstallPlanning() {
+    setAppActionLoading(true);
+    setError(undefined);
+    setSuccess(undefined);
+    try {
+      const summary = await api.uninstallPlanning(token);
+      setDashboardSummary((prev) => ({ ...prev, ...summary } as DashboardSummary));
+      setInstalledApps(summary.installedApplications ?? installedApps.filter((app) => app !== 'planning'));
+      if (isPlanningTab) setActiveTab('applications');
+      setSuccess('L’application Planning a été retirée de l’interface. Les plannings et historiques existants sont conservés.');
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Suppression de Planning impossible.');
+    } finally {
+      setAppActionLoading(false);
+      setConfirmation(null);
+    }
+  }
+
   async function uninstallTechnicalSheets() {
     setAppActionLoading(true);
     setError(undefined);
@@ -1027,11 +1043,12 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       setSuccess(undefined);
       try {
         if (appId === 'technical-sheets' && !stocksInstalled) throw new Error('Installez Stocks avant Fiches Techniques.');
+        if (appId === 'planning' && planningPrerequisiteMessage) throw new Error(planningPrerequisiteMessage);
         if (appId === 'production' && (!stocksInstalled || !technicalSheetsInstalled)) throw new Error('Installez Stocks et Fiches Techniques avant Production. RH et Planning restent optionnels.');
         if (appId === 'menus' && (!technicalSheetsInstalled || !productionInstalled)) throw new Error('Installez Fiches Techniques et Production avant Menus. Menus ne fonctionne pas en mode autonome.');
         const summary = appId === 'rnm-prices' ? await api.installRnmPrices(token) : appId === 'hr' ? await api.installHr(token) : appId === 'planning' ? await api.installPlanning(token) : appId === 'technical-sheets' ? await api.installTechnicalSheets(token) : appId === 'production' ? await api.installProduction(token) : appId === 'menus' ? await api.installMenus(token) : await api.installStocks(token);
         setDashboardSummary((prev) => ({ ...prev, ...summary } as DashboardSummary));
-        setInstalledApps(summary.installedApplications ?? (appId === 'rnm-prices' ? ['rnm-prices'] : appId === 'hr' ? ['hr'] : appId === 'planning' ? ['planning'] : appId === 'technical-sheets' ? ['technical-sheets'] : appId === 'production' ? ['production'] : appId === 'menus' ? ['menus'] : ['stocks']));
+        setInstalledApps(summary.installedApplications ?? Array.from(new Set([...installedApps, appId])));
         setSuccess(appId === 'rnm-prices' ? 'L’application Cours des Produits a été installée. La navigation RNM est maintenant visible.' : appId === 'hr' ? 'L’application RH a été installée. Services et postes de départ sont disponibles.' : appId === 'planning' ? 'L’application Planning a été installée. Les vues opérationnelles consomment désormais le référentiel RH.' : appId === 'technical-sheets' ? 'L’application Fiches Techniques a été installée. Catégories recettes et allergènes standards sont disponibles.' : appId === 'production' ? 'L’application Production a été installée. Les ordres peuvent être créés depuis les fiches techniques sans dupliquer les référentiels.' : appId === 'menus' ? 'L’application Menus a été installée. Planification, cycles, convives et génération Production sont disponibles.' : 'L’application Stocks a été installée avec succès. Lancez l’assistant de préremplissage pour ajouter catégories, unités et emplacements métier.');
         if (appId === 'stocks') setShowPrefillWizard(true);
         if (appId === 'rnm-prices') setActiveTab('rnm-dashboard');
@@ -1352,6 +1369,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     'hr-rotations': 'Roulements',
     'hr-orgchart': 'Organigramme',
     'planning-dashboard': 'Planning',
+    'planning-planning': 'Planning mensuel',
+    'planning-settings': 'Paramétrage Planning',
+    'planning-attendance': 'Émargement Planning',
     'planning-day': 'Planning journalier',
     'planning-week': 'Planning hebdomadaire',
     'planning-month': 'Planning mensuel',
@@ -1930,7 +1950,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   onInstallApp={(appId) => triggerInstallApp(appId)}
                   installingAppId={installingAppId}
                   installProgress={installProgress}
-                  onUninstallApp={(appId) => setConfirmation(appId === 'rnm-prices' ? 'uninstall-rnm-prices' : appId === 'technical-sheets' ? 'uninstall-technical-sheets' : appId === 'production' ? 'uninstall-production' : appId === 'menus' ? 'uninstall-menus' : 'uninstall-stocks')}
+                  planningPrerequisiteMessage={planningPrerequisiteMessage}
+                  onUninstallApp={(appId) => setConfirmation(appId === 'planning' ? 'uninstall-planning' : appId === 'rnm-prices' ? 'uninstall-rnm-prices' : appId === 'technical-sheets' ? 'uninstall-technical-sheets' : appId === 'production' ? 'uninstall-production' : appId === 'menus' ? 'uninstall-menus' : 'uninstall-stocks')}
                 />
               )}
 
@@ -1989,14 +2010,14 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                 <PlanningApp
                   token={token}
                   session={session}
-                  tab={activeTab === 'planning-day' ? 'day' : activeTab === 'planning-week' ? 'week' : activeTab === 'planning-month' ? 'month' : activeTab === 'planning-assignments' ? 'assignments' : activeTab === 'planning-absences' ? 'absences' : activeTab === 'planning-replacements' ? 'replacements' : activeTab === 'planning-templates' ? 'templates' : activeTab === 'planning-requirements' ? 'requirements' : 'dashboard'}
+                  tab={activeTab === 'planning-settings' || activeTab === 'planning-templates' || activeTab === 'planning-requirements' || activeTab === 'planning-absences' ? 'settings' : activeTab === 'planning-attendance' ? 'attendance' : activeTab === 'planning-planning' || activeTab === 'planning-day' || activeTab === 'planning-week' || activeTab === 'planning-month' || activeTab === 'planning-assignments' || activeTab === 'planning-replacements' ? 'planning' : 'dashboard'}
                   collaborators={hrCollaborators}
                   departments={hrDepartments}
                   positions={hrPositions}
                   rotations={hrRotations}
                   sites={activeSites}
                   canWrite={canWriteHr}
-                  onNavigate={(next) => setActiveTab(next === 'day' ? 'planning-day' : next === 'week' ? 'planning-week' : next === 'month' ? 'planning-month' : next === 'assignments' ? 'planning-assignments' : next === 'absences' ? 'planning-absences' : next === 'replacements' ? 'planning-replacements' : next === 'templates' ? 'planning-templates' : next === 'requirements' ? 'planning-requirements' : 'planning-dashboard')}
+                  onNavigate={(next) => setActiveTab(next === 'planning' ? 'planning-planning' : next === 'settings' ? 'planning-settings' : next === 'attendance' ? 'planning-attendance' : 'planning-dashboard')}
                 />
               )}
 
@@ -2639,6 +2660,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             installed={installedApps.includes(selectedStoreApp.id)}
             installing={installingAppId === selectedStoreApp.id}
             progress={installProgress}
+            prerequisiteMessage={selectedStoreApp.id === 'planning' && !installedApps.includes('planning') ? planningPrerequisiteMessage : undefined}
             onInstall={() => triggerInstallApp(selectedStoreApp.id)}
             onOpen={() => {
               if (selectedStoreApp.id === 'stocks') setActiveTab('stocks-dashboard');
@@ -2646,12 +2668,14 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               if (selectedStoreApp.id === 'technical-sheets') setActiveTab('technical-sheets-dashboard');
               if (selectedStoreApp.id === 'production') setActiveTab('production-dashboard');
               if (selectedStoreApp.id === 'menus') setActiveTab('menus-dashboard');
+              if (selectedStoreApp.id === 'planning') setActiveTab('planning-dashboard');
               setSelectedStoreApp(null);
             }}
             onUninstall={() => {
               if (selectedStoreApp.id === 'menus') setConfirmation('uninstall-menus');
               else if (selectedStoreApp.id === 'production') setConfirmation('uninstall-production');
               else if (selectedStoreApp.id === 'technical-sheets') setConfirmation('uninstall-technical-sheets');
+              else if (selectedStoreApp.id === 'planning') setConfirmation('uninstall-planning');
               else setConfirmation(selectedStoreApp.id === 'rnm-prices' ? 'uninstall-rnm-prices' : 'uninstall-stocks');
               setSelectedStoreApp(null);
             }}
@@ -2669,6 +2693,17 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         loading={appActionLoading}
         onCancel={() => setConfirmation(null)}
         onConfirm={uninstallStocks}
+      />
+
+      <ConfirmationModal
+        isOpen={confirmation === 'uninstall-planning'}
+        title="Supprimer l’application Planning ?"
+        text="L’entrée disparaîtra de la navigation, mais les plannings, affectations et historiques existants seront conservés."
+        confirmLabel="Supprimer"
+        danger
+        loading={appActionLoading}
+        onCancel={() => setConfirmation(null)}
+        onConfirm={uninstallPlanning}
       />
 
       <ConfirmationModal
@@ -2750,6 +2785,54 @@ type Archivable = { archivedAt?: string | null; isArchived?: boolean };
 
 function isArchived(item: Archivable) {
   return Boolean(item.archivedAt || item.isArchived);
+}
+
+function getRhPlanningReadiness(
+  hrInstalled: boolean,
+  departments: HrDepartment[],
+  positions: HrPosition[],
+  collaborators: HrCollaborator[],
+) {
+  if (!hrInstalled) {
+    return { ready: false, message: 'Installez le module RH avant d’activer Planning.' };
+  }
+
+  const activeDepartments = departments.filter((department) => !isArchived(department));
+  const activePositions = positions.filter((position) => !isArchived(position));
+  const activeCollaborators = collaborators.filter((collaborator) => !isArchived(collaborator) && collaborator.status === 'ACTIVE');
+  const missing: string[] = [];
+
+  if (!activeDepartments.length) missing.push('un service');
+  if (!activePositions.length) missing.push('un poste');
+  if (!activeCollaborators.length) missing.push('un collaborateur');
+
+  const activeDepartmentIds = new Set(activeDepartments.map((department) => department.id));
+  const activePositionIds = new Set(activePositions.map((position) => position.id));
+  const incompleteCollaborators = activeCollaborators.filter((collaborator) => {
+    const hasDisplayName = Boolean(`${collaborator.firstName ?? ''} ${collaborator.lastName ?? ''}`.trim());
+    const departmentId = collaborator.departmentId ?? collaborator.department?.id;
+    const positionId = collaborator.positionId ?? collaborator.position?.id;
+    return !hasDisplayName || !departmentId || !positionId || !activeDepartmentIds.has(departmentId) || !activePositionIds.has(positionId);
+  });
+
+  if (incompleteCollaborators.length) {
+    const names = incompleteCollaborators.slice(0, 3).map((collaborator) => `${collaborator.firstName ?? ''} ${collaborator.lastName ?? ''}`.trim() || 'Collaborateur sans nom');
+    const suffix = incompleteCollaborators.length > 3 ? `, +${incompleteCollaborators.length - 3}` : '';
+    missing.push(`un nom affichable, un service principal et un poste principal pour ${names.join(', ')}${suffix}`);
+  }
+
+  if (!missing.length) return { ready: true, message: undefined };
+
+  return {
+    ready: false,
+    message: `Ajoutez ${formatMissingPlanningPrerequisites(missing)} avant d’activer Planning.`,
+  };
+}
+
+function formatMissingPlanningPrerequisites(items: string[]) {
+  if (items.length === 1) return `au moins ${items[0]}`;
+  if (items.length === 2) return `au moins ${items[0]} et ${items[1]}`;
+  return `au moins ${items.slice(0, -1).join(', ')} et ${items[items.length - 1]}`;
 }
 
 function numeric(value: string | number | null | undefined) {
@@ -3059,6 +3142,7 @@ function ApplicationsPage({
   onInstallApp,
   installingAppId,
   installProgress,
+  planningPrerequisiteMessage,
   onUninstallApp,
 }: {
   installedApps: string[];
@@ -3067,6 +3151,7 @@ function ApplicationsPage({
   onInstallApp: (appId: string) => void;
   installingAppId: string | null;
   installProgress: number;
+  planningPrerequisiteMessage?: string;
   onUninstallApp: (appId: string) => void;
 }) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -3157,6 +3242,7 @@ function ApplicationsPage({
             const installed = installedApps.includes(app.id);
             const available = app.status === 'Disponible';
             const installing = installingAppId === app.id;
+            const prerequisiteMessage = app.id === 'planning' ? planningPrerequisiteMessage : undefined;
             const Icon = app.icon;
 
             return (
@@ -3190,13 +3276,17 @@ function ApplicationsPage({
                     >
                       Ouvrir
                     </button>
-                  ) : available ? (
+                  ) : available && !prerequisiteMessage ? (
                     <button 
                       className="btn btn-get"
                       onClick={() => onInstallApp(app.id)}
                       disabled={installingAppId !== null}
                     >
                       Obtenir
+                    </button>
+                  ) : available && prerequisiteMessage ? (
+                    <button className="btn btn-get soon" disabled title={prerequisiteMessage}>
+                      Bloqué
                     </button>
                   ) : (
                     <button className="btn btn-get soon" disabled>
@@ -3219,6 +3309,7 @@ function AppStoreDetailSheet({
   installed,
   installing,
   progress,
+  prerequisiteMessage,
   onInstall,
   onOpen,
   onUninstall,
@@ -3228,6 +3319,7 @@ function AppStoreDetailSheet({
   installed: boolean;
   installing: boolean;
   progress: number;
+  prerequisiteMessage?: string;
   onInstall: () => void;
   onOpen: () => void;
   onUninstall: () => void;
@@ -3265,9 +3357,13 @@ function AppStoreDetailSheet({
                   <Trash2 size={14} /> Désinstaller
                 </button>
               </div>
-            ) : isAvailable ? (
+            ) : isAvailable && !prerequisiteMessage ? (
               <button className="btn btn-primary" onClick={onInstall} style={{ padding: '0.45rem 1.25rem', borderRadius: '20px' }}>
                 Obtenir
+              </button>
+            ) : isAvailable && prerequisiteMessage ? (
+              <button className="btn btn-secondary" disabled style={{ padding: '0.45rem 1.25rem', borderRadius: '20px' }}>
+                Bloqué
               </button>
             ) : (
               <span className="sidebar-badge-soon" style={{ padding: '0.45rem 0.75rem', fontSize: '0.8rem' }}>Bientôt disponible</span>
@@ -3275,6 +3371,12 @@ function AppStoreDetailSheet({
           </div>
         </div>
       </div>
+
+      {prerequisiteMessage ? (
+        <div className="alert" style={{ margin: '1rem 0 0' }}>
+          {prerequisiteMessage}
+        </div>
+      ) : null}
 
       {/* Meta Stats */}
       <div className="app-sheet-stats">

@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Prisma, UnitType, AuditAction, UserStatus, Permission } from '@prisma/client';
@@ -337,8 +337,31 @@ export class AuthService {
 
   async installPlanningApplication(user: AuthenticatedUser) {
     if (!user.organizationId) throw new ForbiddenException('Organization setup is required before installing applications');
-    await this.prisma.organization.update({ where: { id: user.organizationId }, data: { planningInstalledAt: new Date() } });
-    await this.prisma.auditLog.create({ data: { organizationId: user.organizationId, userId: user.id, action: AuditAction.PLANNING_MODULE_INSTALLED, entityType: 'Module', entityId: 'planning', entityName: 'Planning' } });
+    const organizationId = user.organizationId;
+    const [organization, departmentCount, positionCount, activeEmployees, incompleteEmployee] = await Promise.all([
+      this.prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { hrInstalledAt: true, planningInstalledAt: true },
+      }),
+      this.prisma.hrDepartment.count({ where: { organizationId, isArchived: false } }),
+      this.prisma.hrPosition.count({ where: { organizationId, isArchived: false } }),
+      this.prisma.hrEmployee.count({ where: { organizationId, isArchived: false, status: 'ACTIVE', department: { isArchived: false }, position: { isArchived: false } } }),
+      this.prisma.hrEmployee.findFirst({ where: { organizationId, isArchived: false, status: 'ACTIVE', OR: [{ AND: [{ firstName: '' }, { lastName: '' }] }, { department: { isArchived: true } }, { position: { isArchived: true } }] }, select: { id: true } }),
+    ]);
+    const missing: string[] = [];
+    if (!organization?.hrInstalledAt) missing.push('le module RH');
+    if (!departmentCount) missing.push('un service');
+    if (!positionCount) missing.push('un poste');
+    if (!activeEmployees) missing.push('un collaborateur avec service/poste principal');
+    if (incompleteEmployee) missing.push('un nom affichable, un service principal et un poste principal pour chaque collaborateur actif');
+    if (missing.length) {
+      throw new BadRequestException(`Ajoutez ${this.formatPlanningPrerequisites(missing)} avant d’activer Planning.`);
+    }
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { planningInstalledAt: organization?.planningInstalledAt ?? new Date() },
+    });
+    await this.prisma.auditLog.create({ data: { organizationId, userId: user.id, action: AuditAction.PLANNING_MODULE_INSTALLED, entityType: 'Module', entityId: 'planning', entityName: 'Planning' } });
     return this.getDashboardSummary(user);
   }
 
@@ -474,6 +497,12 @@ export class AuthService {
         },
       });
     }
+  }
+
+  private formatPlanningPrerequisites(items: string[]) {
+    if (items.length === 1) return `au moins ${items[0]}`;
+    if (items.length === 2) return `au moins ${items[0]} et ${items[1]}`;
+    return `au moins ${items.slice(0, -1).join(', ')} et ${items[items.length - 1]}`;
   }
 
   private createDefaultUnits(tx: Prisma.TransactionClient, organizationId: string) {

@@ -41,7 +41,14 @@ import type {
   PlanningAlert,
   PlanningAssignment,
   PlanningBootstrap,
+  PlanningDayPresetPayload,
+  PlanningEmployeeTemplateAssignment,
   PlanningGenerationResult,
+  PlanningPeriodActionPayload,
+  PlanningPeriodActionResult,
+  PlanningRequirement,
+  PlanningTemplate,
+  PlanningWeeklyRotationPayload,
   HrRotationAssignment,
   TechnicalSheetAllergen,
   TechnicalSheetCategory,
@@ -420,17 +427,79 @@ export const api = {
     if (!response.ok) throw new ApiError(await response.text(), response.status);
     return response.blob();
   },
-  planningBootstrap(token: string) {
-    return request<PlanningBootstrap>('/planning/bootstrap', {}, token);
+  planningBootstrap(token: string, params: { month?: number; year?: number; siteId?: string; departmentId?: string; employeeId?: string; seasonalTemplateId?: string } = {}) {
+    const search = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') search.set(key, String(value));
+    });
+    return request<PlanningBootstrap>(`/planning/context${search.size ? `?${search.toString()}` : ''}`, {}, token);
+  },
+  planningContext(token: string, params: { month?: number; year?: number; siteId?: string; departmentId?: string; employeeId?: string; seasonalTemplateId?: string } = {}) {
+    const search = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') search.set(key, String(value));
+    });
+    return request<PlanningBootstrap>(`/planning/context${search.size ? `?${search.toString()}` : ''}`, {}, token);
+  },
+  controlPlanningPeriod(token: string, payload: PlanningPeriodActionPayload) {
+    return request<PlanningPeriodActionResult>('/planning/period/control', { method: 'POST', body: JSON.stringify(payload) }, token);
+  },
+  publishPlanningPeriod(token: string, payload: PlanningPeriodActionPayload) {
+    return request<PlanningPeriodActionResult>('/planning/period/publish', { method: 'POST', body: JSON.stringify(payload) }, token);
+  },
+  lockPlanningPeriod(token: string, payload: PlanningPeriodActionPayload) {
+    return request<PlanningPeriodActionResult>('/planning/period/lock', { method: 'POST', body: JSON.stringify(payload) }, token);
   },
   createPlanningAssignment(token: string, payload: Partial<PlanningAssignment>) {
     return request<PlanningAssignment>('/planning/assignments', { method: 'POST', body: JSON.stringify(payload) }, token);
   },
+  upsertPlanningDayAssignment(token: string, payload: Partial<PlanningAssignment> & { templateId?: string }) {
+    return request<PlanningAssignment>('/planning/assignments/upsert-day', { method: 'POST', body: JSON.stringify(payload) }, token);
+  },
+  updatePlanningAssignment(token: string, id: string, payload: Partial<PlanningAssignment>) {
+    return request<PlanningAssignment>(`/planning/assignments/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
+  },
   movePlanningAssignment(token: string, id: string, payload: Partial<PlanningAssignment>) {
     return request<PlanningAssignment>(`/planning/assignments/${id}/move`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
   },
+  createPlanningRequirement(token: string, payload: Partial<PlanningRequirement>) {
+    return request<PlanningRequirement>('/planning/requirements', { method: 'POST', body: JSON.stringify(payload) }, token);
+  },
+  updatePlanningRequirement(token: string, id: string, payload: Partial<PlanningRequirement>) {
+    return request<PlanningRequirement>(`/planning/requirements/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
+  },
+  deletePlanningRequirement(token: string, id: string) {
+    return request<PlanningRequirement>(`/planning/requirements/${id}`, { method: 'DELETE' }, token);
+  },
+  createPlanningDayPreset(token: string, payload: PlanningDayPresetPayload) {
+    return request<PlanningTemplate>('/planning/templates/day-presets', { method: 'POST', body: JSON.stringify(payload) }, token);
+  },
+  updatePlanningDayPreset(token: string, id: string, payload: PlanningDayPresetPayload) {
+    return request<PlanningTemplate>(`/planning/templates/day-presets/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
+  },
+  deletePlanningDayPreset(token: string, id: string) {
+    return request<PlanningTemplate>(`/planning/templates/day-presets/${id}`, { method: 'DELETE' }, token);
+  },
+  createPlanningWeeklyRotation(token: string, payload: PlanningWeeklyRotationPayload) {
+    return request<PlanningTemplate>('/planning/templates/weekly-rotations', { method: 'POST', body: JSON.stringify(payload) }, token);
+  },
+  updatePlanningWeeklyRotation(token: string, id: string, payload: PlanningWeeklyRotationPayload) {
+    return request<PlanningTemplate>(`/planning/templates/weekly-rotations/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
+  },
+  deletePlanningWeeklyRotation(token: string, id: string) {
+    return request<PlanningTemplate>(`/planning/templates/weekly-rotations/${id}`, { method: 'DELETE' }, token);
+  },
+  setPlanningEmployeeTemplates(token: string, payload: PlanningEmployeeTemplateAssignment) {
+    return request<PlanningEmployeeTemplateAssignment>('/planning/templates/employee-assignments', { method: 'POST', body: JSON.stringify(payload) }, token);
+  },
   generatePlanning(token: string, payload: { startDate: string; endDate: string; siteId?: string; apply?: boolean }) {
     return request<PlanningGenerationResult>('/planning/generate', { method: 'POST', body: JSON.stringify(payload) }, token);
+  },
+  previewPlanningRotation(token: string, rotationId: string, payload: { startDate: string; endDate: string; employeeId?: string; siteId?: string }) {
+    return request<{ assignments?: PlanningAssignment[]; applied?: boolean; temporarySource?: string }>(`/planning/rotations/${rotationId}/preview`, { method: 'POST', body: JSON.stringify(payload) }, token);
+  },
+  applyPlanningRotation(token: string, rotationId: string, payload: { startDate: string; endDate: string; employeeId?: string; siteId?: string; replaceExisting?: boolean }) {
+    return request<{ appliedAssignments?: PlanningAssignment[]; skipped?: unknown[]; applied?: boolean; temporarySource?: string }>(`/planning/rotations/${rotationId}/apply`, { method: 'POST', body: JSON.stringify(payload) }, token);
   },
   prefillStocks(token: string, payload: { categories?: boolean; units?: boolean; sites?: boolean; locations?: boolean; examples?: boolean }) {
     return request<DashboardSummary | { ok: boolean }>('/auth/apps/stocks/prefill', { method: 'POST', body: JSON.stringify(payload) }, token);
@@ -440,6 +509,9 @@ export const api = {
   },
   uninstallRnmPrices(token: string) {
     return request<DashboardSummary>('/auth/apps/rnm-prices/uninstall', { method: 'POST' }, token);
+  },
+  uninstallPlanning(token: string) {
+    return request<DashboardSummary>('/auth/apps/planning/uninstall', { method: 'POST' }, token);
   },
   rnmStats(token: string) {
     return request<{
