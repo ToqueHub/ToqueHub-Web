@@ -13,6 +13,7 @@ import { TechnicalSheetsModule } from './technical-sheets/technical-sheets.modul
 import { ProductionModule } from './production/production.module';
 import { MenusModule } from './menus/menus.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { BackupsModule } from './backups/backups.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     ProductionModule,
     MenusModule,
     DashboardModule,
+    BackupsModule,
   ],
 })
 export class AppModule {}

@@ -20,7 +20,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { api } from '../api/client';
-import type { EstablishmentType, SystemStatus, TeamSize, UserSession } from '../types';
+import type { BackupInspection, EstablishmentType, SystemStatus, TeamSize, UserSession } from '../types';
 
 interface FirstStartLandingProps {
   status?: SystemStatus;
@@ -71,6 +71,13 @@ export function FirstStartLanding({
   const [submitting, setSubmitting] = useState(false);
   const [completedCreationSteps, setCompletedCreationSteps] = useState(0);
   const [showOnboardingPreview, setShowOnboardingPreview] = useState(false);
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [restoreInspection, setRestoreInspection] = useState<BackupInspection | null>(null);
+  const [restorePhrase, setRestorePhrase] = useState('');
+  const [restoreError, setRestoreError] = useState<string>();
+  const [restoreMessage, setRestoreMessage] = useState<string>();
+  const [restoreBusy, setRestoreBusy] = useState(false);
+  const [restoreDone, setRestoreDone] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   
   const score = useMemo(() => passwordScore(admin.password), [admin.password]);
@@ -188,6 +195,40 @@ export function FirstStartLanding({
     }
   }
 
+  async function inspectBootstrapBackup(file?: File) {
+    if (!file) return;
+    setRestoreBusy(true);
+    setRestoreError(undefined);
+    setRestoreMessage(undefined);
+    try {
+      const inspection = await api.inspectBootstrapBackup(file);
+      setRestoreInspection(inspection);
+      setRestorePhrase('');
+      setRestoreMessage('Archive inspectée. Vérifiez le manifeste avant de restaurer.');
+    } catch (err) {
+      setRestoreError(err instanceof Error ? err.message : 'Inspection de la sauvegarde impossible.');
+    } finally {
+      setRestoreBusy(false);
+    }
+  }
+
+  async function restoreBootstrapBackup() {
+    if (!restoreInspection) return;
+    setRestoreBusy(true);
+    setRestoreError(undefined);
+    setRestoreMessage(undefined);
+    try {
+      const result = await api.restoreBootstrapBackup(restoreInspection.uploadId, restorePhrase);
+      setRestoreMessage(result.message || 'Restauration terminée. Vous pouvez vous connecter.');
+      setRestoreDone(true);
+      await onRefreshStatus();
+    } catch (err) {
+      setRestoreError(err instanceof Error ? err.message : 'Restauration impossible.');
+    } finally {
+      setRestoreBusy(false);
+    }
+  }
+
   const isFullWidth = step === 0 || step === 6;
 
   return (
@@ -247,6 +288,26 @@ export function FirstStartLanding({
               setFormError(undefined);
               setShowOnboardingPreview(true);
             }}
+          />
+        ) : restoreOpen && allowCreate ? (
+          <BootstrapRestorePanel
+            inspection={restoreInspection}
+            phrase={restorePhrase}
+            error={restoreError}
+            message={restoreMessage}
+            busy={restoreBusy}
+            done={restoreDone}
+            onPhraseChange={setRestorePhrase}
+            onFile={inspectBootstrapBackup}
+            onRestore={restoreBootstrapBackup}
+            onBack={() => {
+              setRestoreOpen(false);
+              setRestoreError(undefined);
+              setRestoreMessage(undefined);
+              setRestoreInspection(null);
+              setRestorePhrase('');
+            }}
+            onLoginRequested={onLoginRequested}
           />
         ) : (
           <div
@@ -371,9 +432,14 @@ export function FirstStartLanding({
                       Continuer <ArrowRight size={16} />
                     </button>
                   ) : (
-                    <button className="btn btn-primary" onClick={createEnvironment} disabled={submitting} style={{ marginLeft: 'auto' }}>
-                      {submitting ? 'Création de l\'instance...' : 'Créer mon environnement'} <Sparkles size={16} />
-                    </button>
+                    <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.65rem' }}>
+                      <button className="btn btn-primary" onClick={createEnvironment} disabled={submitting}>
+                        {submitting ? 'Création de l\'instance...' : 'Créer mon environnement'} <Sparkles size={16} />
+                      </button>
+                      <button className="btn btn-secondary" onClick={() => setRestoreOpen(true)} disabled={submitting}>
+                        <UploadCloud size={16} /> Restaurer depuis une sauvegarde
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
@@ -392,6 +458,78 @@ export function FirstStartLanding({
 // Alert icon helper
 function AlertCircleIcon() {
   return <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />;
+}
+
+function BootstrapRestorePanel({
+  inspection,
+  phrase,
+  error,
+  message,
+  busy,
+  done,
+  onPhraseChange,
+  onFile,
+  onRestore,
+  onBack,
+  onLoginRequested,
+}: {
+  inspection: BackupInspection | null;
+  phrase: string;
+  error?: string;
+  message?: string;
+  busy: boolean;
+  done: boolean;
+  onPhraseChange: (value: string) => void;
+  onFile: (file?: File) => void | Promise<void>;
+  onRestore: () => void | Promise<void>;
+  onBack: () => void;
+  onLoginRequested: () => void;
+}) {
+  return (
+    <div className="card-modern" style={{ padding: '2.5rem', borderRadius: '24px', background: 'white', boxShadow: '0 30px 80px rgba(9, 13, 22, 0.08)' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', marginBottom: '2rem' }}>
+        <div>
+          <span className="badge badge-reception" style={{ display: 'inline-flex', gap: '0.35rem', marginBottom: '0.8rem' }}>
+            <UploadCloud size={14} /> Restauration premier démarrage
+          </span>
+          <h1 style={{ fontSize: '2.35rem', fontWeight: 900, letterSpacing: '-0.05em', margin: 0 }}>Restaurer une sauvegarde</h1>
+          <p style={{ color: 'var(--text-muted)', lineHeight: 1.65, maxWidth: '680px', marginTop: '0.75rem' }}>
+            Importez une archive ToqueHub complète pour recréer l’environnement depuis sa base PostgreSQL et ses documents métier.
+          </p>
+        </div>
+        {!done ? <button className="btn btn-secondary" onClick={onBack} disabled={busy}><ArrowLeft size={16} /> Retour</button> : null}
+      </div>
+
+      {error ? <div className="alert-modern error" style={{ marginBottom: '1rem' }}><AlertCircleIcon /> {error}</div> : null}
+      {message ? <div className="alert-modern success" style={{ marginBottom: '1rem' }}><CheckCircle2 size={18} /> {message}</div> : null}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(320px, 0.8fr)', gap: '1rem' }}>
+        <div className="card-modern" style={{ padding: '1.25rem', boxShadow: 'var(--shadow-sm)' }}>
+          <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Server size={18} /> Archive</span>
+          <p className="muted">Sélectionnez un fichier `toquehub-backup-*.tar.gz` généré par ToqueHub.</p>
+          <input type="file" accept=".gz,.tgz,.tar.gz,application/gzip" disabled={busy || done} onChange={(event) => void onFile(event.target.files?.[0])} />
+          {inspection ? (
+            <div style={{ marginTop: '1rem', display: 'grid', gap: '0.65rem' }}>
+              <div className="info-card-premium"><span className="info-card-premium-label">Fichier</span><strong>{inspection.filename}</strong></div>
+              <div className="info-card-premium"><span className="info-card-premium-label">Créée le</span><strong>{new Date(inspection.manifest.createdAt).toLocaleString('fr-FR')}</strong></div>
+              <div className="info-card-premium"><span className="info-card-premium-label">Contenu</span><strong>{inspection.manifest.files.totalFileCount} fichier(s), {formatBackupBytes(inspection.manifest.files.totalSizeBytes)}</strong></div>
+              <div className="info-card-premium"><span className="info-card-premium-label">Base</span><strong>PostgreSQL {formatBackupBytes(inspection.manifest.database.sizeBytes)}</strong></div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="card-modern" style={{ padding: '1.25rem', borderColor: inspection ? 'rgba(239,68,68,0.35)' : undefined, boxShadow: 'var(--shadow-sm)' }}>
+          <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><ShieldCheck size={18} /> Confirmation</span>
+          <p className="muted">Cette action restaure l’instance. Saisissez exactement la phrase demandée.</p>
+          <input placeholder="RESTAURER TOQUEHUB" value={phrase} disabled={busy || done || !inspection} onChange={(event) => onPhraseChange(event.target.value)} />
+          <button className="btn btn-danger" style={{ width: '100%', marginTop: '1rem' }} disabled={busy || done || !inspection || phrase !== 'RESTAURER TOQUEHUB'} onClick={() => void onRestore()}>
+            {busy ? 'Restauration...' : 'Restaurer cette sauvegarde'}
+          </button>
+          {done ? <button className="btn btn-primary" style={{ width: '100%', marginTop: '0.75rem' }} onClick={onLoginRequested}>Se connecter</button> : null}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // 0. Welcome Screen
@@ -417,6 +555,12 @@ function WelcomeStep({ onStart }: { onStart: () => void }) {
       </div>
     </div>
   );
+}
+
+function formatBackupBytes(value?: number | null) {
+  if (!value) return '0 Ko';
+  if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} Ko`;
+  return `${(value / 1024 / 1024).toFixed(1)} Mo`;
 }
 
 // 1. Admin setup Step

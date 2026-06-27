@@ -20,6 +20,95 @@ export interface SystemStatus {
   hasAdmin: boolean;
 }
 
+export interface BackupManifest {
+  format: 'toquehub-backup';
+  version: number;
+  createdAt: string;
+  createdBy: string | null;
+  mode: 'manual' | 'scheduled';
+  app: { name: string; packageVersion: string };
+  database: {
+    provider: 'postgresql';
+    dump: string;
+    checksumSha256: string;
+    sizeBytes: number;
+  };
+  files: {
+    roots: Array<{
+      key: string;
+      envVar: string;
+      archivePath: string;
+      targetPath: string;
+      sizeBytes: number;
+      fileCount: number;
+    }>;
+    totalSizeBytes: number;
+    totalFileCount: number;
+  };
+  excluded: string[];
+}
+
+export interface BackupSummary {
+  id: string;
+  filename: string;
+  createdAt: string | null;
+  sizeBytes: number;
+  mode?: 'manual' | 'scheduled';
+  manifest?: BackupManifest;
+}
+
+export interface BackupListResponse {
+  backups: BackupSummary[];
+  operation: 'backup' | 'restore' | null;
+  tools: Array<{ key: string; path: string; available: boolean }>;
+}
+
+export interface BackupInspection {
+  uploadId: string;
+  filename: string;
+  sizeBytes: number;
+  manifest: BackupManifest;
+}
+
+export interface BackupRestoreResult {
+  restored: boolean;
+  restoredAt: string;
+  manifest: BackupManifest;
+  message: string;
+}
+
+export interface BackupSchedule {
+  enabled: boolean;
+  frequency: 'daily' | 'weekly';
+  time: string;
+  weekday: number;
+  retentionDays: number;
+  lastRunAt: string | null;
+}
+
+export type BackupCloudProvider = 'GOOGLE_DRIVE';
+export type BackupCloudConnectionStatus = 'DISCONNECTED' | 'CONFIGURED' | 'CONNECTED' | 'ERROR';
+
+export interface BackupCloudConnectionView {
+  provider: BackupCloudProvider;
+  status: BackupCloudConnectionStatus;
+  configured: boolean;
+  connected: boolean;
+  clientId: string | null;
+  redirectUri: string | null;
+  accountEmail: string | null;
+  driveFolderId: string | null;
+  lastSyncAt: string | null;
+  lastTestAt: string | null;
+  lastError: string | null;
+  updatedAt: string | null;
+}
+
+export interface BackupCloudStatus {
+  googleDrive: BackupCloudConnectionView;
+  encryptionConfigured: boolean;
+}
+
 export interface BootstrapAdminResponse {
   user: {
     id: string;

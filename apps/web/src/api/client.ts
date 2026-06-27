@@ -94,6 +94,12 @@ import type {
   MenuProductionGenerationPayload,
   MenuProductionGenerationResult,
   MenuStatus,
+  BackupInspection,
+  BackupCloudStatus,
+  BackupListResponse,
+  BackupRestoreResult,
+  BackupSchedule,
+  BackupSummary,
 } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL?.replace(/\/$/, '') ?? '';
@@ -786,6 +792,99 @@ export const api = {
     }).then(async (response) => {
       if (!response.ok) throw new ApiError(await response.text(), response.status);
       return { csv: await response.text() };
+    });
+  },
+  backups(token: string) {
+    return request<BackupListResponse>('/backups', {}, token);
+  },
+  createBackup(token: string) {
+    return request<BackupSummary>('/backups', { method: 'POST' }, token);
+  },
+  backupSchedule(token: string) {
+    return request<BackupSchedule>('/backups/schedule', {}, token);
+  },
+  updateBackupSchedule(token: string, payload: BackupSchedule) {
+    const { enabled, frequency, time, weekday, retentionDays } = payload;
+    return request<BackupSchedule>('/backups/schedule', { method: 'PATCH', body: JSON.stringify({ enabled, frequency, time, weekday, retentionDays }) }, token);
+  },
+  async downloadBackup(token: string, backup: BackupSummary) {
+    const response = await fetch(`${API_URL}/api/backups/${backup.id}/download`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new ApiError(await response.text(), response.status);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = globalThis.document.createElement('a');
+    link.href = url;
+    link.download = backup.filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  },
+  sendBackupToGoogleDrive(token: string, id: string) {
+    return request<{ ok: boolean; message: string; connection: BackupCloudStatus['googleDrive']; backup: BackupSummary }>(`/backups/${id}/cloud/google`, { method: 'POST' }, token);
+  },
+  restoreBackup(token: string, id: string, confirmationPhrase: string) {
+    return request<BackupRestoreResult>(`/backups/${id}/restore`, { method: 'POST', body: JSON.stringify({ confirmationPhrase }) }, token);
+  },
+  inspectBackupUpload(token: string, file: File) {
+    const body = new FormData();
+    body.set('file', file);
+    return fetch(`${API_URL}/api/backups/upload/inspect`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    }).then(async (response) => {
+      if (!response.ok) throw new ApiError(await response.text(), response.status);
+      return response.json() as Promise<BackupInspection>;
+    });
+  },
+  restoreBackupUpload(token: string, uploadId: string, confirmationPhrase: string) {
+    const body = new FormData();
+    body.set('uploadId', uploadId);
+    body.set('confirmationPhrase', confirmationPhrase);
+    return fetch(`${API_URL}/api/backups/upload/restore`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    }).then(async (response) => {
+      if (!response.ok) throw new ApiError(await response.text(), response.status);
+      return response.json() as Promise<BackupRestoreResult>;
+    });
+  },
+  backupCloudDefaultRedirectUri() {
+    const base = API_URL || globalThis.location.origin;
+    return `${base}/api/backups/cloud/google/callback`;
+  },
+  backupCloudStatus(token: string) {
+    return request<BackupCloudStatus>('/backups/cloud/status', {}, token);
+  },
+  configureGoogleDriveBackup(token: string, payload: { clientId: string; clientSecret?: string; redirectUri: string }) {
+    return request<BackupCloudStatus['googleDrive']>('/backups/cloud/google/config', { method: 'PUT', body: JSON.stringify(payload) }, token);
+  },
+  connectGoogleDriveBackup(token: string) {
+    return request<{ authUrl: string }>('/backups/cloud/google/connect', { method: 'POST' }, token);
+  },
+  testGoogleDriveBackup(token: string) {
+    return request<{ ok: boolean; connection: BackupCloudStatus['googleDrive'] }>('/backups/cloud/google/test', { method: 'POST' }, token);
+  },
+  disconnectGoogleDriveBackup(token: string) {
+    return request<BackupCloudStatus['googleDrive']>('/backups/cloud/google', { method: 'DELETE' }, token);
+  },
+  inspectBootstrapBackup(file: File) {
+    const body = new FormData();
+    body.set('file', file);
+    return fetch(`${API_URL}/api/backups/bootstrap/inspect`, { method: 'POST', body }).then(async (response) => {
+      if (!response.ok) throw new ApiError(await response.text(), response.status);
+      return response.json() as Promise<BackupInspection>;
+    });
+  },
+  restoreBootstrapBackup(uploadId: string, confirmationPhrase: string) {
+    const body = new FormData();
+    body.set('uploadId', uploadId);
+    body.set('confirmationPhrase', confirmationPhrase);
+    return fetch(`${API_URL}/api/backups/bootstrap/restore`, { method: 'POST', body }).then(async (response) => {
+      if (!response.ok) throw new ApiError(await response.text(), response.status);
+      return response.json() as Promise<BackupRestoreResult>;
     });
   },
   users(token: string) {

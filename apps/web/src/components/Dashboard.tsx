@@ -52,6 +52,10 @@ import {
   MapPin,
   Archive,
   Download,
+  Cloud,
+  ExternalLink,
+  HelpCircle,
+  UploadCloud,
   ClipboardList,
   Warehouse,
   Workflow,
@@ -121,6 +125,12 @@ import type {
   HrSummary,
   HrRotation,
   HrRotationPayload,
+  BackupInspection,
+  BackupCloudStatus,
+  BackupListResponse,
+  BackupRestoreResult,
+  BackupSchedule,
+  BackupSummary,
 } from '../types';
 
 const movementLabels: Record<StockMovementType, string> = {
@@ -1604,15 +1614,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             <Settings />
             Général
           </div>
-          {isAdmin ? (
-            <div
-              className={`sidebar-item ${activeTab === 'users' ? 'active' : ''}`}
-              onClick={() => goToTab('users')}
-            >
-              <UsersRound />
-              Utilisateurs
-            </div>
-          ) : null}
           <div
             className={`sidebar-item ${activeTab === 'applications' ? 'active' : ''}`}
             onClick={() => goToTab('applications')}
@@ -1620,23 +1621,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             <ShoppingBag />
             Applications
           </div>
-          <div className="sidebar-item-locked">
-            <div className="locked-left"><ShieldCheck /> Audit</div>
-            <span className="sidebar-badge-soon">Futur</span>
-          </div>
-
-          {isAdmin ? (
-            <>
-              <div className="sidebar-section-title">Administration</div>
-              <div
-                className={`sidebar-item ${activeTab === 'architecture' ? 'active' : ''}`}
-                onClick={() => goToTab('architecture')}
-              >
-                <Workflow />
-                Architecture
-              </div>
-            </>
-          ) : null}
 
           {/* Applications list divider / search */}
           <div className="sidebar-section-title-row">
@@ -2217,10 +2201,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
               {/* TAB SETTINGS */}
               {activeTab === 'settings' && (
-                <SettingsPage session={session} token={token} dashboardSummary={dashboardSummary} focusApiKeys={apiKeysPanelHint} onApiKeysSaved={() => { setApiKeysPanelHint(false); void refresh(); }} onOpenUsers={() => goToTab('users')} />
+                <SettingsPage session={session} token={token} dashboardSummary={dashboardSummary} focusApiKeys={apiKeysPanelHint} onApiKeysSaved={() => { setApiKeysPanelHint(false); void refresh(); }} onOpenUsers={() => goToTab('users')} onRestoreComplete={onLogout} isAdmin={isAdmin} />
               )}
               {activeTab === 'organization-general' && (
-                <SettingsPage session={session} token={token} dashboardSummary={dashboardSummary} focusApiKeys={apiKeysPanelHint} onApiKeysSaved={() => { setApiKeysPanelHint(false); void refresh(); }} onOpenUsers={() => goToTab('users')} />
+                <SettingsPage session={session} token={token} dashboardSummary={dashboardSummary} focusApiKeys={apiKeysPanelHint} onApiKeysSaved={() => { setApiKeysPanelHint(false); void refresh(); }} onOpenUsers={() => goToTab('users')} onRestoreComplete={onLogout} isAdmin={isAdmin} />
               )}
               {activeTab === 'users' && isAdmin && (
                 <UsersPage
@@ -4050,7 +4034,367 @@ function DevSwitch({ users, currentUserId, onSwitch, onCreate }: { users: CoreUs
 
 
 
-function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKeysSaved, onOpenUsers }: { session: UserSession; token: string; dashboardSummary?: DashboardSummary; focusApiKeys?: boolean; onApiKeysSaved?: () => void; onOpenUsers?: () => void }) {
+function BackupRestorePage({ token, onRestoreComplete }: { token: string; onRestoreComplete: () => void }) {
+  const [state, setState] = useState<BackupListResponse>();
+  const [schedule, setSchedule] = useState<BackupSchedule>();
+  const [cloudStatus, setCloudStatus] = useState<BackupCloudStatus>();
+  const [cloudForm, setCloudForm] = useState({ clientId: '', clientSecret: '', redirectUri: api.backupCloudDefaultRedirectUri() });
+  const [inspection, setInspection] = useState<BackupInspection | null>(null);
+  const [selectedBackup, setSelectedBackup] = useState<BackupSummary | null>(null);
+  const [confirmationPhrase, setConfirmationPhrase] = useState('');
+  const [message, setMessage] = useState<string>();
+  const [error, setError] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  const [cloudHelpOpen, setCloudHelpOpen] = useState(false);
+  const [editingCloudConfig, setEditingCloudConfig] = useState(false);
+
+  async function load() {
+    setError(undefined);
+    try {
+      const [nextState, nextSchedule, nextCloudStatus] = await Promise.all([api.backups(token), api.backupSchedule(token), api.backupCloudStatus(token)]);
+      setState(nextState);
+      setSchedule(nextSchedule);
+      setCloudStatus(nextCloudStatus);
+      setCloudForm((current) => ({
+        clientId: current.clientId || nextCloudStatus.googleDrive.clientId || '',
+        clientSecret: current.clientSecret,
+        redirectUri: current.redirectUri || nextCloudStatus.googleDrive.redirectUri || api.backupCloudDefaultRedirectUri(),
+      }));
+      if (nextCloudStatus.googleDrive.connected) setEditingCloudConfig(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Impossible de charger les sauvegardes.');
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, [token]);
+
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if ((event.data as { type?: string } | undefined)?.type === 'toquehub:backup-cloud-google') {
+        setMessage((event.data as { ok?: boolean }).ok ? 'Google Drive connecté.' : 'Connexion Google Drive interrompue.');
+        void load();
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [token]);
+
+  async function run(action: () => Promise<unknown>, success: string, restore = false) {
+    setBusy(true);
+    setError(undefined);
+    setMessage(undefined);
+    try {
+      const result = await action();
+      const restoreResult = result as BackupRestoreResult | undefined;
+      setMessage(restoreResult?.message || success);
+      setConfirmationPhrase('');
+      setSelectedBackup(null);
+      setInspection(null);
+      await load();
+      if (restore) window.setTimeout(onRestoreComplete, 1800);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Opération impossible.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function inspectFile(file?: File) {
+    if (!file) return;
+    await run(async () => {
+      const next = await api.inspectBackupUpload(token, file);
+      setInspection(next);
+      setSelectedBackup(null);
+      return next;
+    }, 'Archive inspectée.');
+  }
+
+  async function saveSchedule() {
+    if (!schedule) return;
+    await run(async () => {
+      const saved = await api.updateBackupSchedule(token, schedule);
+      setSchedule(saved);
+      return saved;
+    }, 'Planification enregistrée.');
+  }
+
+  async function saveGoogleDriveConfig() {
+    await run(async () => {
+      const saved = await api.configureGoogleDriveBackup(token, {
+        clientId: cloudForm.clientId.trim(),
+        clientSecret: cloudForm.clientSecret.trim() || undefined,
+        redirectUri: cloudForm.redirectUri.trim(),
+      });
+      setCloudStatus((current) => current ? { ...current, googleDrive: saved } : current);
+      setCloudForm((current) => ({ ...current, clientSecret: '' }));
+      return saved;
+    }, 'Configuration Google Drive enregistrée.');
+  }
+
+  async function connectGoogleDrive() {
+    await run(async () => {
+      const { authUrl } = await api.connectGoogleDriveBackup(token);
+      window.open(authUrl, 'toquehub-google-drive', 'width=980,height=720');
+      return null;
+    }, 'Autorisation Google ouverte.');
+  }
+
+  async function testGoogleDrive() {
+    await run(() => api.testGoogleDriveBackup(token), 'Connexion Google Drive validée.');
+  }
+
+  async function disconnectGoogleDrive() {
+    await run(() => api.disconnectGoogleDriveBackup(token), 'Compte Google Drive déconnecté.');
+  }
+
+  function copyCloudRedirectUri() {
+    if (!navigator.clipboard) {
+      setError('Copie automatique indisponible dans ce navigateur.');
+      return;
+    }
+    void navigator.clipboard.writeText(cloudForm.redirectUri);
+    setMessage('URI de redirection copiée.');
+  }
+
+  const localRestoreReady = Boolean(selectedBackup && confirmationPhrase === 'RESTAURER TOQUEHUB');
+  const uploadRestoreReady = Boolean(inspection && confirmationPhrase === 'RESTAURER TOQUEHUB');
+  const googleDrive = cloudStatus?.googleDrive;
+  const googleDriveConfigured = Boolean(googleDrive?.configured);
+  const googleDriveConnected = Boolean(googleDrive?.connected);
+  const googleDriveStatusLabel = googleDriveConnected ? 'Connecté' : googleDriveConfigured ? 'Configuré' : 'Non connecté';
+  const showCloudConfigForm = !googleDriveConnected || editingCloudConfig;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      <section className="welcome-hero settings-hero" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', border: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="settings-hero-grid">
+          <div className="settings-hero-left">
+            <span className="sovereign-badge-glow"><span className="status-indicator-dot green"></span> Continuité d’activité</span>
+            <h1 style={{ color: 'white', margin: '0.5rem 0 0.25rem 0', fontSize: '2rem', fontWeight: 800 }}>Sauvegarde & restauration</h1>
+            <p style={{ color: 'rgba(255,255,255,0.72)', margin: 0, fontSize: '0.92rem', lineHeight: 1.5 }}>Archive complète de l’instance: base PostgreSQL, documents métier et manifeste technique, sans secrets applicatifs.</p>
+          </div>
+          <div className="glass-terminal">
+            <div className="glass-terminal-header"><span className="glass-terminal-title">backup runtime</span></div>
+            <div className="glass-terminal-rows">
+              {(state?.tools ?? []).map((tool) => <div className="glass-terminal-row" key={tool.key}><span className="label">{tool.key.toUpperCase()} :</span><span className="value" style={{ color: tool.available ? '#10b981' : '#f97316' }}><span className={`status-indicator-dot ${tool.available ? 'green' : 'orange'}`}></span>{tool.available ? 'DISPONIBLE' : 'MANQUANT'}</span></div>)}
+              <div className="glass-terminal-row"><span className="label">OPÉRATION :</span><span className="value" style={{ color: state?.operation ? '#f97316' : '#10b981' }}>{state?.operation ?? 'AUCUNE'}</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {error ? <div className="alert-modern error"><AlertCircle size={16} /> {error}</div> : null}
+      {message ? <div className="alert-modern success"><CheckCircle2 size={16} /> {message}</div> : null}
+
+      <div className="card-modern" style={{ padding: '1.25rem' }}>
+        <div className="section-header-modern">
+          <div className="section-info"><span className="card-title"><Archive size={18} /> Sauvegardes locales</span><span className="section-tagline">Les archives sont conservées côté serveur et téléchargeables.</span></div>
+          <button className="btn btn-primary" disabled={busy || Boolean(state?.operation)} onClick={() => void run(() => api.createBackup(token), 'Sauvegarde créée.')}><Archive size={16} /> Créer une sauvegarde</button>
+        </div>
+        <div className="table-wrapper">
+          <table className="table-modern">
+            <thead>
+              <tr><th>Archive</th><th>Date</th><th>Contenu</th><th>Taille</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+              {(state?.backups ?? []).map((backup) => (
+                <tr key={backup.id}>
+                  <td><strong>{backup.filename}</strong><br /><small>{backup.mode === 'scheduled' ? 'Automatique' : 'Manuelle'}</small></td>
+                  <td>{backup.createdAt ? new Date(backup.createdAt).toLocaleString('fr-FR') : '—'}</td>
+                  <td>{backup.manifest ? `${backup.manifest.files.totalFileCount} fichier(s), PostgreSQL ${formatBytes(backup.manifest.database.sizeBytes)}` : 'Manifeste indisponible'}</td>
+                  <td>{formatBytes(backup.sizeBytes)}</td>
+                  <td>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void api.downloadBackup(token, backup)}><Download size={14} /> Télécharger</button>
+                      <button className="btn btn-secondary btn-sm" disabled={busy || !googleDriveConnected} onClick={() => void run(() => api.sendBackupToGoogleDrive(token, backup.id), 'Sauvegarde envoyée vers Google Drive.')} title={googleDriveConnected ? 'Envoyer cette archive vers Google Drive' : 'Connectez Google Drive avant l’envoi'}><UploadCloud size={14} /> Envoyer vers GDrive</button>
+                      <button className="btn btn-outline-danger btn-sm" disabled={busy} onClick={() => { setSelectedBackup(backup); setInspection(null); setConfirmationPhrase(''); }}><RotateCw size={14} /> Restaurer</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {!state?.backups?.length ? <EmptyMini title="Aucune sauvegarde" text="Créez une première archive complète de l’instance." /> : null}
+      </div>
+
+      <div className="card-modern" style={{ padding: '1.25rem', ...(googleDriveConnected && !editingCloudConfig ? { background: '#f8fafc', borderColor: 'rgba(16,185,129,0.24)' } : {}) }}>
+        <div className="section-header-modern">
+          <div className="section-info">
+            <span className="card-title">
+              <Cloud size={18} /> Sauvegarde Cloud
+              <button
+                type="button"
+                onClick={() => setCloudHelpOpen(true)}
+                title="Tutoriel sauvegarde cloud"
+                aria-label="Ouvrir le tutoriel sauvegarde cloud"
+                style={{
+                  width: 28,
+                  height: 28,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '999px',
+                  border: '1px solid rgba(100, 116, 139, 0.18)',
+                  background: 'rgba(248, 250, 252, 0.92)',
+                  color: '#64748b',
+                  cursor: 'pointer',
+                  marginLeft: '0.35rem',
+                  boxShadow: '0 6px 14px rgba(15, 23, 42, 0.06)',
+                }}
+              >
+                <HelpCircle size={16} />
+              </button>
+            </span>
+            <span className="section-tagline">Réplication automatique des archives locales vers Google Drive.</span>
+          </div>
+          <span className={`badge ${googleDriveConnected ? 'badge-reception' : googleDrive?.status === 'ERROR' ? 'badge-correction' : 'badge-stock'}`}>{googleDriveStatusLabel}</span>
+        </div>
+
+        {!cloudStatus?.encryptionConfigured ? <div className="alert-modern error" style={{ marginBottom: '1rem' }}><AlertCircle size={16} /> BACKUP_CLOUD_ENCRYPTION_KEY doit être configuré côté serveur pour activer Google Drive.</div> : null}
+        {googleDrive?.lastError ? <div className="alert-modern error" style={{ marginBottom: '1rem' }}><AlertCircle size={16} /> {googleDrive.lastError}</div> : null}
+
+        <div className="settings-grid-premium" style={{ marginBottom: '1rem' }}>
+          <div className="info-card-premium">
+            <div className="info-card-premium-header"><span className="info-card-premium-label">Compte Google</span><span className="info-card-premium-icon"><Cloud size={16} /></span></div>
+            <div className="info-card-premium-value">{googleDrive?.accountEmail ?? 'Non connecté'}</div>
+          </div>
+          <div className="info-card-premium">
+            <div className="info-card-premium-header"><span className="info-card-premium-label">Dernière synchronisation</span><span className="info-card-premium-icon"><Clock size={16} /></span></div>
+            <div className="info-card-premium-value">{googleDrive?.lastSyncAt ? new Date(googleDrive.lastSyncAt).toLocaleString('fr-FR') : 'Jamais'}</div>
+          </div>
+          <div className="info-card-premium">
+            <div className="info-card-premium-header"><span className="info-card-premium-label">Dernier test</span><span className="info-card-premium-icon"><ShieldCheck size={16} /></span></div>
+            <div className="info-card-premium-value">{googleDrive?.lastTestAt ? new Date(googleDrive.lastTestAt).toLocaleString('fr-FR') : 'Jamais'}</div>
+          </div>
+        </div>
+
+        {googleDriveConnected && !editingCloudConfig ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', padding: '1rem', borderRadius: '16px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.18)', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', minWidth: 0 }}>
+              <span style={{ width: 42, height: 42, borderRadius: '14px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'white', color: '#059669', boxShadow: '0 8px 18px rgba(15,23,42,0.06)' }}><ShieldCheck size={20} /></span>
+              <div style={{ minWidth: 0 }}>
+                <strong style={{ display: 'block', color: '#065f46' }}>Compte configuré et en ligne</strong>
+                <span className="muted" style={{ display: 'block', fontSize: '0.84rem', overflowWrap: 'anywhere' }}>{googleDrive?.accountEmail ?? 'Google Drive connecté'} · sauvegarde cloud active</span>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
+              <button className="btn btn-secondary" disabled={busy} onClick={() => setEditingCloudConfig(true)}><Edit3 size={16} /> Modifier</button>
+              <button className="btn btn-secondary" disabled={busy || !googleDriveConnected} onClick={() => void testGoogleDrive()}><ShieldCheck size={16} /> Tester</button>
+              <button className="btn btn-outline-danger" disabled={busy || !googleDriveConfigured} onClick={() => void disconnectGoogleDrive()}><RotateCw size={16} /> Déconnecter</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="settings-grid-premium">
+              <label>Client ID Google<input value={cloudForm.clientId} onChange={(event) => setCloudForm((current) => ({ ...current, clientId: event.target.value }))} placeholder="xxxxx.apps.googleusercontent.com" disabled={busy || (googleDriveConnected && !showCloudConfigForm)} /></label>
+              <label>Client secret Google<input type="password" value={cloudForm.clientSecret} onChange={(event) => setCloudForm((current) => ({ ...current, clientSecret: event.target.value }))} placeholder={googleDriveConfigured ? 'Laisser vide pour conserver' : 'GOCSPX-...'} disabled={busy || (googleDriveConnected && !showCloudConfigForm)} /></label>
+              <label>URI de redirection<input value={cloudForm.redirectUri} onChange={(event) => setCloudForm((current) => ({ ...current, redirectUri: event.target.value }))} disabled={busy || (googleDriveConnected && !showCloudConfigForm)} /></label>
+            </div>
+
+            <div className="alert-modern info" style={{ marginTop: '1rem', background: '#f8fafc' }}>
+              <Info size={16} />
+              <span>À ajouter dans Google Cloud Console: <code>{cloudForm.redirectUri}</code></span>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+              <button className="btn btn-secondary" disabled={busy || !cloudStatus?.encryptionConfigured || !cloudForm.clientId.trim() || !cloudForm.redirectUri.trim()} onClick={() => void saveGoogleDriveConfig()}><KeyRound size={16} /> Enregistrer OAuth</button>
+              <button className="btn btn-primary" disabled={busy || !googleDriveConfigured} onClick={() => void connectGoogleDrive()}><ExternalLink size={16} /> Connecter Google Drive</button>
+              <button className="btn btn-secondary" disabled={busy || !googleDriveConnected} onClick={() => void testGoogleDrive()}><ShieldCheck size={16} /> Tester</button>
+              <button className="btn btn-outline-danger" disabled={busy || !googleDriveConfigured} onClick={() => void disconnectGoogleDrive()}><RotateCw size={16} /> Déconnecter</button>
+              {editingCloudConfig ? <button className="btn btn-secondary" disabled={busy} onClick={() => setEditingCloudConfig(false)}>Annuler</button> : null}
+            </div>
+          </>
+        )}
+      </div>
+
+      <Modal isOpen={cloudHelpOpen} onClose={() => setCloudHelpOpen(false)} title="Tutoriel Google Drive" size="lg">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ padding: '1.1rem', borderRadius: '18px', background: 'linear-gradient(135deg, #eff6ff 0%, #ecfdf5 100%)', border: '1px solid rgba(16,185,129,0.16)' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', color: '#047857', fontWeight: 900, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              <Cloud size={15} /> Connexion Google Drive
+            </span>
+            <h3 style={{ margin: '0.45rem 0 0.35rem', color: 'var(--text-main)', fontSize: '1.35rem' }}>Votre sauvegarde cloud en 5 minutes</h3>
+            <p className="muted" style={{ margin: 0, lineHeight: 1.65 }}>
+              ToqueHub crée d'abord une archive locale, puis l'envoie dans un dossier Google Drive autorisé par votre compte.
+            </p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.85rem' }}>
+            {[
+              ['1', 'Créer le projet Google', 'Dans Google Cloud Console, créez ou sélectionnez un projet dédié à ToqueHub.'],
+              ['2', 'Activer Drive API', 'Dans Bibliothèque API, activez Google Drive API pour ce projet.'],
+              ['3', 'Préparer OAuth', 'Dans Écran de consentement OAuth, renseignez le nom de l’application et ajoutez votre compte en testeur si nécessaire.'],
+              ['4', 'Passer l’audience en production', 'Dans Audience, publiez l’application en production. En mode test, Google peut refuser la connexion ou limiter les comptes.'],
+              ['5', 'Créer les identifiants', 'Créez un Client OAuth de type Application Web, puis ajoutez exactement l’URI de redirection ToqueHub.'],
+              ['6', 'Connecter et tester', 'Copiez Client ID et secret ici, enregistrez OAuth, connectez Google Drive, puis lancez un test.'],
+            ].map(([step, title, text]) => (
+              <div key={step} style={{ padding: '1rem', border: '1px solid var(--light-border)', borderRadius: '16px', background: '#ffffff', boxShadow: '0 10px 24px rgba(15, 23, 42, 0.04)' }}>
+                <span style={{ width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '10px', background: 'rgba(16,185,129,0.1)', color: '#059669', fontWeight: 900 }}>{step}</span>
+                <strong style={{ display: 'block', marginTop: '0.8rem', color: 'var(--text-main)' }}>{title}</strong>
+                <p className="muted" style={{ margin: '0.35rem 0 0', lineHeight: 1.55, fontSize: '0.84rem' }}>{text}</p>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ padding: '1rem', borderRadius: '16px', background: '#f8fafc', border: '1px solid var(--light-border)', display: 'flex', gap: '0.9rem', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+            <div style={{ minWidth: 0 }}>
+              <strong style={{ display: 'block', color: 'var(--text-main)', marginBottom: '0.25rem' }}>URI de redirection à coller dans Google</strong>
+              <code style={{ display: 'block', whiteSpace: 'normal', overflowWrap: 'anywhere', color: '#0f172a' }}>{cloudForm.redirectUri}</code>
+            </div>
+            <button type="button" className="btn btn-secondary" onClick={copyCloudRedirectUri}><ClipboardList size={16} /> Copier</button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.85rem' }}>
+            <div className="alert-modern info" style={{ margin: 0, background: '#f8fafc' }}>
+              <ShieldCheck size={16} />
+              <span>Le Client secret reste côté serveur. Si le champ est laissé vide après une première configuration, ToqueHub conserve le secret existant.</span>
+            </div>
+            <div className="alert-modern info" style={{ margin: 0, background: '#fff7ed', borderColor: '#fed7aa', color: '#9a3412' }}>
+              <AlertCircle size={16} />
+              <span>La variable serveur BACKUP_CLOUD_ENCRYPTION_KEY doit être configurée avant l’activation cloud.</span>
+            </div>
+          </div>
+
+          <div className="modal-footer" style={{ margin: '0 -1.75rem -1.75rem', padding: '1rem 1.75rem' }}>
+            <button type="button" className="btn btn-secondary" onClick={() => setCloudHelpOpen(false)}>Fermer</button>
+            <button type="button" className="btn btn-primary" onClick={() => { copyCloudRedirectUri(); setCloudHelpOpen(false); }}>
+              <ClipboardList size={16} /> Copier l’URI
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.1fr) minmax(320px, 0.9fr)', gap: '1rem' }}>
+        <div className="card-modern" style={{ padding: '1.25rem' }}>
+          <span className="card-title"><Download size={18} style={{ transform: 'rotate(180deg)' }} /> Importer une sauvegarde</span>
+          <p className="muted">Importez une archive `.tar.gz`, inspectez son manifeste, puis confirmez la restauration.</p>
+          <input type="file" accept=".gz,.tgz,.tar.gz,application/gzip" disabled={busy} onChange={(event) => void inspectFile(event.target.files?.[0])} />
+          {inspection ? <div className="alert-modern info" style={{ marginTop: '1rem', background: '#f8fafc' }}><Info size={16} /><div><strong>{inspection.filename}</strong><br /><span>Créée le {new Date(inspection.manifest.createdAt).toLocaleString('fr-FR')} · {inspection.manifest.files.totalFileCount} fichier(s) · {formatBytes(inspection.sizeBytes)}</span></div></div> : null}
+        </div>
+
+        <div className="card-modern" style={{ padding: '1.25rem', borderColor: selectedBackup || inspection ? 'rgba(239,68,68,0.35)' : undefined }}>
+          <span className="card-title"><ShieldCheck size={18} /> Restauration destructive</span>
+          <p className="muted">La restauration remplace la base et les fichiers uploadés. Saisissez la phrase exacte pour déverrouiller l’action.</p>
+          <input placeholder="RESTAURER TOQUEHUB" value={confirmationPhrase} onChange={(event) => setConfirmationPhrase(event.target.value)} disabled={busy || (!selectedBackup && !inspection)} />
+          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}><button className="btn btn-danger" disabled={busy || !localRestoreReady} onClick={() => selectedBackup && void run(() => api.restoreBackup(token, selectedBackup.id, confirmationPhrase), 'Restauration terminée.', true)}>Restaurer la sauvegarde locale</button><button className="btn btn-danger" disabled={busy || !uploadRestoreReady} onClick={() => inspection && void run(() => api.restoreBackupUpload(token, inspection.uploadId, confirmationPhrase), 'Restauration terminée.', true)}>Restaurer l’archive importée</button></div>
+          {selectedBackup ? <p className="muted" style={{ marginTop: '0.75rem' }}>Cible locale: {selectedBackup.filename}</p> : null}
+        </div>
+      </div>
+
+      <div className="card-modern" style={{ padding: '1.25rem' }}>
+        <span className="card-title"><Clock size={18} /> Planification simple</span>
+        {schedule ? <div className="settings-grid-premium" style={{ marginTop: '1rem' }}><label>Statut<select value={schedule.enabled ? 'on' : 'off'} onChange={(event) => setSchedule((current) => current ? { ...current, enabled: event.target.value === 'on' } : current)}><option value="off">Désactivée</option><option value="on">Activée</option></select></label><label>Fréquence<select value={schedule.frequency} onChange={(event) => setSchedule((current) => current ? { ...current, frequency: event.target.value as 'daily' | 'weekly' } : current)}><option value="daily">Quotidienne</option><option value="weekly">Hebdomadaire</option></select></label><label>Heure<input type="time" value={schedule.time} onChange={(event) => setSchedule((current) => current ? { ...current, time: event.target.value } : current)} /></label><label>Jour<select value={schedule.weekday} disabled={schedule.frequency !== 'weekly'} onChange={(event) => setSchedule((current) => current ? { ...current, weekday: Number(event.target.value) } : current)}>{['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'].map((day, index) => <option key={day} value={index}>{day}</option>)}</select></label><label>Rétention jours<input type="number" min={1} value={schedule.retentionDays} onChange={(event) => setSchedule((current) => current ? { ...current, retentionDays: Number(event.target.value) } : current)} /></label><div style={{ display: 'flex', alignItems: 'end' }}><button className="btn btn-primary" disabled={busy} onClick={() => void saveSchedule()}>Enregistrer</button></div></div> : <p className="muted">Chargement de la planification...</p>}
+      </div>
+    </div>
+  );
+}
+
+type SettingsSubTab = 'general' | 'users' | 'architecture' | 'backups' | 'api-keys' | 'core';
+
+function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKeysSaved, onOpenUsers, onRestoreComplete, isAdmin = false }: { session: UserSession; token: string; dashboardSummary?: DashboardSummary; focusApiKeys?: boolean; onApiKeysSaved?: () => void; onOpenUsers?: () => void; onRestoreComplete: () => void; isAdmin?: boolean }) {
   const organization = dashboardSummary?.organization;
   const initialConfigured = organization?.apiKeys?.mistral.configured ?? session.user.apiKeys?.mistral.configured ?? false;
   const initialMasked = organization?.apiKeys?.mistral.masked ?? session.user.apiKeys?.mistral.masked;
@@ -4060,7 +4404,7 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
   const [apiKeyMessage, setApiKeyMessage] = useState<string>();
   const [apiKeyError, setApiKeyError] = useState<string>();
   const [savingApiKey, setSavingApiKey] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState<'general' | 'users' | 'api-keys' | 'core'>(() => {
+  const [activeSubTab, setActiveSubTab] = useState<SettingsSubTab>(() => {
     return focusApiKeys ? 'api-keys' : 'general';
   });
 
@@ -4157,7 +4501,9 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
         <div className="card-modern" style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           {[
             { id: 'general' as const, label: 'Général', desc: 'Identité établissement', icon: Building2 },
+            ...(isAdmin ? [{ id: 'backups' as const, label: 'Sauvegarde & Restauration', desc: 'Archives et reprise', icon: Archive }] : []),
             { id: 'users' as const, label: 'Utilisateurs & Accès', desc: 'Comptes et permissions', icon: UsersRound },
+            ...(isAdmin ? [{ id: 'architecture' as const, label: 'Architecture', desc: 'Modules et dépendances', icon: Workflow }] : []),
             { id: 'api-keys' as const, label: 'Clés API & IA', desc: 'Mistral & Outils OCR', icon: KeyRound },
             { id: 'core' as const, label: 'Diagnostic & Core', desc: 'Statistiques & BDD', icon: Server },
           ].map((tabItem) => {
@@ -4251,7 +4597,12 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
                   L'installation ou la désactivation d'un module modifie uniquement l'interface utilisateur. Tous vos produits, fournisseurs, historiques et configurations de stock restent stockés de manière permanente et sécurisée dans la base locale souveraine.
                 </p>
               </div>
+
             </div>
+          )}
+
+          {activeSubTab === 'backups' && isAdmin && (
+            <BackupRestorePage token={token} onRestoreComplete={onRestoreComplete} />
           )}
 
           {activeSubTab === 'users' && (
@@ -4290,6 +4641,10 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
                 </button>
               </div>
             </div>
+          )}
+
+          {activeSubTab === 'architecture' && isAdmin && (
+            <ArchitectureCenter session={session} />
           )}
 
           {activeSubTab === 'api-keys' && (
