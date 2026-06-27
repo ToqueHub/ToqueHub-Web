@@ -839,7 +839,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     d.setHours(0, 0, 0, 0);
     return d;
   }, []);
-  const movementsThisMonth = useMemo(() => movements.filter((m) => new Date(m.createdAt) >= monthStart).length, [movements, monthStart]);
+  const recentMovements = useMemo(() => sortMovementsByRecency(movements).slice(0, 6), [movements]);
+  const movementsThisMonth = useMemo(() => movements.filter((m) => movementEffectiveDate(m) >= monthStart).length, [movements, monthStart]);
   const topConsumed = useMemo(() => Object.values(movements.filter((m) => ['LOSS', 'OUT', 'EXIT', 'PRODUCTION', 'CORRECTION', 'INVENTORY'].includes(m.type)).reduce<Record<string, { name: string; qty: number; unit?: string }>>((acc, m) => {
     const key = m.product.id;
     acc[key] = acc[key] ?? { name: m.product.name, qty: 0, unit: m.product.unit?.symbol };
@@ -1109,6 +1110,13 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     setMobileMenuOpen(false);
   }
 
+  function openProductsForCategory(categoryId: string) {
+    setProductSearch('');
+    setProductSupplierFilter('');
+    setProductCategoryFilter(categoryId);
+    goToTab('products');
+  }
+
   function manageApplications() {
     goToTab('applications');
   }
@@ -1343,9 +1351,17 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     setSuccess('Brouillon OCR enregistré.');
   }
 
+  async function handleReanalyzeOcrWithAi() {
+    if (!selectedOcrExtraction) return;
+    const updated = await submit(() => api.reanalyzeStocksOcrWithAi(token, selectedOcrExtraction.id), 'Analyse IA relancée.');
+    setSelectedOcrExtraction(updated as StocksOcrExtraction);
+  }
+
   async function handleCreateOcrReception(payload: StocksOcrExtraction['data']) {
     if (!selectedOcrExtraction) return;
     await submit(() => api.createStockReceptionFromOcr(token, selectedOcrExtraction.id, payload), 'La réception a été créée.');
+    const validatedDocumentId = selectedOcrExtraction.document?.id ?? selectedOcrExtraction.ocrDocument?.document?.id;
+    if (validatedDocumentId) setOcrStatuses((current) => current.filter((item) => item.document.id !== validatedDocumentId));
     setShowOcrReviewModal(false);
     setShowOcrImportModal(false);
     setSelectedOcrExtraction(null);
@@ -1365,7 +1381,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     if (existing) {
       const shouldUpdatePrice = Boolean(unitPrice && numeric(existing.averagePrice ?? existing.averagePurchasePrice ?? existing.weightedAveragePrice) <= 0);
       const shouldUpdateCategory = Boolean(categoryId && !(existing.categoryId ?? existing.category?.id));
-      if (shouldUpdatePrice || shouldUpdateCategory) {
+      const shouldUpdateSupplier = Boolean(supplierId && !(existing.primarySupplierId ?? existing.supplierId ?? existing.primarySupplier?.id ?? existing.supplier?.id));
+      if (shouldUpdatePrice || shouldUpdateCategory || shouldUpdateSupplier) {
         return await submit(
           () => api.updateProduct(token, existing.id, {
             name: existing.name,
@@ -1375,7 +1392,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             primarySupplierId: existing.primarySupplierId ?? existing.supplierId ?? supplierId ?? undefined,
             averagePrice: shouldUpdatePrice ? unitPrice : numeric(existing.averagePrice ?? existing.averagePurchasePrice ?? existing.weightedAveragePrice),
           }),
-          shouldUpdatePrice ? 'Prix produit mis à jour depuis l’OCR.' : 'Catégorie produit mise à jour depuis l’OCR.',
+          shouldUpdateSupplier ? 'Fournisseur produit lié depuis l’OCR.' : shouldUpdatePrice ? 'Prix produit mis à jour depuis l’OCR.' : 'Catégorie produit mise à jour depuis l’OCR.',
         ) as Product;
       }
       return existing;
@@ -1440,7 +1457,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const filteredAudit = useMemo(() => auditEntries.filter(a => `${a.action} ${a.entityType ?? ''} ${a.user?.email ?? ''}`.toLowerCase().includes(auditSearch.toLowerCase())), [auditEntries, auditSearch]);
 
   const filteredMovements = useMemo(() => {
-    return movements.filter(m => {
+    return sortMovementsByRecency(movements).filter(m => {
       const matchesSearch = m.product.name.toLowerCase().includes(movementSearch.toLowerCase()) ||
                             (m.reason && m.reason.toLowerCase().includes(movementSearch.toLowerCase())) ||
                             (m.comment && m.comment.toLowerCase().includes(movementSearch.toLowerCase())) ||
@@ -1959,7 +1976,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                                 <span className="card-title"><History size={18}/> Derniers mouvements</span>
                                 <button className="btn btn-secondary btn-sm" onClick={() => setActiveTab('inventory')}>Détails</button>
                               </div>
-                              <MiniMovements movements={movements.slice(0, 6)} />
+                              <MiniMovements movements={recentMovements} />
                             </div>
 
                             <div className="card-modern dashboard-widget-card">
@@ -2261,7 +2278,20 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                         <span className="empty-state-desc">Créez vos familles de produits dès que Stocks est installé.</span>
                       </div>
                     ) : categories.map((category) => (
-                      <motion.div key={category.id} className="app-card compact-card" whileHover={{ y: -3 }}>
+                      <motion.div
+                        key={category.id}
+                        className="app-card compact-card"
+                        role="button"
+                        tabIndex={0}
+                        whileHover={{ y: -3 }}
+                        onClick={() => openProductsForCategory(category.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            openProductsForCategory(category.id);
+                          }
+                        }}
+                      >
                         <div className="app-card-icon"><Layers size={20} /></div>
                         <h3>{category.name}</h3>
                         <p>{category.description || 'Catégorie de produits'}</p>
@@ -2441,7 +2471,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                             return (
                               <tr key={m.id}>
                                 <td style={{ color: 'var(--text-muted)' }}>
-                                  {new Date(m.createdAt).toLocaleDateString('fr-FR', {
+                                  {movementEffectiveDate(m).toLocaleDateString('fr-FR', {
                                     day: '2-digit',
                                     month: '2-digit',
                                     year: 'numeric',
@@ -2598,7 +2628,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                               </tr>
                             ) : (
                               categories.map((cat) => (
-                                <tr key={cat.id}>
+                                <tr key={cat.id} className="clickable-row" onClick={() => openProductsForCategory(cat.id)}>
                                   <td style={{ fontWeight: 600 }}>{cat.name}</td>
                                   <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>{cat.description || '—'}</td>
                                 </tr>
@@ -2819,6 +2849,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             onCreateReception={handleCreateOcrReception}
             onCreateProductFromLine={handleCreateOcrProductFromLine}
             onCreateSupplierFromOcr={handleCreateOcrSupplier}
+            onReanalyzeAi={handleReanalyzeOcrWithAi}
             onClose={() => setShowOcrReviewModal(false)}
           />
         )}
@@ -3107,22 +3138,73 @@ function productCandidateFromProduct(product: Product, score: number) {
   };
 }
 
-const OCR_FALLBACK_CATEGORY_NAME = 'À classer';
+const OCR_FALLBACK_CATEGORY_NAME = 'Divers produits';
 const ocrFallbackCategoryCache = new Map<string, Promise<Category>>();
 
-const CATEGORY_KEYWORDS: Array<{ hints: string[]; aliases: string[] }> = [
-  { hints: ['boeuf', 'bœuf', 'veau', 'porc', 'agneau', 'volaille', 'poulet', 'dinde', 'canard', 'jambon', 'saucisse', 'steak', 'viande'], aliases: ['viande', 'viandes', 'boucherie', 'volaille', 'volailles'] },
-  { hints: ['poisson', 'saumon', 'thon', 'cabillaud', 'colin', 'merlu', 'crevette', 'moule', 'huitre', 'huître', 'surimi', 'maree', 'marée'], aliases: ['poisson', 'poissons', 'maree', 'marée', 'produits de la mer'] },
-  { hints: ['lait', 'beurre', 'creme', 'crème', 'fromage', 'yaourt', 'emmental', 'mozzarella', 'laitier'], aliases: ['cremerie', 'crèmerie', 'produits laitiers', 'laitier', 'fromage'] },
-  { hints: ['carotte', 'tomate', 'salade', 'oignon', 'pomme de terre', 'courgette', 'fruit', 'legume', 'légume', 'pomme', 'banane'], aliases: ['fruits', 'legumes', 'légumes', 'primeur', 'fruits et legumes', 'fruits et légumes'] },
-  { hints: ['pain', 'baguette', 'brioche', 'viennoiserie', 'croissant', 'patisserie', 'pâtisserie'], aliases: ['boulangerie', 'patisserie', 'pâtisserie', 'pain'] },
-  { hints: ['riz', 'pate', 'pâte', 'pates', 'pâtes', 'farine', 'sucre', 'huile', 'vinaigre', 'conserve', 'sauce', 'epice', 'épice'], aliases: ['epicerie', 'épicerie', 'sec', 'produits secs'] },
-  { hints: ['surg', 'surgele', 'surgelé', 'surgeles', 'surgelés', 'glace', 'congele', 'congelé'], aliases: ['surgeles', 'surgelés', 'surgelé', 'congelé'] },
-  { hints: ['eau', 'jus', 'soda', 'vin', 'biere', 'bière', 'cafe', 'café', 'boisson'], aliases: ['boisson', 'boissons', 'cave'] },
-  { hints: ['barquette', 'film', 'gant', 'papier', 'sac', 'gobelet', 'serviette', 'emballage'], aliases: ['emballage', 'emballages', 'non alimentaire', 'consommables'] },
+const CATEGORY_KEYWORDS: Array<{ name: string; hints: string[]; aliases: string[] }> = [
+  { name: 'Viandes', hints: ['boeuf', 'bœuf', 'veau', 'porc', 'agneau', 'volaille', 'poulet', 'dinde', 'canard', 'jambon', 'saucisse', 'steak', 'viande', 'charcuterie', 'lardon', 'merguez', 'chipolata'], aliases: ['viande', 'viandes', 'boucherie', 'volaille', 'volailles', 'produits frais'] },
+  { name: 'Poissons', hints: ['poisson', 'saumon', 'thon', 'cabillaud', 'colin', 'merlu', 'crevette', 'moule', 'huitre', 'huître', 'surimi', 'maree', 'marée', 'lieu', 'truite', 'calamar', 'encornet'], aliases: ['poisson', 'poissons', 'maree', 'marée', 'produits de la mer', 'produits frais'] },
+  { name: 'Produits laitiers', hints: ['lait', 'beurre', 'creme', 'crème', 'fromage', 'yaourt', 'emmental', 'mozzarella', 'laitier', 'oeuf', 'œuf', 'oeufs', 'œufs', 'camembert', 'brie', 'comte', 'comté'], aliases: ['cremerie', 'crèmerie', 'produits laitiers', 'laitier', 'fromage', 'produits frais'] },
+  { name: 'Fruits et légumes', hints: ['carotte', 'tomate', 'salade', 'oignon', 'pomme de terre', 'courgette', 'fruit', 'legume', 'légume', 'pomme', 'banane', 'poire', 'orange', 'citron', 'ail', 'echalote', 'échalote', 'champignon', 'haricot', 'endive'], aliases: ['fruits', 'legumes', 'légumes', 'primeur', 'fruits et legumes', 'fruits et légumes', 'produits frais'] },
+  { name: 'Boulangerie', hints: ['pain', 'baguette', 'brioche', 'viennoiserie', 'croissant', 'patisserie', 'pâtisserie', 'tarte', 'gateau', 'gâteau'], aliases: ['boulangerie', 'patisserie', 'pâtisserie', 'pain', 'produits frais'] },
+  { name: 'Épicerie', hints: ['riz', 'pate', 'pâte', 'pates', 'pâtes', 'farine', 'sucre', 'huile', 'vinaigre', 'conserve', 'sauce', 'epice', 'épice', 'sel', 'poivre', 'moutarde', 'mayonnaise', 'biscuit', 'chocolat', 'cacao', 'dessert', 'semoule', 'couscous', 'lentille', 'pois chiche'], aliases: ['epicerie', 'épicerie', 'sec', 'produits secs'] },
+  { name: 'Surgelés', hints: ['surg', 'surgele', 'surgelé', 'surgeles', 'surgelés', 'glace', 'congele', 'congelé', 'congeles', 'congelés', 'frozen'], aliases: ['surgeles', 'surgelés', 'surgelé', 'congelé'] },
+  { name: 'Boissons', hints: ['eau', 'jus', 'soda', 'vin', 'biere', 'bière', 'cafe', 'café', 'the', 'thé', 'boisson', 'sirop', 'limonade', 'lait boisson'], aliases: ['boisson', 'boissons', 'cave'] },
+  { name: 'Hygiène et entretien', hints: ['detergent', 'détergent', 'desinfectant', 'désinfectant', 'savon', 'nettoyant', 'lessive', 'javel', 'essuie-main', 'papier toilette', 'entretien', 'hygiene', 'hygiène'], aliases: ['hygiene', 'hygiène', 'entretien', 'non alimentaire', 'consommables'] },
+  { name: 'Emballages', hints: ['barquette', 'film', 'gant', 'papier', 'sac', 'gobelet', 'serviette', 'emballage', 'couvercle', 'aluminium', 'papier cuisson'], aliases: ['emballage', 'emballages', 'non alimentaire', 'consommables'] },
+  { name: 'Nutrition médicale', hints: ['clinutren', 'thickenup', 'resource', 'nestle health', 'complement nutritionnel', 'complément nutritionnel', 'nutrition', 'epaississant', 'épaississant', 'denutrition', 'dénutrition'], aliases: ['nutrition medicale', 'nutrition médicale', 'nutrition', 'dietétique', 'diététique', 'epicerie', 'épicerie'] },
 ];
 
+function findCategoryByBusinessName(categories: Category[], name?: string | null) {
+  const normalizedName = normalizeProductSearchText(name);
+  if (!normalizedName) return undefined;
+  return categories
+    .filter((category) => !isArchived(category))
+    .map((category) => {
+      const haystack = normalizeProductSearchText(`${category.name} ${category.description ?? ''}`);
+      return {
+        category,
+        score: Math.max(
+          normalizeLookup(category.name) === normalizeLookup(name) ? 1 : 0,
+          haystack.includes(normalizedName) ? 0.86 : 0,
+          normalizedName.includes(normalizeProductSearchText(category.name)) ? 0.78 : 0,
+          tokenSimilarity(name, `${category.name} ${category.description ?? ''}`),
+        ),
+      };
+    })
+    .filter((item) => item.score >= 0.46)
+    .sort((a, b) => b.score - a.score)[0]?.category;
+}
+
+function ocrKeywordCategoryRule(line: StocksOcrLine) {
+  const text = normalizeProductSearchText([
+    line.ocrLabel,
+    line.label,
+    line.reference,
+    line.categoryName,
+    line.suggestedCategoryName,
+  ].filter(Boolean).join(' '));
+  return CATEGORY_KEYWORDS.find((rule) => rule.hints.some((hint) => {
+    const normalizedHint = normalizeProductSearchText(hint);
+    return normalizedHint && (text.includes(normalizedHint) || tokenSimilarity(text, normalizedHint) >= 0.72);
+  }));
+}
+
+function isGenericOcrCategoryName(name?: string | null) {
+  return ['non classé', 'non classe', 'à classer', 'a classer', 'sans catégorie', 'sans categorie', 'divers', 'autres'].includes(normalizeSearchText(name));
+}
+
 function inferOcrCategoryId(line: StocksOcrLine, categories: Category[], products: Product[]) {
+  const activeCategories = categories.filter((category) => !isArchived(category));
+  const aiCategoryId = line.categoryId ?? line.suggestedCategoryId ?? null;
+  if (aiCategoryId && activeCategories.some((category) => category.id === aiCategoryId)) return aiCategoryId;
+
+  const aiCategoryName = line.categoryName ?? line.suggestedCategoryName ?? null;
+  if (aiCategoryName) {
+    const categoryByName = findCategoryByBusinessName(activeCategories, aiCategoryName);
+    if (categoryByName) return categoryByName.id;
+  }
+
   const candidateWithCategory = (line.productCandidates || [])
     .map((candidate) => ({ candidate, score: numeric(candidate.score) }))
     .filter(({ candidate, score }) => candidate.categoryId && score >= 0.58)
@@ -3137,15 +3219,10 @@ function inferOcrCategoryId(line: StocksOcrLine, categories: Category[], product
     .sort((a, b) => b.score - a.score)[0]?.product;
   if (closestProduct?.categoryId || closestProduct?.category?.id) return closestProduct.categoryId ?? closestProduct.category?.id ?? undefined;
 
-  const normalizedLabel = normalizeProductSearchText(label);
-  const keywordRule = CATEGORY_KEYWORDS.find((rule) => rule.hints.some((hint) => normalizedLabel.includes(normalizeProductSearchText(hint))));
+  const keywordRule = ocrKeywordCategoryRule(line);
   if (keywordRule) {
-    const category = categories
-      .filter((item) => !isArchived(item))
-      .find((item) => {
-        const categoryText = normalizeProductSearchText(`${item.name} ${item.description ?? ''}`);
-        return keywordRule.aliases.some((alias) => categoryText.includes(normalizeProductSearchText(alias)));
-      });
+    const category = findCategoryByBusinessName(activeCategories, keywordRule.name)
+      ?? keywordRule.aliases.map((alias) => findCategoryByBusinessName(activeCategories, alias)).find(Boolean);
     if (category) return category.id;
   }
 
@@ -3174,16 +3251,35 @@ function supplierMajorityCategoryId(supplierId: string | null | undefined, produ
 async function resolveOcrCategoryIdForCreate(token: string, line: StocksOcrLine, categories: Category[], products: Product[], supplierId?: string | null) {
   const inferred = inferOcrCategoryId(line, categories, products) || supplierMajorityCategoryId(supplierId, products);
   if (inferred) return inferred;
+  const keywordRule = ocrKeywordCategoryRule(line);
+  const suggestedCategoryName = String(line.categoryName ?? line.suggestedCategoryName ?? keywordRule?.name ?? '').trim();
+  if (suggestedCategoryName && !isGenericOcrCategoryName(suggestedCategoryName)) {
+    const cacheKey = `${token}:suggested:${normalizeLookup(suggestedCategoryName)}`;
+    if (!ocrFallbackCategoryCache.has(cacheKey)) {
+      ocrFallbackCategoryCache.set(cacheKey, api.createCategory(token, {
+        name: suggestedCategoryName,
+        description: 'Catégorie proposée automatiquement par l’analyse IA OCR.',
+      }).catch(async () => {
+        const refreshed = await api.categories(token);
+        const existing = refreshed.find((category) => normalizeLookup(category.name) === normalizeLookup(suggestedCategoryName));
+        if (!existing) throw new Error(`Impossible de créer ou retrouver la catégorie "${suggestedCategoryName}".`);
+        return existing;
+      }));
+    }
+    return (await ocrFallbackCategoryCache.get(cacheKey)!).id;
+  }
+  const firstUsefulCategory = categories.find((category) => !isArchived(category) && !['aclasser', 'sanscategorie', 'nonclasse'].includes(normalizeLookup(category.name)));
+  if (firstUsefulCategory) return firstUsefulCategory.id;
   const fallback = categories.find((category) => {
     const key = normalizeLookup(category.name);
-    return !isArchived(category) && ['aclasser', 'aclasser', 'autres', 'divers', 'sanscategorie', 'nonclasse'].includes(key);
+    return !isArchived(category) && ['diversproduits', 'autres', 'divers'].includes(key);
   });
   if (fallback) return fallback.id;
   const cacheKey = `${token}:${OCR_FALLBACK_CATEGORY_NAME}`;
   if (!ocrFallbackCategoryCache.has(cacheKey)) {
     ocrFallbackCategoryCache.set(cacheKey, api.createCategory(token, {
       name: OCR_FALLBACK_CATEGORY_NAME,
-      description: 'Catégorie créée automatiquement pour les produits OCR sans correspondance fiable.',
+      description: 'Catégorie créée automatiquement pour les produits OCR quand aucune catégorie métier fiable n’existe encore.',
     }).catch(async () => {
       const refreshed = await api.categories(token);
       const existing = refreshed.find((category) => normalizeLookup(category.name) === normalizeLookup(OCR_FALLBACK_CATEGORY_NAME));
@@ -3270,6 +3366,18 @@ function ocrProductReference(line: StocksOcrLine) {
 
 function movementSign(type: StockMovementType) {
   return ['LOSS', 'OUT', 'EXIT'].includes(type) ? '-' : ['TRANSFER'].includes(type) ? '±' : '+';
+}
+
+function movementEffectiveDate(movement: StockMovement) {
+  return new Date(movement.movementDate ?? movement.date ?? movement.createdAt);
+}
+
+function sortMovementsByRecency(movements: StockMovement[]) {
+  return [...movements].sort((a, b) => {
+    const effectiveDiff = movementEffectiveDate(b).getTime() - movementEffectiveDate(a).getTime();
+    if (effectiveDiff !== 0) return effectiveDiff;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
 }
 
 function stockStatus(stock: Stock) {
@@ -3401,7 +3509,8 @@ function moduleTargetTab(module?: string): ActiveTab | undefined {
 function StocksDashboardPage({ products, suppliers, stocks, movements, onCreateMovement, onImportOcr, onOpenStocks }: { products: Product[]; suppliers: Supplier[]; stocks: Stock[]; movements: StockMovement[]; onCreateMovement: () => void; onImportOcr: () => void; onOpenStocks: () => void }) {
   const stockValue = stocks.reduce((sum, stock) => sum + numeric(stock.stockValue ?? stock.value ?? numeric(stock.currentQuantity ?? stock.quantity) * numeric(stock.product.averagePrice ?? stock.product.averagePurchasePrice ?? stock.product.weightedAveragePrice)), 0);
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
-  const movementsThisMonth = movements.filter((m) => new Date(m.createdAt) >= monthStart).length;
+  const recentMovements = sortMovementsByRecency(movements).slice(0, 6);
+  const movementsThisMonth = movements.filter((m) => movementEffectiveDate(m) >= monthStart).length;
   const topConsumed = Object.values(movements.filter((m) => ['LOSS', 'OUT', 'EXIT', 'PRODUCTION', 'CORRECTION', 'INVENTORY'].includes(m.type)).reduce<Record<string, { name: string; qty: number; unit?: string }>>((acc, m) => {
     const key = m.product.id;
     acc[key] = acc[key] ?? { name: m.product.name, qty: 0, unit: m.product.unit?.symbol };
@@ -3449,7 +3558,7 @@ function StocksDashboardPage({ products, suppliers, stocks, movements, onCreateM
             <span className="card-title"><History size={18}/> Derniers mouvements</span>
             <button className="btn btn-secondary btn-sm" onClick={onOpenStocks}>Voir stocks</button>
           </div>
-          <MiniMovements movements={movements.slice(0, 6)} />
+          <MiniMovements movements={recentMovements} />
         </motion.div>
 
         <motion.div
@@ -3514,8 +3623,9 @@ function MiniMovements({ movements }: { movements: StockMovement[] }) {
   return movements.length ? (
     <div className="dashboard-activity-feed">
       {movements.map((m) => {
-        const dateStr = new Date(m.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
-        const timeStr = new Date(m.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+        const movementDate = movementEffectiveDate(m);
+        const dateStr = movementDate.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+        const timeStr = movementDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
         const typeClass = {
           RECEPTION: 'feed-in',
           IN: 'feed-in',
@@ -5177,7 +5287,7 @@ function StocksOcrImportPanel({ statuses, onUpload, onOpenExtraction, onDownload
               return (
                 <div key={status.document.id} className="ocr-status-card" style={isSuccess ? { borderLeft: '3px solid #10b981' } : undefined}>
                   <div className="ocr-status-card-info">
-                    <span className="ocr-status-card-title">{status.document.originalName}</span>
+                    <span className="ocr-status-card-title">{ocrStatusTitle(status)}</span>
                     <div className="ocr-status-card-meta">
                       <span>{formatBytes(status.document.sizeBytes)}</span>
                       <span>•</span>
@@ -5211,7 +5321,7 @@ function StocksOcrImportPanel({ statuses, onUpload, onOpenExtraction, onDownload
   );
 }
 
-function StocksOcrReviewPanel({ extraction, products, categories, suppliers, units, sites, locations, token, onSaveDraft, onCreateReception, onCreateProductFromLine, onCreateSupplierFromOcr, onClose }: { extraction: StocksOcrExtraction; products: Product[]; categories: Category[]; suppliers: Supplier[]; units: Unit[]; sites: Site[]; locations: Location[]; token: string; onSaveDraft: (payload: StocksOcrExtraction['data']) => Promise<void>; onCreateReception: (payload: StocksOcrExtraction['data']) => Promise<void>; onCreateProductFromLine: (line: StocksOcrLine, supplierId?: string | null) => Promise<Product>; onCreateSupplierFromOcr: (name: string) => Promise<Supplier>; onClose: () => void }) {
+function StocksOcrReviewPanel({ extraction, products, categories, suppliers, units, sites, locations, token, onSaveDraft, onCreateReception, onCreateProductFromLine, onCreateSupplierFromOcr, onReanalyzeAi, onClose }: { extraction: StocksOcrExtraction; products: Product[]; categories: Category[]; suppliers: Supplier[]; units: Unit[]; sites: Site[]; locations: Location[]; token: string; onSaveDraft: (payload: StocksOcrExtraction['data']) => Promise<void>; onCreateReception: (payload: StocksOcrExtraction['data']) => Promise<void>; onCreateProductFromLine: (line: StocksOcrLine, supplierId?: string | null) => Promise<Product>; onCreateSupplierFromOcr: (name: string) => Promise<Supplier>; onReanalyzeAi: () => Promise<void>; onClose: () => void }) {
   const [draft, setDraft] = useState(() => normalizeOcrReceptionData(extraction.data));
   const [previewUrl, setPreviewUrl] = useState<string>();
   const [showViewerModal, setShowViewerModal] = useState(false);
@@ -5226,6 +5336,8 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
   const [creatingProductLineId, setCreatingProductLineId] = useState<string | null>(null);
   const [creatingAllProducts, setCreatingAllProducts] = useState(false);
   const [creatingSupplier, setCreatingSupplier] = useState(false);
+  const [reanalyzingAi, setReanalyzingAi] = useState(false);
+  const [lineFilter, setLineFilter] = useState<'all' | 'review' | 'ready' | 'missing' | 'price' | 'ignored'>('all');
   const document = extraction.document ?? extraction.ocrDocument?.document;
 
   function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
@@ -5256,7 +5368,7 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
 
   useEffect(() => {
     setDraft(enrichOcrProductMatches(resolveOcrReceptionUnits(normalizeOcrReceptionData(extraction.data), units), products));
-  }, [extraction, units]);
+  }, [extraction.id]);
 
   useEffect(() => {
     let active = true;
@@ -5272,13 +5384,31 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
   }, [document?.id, token]);
 
   const activeLines = draft.lines.filter((line) => !line.ignored);
+  const ignoredLines = draft.lines.filter((line) => line.ignored);
   const missingProducts = activeLines.filter((line) => !line.productId).length;
   const invalidQuantities = activeLines.filter((line) => numeric(line.quantity) <= 0).length;
   const recognized = activeLines.filter((line) => line.matchingStatus === 'RECOGNIZED').length;
   const needsReview = activeLines.filter((line) => line.matchingStatus === 'NEEDS_REVIEW').length;
+  const priceIssues = activeLines.filter((line) => ocrLineStatus(line) === 'price_mismatch' || hasOcrPriceMismatch(line)).length;
+  const readyLines = activeLines.filter((line) => isOcrLineReady(line)).length;
+  const displayedLineEntries = draft.lines
+    .map((line, index) => ({ line, index }))
+    .filter(({ line }) => {
+      if (lineFilter === 'ignored') return Boolean(line.ignored);
+      if (line.ignored) return false;
+      if (lineFilter === 'ready') return isOcrLineReady(line);
+      if (lineFilter === 'missing') return !line.productId || ocrLineStatus(line) === 'missing_product';
+      if (lineFilter === 'price') return ocrLineStatus(line) === 'price_mismatch' || hasOcrPriceMismatch(line) || ocrLineStatus(line) === 'quantity_suspicious';
+      if (lineFilter === 'review') return !isOcrLineReady(line);
+      return true;
+    });
   const supplierCandidates = draft.supplierCandidates ?? draft.supplier?.candidates ?? [];
   const supplierMatchStatus = draft.supplierId ? (draft.supplierMatchingStatus ?? draft.supplier?.matchingStatus ?? 'RECOGNIZED') : 'NOT_FOUND';
   const supplierOcrName = draft.supplier?.name || draft.supplierName || '';
+  const aiWarnings = [...(draft.warnings ?? []), ...(draft.aiAnalysis?.warnings ?? [])].filter(Boolean);
+  const aiActions = [...(draft.suggestedActions ?? []), ...(draft.aiAnalysis?.suggestedActions ?? [])].filter(Boolean);
+  const totalsCheck = draft.aiAnalysis?.totalsCheck;
+  const totalLinesAmount = activeLines.reduce((sum, line) => sum + numeric(line.lineTotal ?? line.total), 0);
 
   function updateLine(index: number, patch: Partial<StocksOcrLine>) {
     setDraft((current) => ({ ...current, lines: current.lines.map((line, i) => i === index ? { ...line, ...patch } : line) }));
@@ -5326,12 +5456,32 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
     }
   }
 
+  async function ensureSupplierForOcrProducts() {
+    if (draft.supplierId) return draft.supplierId;
+    if (!supplierOcrName) return null;
+    setCreatingSupplier(true);
+    try {
+      const supplier = await onCreateSupplierFromOcr(supplierOcrName);
+      setDraft((current) => ({
+        ...current,
+        supplierId: supplier.id,
+        supplierName: supplier.name,
+        supplierMatchingStatus: 'RECOGNIZED',
+        supplierMatchingScore: 1,
+      }));
+      return supplier.id;
+    } finally {
+      setCreatingSupplier(false);
+    }
+  }
+
   async function createProductFromLine(line: StocksOcrLine, index: number) {
     const lineKey = line.id ?? `ocr-${index}`;
     setCreatingProductLineId(lineKey);
     setError(undefined);
     try {
-      const product = await onCreateProductFromLine(line, draft.supplierId);
+      const supplierId = await ensureSupplierForOcrProducts();
+      const product = await onCreateProductFromLine(line, supplierId);
       updateLine(index, {
         productId: product.id,
         productName: product.name,
@@ -5355,6 +5505,15 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
     setError(undefined);
     const createdByKey = new Map<string, Product>();
     const failures: string[] = [];
+    let supplierId: string | null = null;
+    try {
+      supplierId = await ensureSupplierForOcrProducts();
+    } catch (err) {
+      setCreatingProductLineId(null);
+      setCreatingAllProducts(false);
+      setError(err instanceof Error ? err.message : 'Le fournisseur OCR n’a pas pu être créé avant les produits.');
+      return;
+    }
     for (const { line, index } of linesToCreate) {
       const lineKey = line.id ?? `ocr-${index}`;
       const label = String(line.ocrLabel || line.label || '').trim();
@@ -5362,7 +5521,7 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
       const dedupeKey = reference ? `sku:${reference}` : `name:${normalizeLookup(label)}`;
       try {
         setCreatingProductLineId(lineKey);
-        const product = createdByKey.get(dedupeKey) ?? await onCreateProductFromLine(line, draft.supplierId);
+        const product = createdByKey.get(dedupeKey) ?? await onCreateProductFromLine(line, supplierId);
         createdByKey.set(dedupeKey, product);
         updateLine(index, {
           productId: product.id,
@@ -5382,42 +5541,92 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
     }
   }
 
+  async function reanalyzeAi() {
+    setReanalyzingAi(true);
+    setError(undefined);
+    try {
+      await onReanalyzeAi();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'L’analyse IA n’a pas pu être relancée.');
+    } finally {
+      setReanalyzingAi(false);
+    }
+  }
+
   return (
     <div className="stocks-ocr-review" style={{ gridTemplateColumns: '1fr' }}>
       <div className="stocks-ocr-editor">
         {error ? <div className="alert-modern error" style={{ marginBottom: '0.5rem' }}><AlertCircle size={16} /> {error}</div> : null}
         
-        <div className="stocks-ocr-summary">
-          <span className="badge badge-reception" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}>
-            <CheckCircle2 size={13} /> {recognized} reconnus
-          </span>
-          <span className="badge badge-correction" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}>
-            <Info size={13} /> {needsReview} à vérifier
-          </span>
-          <span className="badge badge-loss" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}>
-            <AlertCircle size={13} /> {missingProducts} non reconnus
-          </span>
+        <div className="ocr-dossier">
+          <div className="ocr-dossier-header">
+            <div>
+              <span className="ocr-dossier-kicker">Dossier d’import IA</span>
+              <h3>{document?.originalName || 'Document OCR'}</h3>
+              <p>{draft.aiAnalysis?.status === 'applied' ? 'Analyse Mistral IA appliquée au document.' : draft.aiAnalysis?.status === 'failed' ? 'Analyse IA indisponible, parsing ToqueHub utilisé.' : 'Analyse OCR prête à valider.'}</p>
+            </div>
+            <div className="ocr-dossier-actions">
+              <button type="button" className="btn btn-secondary btn-sm" disabled={reanalyzingAi} onClick={() => void reanalyzeAi()}>
+                <Sparkles size={13} /> {reanalyzingAi ? 'Analyse IA…' : 'Relancer IA'}
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowViewerModal(true)}>
+                <FileText size={13} /> Original
+              </button>
+            </div>
+          </div>
 
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            disabled={!missingProducts || creatingAllProducts || creatingProductLineId !== null}
-            onClick={() => void createAllMissingProducts()}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderRadius: '8px', padding: '0.4rem 0.8rem', fontSize: '0.8rem', fontWeight: 650 }}
-          >
-            <Package size={13} />
-            {creatingAllProducts ? 'Création des produits…' : `Créer ${missingProducts === 1 ? 'le produit' : `les ${missingProducts} produits`}`}
-          </button>
-          
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => setShowViewerModal(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginLeft: 'auto', borderRadius: '8px', padding: '0.4rem 0.8rem', fontSize: '0.8rem', fontWeight: 650 }}
-          >
-            <FileText size={13} />
-            Afficher le document original
-          </button>
+          <div className="ocr-dossier-metrics">
+            <div><span>Confiance IA</span><strong>{formatOcrPercent(draft.documentConfidence ?? draft.aiAnalysis?.confidence)}</strong></div>
+            <div><span>Lignes prêtes</span><strong>{readyLines}/{activeLines.length}</strong></div>
+            <div><span>À vérifier</span><strong>{activeLines.length - readyLines}</strong></div>
+            <div><span>Total lignes</span><strong>{totalLinesAmount.toFixed(2)} €</strong></div>
+            <div><span>Écart total</span><strong className={numeric(totalsCheck?.delta) > 0.05 ? 'danger-text' : ''}>{totalsCheck?.delta != null ? `${numeric(totalsCheck.delta).toFixed(2)} €` : '—'}</strong></div>
+          </div>
+
+          {(aiWarnings.length || aiActions.length) ? (
+            <div className="ocr-dossier-alerts">
+              {aiWarnings.slice(0, 4).map((warning, index) => <span key={`w-${index}`}><AlertCircle size={13} /> {translateOcrMessage(warning)}</span>)}
+              {aiActions.slice(0, 3).map((action, index) => <span key={`a-${index}`}><Info size={13} /> {translateOcrMessage(action)}</span>)}
+            </div>
+          ) : null}
+
+          <div className="ocr-line-filter-bar">
+            {[
+              ['review', `À corriger (${activeLines.length - readyLines})`],
+              ['ready', `Prêtes (${readyLines})`],
+              ['missing', `Produits manquants (${missingProducts})`],
+              ['price', `Prix/Qté (${priceIssues})`],
+              ['ignored', `Ignorées (${ignoredLines.length})`],
+              ['all', `Toutes (${draft.lines.length})`],
+            ].map(([key, label]) => (
+              <button key={key} type="button" className={`ocr-line-filter ${lineFilter === key ? 'active' : ''}`} onClick={() => setLineFilter(key as typeof lineFilter)}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="stocks-ocr-summary" style={{ margin: 0 }}>
+            <span className="badge badge-reception" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}>
+              <CheckCircle2 size={13} /> {recognized} reconnus
+            </span>
+            <span className="badge badge-correction" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}>
+              <Info size={13} /> {needsReview} à vérifier
+            </span>
+            <span className="badge badge-loss" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}>
+              <AlertCircle size={13} /> {missingProducts} non reconnus
+            </span>
+
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              disabled={!missingProducts || creatingAllProducts || creatingProductLineId !== null}
+              onClick={() => void createAllMissingProducts()}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginLeft: 'auto', borderRadius: '8px', padding: '0.4rem 0.8rem', fontSize: '0.8rem', fontWeight: 650 }}
+            >
+              <Package size={13} />
+              {creatingAllProducts ? 'Création des produits…' : `Créer ${missingProducts === 1 ? 'le produit' : `les ${missingProducts} produits`}`}
+            </button>
+          </div>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -5529,14 +5738,15 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
               </tr>
             </thead>
             <tbody>
-              {draft.lines.map((line, index) => line.ignored ? null : (
+              {displayedLineEntries.map(({ line, index }) => (
                 <tr key={line.id ?? index}>
                   <td>
-                    <input 
+                    <input
                       value={line.ocrLabel || line.label || ''} 
                       onChange={(e) => updateLine(index, { ocrLabel: e.target.value })} 
-                      title={line.ocrLabel || line.label || ''}
+                      title={line.sourceText || line.ocrLabel || line.label || ''}
                     />
+                    {line.warnings?.length ? <small className="ocr-line-warning">{translateOcrMessage(line.warnings[0])}</small> : null}
                   </td>
                   <td>
                     <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
@@ -5614,16 +5824,32 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
                   </td>
                   <td style={{ textAlign: 'center' }}>
                     <span className={`badge ${ocrMatchClass(line.matchingStatus)}`}>
-                      {ocrMatchLabel(line.matchingStatus)}
+                      {ocrLineStatusLabel(line)}
                     </span>
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <button type="button" className="icon-btn danger" onClick={() => removeLine(index)} title="Supprimer la ligne">
-                      <Trash2 size={14} />
-                    </button>
+                    {line.ignored ? (
+                      <button type="button" className="icon-btn" onClick={() => updateLine(index, { ignored: false })} title="Restaurer la ligne">
+                        <CheckCircle2 size={14} />
+                      </button>
+                    ) : (
+                      <button type="button" className="icon-btn danger" onClick={() => removeLine(index)} title="Supprimer la ligne">
+                        <Trash2 size={14} />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
+              {!displayedLineEntries.length ? (
+                <tr>
+                  <td colSpan={10}>
+                    <div className="empty-state" style={{ padding: '1.5rem' }}>
+                      <span className="empty-state-title">Aucune ligne dans ce filtre</span>
+                      <span className="empty-state-desc">Changez de filtre pour afficher les autres lignes de l’analyse IA.</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>
@@ -5898,12 +6124,24 @@ function normalizeOcrReceptionData(data: StocksOcrExtraction['data']): StocksOcr
     totalIncludingTax: data.totalIncludingTax ?? data.totals?.totalIncludingTax ?? null,
     siteId: data.siteId ?? null,
     locationId: data.locationId ?? null,
+    documentConfidence: data.documentConfidence ?? data.aiAnalysis?.confidence ?? null,
+    warnings: data.warnings ?? data.aiAnalysis?.warnings ?? [],
+    suggestedActions: data.suggestedActions ?? data.aiAnalysis?.suggestedActions ?? [],
+    aiAnalysis: data.aiAnalysis ?? null,
     lines: (data.lines || []).map((line, index) => ({
       ...line,
       id: line.id ?? `ocr-${index}`,
       ocrLabel: line.ocrLabel ?? line.label ?? '',
       lineTotal: line.lineTotal ?? line.total ?? null,
       ignored: line.ignored ?? false,
+      lineStatus: line.lineStatus ?? null,
+      lineConfidence: line.lineConfidence ?? line.matchingScore ?? null,
+      categoryId: line.categoryId ?? line.suggestedCategoryId ?? null,
+      categoryName: line.categoryName ?? line.suggestedCategoryName ?? null,
+      suggestedCategoryId: line.suggestedCategoryId ?? line.categoryId ?? null,
+      suggestedCategoryName: line.suggestedCategoryName ?? line.categoryName ?? null,
+      warnings: line.warnings ?? [],
+      sourceText: line.sourceText ?? null,
     })),
   };
 }
@@ -5925,6 +6163,65 @@ function ocrMatchLabel(status?: string | null) {
   if (status === 'RECOGNIZED') return 'Reconnu';
   if (status === 'NEEDS_REVIEW') return 'À vérifier';
   return 'Non trouvé';
+}
+
+function ocrLineStatus(line: StocksOcrLine) {
+  return String(line.lineStatus || '').toLowerCase();
+}
+
+function hasOcrPriceMismatch(line: StocksOcrLine) {
+  const qty = numeric(line.quantity);
+  const unitPrice = numeric(line.unitPrice);
+  const total = numeric(line.lineTotal ?? line.total);
+  if (!qty || !unitPrice || !total) return false;
+  return Math.abs(qty * unitPrice - total) > Math.max(0.05, total * 0.02);
+}
+
+function isOcrLineReady(line: StocksOcrLine) {
+  return !line.ignored && Boolean(line.productId) && numeric(line.quantity) > 0 && !hasOcrPriceMismatch(line) && !['needs_review', 'missing_product', 'price_mismatch', 'quantity_suspicious'].includes(ocrLineStatus(line));
+}
+
+function ocrLineStatusLabel(line: StocksOcrLine) {
+  const status = ocrLineStatus(line);
+  if (line.ignored || status === 'non_product_line') return 'Ignorée';
+  if (status === 'price_mismatch') return 'Prix';
+  if (status === 'quantity_suspicious') return 'Qté';
+  if (status === 'missing_product') return 'Produit';
+  if (status === 'ready') return 'Prêt';
+  return ocrMatchLabel(line.matchingStatus);
+}
+
+function formatOcrPercent(value?: string | number | null) {
+  const percent = numeric(value);
+  return percent > 0 ? `${Math.round(percent * 100)}%` : '—';
+}
+
+function ocrStatusTitle(status: StocksOcrStatus) {
+  const data = status.extraction?.correctedJson ?? status.extraction?.extractedJson ?? status.ocr?.extractions?.[0]?.correctedJson ?? status.ocr?.extractions?.[0]?.extractedJson;
+  const supplierName = data?.supplierName ?? data?.supplier?.supplierName ?? data?.supplier?.name;
+  if (supplierName && status.extraction) return supplierName;
+  return status.document.originalName;
+}
+
+function translateOcrMessage(message?: string | null) {
+  if (!message) return '';
+  let translated = String(message);
+  const replacements: Array<[RegExp, string]> = [
+    [/Document date and delivery date are missing\.?/gi, 'La date du document et la date de livraison sont manquantes.'],
+    [/No totals \(excluding tax, tax, including tax\) found on the delivery note\.?/gi, 'Aucun total HT, TVA ou TTC n’a été trouvé sur le bon de livraison.'],
+    [/Unit price and line total are missing, preventing price verification\.?/gi, 'Le prix unitaire et le total de ligne sont manquants, la vérification du prix est impossible.'],
+    [/Verify the delivery date and document date with the supplier\.?/gi, 'Vérifier la date de livraison et la date du document avec le fournisseur.'],
+    [/Check if the product '([^']+)' exists in your product catalog and update the productId if necessary\.?/gi, "Vérifier si le produit « $1 » existe dans le catalogue et l’associer si nécessaire."],
+    [/Confirm the unit '([^']+)' \(assumed to be '([^']+)' or '([^']+)'\) matches your internal unit of measure\.?/gi, "Confirmer que l’unité « $1 » correspond à votre unité interne."],
+    [/Unit '([^']+)' mapped to '([^']+)'\s*\(([^)]+)\)\. Verify if this matches your internal unit of measure\.?/gi, "L’unité « $1 » a été associée à « $2 » ($3). Vérifier que cela correspond à votre unité interne."],
+    [/Verify if this matches your internal unit of measure\.?/gi, 'Vérifier que cela correspond à votre unité interne.'],
+    [/missing/gi, 'manquant'],
+    [/Verify/gi, 'Vérifier'],
+    [/Check/gi, 'Vérifier'],
+    [/Confirm/gi, 'Confirmer'],
+  ];
+  for (const [pattern, replacement] of replacements) translated = translated.replace(pattern, replacement);
+  return translated;
 }
 
 function dateInputValue(value?: string | null) {

@@ -163,11 +163,19 @@ function normalizeOcrCorrectionPayload(payload: StocksOcrExtraction['data']) {
     totalIncludingTax: payload.totalIncludingTax ?? payload.totals?.totalIncludingTax ?? undefined,
     siteId: payload.siteId || undefined,
     locationId: payload.locationId || undefined,
+    documentConfidence: payload.documentConfidence ?? payload.aiAnalysis?.confidence ?? undefined,
+    warnings: payload.warnings ?? payload.aiAnalysis?.warnings ?? undefined,
+    suggestedActions: payload.suggestedActions ?? payload.aiAnalysis?.suggestedActions ?? undefined,
+    aiAnalysis: payload.aiAnalysis ?? undefined,
     lines: (payload.lines || []).map((line) => ({
       id: line.id,
       ignored: Boolean(line.ignored),
       productId: line.productId || undefined,
       unitId: line.unitId || undefined,
+      categoryId: line.categoryId || undefined,
+      categoryName: line.categoryName || undefined,
+      suggestedCategoryId: line.suggestedCategoryId || undefined,
+      suggestedCategoryName: line.suggestedCategoryName || undefined,
       ocrLabel: line.ocrLabel || line.label || undefined,
       reference: line.reference || undefined,
       quantity: line.quantity ?? undefined,
@@ -177,8 +185,17 @@ function normalizeOcrCorrectionPayload(payload: StocksOcrExtraction['data']) {
       vatRate: line.vatRate ?? undefined,
       lotNumber: line.lotNumber || undefined,
       bestBeforeDate: line.bestBeforeDate || undefined,
+      lineStatus: line.lineStatus || undefined,
+      lineConfidence: line.lineConfidence ?? undefined,
+      warnings: line.warnings ?? undefined,
+      sourceText: line.sourceText || undefined,
     })),
   };
+}
+
+function uuidOrNullOrUndefined(value?: string | null) {
+  if (value === null) return null;
+  return value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ? value : undefined;
 }
 
 export const api = {
@@ -631,7 +648,7 @@ export const api = {
     payload: { name: string; sku?: string; description?: string; unitId: string; categoryId?: string | null; supplierId?: string | null; primarySupplierId?: string | null; averagePrice?: number; averagePurchasePrice?: number; minimumStock?: number },
   ) {
     const { supplierId, averagePurchasePrice, ...rest } = payload;
-    return request<Product>('/products', { method: 'POST', body: JSON.stringify({ ...rest, averagePrice: payload.averagePrice ?? averagePurchasePrice, primarySupplierId: payload.primarySupplierId ?? supplierId }) }, token);
+    return request<Product>('/products', { method: 'POST', body: JSON.stringify({ ...rest, averagePrice: payload.averagePrice ?? averagePurchasePrice, primarySupplierId: uuidOrNullOrUndefined(payload.primarySupplierId ?? supplierId) }) }, token);
   },
   updateProduct(
     token: string,
@@ -639,7 +656,7 @@ export const api = {
     payload: { name?: string; sku?: string; description?: string; unitId?: string; categoryId?: string | null; supplierId?: string | null; primarySupplierId?: string | null; averagePrice?: number; averagePurchasePrice?: number; minimumStock?: number },
   ) {
     const { supplierId, averagePurchasePrice, ...rest } = payload;
-    return request<Product>(`/products/${id}`, { method: 'PATCH', body: JSON.stringify({ ...rest, averagePrice: payload.averagePrice ?? averagePurchasePrice, primarySupplierId: payload.primarySupplierId ?? supplierId }) }, token);
+    return request<Product>(`/products/${id}`, { method: 'PATCH', body: JSON.stringify({ ...rest, averagePrice: payload.averagePrice ?? averagePurchasePrice, primarySupplierId: uuidOrNullOrUndefined(payload.primarySupplierId ?? supplierId) }) }, token);
   },
   archiveProduct(token: string, id: string) {
     return request<Product>(`/products/${id}/archive`, { method: 'POST' }, token);
@@ -716,6 +733,9 @@ export const api = {
   },
   stocksOcrExtraction(token: string, extractionId: string) {
     return request<StocksOcrExtraction>(`/stocks/ocr/extractions/${extractionId}`, {}, token);
+  },
+  reanalyzeStocksOcrWithAi(token: string, extractionId: string) {
+    return request<StocksOcrExtraction>(`/stocks/ocr/extractions/${extractionId}/reanalyze-ai`, { method: 'POST' }, token);
   },
   saveStocksOcrCorrections(token: string, extractionId: string, payload: StocksOcrExtraction['data']) {
     return request<StocksOcrExtraction>(`/stocks/ocr/extractions/${extractionId}/corrections`, { method: 'PATCH', body: JSON.stringify(normalizeOcrCorrectionPayload(payload)) }, token);

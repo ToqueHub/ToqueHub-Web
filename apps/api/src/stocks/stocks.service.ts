@@ -143,7 +143,7 @@ export class StocksService {
     return stocks.map((s) => ({ ...s, stockValue: s.quantity.mul(s.product.averagePrice), status: this.stockStatus(s.quantity, s.product.minimumStock) }));
   }
 
-  listMovements(organizationId: string, q: ListQueryDto = {}) { return this.prisma.stockMovement.findMany({ where: { organizationId, OR: q.search ? [{ product: { name: { contains: q.search, mode: 'insensitive' } } }, { reason: { contains: q.search, mode: 'insensitive' } }, { createdBy: { email: { contains: q.search, mode: 'insensitive' } } }] : undefined }, include: { product: { include: { unit: true } }, lot: true, supplier: true, sourceSite: true, sourceLocation: true, destinationSite: true, destinationLocation: true, createdBy: { select: { id: true, email: true, firstName: true, lastName: true } } }, orderBy: { movementDate: 'desc' }, ...this.page(q) }); }
+  listMovements(organizationId: string, q: ListQueryDto = {}) { return this.prisma.stockMovement.findMany({ where: { organizationId, OR: q.search ? [{ product: { name: { contains: q.search, mode: 'insensitive' } } }, { reason: { contains: q.search, mode: 'insensitive' } }, { createdBy: { email: { contains: q.search, mode: 'insensitive' } } }] : undefined }, include: { product: { include: { unit: true } }, lot: true, supplier: true, sourceSite: true, sourceLocation: true, destinationSite: true, destinationLocation: true, createdBy: { select: { id: true, email: true, firstName: true, lastName: true } } }, orderBy: [{ movementDate: 'desc' }, { createdAt: 'desc' }], ...this.page(q) }); }
 
   async createMovement(organizationId: string, actor: Actor, dto: CreateStockMovementDto) {
     this.assertWrite(actor);

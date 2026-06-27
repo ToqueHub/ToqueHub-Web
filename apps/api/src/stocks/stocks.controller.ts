@@ -67,6 +67,11 @@ export class StocksController {
     return this.stocksOcrService.getExtraction(this.org(user), this.actor(user), extractionId);
   }
 
+  @Post('stocks/ocr/extractions/:extractionId/reanalyze-ai')
+  reanalyzeOcrExtractionWithAi(@CurrentUser() user: AuthenticatedUser, @Param('extractionId') extractionId: string) {
+    return this.stocksOcrService.reanalyzeExtractionWithAi(this.org(user), this.actor(user), extractionId);
+  }
+
   @Patch('stocks/ocr/extractions/:extractionId/corrections')
   saveOcrCorrections(@CurrentUser() user: AuthenticatedUser, @Param('extractionId') extractionId: string, @Body() dto: SaveOcrCorrectionDto) {
     return this.stocksOcrService.saveCorrections(this.org(user), this.actor(user), extractionId, dto);

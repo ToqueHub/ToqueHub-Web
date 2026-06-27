@@ -19,6 +19,7 @@ const OCR_ROLES = ['SUPER_ADMIN', 'Administrateur', 'ADMIN', 'Manager', 'MANAGER
 const MAX_FILES = Number(process.env.OCR_MAX_FILES ?? 8);
 const MAX_FILE_BYTES = Number(process.env.OCR_MAX_FILE_MB ?? 20) * 1024 * 1024;
 const OCR_MODEL = process.env.OCR_MISTRAL_MODEL || 'mistral-ocr-latest';
+const OCR_AI_MODEL = process.env.OCR_MISTRAL_AI_MODEL || 'mistral-large-latest';
 const OCR_PROVIDER = process.env.OCR_PROVIDER || 'mistral';
 const STOCKS_OCR_UPLOAD_ROOT = resolve(process.env.STOCKS_OCR_UPLOAD_DIR || process.env.UPLOAD_DIR || 'uploads', 'stocks-ocr');
 const ACCEPTED_MIME = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif', 'image/avif']);
@@ -26,6 +27,19 @@ const ACCEPTED_EXT = new Set(['.pdf', '.png', '.jpg', '.jpeg', '.webp', '.heic',
 const EXCLUDED_LINE_RE = /\b(total|tva|remise|consigne|transport|frais|port|sous-total|net a payer|net à payer|acompte)\b/i;
 const LINE_HEADER_RE = /\b(d[eé]signation|libell[eé]|article|produit|r[eé]f|reference|quantit[eé]|qt[eé]|prix|montant|total|tva)\b/i;
 const SUPPLIER_EXCLUDED_RE = /\b(code fournisseur|facture|invoice|bon de livraison|livraison|date|total|tva|client|adresse|siret|siren|iban|bic|tel|t[eé]l|email|mail|page|commande|numero|num[eé]ro|repr[eé]sentant|tourn[eé]e|compte|rue|avenue|av\.|zac|za\s|cs\s|cedex|moneteau|parcay|meslay|jou[eé]-les-tours|issy-les-moulineaux|capital|rcs|ape|maison retraite|ehpad|fay loges|pierre avezard|rocade)\b/i;
+const STOCKS_OCR_CATEGORY_HINTS = [
+  { categoryName: 'Viandes', examples: ['boeuf', 'veau', 'porc', 'agneau', 'poulet', 'dinde', 'canard', 'jambon', 'saucisse', 'charcuterie'] },
+  { categoryName: 'Poissons', examples: ['poisson', 'saumon', 'thon', 'cabillaud', 'colin', 'merlu', 'crevette', 'moule', 'surimi', 'marée'] },
+  { categoryName: 'Produits laitiers', examples: ['lait', 'beurre', 'crème', 'fromage', 'yaourt', 'emmental', 'mozzarella', 'oeuf', 'oeufs'] },
+  { categoryName: 'Fruits et légumes', examples: ['fruit', 'légume', 'salade', 'tomate', 'carotte', 'oignon', 'pomme de terre', 'courgette', 'banane'] },
+  { categoryName: 'Surgelés', examples: ['surgelé', 'congelé', 'glace', 'frozen'] },
+  { categoryName: 'Boissons', examples: ['eau', 'jus', 'soda', 'vin', 'bière', 'café', 'thé', 'boisson'] },
+  { categoryName: 'Épicerie', examples: ['riz', 'pâtes', 'farine', 'sucre', 'huile', 'vinaigre', 'conserve', 'sauce', 'épice', 'biscuit', 'dessert'] },
+  { categoryName: 'Boulangerie', examples: ['pain', 'baguette', 'brioche', 'croissant', 'viennoiserie', 'pâtisserie'] },
+  { categoryName: 'Hygiène et entretien', examples: ['détergent', 'désinfectant', 'savon', 'essuie-main', 'papier toilette', 'nettoyant'] },
+  { categoryName: 'Emballages', examples: ['barquette', 'film', 'gant', 'sac', 'gobelet', 'serviette', 'couvercle'] },
+  { categoryName: 'Nutrition médicale', examples: ['clinutren', 'thickenup', 'resource', 'complément nutritionnel', 'nutrition', 'épaississant'] },
+];
 
 type Actor = { id: string; role: string };
 type UploadedFile = { originalname: string; mimetype: string; size: number; buffer: Buffer };
@@ -41,6 +55,14 @@ interface ExtractedLine {
   vatRate: number | null;
   lotNumber: string | null;
   bestBeforeDate: string | null;
+  productId?: string | null;
+  unitId?: string | null;
+  categoryId?: string | null;
+  categoryName?: string | null;
+  lineStatus?: string | null;
+  lineConfidence?: number | null;
+  warnings?: string[];
+  sourceText?: string | null;
 }
 
 interface ExtractedLineRow {
@@ -83,6 +105,23 @@ interface BusinessExtraction {
     totalIncludingTax: number | null;
   };
   lines: ExtractedLine[];
+  aiAnalysis?: {
+    provider: string;
+    model: string;
+    status: 'applied' | 'fallback' | 'failed';
+    confidence?: number | null;
+    warnings: string[];
+    suggestedActions: string[];
+    totalsCheck?: {
+      computedTotal?: number | null;
+      documentTotal?: number | null;
+      delta?: number | null;
+      status?: string | null;
+    };
+  };
+  warnings?: string[];
+  suggestedActions?: string[];
+  documentConfidence?: number | null;
 }
 
 @Injectable()
@@ -197,6 +236,30 @@ export class StocksOcrService {
     });
     if (!extraction) throw new NotFoundException('Extraction introuvable');
     return this.formatExtraction(extraction);
+  }
+
+  async reanalyzeExtractionWithAi(organizationId: string, actor: Actor, extractionId: string) {
+    this.assertOcr(actor);
+    await this.assertOcrConfigured(organizationId);
+    const extraction = await this.prisma.ocrBusinessExtraction.findFirst({
+      where: { id: extractionId, organizationId },
+      include: { ocrDocument: { include: { document: true } } },
+    });
+    if (!extraction) throw new NotFoundException('Extraction introuvable');
+    const markdown = extraction.ocrDocument.rawMarkdown || extraction.ocrDocument.rawText || '';
+    if (!markdown.trim()) throw new BadRequestException('Aucun texte OCR disponible pour relancer l’analyse IA.');
+    const extracted = await this.extractBusinessData(organizationId, markdown, extraction.ocrDocument.rawJson);
+    const updated = await this.prisma.ocrBusinessExtraction.update({
+      where: { id: extraction.id },
+      data: {
+        extractedJson: extracted as unknown as Prisma.InputJsonValue,
+        correctedJson: Prisma.JsonNull,
+        status: OcrBusinessExtractionStatus.DRAFT,
+        confidenceScore: this.decimalOrNull(this.confidenceForExtraction(extracted)),
+      },
+      include: { ocrDocument: { include: { document: true } } },
+    });
+    return this.formatExtraction(updated);
   }
 
   async saveCorrections(organizationId: string, actor: Actor, extractionId: string, dto: SaveOcrCorrectionDto) {
@@ -340,7 +403,7 @@ export class StocksOcrService {
           processingDurationMs: result.durationMs,
         },
       });
-      const extracted = await this.extractBusinessData(organizationId, result.markdown || rawText);
+      const extracted = await this.extractBusinessData(organizationId, result.markdown || rawText, result.rawJson);
       const extraction = await this.prisma.ocrBusinessExtraction.create({
         data: {
           organizationId,
@@ -383,7 +446,7 @@ export class StocksOcrService {
         body: JSON.stringify(body),
         signal: controller.signal,
       });
-      const json = await response.json().catch(() => ({}));
+      const json: any = await response.json().catch(() => ({}));
       if (!response.ok) throw new BadRequestException('Le document n’a pas pu être analysé. Vérifiez qu’il est lisible et réessayez.');
       const pages = Array.isArray((json as any).pages) ? (json as any).pages : [];
       return {
@@ -397,7 +460,7 @@ export class StocksOcrService {
     }
   }
 
-  private async extractBusinessData(organizationId: string, markdown: string): Promise<BusinessExtraction> {
+  private async extractBusinessData(organizationId: string, markdown: string, rawJson?: any): Promise<BusinessExtraction> {
     const text = markdown || '';
     const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
     const supplierName = this.extractSupplier(lines);
@@ -429,8 +492,296 @@ export class StocksOcrService {
       lines: [],
     };
     extraction.lines = this.extractLines(lines);
-    const matched = await this.matchLines(organizationId, extraction.lines, supplierMatch.supplierId);
-    return { ...extraction, lines: matched };
+    const aiExtraction = await this.analyzeOcrWithMistralAi(organizationId, markdown, rawJson, extraction).catch((error) => {
+      this.logger.warn(`Analyse IA OCR indisponible org=${organizationId}: ${error?.message || error}`);
+      return this.aiFallback(extraction, error?.message || 'Analyse IA indisponible');
+    });
+    const merged = this.mergeAiAnalysis(extraction, aiExtraction);
+    const matched = await this.matchLines(organizationId, merged.lines, merged.supplierId);
+    return { ...merged, lines: matched };
+  }
+
+  private async analyzeOcrWithMistralAi(organizationId: string, markdown: string, rawJson: any, fallback: BusinessExtraction): Promise<Partial<BusinessExtraction>> {
+    const apiKey = await this.resolveMistralApiKey(organizationId);
+    if (!apiKey) return this.aiFallback(fallback, 'Clé Mistral absente');
+    const references = await this.ocrReferenceContext(organizationId);
+    const prompt = [
+      'Tu analyses un bon de livraison ou une facture fournisseur pour un module de stock restauration.',
+      'Retourne uniquement le JSON conforme au schema.',
+      'Objectifs: extraire le fournisseur, les numéros documentaires, dates, totaux et uniquement les lignes produits réceptionnables.',
+      'Ignore les lignes adresse, SIRET, téléphone, fax, RCS, conditions, totaux, mentions légales, pieds de page et en-têtes.',
+      'Regroupe les lignes produit éclatées. Conserve les lots et DLC/DDM si présents.',
+      'Classe chaque ligne avec lineStatus parmi ready, needs_review, missing_product, price_mismatch, quantity_suspicious, non_product_line, duplicate_line.',
+      'Utilise les référentiels ToqueHub pour proposer supplierId, productId, unitId, categoryId quand fiable.',
+      'Si aucun produit fiable, propose un libellé propre, une unité, une catégorie et un SKU/référence si présent.',
+      'La catégorie est obligatoire en sortie: choisis categoryId parmi les catégories existantes dès qu’une catégorie est plausible.',
+      'Si aucune catégorie existante ne convient, renseigne categoryName avec une catégorie métier française précise, jamais "Non classé", "À classer" ou "Divers".',
+      'Les nombres doivent être des nombres JSON, pas des chaînes. Les dates doivent être YYYY-MM-DD.',
+      'Tous les messages humains dans warnings, suggestedActions et line.warnings doivent être rédigés en français, jamais en anglais.',
+    ].join('\n');
+    const payload = {
+      model: OCR_AI_MODEL,
+      messages: [
+        { role: 'system', content: prompt },
+        {
+          role: 'user',
+          content: JSON.stringify({
+            fallbackExtraction: this.compactExtractionForAi(fallback),
+            references,
+            ocrMarkdown: markdown.slice(0, 45_000),
+            ocrPages: Array.isArray(rawJson?.pages) ? rawJson.pages.slice(0, 6).map((page: any) => ({ markdown: page.markdown, text: page.text })).filter(Boolean) : [],
+          }),
+        },
+      ],
+      temperature: 0,
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'toquehub_stock_ocr_analysis',
+          strict: true,
+          schema: this.aiAnalysisSchema(),
+        },
+      },
+    };
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), Number(process.env.OCR_AI_TIMEOUT_MS ?? 60_000));
+    try {
+      const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      const json: any = await response.json().catch(() => ({}));
+      if (!response.ok) throw new BadRequestException(`Analyse IA Mistral refusée (${response.status}).`);
+      const content = json?.choices?.[0]?.message?.content;
+      const parsed = this.parseAiJsonContent(content);
+      return this.normalizeAiExtraction(parsed, fallback);
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private aiAnalysisSchema() {
+    const nullableString = { anyOf: [{ type: 'string' }, { type: 'null' }] };
+    const nullableNumber = { anyOf: [{ type: 'number' }, { type: 'null' }] };
+    return {
+      type: 'object',
+      additionalProperties: false,
+      required: ['documentType', 'supplier', 'document', 'totals', 'lines', 'warnings', 'suggestedActions', 'documentConfidence', 'totalsCheck'],
+      properties: {
+        documentType: { type: 'string', enum: ['invoice', 'delivery_note', 'unknown'] },
+        documentConfidence: nullableNumber,
+        warnings: { type: 'array', items: { type: 'string' } },
+        suggestedActions: { type: 'array', items: { type: 'string' } },
+        supplier: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['name', 'supplierId', 'confidence'],
+          properties: { name: nullableString, supplierId: nullableString, confidence: nullableNumber },
+        },
+        document: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['invoiceNumber', 'deliveryNoteNumber', 'purchaseOrderNumber', 'documentDate', 'deliveryDate'],
+          properties: {
+            invoiceNumber: nullableString,
+            deliveryNoteNumber: nullableString,
+            purchaseOrderNumber: nullableString,
+            documentDate: nullableString,
+            deliveryDate: nullableString,
+          },
+        },
+        totals: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['totalExcludingTax', 'totalTax', 'totalIncludingTax'],
+          properties: { totalExcludingTax: nullableNumber, totalTax: nullableNumber, totalIncludingTax: nullableNumber },
+        },
+        totalsCheck: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['computedTotal', 'documentTotal', 'delta', 'status'],
+          properties: { computedTotal: nullableNumber, documentTotal: nullableNumber, delta: nullableNumber, status: nullableString },
+        },
+        lines: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['label', 'reference', 'quantity', 'unit', 'unitPrice', 'total', 'vatRate', 'lotNumber', 'bestBeforeDate', 'productId', 'unitId', 'categoryId', 'categoryName', 'lineStatus', 'confidence', 'warnings', 'sourceText'],
+            properties: {
+              label: nullableString,
+              reference: nullableString,
+              quantity: nullableNumber,
+              unit: nullableString,
+              unitPrice: nullableNumber,
+              total: nullableNumber,
+              vatRate: nullableNumber,
+              lotNumber: nullableString,
+              bestBeforeDate: nullableString,
+              productId: nullableString,
+              unitId: nullableString,
+              categoryId: nullableString,
+              categoryName: nullableString,
+              lineStatus: { type: 'string', enum: ['ready', 'needs_review', 'missing_product', 'price_mismatch', 'quantity_suspicious', 'non_product_line', 'duplicate_line'] },
+              confidence: nullableNumber,
+              warnings: { type: 'array', items: { type: 'string' } },
+              sourceText: nullableString,
+            },
+          },
+        },
+      },
+    };
+  }
+
+  private parseAiJsonContent(content: any) {
+    const raw = Array.isArray(content) ? content.map((part) => part?.text || part?.content || '').join('') : String(content || '');
+    const cleaned = raw.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+    if (!cleaned) throw new BadRequestException('Analyse IA vide.');
+    return JSON.parse(cleaned);
+  }
+
+  private normalizeAiExtraction(ai: any, fallback: BusinessExtraction): Partial<BusinessExtraction> {
+    const warnings = Array.isArray(ai?.warnings) ? ai.warnings.map(String).slice(0, 12) : [];
+    const lines = Array.isArray(ai?.lines) ? ai.lines
+      .filter((line: any) => line?.lineStatus !== 'non_product_line' && line?.lineStatus !== 'duplicate_line')
+      .map((line: any) => ({
+        label: this.cleanString(line.label) || null,
+        reference: this.cleanString(line.reference) || null,
+        quantity: this.numberOrNull(line.quantity),
+        unit: this.cleanString(line.unit) || null,
+        unitPrice: this.numberOrNull(line.unitPrice),
+        total: this.numberOrNull(line.total),
+        vatRate: this.numberOrNull(line.vatRate),
+        lotNumber: this.cleanString(line.lotNumber) || null,
+        bestBeforeDate: this.cleanDate(line.bestBeforeDate),
+        productId: this.uuidOrNull(line.productId),
+        unitId: this.uuidOrNull(line.unitId),
+        categoryId: this.uuidOrNull(line.categoryId),
+        categoryName: this.cleanString(line.categoryName) || null,
+        lineStatus: this.cleanString(line.lineStatus) || 'needs_review',
+        lineConfidence: this.numberOrNull(line.confidence),
+        warnings: Array.isArray(line.warnings) ? line.warnings.map(String).slice(0, 6) : [],
+        sourceText: this.cleanString(line.sourceText) || null,
+      }))
+      .filter((line: ExtractedLine) => line.label && line.quantity != null)
+      .slice(0, 120) : [];
+    const documentConfidence = this.numberOrNull(ai?.documentConfidence);
+    return {
+      documentType: ['invoice', 'delivery_note', 'unknown'].includes(ai?.documentType) ? ai.documentType : fallback.documentType,
+      supplier: { name: this.cleanString(ai?.supplier?.name) || fallback.supplier.name },
+      supplierId: this.uuidOrNull(ai?.supplier?.supplierId) || fallback.supplierId,
+      supplierName: this.cleanString(ai?.supplier?.name) || fallback.supplierName,
+      document: {
+        invoiceNumber: this.cleanString(ai?.document?.invoiceNumber) || fallback.document.invoiceNumber,
+        deliveryNoteNumber: this.cleanString(ai?.document?.deliveryNoteNumber) || fallback.document.deliveryNoteNumber,
+        purchaseOrderNumber: this.cleanString(ai?.document?.purchaseOrderNumber) || fallback.document.purchaseOrderNumber,
+        documentDate: this.cleanDate(ai?.document?.documentDate) || fallback.document.documentDate,
+        deliveryDate: this.cleanDate(ai?.document?.deliveryDate) || fallback.document.deliveryDate,
+      },
+      totals: {
+        totalExcludingTax: this.numberOrNull(ai?.totals?.totalExcludingTax) ?? fallback.totals.totalExcludingTax,
+        totalTax: this.numberOrNull(ai?.totals?.totalTax) ?? fallback.totals.totalTax,
+        totalIncludingTax: this.numberOrNull(ai?.totals?.totalIncludingTax) ?? fallback.totals.totalIncludingTax,
+      },
+      lines: lines.length ? lines : fallback.lines,
+      documentConfidence,
+      warnings,
+      suggestedActions: Array.isArray(ai?.suggestedActions) ? ai.suggestedActions.map(String).slice(0, 10) : [],
+      aiAnalysis: {
+        provider: OCR_PROVIDER,
+        model: OCR_AI_MODEL,
+        status: lines.length ? 'applied' : 'fallback',
+        confidence: documentConfidence,
+        warnings,
+        suggestedActions: Array.isArray(ai?.suggestedActions) ? ai.suggestedActions.map(String).slice(0, 10) : [],
+        totalsCheck: {
+          computedTotal: this.numberOrNull(ai?.totalsCheck?.computedTotal),
+          documentTotal: this.numberOrNull(ai?.totalsCheck?.documentTotal),
+          delta: this.numberOrNull(ai?.totalsCheck?.delta),
+          status: this.cleanString(ai?.totalsCheck?.status),
+        },
+      },
+    };
+  }
+
+  private mergeAiAnalysis(fallback: BusinessExtraction, ai: Partial<BusinessExtraction>): BusinessExtraction {
+    const supplierName = ai.supplierName || ai.supplier?.name || fallback.supplierName || fallback.supplier.name;
+    return {
+      ...fallback,
+      documentType: ai.documentType ?? fallback.documentType,
+      supplier: { ...fallback.supplier, ...ai.supplier, name: supplierName ?? null },
+      supplierId: ai.supplierId ?? fallback.supplierId,
+      supplierName: supplierName ?? null,
+      document: { ...fallback.document, ...(ai.document || {}) },
+      totals: { ...fallback.totals, ...(ai.totals || {}) },
+      lines: ai.lines?.length ? ai.lines : fallback.lines,
+      aiAnalysis: ai.aiAnalysis ?? fallback.aiAnalysis,
+      warnings: ai.warnings ?? fallback.warnings ?? [],
+      suggestedActions: ai.suggestedActions ?? fallback.suggestedActions ?? [],
+      documentConfidence: ai.documentConfidence ?? fallback.documentConfidence ?? null,
+    };
+  }
+
+  private aiFallback(fallback: BusinessExtraction, reason: string): Partial<BusinessExtraction> {
+    return {
+      lines: fallback.lines,
+      aiAnalysis: {
+        provider: OCR_PROVIDER,
+        model: OCR_AI_MODEL,
+        status: 'failed',
+        confidence: null,
+        warnings: [reason],
+        suggestedActions: ['Vérifier manuellement les lignes OCR.'],
+      },
+      warnings: [reason],
+      suggestedActions: ['Vérifier manuellement les lignes OCR.'],
+      documentConfidence: null,
+    };
+  }
+
+  private async ocrReferenceContext(organizationId: string) {
+    const [suppliers, products, categories, units] = await Promise.all([
+      this.prisma.supplier.findMany({ where: { organizationId, isArchived: false }, select: { id: true, name: true }, orderBy: { name: 'asc' }, take: 200 }),
+      this.prisma.product.findMany({ where: { organizationId, isArchived: false }, select: { id: true, name: true, sku: true, categoryId: true, unitId: true, primarySupplierId: true }, orderBy: { name: 'asc' }, take: 500 }),
+      this.prisma.category.findMany({ where: { organizationId, isArchived: false }, select: { id: true, name: true, description: true }, orderBy: { name: 'asc' }, take: 120 }),
+      this.prisma.unit.findMany({ where: { organizationId, isArchived: false }, select: { id: true, name: true, symbol: true, type: true }, orderBy: { name: 'asc' }, take: 120 }),
+    ]);
+    return { suppliers, products, categories, units, categoryHints: STOCKS_OCR_CATEGORY_HINTS };
+  }
+
+  private compactExtractionForAi(extraction: BusinessExtraction) {
+    return {
+      supplierName: extraction.supplierName,
+      document: extraction.document,
+      totals: extraction.totals,
+      lines: extraction.lines.slice(0, 100),
+    };
+  }
+
+  private cleanString(value: any) {
+    const str = value == null ? '' : String(value).replace(/\s+/g, ' ').trim();
+    return str || null;
+  }
+
+  private uuidOrNull(value: any) {
+    const str = this.cleanString(value);
+    return str && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str) ? str : null;
+  }
+
+  private numberOrNull(value: any) {
+    if (value == null || value === '') return null;
+    const parsed = typeof value === 'number' ? value : this.parseFrenchNumber(String(value));
+    return parsed != null && Number.isFinite(parsed) ? parsed : null;
+  }
+
+  private cleanDate(value: any) {
+    const str = this.cleanString(value);
+    if (!str) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+    if (/^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$/.test(str)) return this.normalizeDate(str);
+    return null;
   }
 
   private extractLines(lines: string[]) {
@@ -559,7 +910,11 @@ export class StocksOcrService {
     const products = await this.prisma.product.findMany({ where: { organizationId, isArchived: false }, include: { unit: true, category: true, primarySupplier: true } });
     return lines.map((line) => {
       const ranked = products
-        .map((product) => ({ product, score: this.productMatchScore(line, product, supplierId) }))
+        .map((product) => {
+          const aiProductId = (line as any).productId;
+          const score = aiProductId && product.id === aiProductId ? Math.max(0.9, this.numberOrNull((line as any).lineConfidence) ?? 0) : this.productMatchScore(line, product, supplierId);
+          return { product, score };
+        })
         .sort((a, b) => b.score - a.score);
       const best = ranked[0];
       const status = !best || best.score < 0.58 ? StockReceptionLineMatchingStatus.NOT_FOUND : best.score >= 0.84 ? StockReceptionLineMatchingStatus.RECOGNIZED : StockReceptionLineMatchingStatus.NEEDS_REVIEW;
@@ -571,6 +926,10 @@ export class StocksOcrService {
         matchedUnitSymbol: status === StockReceptionLineMatchingStatus.NOT_FOUND ? null : best.product.unit.symbol,
         matchingScore: best?.score ?? 0,
         matchingStatus: status,
+        lineStatus: (line as any).lineStatus ?? (status === StockReceptionLineMatchingStatus.RECOGNIZED ? 'ready' : status === StockReceptionLineMatchingStatus.NOT_FOUND ? 'missing_product' : 'needs_review'),
+        lineConfidence: (line as any).lineConfidence ?? best?.score ?? 0,
+        warnings: (line as any).warnings ?? [],
+        sourceText: (line as any).sourceText ?? null,
         productCandidates: ranked.slice(0, 8).filter((candidate) => candidate.score >= 0.38).map((candidate) => ({
           id: candidate.product.id,
           name: candidate.product.name,
@@ -878,6 +1237,10 @@ export class StocksOcrService {
       totalIncludingTax: dto.totalIncludingTax ?? null,
       siteId: dto.siteId || null,
       locationId: dto.locationId || null,
+      documentConfidence: dto.documentConfidence ?? null,
+      warnings: dto.warnings ?? [],
+      suggestedActions: dto.suggestedActions ?? [],
+      aiAnalysis: dto.aiAnalysis ?? null,
       lines: (dto.lines || []).map((line) => ({
         ...line,
         productId: line.productId || null,
@@ -889,6 +1252,10 @@ export class StocksOcrService {
         bestBeforeDate: line.bestBeforeDate || null,
         matchingStatus: line.productId ? StockReceptionLineMatchingStatus.RECOGNIZED : StockReceptionLineMatchingStatus.NOT_FOUND,
         matchingScore: line.productId ? 1 : 0,
+        lineStatus: line.lineStatus || null,
+        lineConfidence: line.lineConfidence ?? null,
+        warnings: line.warnings ?? [],
+        sourceText: line.sourceText || null,
       })),
     };
   }

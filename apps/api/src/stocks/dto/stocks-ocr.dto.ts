@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsDateString, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsDateString, IsNumber, IsObject, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 
 export class AnalyzeBatchDto {
   @IsArray()
@@ -23,6 +23,24 @@ export class CorrectedReceptionLineDto {
   @IsOptional()
   @IsUUID()
   unitId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  categoryId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  categoryName?: string;
+
+  @IsOptional()
+  @IsUUID()
+  suggestedCategoryId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  suggestedCategoryName?: string;
 
   @IsOptional()
   @IsString()
@@ -72,6 +90,28 @@ export class CorrectedReceptionLineDto {
   @IsOptional()
   @IsDateString()
   bestBeforeDate?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  lineStatus?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  @Max(1)
+  lineConfidence?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  warnings?: string[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  sourceText?: string;
 }
 
 export class SaveOcrCorrectionDto {
@@ -133,9 +173,29 @@ export class SaveOcrCorrectionDto {
   @IsUUID()
   locationId?: string;
 
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  @Max(1)
+  documentConfidence?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  warnings?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  suggestedActions?: string[];
+
+  @IsOptional()
+  @IsObject()
+  aiAnalysis?: Record<string, unknown>;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CorrectedReceptionLineDto)
   lines!: CorrectedReceptionLineDto[];
 }
-

@@ -1398,6 +1398,7 @@ export interface StockMovement {
 }
 
 export type OcrMatchingStatus = 'RECOGNIZED' | 'NEEDS_REVIEW' | 'NOT_FOUND';
+export type StocksOcrLineStatus = 'ready' | 'needs_review' | 'missing_product' | 'price_mismatch' | 'quantity_suspicious' | 'non_product_line' | 'duplicate_line' | string;
 
 export interface StocksOcrDocument {
   id: string;
@@ -1419,6 +1420,10 @@ export interface StocksOcrLine {
   quantity?: number | string | null;
   unit?: string | null;
   unitId?: string | null;
+  categoryId?: string | null;
+  categoryName?: string | null;
+  suggestedCategoryId?: string | null;
+  suggestedCategoryName?: string | null;
   productId?: string | null;
   productName?: string | null;
   matchedUnitSymbol?: string | null;
@@ -1430,6 +1435,10 @@ export interface StocksOcrLine {
   bestBeforeDate?: string | null;
   matchingStatus?: OcrMatchingStatus | string;
   matchingScore?: number | string | null;
+  lineStatus?: StocksOcrLineStatus | null;
+  lineConfidence?: number | string | null;
+  warnings?: string[];
+  sourceText?: string | null;
   productCandidates?: Array<{ id: string; name: string; sku?: string | null; categoryId?: string | null; categoryName?: string | null; unitId?: string | null; unitSymbol?: string | null; supplierId?: string | null; supplierName?: string | null; score: number | string }>;
 }
 
@@ -1457,6 +1466,23 @@ export interface StocksOcrReceptionData {
   totalIncludingTax?: number | string | null;
   siteId?: string | null;
   locationId?: string | null;
+  documentConfidence?: number | string | null;
+  warnings?: string[];
+  suggestedActions?: string[];
+  aiAnalysis?: {
+    provider?: string;
+    model?: string;
+    status?: 'applied' | 'fallback' | 'failed' | string;
+    confidence?: number | string | null;
+    warnings?: string[];
+    suggestedActions?: string[];
+    totalsCheck?: {
+      computedTotal?: number | string | null;
+      documentTotal?: number | string | null;
+      delta?: number | string | null;
+      status?: string | null;
+    };
+  } | null;
   document?: {
     invoiceNumber?: string | null;
     deliveryNoteNumber?: string | null;
@@ -1496,9 +1522,9 @@ export interface StocksOcrStatus {
     id: string;
     status: string;
     errorMessage?: string | null;
-    extractions?: Array<{ id: string; status: string }>;
+    extractions?: Array<{ id: string; status: string; extractedJson?: StocksOcrReceptionData; correctedJson?: StocksOcrReceptionData | null }>;
   } | null;
-  extraction?: { id: string; status: string } | null;
+  extraction?: { id: string; status: string; extractedJson?: StocksOcrReceptionData; correctedJson?: StocksOcrReceptionData | null } | null;
   state: string;
 }
 
