@@ -24,6 +24,95 @@ export interface SystemStatus {
   hasAdmin: boolean;
 }
 
+export interface BackupManifest {
+  format: 'toquehub-backup';
+  version: number;
+  createdAt: string;
+  createdBy: string | null;
+  mode: 'manual' | 'scheduled';
+  app: { name: string; packageVersion: string };
+  database: {
+    provider: 'postgresql';
+    dump: string;
+    checksumSha256: string;
+    sizeBytes: number;
+  };
+  files: {
+    roots: Array<{
+      key: string;
+      envVar: string;
+      archivePath: string;
+      targetPath: string;
+      sizeBytes: number;
+      fileCount: number;
+    }>;
+    totalSizeBytes: number;
+    totalFileCount: number;
+  };
+  excluded: string[];
+}
+
+export interface BackupSummary {
+  id: string;
+  filename: string;
+  createdAt: string | null;
+  sizeBytes: number;
+  mode?: 'manual' | 'scheduled';
+  manifest?: BackupManifest;
+}
+
+export interface BackupListResponse {
+  backups: BackupSummary[];
+  operation: 'backup' | 'restore' | null;
+  tools: Array<{ key: string; path: string; available: boolean }>;
+}
+
+export interface BackupInspection {
+  uploadId: string;
+  filename: string;
+  sizeBytes: number;
+  manifest: BackupManifest;
+}
+
+export interface BackupRestoreResult {
+  restored: boolean;
+  restoredAt: string;
+  manifest: BackupManifest;
+  message: string;
+}
+
+export interface BackupSchedule {
+  enabled: boolean;
+  frequency: 'daily' | 'weekly';
+  time: string;
+  weekday: number;
+  retentionDays: number;
+  lastRunAt: string | null;
+}
+
+export type BackupCloudProvider = 'GOOGLE_DRIVE';
+export type BackupCloudConnectionStatus = 'DISCONNECTED' | 'CONFIGURED' | 'CONNECTED' | 'ERROR';
+
+export interface BackupCloudConnectionView {
+  provider: BackupCloudProvider;
+  status: BackupCloudConnectionStatus;
+  configured: boolean;
+  connected: boolean;
+  clientId: string | null;
+  redirectUri: string | null;
+  accountEmail: string | null;
+  driveFolderId: string | null;
+  lastSyncAt: string | null;
+  lastTestAt: string | null;
+  lastError: string | null;
+  updatedAt: string | null;
+}
+
+export interface BackupCloudStatus {
+  googleDrive: BackupCloudConnectionView;
+  encryptionConfigured: boolean;
+}
+
 export interface BootstrapAdminResponse {
   user: {
     id: string;
@@ -157,6 +246,42 @@ export interface StocksOcrConfig {
   model: string;
   configured: boolean;
   source?: 'environment' | 'organization' | string | null;
+}
+
+export interface MyDocument {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  sourceModule: string;
+  sourceType?: string | null;
+  status: string;
+  processingState: 'ready' | 'processing' | 'failed' | string;
+  type: 'invoice' | 'delivery_note' | 'unknown' | string;
+  supplierId?: string | null;
+  supplierName?: string | null;
+  invoiceNumber?: string | null;
+  deliveryNoteNumber?: string | null;
+  documentDate?: string | null;
+  uploadedAt: string;
+  createdAt: string;
+  updatedAt: string;
+  extractionId?: string | null;
+  receptionId?: string | null;
+  receptionStatus?: string | null;
+  uploadedBy?: { id: string; firstName?: string | null; lastName?: string | null; email?: string | null } | null;
+}
+
+export interface MyDocumentsResponse {
+  items: MyDocument[];
+  summary: {
+    total: number;
+    ready: number;
+    processing: number;
+    failed: number;
+    suppliers: Array<{ id: string | null; name: string; count: number }>;
+    months: Array<{ key: string; label: string; count: number }>;
+  };
 }
 
 export interface DashboardWidget {
@@ -1799,6 +1924,7 @@ export interface StockMovement {
 }
 
 export type OcrMatchingStatus = 'RECOGNIZED' | 'NEEDS_REVIEW' | 'NOT_FOUND';
+export type StocksOcrLineStatus = 'ready' | 'needs_review' | 'missing_product' | 'price_mismatch' | 'quantity_suspicious' | 'non_product_line' | 'duplicate_line' | string;
 
 export interface StocksOcrDocument {
   id: string;
@@ -1820,6 +1946,10 @@ export interface StocksOcrLine {
   quantity?: number | string | null;
   unit?: string | null;
   unitId?: string | null;
+  categoryId?: string | null;
+  categoryName?: string | null;
+  suggestedCategoryId?: string | null;
+  suggestedCategoryName?: string | null;
   productId?: string | null;
   productName?: string | null;
   matchedUnitSymbol?: string | null;
@@ -1831,6 +1961,10 @@ export interface StocksOcrLine {
   bestBeforeDate?: string | null;
   matchingStatus?: OcrMatchingStatus | string;
   matchingScore?: number | string | null;
+  lineStatus?: StocksOcrLineStatus | null;
+  lineConfidence?: number | string | null;
+  warnings?: string[];
+  sourceText?: string | null;
   productCandidates?: Array<{ id: string; name: string; sku?: string | null; categoryId?: string | null; categoryName?: string | null; unitId?: string | null; unitSymbol?: string | null; supplierId?: string | null; supplierName?: string | null; score: number | string }>;
 }
 
@@ -1858,6 +1992,23 @@ export interface StocksOcrReceptionData {
   totalIncludingTax?: number | string | null;
   siteId?: string | null;
   locationId?: string | null;
+  documentConfidence?: number | string | null;
+  warnings?: string[];
+  suggestedActions?: string[];
+  aiAnalysis?: {
+    provider?: string;
+    model?: string;
+    status?: 'applied' | 'fallback' | 'failed' | string;
+    confidence?: number | string | null;
+    warnings?: string[];
+    suggestedActions?: string[];
+    totalsCheck?: {
+      computedTotal?: number | string | null;
+      documentTotal?: number | string | null;
+      delta?: number | string | null;
+      status?: string | null;
+    };
+  } | null;
   document?: {
     invoiceNumber?: string | null;
     deliveryNoteNumber?: string | null;
@@ -1897,9 +2048,9 @@ export interface StocksOcrStatus {
     id: string;
     status: string;
     errorMessage?: string | null;
-    extractions?: Array<{ id: string; status: string }>;
+    extractions?: Array<{ id: string; status: string; extractedJson?: StocksOcrReceptionData; correctedJson?: StocksOcrReceptionData | null }>;
   } | null;
-  extraction?: { id: string; status: string } | null;
+  extraction?: { id: string; status: string; extractedJson?: StocksOcrReceptionData; correctedJson?: StocksOcrReceptionData | null } | null;
   state: string;
 }
 

@@ -53,7 +53,7 @@ const statusOptions = [
 
 const HR_WIZARD_SERVICES_KEY = 'toquehub.hrWizard.selectedServices';
 
-type HrTab = 'dashboard' | 'collaborators' | 'departments' | 'positions' | 'rights' | 'orgchart';
+type HrTab = 'dashboard' | 'collaborators' | 'departments' | 'positions' | 'rights' | 'rotations' | 'orgchart';
 
 type HrAppProps = {
   tab: HrTab;
@@ -202,6 +202,7 @@ export function HrApp({
     ...(onboardingHasServices && onboardingHasPositions ? [['positions', 'Postes'] as [HrTab, string]] : []),
     ...(canAccessCollaborators ? [['collaborators', 'Collaborateurs'] as [HrTab, string]] : []),
     ...(canAccessCollaborators ? [['rights', 'Droits'] as [HrTab, string]] : []),
+    ...(canAccessRotationsAndOrg ? [['rotations', 'Roulements'] as [HrTab, string]] : []),
     ...(canAccessRotationsAndOrg ? [['orgchart', 'Organigramme'] as [HrTab, string]] : []),
   ];
 
@@ -270,6 +271,10 @@ export function HrApp({
 
       {tab === 'rights' ? (
         <HrEntitlementsPanel token={token} collaborators={collaborators} departments={activeDepartments} positions={activePositions} canWrite={canWrite} regulatoryCountryCode={regulatoryCountryCode} onConfigureRegulatoryCountry={onConfigureRegulatoryCountry} />
+      ) : null}
+
+      {tab === 'rotations' ? (
+        <RotationsPage rotations={rotations} collaborators={collaborators} departments={departments} canWrite={canWrite} onCreate={() => setRotationModal('new')} onEdit={setRotationModal} onOpen={setSelectedRotation} onArchive={onArchiveRotation} onAssign={onAssignRotation} onRemoveAssignment={onRemoveRotationAssignment} />
       ) : null}
 
       {tab === 'orgchart' ? (

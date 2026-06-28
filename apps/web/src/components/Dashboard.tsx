@@ -26,6 +26,10 @@ import {
   UsersRound,
   UserRound,
   FileText,
+  LayoutGrid,
+  List,
+  Eye,
+  Filter,
   Calendar,
   Thermometer,
   ShoppingCart,
@@ -34,6 +38,7 @@ import {
   Plus,
   Search,
   X,
+  Bell,
   Menu,
   CheckCircle2,
   TrendingUp,
@@ -52,6 +57,10 @@ import {
   MapPin,
   Archive,
   Download,
+  Cloud,
+  ExternalLink,
+  HelpCircle,
+  UploadCloud,
   ClipboardList,
   Warehouse,
   Workflow,
@@ -94,6 +103,8 @@ import type {
   ModularDashboard,
   ModularDashboardPreferences,
   DashboardWidget,
+  MyDocument,
+  MyDocumentsResponse,
   AuditEntry,
   Inventory,
   Location,
@@ -121,6 +132,12 @@ import type {
   HrSummary,
   HrRotation,
   HrRotationPayload,
+  BackupInspection,
+  BackupCloudStatus,
+  BackupListResponse,
+  BackupRestoreResult,
+  BackupSchedule,
+  BackupSummary,
 } from '../types';
 
 const movementLabels: Record<StockMovementType, string> = {
@@ -319,9 +336,24 @@ const apps = [
   },
 ];
 
-type ActiveTab = 'overview' | 'applications' | 'settings' | 'organization-general' | 'users' | 'architecture' | 'stocks-dashboard' | 'inventory' | 'movements' | 'products' | 'categories' | 'units' | 'suppliers' | 'inventories' | 'locations' | 'audit' | 'rnm-dashboard' | 'rnm-history' | 'rnm-favorites' | 'rnm-about' | 'hr-dashboard' | 'hr-collaborators' | 'hr-departments' | 'hr-positions' | 'hr-rights' | 'hr-orgchart' | 'planning-dashboard' | 'planning-planning' | 'planning-settings' | 'planning-attendance' | 'planning-day' | 'planning-week' | 'planning-month' | 'planning-assignments' | 'planning-absences' | 'planning-replacements' | 'planning-templates' | 'planning-requirements' | 'technical-sheets-dashboard' | 'technical-sheets-recipes' | 'technical-sheets-categories' | 'technical-sheets-costs' | 'technical-sheets-allergens' | 'technical-sheets-production' | 'production-dashboard' | 'production-orders' | 'production-calendar' | 'production-today' | 'production-assignments' | 'production-materials' | 'production-exports' | 'production-history' | 'menus-dashboard' | 'menus-list' | 'menus-calendar' | 'menus-cycles' | 'menus-diets' | 'menus-guests' | 'menus-exports' | 'menus-history';
+type ActiveTab = 'overview' | 'applications' | 'settings' | 'organization-general' | 'organization-documents' | 'users' | 'architecture' | 'stocks-dashboard' | 'inventory' | 'movements' | 'products' | 'categories' | 'units' | 'suppliers' | 'inventories' | 'locations' | 'audit' | 'rnm-dashboard' | 'rnm-history' | 'rnm-favorites' | 'rnm-about' | 'hr-dashboard' | 'hr-collaborators' | 'hr-departments' | 'hr-positions' | 'hr-rights' | 'hr-rotations' | 'hr-orgchart' | 'planning-dashboard' | 'planning-planning' | 'planning-settings' | 'planning-attendance' | 'planning-day' | 'planning-week' | 'planning-month' | 'planning-assignments' | 'planning-absences' | 'planning-replacements' | 'planning-templates' | 'planning-requirements' | 'technical-sheets-dashboard' | 'technical-sheets-recipes' | 'technical-sheets-categories' | 'technical-sheets-costs' | 'technical-sheets-allergens' | 'technical-sheets-production' | 'production-dashboard' | 'production-orders' | 'production-calendar' | 'production-today' | 'production-assignments' | 'production-materials' | 'production-exports' | 'production-history' | 'menus-dashboard' | 'menus-list' | 'menus-calendar' | 'menus-cycles' | 'menus-diets' | 'menus-guests' | 'menus-exports' | 'menus-history';
 
 type Confirmation = 'install-stocks' | 'uninstall-stocks' | 'uninstall-rnm-prices' | 'uninstall-planning' | 'uninstall-technical-sheets' | 'uninstall-production' | 'uninstall-menus' | null;
+type AppNotification = {
+  id: string;
+  type: 'success' | 'error';
+  message: string;
+  createdAt: Date;
+  read: boolean;
+};
+type StocksOnboardingStep = 'welcome' | 'foundation' | 'catalog' | 'reception' | 'review';
+type StocksReadiness = {
+  foundationReady: boolean;
+  catalogReady: boolean;
+  flowReady: boolean;
+  progress: number;
+  nextStep: StocksOnboardingStep;
+};
 
 interface DashboardProps {
   session: UserSession;
@@ -331,7 +363,7 @@ interface DashboardProps {
 
 export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps) {
   const token = session.accessToken;
-  
+
   // Data State
   const [categories, setCategories] = useState<Category[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
@@ -355,10 +387,12 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [hrPositions, setHrPositions] = useState<HrPosition[]>([]);
   const [hrRotations, setHrRotations] = useState<HrRotation[]>([]);
   const [hrOnboarding, setHrOnboarding] = useState<any>(null);
-  
+
   // UI State
   const [error, setError] = useState<string>();
   const [success, setSuccess] = useState<string>();
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [isLoading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
   const [stocksMenuExpanded, setStocksMenuExpanded] = useState(() => {
@@ -404,12 +438,20 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [showOcrReviewModal, setShowOcrReviewModal] = useState(false);
   const [ocrStatuses, setOcrStatuses] = useState<StocksOcrStatus[]>([]);
   const [selectedOcrExtraction, setSelectedOcrExtraction] = useState<StocksOcrExtraction | null>(null);
+  const [myDocuments, setMyDocuments] = useState<MyDocumentsResponse | null>(null);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [documentsSearch, setDocumentsSearch] = useState('');
+  const [documentsSupplierFilter, setDocumentsSupplierFilter] = useState('');
+  const [documentsTypeFilter, setDocumentsTypeFilter] = useState('all');
+  const [documentsDateFrom, setDocumentsDateFrom] = useState('');
+  const [documentsDateTo, setDocumentsDateTo] = useState('');
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [ocrPollingActive, setOcrPollingActive] = useState(false);
   const [productPrefillName, setProductPrefillName] = useState('');
   const [supplierPrefillName, setSupplierPrefillName] = useState('');
   const [apiKeysPanelHint, setApiKeysPanelHint] = useState(false);
-  const [showPrefillWizard, setShowPrefillWizard] = useState(false);
+  const [showStocksOnboarding, setShowStocksOnboarding] = useState(false);
   const [confirmation, setConfirmation] = useState<Confirmation>(null);
   const [appActionLoading, setAppActionLoading] = useState(false);
   const [selectedStoreApp, setSelectedStoreApp] = useState<AppDefinition | null>(null);
@@ -450,6 +492,31 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [inventorySessionSearch, setInventorySessionSearch] = useState('');
   const [auditSearch, setAuditSearch] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+  const unreadNotifications = notifications.filter((notification) => !notification.read).length;
+
+  function addAppNotification(type: AppNotification['type'], message: string) {
+    setNotifications((current) => {
+      const newest = current[0];
+      const now = new Date();
+      if (newest?.type === type && newest.message === message && now.getTime() - newest.createdAt.getTime() < 3000) {
+        return current;
+      }
+      return [
+        {
+          id: `${now.getTime()}-${Math.random().toString(36).slice(2)}`,
+          type,
+          message,
+          createdAt: now,
+          read: false,
+        },
+        ...current,
+      ].slice(0, 50);
+    });
+  }
+
+  function formatNotificationTime(date: Date) {
+    return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  }
 
   async function refresh() {
     setLoading(true);
@@ -534,19 +601,67 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   }, []);
 
   useEffect(() => {
+    if (success) addAppNotification('success', success);
+  }, [success]);
+
+  useEffect(() => {
+    if (error) addAppNotification('error', error);
+  }, [error]);
+
+  useEffect(() => {
+    if (!notificationsOpen || unreadNotifications === 0) return;
+    setNotifications((current) => current.map((notification) => ({ ...notification, read: true })));
+  }, [notificationsOpen, unreadNotifications]);
+
+  async function refreshOcrStatusesFromServer() {
+    try {
+      const result = await api.stocksOcrStatuses(token);
+      setOcrStatuses(result.statuses ?? []);
+      setOcrPollingActive((result.statuses ?? []).some(isOcrStatusWorking));
+    } catch {
+      // OCR permissions/configuration can vary by role; the dashboard should remain usable.
+    }
+  }
+
+  async function refreshMyDocuments() {
+    setDocumentsLoading(true);
+    try {
+      const result = await api.documents(token, {
+        search: documentsSearch,
+        supplier: documentsSupplierFilter,
+        type: documentsTypeFilter,
+        dateFrom: documentsDateFrom,
+        dateTo: documentsDateTo,
+      });
+      setMyDocuments(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Chargement des documents impossible.');
+    } finally {
+      setDocumentsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!installedApps.includes('stocks')) {
+      setOcrStatuses([]);
+      setOcrPollingActive(false);
+      return;
+    }
+    void refreshOcrStatusesFromServer();
+  }, [token, installedApps.join('|')]);
+
+  useEffect(() => {
     if (!ocrPollingActive || !ocrStatuses.length) return undefined;
     const timer = window.setInterval(async () => {
-      const pending = ocrStatuses.filter((item) => !item.extraction && item.state !== 'erreur');
-      if (!pending.length) {
-        setOcrPollingActive(false);
-        return;
-      }
-      const refreshed = await Promise.all(ocrStatuses.map((item) => api.stocksOcrStatus(token, item.document.id).catch(() => item)));
-      setOcrStatuses(refreshed);
-      if (refreshed.every((item) => item.extraction || item.state === 'erreur')) setOcrPollingActive(false);
+      await refreshOcrStatusesFromServer();
     }, 2500);
     return () => window.clearInterval(timer);
   }, [ocrPollingActive, ocrStatuses, token]);
+
+  useEffect(() => {
+    if (activeTab !== 'organization-documents') return;
+    void refreshMyDocuments();
+  }, [activeTab, token, documentsSearch, documentsSupplierFilter, documentsTypeFilter, documentsDateFrom, documentsDateTo]);
 
 
   const stocksInstalled = installedApps.includes('stocks');
@@ -568,7 +683,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   }, [activeTab]);
 
   const isRnmTab = useMemo(() => ['rnm-dashboard', 'rnm-history', 'rnm-favorites', 'rnm-about'].includes(activeTab), [activeTab]);
-  const isHrTab = useMemo(() => ['hr-dashboard', 'hr-collaborators', 'hr-departments', 'hr-positions', 'hr-rights', 'hr-orgchart'].includes(activeTab), [activeTab]);
+  const isHrTab = useMemo(() => ['hr-dashboard', 'hr-collaborators', 'hr-departments', 'hr-positions', 'hr-rights', 'hr-rotations', 'hr-orgchart'].includes(activeTab), [activeTab]);
   const isPlanningTab = useMemo(() => ['planning-dashboard', 'planning-planning', 'planning-settings', 'planning-attendance', 'planning-day', 'planning-week', 'planning-month', 'planning-assignments', 'planning-absences', 'planning-replacements', 'planning-templates', 'planning-requirements'].includes(activeTab), [activeTab]);
   const isTechnicalSheetsTab = useMemo(() => ['technical-sheets-dashboard', 'technical-sheets-recipes', 'technical-sheets-categories', 'technical-sheets-costs', 'technical-sheets-allergens', 'technical-sheets-production'].includes(activeTab), [activeTab]);
   const isProductionTab = useMemo(() => ['production-dashboard', 'production-orders', 'production-calendar', 'production-today', 'production-assignments', 'production-materials', 'production-exports', 'production-history'].includes(activeTab), [activeTab]);
@@ -628,6 +743,18 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     document.addEventListener('click', handleDocumentClick);
     return () => document.removeEventListener('click', handleDocumentClick);
   }, [profileMenuOpen]);
+
+  useEffect(() => {
+    if (!notificationsOpen) return;
+    const handleDocumentClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.sidebar-notifications-container')) {
+        setNotificationsOpen(false);
+      }
+    };
+    document.addEventListener('click', handleDocumentClick);
+    return () => document.removeEventListener('click', handleDocumentClick);
+  }, [notificationsOpen]);
 
   const togglePinApp = (appId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -692,6 +819,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         ...(hrOnboarding?.employeesUnlockedAt ? [
           { tab: 'hr-collaborators' as const, label: 'Collaborateurs' as const, icon: UsersRound },
           { tab: 'hr-rights' as const, label: 'Droits' as const, icon: ShieldCheck },
+          { tab: 'hr-rotations' as const, label: 'Roulements' as const, icon: RefreshCw },
           { tab: 'hr-orgchart' as const, label: 'Organigramme' as const, icon: Workflow },
         ] : []),
       ]
@@ -811,7 +939,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
   const organizationName = session.user.organizationName ?? 'votre établissement';
   const firstName = session.user.firstName?.trim() || session.user.username?.trim() || 'Bienvenue';
-  
+
   const totalStock = useMemo(
     () => stocks.reduce((sum, stock) => sum + Number(stock.quantity), 0),
     [stocks],
@@ -823,7 +951,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     { label: 'Ajouter un fournisseur', done: suppliers.length > 0 },
     { label: 'Effectuer un mouvement de stock', done: movements.length > 0 },
   ];
-  
+
   const completed = dashboardSummary?.progress ? Math.round((dashboardSummary.progress.percent / 100) * progressItems.length) : progressItems.filter((item) => item.done).length;
   const progress = dashboardSummary?.progress?.percent ?? Math.round((completed / progressItems.length) * 100);
   const activeUsersCount = dashboardSummary?.counts.activeUsers ?? users.filter((user) => user.status === 'ACTIVE' || (user as any).isActive === true).length;
@@ -847,7 +975,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     d.setHours(0, 0, 0, 0);
     return d;
   }, []);
-  const movementsThisMonth = useMemo(() => movements.filter((m) => new Date(m.createdAt) >= monthStart).length, [movements, monthStart]);
+  const recentMovements = useMemo(() => sortMovementsByRecency(movements).slice(0, 6), [movements]);
+  const movementsThisMonth = useMemo(() => movements.filter((m) => movementEffectiveDate(m) >= monthStart).length, [movements, monthStart]);
   const topConsumed = useMemo(() => Object.values(movements.filter((m) => ['LOSS', 'OUT', 'EXIT', 'PRODUCTION', 'CORRECTION', 'INVENTORY'].includes(m.type)).reduce<Record<string, { name: string; qty: number; unit?: string }>>((acc, m) => {
     const key = m.product.id;
     acc[key] = acc[key] ?? { name: m.product.name, qty: 0, unit: m.product.unit?.symbol };
@@ -941,6 +1070,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       setInstalledApps(summary.installedApplications ?? ['stocks']);
       setSuccess('L’application Stocks a été installée. Les menus métier sont maintenant visibles pour toute l’organisation.');
       await refresh();
+      setShowStocksOnboarding(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Installation de Stocks impossible.');
     } finally {
@@ -1093,7 +1223,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         setDashboardSummary((prev) => ({ ...prev, ...summary } as DashboardSummary));
         setInstalledApps(summary.installedApplications ?? Array.from(new Set([...installedApps, appId])));
         setSuccess(appId === 'rnm-prices' ? 'L’application Cours des Produits a été installée. La navigation RNM est maintenant visible.' : appId === 'hr' ? 'L’application RH a été installée. Services et postes de départ sont disponibles.' : appId === 'planning' ? 'L’application Planning a été installée. Les vues opérationnelles consomment désormais le référentiel RH.' : appId === 'technical-sheets' ? 'L’application Fiches Techniques a été installée. Catégories recettes et allergènes standards sont disponibles.' : appId === 'production' ? 'L’application Production a été installée. Les ordres peuvent être créés depuis les fiches techniques sans dupliquer les référentiels.' : appId === 'menus' ? 'L’application Menus a été installée. Planification, cycles, convives et génération Production sont disponibles.' : 'L’application Stocks a été installée avec succès. Lancez l’assistant de préremplissage pour ajouter catégories, unités et emplacements métier.');
-        if (appId === 'stocks') setShowPrefillWizard(true);
+        if (appId === 'stocks') setShowStocksOnboarding(true);
         if (appId === 'rnm-prices') setActiveTab('rnm-dashboard');
         if (appId === 'hr') setActiveTab('hr-dashboard');
         if (appId === 'planning') setActiveTab('planning-dashboard');
@@ -1115,6 +1245,13 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   function goToTab(tab: ActiveTab) {
     setActiveTab(tab);
     setMobileMenuOpen(false);
+  }
+
+  function openProductsForCategory(categoryId: string) {
+    setProductSearch('');
+    setProductSupplierFilter('');
+    setProductCategoryFilter(categoryId);
+    goToTab('products');
   }
 
   function manageApplications() {
@@ -1306,10 +1443,22 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     await submit(() => api.updateProduct(token, productId, payload), 'Fiche produit mise à jour.');
   }
 
+  async function handleDeleteProduct(productId: string) {
+    await submit(() => api.archiveProduct(token, productId), 'Produit supprimé avec succès.');
+  }
+
   async function handleCreateSupplier(payload: { name: string; contactName?: string; email?: string; phone?: string }) {
     await submit(() => api.createSupplier(token, payload), 'Fournisseur créé avec succès.');
     setSupplierPrefillName('');
     setShowSupplierModal(false);
+  }
+
+  async function handleUpdateSupplier(supplierId: string, payload: { name?: string; contactName?: string; email?: string; phone?: string; address?: string; notes?: string }) {
+    await submit(() => api.updateSupplier(token, supplierId, payload), 'Fournisseur modifié avec succès.');
+  }
+
+  async function handleDeleteSupplier(supplierId: string) {
+    await submit(() => api.archiveSupplier(token, supplierId), 'Fournisseur supprimé avec succès.');
   }
 
   async function handleCreateMovement(payload: { productId: string; supplierId?: string; type: StockMovementType; quantity: number; reason?: string; unitId?: string; lotId?: string; sourceSiteId?: string; sourceLocationId?: string; destinationSiteId?: string; destinationLocationId?: string; date?: string }) {
@@ -1335,6 +1484,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     const refreshed = await Promise.all(uploaded.documents.map((document) => api.stocksOcrStatus(token, document.id).catch(() => ({ document, ocr: null, extraction: null, state: 'en attente' }))));
     setOcrStatuses(refreshed);
     setOcrPollingActive(true);
+    void refreshOcrStatusesFromServer();
+    void refreshMyDocuments();
     setSuccess(`${uploaded.documents.length} document${uploaded.documents.length > 1 ? 's' : ''} envoyé${uploaded.documents.length > 1 ? 's' : ''} en analyse.`);
   }
 
@@ -1344,6 +1495,11 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     setShowOcrReviewModal(true);
   }
 
+  async function handleRenameDocument(document: MyDocument, newName: string) {
+    await submit(() => api.renameDocument(token, document.id, newName), 'Document renommé avec succès.');
+    void refreshMyDocuments();
+  }
+
   async function handleSaveOcrDraft(payload: StocksOcrExtraction['data']) {
     if (!selectedOcrExtraction) return;
     const saved = await api.saveStocksOcrCorrections(token, selectedOcrExtraction.id, payload);
@@ -1351,9 +1507,17 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     setSuccess('Brouillon OCR enregistré.');
   }
 
+  async function handleReanalyzeOcrWithAi() {
+    if (!selectedOcrExtraction) return;
+    const updated = await submit(() => api.reanalyzeStocksOcrWithAi(token, selectedOcrExtraction.id), 'Analyse IA relancée.');
+    setSelectedOcrExtraction(updated as StocksOcrExtraction);
+  }
+
   async function handleCreateOcrReception(payload: StocksOcrExtraction['data']) {
     if (!selectedOcrExtraction) return;
     await submit(() => api.createStockReceptionFromOcr(token, selectedOcrExtraction.id, payload), 'La réception a été créée.');
+    const validatedDocumentId = selectedOcrExtraction.document?.id ?? selectedOcrExtraction.ocrDocument?.document?.id;
+    if (validatedDocumentId) setOcrStatuses((current) => current.filter((item) => item.document.id !== validatedDocumentId));
     setShowOcrReviewModal(false);
     setShowOcrImportModal(false);
     setSelectedOcrExtraction(null);
@@ -1373,7 +1537,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     if (existing) {
       const shouldUpdatePrice = Boolean(unitPrice && numeric(existing.averagePrice ?? existing.averagePurchasePrice ?? existing.weightedAveragePrice) <= 0);
       const shouldUpdateCategory = Boolean(categoryId && !(existing.categoryId ?? existing.category?.id));
-      if (shouldUpdatePrice || shouldUpdateCategory) {
+      const shouldUpdateSupplier = Boolean(supplierId && !(existing.primarySupplierId ?? existing.supplierId ?? existing.primarySupplier?.id ?? existing.supplier?.id));
+      if (shouldUpdatePrice || shouldUpdateCategory || shouldUpdateSupplier) {
         return await submit(
           () => api.updateProduct(token, existing.id, {
             name: existing.name,
@@ -1383,7 +1548,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             primarySupplierId: existing.primarySupplierId ?? existing.supplierId ?? supplierId ?? undefined,
             averagePrice: shouldUpdatePrice ? unitPrice : numeric(existing.averagePrice ?? existing.averagePurchasePrice ?? existing.weightedAveragePrice),
           }),
-          shouldUpdatePrice ? 'Prix produit mis à jour depuis l’OCR.' : 'Catégorie produit mise à jour depuis l’OCR.',
+          shouldUpdateSupplier ? 'Fournisseur produit lié depuis l’OCR.' : shouldUpdatePrice ? 'Prix produit mis à jour depuis l’OCR.' : 'Catégorie produit mise à jour depuis l’OCR.',
         ) as Product;
       }
       return existing;
@@ -1419,7 +1584,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
   async function handlePrefillStocks(payload: { categories?: boolean; units?: boolean; sites?: boolean; locations?: boolean; examples?: boolean }) {
     await submit(() => api.prefillStocks(token, payload), 'Référentiel Stocks prérempli.');
-    setShowPrefillWizard(false);
   }
 
   const activeProducts = useMemo(() => products.filter(p => showArchived || !isArchived(p)), [products, showArchived]);
@@ -1428,6 +1592,11 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const activeSuppliers = useMemo(() => suppliers.filter(s => showArchived || !isArchived(s)), [suppliers, showArchived]);
   const activeSites = useMemo(() => sites.filter(s => showArchived || !isArchived(s)), [sites, showArchived]);
   const activeLocations = useMemo(() => locations.filter(l => showArchived || !isArchived(l)), [locations, showArchived]);
+  const stocksReadiness = useMemo(
+    () => computeStocksReadiness(categories, units, products, suppliers, sites, locations, movements, ocrStatuses),
+    [categories, units, products, suppliers, sites, locations, movements, ocrStatuses],
+  );
+  const ocrConfigured = Boolean(dashboardSummary?.organization?.apiKeys?.mistral.configured ?? session.user.apiKeys?.mistral.configured);
 
   // Local filtered queries
   const filteredStocks = useMemo(() => {
@@ -1448,7 +1617,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const filteredAudit = useMemo(() => auditEntries.filter(a => `${a.action} ${a.entityType ?? ''} ${a.user?.email ?? ''}`.toLowerCase().includes(auditSearch.toLowerCase())), [auditEntries, auditSearch]);
 
   const filteredMovements = useMemo(() => {
-    return movements.filter(m => {
+    return sortMovementsByRecency(movements).filter(m => {
       const matchesSearch = m.product.name.toLowerCase().includes(movementSearch.toLowerCase()) ||
                             (m.reason && m.reason.toLowerCase().includes(movementSearch.toLowerCase())) ||
                             (m.comment && m.comment.toLowerCase().includes(movementSearch.toLowerCase())) ||
@@ -1461,7 +1630,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const filteredProducts = useMemo(() => {
     const search = productSearch.toLowerCase();
     return activeProducts.filter(p => {
-      const matchesSearch = p.name.toLowerCase().includes(search) || 
+      const matchesSearch = p.name.toLowerCase().includes(search) ||
              (p.sku && p.sku.toLowerCase().includes(search)) ||
              (p.reference && p.reference.toLowerCase().includes(search)) ||
              (p.category?.name && p.category.name.toLowerCase().includes(search)) ||
@@ -1489,6 +1658,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     applications: 'Toque Store',
     settings: 'Paramètres',
     'organization-general': 'Organisation',
+    'organization-documents': 'Mes Documents',
     users: 'Utilisateurs',
     architecture: 'Architecture',
     'stocks-dashboard': 'Stocks',
@@ -1510,6 +1680,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     'hr-departments': 'Services RH',
     'hr-positions': 'Postes RH',
     'hr-rights': 'Droits',
+    'hr-rotations': 'Roulements',
     'hr-orgchart': 'Organigramme',
     'planning-dashboard': 'Planning',
     'planning-planning': 'Planning mensuel',
@@ -1567,6 +1738,62 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             <ChefHat />
           </div>
           <span className="sidebar-title">TOQUE<span>HUB</span></span>
+          <div className="sidebar-notifications-container">
+            <button
+              type="button"
+              className={`sidebar-notifications-btn ${notificationsOpen ? 'active' : ''}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                setNotificationsOpen((open) => !open);
+              }}
+              aria-label="Afficher les notifications"
+              title="Notifications"
+            >
+              <Bell size={17} />
+              {unreadNotifications > 0 ? <span className="sidebar-notifications-count">{unreadNotifications > 9 ? '9+' : unreadNotifications}</span> : null}
+            </button>
+            <AnimatePresence>
+              {notificationsOpen && (
+                <motion.div
+                  className="sidebar-notifications-panel"
+                  initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                  transition={{ duration: 0.15 }}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="sidebar-notifications-header">
+                    <div>
+                      <strong>Notifications</strong>
+                      <span>{notifications.length ? `${notifications.length} message${notifications.length > 1 ? 's' : ''}` : 'Aucun message'}</span>
+                    </div>
+                    {notifications.length > 0 ? (
+                      <button type="button" onClick={() => setNotifications([])}>
+                        Effacer
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="sidebar-notifications-list">
+                    {notifications.length === 0 ? (
+                      <div className="sidebar-notifications-empty">Les messages de l'application apparaîtront ici.</div>
+                    ) : (
+                      notifications.map((notification) => (
+                        <div key={notification.id} className={`sidebar-notification-item ${notification.type}`}>
+                          <div className="sidebar-notification-icon">
+                            {notification.type === 'success' ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
+                          </div>
+                          <div className="sidebar-notification-copy">
+                            <span>{notification.message}</span>
+                            <time>{formatNotificationTime(notification.createdAt)}</time>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
           <button
             type="button"
             className="sidebar-collapse-btn"
@@ -1595,15 +1822,13 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             <Settings />
             Général
           </div>
-          {isAdmin ? (
-            <div
-              className={`sidebar-item ${activeTab === 'users' ? 'active' : ''}`}
-              onClick={() => goToTab('users')}
-            >
-              <UsersRound />
-              Utilisateurs
-            </div>
-          ) : null}
+          <div
+            className={`sidebar-item ${activeTab === 'organization-documents' ? 'active' : ''}`}
+            onClick={() => goToTab('organization-documents')}
+          >
+            <FileText />
+            Mes Documents
+          </div>
           <div
             className={`sidebar-item ${activeTab === 'applications' ? 'active' : ''}`}
             onClick={() => goToTab('applications')}
@@ -1611,23 +1836,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             <ShoppingBag />
             Applications
           </div>
-          <div className="sidebar-item-locked">
-            <div className="locked-left"><ShieldCheck /> Audit</div>
-            <span className="sidebar-badge-soon">Futur</span>
-          </div>
-
-          {isAdmin ? (
-            <>
-              <div className="sidebar-section-title">Administration</div>
-              <div
-                className={`sidebar-item ${activeTab === 'architecture' ? 'active' : ''}`}
-                onClick={() => goToTab('architecture')}
-              >
-                <Workflow />
-                Architecture
-              </div>
-            </>
-          ) : null}
 
           {/* Applications list divider / search */}
           <div className="sidebar-section-title-row">
@@ -1645,7 +1853,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               <Search size={13} />
             </button>
           </div>
-          
+
           <AnimatePresence>
             {(showAppSearch || appSearchQuery) && (
               <motion.div
@@ -1693,7 +1901,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                     >
                       <IconComponent />
                       <span>{app.title}</span>
-                      
+
 
 
                       {app.expanded ? <ChevronDown size={14} className="expand-indicator" /> : <ChevronRight size={14} className="expand-indicator" />}
@@ -1747,9 +1955,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                           <span className="dropdown-user-org">{organizationName}</span>
                         </div>
                       </div>
-                      
+
                       <div className="dropdown-divider" />
-                      
+
                       <button className="dropdown-item" onClick={() => { goToTab('organization-general'); setProfileMenuOpen(false); }}>
                         <UserRound size={14} />
                         <span>Mon profil</span>
@@ -1783,9 +1991,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                         </button>
                         <span>Changer d'utilisateur</span>
                       </div>
-                      
+
                       <div className="dropdown-divider" />
-                      
+
                       <div className="dropdown-users-list">
                         {users.map((user) => (
                           <button
@@ -1892,31 +2100,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         )}
 
         <div className="workspace-modern">
-          {error && (
-            <div className="alert-modern error">
-              <AlertCircle />
-              <div>
-                <strong>Erreur : </strong> {error}
-              </div>
-            </div>
-          )}
-          {success && (
-            <div className="alert-modern success dismissible">
-              <CheckCircle2 />
-              <div>
-                <strong>Succès : </strong> {success}
-              </div>
-              <button
-                type="button"
-                className="alert-dismiss"
-                onClick={() => setSuccess(undefined)}
-                aria-label="Fermer la notification de succès"
-              >
-                <X size={16} />
-              </button>
-            </div>
-          )}
-
           {/* ACTIVE TAB RENDERER */}
           <AnimatePresence mode="wait">
             <motion.div
@@ -1977,7 +2160,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                                 <span className="card-title"><History size={18}/> Derniers mouvements</span>
                                 <button className="btn btn-secondary btn-sm" onClick={() => setActiveTab('inventory')}>Détails</button>
                               </div>
-                              <MiniMovements movements={movements.slice(0, 6)} />
+                              <MiniMovements movements={recentMovements} />
                             </div>
 
                             <div className="card-modern dashboard-widget-card">
@@ -2118,7 +2301,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
               {isHrTab && hrInstalled && (
                 <HrApp
-                  tab={activeTab === 'hr-collaborators' ? 'collaborators' : activeTab === 'hr-departments' ? 'departments' : activeTab === 'hr-positions' ? 'positions' : activeTab === 'hr-rights' ? 'rights' : activeTab === 'hr-orgchart' ? 'orgchart' : 'dashboard'}
+                  tab={activeTab === 'hr-collaborators' ? 'collaborators' : activeTab === 'hr-departments' ? 'departments' : activeTab === 'hr-positions' ? 'positions' : activeTab === 'hr-rights' ? 'rights' : activeTab === 'hr-rotations' ? 'rotations' : activeTab === 'hr-orgchart' ? 'orgchart' : 'dashboard'}
                   summary={hrSummary}
                   collaborators={hrCollaborators}
                   departments={hrDepartments}
@@ -2131,7 +2314,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   regulatoryCountryCode={dashboardSummary?.organization.regulatoryCountryCode ?? session.user.regulatoryCountryCode ?? null}
                   canWrite={canWriteHr}
                   loading={isLoading}
-                  onNavigate={(next) => setActiveTab(next === 'collaborators' ? 'hr-collaborators' : next === 'departments' ? 'hr-departments' : next === 'positions' ? 'hr-positions' : next === 'rights' ? 'hr-rights' : next === 'orgchart' ? 'hr-orgchart' : 'hr-dashboard')}
+                  onNavigate={(next) => setActiveTab(next === 'collaborators' ? 'hr-collaborators' : next === 'departments' ? 'hr-departments' : next === 'positions' ? 'hr-positions' : next === 'rights' ? 'hr-rights' : next === 'rotations' ? 'hr-rotations' : next === 'orgchart' ? 'hr-orgchart' : 'hr-dashboard')}
                   onConfigureRegulatoryCountry={() => setActiveTab('organization-general')}
                   onExitToOverview={() => setActiveTab('overview')}
                   onCreateCollaborator={handleCreateHrCollaborator}
@@ -2223,10 +2406,33 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
               {/* TAB SETTINGS */}
               {activeTab === 'settings' && (
-                <SettingsPage session={session} token={token} dashboardSummary={dashboardSummary} focusApiKeys={apiKeysPanelHint} onApiKeysSaved={() => { setApiKeysPanelHint(false); void refresh(); }} onSettingsSaved={() => { void refresh(); }} onOpenUsers={() => goToTab('users')} />
+                <SettingsPage session={session} token={token} dashboardSummary={dashboardSummary} focusApiKeys={apiKeysPanelHint} onApiKeysSaved={() => { setApiKeysPanelHint(false); void refresh(); }} onSettingsSaved={() => { void refresh(); }} onOpenUsers={() => goToTab('users')} onRestoreComplete={onLogout} isAdmin={isAdmin} />
               )}
               {activeTab === 'organization-general' && (
-                <SettingsPage session={session} token={token} dashboardSummary={dashboardSummary} focusApiKeys={apiKeysPanelHint} onApiKeysSaved={() => { setApiKeysPanelHint(false); void refresh(); }} onSettingsSaved={() => { void refresh(); }} onOpenUsers={() => goToTab('users')} />
+                <SettingsPage session={session} token={token} dashboardSummary={dashboardSummary} focusApiKeys={apiKeysPanelHint} onApiKeysSaved={() => { setApiKeysPanelHint(false); void refresh(); }} onSettingsSaved={() => { void refresh(); }} onOpenUsers={() => goToTab('users')} onRestoreComplete={onLogout} isAdmin={isAdmin} />
+              )}
+              {activeTab === 'organization-documents' && (
+                <MyDocumentsPage
+                  data={myDocuments}
+                  loading={documentsLoading}
+                  search={documentsSearch}
+                  supplierFilter={documentsSupplierFilter}
+                  typeFilter={documentsTypeFilter}
+                  dateFrom={documentsDateFrom}
+                  dateTo={documentsDateTo}
+                  onSearch={setDocumentsSearch}
+                  onSupplierFilter={setDocumentsSupplierFilter}
+                  onTypeFilter={setDocumentsTypeFilter}
+                  onDateFrom={setDocumentsDateFrom}
+                  onDateTo={setDocumentsDateTo}
+                  onRefresh={() => void refreshMyDocuments()}
+                  onView={async (document) => {
+                    const url = await api.viewDocument(token, document.id);
+                    window.open(url, '_blank', 'noopener,noreferrer');
+                  }}
+                  onDownload={(document) => api.downloadDocument(token, document.id, document.originalName)}
+                  onRename={handleRenameDocument}
+                />
               )}
               {activeTab === 'users' && isAdmin && (
                 <UsersPage
@@ -2251,16 +2457,22 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                 <ArchitectureCenter session={session} />
               )}
 
-              {/* TAB STOCKS DASHBOARD */}
               {activeTab === 'stocks-dashboard' && (
                 <StocksDashboardPage
                   products={products}
                   suppliers={suppliers}
+                  sites={sites}
+                  locations={locations}
                   stocks={stocks}
                   movements={movements}
+                  ocrStatuses={ocrStatuses}
+                  readiness={stocksReadiness}
                   onCreateMovement={() => setShowMovementModal(true)}
                   onImportOcr={() => setShowOcrImportModal(true)}
+                  onOpenExtraction={handleOpenOcrExtraction}
                   onOpenStocks={() => setActiveTab('inventory')}
+                  onStartOnboarding={() => setShowStocksOnboarding(true)}
+                  onCreateProduct={() => setShowProductModal(true)}
                 />
               )}
 
@@ -2284,7 +2496,20 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                         <span className="empty-state-desc">Créez vos familles de produits dès que Stocks est installé.</span>
                       </div>
                     ) : categories.map((category) => (
-                      <motion.div key={category.id} className="app-card compact-card" whileHover={{ y: -3 }}>
+                      <motion.div
+                        key={category.id}
+                        className="app-card compact-card"
+                        role="button"
+                        tabIndex={0}
+                        whileHover={{ y: -3 }}
+                        onClick={() => openProductsForCategory(category.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            openProductsForCategory(category.id);
+                          }
+                        }}
+                      >
                         <div className="app-card-icon"><Layers size={20} /></div>
                         <h3>{category.name}</h3>
                         <p>{category.description || 'Catégorie de produits'}</p>
@@ -2464,7 +2689,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                             return (
                               <tr key={m.id}>
                                 <td style={{ color: 'var(--text-muted)' }}>
-                                  {new Date(m.createdAt).toLocaleDateString('fr-FR', {
+                                  {movementEffectiveDate(m).toLocaleDateString('fr-FR', {
                                     day: '2-digit',
                                     month: '2-digit',
                                     year: 'numeric',
@@ -2585,7 +2810,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                                   )}
                                 </td>
                                 <td style={{ textAlign: 'right', fontWeight: 700 }}>{numeric(p.averagePrice ?? p.averagePurchasePrice ?? p.weightedAveragePrice).toFixed(2)} €</td>
-                                <td style={{ textAlign: 'right' }}>{numeric(p.minimumStock ?? p.minStock) || '—'}</td>
+                                <td style={{ textAlign: 'right' }}>{numeric(p.minimumStock ?? p.minStock) ? parseFloat(numeric(p.minimumStock ?? p.minStock).toFixed(2)).toString() : '—'}</td>
                               </tr>
                             ))
                           )}
@@ -2621,7 +2846,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                               </tr>
                             ) : (
                               categories.map((cat) => (
-                                <tr key={cat.id}>
+                                <tr key={cat.id} className="clickable-row" onClick={() => openProductsForCategory(cat.id)}>
                                   <td style={{ fontWeight: 600 }}>{cat.name}</td>
                                   <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>{cat.description || '—'}</td>
                                 </tr>
@@ -2745,11 +2970,22 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                           </tr>
                         ) : (
                           filteredSuppliers.map((s) => (
-                            <tr key={s.id}>
+                            <tr
+                              key={s.id}
+                              onClick={() => setSelectedSupplier(s)}
+                              style={{ cursor: 'pointer' }}
+                              className="clickable-row"
+                            >
                               <td style={{ fontWeight: 600 }}>{s.name}</td>
                               <td>
                                 {s.email ? (
-                                  <a href={`mailto:${s.email}`} style={{ textDecoration: 'underline' }}>{s.email}</a>
+                                  <a
+                                    href={`mailto:${s.email}`}
+                                    style={{ textDecoration: 'underline' }}
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    {s.email}
+                                  </a>
                                 ) : (
                                   <span style={{ color: 'var(--text-muted)' }}>—</span>
                                 )}
@@ -2798,12 +3034,20 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         suppliers={suppliers}
         onClose={() => setSelectedProductId(null)}
         onUpdate={handleUpdateProduct}
+        onDelete={handleDeleteProduct}
       />
 
       {/* Supplier Modal */}
       <Modal isOpen={showSupplierModal} onClose={() => { setSupplierPrefillName(''); setShowSupplierModal(false); }} title="Créer un fournisseur">
         <SupplierForm initialName={supplierPrefillName} onSubmit={handleCreateSupplier} onClose={() => { setSupplierPrefillName(''); setShowSupplierModal(false); }} />
       </Modal>
+
+      <SupplierDetailModal
+        supplier={selectedSupplier}
+        onClose={() => setSelectedSupplier(null)}
+        onUpdate={handleUpdateSupplier}
+        onDelete={handleDeleteSupplier}
+      />
 
       {/* Movement Modal */}
       <Modal isOpen={showMovementModal} onClose={() => setShowMovementModal(false)} title="Enregistrer un mouvement de stock">
@@ -2827,7 +3071,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         />
       </Modal>
 
-      <Modal isOpen={showOcrReviewModal} onClose={() => setShowOcrReviewModal(false)} title="Valider la réception OCR" size="xl">
+      <Modal isOpen={showOcrReviewModal} onClose={() => setShowOcrReviewModal(false)} title="Valider la réception OCR" size="full">
         {selectedOcrExtraction && (
           <StocksOcrReviewPanel
             extraction={selectedOcrExtraction}
@@ -2842,6 +3086,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             onCreateReception={handleCreateOcrReception}
             onCreateProductFromLine={handleCreateOcrProductFromLine}
             onCreateSupplierFromOcr={handleCreateOcrSupplier}
+            onReanalyzeAi={handleReanalyzeOcrWithAi}
             onClose={() => setShowOcrReviewModal(false)}
           />
         )}
@@ -2859,9 +3104,49 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         <InventoryForm sites={sites} locations={locations} onSubmit={handleCreateInventory} onClose={() => setShowInventoryModal(false)} />
       </Modal>
 
-      <Modal isOpen={showPrefillWizard} onClose={() => setShowPrefillWizard(false)} title="Assistant de préremplissage Stocks">
-        <PrefillWizard onSubmit={handlePrefillStocks} onClose={() => setShowPrefillWizard(false)} />
-      </Modal>
+      {showStocksOnboarding ? (
+        <StocksOnboardingWizard
+          readiness={stocksReadiness}
+          categories={categories}
+          units={units}
+          products={products}
+          suppliers={suppliers}
+          sites={sites}
+          locations={locations}
+          movements={movements}
+          ocrStatuses={ocrStatuses}
+          ocrConfigured={ocrConfigured}
+          onPrefill={handlePrefillStocks}
+          onCreateSupplier={(payload) => submit(() => api.createSupplier(token, payload), 'Fournisseur créé.')}
+          onCreateProduct={(payload) => submit(() => api.createProduct(token, payload), 'Produit créé.')}
+          onImportOcr={() => {
+            setShowStocksOnboarding(false);
+            setShowOcrImportModal(true);
+          }}
+          onCreateMovement={() => {
+            setShowStocksOnboarding(false);
+            setShowMovementModal(true);
+          }}
+          onOpenApiKeys={() => {
+            setShowStocksOnboarding(false);
+            setApiKeysPanelHint(true);
+            setActiveTab('organization-general');
+          }}
+          onOpenProducts={() => {
+            setShowStocksOnboarding(false);
+            setActiveTab('products');
+          }}
+          onOpenStocks={() => {
+            setShowStocksOnboarding(false);
+            setActiveTab('inventory');
+          }}
+          onOpenOcr={() => {
+            setShowStocksOnboarding(false);
+            setShowOcrImportModal(true);
+          }}
+          onClose={() => setShowStocksOnboarding(false)}
+        />
+      ) : null}
 
       <Modal isOpen={showUserModal} onClose={() => setShowUserModal(false)} title="Créer un utilisateur">
         <UserForm roles={roles} onSubmitCreate={handleCreateUser} onClose={() => setShowUserModal(false)} />
@@ -3130,22 +3415,73 @@ function productCandidateFromProduct(product: Product, score: number) {
   };
 }
 
-const OCR_FALLBACK_CATEGORY_NAME = 'À classer';
+const OCR_FALLBACK_CATEGORY_NAME = 'Divers produits';
 const ocrFallbackCategoryCache = new Map<string, Promise<Category>>();
 
-const CATEGORY_KEYWORDS: Array<{ hints: string[]; aliases: string[] }> = [
-  { hints: ['boeuf', 'bœuf', 'veau', 'porc', 'agneau', 'volaille', 'poulet', 'dinde', 'canard', 'jambon', 'saucisse', 'steak', 'viande'], aliases: ['viande', 'viandes', 'boucherie', 'volaille', 'volailles'] },
-  { hints: ['poisson', 'saumon', 'thon', 'cabillaud', 'colin', 'merlu', 'crevette', 'moule', 'huitre', 'huître', 'surimi', 'maree', 'marée'], aliases: ['poisson', 'poissons', 'maree', 'marée', 'produits de la mer'] },
-  { hints: ['lait', 'beurre', 'creme', 'crème', 'fromage', 'yaourt', 'emmental', 'mozzarella', 'laitier'], aliases: ['cremerie', 'crèmerie', 'produits laitiers', 'laitier', 'fromage'] },
-  { hints: ['carotte', 'tomate', 'salade', 'oignon', 'pomme de terre', 'courgette', 'fruit', 'legume', 'légume', 'pomme', 'banane'], aliases: ['fruits', 'legumes', 'légumes', 'primeur', 'fruits et legumes', 'fruits et légumes'] },
-  { hints: ['pain', 'baguette', 'brioche', 'viennoiserie', 'croissant', 'patisserie', 'pâtisserie'], aliases: ['boulangerie', 'patisserie', 'pâtisserie', 'pain'] },
-  { hints: ['riz', 'pate', 'pâte', 'pates', 'pâtes', 'farine', 'sucre', 'huile', 'vinaigre', 'conserve', 'sauce', 'epice', 'épice'], aliases: ['epicerie', 'épicerie', 'sec', 'produits secs'] },
-  { hints: ['surg', 'surgele', 'surgelé', 'surgeles', 'surgelés', 'glace', 'congele', 'congelé'], aliases: ['surgeles', 'surgelés', 'surgelé', 'congelé'] },
-  { hints: ['eau', 'jus', 'soda', 'vin', 'biere', 'bière', 'cafe', 'café', 'boisson'], aliases: ['boisson', 'boissons', 'cave'] },
-  { hints: ['barquette', 'film', 'gant', 'papier', 'sac', 'gobelet', 'serviette', 'emballage'], aliases: ['emballage', 'emballages', 'non alimentaire', 'consommables'] },
+const CATEGORY_KEYWORDS: Array<{ name: string; hints: string[]; aliases: string[] }> = [
+  { name: 'Viandes', hints: ['boeuf', 'bœuf', 'veau', 'porc', 'agneau', 'volaille', 'poulet', 'dinde', 'canard', 'jambon', 'saucisse', 'steak', 'viande', 'charcuterie', 'lardon', 'merguez', 'chipolata'], aliases: ['viande', 'viandes', 'boucherie', 'volaille', 'volailles', 'produits frais'] },
+  { name: 'Poissons', hints: ['poisson', 'saumon', 'thon', 'cabillaud', 'colin', 'merlu', 'crevette', 'moule', 'huitre', 'huître', 'surimi', 'maree', 'marée', 'lieu', 'truite', 'calamar', 'encornet'], aliases: ['poisson', 'poissons', 'maree', 'marée', 'produits de la mer', 'produits frais'] },
+  { name: 'Produits laitiers', hints: ['lait', 'beurre', 'creme', 'crème', 'fromage', 'yaourt', 'emmental', 'mozzarella', 'laitier', 'oeuf', 'œuf', 'oeufs', 'œufs', 'camembert', 'brie', 'comte', 'comté'], aliases: ['cremerie', 'crèmerie', 'produits laitiers', 'laitier', 'fromage', 'produits frais'] },
+  { name: 'Fruits et légumes', hints: ['carotte', 'tomate', 'salade', 'oignon', 'pomme de terre', 'courgette', 'fruit', 'legume', 'légume', 'pomme', 'banane', 'poire', 'orange', 'citron', 'ail', 'echalote', 'échalote', 'champignon', 'haricot', 'endive'], aliases: ['fruits', 'legumes', 'légumes', 'primeur', 'fruits et legumes', 'fruits et légumes', 'produits frais'] },
+  { name: 'Boulangerie', hints: ['pain', 'baguette', 'brioche', 'viennoiserie', 'croissant', 'patisserie', 'pâtisserie', 'tarte', 'gateau', 'gâteau'], aliases: ['boulangerie', 'patisserie', 'pâtisserie', 'pain', 'produits frais'] },
+  { name: 'Épicerie', hints: ['riz', 'pate', 'pâte', 'pates', 'pâtes', 'farine', 'sucre', 'huile', 'vinaigre', 'conserve', 'sauce', 'epice', 'épice', 'sel', 'poivre', 'moutarde', 'mayonnaise', 'biscuit', 'chocolat', 'cacao', 'dessert', 'semoule', 'couscous', 'lentille', 'pois chiche'], aliases: ['epicerie', 'épicerie', 'sec', 'produits secs'] },
+  { name: 'Surgelés', hints: ['surg', 'surgele', 'surgelé', 'surgeles', 'surgelés', 'glace', 'congele', 'congelé', 'congeles', 'congelés', 'frozen'], aliases: ['surgeles', 'surgelés', 'surgelé', 'congelé'] },
+  { name: 'Boissons', hints: ['eau', 'jus', 'soda', 'vin', 'biere', 'bière', 'cafe', 'café', 'the', 'thé', 'boisson', 'sirop', 'limonade', 'lait boisson'], aliases: ['boisson', 'boissons', 'cave'] },
+  { name: 'Hygiène et entretien', hints: ['detergent', 'détergent', 'desinfectant', 'désinfectant', 'savon', 'nettoyant', 'lessive', 'javel', 'essuie-main', 'papier toilette', 'entretien', 'hygiene', 'hygiène'], aliases: ['hygiene', 'hygiène', 'entretien', 'non alimentaire', 'consommables'] },
+  { name: 'Emballages', hints: ['barquette', 'film', 'gant', 'papier', 'sac', 'gobelet', 'serviette', 'emballage', 'couvercle', 'aluminium', 'papier cuisson'], aliases: ['emballage', 'emballages', 'non alimentaire', 'consommables'] },
+  { name: 'Nutrition médicale', hints: ['clinutren', 'thickenup', 'resource', 'nestle health', 'complement nutritionnel', 'complément nutritionnel', 'nutrition', 'epaississant', 'épaississant', 'denutrition', 'dénutrition'], aliases: ['nutrition medicale', 'nutrition médicale', 'nutrition', 'dietétique', 'diététique', 'epicerie', 'épicerie'] },
 ];
 
+function findCategoryByBusinessName(categories: Category[], name?: string | null) {
+  const normalizedName = normalizeProductSearchText(name);
+  if (!normalizedName) return undefined;
+  return categories
+    .filter((category) => !isArchived(category))
+    .map((category) => {
+      const haystack = normalizeProductSearchText(`${category.name} ${category.description ?? ''}`);
+      return {
+        category,
+        score: Math.max(
+          normalizeLookup(category.name) === normalizeLookup(name) ? 1 : 0,
+          haystack.includes(normalizedName) ? 0.86 : 0,
+          normalizedName.includes(normalizeProductSearchText(category.name)) ? 0.78 : 0,
+          tokenSimilarity(name, `${category.name} ${category.description ?? ''}`),
+        ),
+      };
+    })
+    .filter((item) => item.score >= 0.46)
+    .sort((a, b) => b.score - a.score)[0]?.category;
+}
+
+function ocrKeywordCategoryRule(line: StocksOcrLine) {
+  const text = normalizeProductSearchText([
+    line.ocrLabel,
+    line.label,
+    line.reference,
+    line.categoryName,
+    line.suggestedCategoryName,
+  ].filter(Boolean).join(' '));
+  return CATEGORY_KEYWORDS.find((rule) => rule.hints.some((hint) => {
+    const normalizedHint = normalizeProductSearchText(hint);
+    return normalizedHint && (text.includes(normalizedHint) || tokenSimilarity(text, normalizedHint) >= 0.72);
+  }));
+}
+
+function isGenericOcrCategoryName(name?: string | null) {
+  return ['non classé', 'non classe', 'à classer', 'a classer', 'sans catégorie', 'sans categorie', 'divers', 'autres'].includes(normalizeSearchText(name));
+}
+
 function inferOcrCategoryId(line: StocksOcrLine, categories: Category[], products: Product[]) {
+  const activeCategories = categories.filter((category) => !isArchived(category));
+  const aiCategoryId = line.categoryId ?? line.suggestedCategoryId ?? null;
+  if (aiCategoryId && activeCategories.some((category) => category.id === aiCategoryId)) return aiCategoryId;
+
+  const aiCategoryName = line.categoryName ?? line.suggestedCategoryName ?? null;
+  if (aiCategoryName) {
+    const categoryByName = findCategoryByBusinessName(activeCategories, aiCategoryName);
+    if (categoryByName) return categoryByName.id;
+  }
+
   const candidateWithCategory = (line.productCandidates || [])
     .map((candidate) => ({ candidate, score: numeric(candidate.score) }))
     .filter(({ candidate, score }) => candidate.categoryId && score >= 0.58)
@@ -3160,15 +3496,10 @@ function inferOcrCategoryId(line: StocksOcrLine, categories: Category[], product
     .sort((a, b) => b.score - a.score)[0]?.product;
   if (closestProduct?.categoryId || closestProduct?.category?.id) return closestProduct.categoryId ?? closestProduct.category?.id ?? undefined;
 
-  const normalizedLabel = normalizeProductSearchText(label);
-  const keywordRule = CATEGORY_KEYWORDS.find((rule) => rule.hints.some((hint) => normalizedLabel.includes(normalizeProductSearchText(hint))));
+  const keywordRule = ocrKeywordCategoryRule(line);
   if (keywordRule) {
-    const category = categories
-      .filter((item) => !isArchived(item))
-      .find((item) => {
-        const categoryText = normalizeProductSearchText(`${item.name} ${item.description ?? ''}`);
-        return keywordRule.aliases.some((alias) => categoryText.includes(normalizeProductSearchText(alias)));
-      });
+    const category = findCategoryByBusinessName(activeCategories, keywordRule.name)
+      ?? keywordRule.aliases.map((alias) => findCategoryByBusinessName(activeCategories, alias)).find(Boolean);
     if (category) return category.id;
   }
 
@@ -3197,16 +3528,35 @@ function supplierMajorityCategoryId(supplierId: string | null | undefined, produ
 async function resolveOcrCategoryIdForCreate(token: string, line: StocksOcrLine, categories: Category[], products: Product[], supplierId?: string | null) {
   const inferred = inferOcrCategoryId(line, categories, products) || supplierMajorityCategoryId(supplierId, products);
   if (inferred) return inferred;
+  const keywordRule = ocrKeywordCategoryRule(line);
+  const suggestedCategoryName = String(line.categoryName ?? line.suggestedCategoryName ?? keywordRule?.name ?? '').trim();
+  if (suggestedCategoryName && !isGenericOcrCategoryName(suggestedCategoryName)) {
+    const cacheKey = `${token}:suggested:${normalizeLookup(suggestedCategoryName)}`;
+    if (!ocrFallbackCategoryCache.has(cacheKey)) {
+      ocrFallbackCategoryCache.set(cacheKey, api.createCategory(token, {
+        name: suggestedCategoryName,
+        description: 'Catégorie proposée automatiquement par l’analyse IA OCR.',
+      }).catch(async () => {
+        const refreshed = await api.categories(token);
+        const existing = refreshed.find((category) => normalizeLookup(category.name) === normalizeLookup(suggestedCategoryName));
+        if (!existing) throw new Error(`Impossible de créer ou retrouver la catégorie "${suggestedCategoryName}".`);
+        return existing;
+      }));
+    }
+    return (await ocrFallbackCategoryCache.get(cacheKey)!).id;
+  }
+  const firstUsefulCategory = categories.find((category) => !isArchived(category) && !['aclasser', 'sanscategorie', 'nonclasse'].includes(normalizeLookup(category.name)));
+  if (firstUsefulCategory) return firstUsefulCategory.id;
   const fallback = categories.find((category) => {
     const key = normalizeLookup(category.name);
-    return !isArchived(category) && ['aclasser', 'aclasser', 'autres', 'divers', 'sanscategorie', 'nonclasse'].includes(key);
+    return !isArchived(category) && ['diversproduits', 'autres', 'divers'].includes(key);
   });
   if (fallback) return fallback.id;
   const cacheKey = `${token}:${OCR_FALLBACK_CATEGORY_NAME}`;
   if (!ocrFallbackCategoryCache.has(cacheKey)) {
     ocrFallbackCategoryCache.set(cacheKey, api.createCategory(token, {
       name: OCR_FALLBACK_CATEGORY_NAME,
-      description: 'Catégorie créée automatiquement pour les produits OCR sans correspondance fiable.',
+      description: 'Catégorie créée automatiquement pour les produits OCR quand aucune catégorie métier fiable n’existe encore.',
     }).catch(async () => {
       const refreshed = await api.categories(token);
       const existing = refreshed.find((category) => normalizeLookup(category.name) === normalizeLookup(OCR_FALLBACK_CATEGORY_NAME));
@@ -3293,6 +3643,18 @@ function ocrProductReference(line: StocksOcrLine) {
 
 function movementSign(type: StockMovementType) {
   return ['LOSS', 'OUT', 'EXIT'].includes(type) ? '-' : ['TRANSFER'].includes(type) ? '±' : '+';
+}
+
+function movementEffectiveDate(movement: StockMovement) {
+  return new Date(movement.movementDate ?? movement.date ?? movement.createdAt);
+}
+
+function sortMovementsByRecency(movements: StockMovement[]) {
+  return [...movements].sort((a, b) => {
+    const effectiveDiff = movementEffectiveDate(b).getTime() - movementEffectiveDate(a).getTime();
+    if (effectiveDiff !== 0) return effectiveDiff;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
 }
 
 function stockStatus(stock: Stock) {
@@ -3421,10 +3783,1343 @@ function moduleTargetTab(module?: string): ActiveTab | undefined {
   return undefined;
 }
 
-function StocksDashboardPage({ products, suppliers, stocks, movements, onCreateMovement, onImportOcr, onOpenStocks }: { products: Product[]; suppliers: Supplier[]; stocks: Stock[]; movements: StockMovement[]; onCreateMovement: () => void; onImportOcr: () => void; onOpenStocks: () => void }) {
+function MyDocumentsPage({ data, loading, search, supplierFilter, typeFilter, dateFrom, dateTo, onSearch, onSupplierFilter, onTypeFilter, onDateFrom, onDateTo, onRefresh, onView, onDownload, onRename }: { data: MyDocumentsResponse | null; loading: boolean; search: string; supplierFilter: string; typeFilter: string; dateFrom: string; dateTo: string; onSearch: (value: string) => void; onSupplierFilter: (value: string) => void; onTypeFilter: (value: string) => void; onDateFrom: (value: string) => void; onDateTo: (value: string) => void; onRefresh: () => void; onView: (document: MyDocument) => Promise<void>; onDownload: (document: MyDocument) => Promise<void>; onRename: (document: MyDocument, newName: string) => Promise<void> }) {
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const items = data?.items ?? [];
+  const summary = data?.summary;
+
+  const handleRename = (document: MyDocument) => {
+    const cleanName = document.originalName.includes('.')
+      ? document.originalName.substring(0, document.originalName.lastIndexOf('.'))
+      : document.originalName;
+    const newName = window.prompt('Renommer le document :', cleanName);
+    if (newName && newName.trim() && newName.trim() !== cleanName) {
+      void onRename(document, newName.trim());
+    }
+  };
+
+  return (
+    <div className="my-documents-page">
+      <motion.section
+        className="welcome-hero documents-hero"
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35 }}
+      >
+        <div className="welcome-hero-content">
+          <span className="welcome-tag"><FileText size={14} /> Organisation</span>
+          <h1 className="welcome-title">Mes Documents</h1>
+          <p className="welcome-desc">Bibliothèque des factures et bons de livraison importés dans ToqueHub, classés par fournisseur et par date.</p>
+        </div>
+        <div className="welcome-hero-backdrop" />
+      </motion.section>
+
+      <div className="metrics-grid">
+        <Metric icon={<FileText size={20} />} value={summary?.total ?? 0} label="Documents" tone="blue" />
+        <Metric icon={<UsersRound size={20} />} value={summary?.suppliers.length ?? 0} label="Fournisseurs" tone="emerald" delay={1} />
+        <Metric icon={<CheckCircle2 size={20} />} value={summary?.ready ?? 0} label="Prêts" tone="emerald" delay={2} />
+        <Metric icon={<Clock size={20} />} value={summary?.processing ?? 0} label="En analyse" tone="purple" delay={3} />
+      </div>
+
+      <div className="documents-toolbar-modern card-modern">
+        <div className="search-input-wrapper-modern">
+          <Search size={16} className="search-icon" />
+          <input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Rechercher fournisseur, numéro, fichier..." />
+        </div>
+
+        <div className="filters-group-modern">
+          <div className="select-wrapper-modern">
+            <Building2 size={14} className="select-icon" />
+            <select value={supplierFilter} onChange={(event) => onSupplierFilter(event.target.value)}>
+              <option value="">Tous les fournisseurs</option>
+              {(summary?.suppliers ?? []).map((supplier) => (
+                <option key={supplier.id ?? supplier.name} value={supplier.id ?? supplier.name}>{supplier.name} ({supplier.count})</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="select-wrapper-modern">
+            <Filter size={14} className="select-icon" />
+            <select value={typeFilter} onChange={(event) => onTypeFilter(event.target.value)}>
+              <option value="all">Tous les types</option>
+              <option value="invoice">Factures</option>
+              <option value="delivery_note">Bons de livraison</option>
+              <option value="unknown">Non classés</option>
+            </select>
+          </div>
+
+          <div className="date-inputs-modern">
+            <input type="date" value={dateFrom} onChange={(event) => onDateFrom(event.target.value)} title="Date de début" />
+            <span className="date-separator">→</span>
+            <input type="date" value={dateTo} onChange={(event) => onDateTo(event.target.value)} title="Date de fin" />
+          </div>
+        </div>
+
+        <div className="toolbar-actions-modern">
+          <div className="view-switcher-modern">
+            <button
+              className={`switcher-btn ${viewMode === 'grid' ? 'active' : ''}`}
+              onClick={() => setViewMode('grid')}
+              title="Vue Grille"
+            >
+              <LayoutGrid size={15} />
+            </button>
+            <button
+              className={`switcher-btn ${viewMode === 'list' ? 'active' : ''}`}
+              onClick={() => setViewMode('list')}
+              title="Vue Liste"
+            >
+              <List size={15} />
+            </button>
+          </div>
+
+          <button className="btn btn-secondary-modern btn-refresh-modern" onClick={onRefresh} disabled={loading}>
+            <RefreshCw size={14} className={loading ? 'spin' : ''} />
+            <span>{loading ? 'Chargement...' : 'Actualiser'}</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="documents-layout">
+        <div className="documents-main-content">
+          <AnimatePresence mode="wait">
+            {items.length ? (
+              viewMode === 'grid' ? (
+                <motion.div
+                  key="grid"
+                  className="documents-grid-layout"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {items.map((document) => (
+                    <motion.div
+                      key={document.id}
+                      className="document-card-modern"
+                      whileHover={{ y: -6, transition: { duration: 0.2 } }}
+                    >
+                      <div className="doc-card-header">
+                        <div className={`doc-icon-badge type-${document.type || 'unknown'}`}>
+                          <FileText size={20} />
+                        </div>
+                        <span className={`badge-pill ${documentStateBadge(document.processingState)}`}>
+                          {documentStateLabel(document.processingState)}
+                        </span>
+                      </div>
+
+                      <div className="doc-card-body">
+                        <h3 className="doc-title" title={document.originalName}>
+                          {document.originalName}
+                        </h3>
+                        <div className="doc-meta-info">
+                          <span className="meta-tag">
+                            <Calendar size={11} />
+                            {formatDocumentDate(document.documentDate || document.createdAt)}
+                          </span>
+                          <span className="meta-tag">
+                            <Layers size={11} />
+                            {formatBytes(document.sizeBytes)}
+                          </span>
+                        </div>
+
+                        {document.invoiceNumber || document.deliveryNoteNumber ? (
+                          <div className="doc-number-box">
+                            <span className="number-label">Réf :</span>
+                            <span className="number-value">{document.invoiceNumber || document.deliveryNoteNumber}</span>
+                          </div>
+                        ) : (
+                          <div className="doc-number-box empty-ref">
+                            <span className="number-label">Sans référence</span>
+                          </div>
+                        )}
+
+                        <div className="doc-type-badge-row">
+                          <span className={`badge-pill ${documentTypeBadge(document.type)}`}>
+                            {documentTypeLabel(document.type)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="doc-card-footer">
+                        <div className="doc-supplier" title={document.supplierName || 'Fournisseur non identifié'}>
+                          <div className="supplier-avatar-modern">
+                            {(document.supplierName || 'N').charAt(0).toUpperCase()}
+                          </div>
+                          <span className="supplier-name-text">
+                            {document.supplierName || 'Non classé'}
+                          </span>
+                        </div>
+                        <div className="doc-actions">
+                          <button className="doc-action-btn rename" onClick={() => handleRename(document)} title="Renommer">
+                            <Edit3 size={14} />
+                          </button>
+                          <button className="doc-action-btn view" onClick={() => void onView(document)} title="Aperçu">
+                            <Eye size={14} />
+                          </button>
+                          <button className="doc-action-btn download" onClick={() => void onDownload(document)} title="Télécharger">
+                            <Download size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="list"
+                  className="card-modern list-card-wrapper"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <div className="card-title-container">
+                    <span className="card-title"><FileText size={18} /> Documents importés</span>
+                    <span className="section-tagline">{items.length} fichier{items.length > 1 ? 's' : ''}</span>
+                  </div>
+                  <div className="table-wrapper documents-table-modern">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Document</th>
+                          <th>Fournisseur</th>
+                          <th>Date</th>
+                          <th>Type</th>
+                          <th>Statut</th>
+                          <th className="align-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map((document) => (
+                          <tr key={document.id} className="document-list-row-modern">
+                            <td>
+                              <div className="document-name-cell-modern">
+                                <div className="list-doc-icon-wrapper">
+                                  <FileText size={16} />
+                                </div>
+                                <div className="list-doc-text">
+                                  <strong>{document.originalName}</strong>
+                                  <small>{document.invoiceNumber || document.deliveryNoteNumber || formatBytes(document.sizeBytes)}</small>
+                                </div>
+                              </div>
+                            </td>
+                            <td>
+                              <span className="list-supplier-name">
+                                {document.supplierName || 'Non classé'}
+                              </span>
+                            </td>
+                            <td>
+                              <span className="list-date">
+                                {formatDocumentDate(document.documentDate || document.createdAt)}
+                              </span>
+                            </td>
+                            <td>
+                              <span className={`badge-pill ${documentTypeBadge(document.type)}`}>
+                                {documentTypeLabel(document.type)}
+                              </span>
+                            </td>
+                            <td>
+                              <span className={`badge-pill ${documentStateBadge(document.processingState)}`}>
+                                {documentStateLabel(document.processingState)}
+                              </span>
+                            </td>
+                            <td>
+                              <div className="row-actions-modern">
+                                <button className="doc-action-btn rename" onClick={() => handleRename(document)} title="Renommer">
+                                  <Edit3 size={13} />
+                                </button>
+                                <button className="doc-action-btn view" onClick={() => void onView(document)} title="Aperçu">
+                                  <Eye size={13} />
+                                </button>
+                                <button className="doc-action-btn download" onClick={() => void onDownload(document)} title="Télécharger">
+                                  <Download size={13} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </motion.div>
+              )
+            ) : (
+              <motion.div
+                key="empty"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
+                <EmptyMini title={loading ? 'Chargement...' : 'Aucun document'} text="Les factures et BL importés via l’OCR Stocks apparaîtront ici." icon="📄" />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        <aside className="documents-insights-modern">
+          <div className="card-modern insight-card-modern">
+            <span className="card-title"><UsersRound size={18} /> Par fournisseur</span>
+            <div className="documents-insight-list-modern">
+              {(summary?.suppliers ?? []).slice(0, 8).map((supplier) => (
+                <button
+                  key={supplier.id ?? supplier.name}
+                  className={`insight-row-btn-modern ${supplierFilter === (supplier.id ?? supplier.name) ? 'active' : ''}`}
+                  onClick={() => onSupplierFilter(supplier.id ?? supplier.name)}
+                >
+                  <div className="insight-row-left">
+                    <Building2 size={13} className="insight-icon" />
+                    <span>{supplier.name}</span>
+                  </div>
+                  <span className="insight-count">{supplier.count}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="card-modern insight-card-modern">
+            <span className="card-title"><Calendar size={18} /> Par mois</span>
+            <div className="documents-insight-list-modern">
+              {(summary?.months ?? []).slice(0, 8).map((month) => (
+                <div key={month.key} className="insight-row-btn-modern static">
+                  <div className="insight-row-left">
+                    <Calendar size={13} className="insight-icon" />
+                    <span>{month.label}</span>
+                  </div>
+                  <span className="insight-count">{month.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function computeStocksReadiness(categories: Category[], units: Unit[], products: Product[], suppliers: Supplier[], sites: Site[], locations: Location[], movements: StockMovement[], ocrStatuses: StocksOcrStatus[]): StocksReadiness {
+  const activeCategories = categories.filter((item) => !isArchived(item));
+  const activeUnits = units.filter((item) => !isArchived(item));
+  const activeProducts = products.filter((item) => !isArchived(item));
+  const activeSuppliers = suppliers.filter((item) => !isArchived(item));
+  const activeSites = sites.filter((item) => !isArchived(item));
+  const activeLocations = locations.filter((item) => !isArchived(item));
+  const foundationReady = Boolean(activeCategories.length && activeUnits.length && activeSites.length && activeLocations.length);
+  const catalogReady = Boolean(activeProducts.length && activeSuppliers.length);
+  const hasValidatedOcr = ocrStatuses.some((status) => {
+    const document = status.document as unknown as { receptionId?: string | null; receptionStatus?: string | null } | undefined;
+    return Boolean(document?.receptionId || document?.receptionStatus === 'VALIDATED' || (status as any).reception?.status === 'VALIDATED');
+  });
+  const flowReady = Boolean(movements.length || hasValidatedOcr);
+  const completed = [foundationReady, catalogReady, flowReady].filter(Boolean).length;
+  const nextStep: StocksOnboardingStep = !foundationReady ? 'foundation' : !catalogReady ? 'catalog' : !flowReady ? 'reception' : 'review';
+  return { foundationReady, catalogReady, flowReady, progress: Math.round((completed / 3) * 100), nextStep };
+}
+
+function StocksSetupCard({ readiness, products, suppliers, sites, locations, onStart, onDismiss }: { readiness: StocksReadiness; products: Product[]; suppliers: Supplier[]; sites: Site[]; locations: Location[]; onStart: () => void; onDismiss?: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const activeProducts = products.filter((item) => !isArchived(item)).length;
+  const activeSuppliers = suppliers.filter((item) => !isArchived(item)).length;
+  const activeSites = sites.filter((item) => !isArchived(item)).length;
+  const activeLocations = locations.filter((item) => !isArchived(item)).length;
+  const label = readiness.flowReady ? 'Configuration terminée' : readiness.catalogReady ? 'Première réception à lancer' : readiness.foundationReady ? 'Premiers produits à ajouter' : 'Socle de stockage à préparer';
+  const steps = [
+    { title: 'Socle', text: `${activeSites} site(s), ${activeLocations} emplacement(s)`, done: readiness.foundationReady },
+    { title: 'Catalogue', text: `${activeProducts} produit(s), ${activeSuppliers} fournisseur(s)`, done: readiness.catalogReady },
+    { title: 'Flux', text: 'Réception OCR ou mouvement manuel', done: readiness.flowReady },
+  ];
+  return (
+    <motion.section className="card-modern stocks-setup-card" style={{ position: 'relative' }} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+      {onDismiss && (
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="stocks-widget-close-btn"
+          style={{
+            position: 'absolute',
+            top: '12px',
+            right: '12px',
+            background: 'transparent',
+            border: 'none',
+            color: 'var(--text-muted)',
+            cursor: 'pointer',
+            padding: '4px',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'all 0.2s',
+            zIndex: 5,
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.color = 'var(--text-main)';
+            e.currentTarget.style.background = 'rgba(0,0,0,0.05)';
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.color = 'var(--text-muted)';
+            e.currentTarget.style.background = 'transparent';
+          }}
+          title="Masquer"
+        >
+          <X size={14} />
+        </button>
+      )}
+      <div className="section-header-modern">
+        <div className="section-info">
+          <span className="card-title"><Sparkles size={18} /> Configuration initiale Stocks</span>
+          <span className="section-tagline">{label}</span>
+        </div>
+        <div className="stocks-setup-actions" style={onDismiss ? { marginRight: '1.25rem' } : undefined}>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setExpanded((value) => !value)}>{expanded ? 'Replier' : 'Détails'}</button>
+          <button type="button" className="btn btn-primary btn-sm" onClick={onStart}>{readiness.progress === 100 ? 'Revoir' : 'Continuer'}</button>
+        </div>
+      </div>
+      <div className="stocks-setup-progress">
+        <div className="progress-bar-bg"><div className="progress-bar-fill" style={{ width: `${readiness.progress}%` }} /></div>
+        <strong>{readiness.progress}%</strong>
+      </div>
+      {expanded ? (
+        <div className="stocks-setup-step-grid">
+          {steps.map((step) => (
+            <div key={step.title} className={`stocks-setup-step ${step.done ? 'done' : 'todo'}`}>
+              {step.done ? <CheckCircle2 size={16} /> : <Clock size={16} />}
+              <div><strong>{step.title}</strong><span>{step.text}</span></div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </motion.section>
+  );
+}
+
+function StocksIllustration() {
+  return (
+    <div style={{ position: 'relative', width: '100%', maxWidth: '340px' }}>
+      <div
+        className="card-modern"
+        style={{
+          background: '#0f172a',
+          color: 'white',
+          border: '1px solid rgba(255, 255, 255, 0.05)',
+          boxShadow: '0 30px 60px rgba(9, 13, 22, 0.25)',
+          padding: '1.5rem',
+          borderRadius: '20px',
+          textAlign: 'left',
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>Structure des Stocks</span>
+            <span className="badge badge-reception" style={{ fontSize: '0.72rem', textTransform: 'none', background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', borderColor: 'transparent' }}>Prêt</span>
+          </div>
+
+          {[
+            { label: 'Socle de stockage', val: 100, color: '#10b981' },
+            { label: 'Catalogue produits', val: 100, color: '#10b981' },
+            { label: 'Réception & Mouvements', val: 100, color: '#f59e0b' },
+          ].map((item, idx) => (
+            <div
+              key={idx}
+              style={{
+                padding: '0.85rem 1rem',
+                borderRadius: '12px',
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid rgba(255, 255, 255, 0.03)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <span style={{ fontWeight: 700, fontSize: '0.8rem' }}>{item.label}</span>
+                <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Actif</span>
+              </div>
+              <div className="progress-bar-bg" style={{ height: '5px', background: 'rgba(255, 255, 255, 0.1)' }}>
+                <div className="progress-bar-fill" style={{ width: `${item.val}%`, background: item.color }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StocksOnboardingAside({
+  step,
+  stepOrder,
+  readiness,
+  activeProducts,
+  activeSuppliers,
+  movements,
+}: {
+  step: StocksOnboardingStep;
+  stepOrder: StocksOnboardingStep[];
+  readiness: StocksReadiness;
+  activeProducts: any[];
+  activeSuppliers: any[];
+  movements: any[];
+}) {
+  const steps = [
+    { key: 'welcome', label: 'Bienvenue' },
+    { key: 'foundation', label: 'Socle de stockage' },
+    { key: 'catalog', label: 'Catalogue produits' },
+    { key: 'reception', label: 'Première réception' },
+    { key: 'review', label: 'Résumé & Validation' },
+  ] as Array<{ key: StocksOnboardingStep; label: string }>;
+  const currentIdx = steps.findIndex((s) => s.key === step);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', height: '100%', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+          <Package size={28} color="#10b981" />
+          <span style={{ fontWeight: 850, fontSize: '1.2rem', color: 'white', letterSpacing: '-0.03em' }}>
+            TOQUE<span style={{ color: '#10b981' }}>HUB</span> STOCKS
+          </span>
+        </div>
+
+        <div>
+          <span style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', color: '#10b981', letterSpacing: '0.15em' }}>
+            Installation guidée
+          </span>
+          <h3 style={{ color: 'white', fontSize: '1.35rem', marginTop: '0.3rem', fontWeight: 800, lineHeight: 1.25 }}>
+            Assistant Stocks
+          </h3>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {steps.map((item, idx) => {
+            const isPast = idx < currentIdx;
+            const isCurrent = idx === currentIdx;
+            return (
+              <div
+                key={item.key}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.85rem',
+                  color: isPast || isCurrent ? 'white' : 'rgba(255, 255, 255, 0.35)',
+                  fontWeight: isCurrent ? 700 : 500,
+                  fontSize: '0.9rem',
+                }}
+              >
+                <div
+                  style={{
+                    width: '26px',
+                    height: '26px',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: isPast ? '#10b981' : isCurrent ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+                    border: isCurrent ? '1.5px solid #10b981' : '1px solid transparent',
+                    color: isPast ? 'white' : isCurrent ? '#10b981' : 'inherit',
+                    fontWeight: 800,
+                    fontSize: '0.78rem',
+                  }}
+                >
+                  {isPast ? '✓' : idx + 1}
+                </div>
+                <span>{item.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div style={{ padding: '1rem', borderRadius: '16px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <span style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.05em' }}>Statut initial</span>
+          <div style={{ color: 'white', fontSize: '1rem', fontWeight: 800, marginTop: '0.2rem' }}>{readiness.progress}% Métier Prêt</div>
+          <p style={{ color: '#94a3b8', fontSize: '0.75rem', marginTop: '0.25rem', lineHeight: 1.4 }}>
+            {activeProducts.length} produit(s), {activeSuppliers.length} fournisseur(s), {movements.length} mouvement(s)
+          </p>
+        </div>
+
+        <div style={{ padding: '1.25rem', borderRadius: '16px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <ShieldCheck size={20} color="#10b981" style={{ marginBottom: '0.4rem' }} />
+          <h4 style={{ color: 'white', fontSize: '0.85rem', fontWeight: 700 }}>Données sécurisées</h4>
+          <p style={{ color: '#94a3b8', fontSize: '0.75rem', marginTop: '0.25rem', lineHeight: 1.45 }}>
+            Les catégories, unités et produits créés restent éditables à tout moment.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StocksOnboardingWizard({
+  readiness,
+  categories,
+  units,
+  products,
+  suppliers,
+  sites,
+  locations,
+  movements,
+  ocrStatuses,
+  ocrConfigured,
+  onPrefill,
+  onCreateSupplier,
+  onCreateProduct,
+  onImportOcr,
+  onCreateMovement,
+  onOpenApiKeys,
+  onOpenProducts,
+  onOpenStocks,
+  onOpenOcr,
+  onClose,
+}: {
+  readiness: StocksReadiness;
+  categories: Category[];
+  units: Unit[];
+  products: Product[];
+  suppliers: Supplier[];
+  sites: Site[];
+  locations: Location[];
+  movements: StockMovement[];
+  ocrStatuses: StocksOcrStatus[];
+  ocrConfigured: boolean;
+  onPrefill: (payload: { categories?: boolean; units?: boolean; sites?: boolean; locations?: boolean; examples?: boolean }) => Promise<void>;
+  onCreateSupplier: (payload: { name: string }) => Promise<unknown>;
+  onCreateProduct: (payload: ProductFormPayload) => Promise<unknown>;
+  onImportOcr: () => void;
+  onCreateMovement: () => void;
+  onOpenApiKeys: () => void;
+  onOpenProducts: () => void;
+  onOpenStocks: () => void;
+  onOpenOcr: () => void;
+  onClose: () => void;
+}) {
+  const [step, setStep] = useState<StocksOnboardingStep>(() => readiness.progress ? readiness.nextStep : 'welcome');
+  const stepOrder: StocksOnboardingStep[] = ['welcome', 'foundation', 'catalog', 'reception', 'review'];
+  const stepIndex = stepOrder.indexOf(step) + 1;
+  const progress = Math.round((stepIndex / stepOrder.length) * 100);
+  const activeCategories = categories.filter((item) => !isArchived(item));
+  const activeUnits = units.filter((item) => !isArchived(item));
+  const activeProducts = products.filter((item) => !isArchived(item));
+  const activeSuppliers = suppliers.filter((item) => !isArchived(item));
+  const activeSites = sites.filter((item) => !isArchived(item));
+  const activeLocations = locations.filter((item) => !isArchived(item));
+  const goNext = () => setStep(stepOrder[Math.min(stepIndex, stepOrder.length - 1)]);
+  const goBack = () => setStep(stepOrder[Math.max(0, stepIndex - 2)]);
+
+  return (
+    <div
+      className="modal-overlay stocks-wizard-overlay"
+      style={{
+        background: 'radial-gradient(circle at 10% 20%, rgba(16, 185, 129, 0.15) 0%, transparent 55%), radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.1) 0%, transparent 50%), rgba(15, 23, 42, 0.55)',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 9999,
+        padding: '2rem 1.5rem',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+      }}
+    >
+      {/* Decorative Blur Spheres */}
+      <div style={{ position: 'absolute', width: '560px', height: '560px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.05)', filter: 'blur(100px)', right: '-180px', top: '-180px', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', width: '420px', height: '420px', borderRadius: '50%', background: 'rgba(59, 130, 246, 0.05)', filter: 'blur(80px)', left: '-160px', bottom: '20px', pointerEvents: 'none' }} />
+
+      <motion.div
+        className="modal-card stocks-wizard-modal"
+        initial={{ opacity: 0, y: 18, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ type: 'spring', damping: 24, stiffness: 220 }}
+        style={{
+          width: '100%',
+          maxWidth: step === 'welcome' ? '920px' : '1080px',
+          height: 'min(720px, calc(100vh - 4rem))',
+          padding: 0,
+          borderRadius: '24px',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          background: 'white',
+          boxShadow: '0 30px 80px rgba(9, 13, 22, 0.08)',
+          border: 'none',
+          zIndex: 10,
+        }}
+      >
+        {step === 'welcome' ? (
+          <StocksOnboardingWelcome onNext={() => setStep('foundation')} onClose={onClose} />
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 2fr', height: '100%', width: '100%', minHeight: 0, flexGrow: 1 }}>
+            {/* Sidebar */}
+            <div style={{ background: '#0f172a', color: 'white', padding: '2.5rem 2rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%', minHeight: 0 }}>
+              <StocksOnboardingAside step={step} stepOrder={stepOrder} readiness={readiness} activeProducts={activeProducts} activeSuppliers={activeSuppliers} movements={movements} />
+            </div>
+
+            {/* Main Content Area */}
+            <div style={{ padding: '2.5rem', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto', minHeight: 0, justifyContent: 'space-between' }}>
+              {/* Stepper Progress bar */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexShrink: 0, position: 'relative' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', flexDirection: 'column', flexGrow: 1 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span className="badge badge-reception" style={{ background: 'rgba(16, 185, 129, 0.08)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.15)', textTransform: 'none', fontSize: '0.8rem' }}>
+                      Étape {stepIndex} / {stepOrder.length}
+                    </span>
+                    <span style={{ fontWeight: 800, fontSize: '0.85rem', color: 'var(--text-muted)', marginRight: '2.5rem' }}>{Math.round(progress)}%</span>
+                  </div>
+                  <div className="progress-bar-bg" style={{ height: '6px', background: '#f1f5f9', borderRadius: '3px', overflow: 'hidden', marginRight: '2.5rem' }}>
+                    <div className="progress-bar-fill" style={{ width: `${progress}%`, height: '100%', background: '#10b981', borderRadius: '3px' }}></div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={onClose}
+                  style={{
+                    position: 'absolute',
+                    right: 0,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'var(--text-muted)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0.5rem',
+                    borderRadius: '50%',
+                    transition: 'background 0.2s',
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.background = '#f1f5f9'}
+                  onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                  aria-label="Fermer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Step rendering with AnimatePresence */}
+              <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minHeight: 0, justifyContent: 'space-between' }}>
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={step}
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    transition={{ duration: 0.16 }}
+                    style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minHeight: 0, justifyContent: 'space-between' }}
+                  >
+                    {step === 'foundation' ? (
+                      <StocksFoundationStep
+                        categories={activeCategories}
+                        units={activeUnits}
+                        sites={activeSites}
+                        locations={activeLocations}
+                        ready={readiness.foundationReady}
+                        onBack={goBack}
+                        onPrefill={async () => {
+                          await onPrefill({ categories: true, units: true, sites: true, locations: true, examples: false });
+                          setStep('catalog');
+                        }}
+                        onNext={() => setStep('catalog')}
+                      />
+                    ) : null}
+                    {step === 'catalog' ? (
+                      <StocksCatalogStep
+                        categories={activeCategories}
+                        units={activeUnits}
+                        suppliers={activeSuppliers}
+                        products={activeProducts}
+                        onBack={goBack}
+                        onCreateSupplier={onCreateSupplier}
+                        onCreateProduct={onCreateProduct}
+                        onOpenProducts={onOpenProducts}
+                        onNext={() => setStep('reception')}
+                      />
+                    ) : null}
+                    {step === 'reception' ? (
+                      <StocksReceptionStep
+                        ocrConfigured={ocrConfigured}
+                        ocrStatuses={ocrStatuses}
+                        onBack={goBack}
+                        onImportOcr={onImportOcr}
+                        onCreateMovement={onCreateMovement}
+                        onOpenApiKeys={onOpenApiKeys}
+                        onNext={() => setStep('review')}
+                      />
+                    ) : null}
+                    {step === 'review' ? (
+                      <StocksReviewStep
+                        readiness={readiness}
+                        categories={activeCategories}
+                        units={activeUnits}
+                        products={activeProducts}
+                        suppliers={activeSuppliers}
+                        sites={activeSites}
+                        locations={activeLocations}
+                        movements={movements}
+                        onBack={goBack}
+                        onOpenStocks={onOpenStocks}
+                        onOpenProducts={onOpenProducts}
+                        onOpenOcr={onOpenOcr}
+                        onClose={onClose}
+                      />
+                    ) : null}
+                  </motion.div>
+                </AnimatePresence>
+              </div>
+            </div>
+          </div>
+        )}
+      </motion.div>
+    </div>
+  );
+}
+
+function StocksOnboardingWelcome({ onNext, onClose }: { onNext: () => void; onClose: () => void }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '3rem', alignItems: 'center', padding: '3.5rem 3rem', height: '100%', flexGrow: 1, position: 'relative' }}>
+      {onClose && (
+        <button
+          type="button"
+          onClick={onClose}
+          style={{
+            position: 'absolute',
+            top: '1.5rem',
+            right: '1.5rem',
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            color: 'var(--text-muted)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '0.5rem',
+            borderRadius: '50%',
+            transition: 'background 0.2s',
+            zIndex: 10,
+          }}
+          onMouseOver={(e) => e.currentTarget.style.background = '#f1f5f9'}
+          onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+          aria-label="Fermer"
+        >
+          <X size={20} />
+        </button>
+      )}
+      <div>
+        <span className="badge badge-reception" style={{ marginBottom: '1.25rem', display: 'inline-flex', fontSize: '0.8rem', gap: '0.35rem', border: '1px solid var(--light-border)', background: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>
+          <Sparkles size={14} color="#10b981" /> Configuration Guidée
+        </span>
+        <h1 style={{ fontSize: '2.5rem', fontWeight: 900, lineHeight: 1.1, letterSpacing: '-0.04em', marginBottom: '1.5rem', color: 'var(--text-main)' }}>
+          Bienvenue sur le module <span style={{ color: '#10b981' }}>Stocks & Réceptions</span>
+        </h1>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.98rem', lineHeight: 1.6, marginBottom: '2rem' }}>
+          On va préparer votre socle de stockage, créer vos premiers produits réels, puis lancer une première réception par facture ou bon de livraison.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '2rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', flexShrink: 0 }}><Warehouse size={16} /></div>
+            <span>Créer le socle (catégories, unités, emplacements)</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', flexShrink: 0 }}><Package size={16} /></div>
+            <span>Ajouter vos premiers produits et fournisseurs</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', flexShrink: 0 }}><FileText size={16} /></div>
+            <span>Lancer une première réception de stock</span>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" onClick={onNext} style={{ padding: '0.8rem 1.5rem', fontSize: '0.92rem' }}>
+            Démarrer la configuration <ArrowRight size={18} />
+          </button>
+          {onClose && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={onClose}
+              style={{ padding: '0.8rem 1.5rem', fontSize: '0.92rem' }}
+            >
+              Faire plus tard
+            </button>
+          )}
+        </div>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
+        <StocksIllustration />
+      </div>
+    </div>
+  );
+}
+
+function StocksFoundationStep({ categories, units, sites, locations, ready, onBack, onPrefill, onNext }: { categories: Category[]; units: Unit[]; sites: Site[]; locations: Location[]; ready: boolean; onBack: () => void; onPrefill: () => Promise<void>; onNext: () => void }) {
+  const [submitting, setSubmitting] = useState(false);
+  const items = [
+    { title: 'Catégories', value: categories.length, icon: Layers },
+    { title: 'Unités', value: units.length, icon: Scale },
+    { title: 'Sites', value: sites.length, icon: Warehouse },
+    { title: 'Emplacements', value: locations.length, icon: MapPin },
+  ];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', height: '100%', minHeight: 0, justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <div>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>Préparer le socle de stockage</h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginTop: '0.35rem', lineHeight: 1.5 }}>
+            Le socle ajoute les familles, unités, site principal et emplacements de base. Les données existantes sont conservées.
+          </p>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '0.5rem' }}>
+          {items.map(({ title, value, icon: Icon }) => {
+            const isReady = value > 0;
+            return (
+              <div
+                key={title}
+                style={{
+                  border: isReady ? '2px solid #10b981' : '1px solid #e2e8f0',
+                  borderRadius: '16px',
+                  padding: '1.25rem',
+                  background: isReady ? 'rgba(16, 185, 129, 0.04)' : 'white',
+                  boxShadow: isReady ? '0 10px 25px rgba(16,185,129,0.06)' : '0 2px 4px rgba(0,0,0,0.02)',
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem',
+                  alignItems: 'flex-start',
+                }}
+              >
+                <div
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: isReady ? 'rgba(16, 185, 129, 0.1)' : '#f1f5f9',
+                    color: isReady ? '#10b981' : '#64748b',
+                  }}
+                >
+                  <Icon size={20} />
+                </div>
+                <span style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-main)', marginTop: '0.25rem', lineHeight: 1 }}>{value}</span>
+                <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>{title}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="alert-modern" style={{ margin: 0 }}><Info size={16} /> Aucun produit de démonstration ne sera créé pendant ce parcours.</div>
+      </div>
+      <div className="hr-catalog-actions sticky" style={{ borderTop: '1px solid #eef2f7', background: 'rgba(255,255,255,0.9)', padding: '1rem 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+        <button type="button" className="btn btn-secondary" onClick={onBack} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Retour</button>
+        <div className="row-actions" style={{ display: 'flex', gap: '0.75rem' }}>
+          <button type="button" className="btn btn-secondary" disabled={submitting} onClick={async () => { setSubmitting(true); try { await onPrefill(); } finally { setSubmitting(false); } }} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>
+            {submitting ? 'Préremplissage…' : ready ? 'Relancer le socle' : 'Préremplir le socle'}
+          </button>
+          <button type="button" className="btn btn-primary" onClick={onNext} disabled={!ready && submitting} style={{ borderRadius: '10px', padding: '0.5rem 1.5rem' }}>Continuer</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type StocksCatalogDraftLine = { id: string; name: string; unitId: string; categoryId: string; supplierId: string; averagePrice: string; minimumStock: string };
+
+function StocksCatalogStep({ categories, units, suppliers, products, onBack, onCreateSupplier, onCreateProduct, onOpenProducts, onNext }: { categories: Category[]; units: Unit[]; suppliers: Supplier[]; products: Product[]; onBack: () => void; onCreateSupplier: (payload: { name: string }) => Promise<unknown>; onCreateProduct: (payload: ProductFormPayload) => Promise<unknown>; onOpenProducts: () => void; onNext: () => void }) {
+  const makeLine = (): StocksCatalogDraftLine => ({ id: randomLocalId(), name: '', unitId: units[0]?.id ?? '', categoryId: categories[0]?.id ?? '', supplierId: suppliers[0]?.id ?? '', averagePrice: '', minimumStock: '' });
+  const [lines, setLines] = useState<StocksCatalogDraftLine[]>([makeLine()]);
+  const [supplierName, setSupplierName] = useState('');
+  const [localSuppliers, setLocalSuppliers] = useState<Supplier[]>(suppliers);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string>();
+  useEffect(() => setLocalSuppliers(suppliers), [suppliers]);
+
+  function patchLine(id: string, patch: Partial<StocksCatalogDraftLine>) {
+    setLines((current) => current.map((line) => line.id === id ? { ...line, ...patch } : line));
+  }
+
+  async function createQuickSupplier() {
+    if (!supplierName.trim()) return;
+    setSubmitting(true);
+    setError(undefined);
+    try {
+      const created = await onCreateSupplier({ name: supplierName.trim() }) as Supplier;
+      if (created?.id) {
+        setLocalSuppliers((current) => current.some((item) => item.id === created.id) ? current : [...current, created]);
+        setLines((current) => current.map((line) => ({ ...line, supplierId: line.supplierId || created.id })));
+      }
+      setSupplierName('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Le fournisseur n’a pas pu être créé.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function createProducts() {
+    const valid = lines.filter((line) => line.name.trim() && line.unitId);
+    if (!valid.length) return;
+    setSubmitting(true);
+    setError(undefined);
+    try {
+      for (const line of valid) {
+        await onCreateProduct({
+          name: line.name.trim(),
+          unitId: line.unitId,
+          categoryId: line.categoryId || undefined,
+          primarySupplierId: line.supplierId || undefined,
+          averagePrice: line.averagePrice ? Number(line.averagePrice) : undefined,
+          minimumStock: line.minimumStock ? Number(line.minimumStock) : undefined,
+        });
+      }
+      onNext();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Les produits n’ont pas tous pu être créés.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', height: '100%', minHeight: 0, justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', minHeight: 0 }}>
+        <div>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>Ajouter les premiers produits</h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginTop: '0.35rem', lineHeight: 1.5 }}>
+            Créez quelques produits réellement utilisés. Vous pourrez compléter le catalogue plus tard ou créer des produits manquants depuis une facture OCR.
+          </p>
+        </div>
+        {error ? <div className="alert-modern error" style={{ margin: 0 }}><AlertCircle size={16} /> {error}</div> : null}
+
+        <div style={{ display: 'flex', gap: '0.75rem', background: '#f8fafc', padding: '0.75rem', borderRadius: '12px', border: '1px solid #e2e8f0', alignItems: 'center' }}>
+          <input
+            value={supplierName}
+            onChange={(event) => setSupplierName(event.target.value)}
+            placeholder={localSuppliers.length ? 'Ajouter un fournisseur rapide (ex. Transgourmet)' : 'Créer le premier fournisseur'}
+            style={{ flex: 1, border: 'none', background: 'transparent', boxShadow: 'none', padding: '0 0.5rem', height: '36px', fontSize: '0.9rem' }}
+          />
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={!supplierName.trim() || submitting}
+            onClick={() => void createQuickSupplier()}
+            style={{ height: '36px', display: 'flex', alignItems: 'center', gap: '0.35rem', borderRadius: '8px' }}
+          >
+            <Plus size={14} /> Fournisseur
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', overflowY: 'auto', maxHeight: '280px', paddingRight: '0.25rem', minHeight: 0 }}>
+          {lines.map((line, index) => (
+            <div
+              key={line.id}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '32px minmax(180px, 2fr) minmax(100px, 1fr) minmax(120px, 1.2fr) minmax(120px, 1.2fr) minmax(90px, 0.9fr) minmax(90px, 0.9fr) 40px',
+                gap: '0.5rem',
+                alignItems: 'center',
+                background: '#f8fafc',
+                padding: '0.6rem 0.8rem',
+                borderRadius: '12px',
+                border: '1px solid #e2e8f0',
+              }}
+            >
+              <span
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: '50%',
+                  background: 'rgba(16, 185, 129, 0.1)',
+                  color: '#10b981',
+                  fontWeight: 800,
+                  fontSize: '0.75rem',
+                }}
+              >
+                {index + 1}
+              </span>
+              <input
+                value={line.name}
+                onChange={(event) => patchLine(line.id, { name: event.target.value })}
+                placeholder="Nom du produit"
+                style={{ borderRadius: '8px', border: '1px solid #cbd5e1', padding: '0.4rem 0.6rem', fontSize: '0.85rem', background: 'white' }}
+              />
+              <select
+                value={line.unitId}
+                onChange={(event) => patchLine(line.id, { unitId: event.target.value })}
+                style={{ borderRadius: '8px', border: '1px solid #cbd5e1', padding: '0.4rem 0.6rem', fontSize: '0.85rem', background: 'white' }}
+              >
+                <option value="">Unité</option>
+                {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.symbol}</option>)}
+              </select>
+              <select
+                value={line.categoryId}
+                onChange={(event) => patchLine(line.id, { categoryId: event.target.value })}
+                style={{ borderRadius: '8px', border: '1px solid #cbd5e1', padding: '0.4rem 0.6rem', fontSize: '0.85rem', background: 'white' }}
+              >
+                <option value="">Catégorie</option>
+                {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+              </select>
+              <select
+                value={line.supplierId}
+                onChange={(event) => patchLine(line.id, { supplierId: event.target.value })}
+                style={{ borderRadius: '8px', border: '1px solid #cbd5e1', padding: '0.4rem 0.6rem', fontSize: '0.85rem', background: 'white' }}
+              >
+                <option value="">Fournisseur</option>
+                {localSuppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+              </select>
+              <input
+                type="number"
+                min="0"
+                step="0.0001"
+                value={line.averagePrice}
+                onChange={(event) => patchLine(line.id, { averagePrice: event.target.value })}
+                placeholder="Prix (€)"
+                style={{ borderRadius: '8px', border: '1px solid #cbd5e1', padding: '0.4rem 0.6rem', fontSize: '0.85rem', background: 'white' }}
+              />
+              <input
+                type="number"
+                min="0"
+                step="0.001"
+                value={line.minimumStock}
+                onChange={(event) => patchLine(line.id, { minimumStock: event.target.value })}
+                placeholder="Stock min"
+                style={{ borderRadius: '8px', border: '1px solid #cbd5e1', padding: '0.4rem 0.6rem', fontSize: '0.85rem', background: 'white' }}
+              />
+              <button
+                type="button"
+                className="icon-btn danger"
+                disabled={lines.length === 1}
+                onClick={() => setLines((current) => current.filter((item) => item.id !== line.id))}
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: lines.length === 1 ? '#f1f5f9' : 'rgba(239, 68, 68, 0.1)',
+                  color: lines.length === 1 ? '#cbd5e1' : '#ef4444',
+                  cursor: lines.length === 1 ? 'not-allowed' : 'pointer',
+                }}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="hr-catalog-actions sticky" style={{ borderTop: '1px solid #eef2f7', background: 'rgba(255,255,255,0.9)', padding: '1rem 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+        <button type="button" className="btn btn-secondary" onClick={onBack} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Retour</button>
+        <div className="row-actions" style={{ display: 'flex', gap: '0.75rem' }}>
+          <button type="button" className="btn btn-secondary" disabled={lines.length >= 10} onClick={() => setLines((current) => [...current, makeLine()])} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}><Plus size={14} /> Ligne</button>
+          {products.length ? <button type="button" className="btn btn-secondary" onClick={onOpenProducts} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Voir produits</button> : null}
+          <button type="button" className="btn btn-primary" disabled={submitting || !lines.some((line) => line.name.trim() && line.unitId)} onClick={() => void createProducts()} style={{ borderRadius: '10px', padding: '0.5rem 1.5rem' }}>{submitting ? 'Création…' : 'Créer et continuer'}</button>
+          <button type="button" className="btn btn-secondary" onClick={onNext} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Passer</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StocksReceptionStep({ ocrConfigured, ocrStatuses, onBack, onImportOcr, onCreateMovement, onOpenApiKeys, onNext }: { ocrConfigured: boolean; ocrStatuses: StocksOcrStatus[]; onBack: () => void; onImportOcr: () => void; onCreateMovement: () => void; onOpenApiKeys: () => void; onNext: () => void }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', height: '100%', minHeight: 0, justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <div>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>Lancer la première réception</h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginTop: '0.35rem', lineHeight: 1.5 }}>
+            Le chemin recommandé est l’import facture ou BL : l’OCR prépare les lignes, puis la validation crée la réception et les mouvements de stock.
+          </p>
+        </div>
+        {!ocrConfigured ? (
+          <div className="alert-modern error" style={{ margin: 0, alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <span><AlertCircle size={16} /> Ajoutez une clé Mistral pour utiliser l’import OCR Stocks.</span>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={onOpenApiKeys}><KeyRound size={13} /> Configurer</button>
+          </div>
+        ) : null}
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem', marginBottom: '0.5rem' }}>
+          <button
+            type="button"
+            onClick={onImportOcr}
+            style={{
+              border: '2px solid #10b981',
+              borderRadius: '20px',
+              padding: '2rem 1.5rem',
+              background: 'linear-gradient(135deg, rgba(16,185,129,0.06) 0%, rgba(255,255,255,1) 100%)',
+              boxShadow: '0 12px 30px rgba(16,185,129,0.08)',
+              transition: 'all 0.2s',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.75rem',
+              alignItems: 'center',
+              textAlign: 'center',
+              cursor: 'pointer',
+            }}
+            onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 16px 36px rgba(16,185,129,0.12)'; }}
+            onMouseOut={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 12px 30px rgba(16,185,129,0.08)'; }}
+          >
+            <div
+              style={{
+                width: '52px',
+                height: '52px',
+                borderRadius: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'rgba(16, 185, 129, 0.1)',
+                color: '#10b981',
+                marginBottom: '0.5rem',
+              }}
+            >
+              <FileText size={28} />
+            </div>
+            <strong style={{ fontSize: '1.1rem', color: 'var(--text-main)', fontWeight: 800 }}>Importer facture / BL (Recommandé)</strong>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>Analyse IA automatisée, détection et création des produits manquants, validation rapide.</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onCreateMovement}
+            style={{
+              border: '1px solid #e2e8f0',
+              borderRadius: '20px',
+              padding: '2rem 1.5rem',
+              background: 'white',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.01)',
+              transition: 'all 0.2s',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.75rem',
+              alignItems: 'center',
+              textAlign: 'center',
+              cursor: 'pointer',
+            }}
+            onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 10px 20px rgba(0,0,0,0.04)'; e.currentTarget.style.borderColor = '#cbd5e1'; }}
+            onMouseOut={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.01)'; e.currentTarget.style.borderColor = '#e2e8f0'; }}
+          >
+            <div
+              style={{
+                width: '52px',
+                height: '52px',
+                borderRadius: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: '#f1f5f9',
+                color: '#64748b',
+                marginBottom: '0.5rem',
+              }}
+            >
+              <Plus size={28} />
+            </div>
+            <strong style={{ fontSize: '1.1rem', color: 'var(--text-main)', fontWeight: 800 }}>Réception manuelle</strong>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>Saisir manuellement les articles reçus et les quantités pour créer un mouvement.</span>
+          </button>
+        </div>
+        {ocrStatuses.length ? <StocksOcrDashboardStatusBar statuses={ocrStatuses} onOpenExtraction={async () => undefined} onImportOcr={onImportOcr} /> : null}
+      </div>
+      <div className="hr-catalog-actions sticky" style={{ borderTop: '1px solid #eef2f7', background: 'rgba(255,255,255,0.9)', padding: '1rem 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+        <button type="button" className="btn btn-secondary" onClick={onBack} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Retour</button>
+        <button type="button" className="btn btn-primary" onClick={onNext} style={{ borderRadius: '10px', padding: '0.5rem 1.5rem' }}>Continuer</button>
+      </div>
+    </div>
+  );
+}
+
+function StocksReviewStep({ readiness, categories, units, products, suppliers, sites, locations, movements, onBack, onOpenStocks, onOpenProducts, onOpenOcr, onClose }: { readiness: StocksReadiness; categories: Category[]; units: Unit[]; products: Product[]; suppliers: Supplier[]; sites: Site[]; locations: Location[]; movements: StockMovement[]; onBack: () => void; onOpenStocks: () => void; onOpenProducts: () => void; onOpenOcr: () => void; onClose: () => void }) {
+  const cards = [
+    { label: 'Catégories', value: categories.length, done: categories.length > 0 },
+    { label: 'Unités', value: units.length, done: units.length > 0 },
+    { label: 'Sites', value: sites.length, done: sites.length > 0 },
+    { label: 'Emplacements', value: locations.length, done: locations.length > 0 },
+    { label: 'Fournisseurs', value: suppliers.length, done: suppliers.length > 0 },
+    { label: 'Produits', value: products.length, done: products.length > 0 },
+    { label: 'Mouvements', value: movements.length, done: readiness.flowReady },
+  ];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', height: '100%', minHeight: 0, justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <div>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>{readiness.progress === 100 ? 'Stocks est prêt à exploiter' : 'Résumé de configuration'}</h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginTop: '0.35rem', lineHeight: 1.5 }}>
+            Votre configuration reste modifiable depuis les onglets Stocks. Les prochains imports facture/BL enrichiront le catalogue et l’historique.
+          </p>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.85rem', marginBottom: '0.5rem' }}>
+          {cards.map((card) => {
+            return (
+              <div
+                key={card.label}
+                style={{
+                  border: card.done ? '1.5px solid #10b981' : '1px solid #e2e8f0',
+                  borderRadius: '14px',
+                  padding: '1rem',
+                  background: card.done ? 'rgba(16, 185, 129, 0.04)' : '#f8fafc',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.35rem',
+                  alignItems: 'flex-start',
+                  position: 'relative',
+                }}
+              >
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '0.75rem',
+                    right: '0.75rem',
+                    color: card.done ? '#10b981' : '#94a3b8',
+                  }}
+                >
+                  {card.done ? <CheckCircle2 size={16} /> : <Clock size={16} />}
+                </div>
+                <span style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--text-main)', lineHeight: 1.1 }}>{card.value}</span>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)' }}>{card.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="hr-catalog-actions sticky" style={{ borderTop: '1px solid #eef2f7', background: 'rgba(255,255,255,0.9)', padding: '1rem 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+        <button type="button" className="btn btn-secondary" onClick={onBack} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Retour</button>
+        <div className="row-actions" style={{ display: 'flex', gap: '0.75rem' }}>
+          <button type="button" className="btn btn-secondary" onClick={onOpenProducts} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Produits</button>
+          <button type="button" className="btn btn-secondary" onClick={onOpenOcr} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Suivi OCR</button>
+          <button type="button" className="btn btn-primary" onClick={readiness.flowReady ? onOpenStocks : onClose} style={{ borderRadius: '10px', padding: '0.5rem 1.5rem' }}>{readiness.flowReady ? 'Voir stocks' : 'Terminer'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function randomLocalId() {
+  return `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function StocksDashboardPage({ products, suppliers, sites, locations, stocks, movements, ocrStatuses, readiness, onCreateMovement, onImportOcr, onOpenExtraction, onOpenStocks, onStartOnboarding, onCreateProduct }: { products: Product[]; suppliers: Supplier[]; sites: Site[]; locations: Location[]; stocks: Stock[]; movements: StockMovement[]; ocrStatuses: StocksOcrStatus[]; readiness: StocksReadiness; onCreateMovement: () => void; onImportOcr: () => void; onOpenExtraction: (extractionId: string) => Promise<void>; onOpenStocks: () => void; onStartOnboarding: () => void; onCreateProduct: () => void }) {
+  const [hideSetupCard, setHideSetupCard] = useState(() => {
+    try {
+      return localStorage.getItem('toquehub_stocks_hide_setup_card') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const [hideOcrStatus, setHideOcrStatus] = useState(() => {
+    try {
+      return localStorage.getItem('toquehub_stocks_hide_ocr_status') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
   const stockValue = stocks.reduce((sum, stock) => sum + numeric(stock.stockValue ?? stock.value ?? numeric(stock.currentQuantity ?? stock.quantity) * numeric(stock.product.averagePrice ?? stock.product.averagePurchasePrice ?? stock.product.weightedAveragePrice)), 0);
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
-  const movementsThisMonth = movements.filter((m) => new Date(m.createdAt) >= monthStart).length;
+  const recentMovements = sortMovementsByRecency(movements).slice(0, 6);
+  const movementsThisMonth = movements.filter((m) => movementEffectiveDate(m) >= monthStart).length;
   const topConsumed = Object.values(movements.filter((m) => ['LOSS', 'OUT', 'EXIT', 'PRODUCTION', 'CORRECTION', 'INVENTORY'].includes(m.type)).reduce<Record<string, { name: string; qty: number; unit?: string }>>((acc, m) => {
     const key = m.product.id;
     acc[key] = acc[key] ?? { name: m.product.name, qty: 0, unit: m.product.unit?.symbol };
@@ -3448,12 +5143,50 @@ function StocksDashboardPage({ products, suppliers, stocks, movements, onCreateM
           <button className="btn btn-primary" onClick={onImportOcr}>
             <FileText size={16} /> Importer facture / BL
           </button>
-          <button className="btn btn-secondary" onClick={onCreateMovement}>
-            <Plus size={16} /> Réception manuelle
+          <button className="btn btn-secondary" onClick={onCreateProduct}>
+            <Plus size={16} /> Nouveau Produit
           </button>
         </div>
       </motion.section>
-      
+
+      {(!hideSetupCard || (!hideOcrStatus && ocrStatuses.length > 0)) && (
+        <div className="stocks-dashboard-setup-row">
+          {!hideSetupCard && (
+            <StocksSetupCard
+              readiness={readiness}
+              products={products}
+              suppliers={suppliers}
+              sites={sites}
+              locations={locations}
+              onStart={onStartOnboarding}
+              onDismiss={() => {
+                setHideSetupCard(true);
+                try {
+                  localStorage.setItem('toquehub_stocks_hide_setup_card', 'true');
+                } catch (e) {
+                  console.error(e);
+                }
+              }}
+            />
+          )}
+          {!hideOcrStatus && ocrStatuses.length > 0 && (
+            <StocksOcrDashboardStatusBar
+              statuses={ocrStatuses}
+              onOpenExtraction={onOpenExtraction}
+              onImportOcr={onImportOcr}
+              onDismiss={() => {
+                setHideOcrStatus(true);
+                try {
+                  localStorage.setItem('toquehub_stocks_hide_ocr_status', 'true');
+                } catch (e) {
+                  console.error(e);
+                }
+              }}
+            />
+          )}
+        </div>
+      )}
+
       <div className="metrics-grid">
         <Metric icon={<ChefHat size={20} />} value={products.filter(p => !isArchived(p)).length} label="Produits actifs" tone="orange" delay={1} />
         <Metric icon={<UsersRound size={20} />} value={suppliers.filter(s => !isArchived(s)).length} label="Fournisseurs actifs" tone="blue" delay={2} />
@@ -3472,7 +5205,7 @@ function StocksDashboardPage({ products, suppliers, stocks, movements, onCreateM
             <span className="card-title"><History size={18}/> Derniers mouvements</span>
             <button className="btn btn-secondary btn-sm" onClick={onOpenStocks}>Voir stocks</button>
           </div>
-          <MiniMovements movements={movements.slice(0, 6)} />
+          <MiniMovements movements={recentMovements} />
         </motion.div>
 
         <motion.div
@@ -3497,6 +5230,89 @@ function StocksDashboardPage({ products, suppliers, stocks, movements, onCreateM
         </motion.div>
       </div>
     </div>
+  );
+}
+
+function StocksOcrDashboardStatusBar({ statuses, onOpenExtraction, onImportOcr, onDismiss }: { statuses: StocksOcrStatus[]; onOpenExtraction: (extractionId: string) => Promise<void>; onImportOcr: () => void; onDismiss?: () => void }) {
+  if (!statuses.length) return null;
+
+  const working = statuses.filter(isOcrStatusWorking).length;
+  const ready = statuses.filter(isOcrStatusReady).length;
+  const errors = statuses.filter(isOcrStatusError).length;
+  const featured = statuses.find(isOcrStatusReady) ?? statuses.find(isOcrStatusWorking) ?? statuses[0];
+  const progressClass = isOcrStatusError(featured) ? 'error' : isOcrStatusReady(featured) ? 'success' : isOcrStatusAnalyzing(featured) ? 'analyzing' : isOcrStatusPending(featured) ? 'pending' : 'uploading';
+  const stateLabel = ready
+    ? `${ready} document${ready > 1 ? 's' : ''} prêt${ready > 1 ? 's' : ''} à vérifier`
+    : errors
+      ? `${errors} document${errors > 1 ? 's' : ''} en erreur`
+      : `${working || statuses.length} document${(working || statuses.length) > 1 ? 's' : ''} en cours d’analyse`;
+  const filesLabel = `${statuses.length} fichier${statuses.length > 1 ? 's' : ''} OCR suivi${statuses.length > 1 ? 's' : ''}`;
+
+  return (
+    <motion.section
+      className={`stocks-ocr-dashboard-status ${ready ? 'ready' : errors ? 'error' : 'working'}`}
+      style={{ position: 'relative' }}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25 }}
+    >
+      {onDismiss && (
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="stocks-widget-close-btn"
+          style={{
+            position: 'absolute',
+            top: '12px',
+            right: '12px',
+            background: 'transparent',
+            border: 'none',
+            color: 'var(--text-muted)',
+            cursor: 'pointer',
+            padding: '4px',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'all 0.2s',
+            zIndex: 5,
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.color = 'var(--text-main)';
+            e.currentTarget.style.background = 'rgba(0,0,0,0.05)';
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.color = 'var(--text-muted)';
+            e.currentTarget.style.background = 'transparent';
+          }}
+          title="Masquer"
+        >
+          <X size={14} />
+        </button>
+      )}
+      <div className="stocks-ocr-dashboard-status-main">
+        <div className="stocks-ocr-dashboard-status-icon">
+          {ready ? <CheckCircle2 size={18} /> : errors ? <AlertCircle size={18} /> : <Clock size={18} />}
+        </div>
+        <div className="stocks-ocr-dashboard-status-copy">
+          <span>{stateLabel}</span>
+          <small>{filesLabel}</small>
+          <div className="ocr-status-progress-bar">
+            <div className={`ocr-status-progress-fill ${progressClass}`}></div>
+          </div>
+        </div>
+      </div>
+      <div className="stocks-ocr-dashboard-status-actions" style={onDismiss ? { marginRight: '1.25rem' } : undefined}>
+        {featured.extraction ? (
+          <button className="btn btn-primary btn-sm" onClick={() => void onOpenExtraction(featured.extraction!.id)}>
+            Vérifier <ArrowRight size={13} />
+          </button>
+        ) : null}
+        <button className="btn btn-secondary btn-sm" onClick={onImportOcr}>
+          Suivi OCR
+        </button>
+      </div>
+    </motion.section>
   );
 }
 
@@ -3537,8 +5353,9 @@ function MiniMovements({ movements }: { movements: StockMovement[] }) {
   return movements.length ? (
     <div className="dashboard-activity-feed">
       {movements.map((m) => {
-        const dateStr = new Date(m.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
-        const timeStr = new Date(m.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+        const movementDate = movementEffectiveDate(m);
+        const dateStr = movementDate.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+        const timeStr = movementDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
         const typeClass = {
           RECEPTION: 'feed-in',
           IN: 'feed-in',
@@ -3611,67 +5428,111 @@ function ApplicationsPage({
   onUninstallApp: (appId: string) => void;
 }) {
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   const filteredStoreApps = useMemo(() => {
-    return apps.filter(app => 
+    return apps.filter(app =>
       app.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       app.category.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [searchQuery]);
 
-  const featuredApp = apps[0]; // Cours des Produits is featured
+  const featuredApps = useMemo(() => {
+    return apps.filter(app => app.status === 'Disponible');
+  }, []);
+
+  const [featuredIndex, setFeaturedIndex] = useState(0);
+
+  useEffect(() => {
+    if (searchQuery !== '') return;
+    const timer = setInterval(() => {
+      setFeaturedIndex(prev => (prev + 1) % featuredApps.length);
+    }, 5500);
+    return () => clearInterval(timer);
+  }, [featuredApps.length, searchQuery]);
+
+  const featuredApp = featuredApps[featuredIndex] || apps[0];
+  const FeaturedIcon = featuredApp.icon;
 
   return (
     <div className="applications-page" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      
+
       {/* Featured Banner (À la Une) */}
       {searchQuery === '' && (
         <div className="store-featured-banner">
-          <div className="store-featured-content">
-            <span className="store-featured-tag">À LA UNE · INDISPENSABLE</span>
-            <h1 className="store-featured-title">Module {featuredApp.title}</h1>
-            <p className="store-featured-desc">
-              {featuredApp.tagline} Consultez les cotations FranceAgriMer en temps réel sans importer de données RNM dans ToqueHub.
-            </p>
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <button 
-                className="btn btn-primary" 
-                onClick={() => onSelectApp(featuredApp)}
-                style={{ padding: '0.6rem 1.5rem', background: 'white', color: 'var(--dark-bg)', fontWeight: 800 }}
-              >
-                Découvrir
-              </button>
-              {installedApps.includes(featuredApp.id) ? (
-                <span className="badge badge-reception" style={{ background: 'rgba(255,255,255,0.15)', color: 'white' }}>
-                  Déjà installé
-                </span>
-              ) : (
-                <button 
-                  className="btn btn-secondary" 
-                  onClick={(e) => { e.stopPropagation(); onInstallApp(featuredApp.id); }}
-                  disabled={installingAppId !== null}
-                  style={{ background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.15)' }}
-                >
-                  Installer
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="store-featured-visual">
-            <div 
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={featuredApp.id}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.35, ease: 'easeInOut' }}
               style={{
-                width: '130px',
-                height: '130px',
-                borderRadius: '30px',
-                background: featuredApp.gradient,
-                display: 'grid',
-                placeItems: 'center',
-                boxShadow: '0 20px 50px rgba(16, 185, 129, 0.3)',
-                color: 'white'
+                display: 'flex',
+                width: '100%',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '2rem'
               }}
             >
-              <LineChart size={64} />
-            </div>
+              <div className="store-featured-content">
+                <span className="store-featured-tag">À LA UNE · {featuredApp.category.toUpperCase()}</span>
+                <h1 className="store-featured-title">Module {featuredApp.title}</h1>
+                <p className="store-featured-desc">
+                  {featuredApp.tagline}
+                </p>
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => onSelectApp(featuredApp)}
+                    style={{ padding: '0.6rem 1.5rem', background: 'white', color: 'var(--dark-bg)', fontWeight: 800 }}
+                  >
+                    Découvrir
+                  </button>
+                  {installedApps.includes(featuredApp.id) ? (
+                    <span className="badge badge-reception" style={{ background: 'rgba(255,255,255,0.15)', color: 'white' }}>
+                      Déjà installé
+                    </span>
+                  ) : (
+                    <button
+                      className="btn btn-secondary"
+                      onClick={(e) => { e.stopPropagation(); onInstallApp(featuredApp.id); }}
+                      disabled={installingAppId !== null}
+                      style={{ background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.15)' }}
+                    >
+                      Installer
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="store-featured-visual">
+                <div
+                  style={{
+                    width: '130px',
+                    height: '130px',
+                    borderRadius: '30px',
+                    background: featuredApp.gradient,
+                    display: 'grid',
+                    placeItems: 'center',
+                    boxShadow: '0 20px 50px rgba(16, 185, 129, 0.3)',
+                    color: 'white'
+                  }}
+                >
+                  <FeaturedIcon size={64} />
+                </div>
+              </div>
+            </motion.div>
+          </AnimatePresence>
+
+          {/* Indicators / Dots */}
+          <div className="store-featured-dots">
+            {featuredApps.map((app, idx) => (
+              <button
+                key={app.id}
+                onClick={() => setFeaturedIndex(idx)}
+                className={`store-featured-dot ${idx === featuredIndex ? 'active' : ''}`}
+                aria-label={`Afficher le module ${app.title}`}
+              />
+            ))}
           </div>
         </div>
       )}
@@ -3702,15 +5563,15 @@ function ApplicationsPage({
             const Icon = app.icon;
 
             return (
-              <div 
-                key={app.id} 
+              <div
+                key={app.id}
                 className="store-app-card"
                 onClick={() => onSelectApp(app)}
               >
                 <div className="store-app-icon" style={{ background: app.gradient }}>
                   <Icon size={32} />
                 </div>
-                
+
                 <div className="store-app-info">
                   <span className="store-app-category">{app.category}</span>
                   <span className="store-app-title">{app.title}</span>
@@ -3726,14 +5587,14 @@ function ApplicationsPage({
                       </svg>
                     </div>
                   ) : installed ? (
-                    <button 
-                      className="btn btn-get installed" 
+                    <button
+                      className="btn btn-get installed"
                       onClick={() => onSelectApp(app)}
                     >
                       Ouvrir
                     </button>
                   ) : available && !prerequisiteMessage ? (
-                    <button 
+                    <button
                       className="btn btn-get"
                       onClick={() => onInstallApp(app.id)}
                       disabled={installingAppId !== null}
@@ -3783,10 +5644,10 @@ function AppStoreDetailSheet({
 }) {
   const Icon = app.icon;
   const isAvailable = app.status === 'Disponible';
-  
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
-      
+
       {/* App Header */}
       <div className="app-sheet-header">
         <div className="app-sheet-header-icon" style={{ background: app.gradient }}>
@@ -3961,9 +5822,367 @@ function DevSwitch({ users, currentUserId, onSwitch, onCreate }: { users: CoreUs
   );
 }
 
+function BackupRestorePage({ token, onRestoreComplete }: { token: string; onRestoreComplete: () => void }) {
+  const [state, setState] = useState<BackupListResponse>();
+  const [schedule, setSchedule] = useState<BackupSchedule>();
+  const [cloudStatus, setCloudStatus] = useState<BackupCloudStatus>();
+  const [cloudForm, setCloudForm] = useState({ clientId: '', clientSecret: '', redirectUri: api.backupCloudDefaultRedirectUri() });
+  const [inspection, setInspection] = useState<BackupInspection | null>(null);
+  const [selectedBackup, setSelectedBackup] = useState<BackupSummary | null>(null);
+  const [confirmationPhrase, setConfirmationPhrase] = useState('');
+  const [message, setMessage] = useState<string>();
+  const [error, setError] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  const [cloudHelpOpen, setCloudHelpOpen] = useState(false);
+  const [editingCloudConfig, setEditingCloudConfig] = useState(false);
 
+  async function load() {
+    setError(undefined);
+    try {
+      const [nextState, nextSchedule, nextCloudStatus] = await Promise.all([api.backups(token), api.backupSchedule(token), api.backupCloudStatus(token)]);
+      setState(nextState);
+      setSchedule(nextSchedule);
+      setCloudStatus(nextCloudStatus);
+      setCloudForm((current) => ({
+        clientId: current.clientId || nextCloudStatus.googleDrive.clientId || '',
+        clientSecret: current.clientSecret,
+        redirectUri: current.redirectUri || nextCloudStatus.googleDrive.redirectUri || api.backupCloudDefaultRedirectUri(),
+      }));
+      if (nextCloudStatus.googleDrive.connected) setEditingCloudConfig(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Impossible de charger les sauvegardes.');
+    }
+  }
 
-function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKeysSaved, onSettingsSaved, onOpenUsers }: { session: UserSession; token: string; dashboardSummary?: DashboardSummary; focusApiKeys?: boolean; onApiKeysSaved?: () => void; onSettingsSaved?: () => void; onOpenUsers?: () => void }) {
+  useEffect(() => {
+    void load();
+  }, [token]);
+
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if ((event.data as { type?: string } | undefined)?.type === 'toquehub:backup-cloud-google') {
+        setMessage((event.data as { ok?: boolean }).ok ? 'Google Drive connecté.' : 'Connexion Google Drive interrompue.');
+        void load();
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [token]);
+
+  async function run(action: () => Promise<unknown>, success: string, restore = false) {
+    setBusy(true);
+    setError(undefined);
+    setMessage(undefined);
+    try {
+      const result = await action();
+      const restoreResult = result as BackupRestoreResult | undefined;
+      setMessage(restoreResult?.message || success);
+      setConfirmationPhrase('');
+      setSelectedBackup(null);
+      setInspection(null);
+      await load();
+      if (restore) window.setTimeout(onRestoreComplete, 1800);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Opération impossible.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function inspectFile(file?: File) {
+    if (!file) return;
+    await run(async () => {
+      const next = await api.inspectBackupUpload(token, file);
+      setInspection(next);
+      setSelectedBackup(null);
+      return next;
+    }, 'Archive inspectée.');
+  }
+
+  async function saveSchedule() {
+    if (!schedule) return;
+    await run(async () => {
+      const saved = await api.updateBackupSchedule(token, schedule);
+      setSchedule(saved);
+      return saved;
+    }, 'Planification enregistrée.');
+  }
+
+  async function saveGoogleDriveConfig() {
+    await run(async () => {
+      const saved = await api.configureGoogleDriveBackup(token, {
+        clientId: cloudForm.clientId.trim(),
+        clientSecret: cloudForm.clientSecret.trim() || undefined,
+        redirectUri: cloudForm.redirectUri.trim(),
+      });
+      setCloudStatus((current) => current ? { ...current, googleDrive: saved } : current);
+      setCloudForm((current) => ({ ...current, clientSecret: '' }));
+      return saved;
+    }, 'Configuration Google Drive enregistrée.');
+  }
+
+  async function connectGoogleDrive() {
+    await run(async () => {
+      const { authUrl } = await api.connectGoogleDriveBackup(token);
+      window.open(authUrl, 'toquehub-google-drive', 'width=980,height=720');
+      return null;
+    }, 'Autorisation Google ouverte.');
+  }
+
+  async function testGoogleDrive() {
+    await run(() => api.testGoogleDriveBackup(token), 'Connexion Google Drive validée.');
+  }
+
+  async function disconnectGoogleDrive() {
+    await run(() => api.disconnectGoogleDriveBackup(token), 'Compte Google Drive déconnecté.');
+  }
+
+  function copyCloudRedirectUri() {
+    if (!navigator.clipboard) {
+      setError('Copie automatique indisponible dans ce navigateur.');
+      return;
+    }
+    void navigator.clipboard.writeText(cloudForm.redirectUri);
+    setMessage('URI de redirection copiée.');
+  }
+
+  const localRestoreReady = Boolean(selectedBackup && confirmationPhrase === 'RESTAURER TOQUEHUB');
+  const uploadRestoreReady = Boolean(inspection && confirmationPhrase === 'RESTAURER TOQUEHUB');
+  const googleDrive = cloudStatus?.googleDrive;
+  const googleDriveConfigured = Boolean(googleDrive?.configured);
+  const googleDriveConnected = Boolean(googleDrive?.connected);
+  const googleDriveStatusLabel = googleDriveConnected ? 'Connecté' : googleDriveConfigured ? 'Configuré' : 'Non connecté';
+  const showCloudConfigForm = !googleDriveConnected || editingCloudConfig;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      <section className="welcome-hero settings-hero" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', border: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="settings-hero-grid">
+          <div className="settings-hero-left">
+            <span className="sovereign-badge-glow"><span className="status-indicator-dot green"></span> Continuité d’activité</span>
+            <h1 style={{ color: 'white', margin: '0.5rem 0 0.25rem 0', fontSize: '2rem', fontWeight: 800 }}>Sauvegarde & restauration</h1>
+            <p style={{ color: 'rgba(255,255,255,0.72)', margin: 0, fontSize: '0.92rem', lineHeight: 1.5 }}>Archive complète de l’instance: base PostgreSQL, documents métier et manifeste technique, sans secrets applicatifs.</p>
+          </div>
+          <div className="glass-terminal">
+            <div className="glass-terminal-header"><span className="glass-terminal-title">backup runtime</span></div>
+            <div className="glass-terminal-rows">
+              {(state?.tools ?? []).map((tool) => <div className="glass-terminal-row" key={tool.key}><span className="label">{tool.key.toUpperCase()} :</span><span className="value" style={{ color: tool.available ? '#10b981' : '#f97316' }}><span className={`status-indicator-dot ${tool.available ? 'green' : 'orange'}`}></span>{tool.available ? 'DISPONIBLE' : 'MANQUANT'}</span></div>)}
+              <div className="glass-terminal-row"><span className="label">OPÉRATION :</span><span className="value" style={{ color: state?.operation ? '#f97316' : '#10b981' }}>{state?.operation ?? 'AUCUNE'}</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {error ? <div className="alert-modern error"><AlertCircle size={16} /> {error}</div> : null}
+      {message ? <div className="alert-modern success"><CheckCircle2 size={16} /> {message}</div> : null}
+
+      <div className="card-modern" style={{ padding: '1.25rem' }}>
+        <div className="section-header-modern">
+          <div className="section-info"><span className="card-title"><Archive size={18} /> Sauvegardes locales</span><span className="section-tagline">Les archives sont conservées côté serveur et téléchargeables.</span></div>
+          <button className="btn btn-primary" disabled={busy || Boolean(state?.operation)} onClick={() => void run(() => api.createBackup(token), 'Sauvegarde créée.')}><Archive size={16} /> Créer une sauvegarde</button>
+        </div>
+        <div className="table-wrapper">
+          <table className="table-modern">
+            <thead>
+              <tr><th>Archive</th><th>Date</th><th>Contenu</th><th>Taille</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+              {(state?.backups ?? []).map((backup) => (
+                <tr key={backup.id}>
+                  <td><strong>{backup.filename}</strong><br /><small>{backup.mode === 'scheduled' ? 'Automatique' : 'Manuelle'}</small></td>
+                  <td>{backup.createdAt ? new Date(backup.createdAt).toLocaleString('fr-FR') : '—'}</td>
+                  <td>{backup.manifest ? `${backup.manifest.files.totalFileCount} fichier(s), PostgreSQL ${formatBytes(backup.manifest.database.sizeBytes)}` : 'Manifeste indisponible'}</td>
+                  <td>{formatBytes(backup.sizeBytes)}</td>
+                  <td>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void api.downloadBackup(token, backup)}><Download size={14} /> Télécharger</button>
+                      <button className="btn btn-secondary btn-sm" disabled={busy || !googleDriveConnected} onClick={() => void run(() => api.sendBackupToGoogleDrive(token, backup.id), 'Sauvegarde envoyée vers Google Drive.')} title={googleDriveConnected ? 'Envoyer cette archive vers Google Drive' : 'Connectez Google Drive avant l’envoi'}><UploadCloud size={14} /> Envoyer vers GDrive</button>
+                      <button className="btn btn-outline-danger btn-sm" disabled={busy} onClick={() => { setSelectedBackup(backup); setInspection(null); setConfirmationPhrase(''); }}><RotateCw size={14} /> Restaurer</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {!state?.backups?.length ? <EmptyMini title="Aucune sauvegarde" text="Créez une première archive complète de l’instance." /> : null}
+      </div>
+
+      <div className="card-modern" style={{ padding: '1.25rem', ...(googleDriveConnected && !editingCloudConfig ? { background: '#f8fafc', borderColor: 'rgba(16,185,129,0.24)' } : {}) }}>
+        <div className="section-header-modern">
+          <div className="section-info">
+            <span className="card-title">
+              <Cloud size={18} /> Sauvegarde Cloud
+              <button
+                type="button"
+                onClick={() => setCloudHelpOpen(true)}
+                title="Tutoriel sauvegarde cloud"
+                aria-label="Ouvrir le tutoriel sauvegarde cloud"
+                style={{
+                  width: 28,
+                  height: 28,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '999px',
+                  border: '1px solid rgba(100, 116, 139, 0.18)',
+                  background: 'rgba(248, 250, 252, 0.92)',
+                  color: '#64748b',
+                  cursor: 'pointer',
+                  marginLeft: '0.35rem',
+                  boxShadow: '0 6px 14px rgba(15, 23, 42, 0.06)',
+                }}
+              >
+                <HelpCircle size={16} />
+              </button>
+            </span>
+            <span className="section-tagline">Réplication automatique des archives locales vers Google Drive.</span>
+          </div>
+          <span className={`badge ${googleDriveConnected ? 'badge-reception' : googleDrive?.status === 'ERROR' ? 'badge-correction' : 'badge-stock'}`}>{googleDriveStatusLabel}</span>
+        </div>
+
+        {!cloudStatus?.encryptionConfigured ? <div className="alert-modern error" style={{ marginBottom: '1rem' }}><AlertCircle size={16} /> BACKUP_CLOUD_ENCRYPTION_KEY doit être configuré côté serveur pour activer Google Drive.</div> : null}
+        {googleDrive?.lastError ? <div className="alert-modern error" style={{ marginBottom: '1rem' }}><AlertCircle size={16} /> {googleDrive.lastError}</div> : null}
+
+        <div className="settings-grid-premium" style={{ marginBottom: '1rem' }}>
+          <div className="info-card-premium">
+            <div className="info-card-premium-header"><span className="info-card-premium-label">Compte Google</span><span className="info-card-premium-icon"><Cloud size={16} /></span></div>
+            <div className="info-card-premium-value">{googleDrive?.accountEmail ?? 'Non connecté'}</div>
+          </div>
+          <div className="info-card-premium">
+            <div className="info-card-premium-header"><span className="info-card-premium-label">Dernière synchronisation</span><span className="info-card-premium-icon"><Clock size={16} /></span></div>
+            <div className="info-card-premium-value">{googleDrive?.lastSyncAt ? new Date(googleDrive.lastSyncAt).toLocaleString('fr-FR') : 'Jamais'}</div>
+          </div>
+          <div className="info-card-premium">
+            <div className="info-card-premium-header"><span className="info-card-premium-label">Dernier test</span><span className="info-card-premium-icon"><ShieldCheck size={16} /></span></div>
+            <div className="info-card-premium-value">{googleDrive?.lastTestAt ? new Date(googleDrive.lastTestAt).toLocaleString('fr-FR') : 'Jamais'}</div>
+          </div>
+        </div>
+
+        {googleDriveConnected && !editingCloudConfig ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', padding: '1rem', borderRadius: '16px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.18)', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', minWidth: 0 }}>
+              <span style={{ width: 42, height: 42, borderRadius: '14px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'white', color: '#059669', boxShadow: '0 8px 18px rgba(15,23,42,0.06)' }}><ShieldCheck size={20} /></span>
+              <div style={{ minWidth: 0 }}>
+                <strong style={{ display: 'block', color: '#065f46' }}>Compte configuré et en ligne</strong>
+                <span className="muted" style={{ display: 'block', fontSize: '0.84rem', overflowWrap: 'anywhere' }}>{googleDrive?.accountEmail ?? 'Google Drive connecté'} · sauvegarde cloud active</span>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
+              <button className="btn btn-secondary" disabled={busy} onClick={() => setEditingCloudConfig(true)}><Edit3 size={16} /> Modifier</button>
+              <button className="btn btn-secondary" disabled={busy || !googleDriveConnected} onClick={() => void testGoogleDrive()}><ShieldCheck size={16} /> Tester</button>
+              <button className="btn btn-outline-danger" disabled={busy || !googleDriveConfigured} onClick={() => void disconnectGoogleDrive()}><RotateCw size={16} /> Déconnecter</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="settings-grid-premium">
+              <label>Client ID Google<input value={cloudForm.clientId} onChange={(event) => setCloudForm((current) => ({ ...current, clientId: event.target.value }))} placeholder="xxxxx.apps.googleusercontent.com" disabled={busy || (googleDriveConnected && !showCloudConfigForm)} /></label>
+              <label>Client secret Google<input type="password" value={cloudForm.clientSecret} onChange={(event) => setCloudForm((current) => ({ ...current, clientSecret: event.target.value }))} placeholder={googleDriveConfigured ? 'Laisser vide pour conserver' : 'GOCSPX-...'} disabled={busy || (googleDriveConnected && !showCloudConfigForm)} /></label>
+              <label>URI de redirection<input value={cloudForm.redirectUri} onChange={(event) => setCloudForm((current) => ({ ...current, redirectUri: event.target.value }))} disabled={busy || (googleDriveConnected && !showCloudConfigForm)} /></label>
+            </div>
+
+            <div className="alert-modern info" style={{ marginTop: '1rem', background: '#f8fafc' }}>
+              <Info size={16} />
+              <span>À ajouter dans Google Cloud Console: <code>{cloudForm.redirectUri}</code></span>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+              <button className="btn btn-secondary" disabled={busy || !cloudStatus?.encryptionConfigured || !cloudForm.clientId.trim() || !cloudForm.redirectUri.trim()} onClick={() => void saveGoogleDriveConfig()}><KeyRound size={16} /> Enregistrer OAuth</button>
+              <button className="btn btn-primary" disabled={busy || !googleDriveConfigured} onClick={() => void connectGoogleDrive()}><ExternalLink size={16} /> Connecter Google Drive</button>
+              <button className="btn btn-secondary" disabled={busy || !googleDriveConnected} onClick={() => void testGoogleDrive()}><ShieldCheck size={16} /> Tester</button>
+              <button className="btn btn-outline-danger" disabled={busy || !googleDriveConfigured} onClick={() => void disconnectGoogleDrive()}><RotateCw size={16} /> Déconnecter</button>
+              {editingCloudConfig ? <button className="btn btn-secondary" disabled={busy} onClick={() => setEditingCloudConfig(false)}>Annuler</button> : null}
+            </div>
+          </>
+        )}
+      </div>
+
+      <Modal isOpen={cloudHelpOpen} onClose={() => setCloudHelpOpen(false)} title="Tutoriel Google Drive" size="lg">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ padding: '1.1rem', borderRadius: '18px', background: 'linear-gradient(135deg, #eff6ff 0%, #ecfdf5 100%)', border: '1px solid rgba(16,185,129,0.16)' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', color: '#047857', fontWeight: 900, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              <Cloud size={15} /> Connexion Google Drive
+            </span>
+            <h3 style={{ margin: '0.45rem 0 0.35rem', color: 'var(--text-main)', fontSize: '1.35rem' }}>Votre sauvegarde cloud en 5 minutes</h3>
+            <p className="muted" style={{ margin: 0, lineHeight: 1.65 }}>
+              ToqueHub crée d'abord une archive locale, puis l'envoie dans un dossier Google Drive autorisé par votre compte.
+            </p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.85rem' }}>
+            {[
+              ['1', 'Créer le projet Google', 'Dans Google Cloud Console, créez ou sélectionnez un projet dédié à ToqueHub.'],
+              ['2', 'Activer Drive API', 'Dans Bibliothèque API, activez Google Drive API pour ce projet.'],
+              ['3', 'Préparer OAuth', 'Dans Écran de consentement OAuth, renseignez le nom de l’application et ajoutez votre compte en testeur si nécessaire.'],
+              ['4', 'Passer l’audience en production', 'Dans Audience, publiez l’application en production. En mode test, Google peut refuser la connexion ou limiter les comptes.'],
+              ['5', 'Créer les identifiants', 'Créez un Client OAuth de type Application Web, puis ajoutez exactement l’URI de redirection ToqueHub.'],
+              ['6', 'Connecter et tester', 'Copiez Client ID et secret ici, enregistrez OAuth, connectez Google Drive, puis lancez un test.'],
+            ].map(([step, title, text]) => (
+              <div key={step} style={{ padding: '1rem', border: '1px solid var(--light-border)', borderRadius: '16px', background: '#ffffff', boxShadow: '0 10px 24px rgba(15, 23, 42, 0.04)' }}>
+                <span style={{ width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '10px', background: 'rgba(16,185,129,0.1)', color: '#059669', fontWeight: 900 }}>{step}</span>
+                <strong style={{ display: 'block', marginTop: '0.8rem', color: 'var(--text-main)' }}>{title}</strong>
+                <p className="muted" style={{ margin: '0.35rem 0 0', lineHeight: 1.55, fontSize: '0.84rem' }}>{text}</p>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ padding: '1rem', borderRadius: '16px', background: '#f8fafc', border: '1px solid var(--light-border)', display: 'flex', gap: '0.9rem', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+            <div style={{ minWidth: 0 }}>
+              <strong style={{ display: 'block', color: 'var(--text-main)', marginBottom: '0.25rem' }}>URI de redirection à coller dans Google</strong>
+              <code style={{ display: 'block', whiteSpace: 'normal', overflowWrap: 'anywhere', color: '#0f172a' }}>{cloudForm.redirectUri}</code>
+            </div>
+            <button type="button" className="btn btn-secondary" onClick={copyCloudRedirectUri}><ClipboardList size={16} /> Copier</button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.85rem' }}>
+            <div className="alert-modern info" style={{ margin: 0, background: '#f8fafc' }}>
+              <ShieldCheck size={16} />
+              <span>Le Client secret reste côté serveur. Si le champ est laissé vide après une première configuration, ToqueHub conserve le secret existant.</span>
+            </div>
+            <div className="alert-modern info" style={{ margin: 0, background: '#fff7ed', borderColor: '#fed7aa', color: '#9a3412' }}>
+              <AlertCircle size={16} />
+              <span>La variable serveur BACKUP_CLOUD_ENCRYPTION_KEY doit être configurée avant l’activation cloud.</span>
+            </div>
+          </div>
+
+          <div className="modal-footer" style={{ margin: '0 -1.75rem -1.75rem', padding: '1rem 1.75rem' }}>
+            <button type="button" className="btn btn-secondary" onClick={() => setCloudHelpOpen(false)}>Fermer</button>
+            <button type="button" className="btn btn-primary" onClick={() => { copyCloudRedirectUri(); setCloudHelpOpen(false); }}>
+              <ClipboardList size={16} /> Copier l’URI
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.1fr) minmax(320px, 0.9fr)', gap: '1rem' }}>
+        <div className="card-modern" style={{ padding: '1.25rem' }}>
+          <span className="card-title"><Download size={18} style={{ transform: 'rotate(180deg)' }} /> Importer une sauvegarde</span>
+          <p className="muted">Importez une archive `.tar.gz`, inspectez son manifeste, puis confirmez la restauration.</p>
+          <input type="file" accept=".gz,.tgz,.tar.gz,application/gzip" disabled={busy} onChange={(event) => void inspectFile(event.target.files?.[0])} />
+          {inspection ? <div className="alert-modern info" style={{ marginTop: '1rem', background: '#f8fafc' }}><Info size={16} /><div><strong>{inspection.filename}</strong><br /><span>Créée le {new Date(inspection.manifest.createdAt).toLocaleString('fr-FR')} · {inspection.manifest.files.totalFileCount} fichier(s) · {formatBytes(inspection.sizeBytes)}</span></div></div> : null}
+        </div>
+
+        <div className="card-modern" style={{ padding: '1.25rem', borderColor: selectedBackup || inspection ? 'rgba(239,68,68,0.35)' : undefined }}>
+          <span className="card-title"><ShieldCheck size={18} /> Restauration destructive</span>
+          <p className="muted">La restauration remplace la base et les fichiers uploadés. Saisissez la phrase exacte pour déverrouiller l’action.</p>
+          <input placeholder="RESTAURER TOQUEHUB" value={confirmationPhrase} onChange={(event) => setConfirmationPhrase(event.target.value)} disabled={busy || (!selectedBackup && !inspection)} />
+          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}><button className="btn btn-danger" disabled={busy || !localRestoreReady} onClick={() => selectedBackup && void run(() => api.restoreBackup(token, selectedBackup.id, confirmationPhrase), 'Restauration terminée.', true)}>Restaurer la sauvegarde locale</button><button className="btn btn-danger" disabled={busy || !uploadRestoreReady} onClick={() => inspection && void run(() => api.restoreBackupUpload(token, inspection.uploadId, confirmationPhrase), 'Restauration terminée.', true)}>Restaurer l’archive importée</button></div>
+          {selectedBackup ? <p className="muted" style={{ marginTop: '0.75rem' }}>Cible locale: {selectedBackup.filename}</p> : null}
+        </div>
+      </div>
+
+      <div className="card-modern" style={{ padding: '1.25rem' }}>
+        <span className="card-title"><Clock size={18} /> Planification simple</span>
+        {schedule ? <div className="settings-grid-premium" style={{ marginTop: '1rem' }}><label>Statut<select value={schedule.enabled ? 'on' : 'off'} onChange={(event) => setSchedule((current) => current ? { ...current, enabled: event.target.value === 'on' } : current)}><option value="off">Désactivée</option><option value="on">Activée</option></select></label><label>Fréquence<select value={schedule.frequency} onChange={(event) => setSchedule((current) => current ? { ...current, frequency: event.target.value as 'daily' | 'weekly' } : current)}><option value="daily">Quotidienne</option><option value="weekly">Hebdomadaire</option></select></label><label>Heure<input type="time" value={schedule.time} onChange={(event) => setSchedule((current) => current ? { ...current, time: event.target.value } : current)} /></label><label>Jour<select value={schedule.weekday} disabled={schedule.frequency !== 'weekly'} onChange={(event) => setSchedule((current) => current ? { ...current, weekday: Number(event.target.value) } : current)}>{['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'].map((day, index) => <option key={day} value={index}>{day}</option>)}</select></label><label>Rétention jours<input type="number" min={1} value={schedule.retentionDays} onChange={(event) => setSchedule((current) => current ? { ...current, retentionDays: Number(event.target.value) } : current)} /></label><div style={{ display: 'flex', alignItems: 'end' }}><button className="btn btn-primary" disabled={busy} onClick={() => void saveSchedule()}>Enregistrer</button></div></div> : <p className="muted">Chargement de la planification...</p>}
+      </div>
+    </div>
+  );
+}
+
+type SettingsSubTab = 'general' | 'users' | 'architecture' | 'backups' | 'api-keys' | 'core';
+
+function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKeysSaved, onSettingsSaved, onOpenUsers, onRestoreComplete, isAdmin = false }: { session: UserSession; token: string; dashboardSummary?: DashboardSummary; focusApiKeys?: boolean; onApiKeysSaved?: () => void; onSettingsSaved?: () => void; onOpenUsers?: () => void; onRestoreComplete: () => void; isAdmin?: boolean }) {
   const organization = dashboardSummary?.organization;
   const regulatoryCountryCode = organization?.regulatoryCountryCode ?? session.user.regulatoryCountryCode ?? null;
   const initialConfigured = organization?.apiKeys?.mistral.configured ?? session.user.apiKeys?.mistral.configured ?? false;
@@ -3978,7 +6197,7 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
   const [regulatoryCountryMessage, setRegulatoryCountryMessage] = useState<string>();
   const [regulatoryCountryError, setRegulatoryCountryError] = useState<string>();
   const [savingRegulatoryCountry, setSavingRegulatoryCountry] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState<'general' | 'users' | 'api-keys' | 'core'>(() => {
+  const [activeSubTab, setActiveSubTab] = useState<SettingsSubTab>(() => {
     return focusApiKeys ? 'api-keys' : 'general';
   });
 
@@ -4106,7 +6325,9 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
         <div className="card-modern" style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           {[
             { id: 'general' as const, label: 'Général', desc: 'Identité établissement', icon: Building2 },
+            ...(isAdmin ? [{ id: 'backups' as const, label: 'Sauvegarde & Restauration', desc: 'Archives et reprise', icon: Archive }] : []),
             { id: 'users' as const, label: 'Utilisateurs & Accès', desc: 'Comptes et permissions', icon: UsersRound },
+            ...(isAdmin ? [{ id: 'architecture' as const, label: 'Architecture', desc: 'Modules et dépendances', icon: Workflow }] : []),
             { id: 'api-keys' as const, label: 'Clés API & IA', desc: 'Mistral & Outils OCR', icon: KeyRound },
             { id: 'core' as const, label: 'Diagnostic & Core', desc: 'Statistiques & BDD', icon: Server },
           ].map((tabItem) => {
@@ -4156,7 +6377,7 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
                     <span>Choisissez le pays de réglementation pour charger les droits RH, conventions, jours fériés et contrôles planning applicables.</span>
                   </div>
                 ) : null}
-                
+
                 <div className="settings-grid-premium">
                   <div className="info-card-premium">
                     <div className="info-card-premium-header">
@@ -4167,7 +6388,7 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
                       {organization?.name ?? session.user.organizationName ?? 'Organisation'}
                     </div>
                   </div>
-                  
+
                   <div className="info-card-premium">
                     <div className="info-card-premium-header">
                       <span className="info-card-premium-label">Secteur / Type</span>
@@ -4177,7 +6398,7 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
                       {organization?.establishmentType ?? session.user.organizationType ?? 'Non renseigné'}
                     </div>
                   </div>
-                  
+
                   <div className="info-card-premium">
                     <div className="info-card-premium-header">
                       <span className="info-card-premium-label">Taille de l'équipe</span>
@@ -4187,7 +6408,7 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
                       {organization?.teamSize ?? session.user.teamSize ?? 'Non renseigné'}
                     </div>
                   </div>
-                  
+
                   <div className="info-card-premium">
                     <div className="info-card-premium-header">
                       <span className="info-card-premium-label">Site principal</span>
@@ -4241,7 +6462,12 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
                   L'installation ou la désactivation d'un module modifie uniquement l'interface utilisateur. Tous vos produits, fournisseurs, historiques et configurations de stock restent stockés de manière permanente et sécurisée dans la base locale souveraine.
                 </p>
               </div>
+
             </div>
+          )}
+
+          {activeSubTab === 'backups' && isAdmin && (
+            <BackupRestorePage token={token} onRestoreComplete={onRestoreComplete} />
           )}
 
           {activeSubTab === 'users' && (
@@ -4250,7 +6476,7 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
               <p className="muted" style={{ fontSize: '0.85rem', marginBottom: '1.5rem' }}>
                 Administrez les comptes des collaborateurs accédant à votre console de gestion ToqueHub.
               </p>
-              
+
               <div className="user-profile-premium">
                 <div className="user-profile-avatar">
                   {(session.user.username ?? 'U').substring(0, 2).toUpperCase()}
@@ -4267,7 +6493,7 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
                   </div>
                 </div>
               </div>
-              
+
               <div style={{ padding: '1.5rem', background: '#f8fafc', borderRadius: '16px', border: '1px solid var(--light-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1.25rem', flexWrap: 'wrap' }}>
                 <div style={{ flex: '1 1 300px' }}>
                   <strong style={{ display: 'block', fontSize: '0.92rem', color: 'var(--text-main)', marginBottom: '0.25rem' }}>Console d'administration générale</strong>
@@ -4280,6 +6506,10 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
                 </button>
               </div>
             </div>
+          )}
+
+          {activeSubTab === 'architecture' && isAdmin && (
+            <ArchitectureCenter session={session} />
           )}
 
           {activeSubTab === 'api-keys' && (
@@ -4344,7 +6574,7 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
               {focusApiKeys ? <div className="alert-modern error" style={{ marginBottom: '1.25rem' }}><Info size={16} /> Veuillez ajouter une clé API Mistral pour activer l'extraction de factures.</div> : null}
               {apiKeyError ? <div className="alert-modern error" style={{ marginBottom: '1.25rem' }}><AlertCircle size={16} /> {apiKeyError}</div> : null}
               {apiKeyMessage ? <div className="alert-modern success" style={{ marginBottom: '1.25rem' }}><CheckCircle2 size={16} /> {apiKeyMessage}</div> : null}
-              
+
               <label style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontWeight: 700, fontSize: '0.85rem', marginBottom: '1.25rem', color: 'var(--text-main)' }}>
                 Clé API Mistral AI
                 <div className="api-key-input-container">
@@ -4357,7 +6587,7 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
                   />
                 </div>
               </label>
-              
+
               <button className="btn btn-primary" onClick={() => void saveApiKey()} disabled={savingApiKey} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 1.5rem', borderRadius: '10px' }}>
                 {savingApiKey ? 'Enregistrement…' : apiKeyConfigured && !mistralKey.trim() ? 'Supprimer la clé' : 'Sauvegarder la clé'}
               </button>
@@ -4370,7 +6600,7 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
               <p className="muted" style={{ fontSize: '0.85rem', marginBottom: '1.5rem' }}>
                 Vue d'ensemble technique et état de santé du serveur ToqueHub local.
               </p>
-              
+
               {/* Visual Stack Schema */}
               <div className="tech-stack-container">
                 <div className="tech-stack-visual">
@@ -4381,11 +6611,11 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
                     <span className="tech-stack-node-title">Interface Web</span>
                     <span className="tech-stack-node-desc">React 18 / Vite</span>
                   </div>
-                  
+
                   <div className="tech-stack-arrow">
                     <ArrowRight size={18} />
                   </div>
-                  
+
                   <div className="tech-stack-node active">
                     <div className="tech-stack-node-icon" style={{ background: 'rgba(139, 92, 246, 0.08)', color: '#8b5cf6' }}>
                       <Server size={20} />
@@ -4393,11 +6623,11 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
                     <span className="tech-stack-node-title">Next.js Core</span>
                     <span className="tech-stack-node-desc">Node API Locale</span>
                   </div>
-                  
+
                   <div className="tech-stack-arrow">
                     <ArrowRight size={18} />
                   </div>
-                  
+
                   <div className="tech-stack-node active">
                     <div className="tech-stack-node-icon" style={{ background: 'rgba(16, 185, 129, 0.08)', color: '#10b981' }}>
                       <ShieldCheck size={20} />
@@ -4825,6 +7055,7 @@ function ProductDetailModal({
   suppliers,
   onClose,
   onUpdate,
+  onDelete,
 }: {
   product: Product | null;
   stocks: Stock[];
@@ -4834,6 +7065,7 @@ function ProductDetailModal({
   suppliers: Supplier[];
   onClose: () => void;
   onUpdate: (productId: string, payload: ProductFormPayload) => Promise<void>;
+  onDelete: (productId: string) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
 
@@ -4878,16 +7110,31 @@ function ProductDetailModal({
                 <span className="badge badge-reception">{product.unit?.name ?? 'Unité'} ({product.unit?.symbol ?? '—'})</span>
               </div>
             </div>
-            <button type="button" className="btn btn-primary" onClick={() => setEditing(true)}>
-              <Edit3 size={15} /> Modifier
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setEditing(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.5rem 0.85rem', fontSize: '0.85rem' }}>
+                <Edit3 size={14} /> Modifier
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.5rem 0.85rem', fontSize: '0.85rem' }}
+                onClick={async () => {
+                  if (window.confirm(`Êtes-vous sûr de vouloir supprimer le produit "${product.name}" ?`)) {
+                    await onDelete(product.id);
+                    onClose();
+                  }
+                }}
+              >
+                <Trash2 size={14} /> Supprimer
+              </button>
+            </div>
           </div>
 
           <div className="product-detail-metrics">
-            <Metric icon={<Boxes size={18} />} value={totalQuantity.toFixed(3).replace(/\.?0+$/, '')} label="Quantité en stock" tone="blue" />
+            <Metric icon={<Boxes size={18} />} value={totalQuantity.toFixed(2).replace(/\.?0+$/, '')} label="Quantité en stock" tone="blue" />
             <Metric icon={<TrendingUp size={18} />} value={`${stockValue.toFixed(2)} €`} label="Valeur stock" tone="emerald" />
-            <Metric icon={<Scale size={18} />} value={`${averagePrice.toFixed(4)} €`} label="Prix moyen" tone="amber" />
-            <Metric icon={<AlertCircle size={18} />} value={minimumStock ? String(minimumStock) : '—'} label="Stock mini" tone="orange" />
+            <Metric icon={<Scale size={18} />} value={`${averagePrice.toFixed(2)} €`} label="Prix moyen" tone="amber" />
+            <Metric icon={<AlertCircle size={18} />} value={minimumStock ? parseFloat(minimumStock.toFixed(2)).toString() : '—'} label="Stock mini" tone="orange" />
           </div>
 
           <div className="product-detail-grid">
@@ -4897,7 +7144,7 @@ function ProductDetailModal({
                 <div><dt>Fournisseur</dt><dd>{supplierName}</dd></div>
                 <div><dt>Catégorie</dt><dd>{product.category?.name ?? 'Non catégorisé'}</dd></div>
                 <div><dt>Unité</dt><dd>{product.unit?.name ?? '—'} ({product.unit?.symbol ?? '—'})</dd></div>
-                <div><dt>Prix moyen</dt><dd>{averagePrice.toFixed(4)} €</dd></div>
+                <div><dt>Prix moyen</dt><dd>{averagePrice.toFixed(2)} €</dd></div>
               </dl>
               {product.description ? <p className="product-detail-description">{product.description}</p> : null}
             </div>
@@ -4909,7 +7156,7 @@ function ProductDetailModal({
                   {productStocks.map((stock) => (
                     <div key={stock.id}>
                       <span>{stock.site?.name ?? 'Site'} / {stock.location?.name ?? 'Emplacement'}</span>
-                      <strong>{numeric(stock.currentQuantity ?? stock.quantity).toFixed(3).replace(/\.?0+$/, '')}</strong>
+                      <strong>{numeric(stock.currentQuantity ?? stock.quantity).toFixed(2).replace(/\.?0+$/, '')}</strong>
                     </div>
                   ))}
                 </div>
@@ -4926,7 +7173,7 @@ function ProductDetailModal({
                 {productMovements.map((movement) => (
                   <div key={movement.id}>
                     <span>{movementLabels[movement.type] ?? movement.type} · {movement.date ? new Date(movement.date).toLocaleDateString('fr-FR') : '—'}</span>
-                    <strong>{movementSign(movement.type)}{numeric(movement.quantity).toFixed(3).replace(/\.?0+$/, '')}</strong>
+                    <strong>{movementSign(movement.type)}{numeric(movement.quantity).toFixed(2).replace(/\.?0+$/, '')}</strong>
                   </div>
                 ))}
               </div>
@@ -4940,26 +7187,131 @@ function ProductDetailModal({
   );
 }
 
+function SupplierDetailModal({
+  supplier,
+  onClose,
+  onUpdate,
+  onDelete,
+}: {
+  supplier: Supplier | null;
+  onClose: () => void;
+  onUpdate: (supplierId: string, payload: { name: string; contactName?: string; email?: string; phone?: string; address?: string; notes?: string }) => Promise<void>;
+  onDelete: (supplierId: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    setEditing(false);
+  }, [supplier?.id]);
+
+  if (!supplier) return null;
+
+  return (
+    <Modal isOpen={Boolean(supplier)} onClose={onClose} title={supplier.name} size="md">
+      {editing ? (
+        <SupplierForm
+          initialSupplier={supplier}
+          submitLabel="Enregistrer"
+          onSubmit={async (payload) => {
+            await onUpdate(supplier.id, payload);
+            setEditing(false);
+          }}
+          onClose={() => setEditing(false)}
+        />
+      ) : (
+        <div className="product-detail" style={{ gap: '1rem' }}>
+          <div className="product-detail-hero" style={{ padding: '0.5rem 0' }}>
+            <div>
+              <span className="product-detail-kicker">Fiche Fournisseur</span>
+              <h3 style={{ fontSize: '1.25rem' }}>{supplier.name}</h3>
+            </div>
+            <div style={{ display: 'flex', gap: '0.4rem' }}>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditing(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.35rem 0.65rem', borderRadius: '6px' }}>
+                <Edit3 size={13} /> Modifier
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger btn-sm"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.35rem 0.65rem', borderRadius: '6px' }}
+                onClick={async () => {
+                  if (window.confirm(`Êtes-vous sûr de vouloir supprimer le fournisseur "${supplier.name}" ?`)) {
+                    await onDelete(supplier.id);
+                    onClose();
+                  }
+                }}
+              >
+                <Trash2 size={13} /> Supprimer
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginTop: '0.5rem' }}>
+            <div className="product-detail-info-row" style={{ display: 'grid', gridTemplateColumns: '120px 1fr', fontSize: '0.85rem', paddingBottom: '0.5rem', borderBottom: '1px solid #f1f5f9' }}>
+              <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Contact :</span>
+              <span style={{ color: 'var(--text-main)' }}>{supplier.contactName || '—'}</span>
+            </div>
+            <div className="product-detail-info-row" style={{ display: 'grid', gridTemplateColumns: '120px 1fr', fontSize: '0.85rem', paddingBottom: '0.5rem', borderBottom: '1px solid #f1f5f9' }}>
+              <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Email :</span>
+              <span>
+                {supplier.email ? (
+                  <a href={`mailto:${supplier.email}`} style={{ textDecoration: 'underline', color: 'var(--primary)', fontWeight: 600 }}>{supplier.email}</a>
+                ) : (
+                  <span style={{ color: 'var(--text-muted)' }}>—</span>
+                )}
+              </span>
+            </div>
+            <div className="product-detail-info-row" style={{ display: 'grid', gridTemplateColumns: '120px 1fr', fontSize: '0.85rem', paddingBottom: '0.5rem', borderBottom: '1px solid #f1f5f9' }}>
+              <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Téléphone :</span>
+              <span>
+                {supplier.phone ? (
+                  <a href={`tel:${supplier.phone}`} style={{ textDecoration: 'underline', color: 'var(--text-main)' }}>{supplier.phone}</a>
+                ) : (
+                  <span style={{ color: 'var(--text-muted)' }}>—</span>
+                )}
+              </span>
+            </div>
+            <div className="product-detail-info-row" style={{ display: 'grid', gridTemplateColumns: '120px 1fr', fontSize: '0.85rem', paddingBottom: '0.5rem', borderBottom: '1px solid #f1f5f9' }}>
+              <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Adresse :</span>
+              <span style={{ color: 'var(--text-main)' }}>{supplier.address || '—'}</span>
+            </div>
+            <div className="product-detail-info-row" style={{ display: 'grid', gridTemplateColumns: '120px 1fr', fontSize: '0.85rem', paddingBottom: '0.5rem' }}>
+              <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Notes :</span>
+              <span style={{ color: 'var(--text-main)', whiteSpace: 'pre-wrap' }}>{supplier.notes || '—'}</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 // Supplier Form
 interface SupplierFormProps {
   initialName?: string;
+  initialSupplier?: Supplier | null;
+  submitLabel?: string;
   onSubmit: (payload: { name: string; contactName?: string; email?: string; phone?: string; address?: string; notes?: string }) => Promise<void>;
   onClose: () => void;
 }
 
-function SupplierForm({ initialName = '', onSubmit, onClose }: SupplierFormProps) {
-  const [name, setName] = useState(initialName);
-  const [contactName, setContactName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState('');
-  const [notes, setNotes] = useState('');
+function SupplierForm({ initialName = '', initialSupplier = null, submitLabel = 'Créer le fournisseur', onSubmit, onClose }: SupplierFormProps) {
+  const [name, setName] = useState(initialSupplier?.name ?? initialName);
+  const [contactName, setContactName] = useState(initialSupplier?.contactName ?? '');
+  const [email, setEmail] = useState(initialSupplier?.email ?? '');
+  const [phone, setPhone] = useState(initialSupplier?.phone ?? '');
+  const [address, setAddress] = useState(initialSupplier?.address ?? '');
+  const [notes, setNotes] = useState(initialSupplier?.notes ?? '');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
 
   useEffect(() => {
-    setName(initialName);
-  }, [initialName]);
+    setName(initialSupplier?.name ?? initialName);
+    setContactName(initialSupplier?.contactName ?? '');
+    setEmail(initialSupplier?.email ?? '');
+    setPhone(initialSupplier?.phone ?? '');
+    setAddress(initialSupplier?.address ?? '');
+    setNotes(initialSupplier?.notes ?? '');
+  }, [initialName, initialSupplier]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -4969,7 +7321,7 @@ function SupplierForm({ initialName = '', onSubmit, onClose }: SupplierFormProps
     try {
       await onSubmit({ name: name.trim(), contactName: contactName.trim() || undefined, email: email.trim() || undefined, phone: phone.trim() || undefined, address: address.trim() || undefined, notes: notes.trim() || undefined });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur lors de la création.');
+      setError(err instanceof Error ? err.message : 'Erreur lors de la sauvegarde.');
     } finally {
       setSubmitting(false);
     }
@@ -5017,7 +7369,7 @@ function SupplierForm({ initialName = '', onSubmit, onClose }: SupplierFormProps
           Annuler
         </button>
         <button type="submit" className="btn btn-primary" disabled={submitting || !name.trim()}>
-          {submitting ? 'Création...' : 'Créer le fournisseur'}
+          {submitting ? 'Enregistrement...' : submitLabel}
         </button>
       </div>
     </form>
@@ -5200,7 +7552,7 @@ function StocksOcrImportPanel({ statuses, onUpload, onOpenExtraction, onDownload
   return (
     <div className="stocks-ocr-import">
       {error ? <div className="alert-modern error" style={{ marginBottom: '1rem' }}><AlertCircle size={16} /> {error}</div> : null}
-      
+
       <label
         className="stocks-ocr-dropzone"
         onDragOver={(event) => event.preventDefault()}
@@ -5263,7 +7615,7 @@ function StocksOcrImportPanel({ statuses, onUpload, onOpenExtraction, onDownload
               const isSuccess = status.state === 'vérifier' || Boolean(status.extraction);
               const isAnalyzing = status.state === 'analyse' || status.state === 'en cours';
               const isPending = status.state === 'en attente';
-              
+
               let fillClass = 'uploading';
               let stateText = 'Téléchargement…';
               if (isError) {
@@ -5283,11 +7635,11 @@ function StocksOcrImportPanel({ statuses, onUpload, onOpenExtraction, onDownload
               return (
                 <div key={status.document.id} className="ocr-status-card" style={isSuccess ? { borderLeft: '3px solid #10b981' } : undefined}>
                   <div className="ocr-status-card-info">
-                    <span className="ocr-status-card-title">{status.document.originalName}</span>
+                    <span className="ocr-status-card-title">{ocrStatusTitle(status)}</span>
                     <div className="ocr-status-card-meta">
                       <span>{formatBytes(status.document.sizeBytes)}</span>
                       <span>•</span>
-                      <span style={{ 
+                      <span style={{
                         color: isError ? 'var(--danger)' : isSuccess ? 'var(--success)' : 'var(--text-muted)',
                         fontWeight: (isSuccess || isError) ? 700 : 'normal'
                       }}>{stateText}</span>
@@ -5296,7 +7648,7 @@ function StocksOcrImportPanel({ statuses, onUpload, onOpenExtraction, onDownload
                       <div className={`ocr-status-progress-fill ${fillClass}`}></div>
                     </div>
                   </div>
-                  
+
                   <div className="ocr-status-card-actions">
                     {status.extraction ? (
                       <button className="btn btn-primary btn-sm" onClick={() => void onOpenExtraction(status.extraction!.id)} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', borderRadius: '8px' }}>
@@ -5317,9 +7669,10 @@ function StocksOcrImportPanel({ statuses, onUpload, onOpenExtraction, onDownload
   );
 }
 
-function StocksOcrReviewPanel({ extraction, products, categories, suppliers, units, sites, locations, token, onSaveDraft, onCreateReception, onCreateProductFromLine, onCreateSupplierFromOcr, onClose }: { extraction: StocksOcrExtraction; products: Product[]; categories: Category[]; suppliers: Supplier[]; units: Unit[]; sites: Site[]; locations: Location[]; token: string; onSaveDraft: (payload: StocksOcrExtraction['data']) => Promise<void>; onCreateReception: (payload: StocksOcrExtraction['data']) => Promise<void>; onCreateProductFromLine: (line: StocksOcrLine, supplierId?: string | null) => Promise<Product>; onCreateSupplierFromOcr: (name: string) => Promise<Supplier>; onClose: () => void }) {
+function StocksOcrReviewPanel({ extraction, products, categories, suppliers, units, sites, locations, token, onSaveDraft, onCreateReception, onCreateProductFromLine, onCreateSupplierFromOcr, onReanalyzeAi, onClose }: { extraction: StocksOcrExtraction; products: Product[]; categories: Category[]; suppliers: Supplier[]; units: Unit[]; sites: Site[]; locations: Location[]; token: string; onSaveDraft: (payload: StocksOcrExtraction['data']) => Promise<void>; onCreateReception: (payload: StocksOcrExtraction['data']) => Promise<void>; onCreateProductFromLine: (line: StocksOcrLine, supplierId?: string | null) => Promise<Product>; onCreateSupplierFromOcr: (name: string) => Promise<Supplier>; onReanalyzeAi: () => Promise<void>; onClose: () => void }) {
   const [draft, setDraft] = useState(() => normalizeOcrReceptionData(extraction.data));
   const [previewUrl, setPreviewUrl] = useState<string>();
+  const [showPreview, setShowPreview] = useState(false);
   const [showViewerModal, setShowViewerModal] = useState(false);
   const [productPickerLineIndex, setProductPickerLineIndex] = useState<number | null>(null);
   const [rotation, setRotation] = useState(0);
@@ -5332,6 +7685,8 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
   const [creatingProductLineId, setCreatingProductLineId] = useState<string | null>(null);
   const [creatingAllProducts, setCreatingAllProducts] = useState(false);
   const [creatingSupplier, setCreatingSupplier] = useState(false);
+  const [reanalyzingAi, setReanalyzingAi] = useState(false);
+  const [lineFilter, setLineFilter] = useState<'all' | 'review' | 'ready' | 'missing' | 'price' | 'ignored'>('all');
   const document = extraction.document ?? extraction.ocrDocument?.document;
 
   function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
@@ -5362,7 +7717,7 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
 
   useEffect(() => {
     setDraft(enrichOcrProductMatches(resolveOcrReceptionUnits(normalizeOcrReceptionData(extraction.data), units), products));
-  }, [extraction, units]);
+  }, [extraction.id]);
 
   useEffect(() => {
     let active = true;
@@ -5378,13 +7733,31 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
   }, [document?.id, token]);
 
   const activeLines = draft.lines.filter((line) => !line.ignored);
+  const ignoredLines = draft.lines.filter((line) => line.ignored);
   const missingProducts = activeLines.filter((line) => !line.productId).length;
   const invalidQuantities = activeLines.filter((line) => numeric(line.quantity) <= 0).length;
   const recognized = activeLines.filter((line) => line.matchingStatus === 'RECOGNIZED').length;
   const needsReview = activeLines.filter((line) => line.matchingStatus === 'NEEDS_REVIEW').length;
+  const priceIssues = activeLines.filter((line) => ocrLineStatus(line) === 'price_mismatch' || hasOcrPriceMismatch(line)).length;
+  const readyLines = activeLines.filter((line) => isOcrLineReady(line)).length;
+  const displayedLineEntries = draft.lines
+    .map((line, index) => ({ line, index }))
+    .filter(({ line }) => {
+      if (lineFilter === 'ignored') return Boolean(line.ignored);
+      if (line.ignored) return false;
+      if (lineFilter === 'ready') return isOcrLineReady(line);
+      if (lineFilter === 'missing') return !line.productId || ocrLineStatus(line) === 'missing_product';
+      if (lineFilter === 'price') return ocrLineStatus(line) === 'price_mismatch' || hasOcrPriceMismatch(line) || ocrLineStatus(line) === 'quantity_suspicious';
+      if (lineFilter === 'review') return !isOcrLineReady(line);
+      return true;
+    });
   const supplierCandidates = draft.supplierCandidates ?? draft.supplier?.candidates ?? [];
   const supplierMatchStatus = draft.supplierId ? (draft.supplierMatchingStatus ?? draft.supplier?.matchingStatus ?? 'RECOGNIZED') : 'NOT_FOUND';
   const supplierOcrName = draft.supplier?.name || draft.supplierName || '';
+  const aiWarnings = [...(draft.warnings ?? []), ...(draft.aiAnalysis?.warnings ?? [])].filter(Boolean);
+  const aiActions = [...(draft.suggestedActions ?? []), ...(draft.aiAnalysis?.suggestedActions ?? [])].filter(Boolean);
+  const totalsCheck = draft.aiAnalysis?.totalsCheck;
+  const totalLinesAmount = activeLines.reduce((sum, line) => sum + numeric(line.lineTotal ?? line.total), 0);
 
   function updateLine(index: number, patch: Partial<StocksOcrLine>) {
     setDraft((current) => ({ ...current, lines: current.lines.map((line, i) => i === index ? { ...line, ...patch } : line) }));
@@ -5432,12 +7805,32 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
     }
   }
 
+  async function ensureSupplierForOcrProducts() {
+    if (draft.supplierId) return draft.supplierId;
+    if (!supplierOcrName) return null;
+    setCreatingSupplier(true);
+    try {
+      const supplier = await onCreateSupplierFromOcr(supplierOcrName);
+      setDraft((current) => ({
+        ...current,
+        supplierId: supplier.id,
+        supplierName: supplier.name,
+        supplierMatchingStatus: 'RECOGNIZED',
+        supplierMatchingScore: 1,
+      }));
+      return supplier.id;
+    } finally {
+      setCreatingSupplier(false);
+    }
+  }
+
   async function createProductFromLine(line: StocksOcrLine, index: number) {
     const lineKey = line.id ?? `ocr-${index}`;
     setCreatingProductLineId(lineKey);
     setError(undefined);
     try {
-      const product = await onCreateProductFromLine(line, draft.supplierId);
+      const supplierId = await ensureSupplierForOcrProducts();
+      const product = await onCreateProductFromLine(line, supplierId);
       updateLine(index, {
         productId: product.id,
         productName: product.name,
@@ -5461,6 +7854,15 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
     setError(undefined);
     const createdByKey = new Map<string, Product>();
     const failures: string[] = [];
+    let supplierId: string | null = null;
+    try {
+      supplierId = await ensureSupplierForOcrProducts();
+    } catch (err) {
+      setCreatingProductLineId(null);
+      setCreatingAllProducts(false);
+      setError(err instanceof Error ? err.message : 'Le fournisseur OCR n’a pas pu être créé avant les produits.');
+      return;
+    }
     for (const { line, index } of linesToCreate) {
       const lineKey = line.id ?? `ocr-${index}`;
       const label = String(line.ocrLabel || line.label || '').trim();
@@ -5468,7 +7870,7 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
       const dedupeKey = reference ? `sku:${reference}` : `name:${normalizeLookup(label)}`;
       try {
         setCreatingProductLineId(lineKey);
-        const product = createdByKey.get(dedupeKey) ?? await onCreateProductFromLine(line, draft.supplierId);
+        const product = createdByKey.get(dedupeKey) ?? await onCreateProductFromLine(line, supplierId);
         createdByKey.set(dedupeKey, product);
         updateLine(index, {
           productId: product.id,
@@ -5488,42 +7890,164 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
     }
   }
 
+  async function reanalyzeAi() {
+    setReanalyzingAi(true);
+    setError(undefined);
+    try {
+      await onReanalyzeAi();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'L’analyse IA n’a pas pu être relancée.');
+    } finally {
+      setReanalyzingAi(false);
+    }
+  }
+
   return (
-    <div className="stocks-ocr-review" style={{ gridTemplateColumns: '1fr' }}>
+    <div className={`stocks-ocr-review ${showPreview ? 'show-preview' : 'hide-preview'}`}>
+      {/* Document original à gauche */}
+      {showPreview && (
+        <div className="stocks-ocr-preview">
+          <div className="stocks-ocr-preview-header">
+            <span className="stocks-ocr-preview-title">Document original</span>
+            <div style={{ display: 'flex', gap: '0.4rem' }}>
+              <button type="button" className="btn btn-secondary btn-sm" style={{ padding: '0.2rem 0.5rem', background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', borderRadius: '6px' }} onClick={() => setRotation(r => (r + 90) % 360)}>
+                <RotateCw size={12} /> Rotation
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" style={{ padding: '0.2rem 0.5rem', background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', borderRadius: '6px' }} onClick={() => setZoomScale(z => Math.max(0.5, z - 0.2))}>
+                <ZoomOut size={12} />
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" style={{ padding: '0.2rem 0.5rem', background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', borderRadius: '6px' }} onClick={() => setZoomScale(z => Math.min(3, z + 0.2))}>
+                <ZoomIn size={12} />
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" style={{ padding: '0.2rem 0.5rem', background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', borderRadius: '6px' }} onClick={resetViewer}>
+                Reset
+              </button>
+            </div>
+          </div>
+          <div
+            style={{
+              flex: 1,
+              overflow: 'hidden',
+              position: 'relative',
+              borderRadius: '12px',
+              background: '#0f172a',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: zoomScale > 1.0 ? 'grab' : 'default',
+              minHeight: '600px'
+            }}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerLeave={handlePointerUp}
+          >
+            {previewUrl ? (
+              previewUrl.toLowerCase().includes('.pdf') || document?.mimeType === 'application/pdf' ? (
+                <iframe
+                  src={previewUrl}
+                  title="Aperçu PDF"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    minHeight: '600px',
+                    border: 'none',
+                    transform: `scale(${zoomScale}) rotate(${rotation}deg) translate(${panOffset.x}px, ${panOffset.y}px)`,
+                    transition: isDragging ? 'none' : 'transform 0.2s ease-out'
+                  }}
+                />
+              ) : (
+                <img
+                  src={previewUrl}
+                  alt="Aperçu document"
+                  style={{
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    transform: `scale(${zoomScale}) rotate(${rotation}deg) translate(${panOffset.x}px, ${panOffset.y}px)`,
+                    transition: isDragging ? 'none' : 'transform 0.2s ease-out',
+                    objectFit: 'contain'
+                  }}
+                />
+              )
+            ) : (
+              <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem' }}>Chargement de l'aperçu...</span>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="stocks-ocr-editor">
         {error ? <div className="alert-modern error" style={{ marginBottom: '0.5rem' }}><AlertCircle size={16} /> {error}</div> : null}
-        
-        <div className="stocks-ocr-summary">
-          <span className="badge badge-reception" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}>
-            <CheckCircle2 size={13} /> {recognized} reconnus
-          </span>
-          <span className="badge badge-correction" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}>
-            <Info size={13} /> {needsReview} à vérifier
-          </span>
-          <span className="badge badge-loss" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}>
-            <AlertCircle size={13} /> {missingProducts} non reconnus
-          </span>
 
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            disabled={!missingProducts || creatingAllProducts || creatingProductLineId !== null}
-            onClick={() => void createAllMissingProducts()}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderRadius: '8px', padding: '0.4rem 0.8rem', fontSize: '0.8rem', fontWeight: 650 }}
-          >
-            <Package size={13} />
-            {creatingAllProducts ? 'Création des produits…' : `Créer ${missingProducts === 1 ? 'le produit' : `les ${missingProducts} produits`}`}
-          </button>
-          
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => setShowViewerModal(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginLeft: 'auto', borderRadius: '8px', padding: '0.4rem 0.8rem', fontSize: '0.8rem', fontWeight: 650 }}
-          >
-            <FileText size={13} />
-            Afficher le document original
-          </button>
+        <div className="ocr-dossier">
+          <div className="ocr-dossier-header">
+            <div>
+              <span className="ocr-dossier-kicker">Dossier d’import IA</span>
+              <h3>{document?.originalName || 'Document OCR'}</h3>
+              <p>{draft.aiAnalysis?.status === 'applied' ? 'Analyse Mistral IA appliquée au document.' : draft.aiAnalysis?.status === 'failed' ? 'Analyse IA indisponible, parsing ToqueHub utilisé.' : 'Analyse OCR prête à valider.'}</p>
+            </div>
+            <div className="ocr-dossier-actions">
+              <button type="button" className="btn btn-secondary btn-sm" disabled={reanalyzingAi} onClick={() => void reanalyzeAi()}>
+                <Sparkles size={13} /> {reanalyzingAi ? 'Analyse IA…' : 'Relancer IA'}
+              </button>
+              <button type="button" className={`btn btn-sm ${showPreview ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setShowPreview(!showPreview)}>
+                <Eye size={13} /> {showPreview ? 'Masquer original' : 'Afficher original'}
+              </button>
+            </div>
+          </div>
+
+          <div className="ocr-dossier-metrics">
+            <div><span>Confiance IA</span><strong>{formatOcrPercent(draft.documentConfidence ?? draft.aiAnalysis?.confidence)}</strong></div>
+            <div><span>Lignes prêtes</span><strong>{readyLines}/{activeLines.length}</strong></div>
+            <div><span>À vérifier</span><strong>{activeLines.length - readyLines}</strong></div>
+            <div><span>Total lignes</span><strong>{totalLinesAmount.toFixed(2)} €</strong></div>
+            <div><span>Écart total</span><strong className={numeric(totalsCheck?.delta) > 0.05 ? 'danger-text' : ''}>{totalsCheck?.delta != null ? `${numeric(totalsCheck.delta).toFixed(2)} €` : '—'}</strong></div>
+          </div>
+
+          {(aiWarnings.length || aiActions.length) ? (
+            <div className="ocr-dossier-alerts">
+              {aiWarnings.slice(0, 4).map((warning, index) => <span key={`w-${index}`}><AlertCircle size={13} /> {translateOcrMessage(warning)}</span>)}
+              {aiActions.slice(0, 3).map((action, index) => <span key={`a-${index}`}><Info size={13} /> {translateOcrMessage(action)}</span>)}
+            </div>
+          ) : null}
+
+          <div className="ocr-line-filter-bar">
+            {[
+              ['review', `À corriger (${activeLines.length - readyLines})`],
+              ['ready', `Prêtes (${readyLines})`],
+              ['missing', `Produits manquants (${missingProducts})`],
+              ['price', `Prix/Qté (${priceIssues})`],
+              ['ignored', `Ignorées (${ignoredLines.length})`],
+              ['all', `Toutes (${draft.lines.length})`],
+            ].map(([key, label]) => (
+              <button key={key} type="button" className={`ocr-line-filter ${lineFilter === key ? 'active' : ''}`} onClick={() => setLineFilter(key as typeof lineFilter)}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="stocks-ocr-summary" style={{ margin: 0 }}>
+            <span className="badge badge-reception" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}>
+              <CheckCircle2 size={13} /> {recognized} reconnus
+            </span>
+            <span className="badge badge-correction" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}>
+              <Info size={13} /> {needsReview} à vérifier
+            </span>
+            <span className="badge badge-loss" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}>
+              <AlertCircle size={13} /> {missingProducts} non reconnus
+            </span>
+
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              disabled={!missingProducts || creatingAllProducts || creatingProductLineId !== null}
+              onClick={() => void createAllMissingProducts()}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginLeft: 'auto', borderRadius: '8px', padding: '0.4rem 0.8rem', fontSize: '0.8rem', fontWeight: 650 }}
+            >
+              <Package size={13} />
+              {creatingAllProducts ? 'Création des produits…' : `Créer ${missingProducts === 1 ? 'le produit' : `les ${missingProducts} produits`}`}
+            </button>
+          </div>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -5622,27 +8146,26 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
           <table className="table-modern">
             <thead>
               <tr>
-                <th style={{ width: '22%' }}>Libellé OCR</th>
-                <th style={{ width: '28%' }}>Produit ToqueHub</th>
-                <th style={{ width: '8%' }}>Qté</th>
+                <th style={{ width: '25%' }}>Libellé OCR</th>
+                <th style={{ width: '35%' }}>Produit ToqueHub</th>
+                <th style={{ width: '10%' }}>Qté</th>
                 <th style={{ width: '10%' }}>Unité</th>
-                <th style={{ width: '8%' }}>P.U.</th>
-                <th style={{ width: '8%' }}>Total</th>
-                <th style={{ width: '10%' }}>Lot</th>
-                <th style={{ width: '12%' }}>DLC</th>
-                <th style={{ width: '6%' }}>Statut</th>
-                <th style={{ width: '4%' }}></th>
+                <th style={{ width: '10%' }}>P.U.</th>
+                <th style={{ width: '10%' }}>Total</th>
+                <th style={{ width: '8%' }}>Statut</th>
+                <th style={{ width: '2%' }}></th>
               </tr>
             </thead>
             <tbody>
-              {draft.lines.map((line, index) => line.ignored ? null : (
+              {displayedLineEntries.map(({ line, index }) => (
                 <tr key={line.id ?? index}>
                   <td>
-                    <input 
-                      value={line.ocrLabel || line.label || ''} 
-                      onChange={(e) => updateLine(index, { ocrLabel: e.target.value })} 
-                      title={line.ocrLabel || line.label || ''}
+                    <input
+                      value={line.ocrLabel || line.label || ''}
+                      onChange={(e) => updateLine(index, { ocrLabel: e.target.value })}
+                      title={line.sourceText || line.ocrLabel || line.label || ''}
                     />
+                    {line.warnings?.length ? <small className="ocr-line-warning">{translateOcrMessage(line.warnings[0])}</small> : null}
                   </td>
                   <td>
                     <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
@@ -5666,8 +8189,8 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
                         </button>
                       ) : null}
                       {!line.productId ? (
-                        <button 
-                          className="btn btn-secondary btn-sm" 
+                        <button
+                          className="btn btn-secondary btn-sm"
                           disabled={creatingProductLineId === (line.id ?? `ocr-${index}`)}
                           onClick={() => void createProductFromLine(line, index)}
                           style={{ padding: '0.25rem 0.5rem', flexShrink: 0, borderRadius: '6px' }}
@@ -5712,31 +8235,42 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
                   <td>
                     <input type="number" step="0.0001" value={line.lineTotal ?? line.total ?? ''} onChange={(e) => updateLine(index, { lineTotal: e.target.value ? Number(e.target.value) : null })} />
                   </td>
-                  <td>
-                    <input value={line.lotNumber || ''} onChange={(e) => updateLine(index, { lotNumber: e.target.value })} />
-                  </td>
-                  <td>
-                    <input type="date" value={dateInputValue(line.bestBeforeDate)} onChange={(e) => updateLine(index, { bestBeforeDate: e.target.value || null })} />
-                  </td>
+
                   <td style={{ textAlign: 'center' }}>
                     <span className={`badge ${ocrMatchClass(line.matchingStatus)}`}>
-                      {ocrMatchLabel(line.matchingStatus)}
+                      {ocrLineStatusLabel(line)}
                     </span>
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <button type="button" className="icon-btn danger" onClick={() => removeLine(index)} title="Supprimer la ligne">
-                      <Trash2 size={14} />
-                    </button>
+                    {line.ignored ? (
+                      <button type="button" className="icon-btn" onClick={() => updateLine(index, { ignored: false })} title="Restaurer la ligne">
+                        <CheckCircle2 size={14} />
+                      </button>
+                    ) : (
+                      <button type="button" className="icon-btn danger" onClick={() => removeLine(index)} title="Supprimer la ligne">
+                        <Trash2 size={14} />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
+              {!displayedLineEntries.length ? (
+                <tr>
+                  <td colSpan={8}>
+                    <div className="empty-state" style={{ padding: '1.5rem' }}>
+                      <span className="empty-state-title">Aucune ligne dans ce filtre</span>
+                      <span className="empty-state-desc">Changez de filtre pour afficher les autres lignes de l’analyse IA.</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>
 
         {(missingProducts || invalidQuantities) ? (
           <div className="alert-modern error" style={{ margin: '0' }}>
-            <AlertCircle size={16} /> 
+            <AlertCircle size={16} />
             <span>
               {missingProducts ? `${missingProducts} produit(s) non reconnu(s) dans ToqueHub. ` : ''}
               {invalidQuantities ? `${invalidQuantities} quantité(s) invalides.` : ''}
@@ -5803,7 +8337,7 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
               </div>
             ) : null}
           </div>
-          
+
           {/* Controls Overlay */}
           <div style={{
             position: 'absolute',
@@ -6004,12 +8538,24 @@ function normalizeOcrReceptionData(data: StocksOcrExtraction['data']): StocksOcr
     totalIncludingTax: data.totalIncludingTax ?? data.totals?.totalIncludingTax ?? null,
     siteId: data.siteId ?? null,
     locationId: data.locationId ?? null,
+    documentConfidence: data.documentConfidence ?? data.aiAnalysis?.confidence ?? null,
+    warnings: data.warnings ?? data.aiAnalysis?.warnings ?? [],
+    suggestedActions: data.suggestedActions ?? data.aiAnalysis?.suggestedActions ?? [],
+    aiAnalysis: data.aiAnalysis ?? null,
     lines: (data.lines || []).map((line, index) => ({
       ...line,
       id: line.id ?? `ocr-${index}`,
       ocrLabel: line.ocrLabel ?? line.label ?? '',
       lineTotal: line.lineTotal ?? line.total ?? null,
       ignored: line.ignored ?? false,
+      lineStatus: line.lineStatus ?? null,
+      lineConfidence: line.lineConfidence ?? line.matchingScore ?? null,
+      categoryId: line.categoryId ?? line.suggestedCategoryId ?? null,
+      categoryName: line.categoryName ?? line.suggestedCategoryName ?? null,
+      suggestedCategoryId: line.suggestedCategoryId ?? line.categoryId ?? null,
+      suggestedCategoryName: line.suggestedCategoryName ?? line.categoryName ?? null,
+      warnings: line.warnings ?? [],
+      sourceText: line.sourceText ?? null,
     })),
   };
 }
@@ -6019,6 +8565,34 @@ function ocrStateClass(state: string) {
   if (state.includes('vérifier')) return 'badge-reception';
   if (state.includes('cours') || state.includes('attente')) return 'badge-correction';
   return 'badge-production';
+}
+
+function normalizedOcrState(status: StocksOcrStatus) {
+  return `${status.state ?? ''} ${status.ocr?.status ?? ''} ${status.document.status ?? ''}`.toLowerCase();
+}
+
+function isOcrStatusError(status: StocksOcrStatus) {
+  const state = normalizedOcrState(status);
+  return state.includes('erreur') || state.includes('failed');
+}
+
+function isOcrStatusReady(status: StocksOcrStatus) {
+  const state = normalizedOcrState(status);
+  return Boolean(status.extraction) || state.includes('vérifier') || state.includes('pret') || state.includes('prêt');
+}
+
+function isOcrStatusPending(status: StocksOcrStatus) {
+  const state = normalizedOcrState(status);
+  return state.includes('pending') || state.includes('attente') || state.includes('upload');
+}
+
+function isOcrStatusAnalyzing(status: StocksOcrStatus) {
+  const state = normalizedOcrState(status);
+  return state.includes('processing') || state.includes('cours') || state.includes('matching');
+}
+
+function isOcrStatusWorking(status: StocksOcrStatus) {
+  return !isOcrStatusReady(status) && !isOcrStatusError(status);
 }
 
 function ocrMatchClass(status?: string | null) {
@@ -6033,6 +8607,65 @@ function ocrMatchLabel(status?: string | null) {
   return 'Non trouvé';
 }
 
+function ocrLineStatus(line: StocksOcrLine) {
+  return String(line.lineStatus || '').toLowerCase();
+}
+
+function hasOcrPriceMismatch(line: StocksOcrLine) {
+  const qty = numeric(line.quantity);
+  const unitPrice = numeric(line.unitPrice);
+  const total = numeric(line.lineTotal ?? line.total);
+  if (!qty || !unitPrice || !total) return false;
+  return Math.abs(qty * unitPrice - total) > Math.max(0.05, total * 0.02);
+}
+
+function isOcrLineReady(line: StocksOcrLine) {
+  return !line.ignored && Boolean(line.productId) && numeric(line.quantity) > 0 && !hasOcrPriceMismatch(line) && !['needs_review', 'missing_product', 'price_mismatch', 'quantity_suspicious'].includes(ocrLineStatus(line));
+}
+
+function ocrLineStatusLabel(line: StocksOcrLine) {
+  const status = ocrLineStatus(line);
+  if (line.ignored || status === 'non_product_line') return 'Ignorée';
+  if (status === 'price_mismatch') return 'Prix';
+  if (status === 'quantity_suspicious') return 'Qté';
+  if (status === 'missing_product') return 'Produit';
+  if (status === 'ready') return 'Prêt';
+  return ocrMatchLabel(line.matchingStatus);
+}
+
+function formatOcrPercent(value?: string | number | null) {
+  const percent = numeric(value);
+  return percent > 0 ? `${Math.round(percent * 100)}%` : '—';
+}
+
+function ocrStatusTitle(status: StocksOcrStatus) {
+  const data = status.extraction?.correctedJson ?? status.extraction?.extractedJson ?? status.ocr?.extractions?.[0]?.correctedJson ?? status.ocr?.extractions?.[0]?.extractedJson;
+  const supplierName = data?.supplierName ?? data?.supplier?.supplierName ?? data?.supplier?.name;
+  if (supplierName && status.extraction) return supplierName;
+  return status.document.originalName;
+}
+
+function translateOcrMessage(message?: string | null) {
+  if (!message) return '';
+  let translated = String(message);
+  const replacements: Array<[RegExp, string]> = [
+    [/Document date and delivery date are missing\.?/gi, 'La date du document et la date de livraison sont manquantes.'],
+    [/No totals \(excluding tax, tax, including tax\) found on the delivery note\.?/gi, 'Aucun total HT, TVA ou TTC n’a été trouvé sur le bon de livraison.'],
+    [/Unit price and line total are missing, preventing price verification\.?/gi, 'Le prix unitaire et le total de ligne sont manquants, la vérification du prix est impossible.'],
+    [/Verify the delivery date and document date with the supplier\.?/gi, 'Vérifier la date de livraison et la date du document avec le fournisseur.'],
+    [/Check if the product '([^']+)' exists in your product catalog and update the productId if necessary\.?/gi, "Vérifier si le produit « $1 » existe dans le catalogue et l’associer si nécessaire."],
+    [/Confirm the unit '([^']+)' \(assumed to be '([^']+)' or '([^']+)'\) matches your internal unit of measure\.?/gi, "Confirmer que l’unité « $1 » correspond à votre unité interne."],
+    [/Unit '([^']+)' mapped to '([^']+)'\s*\(([^)]+)\)\. Verify if this matches your internal unit of measure\.?/gi, "L’unité « $1 » a été associée à « $2 » ($3). Vérifier que cela correspond à votre unité interne."],
+    [/Verify if this matches your internal unit of measure\.?/gi, 'Vérifier que cela correspond à votre unité interne.'],
+    [/missing/gi, 'manquant'],
+    [/Verify/gi, 'Vérifier'],
+    [/Check/gi, 'Vérifier'],
+    [/Confirm/gi, 'Confirmer'],
+  ];
+  for (const [pattern, replacement] of replacements) translated = translated.replace(pattern, replacement);
+  return translated;
+}
+
 function dateInputValue(value?: string | null) {
   return value ? String(value).slice(0, 10) : '';
 }
@@ -6040,6 +8673,37 @@ function dateInputValue(value?: string | null) {
 function formatBytes(size: number) {
   if (size < 1024 * 1024) return `${Math.round(size / 1024)} Ko`;
   return `${(size / (1024 * 1024)).toFixed(1)} Mo`;
+}
+
+function formatDocumentDate(value?: string | null) {
+  if (!value) return 'Date inconnue';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Date inconnue';
+  return new Intl.DateTimeFormat('fr-FR').format(date);
+}
+
+function documentTypeLabel(type?: string | null) {
+  if (type === 'invoice') return 'Facture';
+  if (type === 'delivery_note') return 'BL';
+  return 'Non classé';
+}
+
+function documentTypeBadge(type?: string | null) {
+  if (type === 'invoice') return 'badge-stock';
+  if (type === 'delivery_note') return 'badge-reception';
+  return 'badge-correction';
+}
+
+function documentStateLabel(state?: string | null) {
+  if (state === 'failed') return 'Erreur';
+  if (state === 'processing') return 'Analyse';
+  return 'Classé';
+}
+
+function documentStateBadge(state?: string | null) {
+  if (state === 'failed') return 'badge-loss';
+  if (state === 'processing') return 'badge-correction';
+  return 'badge-reception';
 }
 
 function fileTypeLabel(file: File) {

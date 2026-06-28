@@ -530,6 +530,17 @@ enum AuditAction {
   MODULE_MENUS_UNINSTALLED
 }
 
+enum BackupCloudProvider {
+  GOOGLE_DRIVE
+}
+
+enum BackupCloudConnectionStatus {
+  DISCONNECTED
+  CONFIGURED
+  CONNECTED
+  ERROR
+}
+
 model Organization {
   id                            String    @id @default(uuid()) @db.Uuid
   name                          String
@@ -641,6 +652,9 @@ model Organization {
   menuProductionLinks            MenuProductionLink[]
   planningViewPreferences        PlanningViewPreference[]
   dashboardPreferences           DashboardPreference[]
+  backupCloudConnections         BackupCloudConnection[]
+  backupCloudObjects             BackupCloudObject[]
+  backupCloudOAuthStates         BackupCloudOAuthState[]
 
   @@index([regulatoryCountryCode])
   @@index([regulatoryCountrySelectedById])
@@ -716,6 +730,7 @@ model User {
   menuExports                        MenuExport[]                   @relation("MenuExportRequestedBy")
   confirmedDestockingProposals       ProductionDestockingProposal[] @relation("ProductionDestockingConfirmedBy")
   dashboardPreferences               DashboardPreference[]
+  backupCloudOAuthStates         BackupCloudOAuthState[]        @relation("BackupCloudOAuthStateUser")
 
   @@index([organizationId])
   @@index([roleId])
@@ -3607,4 +3622,80 @@ model AuditLog {
   @@index([entityType])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+model BackupCloudConnection {
+  id                     String                      @id @default(uuid()) @db.Uuid
+  organizationId         String                      @db.Uuid
+  provider               BackupCloudProvider
+  status                 BackupCloudConnectionStatus @default(DISCONNECTED)
+  clientId               String?                     @db.Text
+  clientSecretCiphertext String?                     @db.Text
+  redirectUri            String?                     @db.Text
+  refreshTokenCiphertext String?                     @db.Text
+  accountEmail           String?
+  driveFolderId          String?
+  lastSyncAt             DateTime?
+  lastTestAt             DateTime?
+  lastError              String?                     @db.Text
+  createdAt              DateTime                    @default(now())
+  updatedAt              DateTime                    @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  objects      BackupCloudObject[]
+
+  @@unique([organizationId, provider])
+  @@index([organizationId])
+  @@index([provider])
+  @@index([status])
+  @@map("backup_cloud_connections")
+}
+
+model BackupCloudObject {
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @db.Uuid
+  connectionId   String?             @db.Uuid
+  provider       BackupCloudProvider
+  backupId       String
+  filename       String
+  remoteFileId   String?
+  sizeBytes      BigInt?
+  checksumSha256 String?
+  syncedAt       DateTime?
+  deletedAt      DateTime?
+  error          String?             @db.Text
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  connection   BackupCloudConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, remoteFileId])
+  @@index([organizationId])
+  @@index([connectionId])
+  @@index([provider])
+  @@index([backupId])
+  @@index([syncedAt])
+  @@index([deletedAt])
+  @@map("backup_cloud_objects")
+}
+
+model BackupCloudOAuthState {
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @db.Uuid
+  userId         String              @db.Uuid
+  provider       BackupCloudProvider
+  stateHash      String              @unique
+  expiresAt      DateTime
+  consumedAt     DateTime?
+  createdAt      DateTime            @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation("BackupCloudOAuthStateUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([provider])
+  @@index([expiresAt])
+  @@map("backup_cloud_oauth_states")
 }

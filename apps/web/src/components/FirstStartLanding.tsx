@@ -1,26 +1,34 @@
-import type { ChangeEvent, FormEvent } from 'react';
+import type { ChangeEvent, DragEvent } from 'react';
 import { useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft,
   ArrowRight,
   Building2,
+  CalendarDays,
   CheckCircle2,
   ChefHat,
+  Clock,
+  Database,
   Eye,
   EyeOff,
+  FileArchive,
+  Files,
+  HelpCircle,
   ImagePlus,
-  KeyRound,
   LockKeyhole,
+  LockKeyholeOpen,
+  RefreshCcw,
   Server,
   ShieldCheck,
   Sparkles,
   UploadCloud,
   UsersRound,
   AlertCircle,
+  X,
 } from 'lucide-react';
 import { api } from '../api/client';
-import type { EstablishmentType, SystemStatus, TeamSize, UserSession } from '../types';
+import type { BackupInspection, EstablishmentType, SystemStatus, TeamSize, UserSession } from '../types';
 
 interface FirstStartLandingProps {
   status?: SystemStatus;
@@ -43,6 +51,7 @@ const teamSizes: Array<{ label: string; value: TeamSize }> = [
   { label: 'Plus de 20 personnes', value: '20+' },
 ];
 const creationSteps = ['Création de l’organisation', 'Création du site principal', 'Configuration de l’administrateur', 'Préparation OCR IA', 'Finalisation'];
+const volunteerAppointmentUrl = '';
 
 function passwordScore(password: string) {
   let score = 0;
@@ -71,6 +80,14 @@ export function FirstStartLanding({
   const [submitting, setSubmitting] = useState(false);
   const [completedCreationSteps, setCompletedCreationSteps] = useState(0);
   const [showOnboardingPreview, setShowOnboardingPreview] = useState(false);
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [restoreInspection, setRestoreInspection] = useState<BackupInspection | null>(null);
+  const [restorePhrase, setRestorePhrase] = useState('');
+  const [restoreError, setRestoreError] = useState<string>();
+  const [restoreMessage, setRestoreMessage] = useState<string>();
+  const [restoreBusy, setRestoreBusy] = useState(false);
+  const [restoreDone, setRestoreDone] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   
   const score = useMemo(() => passwordScore(admin.password), [admin.password]);
@@ -188,6 +205,40 @@ export function FirstStartLanding({
     }
   }
 
+  async function inspectBootstrapBackup(file?: File) {
+    if (!file) return;
+    setRestoreBusy(true);
+    setRestoreError(undefined);
+    setRestoreMessage(undefined);
+    try {
+      const inspection = await api.inspectBootstrapBackup(file);
+      setRestoreInspection(inspection);
+      setRestorePhrase('');
+      setRestoreMessage('Archive inspectée. Vérifiez le manifeste avant de restaurer.');
+    } catch (err) {
+      setRestoreError(err instanceof Error ? err.message : 'Inspection de la sauvegarde impossible.');
+    } finally {
+      setRestoreBusy(false);
+    }
+  }
+
+  async function restoreBootstrapBackup() {
+    if (!restoreInspection) return;
+    setRestoreBusy(true);
+    setRestoreError(undefined);
+    setRestoreMessage(undefined);
+    try {
+      const result = await api.restoreBootstrapBackup(restoreInspection.uploadId, restorePhrase);
+      setRestoreMessage(result.message || 'Restauration terminée. Vous pouvez vous connecter.');
+      setRestoreDone(true);
+      await onRefreshStatus();
+    } catch (err) {
+      setRestoreError(err instanceof Error ? err.message : 'Restauration impossible.');
+    } finally {
+      setRestoreBusy(false);
+    }
+  }
+
   const isFullWidth = step === 0 || step === 6;
 
   return (
@@ -247,6 +298,26 @@ export function FirstStartLanding({
               setFormError(undefined);
               setShowOnboardingPreview(true);
             }}
+          />
+        ) : restoreOpen ? (
+          <BootstrapRestorePanel
+            inspection={restoreInspection}
+            phrase={restorePhrase}
+            error={restoreError}
+            message={restoreMessage}
+            busy={restoreBusy}
+            done={restoreDone}
+            onPhraseChange={setRestorePhrase}
+            onFile={inspectBootstrapBackup}
+            onRestore={restoreBootstrapBackup}
+            onBack={() => {
+              setRestoreOpen(false);
+              setRestoreError(undefined);
+              setRestoreMessage(undefined);
+              setRestoreInspection(null);
+              setRestorePhrase('');
+            }}
+            onLoginRequested={onLoginRequested}
           />
         ) : (
           <div
@@ -318,7 +389,13 @@ export function FirstStartLanding({
                     transition={{ duration: 0.16 }}
                     style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
                   >
-                    {step === 0 && <WelcomeStep onStart={() => setStep(1)} />}
+                    {step === 0 && (
+                      <WelcomeStep
+                        onStart={() => setStep(1)}
+                        onRestore={() => setRestoreOpen(true)}
+                        onHelp={() => setHelpOpen(true)}
+                      />
+                    )}
                     {step === 1 && (
                       <AdminStep
                         admin={admin}
@@ -371,9 +448,14 @@ export function FirstStartLanding({
                       Continuer <ArrowRight size={16} />
                     </button>
                   ) : (
-                    <button className="btn btn-primary" onClick={createEnvironment} disabled={submitting} style={{ marginLeft: 'auto' }}>
-                      {submitting ? 'Création de l\'instance...' : 'Créer mon environnement'} <Sparkles size={16} />
-                    </button>
+                    <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.65rem' }}>
+                      <button className="btn btn-primary" onClick={createEnvironment} disabled={submitting}>
+                        {submitting ? 'Création de l\'instance...' : 'Créer mon environnement'} <Sparkles size={16} />
+                      </button>
+                      <button className="btn btn-secondary" onClick={() => setRestoreOpen(true)} disabled={submitting}>
+                        <UploadCloud size={16} /> Restaurer depuis une sauvegarde
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
@@ -381,6 +463,7 @@ export function FirstStartLanding({
           </div>
         )}
       </div>
+      <HelpVolunteerModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }
@@ -394,8 +477,367 @@ function AlertCircleIcon() {
   return <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />;
 }
 
+function BootstrapRestorePanel({
+  inspection,
+  phrase,
+  error,
+  message,
+  busy,
+  done,
+  onPhraseChange,
+  onFile,
+  onRestore,
+  onBack,
+  onLoginRequested,
+}: {
+  inspection: BackupInspection | null;
+  phrase: string;
+  error?: string;
+  message?: string;
+  busy: boolean;
+  done: boolean;
+  onPhraseChange: (value: string) => void;
+  onFile: (file?: File) => void | Promise<void>;
+  onRestore: () => void | Promise<void>;
+  onBack: () => void;
+  onLoginRequested: () => void;
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const isValidated = phrase === 'RESTAURER TOQUEHUB';
+  const isTyping = phrase.length > 0 && !isValidated;
+
+  function handleDragOver(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    if (!busy && !done) setDragging(true);
+  }
+  function handleDragLeave() {
+    setDragging(false);
+  }
+  function handleDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setDragging(false);
+    if (busy || done) return;
+    const file = e.dataTransfer.files?.[0];
+    if (file) void onFile(file);
+  }
+
+  return (
+    <div
+      className="card-modern"
+      style={{
+        padding: '2.5rem',
+        borderRadius: '28px',
+        background: 'white',
+        boxShadow: '0 30px 80px rgba(9, 13, 22, 0.08)',
+      }}
+    >
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', marginBottom: '2rem' }}>
+        <div>
+          <span
+            className="badge badge-reception"
+            style={{ display: 'inline-flex', gap: '0.35rem', marginBottom: '0.85rem', padding: '0.35rem 0.85rem', borderRadius: '999px' }}
+          >
+            <UploadCloud size={13} /> RESTAURATION PREMIER DÉMARRAGE
+          </span>
+          <h1 style={{ fontSize: '2.35rem', fontWeight: 900, letterSpacing: '-0.05em', margin: 0, lineHeight: 1.1 }}>
+            Restaurer une sauvegarde
+          </h1>
+          <p style={{ color: 'var(--text-muted)', lineHeight: 1.65, maxWidth: '620px', marginTop: '0.75rem', fontSize: '0.95rem' }}>
+            Importez une archive ToqueHub complète pour recréer l'environnement depuis sa base PostgreSQL et ses documents métier.
+          </p>
+        </div>
+        {!done ? (
+          <button
+            className="btn btn-secondary"
+            onClick={onBack}
+            disabled={busy}
+            style={{ flexShrink: 0, marginTop: '0.25rem' }}
+          >
+            <ArrowLeft size={16} /> Retour
+          </button>
+        ) : null}
+      </div>
+
+      {/* Alerts */}
+      <AnimatePresence>
+        {error ? (
+          <motion.div
+            key="error"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="alert-modern error"
+            style={{ marginBottom: '1.25rem' }}
+          >
+            <AlertCircleIcon /> {error}
+          </motion.div>
+        ) : null}
+        {message ? (
+          <motion.div
+            key="message"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="alert-modern success"
+            style={{ marginBottom: '1.25rem' }}
+          >
+            <CheckCircle2 size={18} /> {message}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      {/* Two-column grid */}
+      <div className="restore-grid">
+
+        {/* Left: Archive upload card */}
+        <div className="restore-card-modern">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '1.25rem' }}>
+            <span
+              style={{
+                width: 38, height: 38, borderRadius: 12,
+                background: 'rgba(16, 185, 129, 0.08)',
+                color: 'var(--primary)',
+                display: 'grid', placeItems: 'center',
+              }}
+            >
+              <FileArchive size={20} />
+            </span>
+            <div>
+              <p style={{ margin: 0, fontWeight: 750, fontSize: '1.05rem', color: 'var(--text-main)' }}>Archive de sauvegarde</p>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Fichier <code style={{ background: '#f1f5f9', padding: '0 4px', borderRadius: 4 }}>toquehub-backup-*.tar.gz</code>
+              </p>
+            </div>
+          </div>
+
+          <AnimatePresence mode="wait">
+            {!inspection ? (
+              <motion.div
+                key="dropzone"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
+                {/* Hidden file input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".gz,.tgz,.tar.gz,application/gzip"
+                  style={{ display: 'none' }}
+                  disabled={busy || done}
+                  onChange={(event) => void onFile(event.target.files?.[0])}
+                />
+                {/* Drag & Drop Zone */}
+                <div
+                  className={`restore-drag-zone${dragging ? ' drag-active' : ''}`}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onClick={() => !busy && !done && fileInputRef.current?.click()}
+                >
+                  <div className="restore-drag-icon-wrapper">
+                    <UploadCloud size={28} />
+                  </div>
+                  <p className="restore-drag-title">{dragging ? 'Déposez ici !' : 'Déposez votre archive ici'}</p>
+                  <p className="restore-drag-sub">ou <span style={{ color: 'var(--primary)', fontWeight: 600 }}>cliquez pour parcourir</span></p>
+                  <p className="restore-drag-sub" style={{ marginTop: '-0.25rem' }}>.tar.gz · .tgz · .gz</p>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="inspection"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.2 }}
+              >
+                <div className="restore-file-details-card">
+                  <div className="restore-file-header">
+                    <div className="restore-file-icon"><FileArchive size={22} /></div>
+                    <div className="restore-file-meta">
+                      <p className="restore-file-name">{inspection.filename}</p>
+                      <span className="restore-file-status">
+                        <CheckCircle2 size={12} /> Archive valide – manifeste lu
+                      </span>
+                    </div>
+                    {!busy && !done ? (
+                      <button
+                        title="Changer le fichier"
+                        style={{
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          color: 'var(--text-muted)', padding: '4px', borderRadius: 8,
+                          transition: 'color 0.2s',
+                          flexShrink: 0,
+                        }}
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        <RefreshCcw size={16} />
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {/* Inspection specs grid */}
+                  <div className="restore-specs-grid">
+                    <div className="restore-spec-item">
+                      <span className="restore-spec-label" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <Clock size={12} /> Créée le
+                      </span>
+                      <span className="restore-spec-value">
+                        {new Date(inspection.manifest.createdAt).toLocaleString('fr-FR')}
+                      </span>
+                    </div>
+                    <div className="restore-spec-item">
+                      <span className="restore-spec-label" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <Database size={12} /> Base PostgreSQL
+                      </span>
+                      <span className="restore-spec-value">{formatBackupBytes(inspection.manifest.database.sizeBytes)}</span>
+                    </div>
+                    <div className="restore-spec-item">
+                      <span className="restore-spec-label" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <Files size={12} /> Documents
+                      </span>
+                      <span className="restore-spec-value">{inspection.manifest.files.totalFileCount} fichier(s)</span>
+                    </div>
+                    <div className="restore-spec-item">
+                      <span className="restore-spec-label" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <FileArchive size={12} /> Volume total
+                      </span>
+                      <span className="restore-spec-value">{formatBackupBytes(inspection.manifest.files.totalSizeBytes)}</span>
+                    </div>
+                  </div>
+
+                  {/* Hidden file input for replacement */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".gz,.tgz,.tar.gz,application/gzip"
+                    style={{ display: 'none' }}
+                    disabled={busy || done}
+                    onChange={(event) => void onFile(event.target.files?.[0])}
+                  />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Right: Confirmation card */}
+        <div
+          className="restore-card-modern"
+          style={{
+            borderColor: isValidated
+              ? 'rgba(16, 185, 129, 0.3)'
+              : isTyping
+              ? 'rgba(239, 68, 68, 0.25)'
+              : undefined,
+            transition: 'border-color 0.3s',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '1.25rem' }}>
+            <span
+              style={{
+                width: 38, height: 38, borderRadius: 12,
+                background: isValidated
+                  ? 'rgba(16, 185, 129, 0.08)'
+                  : isTyping
+                  ? 'rgba(239, 68, 68, 0.08)'
+                  : 'rgba(100, 116, 139, 0.08)',
+                color: isValidated ? 'var(--primary)' : isTyping ? '#ef4444' : '#64748b',
+                display: 'grid', placeItems: 'center',
+                transition: 'all 0.3s',
+              }}
+            >
+              <ShieldCheck size={20} />
+            </span>
+            <div>
+              <p style={{ margin: 0, fontWeight: 750, fontSize: '1.05rem', color: 'var(--text-main)' }}>Confirmation requise</p>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>Cette action est irréversible</p>
+            </div>
+          </div>
+
+          <div className="restore-confirm-container">
+            {/* Lock icon with animation */}
+            <motion.div
+              className={`restore-lock-shield${isValidated ? ' validated' : isTyping ? ' active' : ''}`}
+              animate={isValidated ? { scale: [1, 1.15, 1] } : {}}
+              transition={{ duration: 0.4 }}
+            >
+              {isValidated ? <LockKeyholeOpen size={32} /> : <LockKeyhole size={32} />}
+            </motion.div>
+
+            <div style={{ width: '100%' }}>
+              <p style={{ margin: '0 0 0.75rem', fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                Saisissez exactement la phrase ci-dessous pour débloquer la restauration :
+              </p>
+              <div
+                style={{
+                  background: '#f8fafc',
+                  borderRadius: 10,
+                  padding: '0.6rem 1rem',
+                  marginBottom: '0.75rem',
+                  fontFamily: 'monospace',
+                  fontWeight: 800,
+                  letterSpacing: '0.05em',
+                  fontSize: '0.95rem',
+                  color: 'var(--text-main)',
+                  textAlign: 'center',
+                  border: '1px dashed rgba(16,185,129,0.2)',
+                  userSelect: 'all',
+                }}
+              >
+                RESTAURER TOQUEHUB
+              </div>
+              <div className="restore-input-secure-container">
+                <input
+                  className={`restore-input-secure${isValidated ? ' validated' : isTyping ? ' active' : ''}`}
+                  placeholder="Saisissez la phrase..."
+                  value={phrase}
+                  disabled={busy || done || !inspection}
+                  onChange={(event) => onPhraseChange(event.target.value)}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
+            </div>
+
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+              <button
+                className="btn btn-danger"
+                style={{ width: '100%', padding: '0.9rem', fontSize: '0.95rem', fontWeight: 700, gap: '0.5rem' }}
+                disabled={busy || done || !inspection || !isValidated}
+                onClick={() => void onRestore()}
+              >
+                {busy ? (
+                  <><div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> Restauration en cours...</>
+                ) : (
+                  <><UploadCloud size={17} /> Restaurer cette sauvegarde</>
+                )}
+              </button>
+              {done ? (
+                <motion.button
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="btn btn-primary"
+                  style={{ width: '100%', padding: '0.9rem', fontSize: '0.95rem' }}
+                  onClick={onLoginRequested}
+                >
+                  <CheckCircle2 size={17} /> Se connecter
+                </motion.button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
 // 0. Welcome Screen
-function WelcomeStep({ onStart }: { onStart: () => void }) {
+function WelcomeStep({ onStart, onRestore, onHelp }: { onStart: () => void; onRestore?: () => void; onHelp: () => void }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '3rem', alignItems: 'center', padding: '1rem 0' }}>
       <div>
@@ -408,15 +850,96 @@ function WelcomeStep({ onStart }: { onStart: () => void }) {
         <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem', lineHeight: 1.65, marginBottom: '2rem' }}>
           L'ERP de cuisine open source souverain pour gérer vos produits, vos fournisseurs, et tracer vos stocks locaux en toute simplicité. Configurez votre environnement de travail en moins d'une minute.
         </p>
-        <button className="btn btn-primary" onClick={onStart} style={{ padding: '0.85rem 1.75rem', fontSize: '0.95rem' }}>
-          Commencer la configuration <ArrowRight size={18} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" onClick={onStart} style={{ padding: '0.85rem 1.75rem', fontSize: '0.95rem' }}>
+            Commencer la configuration <ArrowRight size={18} />
+          </button>
+          {onRestore ? (
+            <button className="btn btn-secondary" onClick={onRestore} style={{ padding: '0.85rem 1.35rem', fontSize: '0.9rem' }}>
+              <UploadCloud size={17} /> Restaurer une sauvegarde
+            </button>
+          ) : null}
+          <button className="btn btn-secondary" onClick={onHelp} style={{ padding: '0.85rem 1.25rem', fontSize: '0.9rem' }}>
+            <HelpCircle size={17} /> Besoin d'aide ?
+          </button>
+        </div>
       </div>
       <div style={{ display: 'flex', justifyContent: 'center' }}>
         <KitchenIllustration />
       </div>
     </div>
   );
+}
+
+function HelpVolunteerModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  if (!open) return null;
+  const canBookAppointment = Boolean(volunteerAppointmentUrl);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content-wrapper modal-md" onClick={(event) => event.stopPropagation()}>
+        <div className="modal-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <span
+              style={{
+                width: '38px',
+                height: '38px',
+                borderRadius: '12px',
+                display: 'grid',
+                placeItems: 'center',
+                background: 'var(--primary-bg-light)',
+                color: 'var(--primary)',
+                flexShrink: 0,
+              }}
+            >
+              <HelpCircle size={20} />
+            </span>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 900, color: 'var(--text-main)' }}>Besoin d'aide ?</h2>
+              <p style={{ margin: '0.15rem 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>Accompagnement au premier démarrage</p>
+            </div>
+          </div>
+          <button className="modal-close-btn" onClick={onClose} aria-label="Fermer">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="modal-body">
+          <p style={{ color: 'var(--text-muted)', lineHeight: 1.65, margin: 0 }}>
+            Une équipe de bénévoles ToqueHub peut vous aider à préparer votre instance, restaurer une sauvegarde ou vérifier les premières informations de votre établissement.
+          </p>
+          <div style={{ display: 'grid', gap: '0.75rem', marginTop: '1.25rem' }}>
+            {['Configuration initiale', 'Restauration de sauvegarde', 'Vérification des accès'].map((item) => (
+              <div key={item} style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', color: 'var(--text-main)', fontWeight: 700 }}>
+                <CheckCircle2 size={17} color="var(--primary)" />
+                <span>{item}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onClose}>Fermer</button>
+          <button
+            className="btn btn-primary"
+            disabled={!canBookAppointment}
+            title={canBookAppointment ? 'Ouvrir Calendly' : 'Lien Calendly à ajouter'}
+            onClick={() => {
+              if (canBookAppointment) window.open(volunteerAppointmentUrl, '_blank', 'noopener,noreferrer');
+            }}
+          >
+            <CalendarDays size={16} /> Prendre rendez-vous
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatBackupBytes(value?: number | null) {
+  if (!value) return '0 Ko';
+  if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} Ko`;
+  return `${(value / 1024 / 1024).toFixed(1)} Mo`;
 }
 
 // 1. Admin setup Step

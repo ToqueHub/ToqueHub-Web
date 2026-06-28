@@ -4,6 +4,8 @@ import type {
   DashboardSummary,
   ModularDashboard,
   ModularDashboardPreferences,
+  MyDocumentsResponse,
+  MyDocument,
   Category,
   AuditEntry,
   ArchitectureAnalysis,
@@ -108,6 +110,12 @@ import type {
   MenuProductionGenerationPayload,
   MenuProductionGenerationResult,
   MenuStatus,
+  BackupInspection,
+  BackupCloudStatus,
+  BackupListResponse,
+  BackupRestoreResult,
+  BackupSchedule,
+  BackupSummary,
 } from '../types';
 
 type PlanningRangeParams = {
@@ -190,11 +198,19 @@ function normalizeOcrCorrectionPayload(payload: StocksOcrExtraction['data']) {
     totalIncludingTax: payload.totalIncludingTax ?? payload.totals?.totalIncludingTax ?? undefined,
     siteId: payload.siteId || undefined,
     locationId: payload.locationId || undefined,
+    documentConfidence: payload.documentConfidence ?? payload.aiAnalysis?.confidence ?? undefined,
+    warnings: payload.warnings ?? payload.aiAnalysis?.warnings ?? undefined,
+    suggestedActions: payload.suggestedActions ?? payload.aiAnalysis?.suggestedActions ?? undefined,
+    aiAnalysis: payload.aiAnalysis ?? undefined,
     lines: (payload.lines || []).map((line) => ({
       id: line.id,
       ignored: Boolean(line.ignored),
       productId: line.productId || undefined,
       unitId: line.unitId || undefined,
+      categoryId: line.categoryId || undefined,
+      categoryName: line.categoryName || undefined,
+      suggestedCategoryId: line.suggestedCategoryId || undefined,
+      suggestedCategoryName: line.suggestedCategoryName || undefined,
       ocrLabel: line.ocrLabel || line.label || undefined,
       reference: line.reference || undefined,
       quantity: line.quantity ?? undefined,
@@ -204,8 +220,17 @@ function normalizeOcrCorrectionPayload(payload: StocksOcrExtraction['data']) {
       vatRate: line.vatRate ?? undefined,
       lotNumber: line.lotNumber || undefined,
       bestBeforeDate: line.bestBeforeDate || undefined,
+      lineStatus: line.lineStatus || undefined,
+      lineConfidence: line.lineConfidence ?? undefined,
+      warnings: line.warnings ?? undefined,
+      sourceText: line.sourceText || undefined,
     })),
   };
+}
+
+function uuidOrNullOrUndefined(value?: string | null) {
+  if (value === null) return null;
+  return value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ? value : undefined;
 }
 
 export const api = {
@@ -802,7 +827,7 @@ export const api = {
     payload: { name: string; sku?: string; description?: string; unitId: string; categoryId?: string | null; supplierId?: string | null; primarySupplierId?: string | null; averagePrice?: number; averagePurchasePrice?: number; minimumStock?: number },
   ) {
     const { supplierId, averagePurchasePrice, ...rest } = payload;
-    return request<Product>('/products', { method: 'POST', body: JSON.stringify({ ...rest, averagePrice: payload.averagePrice ?? averagePurchasePrice, primarySupplierId: payload.primarySupplierId ?? supplierId }) }, token);
+    return request<Product>('/products', { method: 'POST', body: JSON.stringify({ ...rest, averagePrice: payload.averagePrice ?? averagePurchasePrice, primarySupplierId: uuidOrNullOrUndefined(payload.primarySupplierId ?? supplierId) }) }, token);
   },
   updateProduct(
     token: string,
@@ -810,7 +835,7 @@ export const api = {
     payload: { name?: string; sku?: string; description?: string; unitId?: string; categoryId?: string | null; supplierId?: string | null; primarySupplierId?: string | null; averagePrice?: number; averagePurchasePrice?: number; minimumStock?: number },
   ) {
     const { supplierId, averagePurchasePrice, ...rest } = payload;
-    return request<Product>(`/products/${id}`, { method: 'PATCH', body: JSON.stringify({ ...rest, averagePrice: payload.averagePrice ?? averagePurchasePrice, primarySupplierId: payload.primarySupplierId ?? supplierId }) }, token);
+    return request<Product>(`/products/${id}`, { method: 'PATCH', body: JSON.stringify({ ...rest, averagePrice: payload.averagePrice ?? averagePurchasePrice, primarySupplierId: uuidOrNullOrUndefined(payload.primarySupplierId ?? supplierId) }) }, token);
   },
   archiveProduct(token: string, id: string) {
     return request<Product>(`/products/${id}/archive`, { method: 'POST' }, token);
@@ -864,6 +889,34 @@ export const api = {
   stocksDashboard(token: string) {
     return request<StocksDashboard>('/stocks/dashboard', {}, token);
   },
+  documents(token: string, params: { search?: string; supplier?: string; type?: string; dateFrom?: string; dateTo?: string } = {}) {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => { if (value !== undefined && value !== '') qs.set(key, String(value)); });
+    return request<MyDocumentsResponse>(`/documents${qs.toString() ? `?${qs.toString()}` : ''}`, {}, token);
+  },
+  async viewDocument(token: string, documentId: string) {
+    const response = await fetch(`${API_URL}/api/documents/${documentId}/download`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) throw new ApiError(await response.text(), response.status);
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+  },
+  async downloadDocument(token: string, documentId: string, filename: string) {
+    const response = await fetch(`${API_URL}/api/documents/${documentId}/download`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) throw new ApiError(await response.text(), response.status);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = globalThis.document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  },
+  renameDocument(token: string, documentId: string, originalName: string) {
+    return request<MyDocument>(`/documents/${documentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ originalName })
+    }, token);
+  },
   stocksOcrConfig(token: string) {
     return request<StocksOcrConfig>('/stocks/ocr/config', {}, token);
   },
@@ -882,11 +935,17 @@ export const api = {
   analyzeStocksOcrBatch(token: string, documentIds: string[]) {
     return request<{ jobs: Array<{ documentId: string; ocrDocumentId: string; status: string }> }>('/stocks/ocr/documents/analyze-batch', { method: 'POST', body: JSON.stringify({ documentIds }) }, token);
   },
+  stocksOcrStatuses(token: string) {
+    return request<{ statuses: StocksOcrStatus[] }>('/stocks/ocr/documents/statuses', {}, token);
+  },
   stocksOcrStatus(token: string, documentId: string) {
     return request<StocksOcrStatus>(`/stocks/ocr/documents/${documentId}/status`, {}, token);
   },
   stocksOcrExtraction(token: string, extractionId: string) {
     return request<StocksOcrExtraction>(`/stocks/ocr/extractions/${extractionId}`, {}, token);
+  },
+  reanalyzeStocksOcrWithAi(token: string, extractionId: string) {
+    return request<StocksOcrExtraction>(`/stocks/ocr/extractions/${extractionId}/reanalyze-ai`, { method: 'POST' }, token);
   },
   saveStocksOcrCorrections(token: string, extractionId: string, payload: StocksOcrExtraction['data']) {
     return request<StocksOcrExtraction>(`/stocks/ocr/extractions/${extractionId}/corrections`, { method: 'PATCH', body: JSON.stringify(normalizeOcrCorrectionPayload(payload)) }, token);
@@ -937,6 +996,99 @@ export const api = {
     }).then(async (response) => {
       if (!response.ok) throw new ApiError(await response.text(), response.status);
       return { csv: await response.text() };
+    });
+  },
+  backups(token: string) {
+    return request<BackupListResponse>('/backups', {}, token);
+  },
+  createBackup(token: string) {
+    return request<BackupSummary>('/backups', { method: 'POST' }, token);
+  },
+  backupSchedule(token: string) {
+    return request<BackupSchedule>('/backups/schedule', {}, token);
+  },
+  updateBackupSchedule(token: string, payload: BackupSchedule) {
+    const { enabled, frequency, time, weekday, retentionDays } = payload;
+    return request<BackupSchedule>('/backups/schedule', { method: 'PATCH', body: JSON.stringify({ enabled, frequency, time, weekday, retentionDays }) }, token);
+  },
+  async downloadBackup(token: string, backup: BackupSummary) {
+    const response = await fetch(`${API_URL}/api/backups/${backup.id}/download`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new ApiError(await response.text(), response.status);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = globalThis.document.createElement('a');
+    link.href = url;
+    link.download = backup.filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  },
+  sendBackupToGoogleDrive(token: string, id: string) {
+    return request<{ ok: boolean; message: string; connection: BackupCloudStatus['googleDrive']; backup: BackupSummary }>(`/backups/${id}/cloud/google`, { method: 'POST' }, token);
+  },
+  restoreBackup(token: string, id: string, confirmationPhrase: string) {
+    return request<BackupRestoreResult>(`/backups/${id}/restore`, { method: 'POST', body: JSON.stringify({ confirmationPhrase }) }, token);
+  },
+  inspectBackupUpload(token: string, file: File) {
+    const body = new FormData();
+    body.set('file', file);
+    return fetch(`${API_URL}/api/backups/upload/inspect`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    }).then(async (response) => {
+      if (!response.ok) throw new ApiError(await response.text(), response.status);
+      return response.json() as Promise<BackupInspection>;
+    });
+  },
+  restoreBackupUpload(token: string, uploadId: string, confirmationPhrase: string) {
+    const body = new FormData();
+    body.set('uploadId', uploadId);
+    body.set('confirmationPhrase', confirmationPhrase);
+    return fetch(`${API_URL}/api/backups/upload/restore`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    }).then(async (response) => {
+      if (!response.ok) throw new ApiError(await response.text(), response.status);
+      return response.json() as Promise<BackupRestoreResult>;
+    });
+  },
+  backupCloudDefaultRedirectUri() {
+    const base = API_URL || globalThis.location.origin;
+    return `${base}/api/backups/cloud/google/callback`;
+  },
+  backupCloudStatus(token: string) {
+    return request<BackupCloudStatus>('/backups/cloud/status', {}, token);
+  },
+  configureGoogleDriveBackup(token: string, payload: { clientId: string; clientSecret?: string; redirectUri: string }) {
+    return request<BackupCloudStatus['googleDrive']>('/backups/cloud/google/config', { method: 'PUT', body: JSON.stringify(payload) }, token);
+  },
+  connectGoogleDriveBackup(token: string) {
+    return request<{ authUrl: string }>('/backups/cloud/google/connect', { method: 'POST' }, token);
+  },
+  testGoogleDriveBackup(token: string) {
+    return request<{ ok: boolean; connection: BackupCloudStatus['googleDrive'] }>('/backups/cloud/google/test', { method: 'POST' }, token);
+  },
+  disconnectGoogleDriveBackup(token: string) {
+    return request<BackupCloudStatus['googleDrive']>('/backups/cloud/google', { method: 'DELETE' }, token);
+  },
+  inspectBootstrapBackup(file: File) {
+    const body = new FormData();
+    body.set('file', file);
+    return fetch(`${API_URL}/api/backups/bootstrap/inspect`, { method: 'POST', body }).then(async (response) => {
+      if (!response.ok) throw new ApiError(await response.text(), response.status);
+      return response.json() as Promise<BackupInspection>;
+    });
+  },
+  restoreBootstrapBackup(uploadId: string, confirmationPhrase: string) {
+    const body = new FormData();
+    body.set('uploadId', uploadId);
+    body.set('confirmationPhrase', confirmationPhrase);
+    return fetch(`${API_URL}/api/backups/bootstrap/restore`, { method: 'POST', body }).then(async (response) => {
+      if (!response.ok) throw new ApiError(await response.text(), response.status);
+      return response.json() as Promise<BackupRestoreResult>;
     });
   },
   users(token: string) {
