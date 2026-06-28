@@ -228,6 +228,48 @@ export class StocksOcrService {
     };
   }
 
+  async listStatuses(organizationId: string, actor: Actor) {
+    this.assertOcr(actor);
+    const documents = await this.prisma.document.findMany({
+      where: {
+        organizationId,
+        sourceModule: 'stocks',
+        sourceType: 'ocr-reception',
+        OR: [
+          { status: { in: [DocumentStatus.UPLOADED, DocumentStatus.PROCESSING, DocumentStatus.FAILED] } },
+          { ocrDocuments: { some: { status: { in: [OcrProcessingStatus.PENDING, OcrProcessingStatus.PROCESSING, OcrProcessingStatus.FAILED] } } } },
+          {
+            ocrDocuments: {
+              some: {
+                extractions: {
+                  some: {
+                    status: { in: [OcrBusinessExtractionStatus.DRAFT, OcrBusinessExtractionStatus.REVIEWED, OcrBusinessExtractionStatus.REJECTED] },
+                  },
+                },
+              },
+            },
+          },
+        ],
+      },
+      include: { ocrDocuments: { include: { extractions: true }, orderBy: { createdAt: 'desc' }, take: 1 } },
+      orderBy: { updatedAt: 'desc' },
+      take: 12,
+    });
+
+    return {
+      statuses: documents.map((document) => {
+        const ocr = document.ocrDocuments[0] ?? null;
+        const extraction = ocr?.extractions[0] ?? null;
+        return {
+          document,
+          ocr,
+          extraction,
+          state: this.uiState(document.status, ocr?.status, extraction?.id),
+        };
+      }),
+    };
+  }
+
   async getExtraction(organizationId: string, actor: Actor, extractionId: string) {
     this.assertOcr(actor);
     const extraction = await this.prisma.ocrBusinessExtraction.findFirst({

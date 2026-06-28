@@ -57,6 +57,11 @@ export class StocksController {
     return this.stocksOcrService.analyzeBatch(this.org(user), this.actor(user), dto.documentIds);
   }
 
+  @Get('stocks/ocr/documents/statuses')
+  ocrDocumentStatuses(@CurrentUser() user: AuthenticatedUser) {
+    return this.stocksOcrService.listStatuses(this.org(user), this.actor(user));
+  }
+
   @Get('stocks/ocr/documents/:documentId/status')
   ocrDocumentStatus(@CurrentUser() user: AuthenticatedUser, @Param('documentId') documentId: string) {
     return this.stocksOcrService.getStatus(this.org(user), this.actor(user), documentId);

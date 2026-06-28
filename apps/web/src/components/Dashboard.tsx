@@ -26,6 +26,10 @@ import {
   UsersRound,
   UserRound,
   FileText,
+  LayoutGrid,
+  List,
+  Eye,
+  Filter,
   Calendar,
   Thermometer,
   ShoppingCart,
@@ -34,6 +38,7 @@ import {
   Plus,
   Search,
   X,
+  Bell,
   Menu,
   CheckCircle2,
   TrendingUp,
@@ -98,6 +103,8 @@ import type {
   ModularDashboard,
   ModularDashboardPreferences,
   DashboardWidget,
+  MyDocument,
+  MyDocumentsResponse,
   AuditEntry,
   Inventory,
   Location,
@@ -329,9 +336,24 @@ const apps = [
   },
 ];
 
-type ActiveTab = 'overview' | 'applications' | 'settings' | 'organization-general' | 'users' | 'architecture' | 'stocks-dashboard' | 'inventory' | 'movements' | 'products' | 'categories' | 'units' | 'suppliers' | 'inventories' | 'locations' | 'audit' | 'rnm-dashboard' | 'rnm-history' | 'rnm-favorites' | 'rnm-about' | 'hr-dashboard' | 'hr-collaborators' | 'hr-departments' | 'hr-positions' | 'hr-rotations' | 'hr-orgchart' | 'planning-dashboard' | 'planning-planning' | 'planning-settings' | 'planning-attendance' | 'planning-day' | 'planning-week' | 'planning-month' | 'planning-assignments' | 'planning-absences' | 'planning-replacements' | 'planning-templates' | 'planning-requirements' | 'technical-sheets-dashboard' | 'technical-sheets-recipes' | 'technical-sheets-categories' | 'technical-sheets-costs' | 'technical-sheets-allergens' | 'technical-sheets-production' | 'production-dashboard' | 'production-orders' | 'production-calendar' | 'production-today' | 'production-assignments' | 'production-materials' | 'production-exports' | 'production-history' | 'menus-dashboard' | 'menus-list' | 'menus-calendar' | 'menus-cycles' | 'menus-diets' | 'menus-guests' | 'menus-exports' | 'menus-history';
+type ActiveTab = 'overview' | 'applications' | 'settings' | 'organization-general' | 'organization-documents' | 'users' | 'architecture' | 'stocks-dashboard' | 'inventory' | 'movements' | 'products' | 'categories' | 'units' | 'suppliers' | 'inventories' | 'locations' | 'audit' | 'rnm-dashboard' | 'rnm-history' | 'rnm-favorites' | 'rnm-about' | 'hr-dashboard' | 'hr-collaborators' | 'hr-departments' | 'hr-positions' | 'hr-rotations' | 'hr-orgchart' | 'planning-dashboard' | 'planning-planning' | 'planning-settings' | 'planning-attendance' | 'planning-day' | 'planning-week' | 'planning-month' | 'planning-assignments' | 'planning-absences' | 'planning-replacements' | 'planning-templates' | 'planning-requirements' | 'technical-sheets-dashboard' | 'technical-sheets-recipes' | 'technical-sheets-categories' | 'technical-sheets-costs' | 'technical-sheets-allergens' | 'technical-sheets-production' | 'production-dashboard' | 'production-orders' | 'production-calendar' | 'production-today' | 'production-assignments' | 'production-materials' | 'production-exports' | 'production-history' | 'menus-dashboard' | 'menus-list' | 'menus-calendar' | 'menus-cycles' | 'menus-diets' | 'menus-guests' | 'menus-exports' | 'menus-history';
 
 type Confirmation = 'install-stocks' | 'uninstall-stocks' | 'uninstall-rnm-prices' | 'uninstall-planning' | 'uninstall-technical-sheets' | 'uninstall-production' | 'uninstall-menus' | null;
+type AppNotification = {
+  id: string;
+  type: 'success' | 'error';
+  message: string;
+  createdAt: Date;
+  read: boolean;
+};
+type StocksOnboardingStep = 'welcome' | 'foundation' | 'catalog' | 'reception' | 'review';
+type StocksReadiness = {
+  foundationReady: boolean;
+  catalogReady: boolean;
+  flowReady: boolean;
+  progress: number;
+  nextStep: StocksOnboardingStep;
+};
 
 interface DashboardProps {
   session: UserSession;
@@ -369,6 +391,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   // UI State
   const [error, setError] = useState<string>();
   const [success, setSuccess] = useState<string>();
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [isLoading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
   const [stocksMenuExpanded, setStocksMenuExpanded] = useState(() => {
@@ -414,12 +438,20 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [showOcrReviewModal, setShowOcrReviewModal] = useState(false);
   const [ocrStatuses, setOcrStatuses] = useState<StocksOcrStatus[]>([]);
   const [selectedOcrExtraction, setSelectedOcrExtraction] = useState<StocksOcrExtraction | null>(null);
+  const [myDocuments, setMyDocuments] = useState<MyDocumentsResponse | null>(null);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [documentsSearch, setDocumentsSearch] = useState('');
+  const [documentsSupplierFilter, setDocumentsSupplierFilter] = useState('');
+  const [documentsTypeFilter, setDocumentsTypeFilter] = useState('all');
+  const [documentsDateFrom, setDocumentsDateFrom] = useState('');
+  const [documentsDateTo, setDocumentsDateTo] = useState('');
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [ocrPollingActive, setOcrPollingActive] = useState(false);
   const [productPrefillName, setProductPrefillName] = useState('');
   const [supplierPrefillName, setSupplierPrefillName] = useState('');
   const [apiKeysPanelHint, setApiKeysPanelHint] = useState(false);
-  const [showPrefillWizard, setShowPrefillWizard] = useState(false);
+  const [showStocksOnboarding, setShowStocksOnboarding] = useState(false);
   const [confirmation, setConfirmation] = useState<Confirmation>(null);
   const [appActionLoading, setAppActionLoading] = useState(false);
   const [selectedStoreApp, setSelectedStoreApp] = useState<AppDefinition | null>(null);
@@ -459,6 +491,31 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [inventorySessionSearch, setInventorySessionSearch] = useState('');
   const [auditSearch, setAuditSearch] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+  const unreadNotifications = notifications.filter((notification) => !notification.read).length;
+
+  function addAppNotification(type: AppNotification['type'], message: string) {
+    setNotifications((current) => {
+      const newest = current[0];
+      const now = new Date();
+      if (newest?.type === type && newest.message === message && now.getTime() - newest.createdAt.getTime() < 3000) {
+        return current;
+      }
+      return [
+        {
+          id: `${now.getTime()}-${Math.random().toString(36).slice(2)}`,
+          type,
+          message,
+          createdAt: now,
+          read: false,
+        },
+        ...current,
+      ].slice(0, 50);
+    });
+  }
+
+  function formatNotificationTime(date: Date) {
+    return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  }
 
   async function refresh() {
     setLoading(true);
@@ -543,19 +600,67 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   }, []);
 
   useEffect(() => {
+    if (success) addAppNotification('success', success);
+  }, [success]);
+
+  useEffect(() => {
+    if (error) addAppNotification('error', error);
+  }, [error]);
+
+  useEffect(() => {
+    if (!notificationsOpen || unreadNotifications === 0) return;
+    setNotifications((current) => current.map((notification) => ({ ...notification, read: true })));
+  }, [notificationsOpen, unreadNotifications]);
+
+  async function refreshOcrStatusesFromServer() {
+    try {
+      const result = await api.stocksOcrStatuses(token);
+      setOcrStatuses(result.statuses ?? []);
+      setOcrPollingActive((result.statuses ?? []).some(isOcrStatusWorking));
+    } catch {
+      // OCR permissions/configuration can vary by role; the dashboard should remain usable.
+    }
+  }
+
+  async function refreshMyDocuments() {
+    setDocumentsLoading(true);
+    try {
+      const result = await api.documents(token, {
+        search: documentsSearch,
+        supplier: documentsSupplierFilter,
+        type: documentsTypeFilter,
+        dateFrom: documentsDateFrom,
+        dateTo: documentsDateTo,
+      });
+      setMyDocuments(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Chargement des documents impossible.');
+    } finally {
+      setDocumentsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!installedApps.includes('stocks')) {
+      setOcrStatuses([]);
+      setOcrPollingActive(false);
+      return;
+    }
+    void refreshOcrStatusesFromServer();
+  }, [token, installedApps.join('|')]);
+
+  useEffect(() => {
     if (!ocrPollingActive || !ocrStatuses.length) return undefined;
     const timer = window.setInterval(async () => {
-      const pending = ocrStatuses.filter((item) => !item.extraction && item.state !== 'erreur');
-      if (!pending.length) {
-        setOcrPollingActive(false);
-        return;
-      }
-      const refreshed = await Promise.all(ocrStatuses.map((item) => api.stocksOcrStatus(token, item.document.id).catch(() => item)));
-      setOcrStatuses(refreshed);
-      if (refreshed.every((item) => item.extraction || item.state === 'erreur')) setOcrPollingActive(false);
+      await refreshOcrStatusesFromServer();
     }, 2500);
     return () => window.clearInterval(timer);
   }, [ocrPollingActive, ocrStatuses, token]);
+
+  useEffect(() => {
+    if (activeTab !== 'organization-documents') return;
+    void refreshMyDocuments();
+  }, [activeTab, token, documentsSearch, documentsSupplierFilter, documentsTypeFilter, documentsDateFrom, documentsDateTo]);
 
 
   const stocksInstalled = installedApps.includes('stocks');
@@ -637,6 +742,18 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     document.addEventListener('click', handleDocumentClick);
     return () => document.removeEventListener('click', handleDocumentClick);
   }, [profileMenuOpen]);
+
+  useEffect(() => {
+    if (!notificationsOpen) return;
+    const handleDocumentClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.sidebar-notifications-container')) {
+        setNotificationsOpen(false);
+      }
+    };
+    document.addEventListener('click', handleDocumentClick);
+    return () => document.removeEventListener('click', handleDocumentClick);
+  }, [notificationsOpen]);
 
   const togglePinApp = (appId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -944,6 +1061,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       setInstalledApps(summary.installedApplications ?? ['stocks']);
       setSuccess('L’application Stocks a été installée. Les menus métier sont maintenant visibles pour toute l’organisation.');
       await refresh();
+      setShowStocksOnboarding(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Installation de Stocks impossible.');
     } finally {
@@ -1096,7 +1214,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         setDashboardSummary((prev) => ({ ...prev, ...summary } as DashboardSummary));
         setInstalledApps(summary.installedApplications ?? Array.from(new Set([...installedApps, appId])));
         setSuccess(appId === 'rnm-prices' ? 'L’application Cours des Produits a été installée. La navigation RNM est maintenant visible.' : appId === 'hr' ? 'L’application RH a été installée. Services et postes de départ sont disponibles.' : appId === 'planning' ? 'L’application Planning a été installée. Les vues opérationnelles consomment désormais le référentiel RH.' : appId === 'technical-sheets' ? 'L’application Fiches Techniques a été installée. Catégories recettes et allergènes standards sont disponibles.' : appId === 'production' ? 'L’application Production a été installée. Les ordres peuvent être créés depuis les fiches techniques sans dupliquer les référentiels.' : appId === 'menus' ? 'L’application Menus a été installée. Planification, cycles, convives et génération Production sont disponibles.' : 'L’application Stocks a été installée avec succès. Lancez l’assistant de préremplissage pour ajouter catégories, unités et emplacements métier.');
-        if (appId === 'stocks') setShowPrefillWizard(true);
+        if (appId === 'stocks') setShowStocksOnboarding(true);
         if (appId === 'rnm-prices') setActiveTab('rnm-dashboard');
         if (appId === 'hr') setActiveTab('hr-dashboard');
         if (appId === 'planning') setActiveTab('planning-dashboard');
@@ -1316,10 +1434,22 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     await submit(() => api.updateProduct(token, productId, payload), 'Fiche produit mise à jour.');
   }
 
+  async function handleDeleteProduct(productId: string) {
+    await submit(() => api.archiveProduct(token, productId), 'Produit supprimé avec succès.');
+  }
+
   async function handleCreateSupplier(payload: { name: string; contactName?: string; email?: string; phone?: string }) {
     await submit(() => api.createSupplier(token, payload), 'Fournisseur créé avec succès.');
     setSupplierPrefillName('');
     setShowSupplierModal(false);
+  }
+
+  async function handleUpdateSupplier(supplierId: string, payload: { name?: string; contactName?: string; email?: string; phone?: string; address?: string; notes?: string }) {
+    await submit(() => api.updateSupplier(token, supplierId, payload), 'Fournisseur modifié avec succès.');
+  }
+
+  async function handleDeleteSupplier(supplierId: string) {
+    await submit(() => api.archiveSupplier(token, supplierId), 'Fournisseur supprimé avec succès.');
   }
 
   async function handleCreateMovement(payload: { productId: string; supplierId?: string; type: StockMovementType; quantity: number; reason?: string; unitId?: string; lotId?: string; sourceSiteId?: string; sourceLocationId?: string; destinationSiteId?: string; destinationLocationId?: string; date?: string }) {
@@ -1345,6 +1475,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     const refreshed = await Promise.all(uploaded.documents.map((document) => api.stocksOcrStatus(token, document.id).catch(() => ({ document, ocr: null, extraction: null, state: 'en attente' }))));
     setOcrStatuses(refreshed);
     setOcrPollingActive(true);
+    void refreshOcrStatusesFromServer();
+    void refreshMyDocuments();
     setSuccess(`${uploaded.documents.length} document${uploaded.documents.length > 1 ? 's' : ''} envoyé${uploaded.documents.length > 1 ? 's' : ''} en analyse.`);
   }
 
@@ -1352,6 +1484,11 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     const extraction = await api.stocksOcrExtraction(token, extractionId);
     setSelectedOcrExtraction(extraction);
     setShowOcrReviewModal(true);
+  }
+
+  async function handleRenameDocument(document: MyDocument, newName: string) {
+    await submit(() => api.renameDocument(token, document.id, newName), 'Document renommé avec succès.');
+    void refreshMyDocuments();
   }
 
   async function handleSaveOcrDraft(payload: StocksOcrExtraction['data']) {
@@ -1438,7 +1575,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
   async function handlePrefillStocks(payload: { categories?: boolean; units?: boolean; sites?: boolean; locations?: boolean; examples?: boolean }) {
     await submit(() => api.prefillStocks(token, payload), 'Référentiel Stocks prérempli.');
-    setShowPrefillWizard(false);
   }
 
   const activeProducts = useMemo(() => products.filter(p => showArchived || !isArchived(p)), [products, showArchived]);
@@ -1447,6 +1583,11 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const activeSuppliers = useMemo(() => suppliers.filter(s => showArchived || !isArchived(s)), [suppliers, showArchived]);
   const activeSites = useMemo(() => sites.filter(s => showArchived || !isArchived(s)), [sites, showArchived]);
   const activeLocations = useMemo(() => locations.filter(l => showArchived || !isArchived(l)), [locations, showArchived]);
+  const stocksReadiness = useMemo(
+    () => computeStocksReadiness(categories, units, products, suppliers, sites, locations, movements, ocrStatuses),
+    [categories, units, products, suppliers, sites, locations, movements, ocrStatuses],
+  );
+  const ocrConfigured = Boolean(dashboardSummary?.organization?.apiKeys?.mistral.configured ?? session.user.apiKeys?.mistral.configured);
 
   // Local filtered queries
   const filteredStocks = useMemo(() => {
@@ -1508,6 +1649,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     applications: 'Toque Store',
     settings: 'Paramètres',
     'organization-general': 'Organisation',
+    'organization-documents': 'Mes Documents',
     users: 'Utilisateurs',
     architecture: 'Architecture',
     'stocks-dashboard': 'Stocks',
@@ -1586,6 +1728,62 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             <ChefHat />
           </div>
           <span className="sidebar-title">TOQUE<span>HUB</span></span>
+          <div className="sidebar-notifications-container">
+            <button
+              type="button"
+              className={`sidebar-notifications-btn ${notificationsOpen ? 'active' : ''}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                setNotificationsOpen((open) => !open);
+              }}
+              aria-label="Afficher les notifications"
+              title="Notifications"
+            >
+              <Bell size={17} />
+              {unreadNotifications > 0 ? <span className="sidebar-notifications-count">{unreadNotifications > 9 ? '9+' : unreadNotifications}</span> : null}
+            </button>
+            <AnimatePresence>
+              {notificationsOpen && (
+                <motion.div
+                  className="sidebar-notifications-panel"
+                  initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                  transition={{ duration: 0.15 }}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="sidebar-notifications-header">
+                    <div>
+                      <strong>Notifications</strong>
+                      <span>{notifications.length ? `${notifications.length} message${notifications.length > 1 ? 's' : ''}` : 'Aucun message'}</span>
+                    </div>
+                    {notifications.length > 0 ? (
+                      <button type="button" onClick={() => setNotifications([])}>
+                        Effacer
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="sidebar-notifications-list">
+                    {notifications.length === 0 ? (
+                      <div className="sidebar-notifications-empty">Les messages de l'application apparaîtront ici.</div>
+                    ) : (
+                      notifications.map((notification) => (
+                        <div key={notification.id} className={`sidebar-notification-item ${notification.type}`}>
+                          <div className="sidebar-notification-icon">
+                            {notification.type === 'success' ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
+                          </div>
+                          <div className="sidebar-notification-copy">
+                            <span>{notification.message}</span>
+                            <time>{formatNotificationTime(notification.createdAt)}</time>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
           <button
             type="button"
             className="sidebar-collapse-btn"
@@ -1613,6 +1811,13 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           >
             <Settings />
             Général
+          </div>
+          <div
+            className={`sidebar-item ${activeTab === 'organization-documents' ? 'active' : ''}`}
+            onClick={() => goToTab('organization-documents')}
+          >
+            <FileText />
+            Mes Documents
           </div>
           <div
             className={`sidebar-item ${activeTab === 'applications' ? 'active' : ''}`}
@@ -1875,31 +2080,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         )}
 
         <div className="workspace-modern">
-          {error && (
-            <div className="alert-modern error">
-              <AlertCircle />
-              <div>
-                <strong>Erreur : </strong> {error}
-              </div>
-            </div>
-          )}
-          {success && (
-            <div className="alert-modern success dismissible">
-              <CheckCircle2 />
-              <div>
-                <strong>Succès : </strong> {success}
-              </div>
-              <button
-                type="button"
-                className="alert-dismiss"
-                onClick={() => setSuccess(undefined)}
-                aria-label="Fermer la notification de succès"
-              >
-                <X size={16} />
-              </button>
-            </div>
-          )}
-
           {/* ACTIVE TAB RENDERER */}
           <AnimatePresence mode="wait">
             <motion.div
@@ -2206,6 +2386,29 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               {activeTab === 'organization-general' && (
                 <SettingsPage session={session} token={token} dashboardSummary={dashboardSummary} focusApiKeys={apiKeysPanelHint} onApiKeysSaved={() => { setApiKeysPanelHint(false); void refresh(); }} onOpenUsers={() => goToTab('users')} onRestoreComplete={onLogout} isAdmin={isAdmin} />
               )}
+              {activeTab === 'organization-documents' && (
+                <MyDocumentsPage
+                  data={myDocuments}
+                  loading={documentsLoading}
+                  search={documentsSearch}
+                  supplierFilter={documentsSupplierFilter}
+                  typeFilter={documentsTypeFilter}
+                  dateFrom={documentsDateFrom}
+                  dateTo={documentsDateTo}
+                  onSearch={setDocumentsSearch}
+                  onSupplierFilter={setDocumentsSupplierFilter}
+                  onTypeFilter={setDocumentsTypeFilter}
+                  onDateFrom={setDocumentsDateFrom}
+                  onDateTo={setDocumentsDateTo}
+                  onRefresh={() => void refreshMyDocuments()}
+                  onView={async (document) => {
+                    const url = await api.viewDocument(token, document.id);
+                    window.open(url, '_blank', 'noopener,noreferrer');
+                  }}
+                  onDownload={(document) => api.downloadDocument(token, document.id, document.originalName)}
+                  onRename={handleRenameDocument}
+                />
+              )}
               {activeTab === 'users' && isAdmin && (
                 <UsersPage
                   users={users}
@@ -2229,16 +2432,22 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                 <ArchitectureCenter session={session} />
               )}
 
-              {/* TAB STOCKS DASHBOARD */}
               {activeTab === 'stocks-dashboard' && (
                 <StocksDashboardPage
                   products={products}
                   suppliers={suppliers}
+                  sites={sites}
+                  locations={locations}
                   stocks={stocks}
                   movements={movements}
+                  ocrStatuses={ocrStatuses}
+                  readiness={stocksReadiness}
                   onCreateMovement={() => setShowMovementModal(true)}
                   onImportOcr={() => setShowOcrImportModal(true)}
+                  onOpenExtraction={handleOpenOcrExtraction}
                   onOpenStocks={() => setActiveTab('inventory')}
+                  onStartOnboarding={() => setShowStocksOnboarding(true)}
+                  onCreateProduct={() => setShowProductModal(true)}
                 />
               )}
 
@@ -2576,7 +2785,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                                   )}
                                 </td>
                                 <td style={{ textAlign: 'right', fontWeight: 700 }}>{numeric(p.averagePrice ?? p.averagePurchasePrice ?? p.weightedAveragePrice).toFixed(2)} €</td>
-                                <td style={{ textAlign: 'right' }}>{numeric(p.minimumStock ?? p.minStock) || '—'}</td>
+                                <td style={{ textAlign: 'right' }}>{numeric(p.minimumStock ?? p.minStock) ? parseFloat(numeric(p.minimumStock ?? p.minStock).toFixed(2)).toString() : '—'}</td>
                               </tr>
                             ))
                           )}
@@ -2736,11 +2945,22 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                           </tr>
                         ) : (
                           filteredSuppliers.map((s) => (
-                            <tr key={s.id}>
+                            <tr
+                              key={s.id}
+                              onClick={() => setSelectedSupplier(s)}
+                              style={{ cursor: 'pointer' }}
+                              className="clickable-row"
+                            >
                               <td style={{ fontWeight: 600 }}>{s.name}</td>
                               <td>
                                 {s.email ? (
-                                  <a href={`mailto:${s.email}`} style={{ textDecoration: 'underline' }}>{s.email}</a>
+                                  <a
+                                    href={`mailto:${s.email}`}
+                                    style={{ textDecoration: 'underline' }}
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    {s.email}
+                                  </a>
                                 ) : (
                                   <span style={{ color: 'var(--text-muted)' }}>—</span>
                                 )}
@@ -2789,12 +3009,20 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         suppliers={suppliers}
         onClose={() => setSelectedProductId(null)}
         onUpdate={handleUpdateProduct}
+        onDelete={handleDeleteProduct}
       />
 
       {/* Supplier Modal */}
       <Modal isOpen={showSupplierModal} onClose={() => { setSupplierPrefillName(''); setShowSupplierModal(false); }} title="Créer un fournisseur">
         <SupplierForm initialName={supplierPrefillName} onSubmit={handleCreateSupplier} onClose={() => { setSupplierPrefillName(''); setShowSupplierModal(false); }} />
       </Modal>
+
+      <SupplierDetailModal
+        supplier={selectedSupplier}
+        onClose={() => setSelectedSupplier(null)}
+        onUpdate={handleUpdateSupplier}
+        onDelete={handleDeleteSupplier}
+      />
 
       {/* Movement Modal */}
       <Modal isOpen={showMovementModal} onClose={() => setShowMovementModal(false)} title="Enregistrer un mouvement de stock">
@@ -2818,7 +3046,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         />
       </Modal>
 
-      <Modal isOpen={showOcrReviewModal} onClose={() => setShowOcrReviewModal(false)} title="Valider la réception OCR" size="xl">
+      <Modal isOpen={showOcrReviewModal} onClose={() => setShowOcrReviewModal(false)} title="Valider la réception OCR" size="full">
         {selectedOcrExtraction && (
           <StocksOcrReviewPanel
             extraction={selectedOcrExtraction}
@@ -2851,9 +3079,49 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         <InventoryForm sites={sites} locations={locations} onSubmit={handleCreateInventory} onClose={() => setShowInventoryModal(false)} />
       </Modal>
 
-      <Modal isOpen={showPrefillWizard} onClose={() => setShowPrefillWizard(false)} title="Assistant de préremplissage Stocks">
-        <PrefillWizard onSubmit={handlePrefillStocks} onClose={() => setShowPrefillWizard(false)} />
-      </Modal>
+      {showStocksOnboarding ? (
+        <StocksOnboardingWizard
+          readiness={stocksReadiness}
+          categories={categories}
+          units={units}
+          products={products}
+          suppliers={suppliers}
+          sites={sites}
+          locations={locations}
+          movements={movements}
+          ocrStatuses={ocrStatuses}
+          ocrConfigured={ocrConfigured}
+          onPrefill={handlePrefillStocks}
+          onCreateSupplier={(payload) => submit(() => api.createSupplier(token, payload), 'Fournisseur créé.')}
+          onCreateProduct={(payload) => submit(() => api.createProduct(token, payload), 'Produit créé.')}
+          onImportOcr={() => {
+            setShowStocksOnboarding(false);
+            setShowOcrImportModal(true);
+          }}
+          onCreateMovement={() => {
+            setShowStocksOnboarding(false);
+            setShowMovementModal(true);
+          }}
+          onOpenApiKeys={() => {
+            setShowStocksOnboarding(false);
+            setApiKeysPanelHint(true);
+            setActiveTab('organization-general');
+          }}
+          onOpenProducts={() => {
+            setShowStocksOnboarding(false);
+            setActiveTab('products');
+          }}
+          onOpenStocks={() => {
+            setShowStocksOnboarding(false);
+            setActiveTab('inventory');
+          }}
+          onOpenOcr={() => {
+            setShowStocksOnboarding(false);
+            setShowOcrImportModal(true);
+          }}
+          onClose={() => setShowStocksOnboarding(false)}
+        />
+      ) : null}
 
       <Modal isOpen={showUserModal} onClose={() => setShowUserModal(false)} title="Créer un utilisateur">
         <UserForm roles={roles} onSubmitCreate={handleCreateUser} onClose={() => setShowUserModal(false)} />
@@ -3490,7 +3758,1339 @@ function moduleTargetTab(module?: string): ActiveTab | undefined {
   return undefined;
 }
 
-function StocksDashboardPage({ products, suppliers, stocks, movements, onCreateMovement, onImportOcr, onOpenStocks }: { products: Product[]; suppliers: Supplier[]; stocks: Stock[]; movements: StockMovement[]; onCreateMovement: () => void; onImportOcr: () => void; onOpenStocks: () => void }) {
+function MyDocumentsPage({ data, loading, search, supplierFilter, typeFilter, dateFrom, dateTo, onSearch, onSupplierFilter, onTypeFilter, onDateFrom, onDateTo, onRefresh, onView, onDownload, onRename }: { data: MyDocumentsResponse | null; loading: boolean; search: string; supplierFilter: string; typeFilter: string; dateFrom: string; dateTo: string; onSearch: (value: string) => void; onSupplierFilter: (value: string) => void; onTypeFilter: (value: string) => void; onDateFrom: (value: string) => void; onDateTo: (value: string) => void; onRefresh: () => void; onView: (document: MyDocument) => Promise<void>; onDownload: (document: MyDocument) => Promise<void>; onRename: (document: MyDocument, newName: string) => Promise<void> }) {
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const items = data?.items ?? [];
+  const summary = data?.summary;
+
+  const handleRename = (document: MyDocument) => {
+    const cleanName = document.originalName.includes('.')
+      ? document.originalName.substring(0, document.originalName.lastIndexOf('.'))
+      : document.originalName;
+    const newName = window.prompt('Renommer le document :', cleanName);
+    if (newName && newName.trim() && newName.trim() !== cleanName) {
+      void onRename(document, newName.trim());
+    }
+  };
+
+  return (
+    <div className="my-documents-page">
+      <motion.section 
+        className="welcome-hero documents-hero" 
+        initial={{ opacity: 0, y: 15 }} 
+        animate={{ opacity: 1, y: 0 }} 
+        transition={{ duration: 0.35 }}
+      >
+        <div className="welcome-hero-content">
+          <span className="welcome-tag"><FileText size={14} /> Organisation</span>
+          <h1 className="welcome-title">Mes Documents</h1>
+          <p className="welcome-desc">Bibliothèque des factures et bons de livraison importés dans ToqueHub, classés par fournisseur et par date.</p>
+        </div>
+        <div className="welcome-hero-backdrop" />
+      </motion.section>
+
+      <div className="metrics-grid">
+        <Metric icon={<FileText size={20} />} value={summary?.total ?? 0} label="Documents" tone="blue" />
+        <Metric icon={<UsersRound size={20} />} value={summary?.suppliers.length ?? 0} label="Fournisseurs" tone="emerald" delay={1} />
+        <Metric icon={<CheckCircle2 size={20} />} value={summary?.ready ?? 0} label="Prêts" tone="emerald" delay={2} />
+        <Metric icon={<Clock size={20} />} value={summary?.processing ?? 0} label="En analyse" tone="purple" delay={3} />
+      </div>
+
+      <div className="documents-toolbar-modern card-modern">
+        <div className="search-input-wrapper-modern">
+          <Search size={16} className="search-icon" />
+          <input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Rechercher fournisseur, numéro, fichier..." />
+        </div>
+        
+        <div className="filters-group-modern">
+          <div className="select-wrapper-modern">
+            <Building2 size={14} className="select-icon" />
+            <select value={supplierFilter} onChange={(event) => onSupplierFilter(event.target.value)}>
+              <option value="">Tous les fournisseurs</option>
+              {(summary?.suppliers ?? []).map((supplier) => (
+                <option key={supplier.id ?? supplier.name} value={supplier.id ?? supplier.name}>{supplier.name} ({supplier.count})</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="select-wrapper-modern">
+            <Filter size={14} className="select-icon" />
+            <select value={typeFilter} onChange={(event) => onTypeFilter(event.target.value)}>
+              <option value="all">Tous les types</option>
+              <option value="invoice">Factures</option>
+              <option value="delivery_note">Bons de livraison</option>
+              <option value="unknown">Non classés</option>
+            </select>
+          </div>
+
+          <div className="date-inputs-modern">
+            <input type="date" value={dateFrom} onChange={(event) => onDateFrom(event.target.value)} title="Date de début" />
+            <span className="date-separator">→</span>
+            <input type="date" value={dateTo} onChange={(event) => onDateTo(event.target.value)} title="Date de fin" />
+          </div>
+        </div>
+
+        <div className="toolbar-actions-modern">
+          <div className="view-switcher-modern">
+            <button 
+              className={`switcher-btn ${viewMode === 'grid' ? 'active' : ''}`} 
+              onClick={() => setViewMode('grid')}
+              title="Vue Grille"
+            >
+              <LayoutGrid size={15} />
+            </button>
+            <button 
+              className={`switcher-btn ${viewMode === 'list' ? 'active' : ''}`} 
+              onClick={() => setViewMode('list')}
+              title="Vue Liste"
+            >
+              <List size={15} />
+            </button>
+          </div>
+
+          <button className="btn btn-secondary-modern btn-refresh-modern" onClick={onRefresh} disabled={loading}>
+            <RefreshCw size={14} className={loading ? 'spin' : ''} /> 
+            <span>{loading ? 'Chargement...' : 'Actualiser'}</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="documents-layout">
+        <div className="documents-main-content">
+          <AnimatePresence mode="wait">
+            {items.length ? (
+              viewMode === 'grid' ? (
+                <motion.div 
+                  key="grid"
+                  className="documents-grid-layout"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {items.map((document) => (
+                    <motion.div
+                      key={document.id}
+                      className="document-card-modern"
+                      whileHover={{ y: -6, transition: { duration: 0.2 } }}
+                    >
+                      <div className="doc-card-header">
+                        <div className={`doc-icon-badge type-${document.type || 'unknown'}`}>
+                          <FileText size={20} />
+                        </div>
+                        <span className={`badge-pill ${documentStateBadge(document.processingState)}`}>
+                          {documentStateLabel(document.processingState)}
+                        </span>
+                      </div>
+                      
+                      <div className="doc-card-body">
+                        <h3 className="doc-title" title={document.originalName}>
+                          {document.originalName}
+                        </h3>
+                        <div className="doc-meta-info">
+                          <span className="meta-tag">
+                            <Calendar size={11} />
+                            {formatDocumentDate(document.documentDate || document.createdAt)}
+                          </span>
+                          <span className="meta-tag">
+                            <Layers size={11} />
+                            {formatBytes(document.sizeBytes)}
+                          </span>
+                        </div>
+
+                        {document.invoiceNumber || document.deliveryNoteNumber ? (
+                          <div className="doc-number-box">
+                            <span className="number-label">Réf :</span>
+                            <span className="number-value">{document.invoiceNumber || document.deliveryNoteNumber}</span>
+                          </div>
+                        ) : (
+                          <div className="doc-number-box empty-ref">
+                            <span className="number-label">Sans référence</span>
+                          </div>
+                        )}
+                        
+                        <div className="doc-type-badge-row">
+                          <span className={`badge-pill ${documentTypeBadge(document.type)}`}>
+                            {documentTypeLabel(document.type)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="doc-card-footer">
+                        <div className="doc-supplier" title={document.supplierName || 'Fournisseur non identifié'}>
+                          <div className="supplier-avatar-modern">
+                            {(document.supplierName || 'N').charAt(0).toUpperCase()}
+                          </div>
+                          <span className="supplier-name-text">
+                            {document.supplierName || 'Non classé'}
+                          </span>
+                        </div>
+                        <div className="doc-actions">
+                          <button className="doc-action-btn rename" onClick={() => handleRename(document)} title="Renommer">
+                            <Edit3 size={14} />
+                          </button>
+                          <button className="doc-action-btn view" onClick={() => void onView(document)} title="Aperçu">
+                            <Eye size={14} />
+                          </button>
+                          <button className="doc-action-btn download" onClick={() => void onDownload(document)} title="Télécharger">
+                            <Download size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </motion.div>
+              ) : (
+                <motion.div 
+                  key="list"
+                  className="card-modern list-card-wrapper"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <div className="card-title-container">
+                    <span className="card-title"><FileText size={18} /> Documents importés</span>
+                    <span className="section-tagline">{items.length} fichier{items.length > 1 ? 's' : ''}</span>
+                  </div>
+                  <div className="table-wrapper documents-table-modern">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Document</th>
+                          <th>Fournisseur</th>
+                          <th>Date</th>
+                          <th>Type</th>
+                          <th>Statut</th>
+                          <th className="align-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map((document) => (
+                          <tr key={document.id} className="document-list-row-modern">
+                            <td>
+                              <div className="document-name-cell-modern">
+                                <div className="list-doc-icon-wrapper">
+                                  <FileText size={16} />
+                                </div>
+                                <div className="list-doc-text">
+                                  <strong>{document.originalName}</strong>
+                                  <small>{document.invoiceNumber || document.deliveryNoteNumber || formatBytes(document.sizeBytes)}</small>
+                                </div>
+                              </div>
+                            </td>
+                            <td>
+                              <span className="list-supplier-name">
+                                {document.supplierName || 'Non classé'}
+                              </span>
+                            </td>
+                            <td>
+                              <span className="list-date">
+                                {formatDocumentDate(document.documentDate || document.createdAt)}
+                              </span>
+                            </td>
+                            <td>
+                              <span className={`badge-pill ${documentTypeBadge(document.type)}`}>
+                                {documentTypeLabel(document.type)}
+                              </span>
+                            </td>
+                            <td>
+                              <span className={`badge-pill ${documentStateBadge(document.processingState)}`}>
+                                {documentStateLabel(document.processingState)}
+                              </span>
+                            </td>
+                            <td>
+                              <div className="row-actions-modern">
+                                <button className="doc-action-btn rename" onClick={() => handleRename(document)} title="Renommer">
+                                  <Edit3 size={13} />
+                                </button>
+                                <button className="doc-action-btn view" onClick={() => void onView(document)} title="Aperçu">
+                                  <Eye size={13} />
+                                </button>
+                                <button className="doc-action-btn download" onClick={() => void onDownload(document)} title="Télécharger">
+                                  <Download size={13} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </motion.div>
+              )
+            ) : (
+              <motion.div
+                key="empty"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
+                <EmptyMini title={loading ? 'Chargement...' : 'Aucun document'} text="Les factures et BL importés via l’OCR Stocks apparaîtront ici." icon="📄" />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        <aside className="documents-insights-modern">
+          <div className="card-modern insight-card-modern">
+            <span className="card-title"><UsersRound size={18} /> Par fournisseur</span>
+            <div className="documents-insight-list-modern">
+              {(summary?.suppliers ?? []).slice(0, 8).map((supplier) => (
+                <button 
+                  key={supplier.id ?? supplier.name} 
+                  className={`insight-row-btn-modern ${supplierFilter === (supplier.id ?? supplier.name) ? 'active' : ''}`} 
+                  onClick={() => onSupplierFilter(supplier.id ?? supplier.name)}
+                >
+                  <div className="insight-row-left">
+                    <Building2 size={13} className="insight-icon" />
+                    <span>{supplier.name}</span>
+                  </div>
+                  <span className="insight-count">{supplier.count}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="card-modern insight-card-modern">
+            <span className="card-title"><Calendar size={18} /> Par mois</span>
+            <div className="documents-insight-list-modern">
+              {(summary?.months ?? []).slice(0, 8).map((month) => (
+                <div key={month.key} className="insight-row-btn-modern static">
+                  <div className="insight-row-left">
+                    <Calendar size={13} className="insight-icon" />
+                    <span>{month.label}</span>
+                  </div>
+                  <span className="insight-count">{month.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function computeStocksReadiness(categories: Category[], units: Unit[], products: Product[], suppliers: Supplier[], sites: Site[], locations: Location[], movements: StockMovement[], ocrStatuses: StocksOcrStatus[]): StocksReadiness {
+  const activeCategories = categories.filter((item) => !isArchived(item));
+  const activeUnits = units.filter((item) => !isArchived(item));
+  const activeProducts = products.filter((item) => !isArchived(item));
+  const activeSuppliers = suppliers.filter((item) => !isArchived(item));
+  const activeSites = sites.filter((item) => !isArchived(item));
+  const activeLocations = locations.filter((item) => !isArchived(item));
+  const foundationReady = Boolean(activeCategories.length && activeUnits.length && activeSites.length && activeLocations.length);
+  const catalogReady = Boolean(activeProducts.length && activeSuppliers.length);
+  const hasValidatedOcr = ocrStatuses.some((status) => {
+    const document = status.document as unknown as { receptionId?: string | null; receptionStatus?: string | null } | undefined;
+    return Boolean(document?.receptionId || document?.receptionStatus === 'VALIDATED' || (status as any).reception?.status === 'VALIDATED');
+  });
+  const flowReady = Boolean(movements.length || hasValidatedOcr);
+  const completed = [foundationReady, catalogReady, flowReady].filter(Boolean).length;
+  const nextStep: StocksOnboardingStep = !foundationReady ? 'foundation' : !catalogReady ? 'catalog' : !flowReady ? 'reception' : 'review';
+  return { foundationReady, catalogReady, flowReady, progress: Math.round((completed / 3) * 100), nextStep };
+}
+
+function StocksSetupCard({ readiness, products, suppliers, sites, locations, onStart, onDismiss }: { readiness: StocksReadiness; products: Product[]; suppliers: Supplier[]; sites: Site[]; locations: Location[]; onStart: () => void; onDismiss?: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const activeProducts = products.filter((item) => !isArchived(item)).length;
+  const activeSuppliers = suppliers.filter((item) => !isArchived(item)).length;
+  const activeSites = sites.filter((item) => !isArchived(item)).length;
+  const activeLocations = locations.filter((item) => !isArchived(item)).length;
+  const label = readiness.flowReady ? 'Configuration terminée' : readiness.catalogReady ? 'Première réception à lancer' : readiness.foundationReady ? 'Premiers produits à ajouter' : 'Socle de stockage à préparer';
+  const steps = [
+    { title: 'Socle', text: `${activeSites} site(s), ${activeLocations} emplacement(s)`, done: readiness.foundationReady },
+    { title: 'Catalogue', text: `${activeProducts} produit(s), ${activeSuppliers} fournisseur(s)`, done: readiness.catalogReady },
+    { title: 'Flux', text: 'Réception OCR ou mouvement manuel', done: readiness.flowReady },
+  ];
+  return (
+    <motion.section className="card-modern stocks-setup-card" style={{ position: 'relative' }} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+      {onDismiss && (
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="stocks-widget-close-btn"
+          style={{
+            position: 'absolute',
+            top: '12px',
+            right: '12px',
+            background: 'transparent',
+            border: 'none',
+            color: 'var(--text-muted)',
+            cursor: 'pointer',
+            padding: '4px',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'all 0.2s',
+            zIndex: 5,
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.color = 'var(--text-main)';
+            e.currentTarget.style.background = 'rgba(0,0,0,0.05)';
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.color = 'var(--text-muted)';
+            e.currentTarget.style.background = 'transparent';
+          }}
+          title="Masquer"
+        >
+          <X size={14} />
+        </button>
+      )}
+      <div className="section-header-modern">
+        <div className="section-info">
+          <span className="card-title"><Sparkles size={18} /> Configuration initiale Stocks</span>
+          <span className="section-tagline">{label}</span>
+        </div>
+        <div className="stocks-setup-actions" style={onDismiss ? { marginRight: '1.25rem' } : undefined}>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setExpanded((value) => !value)}>{expanded ? 'Replier' : 'Détails'}</button>
+          <button type="button" className="btn btn-primary btn-sm" onClick={onStart}>{readiness.progress === 100 ? 'Revoir' : 'Continuer'}</button>
+        </div>
+      </div>
+      <div className="stocks-setup-progress">
+        <div className="progress-bar-bg"><div className="progress-bar-fill" style={{ width: `${readiness.progress}%` }} /></div>
+        <strong>{readiness.progress}%</strong>
+      </div>
+      {expanded ? (
+        <div className="stocks-setup-step-grid">
+          {steps.map((step) => (
+            <div key={step.title} className={`stocks-setup-step ${step.done ? 'done' : 'todo'}`}>
+              {step.done ? <CheckCircle2 size={16} /> : <Clock size={16} />}
+              <div><strong>{step.title}</strong><span>{step.text}</span></div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </motion.section>
+  );
+}
+
+function StocksIllustration() {
+  return (
+    <div style={{ position: 'relative', width: '100%', maxWidth: '340px' }}>
+      <div
+        className="card-modern"
+        style={{
+          background: '#0f172a',
+          color: 'white',
+          border: '1px solid rgba(255, 255, 255, 0.05)',
+          boxShadow: '0 30px 60px rgba(9, 13, 22, 0.25)',
+          padding: '1.5rem',
+          borderRadius: '20px',
+          textAlign: 'left',
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>Structure des Stocks</span>
+            <span className="badge badge-reception" style={{ fontSize: '0.72rem', textTransform: 'none', background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', borderColor: 'transparent' }}>Prêt</span>
+          </div>
+
+          {[
+            { label: 'Socle de stockage', val: 100, color: '#10b981' },
+            { label: 'Catalogue produits', val: 100, color: '#10b981' },
+            { label: 'Réception & Mouvements', val: 100, color: '#f59e0b' },
+          ].map((item, idx) => (
+            <div
+              key={idx}
+              style={{
+                padding: '0.85rem 1rem',
+                borderRadius: '12px',
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid rgba(255, 255, 255, 0.03)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <span style={{ fontWeight: 700, fontSize: '0.8rem' }}>{item.label}</span>
+                <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Actif</span>
+              </div>
+              <div className="progress-bar-bg" style={{ height: '5px', background: 'rgba(255, 255, 255, 0.1)' }}>
+                <div className="progress-bar-fill" style={{ width: `${item.val}%`, background: item.color }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StocksOnboardingAside({
+  step,
+  stepOrder,
+  readiness,
+  activeProducts,
+  activeSuppliers,
+  movements,
+}: {
+  step: StocksOnboardingStep;
+  stepOrder: StocksOnboardingStep[];
+  readiness: StocksReadiness;
+  activeProducts: any[];
+  activeSuppliers: any[];
+  movements: any[];
+}) {
+  const steps = [
+    { key: 'welcome', label: 'Bienvenue' },
+    { key: 'foundation', label: 'Socle de stockage' },
+    { key: 'catalog', label: 'Catalogue produits' },
+    { key: 'reception', label: 'Première réception' },
+    { key: 'review', label: 'Résumé & Validation' },
+  ] as Array<{ key: StocksOnboardingStep; label: string }>;
+  const currentIdx = steps.findIndex((s) => s.key === step);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', height: '100%', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+          <Package size={28} color="#10b981" />
+          <span style={{ fontWeight: 850, fontSize: '1.2rem', color: 'white', letterSpacing: '-0.03em' }}>
+            TOQUE<span style={{ color: '#10b981' }}>HUB</span> STOCKS
+          </span>
+        </div>
+
+        <div>
+          <span style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', color: '#10b981', letterSpacing: '0.15em' }}>
+            Installation guidée
+          </span>
+          <h3 style={{ color: 'white', fontSize: '1.35rem', marginTop: '0.3rem', fontWeight: 800, lineHeight: 1.25 }}>
+            Assistant Stocks
+          </h3>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {steps.map((item, idx) => {
+            const isPast = idx < currentIdx;
+            const isCurrent = idx === currentIdx;
+            return (
+              <div
+                key={item.key}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.85rem',
+                  color: isPast || isCurrent ? 'white' : 'rgba(255, 255, 255, 0.35)',
+                  fontWeight: isCurrent ? 700 : 500,
+                  fontSize: '0.9rem',
+                }}
+              >
+                <div
+                  style={{
+                    width: '26px',
+                    height: '26px',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: isPast ? '#10b981' : isCurrent ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+                    border: isCurrent ? '1.5px solid #10b981' : '1px solid transparent',
+                    color: isPast ? 'white' : isCurrent ? '#10b981' : 'inherit',
+                    fontWeight: 800,
+                    fontSize: '0.78rem',
+                  }}
+                >
+                  {isPast ? '✓' : idx + 1}
+                </div>
+                <span>{item.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div style={{ padding: '1rem', borderRadius: '16px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <span style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.05em' }}>Statut initial</span>
+          <div style={{ color: 'white', fontSize: '1rem', fontWeight: 800, marginTop: '0.2rem' }}>{readiness.progress}% Métier Prêt</div>
+          <p style={{ color: '#94a3b8', fontSize: '0.75rem', marginTop: '0.25rem', lineHeight: 1.4 }}>
+            {activeProducts.length} produit(s), {activeSuppliers.length} fournisseur(s), {movements.length} mouvement(s)
+          </p>
+        </div>
+
+        <div style={{ padding: '1.25rem', borderRadius: '16px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <ShieldCheck size={20} color="#10b981" style={{ marginBottom: '0.4rem' }} />
+          <h4 style={{ color: 'white', fontSize: '0.85rem', fontWeight: 700 }}>Données sécurisées</h4>
+          <p style={{ color: '#94a3b8', fontSize: '0.75rem', marginTop: '0.25rem', lineHeight: 1.45 }}>
+            Les catégories, unités et produits créés restent éditables à tout moment.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StocksOnboardingWizard({
+  readiness,
+  categories,
+  units,
+  products,
+  suppliers,
+  sites,
+  locations,
+  movements,
+  ocrStatuses,
+  ocrConfigured,
+  onPrefill,
+  onCreateSupplier,
+  onCreateProduct,
+  onImportOcr,
+  onCreateMovement,
+  onOpenApiKeys,
+  onOpenProducts,
+  onOpenStocks,
+  onOpenOcr,
+  onClose,
+}: {
+  readiness: StocksReadiness;
+  categories: Category[];
+  units: Unit[];
+  products: Product[];
+  suppliers: Supplier[];
+  sites: Site[];
+  locations: Location[];
+  movements: StockMovement[];
+  ocrStatuses: StocksOcrStatus[];
+  ocrConfigured: boolean;
+  onPrefill: (payload: { categories?: boolean; units?: boolean; sites?: boolean; locations?: boolean; examples?: boolean }) => Promise<void>;
+  onCreateSupplier: (payload: { name: string }) => Promise<unknown>;
+  onCreateProduct: (payload: ProductFormPayload) => Promise<unknown>;
+  onImportOcr: () => void;
+  onCreateMovement: () => void;
+  onOpenApiKeys: () => void;
+  onOpenProducts: () => void;
+  onOpenStocks: () => void;
+  onOpenOcr: () => void;
+  onClose: () => void;
+}) {
+  const [step, setStep] = useState<StocksOnboardingStep>(() => readiness.progress ? readiness.nextStep : 'welcome');
+  const stepOrder: StocksOnboardingStep[] = ['welcome', 'foundation', 'catalog', 'reception', 'review'];
+  const stepIndex = stepOrder.indexOf(step) + 1;
+  const progress = Math.round((stepIndex / stepOrder.length) * 100);
+  const activeCategories = categories.filter((item) => !isArchived(item));
+  const activeUnits = units.filter((item) => !isArchived(item));
+  const activeProducts = products.filter((item) => !isArchived(item));
+  const activeSuppliers = suppliers.filter((item) => !isArchived(item));
+  const activeSites = sites.filter((item) => !isArchived(item));
+  const activeLocations = locations.filter((item) => !isArchived(item));
+  const goNext = () => setStep(stepOrder[Math.min(stepIndex, stepOrder.length - 1)]);
+  const goBack = () => setStep(stepOrder[Math.max(0, stepIndex - 2)]);
+
+  return (
+    <div
+      className="modal-overlay stocks-wizard-overlay"
+      style={{
+        background: 'radial-gradient(circle at 10% 20%, rgba(16, 185, 129, 0.15) 0%, transparent 55%), radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.1) 0%, transparent 50%), rgba(15, 23, 42, 0.55)',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 9999,
+        padding: '2rem 1.5rem',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+      }}
+    >
+      {/* Decorative Blur Spheres */}
+      <div style={{ position: 'absolute', width: '560px', height: '560px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.05)', filter: 'blur(100px)', right: '-180px', top: '-180px', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', width: '420px', height: '420px', borderRadius: '50%', background: 'rgba(59, 130, 246, 0.05)', filter: 'blur(80px)', left: '-160px', bottom: '20px', pointerEvents: 'none' }} />
+
+      <motion.div
+        className="modal-card stocks-wizard-modal"
+        initial={{ opacity: 0, y: 18, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ type: 'spring', damping: 24, stiffness: 220 }}
+        style={{
+          width: '100%',
+          maxWidth: step === 'welcome' ? '920px' : '1080px',
+          height: 'min(720px, calc(100vh - 4rem))',
+          padding: 0,
+          borderRadius: '24px',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          background: 'white',
+          boxShadow: '0 30px 80px rgba(9, 13, 22, 0.08)',
+          border: 'none',
+          zIndex: 10,
+        }}
+      >
+        {step === 'welcome' ? (
+          <StocksOnboardingWelcome onNext={() => setStep('foundation')} onClose={onClose} />
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 2fr', height: '100%', width: '100%', minHeight: 0, flexGrow: 1 }}>
+            {/* Sidebar */}
+            <div style={{ background: '#0f172a', color: 'white', padding: '2.5rem 2rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%', minHeight: 0 }}>
+              <StocksOnboardingAside step={step} stepOrder={stepOrder} readiness={readiness} activeProducts={activeProducts} activeSuppliers={activeSuppliers} movements={movements} />
+            </div>
+
+            {/* Main Content Area */}
+            <div style={{ padding: '2.5rem', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto', minHeight: 0, justifyContent: 'space-between' }}>
+              {/* Stepper Progress bar */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexShrink: 0, position: 'relative' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', flexDirection: 'column', flexGrow: 1 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span className="badge badge-reception" style={{ background: 'rgba(16, 185, 129, 0.08)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.15)', textTransform: 'none', fontSize: '0.8rem' }}>
+                      Étape {stepIndex} / {stepOrder.length}
+                    </span>
+                    <span style={{ fontWeight: 800, fontSize: '0.85rem', color: 'var(--text-muted)', marginRight: '2.5rem' }}>{Math.round(progress)}%</span>
+                  </div>
+                  <div className="progress-bar-bg" style={{ height: '6px', background: '#f1f5f9', borderRadius: '3px', overflow: 'hidden', marginRight: '2.5rem' }}>
+                    <div className="progress-bar-fill" style={{ width: `${progress}%`, height: '100%', background: '#10b981', borderRadius: '3px' }}></div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={onClose}
+                  style={{
+                    position: 'absolute',
+                    right: 0,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'var(--text-muted)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0.5rem',
+                    borderRadius: '50%',
+                    transition: 'background 0.2s',
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.background = '#f1f5f9'}
+                  onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                  aria-label="Fermer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Step rendering with AnimatePresence */}
+              <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minHeight: 0, justifyContent: 'space-between' }}>
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={step}
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    transition={{ duration: 0.16 }}
+                    style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minHeight: 0, justifyContent: 'space-between' }}
+                  >
+                    {step === 'foundation' ? (
+                      <StocksFoundationStep
+                        categories={activeCategories}
+                        units={activeUnits}
+                        sites={activeSites}
+                        locations={activeLocations}
+                        ready={readiness.foundationReady}
+                        onBack={goBack}
+                        onPrefill={async () => {
+                          await onPrefill({ categories: true, units: true, sites: true, locations: true, examples: false });
+                          setStep('catalog');
+                        }}
+                        onNext={() => setStep('catalog')}
+                      />
+                    ) : null}
+                    {step === 'catalog' ? (
+                      <StocksCatalogStep
+                        categories={activeCategories}
+                        units={activeUnits}
+                        suppliers={activeSuppliers}
+                        products={activeProducts}
+                        onBack={goBack}
+                        onCreateSupplier={onCreateSupplier}
+                        onCreateProduct={onCreateProduct}
+                        onOpenProducts={onOpenProducts}
+                        onNext={() => setStep('reception')}
+                      />
+                    ) : null}
+                    {step === 'reception' ? (
+                      <StocksReceptionStep
+                        ocrConfigured={ocrConfigured}
+                        ocrStatuses={ocrStatuses}
+                        onBack={goBack}
+                        onImportOcr={onImportOcr}
+                        onCreateMovement={onCreateMovement}
+                        onOpenApiKeys={onOpenApiKeys}
+                        onNext={() => setStep('review')}
+                      />
+                    ) : null}
+                    {step === 'review' ? (
+                      <StocksReviewStep
+                        readiness={readiness}
+                        categories={activeCategories}
+                        units={activeUnits}
+                        products={activeProducts}
+                        suppliers={activeSuppliers}
+                        sites={activeSites}
+                        locations={activeLocations}
+                        movements={movements}
+                        onBack={goBack}
+                        onOpenStocks={onOpenStocks}
+                        onOpenProducts={onOpenProducts}
+                        onOpenOcr={onOpenOcr}
+                        onClose={onClose}
+                      />
+                    ) : null}
+                  </motion.div>
+                </AnimatePresence>
+              </div>
+            </div>
+          </div>
+        )}
+      </motion.div>
+    </div>
+  );
+}
+
+function StocksOnboardingWelcome({ onNext, onClose }: { onNext: () => void; onClose: () => void }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '3rem', alignItems: 'center', padding: '3.5rem 3rem', height: '100%', flexGrow: 1, position: 'relative' }}>
+      {onClose && (
+        <button
+          type="button"
+          onClick={onClose}
+          style={{
+            position: 'absolute',
+            top: '1.5rem',
+            right: '1.5rem',
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            color: 'var(--text-muted)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '0.5rem',
+            borderRadius: '50%',
+            transition: 'background 0.2s',
+            zIndex: 10,
+          }}
+          onMouseOver={(e) => e.currentTarget.style.background = '#f1f5f9'}
+          onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+          aria-label="Fermer"
+        >
+          <X size={20} />
+        </button>
+      )}
+      <div>
+        <span className="badge badge-reception" style={{ marginBottom: '1.25rem', display: 'inline-flex', fontSize: '0.8rem', gap: '0.35rem', border: '1px solid var(--light-border)', background: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>
+          <Sparkles size={14} color="#10b981" /> Configuration Guidée
+        </span>
+        <h1 style={{ fontSize: '2.5rem', fontWeight: 900, lineHeight: 1.1, letterSpacing: '-0.04em', marginBottom: '1.5rem', color: 'var(--text-main)' }}>
+          Bienvenue sur le module <span style={{ color: '#10b981' }}>Stocks & Réceptions</span>
+        </h1>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.98rem', lineHeight: 1.6, marginBottom: '2rem' }}>
+          On va préparer votre socle de stockage, créer vos premiers produits réels, puis lancer une première réception par facture ou bon de livraison.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '2rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', flexShrink: 0 }}><Warehouse size={16} /></div>
+            <span>Créer le socle (catégories, unités, emplacements)</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', flexShrink: 0 }}><Package size={16} /></div>
+            <span>Ajouter vos premiers produits et fournisseurs</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', flexShrink: 0 }}><FileText size={16} /></div>
+            <span>Lancer une première réception de stock</span>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" onClick={onNext} style={{ padding: '0.8rem 1.5rem', fontSize: '0.92rem' }}>
+            Démarrer la configuration <ArrowRight size={18} />
+          </button>
+          {onClose && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={onClose}
+              style={{ padding: '0.8rem 1.5rem', fontSize: '0.92rem' }}
+            >
+              Faire plus tard
+            </button>
+          )}
+        </div>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
+        <StocksIllustration />
+      </div>
+    </div>
+  );
+}
+
+function StocksFoundationStep({ categories, units, sites, locations, ready, onBack, onPrefill, onNext }: { categories: Category[]; units: Unit[]; sites: Site[]; locations: Location[]; ready: boolean; onBack: () => void; onPrefill: () => Promise<void>; onNext: () => void }) {
+  const [submitting, setSubmitting] = useState(false);
+  const items = [
+    { title: 'Catégories', value: categories.length, icon: Layers },
+    { title: 'Unités', value: units.length, icon: Scale },
+    { title: 'Sites', value: sites.length, icon: Warehouse },
+    { title: 'Emplacements', value: locations.length, icon: MapPin },
+  ];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', height: '100%', minHeight: 0, justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <div>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>Préparer le socle de stockage</h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginTop: '0.35rem', lineHeight: 1.5 }}>
+            Le socle ajoute les familles, unités, site principal et emplacements de base. Les données existantes sont conservées.
+          </p>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '0.5rem' }}>
+          {items.map(({ title, value, icon: Icon }) => {
+            const isReady = value > 0;
+            return (
+              <div
+                key={title}
+                style={{
+                  border: isReady ? '2px solid #10b981' : '1px solid #e2e8f0',
+                  borderRadius: '16px',
+                  padding: '1.25rem',
+                  background: isReady ? 'rgba(16, 185, 129, 0.04)' : 'white',
+                  boxShadow: isReady ? '0 10px 25px rgba(16,185,129,0.06)' : '0 2px 4px rgba(0,0,0,0.02)',
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem',
+                  alignItems: 'flex-start',
+                }}
+              >
+                <div
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: isReady ? 'rgba(16, 185, 129, 0.1)' : '#f1f5f9',
+                    color: isReady ? '#10b981' : '#64748b',
+                  }}
+                >
+                  <Icon size={20} />
+                </div>
+                <span style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-main)', marginTop: '0.25rem', lineHeight: 1 }}>{value}</span>
+                <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>{title}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="alert-modern" style={{ margin: 0 }}><Info size={16} /> Aucun produit de démonstration ne sera créé pendant ce parcours.</div>
+      </div>
+      <div className="hr-catalog-actions sticky" style={{ borderTop: '1px solid #eef2f7', background: 'rgba(255,255,255,0.9)', padding: '1rem 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+        <button type="button" className="btn btn-secondary" onClick={onBack} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Retour</button>
+        <div className="row-actions" style={{ display: 'flex', gap: '0.75rem' }}>
+          <button type="button" className="btn btn-secondary" disabled={submitting} onClick={async () => { setSubmitting(true); try { await onPrefill(); } finally { setSubmitting(false); } }} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>
+            {submitting ? 'Préremplissage…' : ready ? 'Relancer le socle' : 'Préremplir le socle'}
+          </button>
+          <button type="button" className="btn btn-primary" onClick={onNext} disabled={!ready && submitting} style={{ borderRadius: '10px', padding: '0.5rem 1.5rem' }}>Continuer</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type StocksCatalogDraftLine = { id: string; name: string; unitId: string; categoryId: string; supplierId: string; averagePrice: string; minimumStock: string };
+
+function StocksCatalogStep({ categories, units, suppliers, products, onBack, onCreateSupplier, onCreateProduct, onOpenProducts, onNext }: { categories: Category[]; units: Unit[]; suppliers: Supplier[]; products: Product[]; onBack: () => void; onCreateSupplier: (payload: { name: string }) => Promise<unknown>; onCreateProduct: (payload: ProductFormPayload) => Promise<unknown>; onOpenProducts: () => void; onNext: () => void }) {
+  const makeLine = (): StocksCatalogDraftLine => ({ id: randomLocalId(), name: '', unitId: units[0]?.id ?? '', categoryId: categories[0]?.id ?? '', supplierId: suppliers[0]?.id ?? '', averagePrice: '', minimumStock: '' });
+  const [lines, setLines] = useState<StocksCatalogDraftLine[]>([makeLine()]);
+  const [supplierName, setSupplierName] = useState('');
+  const [localSuppliers, setLocalSuppliers] = useState<Supplier[]>(suppliers);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string>();
+  useEffect(() => setLocalSuppliers(suppliers), [suppliers]);
+
+  function patchLine(id: string, patch: Partial<StocksCatalogDraftLine>) {
+    setLines((current) => current.map((line) => line.id === id ? { ...line, ...patch } : line));
+  }
+
+  async function createQuickSupplier() {
+    if (!supplierName.trim()) return;
+    setSubmitting(true);
+    setError(undefined);
+    try {
+      const created = await onCreateSupplier({ name: supplierName.trim() }) as Supplier;
+      if (created?.id) {
+        setLocalSuppliers((current) => current.some((item) => item.id === created.id) ? current : [...current, created]);
+        setLines((current) => current.map((line) => ({ ...line, supplierId: line.supplierId || created.id })));
+      }
+      setSupplierName('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Le fournisseur n’a pas pu être créé.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function createProducts() {
+    const valid = lines.filter((line) => line.name.trim() && line.unitId);
+    if (!valid.length) return;
+    setSubmitting(true);
+    setError(undefined);
+    try {
+      for (const line of valid) {
+        await onCreateProduct({
+          name: line.name.trim(),
+          unitId: line.unitId,
+          categoryId: line.categoryId || undefined,
+          primarySupplierId: line.supplierId || undefined,
+          averagePrice: line.averagePrice ? Number(line.averagePrice) : undefined,
+          minimumStock: line.minimumStock ? Number(line.minimumStock) : undefined,
+        });
+      }
+      onNext();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Les produits n’ont pas tous pu être créés.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', height: '100%', minHeight: 0, justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', minHeight: 0 }}>
+        <div>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>Ajouter les premiers produits</h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginTop: '0.35rem', lineHeight: 1.5 }}>
+            Créez quelques produits réellement utilisés. Vous pourrez compléter le catalogue plus tard ou créer des produits manquants depuis une facture OCR.
+          </p>
+        </div>
+        {error ? <div className="alert-modern error" style={{ margin: 0 }}><AlertCircle size={16} /> {error}</div> : null}
+        
+        <div style={{ display: 'flex', gap: '0.75rem', background: '#f8fafc', padding: '0.75rem', borderRadius: '12px', border: '1px solid #e2e8f0', alignItems: 'center' }}>
+          <input
+            value={supplierName}
+            onChange={(event) => setSupplierName(event.target.value)}
+            placeholder={localSuppliers.length ? 'Ajouter un fournisseur rapide (ex. Transgourmet)' : 'Créer le premier fournisseur'}
+            style={{ flex: 1, border: 'none', background: 'transparent', boxShadow: 'none', padding: '0 0.5rem', height: '36px', fontSize: '0.9rem' }}
+          />
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={!supplierName.trim() || submitting}
+            onClick={() => void createQuickSupplier()}
+            style={{ height: '36px', display: 'flex', alignItems: 'center', gap: '0.35rem', borderRadius: '8px' }}
+          >
+            <Plus size={14} /> Fournisseur
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', overflowY: 'auto', maxHeight: '280px', paddingRight: '0.25rem', minHeight: 0 }}>
+          {lines.map((line, index) => (
+            <div
+              key={line.id}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '32px minmax(180px, 2fr) minmax(100px, 1fr) minmax(120px, 1.2fr) minmax(120px, 1.2fr) minmax(90px, 0.9fr) minmax(90px, 0.9fr) 40px',
+                gap: '0.5rem',
+                alignItems: 'center',
+                background: '#f8fafc',
+                padding: '0.6rem 0.8rem',
+                borderRadius: '12px',
+                border: '1px solid #e2e8f0',
+              }}
+            >
+              <span
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: '50%',
+                  background: 'rgba(16, 185, 129, 0.1)',
+                  color: '#10b981',
+                  fontWeight: 800,
+                  fontSize: '0.75rem',
+                }}
+              >
+                {index + 1}
+              </span>
+              <input
+                value={line.name}
+                onChange={(event) => patchLine(line.id, { name: event.target.value })}
+                placeholder="Nom du produit"
+                style={{ borderRadius: '8px', border: '1px solid #cbd5e1', padding: '0.4rem 0.6rem', fontSize: '0.85rem', background: 'white' }}
+              />
+              <select
+                value={line.unitId}
+                onChange={(event) => patchLine(line.id, { unitId: event.target.value })}
+                style={{ borderRadius: '8px', border: '1px solid #cbd5e1', padding: '0.4rem 0.6rem', fontSize: '0.85rem', background: 'white' }}
+              >
+                <option value="">Unité</option>
+                {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.symbol}</option>)}
+              </select>
+              <select
+                value={line.categoryId}
+                onChange={(event) => patchLine(line.id, { categoryId: event.target.value })}
+                style={{ borderRadius: '8px', border: '1px solid #cbd5e1', padding: '0.4rem 0.6rem', fontSize: '0.85rem', background: 'white' }}
+              >
+                <option value="">Catégorie</option>
+                {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+              </select>
+              <select
+                value={line.supplierId}
+                onChange={(event) => patchLine(line.id, { supplierId: event.target.value })}
+                style={{ borderRadius: '8px', border: '1px solid #cbd5e1', padding: '0.4rem 0.6rem', fontSize: '0.85rem', background: 'white' }}
+              >
+                <option value="">Fournisseur</option>
+                {localSuppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+              </select>
+              <input
+                type="number"
+                min="0"
+                step="0.0001"
+                value={line.averagePrice}
+                onChange={(event) => patchLine(line.id, { averagePrice: event.target.value })}
+                placeholder="Prix (€)"
+                style={{ borderRadius: '8px', border: '1px solid #cbd5e1', padding: '0.4rem 0.6rem', fontSize: '0.85rem', background: 'white' }}
+              />
+              <input
+                type="number"
+                min="0"
+                step="0.001"
+                value={line.minimumStock}
+                onChange={(event) => patchLine(line.id, { minimumStock: event.target.value })}
+                placeholder="Stock min"
+                style={{ borderRadius: '8px', border: '1px solid #cbd5e1', padding: '0.4rem 0.6rem', fontSize: '0.85rem', background: 'white' }}
+              />
+              <button
+                type="button"
+                className="icon-btn danger"
+                disabled={lines.length === 1}
+                onClick={() => setLines((current) => current.filter((item) => item.id !== line.id))}
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: lines.length === 1 ? '#f1f5f9' : 'rgba(239, 68, 68, 0.1)',
+                  color: lines.length === 1 ? '#cbd5e1' : '#ef4444',
+                  cursor: lines.length === 1 ? 'not-allowed' : 'pointer',
+                }}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="hr-catalog-actions sticky" style={{ borderTop: '1px solid #eef2f7', background: 'rgba(255,255,255,0.9)', padding: '1rem 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+        <button type="button" className="btn btn-secondary" onClick={onBack} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Retour</button>
+        <div className="row-actions" style={{ display: 'flex', gap: '0.75rem' }}>
+          <button type="button" className="btn btn-secondary" disabled={lines.length >= 10} onClick={() => setLines((current) => [...current, makeLine()])} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}><Plus size={14} /> Ligne</button>
+          {products.length ? <button type="button" className="btn btn-secondary" onClick={onOpenProducts} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Voir produits</button> : null}
+          <button type="button" className="btn btn-primary" disabled={submitting || !lines.some((line) => line.name.trim() && line.unitId)} onClick={() => void createProducts()} style={{ borderRadius: '10px', padding: '0.5rem 1.5rem' }}>{submitting ? 'Création…' : 'Créer et continuer'}</button>
+          <button type="button" className="btn btn-secondary" onClick={onNext} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Passer</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StocksReceptionStep({ ocrConfigured, ocrStatuses, onBack, onImportOcr, onCreateMovement, onOpenApiKeys, onNext }: { ocrConfigured: boolean; ocrStatuses: StocksOcrStatus[]; onBack: () => void; onImportOcr: () => void; onCreateMovement: () => void; onOpenApiKeys: () => void; onNext: () => void }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', height: '100%', minHeight: 0, justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <div>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>Lancer la première réception</h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginTop: '0.35rem', lineHeight: 1.5 }}>
+            Le chemin recommandé est l’import facture ou BL : l’OCR prépare les lignes, puis la validation crée la réception et les mouvements de stock.
+          </p>
+        </div>
+        {!ocrConfigured ? (
+          <div className="alert-modern error" style={{ margin: 0, alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <span><AlertCircle size={16} /> Ajoutez une clé Mistral pour utiliser l’import OCR Stocks.</span>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={onOpenApiKeys}><KeyRound size={13} /> Configurer</button>
+          </div>
+        ) : null}
+        
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem', marginBottom: '0.5rem' }}>
+          <button
+            type="button"
+            onClick={onImportOcr}
+            style={{
+              border: '2px solid #10b981',
+              borderRadius: '20px',
+              padding: '2rem 1.5rem',
+              background: 'linear-gradient(135deg, rgba(16,185,129,0.06) 0%, rgba(255,255,255,1) 100%)',
+              boxShadow: '0 12px 30px rgba(16,185,129,0.08)',
+              transition: 'all 0.2s',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.75rem',
+              alignItems: 'center',
+              textAlign: 'center',
+              cursor: 'pointer',
+            }}
+            onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 16px 36px rgba(16,185,129,0.12)'; }}
+            onMouseOut={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 12px 30px rgba(16,185,129,0.08)'; }}
+          >
+            <div
+              style={{
+                width: '52px',
+                height: '52px',
+                borderRadius: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'rgba(16, 185, 129, 0.1)',
+                color: '#10b981',
+                marginBottom: '0.5rem',
+              }}
+            >
+              <FileText size={28} />
+            </div>
+            <strong style={{ fontSize: '1.1rem', color: 'var(--text-main)', fontWeight: 800 }}>Importer facture / BL (Recommandé)</strong>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>Analyse IA automatisée, détection et création des produits manquants, validation rapide.</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onCreateMovement}
+            style={{
+              border: '1px solid #e2e8f0',
+              borderRadius: '20px',
+              padding: '2rem 1.5rem',
+              background: 'white',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.01)',
+              transition: 'all 0.2s',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.75rem',
+              alignItems: 'center',
+              textAlign: 'center',
+              cursor: 'pointer',
+            }}
+            onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 10px 20px rgba(0,0,0,0.04)'; e.currentTarget.style.borderColor = '#cbd5e1'; }}
+            onMouseOut={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.01)'; e.currentTarget.style.borderColor = '#e2e8f0'; }}
+          >
+            <div
+              style={{
+                width: '52px',
+                height: '52px',
+                borderRadius: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: '#f1f5f9',
+                color: '#64748b',
+                marginBottom: '0.5rem',
+              }}
+            >
+              <Plus size={28} />
+            </div>
+            <strong style={{ fontSize: '1.1rem', color: 'var(--text-main)', fontWeight: 800 }}>Réception manuelle</strong>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>Saisir manuellement les articles reçus et les quantités pour créer un mouvement.</span>
+          </button>
+        </div>
+        {ocrStatuses.length ? <StocksOcrDashboardStatusBar statuses={ocrStatuses} onOpenExtraction={async () => undefined} onImportOcr={onImportOcr} /> : null}
+      </div>
+      <div className="hr-catalog-actions sticky" style={{ borderTop: '1px solid #eef2f7', background: 'rgba(255,255,255,0.9)', padding: '1rem 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+        <button type="button" className="btn btn-secondary" onClick={onBack} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Retour</button>
+        <button type="button" className="btn btn-primary" onClick={onNext} style={{ borderRadius: '10px', padding: '0.5rem 1.5rem' }}>Continuer</button>
+      </div>
+    </div>
+  );
+}
+
+function StocksReviewStep({ readiness, categories, units, products, suppliers, sites, locations, movements, onBack, onOpenStocks, onOpenProducts, onOpenOcr, onClose }: { readiness: StocksReadiness; categories: Category[]; units: Unit[]; products: Product[]; suppliers: Supplier[]; sites: Site[]; locations: Location[]; movements: StockMovement[]; onBack: () => void; onOpenStocks: () => void; onOpenProducts: () => void; onOpenOcr: () => void; onClose: () => void }) {
+  const cards = [
+    { label: 'Catégories', value: categories.length, done: categories.length > 0 },
+    { label: 'Unités', value: units.length, done: units.length > 0 },
+    { label: 'Sites', value: sites.length, done: sites.length > 0 },
+    { label: 'Emplacements', value: locations.length, done: locations.length > 0 },
+    { label: 'Fournisseurs', value: suppliers.length, done: suppliers.length > 0 },
+    { label: 'Produits', value: products.length, done: products.length > 0 },
+    { label: 'Mouvements', value: movements.length, done: readiness.flowReady },
+  ];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', height: '100%', minHeight: 0, justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <div>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>{readiness.progress === 100 ? 'Stocks est prêt à exploiter' : 'Résumé de configuration'}</h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginTop: '0.35rem', lineHeight: 1.5 }}>
+            Votre configuration reste modifiable depuis les onglets Stocks. Les prochains imports facture/BL enrichiront le catalogue et l’historique.
+          </p>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.85rem', marginBottom: '0.5rem' }}>
+          {cards.map((card) => {
+            return (
+              <div
+                key={card.label}
+                style={{
+                  border: card.done ? '1.5px solid #10b981' : '1px solid #e2e8f0',
+                  borderRadius: '14px',
+                  padding: '1rem',
+                  background: card.done ? 'rgba(16, 185, 129, 0.04)' : '#f8fafc',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.35rem',
+                  alignItems: 'flex-start',
+                  position: 'relative',
+                }}
+              >
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '0.75rem',
+                    right: '0.75rem',
+                    color: card.done ? '#10b981' : '#94a3b8',
+                  }}
+                >
+                  {card.done ? <CheckCircle2 size={16} /> : <Clock size={16} />}
+                </div>
+                <span style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--text-main)', lineHeight: 1.1 }}>{card.value}</span>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)' }}>{card.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="hr-catalog-actions sticky" style={{ borderTop: '1px solid #eef2f7', background: 'rgba(255,255,255,0.9)', padding: '1rem 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+        <button type="button" className="btn btn-secondary" onClick={onBack} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Retour</button>
+        <div className="row-actions" style={{ display: 'flex', gap: '0.75rem' }}>
+          <button type="button" className="btn btn-secondary" onClick={onOpenProducts} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Produits</button>
+          <button type="button" className="btn btn-secondary" onClick={onOpenOcr} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Suivi OCR</button>
+          <button type="button" className="btn btn-primary" onClick={readiness.flowReady ? onOpenStocks : onClose} style={{ borderRadius: '10px', padding: '0.5rem 1.5rem' }}>{readiness.flowReady ? 'Voir stocks' : 'Terminer'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function randomLocalId() {
+  return `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function StocksDashboardPage({ products, suppliers, sites, locations, stocks, movements, ocrStatuses, readiness, onCreateMovement, onImportOcr, onOpenExtraction, onOpenStocks, onStartOnboarding, onCreateProduct }: { products: Product[]; suppliers: Supplier[]; sites: Site[]; locations: Location[]; stocks: Stock[]; movements: StockMovement[]; ocrStatuses: StocksOcrStatus[]; readiness: StocksReadiness; onCreateMovement: () => void; onImportOcr: () => void; onOpenExtraction: (extractionId: string) => Promise<void>; onOpenStocks: () => void; onStartOnboarding: () => void; onCreateProduct: () => void }) {
+  const [hideSetupCard, setHideSetupCard] = useState(() => {
+    try {
+      return localStorage.getItem('toquehub_stocks_hide_setup_card') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const [hideOcrStatus, setHideOcrStatus] = useState(() => {
+    try {
+      return localStorage.getItem('toquehub_stocks_hide_ocr_status') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
   const stockValue = stocks.reduce((sum, stock) => sum + numeric(stock.stockValue ?? stock.value ?? numeric(stock.currentQuantity ?? stock.quantity) * numeric(stock.product.averagePrice ?? stock.product.averagePurchasePrice ?? stock.product.weightedAveragePrice)), 0);
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
   const recentMovements = sortMovementsByRecency(movements).slice(0, 6);
@@ -3518,12 +5118,50 @@ function StocksDashboardPage({ products, suppliers, stocks, movements, onCreateM
           <button className="btn btn-primary" onClick={onImportOcr}>
             <FileText size={16} /> Importer facture / BL
           </button>
-          <button className="btn btn-secondary" onClick={onCreateMovement}>
-            <Plus size={16} /> Réception manuelle
+          <button className="btn btn-secondary" onClick={onCreateProduct}>
+            <Plus size={16} /> Nouveau Produit
           </button>
         </div>
       </motion.section>
-      
+
+      {(!hideSetupCard || (!hideOcrStatus && ocrStatuses.length > 0)) && (
+        <div className="stocks-dashboard-setup-row">
+          {!hideSetupCard && (
+            <StocksSetupCard
+              readiness={readiness}
+              products={products}
+              suppliers={suppliers}
+              sites={sites}
+              locations={locations}
+              onStart={onStartOnboarding}
+              onDismiss={() => {
+                setHideSetupCard(true);
+                try {
+                  localStorage.setItem('toquehub_stocks_hide_setup_card', 'true');
+                } catch (e) {
+                  console.error(e);
+                }
+              }}
+            />
+          )}
+          {!hideOcrStatus && ocrStatuses.length > 0 && (
+            <StocksOcrDashboardStatusBar
+              statuses={ocrStatuses}
+              onOpenExtraction={onOpenExtraction}
+              onImportOcr={onImportOcr}
+              onDismiss={() => {
+                setHideOcrStatus(true);
+                try {
+                  localStorage.setItem('toquehub_stocks_hide_ocr_status', 'true');
+                } catch (e) {
+                  console.error(e);
+                }
+              }}
+            />
+          )}
+        </div>
+      )}
+
       <div className="metrics-grid">
         <Metric icon={<ChefHat size={20} />} value={products.filter(p => !isArchived(p)).length} label="Produits actifs" tone="orange" delay={1} />
         <Metric icon={<UsersRound size={20} />} value={suppliers.filter(s => !isArchived(s)).length} label="Fournisseurs actifs" tone="blue" delay={2} />
@@ -3567,6 +5205,89 @@ function StocksDashboardPage({ products, suppliers, stocks, movements, onCreateM
         </motion.div>
       </div>
     </div>
+  );
+}
+
+function StocksOcrDashboardStatusBar({ statuses, onOpenExtraction, onImportOcr, onDismiss }: { statuses: StocksOcrStatus[]; onOpenExtraction: (extractionId: string) => Promise<void>; onImportOcr: () => void; onDismiss?: () => void }) {
+  if (!statuses.length) return null;
+
+  const working = statuses.filter(isOcrStatusWorking).length;
+  const ready = statuses.filter(isOcrStatusReady).length;
+  const errors = statuses.filter(isOcrStatusError).length;
+  const featured = statuses.find(isOcrStatusReady) ?? statuses.find(isOcrStatusWorking) ?? statuses[0];
+  const progressClass = isOcrStatusError(featured) ? 'error' : isOcrStatusReady(featured) ? 'success' : isOcrStatusAnalyzing(featured) ? 'analyzing' : isOcrStatusPending(featured) ? 'pending' : 'uploading';
+  const stateLabel = ready
+    ? `${ready} document${ready > 1 ? 's' : ''} prêt${ready > 1 ? 's' : ''} à vérifier`
+    : errors
+      ? `${errors} document${errors > 1 ? 's' : ''} en erreur`
+      : `${working || statuses.length} document${(working || statuses.length) > 1 ? 's' : ''} en cours d’analyse`;
+  const filesLabel = `${statuses.length} fichier${statuses.length > 1 ? 's' : ''} OCR suivi${statuses.length > 1 ? 's' : ''}`;
+
+  return (
+    <motion.section
+      className={`stocks-ocr-dashboard-status ${ready ? 'ready' : errors ? 'error' : 'working'}`}
+      style={{ position: 'relative' }}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25 }}
+    >
+      {onDismiss && (
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="stocks-widget-close-btn"
+          style={{
+            position: 'absolute',
+            top: '12px',
+            right: '12px',
+            background: 'transparent',
+            border: 'none',
+            color: 'var(--text-muted)',
+            cursor: 'pointer',
+            padding: '4px',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'all 0.2s',
+            zIndex: 5,
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.color = 'var(--text-main)';
+            e.currentTarget.style.background = 'rgba(0,0,0,0.05)';
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.color = 'var(--text-muted)';
+            e.currentTarget.style.background = 'transparent';
+          }}
+          title="Masquer"
+        >
+          <X size={14} />
+        </button>
+      )}
+      <div className="stocks-ocr-dashboard-status-main">
+        <div className="stocks-ocr-dashboard-status-icon">
+          {ready ? <CheckCircle2 size={18} /> : errors ? <AlertCircle size={18} /> : <Clock size={18} />}
+        </div>
+        <div className="stocks-ocr-dashboard-status-copy">
+          <span>{stateLabel}</span>
+          <small>{filesLabel}</small>
+          <div className="ocr-status-progress-bar">
+            <div className={`ocr-status-progress-fill ${progressClass}`}></div>
+          </div>
+        </div>
+      </div>
+      <div className="stocks-ocr-dashboard-status-actions" style={onDismiss ? { marginRight: '1.25rem' } : undefined}>
+        {featured.extraction ? (
+          <button className="btn btn-primary btn-sm" onClick={() => void onOpenExtraction(featured.extraction!.id)}>
+            Vérifier <ArrowRight size={13} />
+          </button>
+        ) : null}
+        <button className="btn btn-secondary btn-sm" onClick={onImportOcr}>
+          Suivi OCR
+        </button>
+      </div>
+    </motion.section>
   );
 }
 
@@ -5184,6 +6905,7 @@ function ProductDetailModal({
   suppliers,
   onClose,
   onUpdate,
+  onDelete,
 }: {
   product: Product | null;
   stocks: Stock[];
@@ -5193,6 +6915,7 @@ function ProductDetailModal({
   suppliers: Supplier[];
   onClose: () => void;
   onUpdate: (productId: string, payload: ProductFormPayload) => Promise<void>;
+  onDelete: (productId: string) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
 
@@ -5237,16 +6960,31 @@ function ProductDetailModal({
                 <span className="badge badge-reception">{product.unit?.name ?? 'Unité'} ({product.unit?.symbol ?? '—'})</span>
               </div>
             </div>
-            <button type="button" className="btn btn-primary" onClick={() => setEditing(true)}>
-              <Edit3 size={15} /> Modifier
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setEditing(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.5rem 0.85rem', fontSize: '0.85rem' }}>
+                <Edit3 size={14} /> Modifier
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.5rem 0.85rem', fontSize: '0.85rem' }}
+                onClick={async () => {
+                  if (window.confirm(`Êtes-vous sûr de vouloir supprimer le produit "${product.name}" ?`)) {
+                    await onDelete(product.id);
+                    onClose();
+                  }
+                }}
+              >
+                <Trash2 size={14} /> Supprimer
+              </button>
+            </div>
           </div>
 
           <div className="product-detail-metrics">
-            <Metric icon={<Boxes size={18} />} value={totalQuantity.toFixed(3).replace(/\.?0+$/, '')} label="Quantité en stock" tone="blue" />
+            <Metric icon={<Boxes size={18} />} value={totalQuantity.toFixed(2).replace(/\.?0+$/, '')} label="Quantité en stock" tone="blue" />
             <Metric icon={<TrendingUp size={18} />} value={`${stockValue.toFixed(2)} €`} label="Valeur stock" tone="emerald" />
-            <Metric icon={<Scale size={18} />} value={`${averagePrice.toFixed(4)} €`} label="Prix moyen" tone="amber" />
-            <Metric icon={<AlertCircle size={18} />} value={minimumStock ? String(minimumStock) : '—'} label="Stock mini" tone="orange" />
+            <Metric icon={<Scale size={18} />} value={`${averagePrice.toFixed(2)} €`} label="Prix moyen" tone="amber" />
+            <Metric icon={<AlertCircle size={18} />} value={minimumStock ? parseFloat(minimumStock.toFixed(2)).toString() : '—'} label="Stock mini" tone="orange" />
           </div>
 
           <div className="product-detail-grid">
@@ -5256,7 +6994,7 @@ function ProductDetailModal({
                 <div><dt>Fournisseur</dt><dd>{supplierName}</dd></div>
                 <div><dt>Catégorie</dt><dd>{product.category?.name ?? 'Non catégorisé'}</dd></div>
                 <div><dt>Unité</dt><dd>{product.unit?.name ?? '—'} ({product.unit?.symbol ?? '—'})</dd></div>
-                <div><dt>Prix moyen</dt><dd>{averagePrice.toFixed(4)} €</dd></div>
+                <div><dt>Prix moyen</dt><dd>{averagePrice.toFixed(2)} €</dd></div>
               </dl>
               {product.description ? <p className="product-detail-description">{product.description}</p> : null}
             </div>
@@ -5268,7 +7006,7 @@ function ProductDetailModal({
                   {productStocks.map((stock) => (
                     <div key={stock.id}>
                       <span>{stock.site?.name ?? 'Site'} / {stock.location?.name ?? 'Emplacement'}</span>
-                      <strong>{numeric(stock.currentQuantity ?? stock.quantity).toFixed(3).replace(/\.?0+$/, '')}</strong>
+                      <strong>{numeric(stock.currentQuantity ?? stock.quantity).toFixed(2).replace(/\.?0+$/, '')}</strong>
                     </div>
                   ))}
                 </div>
@@ -5285,7 +7023,7 @@ function ProductDetailModal({
                 {productMovements.map((movement) => (
                   <div key={movement.id}>
                     <span>{movementLabels[movement.type] ?? movement.type} · {movement.date ? new Date(movement.date).toLocaleDateString('fr-FR') : '—'}</span>
-                    <strong>{movementSign(movement.type)}{numeric(movement.quantity).toFixed(3).replace(/\.?0+$/, '')}</strong>
+                    <strong>{movementSign(movement.type)}{numeric(movement.quantity).toFixed(2).replace(/\.?0+$/, '')}</strong>
                   </div>
                 ))}
               </div>
@@ -5299,26 +7037,131 @@ function ProductDetailModal({
   );
 }
 
+function SupplierDetailModal({
+  supplier,
+  onClose,
+  onUpdate,
+  onDelete,
+}: {
+  supplier: Supplier | null;
+  onClose: () => void;
+  onUpdate: (supplierId: string, payload: { name: string; contactName?: string; email?: string; phone?: string; address?: string; notes?: string }) => Promise<void>;
+  onDelete: (supplierId: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    setEditing(false);
+  }, [supplier?.id]);
+
+  if (!supplier) return null;
+
+  return (
+    <Modal isOpen={Boolean(supplier)} onClose={onClose} title={supplier.name} size="md">
+      {editing ? (
+        <SupplierForm
+          initialSupplier={supplier}
+          submitLabel="Enregistrer"
+          onSubmit={async (payload) => {
+            await onUpdate(supplier.id, payload);
+            setEditing(false);
+          }}
+          onClose={() => setEditing(false)}
+        />
+      ) : (
+        <div className="product-detail" style={{ gap: '1rem' }}>
+          <div className="product-detail-hero" style={{ padding: '0.5rem 0' }}>
+            <div>
+              <span className="product-detail-kicker">Fiche Fournisseur</span>
+              <h3 style={{ fontSize: '1.25rem' }}>{supplier.name}</h3>
+            </div>
+            <div style={{ display: 'flex', gap: '0.4rem' }}>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditing(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.35rem 0.65rem', borderRadius: '6px' }}>
+                <Edit3 size={13} /> Modifier
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger btn-sm"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.35rem 0.65rem', borderRadius: '6px' }}
+                onClick={async () => {
+                  if (window.confirm(`Êtes-vous sûr de vouloir supprimer le fournisseur "${supplier.name}" ?`)) {
+                    await onDelete(supplier.id);
+                    onClose();
+                  }
+                }}
+              >
+                <Trash2 size={13} /> Supprimer
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginTop: '0.5rem' }}>
+            <div className="product-detail-info-row" style={{ display: 'grid', gridTemplateColumns: '120px 1fr', fontSize: '0.85rem', paddingBottom: '0.5rem', borderBottom: '1px solid #f1f5f9' }}>
+              <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Contact :</span>
+              <span style={{ color: 'var(--text-main)' }}>{supplier.contactName || '—'}</span>
+            </div>
+            <div className="product-detail-info-row" style={{ display: 'grid', gridTemplateColumns: '120px 1fr', fontSize: '0.85rem', paddingBottom: '0.5rem', borderBottom: '1px solid #f1f5f9' }}>
+              <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Email :</span>
+              <span>
+                {supplier.email ? (
+                  <a href={`mailto:${supplier.email}`} style={{ textDecoration: 'underline', color: 'var(--primary)', fontWeight: 600 }}>{supplier.email}</a>
+                ) : (
+                  <span style={{ color: 'var(--text-muted)' }}>—</span>
+                )}
+              </span>
+            </div>
+            <div className="product-detail-info-row" style={{ display: 'grid', gridTemplateColumns: '120px 1fr', fontSize: '0.85rem', paddingBottom: '0.5rem', borderBottom: '1px solid #f1f5f9' }}>
+              <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Téléphone :</span>
+              <span>
+                {supplier.phone ? (
+                  <a href={`tel:${supplier.phone}`} style={{ textDecoration: 'underline', color: 'var(--text-main)' }}>{supplier.phone}</a>
+                ) : (
+                  <span style={{ color: 'var(--text-muted)' }}>—</span>
+                )}
+              </span>
+            </div>
+            <div className="product-detail-info-row" style={{ display: 'grid', gridTemplateColumns: '120px 1fr', fontSize: '0.85rem', paddingBottom: '0.5rem', borderBottom: '1px solid #f1f5f9' }}>
+              <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Adresse :</span>
+              <span style={{ color: 'var(--text-main)' }}>{supplier.address || '—'}</span>
+            </div>
+            <div className="product-detail-info-row" style={{ display: 'grid', gridTemplateColumns: '120px 1fr', fontSize: '0.85rem', paddingBottom: '0.5rem' }}>
+              <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Notes :</span>
+              <span style={{ color: 'var(--text-main)', whiteSpace: 'pre-wrap' }}>{supplier.notes || '—'}</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 // Supplier Form
 interface SupplierFormProps {
   initialName?: string;
+  initialSupplier?: Supplier | null;
+  submitLabel?: string;
   onSubmit: (payload: { name: string; contactName?: string; email?: string; phone?: string; address?: string; notes?: string }) => Promise<void>;
   onClose: () => void;
 }
 
-function SupplierForm({ initialName = '', onSubmit, onClose }: SupplierFormProps) {
-  const [name, setName] = useState(initialName);
-  const [contactName, setContactName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState('');
-  const [notes, setNotes] = useState('');
+function SupplierForm({ initialName = '', initialSupplier = null, submitLabel = 'Créer le fournisseur', onSubmit, onClose }: SupplierFormProps) {
+  const [name, setName] = useState(initialSupplier?.name ?? initialName);
+  const [contactName, setContactName] = useState(initialSupplier?.contactName ?? '');
+  const [email, setEmail] = useState(initialSupplier?.email ?? '');
+  const [phone, setPhone] = useState(initialSupplier?.phone ?? '');
+  const [address, setAddress] = useState(initialSupplier?.address ?? '');
+  const [notes, setNotes] = useState(initialSupplier?.notes ?? '');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
 
   useEffect(() => {
-    setName(initialName);
-  }, [initialName]);
+    setName(initialSupplier?.name ?? initialName);
+    setContactName(initialSupplier?.contactName ?? '');
+    setEmail(initialSupplier?.email ?? '');
+    setPhone(initialSupplier?.phone ?? '');
+    setAddress(initialSupplier?.address ?? '');
+    setNotes(initialSupplier?.notes ?? '');
+  }, [initialName, initialSupplier]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -5328,7 +7171,7 @@ function SupplierForm({ initialName = '', onSubmit, onClose }: SupplierFormProps
     try {
       await onSubmit({ name: name.trim(), contactName: contactName.trim() || undefined, email: email.trim() || undefined, phone: phone.trim() || undefined, address: address.trim() || undefined, notes: notes.trim() || undefined });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur lors de la création.');
+      setError(err instanceof Error ? err.message : 'Erreur lors de la sauvegarde.');
     } finally {
       setSubmitting(false);
     }
@@ -5376,7 +7219,7 @@ function SupplierForm({ initialName = '', onSubmit, onClose }: SupplierFormProps
           Annuler
         </button>
         <button type="submit" className="btn btn-primary" disabled={submitting || !name.trim()}>
-          {submitting ? 'Création...' : 'Créer le fournisseur'}
+          {submitting ? 'Enregistrement...' : submitLabel}
         </button>
       </div>
     </form>
@@ -5679,6 +7522,7 @@ function StocksOcrImportPanel({ statuses, onUpload, onOpenExtraction, onDownload
 function StocksOcrReviewPanel({ extraction, products, categories, suppliers, units, sites, locations, token, onSaveDraft, onCreateReception, onCreateProductFromLine, onCreateSupplierFromOcr, onReanalyzeAi, onClose }: { extraction: StocksOcrExtraction; products: Product[]; categories: Category[]; suppliers: Supplier[]; units: Unit[]; sites: Site[]; locations: Location[]; token: string; onSaveDraft: (payload: StocksOcrExtraction['data']) => Promise<void>; onCreateReception: (payload: StocksOcrExtraction['data']) => Promise<void>; onCreateProductFromLine: (line: StocksOcrLine, supplierId?: string | null) => Promise<Product>; onCreateSupplierFromOcr: (name: string) => Promise<Supplier>; onReanalyzeAi: () => Promise<void>; onClose: () => void }) {
   const [draft, setDraft] = useState(() => normalizeOcrReceptionData(extraction.data));
   const [previewUrl, setPreviewUrl] = useState<string>();
+  const [showPreview, setShowPreview] = useState(false);
   const [showViewerModal, setShowViewerModal] = useState(false);
   const [productPickerLineIndex, setProductPickerLineIndex] = useState<number | null>(null);
   const [rotation, setRotation] = useState(0);
@@ -5909,7 +7753,79 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
   }
 
   return (
-    <div className="stocks-ocr-review" style={{ gridTemplateColumns: '1fr' }}>
+    <div className={`stocks-ocr-review ${showPreview ? 'show-preview' : 'hide-preview'}`}>
+      {/* Document original à gauche */}
+      {showPreview && (
+        <div className="stocks-ocr-preview">
+          <div className="stocks-ocr-preview-header">
+            <span className="stocks-ocr-preview-title">Document original</span>
+            <div style={{ display: 'flex', gap: '0.4rem' }}>
+              <button type="button" className="btn btn-secondary btn-sm" style={{ padding: '0.2rem 0.5rem', background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', borderRadius: '6px' }} onClick={() => setRotation(r => (r + 90) % 360)}>
+                <RotateCw size={12} /> Rotation
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" style={{ padding: '0.2rem 0.5rem', background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', borderRadius: '6px' }} onClick={() => setZoomScale(z => Math.max(0.5, z - 0.2))}>
+                <ZoomOut size={12} />
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" style={{ padding: '0.2rem 0.5rem', background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', borderRadius: '6px' }} onClick={() => setZoomScale(z => Math.min(3, z + 0.2))}>
+                <ZoomIn size={12} />
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" style={{ padding: '0.2rem 0.5rem', background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', borderRadius: '6px' }} onClick={resetViewer}>
+                Reset
+              </button>
+            </div>
+          </div>
+          <div 
+            style={{ 
+              flex: 1, 
+              overflow: 'hidden', 
+              position: 'relative', 
+              borderRadius: '12px', 
+              background: '#0f172a', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              cursor: zoomScale > 1.0 ? 'grab' : 'default',
+              minHeight: '600px'
+            }}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerLeave={handlePointerUp}
+          >
+            {previewUrl ? (
+              previewUrl.toLowerCase().includes('.pdf') || document?.mimeType === 'application/pdf' ? (
+                <iframe 
+                  src={previewUrl} 
+                  title="Aperçu PDF" 
+                  style={{ 
+                    width: '100%',
+                    height: '100%',
+                    minHeight: '600px',
+                    border: 'none',
+                    transform: `scale(${zoomScale}) rotate(${rotation}deg) translate(${panOffset.x}px, ${panOffset.y}px)`,
+                    transition: isDragging ? 'none' : 'transform 0.2s ease-out'
+                  }}
+                />
+              ) : (
+                <img 
+                  src={previewUrl} 
+                  alt="Aperçu document" 
+                  style={{ 
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    transform: `scale(${zoomScale}) rotate(${rotation}deg) translate(${panOffset.x}px, ${panOffset.y}px)`,
+                    transition: isDragging ? 'none' : 'transform 0.2s ease-out',
+                    objectFit: 'contain'
+                  }}
+                />
+              )
+            ) : (
+              <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem' }}>Chargement de l'aperçu...</span>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="stocks-ocr-editor">
         {error ? <div className="alert-modern error" style={{ marginBottom: '0.5rem' }}><AlertCircle size={16} /> {error}</div> : null}
         
@@ -5924,8 +7840,8 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
               <button type="button" className="btn btn-secondary btn-sm" disabled={reanalyzingAi} onClick={() => void reanalyzeAi()}>
                 <Sparkles size={13} /> {reanalyzingAi ? 'Analyse IA…' : 'Relancer IA'}
               </button>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowViewerModal(true)}>
-                <FileText size={13} /> Original
+              <button type="button" className={`btn btn-sm ${showPreview ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setShowPreview(!showPreview)}>
+                <Eye size={13} /> {showPreview ? 'Masquer original' : 'Afficher original'}
               </button>
             </div>
           </div>
@@ -6080,16 +7996,14 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
           <table className="table-modern">
             <thead>
               <tr>
-                <th style={{ width: '22%' }}>Libellé OCR</th>
-                <th style={{ width: '28%' }}>Produit ToqueHub</th>
-                <th style={{ width: '8%' }}>Qté</th>
+                <th style={{ width: '25%' }}>Libellé OCR</th>
+                <th style={{ width: '35%' }}>Produit ToqueHub</th>
+                <th style={{ width: '10%' }}>Qté</th>
                 <th style={{ width: '10%' }}>Unité</th>
-                <th style={{ width: '8%' }}>P.U.</th>
-                <th style={{ width: '8%' }}>Total</th>
-                <th style={{ width: '10%' }}>Lot</th>
-                <th style={{ width: '12%' }}>DLC</th>
-                <th style={{ width: '6%' }}>Statut</th>
-                <th style={{ width: '4%' }}></th>
+                <th style={{ width: '10%' }}>P.U.</th>
+                <th style={{ width: '10%' }}>Total</th>
+                <th style={{ width: '8%' }}>Statut</th>
+                <th style={{ width: '2%' }}></th>
               </tr>
             </thead>
             <tbody>
@@ -6171,12 +8085,7 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
                   <td>
                     <input type="number" step="0.0001" value={line.lineTotal ?? line.total ?? ''} onChange={(e) => updateLine(index, { lineTotal: e.target.value ? Number(e.target.value) : null })} />
                   </td>
-                  <td>
-                    <input value={line.lotNumber || ''} onChange={(e) => updateLine(index, { lotNumber: e.target.value })} />
-                  </td>
-                  <td>
-                    <input type="date" value={dateInputValue(line.bestBeforeDate)} onChange={(e) => updateLine(index, { bestBeforeDate: e.target.value || null })} />
-                  </td>
+
                   <td style={{ textAlign: 'center' }}>
                     <span className={`badge ${ocrMatchClass(line.matchingStatus)}`}>
                       {ocrLineStatusLabel(line)}
@@ -6197,7 +8106,7 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
               ))}
               {!displayedLineEntries.length ? (
                 <tr>
-                  <td colSpan={10}>
+                  <td colSpan={8}>
                     <div className="empty-state" style={{ padding: '1.5rem' }}>
                       <span className="empty-state-title">Aucune ligne dans ce filtre</span>
                       <span className="empty-state-desc">Changez de filtre pour afficher les autres lignes de l’analyse IA.</span>
@@ -6508,6 +8417,34 @@ function ocrStateClass(state: string) {
   return 'badge-production';
 }
 
+function normalizedOcrState(status: StocksOcrStatus) {
+  return `${status.state ?? ''} ${status.ocr?.status ?? ''} ${status.document.status ?? ''}`.toLowerCase();
+}
+
+function isOcrStatusError(status: StocksOcrStatus) {
+  const state = normalizedOcrState(status);
+  return state.includes('erreur') || state.includes('failed');
+}
+
+function isOcrStatusReady(status: StocksOcrStatus) {
+  const state = normalizedOcrState(status);
+  return Boolean(status.extraction) || state.includes('vérifier') || state.includes('pret') || state.includes('prêt');
+}
+
+function isOcrStatusPending(status: StocksOcrStatus) {
+  const state = normalizedOcrState(status);
+  return state.includes('pending') || state.includes('attente') || state.includes('upload');
+}
+
+function isOcrStatusAnalyzing(status: StocksOcrStatus) {
+  const state = normalizedOcrState(status);
+  return state.includes('processing') || state.includes('cours') || state.includes('matching');
+}
+
+function isOcrStatusWorking(status: StocksOcrStatus) {
+  return !isOcrStatusReady(status) && !isOcrStatusError(status);
+}
+
 function ocrMatchClass(status?: string | null) {
   if (status === 'RECOGNIZED') return 'badge-reception';
   if (status === 'NEEDS_REVIEW') return 'badge-correction';
@@ -6586,6 +8523,37 @@ function dateInputValue(value?: string | null) {
 function formatBytes(size: number) {
   if (size < 1024 * 1024) return `${Math.round(size / 1024)} Ko`;
   return `${(size / (1024 * 1024)).toFixed(1)} Mo`;
+}
+
+function formatDocumentDate(value?: string | null) {
+  if (!value) return 'Date inconnue';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Date inconnue';
+  return new Intl.DateTimeFormat('fr-FR').format(date);
+}
+
+function documentTypeLabel(type?: string | null) {
+  if (type === 'invoice') return 'Facture';
+  if (type === 'delivery_note') return 'BL';
+  return 'Non classé';
+}
+
+function documentTypeBadge(type?: string | null) {
+  if (type === 'invoice') return 'badge-stock';
+  if (type === 'delivery_note') return 'badge-reception';
+  return 'badge-correction';
+}
+
+function documentStateLabel(state?: string | null) {
+  if (state === 'failed') return 'Erreur';
+  if (state === 'processing') return 'Analyse';
+  return 'Classé';
+}
+
+function documentStateBadge(state?: string | null) {
+  if (state === 'failed') return 'badge-loss';
+  if (state === 'processing') return 'badge-correction';
+  return 'badge-reception';
 }
 
 function fileTypeLabel(file: File) {

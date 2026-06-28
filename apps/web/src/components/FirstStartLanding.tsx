@@ -1,16 +1,17 @@
-import type { ChangeEvent, FormEvent } from 'react';
+import type { ChangeEvent } from 'react';
 import { useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft,
   ArrowRight,
   Building2,
+  CalendarDays,
   CheckCircle2,
   ChefHat,
   Eye,
   EyeOff,
+  HelpCircle,
   ImagePlus,
-  KeyRound,
   LockKeyhole,
   Server,
   ShieldCheck,
@@ -18,6 +19,7 @@ import {
   UploadCloud,
   UsersRound,
   AlertCircle,
+  X,
 } from 'lucide-react';
 import { api } from '../api/client';
 import type { BackupInspection, EstablishmentType, SystemStatus, TeamSize, UserSession } from '../types';
@@ -43,6 +45,7 @@ const teamSizes: Array<{ label: string; value: TeamSize }> = [
   { label: 'Plus de 20 personnes', value: '20+' },
 ];
 const creationSteps = ['Création de l’organisation', 'Création du site principal', 'Configuration de l’administrateur', 'Préparation OCR IA', 'Finalisation'];
+const volunteerAppointmentUrl = '';
 
 function passwordScore(password: string) {
   let score = 0;
@@ -78,6 +81,7 @@ export function FirstStartLanding({
   const [restoreMessage, setRestoreMessage] = useState<string>();
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [restoreDone, setRestoreDone] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   
   const score = useMemo(() => passwordScore(admin.password), [admin.password]);
@@ -289,7 +293,7 @@ export function FirstStartLanding({
               setShowOnboardingPreview(true);
             }}
           />
-        ) : restoreOpen && allowCreate ? (
+        ) : restoreOpen ? (
           <BootstrapRestorePanel
             inspection={restoreInspection}
             phrase={restorePhrase}
@@ -379,7 +383,13 @@ export function FirstStartLanding({
                     transition={{ duration: 0.16 }}
                     style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
                   >
-                    {step === 0 && <WelcomeStep onStart={() => setStep(1)} />}
+                    {step === 0 && (
+                      <WelcomeStep
+                        onStart={() => setStep(1)}
+                        onRestore={() => setRestoreOpen(true)}
+                        onHelp={() => setHelpOpen(true)}
+                      />
+                    )}
                     {step === 1 && (
                       <AdminStep
                         admin={admin}
@@ -447,6 +457,7 @@ export function FirstStartLanding({
           </div>
         )}
       </div>
+      <HelpVolunteerModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }
@@ -533,7 +544,7 @@ function BootstrapRestorePanel({
 }
 
 // 0. Welcome Screen
-function WelcomeStep({ onStart }: { onStart: () => void }) {
+function WelcomeStep({ onStart, onRestore, onHelp }: { onStart: () => void; onRestore?: () => void; onHelp: () => void }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '3rem', alignItems: 'center', padding: '1rem 0' }}>
       <div>
@@ -546,12 +557,87 @@ function WelcomeStep({ onStart }: { onStart: () => void }) {
         <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem', lineHeight: 1.65, marginBottom: '2rem' }}>
           L'ERP de cuisine open source souverain pour gérer vos produits, vos fournisseurs, et tracer vos stocks locaux en toute simplicité. Configurez votre environnement de travail en moins d'une minute.
         </p>
-        <button className="btn btn-primary" onClick={onStart} style={{ padding: '0.85rem 1.75rem', fontSize: '0.95rem' }}>
-          Commencer la configuration <ArrowRight size={18} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" onClick={onStart} style={{ padding: '0.85rem 1.75rem', fontSize: '0.95rem' }}>
+            Commencer la configuration <ArrowRight size={18} />
+          </button>
+          {onRestore ? (
+            <button className="btn btn-secondary" onClick={onRestore} style={{ padding: '0.85rem 1.35rem', fontSize: '0.9rem' }}>
+              <UploadCloud size={17} /> Restaurer une sauvegarde
+            </button>
+          ) : null}
+          <button className="btn btn-secondary" onClick={onHelp} style={{ padding: '0.85rem 1.25rem', fontSize: '0.9rem' }}>
+            <HelpCircle size={17} /> Besoin d'aide ?
+          </button>
+        </div>
       </div>
       <div style={{ display: 'flex', justifyContent: 'center' }}>
         <KitchenIllustration />
+      </div>
+    </div>
+  );
+}
+
+function HelpVolunteerModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  if (!open) return null;
+  const canBookAppointment = Boolean(volunteerAppointmentUrl);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content-wrapper modal-md" onClick={(event) => event.stopPropagation()}>
+        <div className="modal-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <span
+              style={{
+                width: '38px',
+                height: '38px',
+                borderRadius: '12px',
+                display: 'grid',
+                placeItems: 'center',
+                background: 'var(--primary-bg-light)',
+                color: 'var(--primary)',
+                flexShrink: 0,
+              }}
+            >
+              <HelpCircle size={20} />
+            </span>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 900, color: 'var(--text-main)' }}>Besoin d'aide ?</h2>
+              <p style={{ margin: '0.15rem 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>Accompagnement au premier démarrage</p>
+            </div>
+          </div>
+          <button className="modal-close-btn" onClick={onClose} aria-label="Fermer">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="modal-body">
+          <p style={{ color: 'var(--text-muted)', lineHeight: 1.65, margin: 0 }}>
+            Une équipe de bénévoles ToqueHub peut vous aider à préparer votre instance, restaurer une sauvegarde ou vérifier les premières informations de votre établissement.
+          </p>
+          <div style={{ display: 'grid', gap: '0.75rem', marginTop: '1.25rem' }}>
+            {['Configuration initiale', 'Restauration de sauvegarde', 'Vérification des accès'].map((item) => (
+              <div key={item} style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', color: 'var(--text-main)', fontWeight: 700 }}>
+                <CheckCircle2 size={17} color="var(--primary)" />
+                <span>{item}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onClose}>Fermer</button>
+          <button
+            className="btn btn-primary"
+            disabled={!canBookAppointment}
+            title={canBookAppointment ? 'Ouvrir Calendly' : 'Lien Calendly à ajouter'}
+            onClick={() => {
+              if (canBookAppointment) window.open(volunteerAppointmentUrl, '_blank', 'noopener,noreferrer');
+            }}
+          >
+            <CalendarDays size={16} /> Prendre rendez-vous
+          </button>
+        </div>
       </div>
     </div>
   );

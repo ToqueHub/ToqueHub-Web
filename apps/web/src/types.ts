@@ -236,6 +236,42 @@ export interface StocksOcrConfig {
   source?: 'environment' | 'organization' | string | null;
 }
 
+export interface MyDocument {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  sourceModule: string;
+  sourceType?: string | null;
+  status: string;
+  processingState: 'ready' | 'processing' | 'failed' | string;
+  type: 'invoice' | 'delivery_note' | 'unknown' | string;
+  supplierId?: string | null;
+  supplierName?: string | null;
+  invoiceNumber?: string | null;
+  deliveryNoteNumber?: string | null;
+  documentDate?: string | null;
+  uploadedAt: string;
+  createdAt: string;
+  updatedAt: string;
+  extractionId?: string | null;
+  receptionId?: string | null;
+  receptionStatus?: string | null;
+  uploadedBy?: { id: string; firstName?: string | null; lastName?: string | null; email?: string | null } | null;
+}
+
+export interface MyDocumentsResponse {
+  items: MyDocument[];
+  summary: {
+    total: number;
+    ready: number;
+    processing: number;
+    failed: number;
+    suppliers: Array<{ id: string | null; name: string; count: number }>;
+    months: Array<{ key: string; label: string; count: number }>;
+  };
+}
+
 export interface DashboardWidget {
   id: string;
   title: string;

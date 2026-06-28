@@ -23,7 +23,9 @@ import {
   Clock,
   Eye,
   CheckCircle2,
-  MapPin
+  MapPin,
+  ArrowLeft,
+  Camera
 } from 'lucide-react';
 import { api } from '../api/client';
 import type {
@@ -125,12 +127,29 @@ function ProductSelect({
 }) {
   const [search, setSearch] = useState('');
   const [isOpen, setIsOpen] = useState(false);
+  const [isCatalogOpen, setIsCatalogOpen] = useState(false);
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [catalogCategory, setCatalogCategory] = useState('');
 
   const selectedProduct = products.find(p => p.id === value);
   const filtered = products.filter(p =>
     p.name.toLowerCase().includes(search.toLowerCase()) ||
     (p.sku && p.sku.toLowerCase().includes(search.toLowerCase()))
   );
+
+  const categoriesList = useMemo(() => {
+    const names = products.map(p => p.category?.name).filter(Boolean) as string[];
+    return Array.from(new Set(names));
+  }, [products]);
+
+  const catalogFiltered = useMemo(() => {
+    return products.filter(p => {
+      const matchesSearch = p.name.toLowerCase().includes(catalogSearch.toLowerCase()) ||
+        (p.sku && p.sku.toLowerCase().includes(catalogSearch.toLowerCase()));
+      const matchesCategory = !catalogCategory || p.category?.name === catalogCategory;
+      return matchesSearch && matchesCategory;
+    });
+  }, [products, catalogSearch, catalogCategory]);
 
   useEffect(() => {
     if (selectedProduct) {
@@ -142,42 +161,68 @@ function ProductSelect({
 
   return (
     <div className="custom-autocomplete-wrapper" style={{ position: 'relative', width: '100%' }}>
-      <div style={{ display: 'flex', position: 'relative', alignItems: 'center' }}>
-        <input
-          type="text"
-          placeholder={placeholder}
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setIsOpen(true);
-          }}
-          onFocus={() => setIsOpen(true)}
-          onBlur={() => {
-            // Delay to allow clicking on dropdown items
-            setTimeout(() => setIsOpen(false), 200);
-          }}
-          style={{ width: '100%', marginBottom: 0 }}
-        />
-        {value && (
-          <button
-            type="button"
-            onClick={() => {
-              onChange('');
-              setSearch('');
+      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', position: 'relative', alignItems: 'center', flex: 1 }}>
+          <input
+            type="text"
+            placeholder={placeholder}
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setIsOpen(true);
             }}
-            style={{
-              position: 'absolute',
-              right: '8px',
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              color: 'var(--text-muted)'
+            onFocus={() => setIsOpen(true)}
+            onBlur={() => {
+              // Delay to allow clicking on dropdown items
+              setTimeout(() => setIsOpen(false), 200);
             }}
-          >
-            <X size={14} />
-          </button>
-        )}
+            style={{ width: '100%', marginBottom: 0, paddingRight: value ? '30px' : '10px' }}
+          />
+          {value && (
+            <button
+              type="button"
+              onClick={() => {
+                onChange('');
+                setSearch('');
+              }}
+              style={{
+                position: 'absolute',
+                right: '8px',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--text-muted)'
+              }}
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsCatalogOpen(true)}
+          title="Parcourir le catalogue"
+          style={{
+            height: '38px',
+            width: '38px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: '#f1f5f9',
+            border: '1px solid #cbd5e1',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            color: '#475569',
+            flexShrink: 0
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.background = '#e2e8f0'}
+          onMouseLeave={(e) => e.currentTarget.style.background = '#f1f5f9'}
+        >
+          <ClipboardList size={16} />
+        </button>
       </div>
+
       {isOpen && (
         <div className="custom-autocomplete-dropdown" style={{
           position: 'absolute',
@@ -223,6 +268,264 @@ function ProductSelect({
               </div>
             ))
           )}
+        </div>
+      )}
+
+      {isCatalogOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(9, 13, 22, 0.45)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 1300,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '2rem'
+          }}
+          onClick={() => setIsCatalogOpen(false)}
+        >
+          <div
+            style={{
+              maxWidth: '820px',
+              width: '100%',
+              maxHeight: '85vh',
+              background: 'white',
+              borderRadius: '16px',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)',
+              color: '#1e293b',
+              fontFamily: 'system-ui, -apple-system, sans-serif'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div style={{
+              padding: '1.25rem 1.75rem',
+              borderBottom: '1px solid #f1f5f9',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: '#ffffff'
+            }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>
+                  Catalogue des Produits Stocks
+                </h3>
+                <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                  Sélectionnez un ingrédient dans la liste ci-dessous
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCatalogOpen(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#64748b',
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'background 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Filters */}
+            <div style={{
+              padding: '1rem 1.75rem',
+              background: '#f8fafc',
+              borderBottom: '1px solid #e2e8f0',
+              display: 'grid',
+              gridTemplateColumns: '2fr 1fr',
+              gap: '1rem'
+            }}>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  placeholder="Rechercher par nom ou code/SKU..."
+                  value={catalogSearch}
+                  onChange={(e) => setCatalogSearch(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.55rem 0.75rem 0.55rem 2.25rem',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '8px',
+                    fontSize: '0.88rem',
+                    background: '#ffffff',
+                    marginBottom: 0
+                  }}
+                />
+                <Search size={14} style={{ position: 'absolute', left: '10px', color: '#94a3b8' }} />
+                {catalogSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setCatalogSearch('')}
+                    style={{
+                      position: 'absolute',
+                      right: '8px',
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: '#94a3b8'
+                    }}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              <select
+                value={catalogCategory}
+                onChange={(e) => setCatalogCategory(e.target.value)}
+                style={{
+                  padding: '0.55rem 0.75rem',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '8px',
+                  fontSize: '0.88rem',
+                  background: '#ffffff',
+                  marginBottom: 0
+                }}
+              >
+                <option value="">Toutes les catégories</option>
+                {categoriesList.map((cat) => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Modal List Area */}
+            <div style={{
+              overflowY: 'auto',
+              flex: 1,
+              padding: '1rem 1.75rem'
+            }}>
+              {catalogFiltered.length > 0 ? (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid #e2e8f0', textAlign: 'left', color: '#475569', fontWeight: 600 }}>
+                      <th style={{ padding: '0.75rem 0.5rem' }}>Produit</th>
+                      <th style={{ padding: '0.75rem 0.5rem' }}>Catégorie</th>
+                      <th style={{ padding: '0.75rem 0.5rem' }}>SKU/Code</th>
+                      <th style={{ padding: '0.75rem 0.5rem', textAlign: 'right' }}>Prix moyen d'achat</th>
+                      <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>Unité</th>
+                      <th style={{ padding: '0.75rem 0.5rem', textAlign: 'right' }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {catalogFiltered.map((p) => (
+                      <tr
+                        key={p.id}
+                        onClick={() => {
+                          onChange(p.id);
+                          setSearch(p.name);
+                          setIsCatalogOpen(false);
+                        }}
+                        style={{
+                          borderBottom: '1px solid #f1f5f9',
+                          cursor: 'pointer',
+                          transition: 'background 0.15s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <td style={{ padding: '0.75rem 0.5rem', fontWeight: 600, color: '#0f172a' }}>{p.name}</td>
+                        <td style={{ padding: '0.75rem 0.5rem' }}>
+                          {p.category?.name ? (
+                            <span style={{
+                              background: '#eff6ff',
+                              color: '#1d4ed8',
+                              padding: '0.2rem 0.5rem',
+                              borderRadius: '6px',
+                              fontSize: '0.75rem',
+                              fontWeight: 500
+                            }}>
+                              {p.category.name}
+                            </span>
+                          ) : (
+                            <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '0.75rem 0.5rem', fontFamily: 'monospace', color: '#475569' }}>
+                          {p.sku ?? <span style={{ color: '#cbd5e1' }}>—</span>}
+                        </td>
+                        <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right', fontWeight: 500 }}>
+                          {p.averagePurchasePrice ? money(p.averagePurchasePrice) : money(p.averagePrice ?? 0)}
+                        </td>
+                        <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: '#64748b' }}>
+                          {p.unit?.symbol ?? p.unit?.name ?? '—'}
+                        </td>
+                        <td style={{ padding: '0.75rem 0.5rem', textAlign: 'right' }}>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{
+                              fontSize: '0.8rem',
+                              padding: '0.3rem 0.6rem',
+                              borderRadius: '6px',
+                              background: value === p.id ? 'var(--primary)' : '#ffffff',
+                              color: value === p.id ? '#ffffff' : 'var(--text-main)',
+                              borderColor: value === p.id ? 'var(--primary)' : '#cbd5e1'
+                            }}
+                          >
+                            {value === p.id ? 'Sélectionné' : 'Choisir'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div style={{
+                  textAlign: 'center',
+                  padding: '3rem 1.5rem',
+                  color: '#94a3b8',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '0.75rem'
+                }}>
+                  <Search size={32} style={{ color: '#cbd5e1' }} />
+                  <span>Aucun ingrédient ne correspond à vos critères de recherche.</span>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{
+              padding: '1rem 1.75rem',
+              borderTop: '1px solid #f1f5f9',
+              background: '#f8fafc',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: '0.8rem',
+              color: '#64748b'
+            }}>
+              <span>
+                Affichage de {catalogFiltered.length} produit(s) sur {products.length} au total
+              </span>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setIsCatalogOpen(false)}
+                style={{ height: '32px', padding: '0 1rem', fontSize: '0.85rem' }}
+              >
+                Fermer
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -1399,227 +1702,775 @@ function RecipeDialog({ open, form, setForm, products, units, categories, allerg
   };
 
   return (
-    <Modal isOpen={open} onClose={onClose} title={editing ? 'Modifier la fiche technique' : 'Créer une fiche technique'}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxHeight: 'calc(75vh - 120px)', overflowY: 'auto', paddingRight: '8px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.85rem', fontWeight: 600, margin: 0 }}>
-            Nom de la fiche *
-            <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="ex: Velouté de potimarron" required />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.85rem', fontWeight: 600, margin: 0 }}>
-            Catégorie recette *
-            <select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} required>
-              <option value="">Choisir...</option>
-              {categories.map((cat) => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
-            </select>
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.85rem', fontWeight: 600, margin: 0 }}>
-            Statut
-            <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-              {statuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
-            </select>
-          </label>
-        </div>
-        
-        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.85rem', fontWeight: 600, margin: 0 }}>
-          Description
-          <textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Détails généraux de la préparation..." />
-        </label>
-        
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '1rem' }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.85rem', fontWeight: 600, margin: 0 }}>
-            URL Photo
-            <input value={form.photoUrl} onChange={(e) => setForm({ ...form, photoUrl: e.target.value })} placeholder="https://..." />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.85rem', fontWeight: 600, margin: 0 }}>
-            Portions
-            <input type="number" min={1} value={form.referencePortions} onChange={(e) => setForm({ ...form, referencePortions: Number(e.target.value) })} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.85rem', fontWeight: 600, margin: 0 }}>
-            Prépa (min)
-            <input type="number" min={0} value={form.prepTimeMinutes} onChange={(e) => setForm({ ...form, prepTimeMinutes: Number(e.target.value) })} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.85rem', fontWeight: 600, margin: 0 }}>
-            Cuisson (min)
-            <input type="number" min={0} value={form.cookTimeMinutes} onChange={(e) => setForm({ ...form, cookTimeMinutes: Number(e.target.value) })} />
-          </label>
-        </div>
-        
-        <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '0.5rem 0' }} />
-        
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 850, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--primary)' }}>
-            Ingrédients Stocks
-          </h4>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-            onClick={() => setForm({ ...form, ingredients: [...ingredients, { productId: '', unitId: units[0]?.id ?? '', quantity: 1, comment: '', allergenIds: [] }] })}
-          >
-            <Plus size={14} /> Ajouter un ingrédient
-          </button>
-        </div>
-        
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {ingredients.map((line, index) => (
-            <div
-              key={index}
-              className="card-modern"
-              style={{
-                padding: '1.25rem',
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '1rem',
-                margin: 0
-              }}
-            >
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1.5fr auto', gap: '0.75rem', alignItems: 'end' }}>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', fontWeight: 600, minWidth: '150px', margin: 0 }}>
-                  Produit Stocks
-                  <ProductSelect
-                    products={products}
-                    value={line.productId}
-                    onChange={(productId) => {
-                      const product = products.find(p => p.id === productId);
-                      patchIngredient(index, { productId, unitId: product?.unitId ?? line.unitId });
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 30 }}
+          transition={{ duration: 0.2, ease: 'easeOut' }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1200,
+            background: '#f8fafc',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+            color: '#1e293b'
+          }}
+        >
+          {/* Header */}
+          <div style={{
+            height: '72px',
+            padding: '0 2rem',
+            background: '#ffffff',
+            borderBottom: '1px solid #e2e8f0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexShrink: 0,
+            boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <button
+                type="button"
+                onClick={onClose}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  color: '#64748b',
+                  fontSize: '0.9rem',
+                  fontWeight: 600,
+                  padding: '0.5rem 0.75rem',
+                  borderRadius: '8px',
+                  transition: 'background 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+              >
+                <ArrowLeft size={18} />
+                <span>Retour</span>
+              </button>
+              <div style={{ width: '1px', height: '24px', background: '#cbd5e1' }} />
+              <div>
+                <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  {editing ? 'Modifier la fiche technique' : 'Créer une fiche technique'}
+                  {form.name && (
+                    <span style={{ color: '#64748b', fontWeight: 400, fontSize: '1.1rem' }}>
+                      · {form.name}
+                    </span>
+                  )}
+                </h2>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              {/* Status Badge */}
+              <div style={{
+                fontSize: '0.75rem',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                padding: '0.25rem 0.75rem',
+                borderRadius: '9999px',
+                background: form.status === 'VALIDATED' ? '#ecfdf5' : '#f1f5f9',
+                color: form.status === 'VALIDATED' ? '#059669' : '#475569',
+                border: form.status === 'VALIDATED' ? '1px solid #10b981' : '1px solid #cbd5e1',
+                marginRight: '0.5rem'
+              }}>
+                {form.status === 'VALIDATED' ? 'Validé' : 'Brouillon'}
+              </div>
+
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={onClose}
+                style={{ height: '40px', padding: '0 1.25rem' }}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={loading || !form.name.trim() || !form.categoryId}
+                onClick={onSave}
+                style={{
+                  height: '40px',
+                  padding: '0 1.5rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  fontWeight: 600
+                }}
+              >
+                {loading ? 'Enregistrement...' : editing ? 'Enregistrer les modifications' : 'Créer la fiche technique'}
+              </button>
+            </div>
+          </div>
+
+          {/* Main Body */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '400px 1fr',
+            flex: 1,
+            overflow: 'hidden',
+            background: '#f8fafc'
+          }}>
+            {/* Sidebar (Left) */}
+            <div style={{
+              background: '#ffffff',
+              borderRight: '1px solid #e2e8f0',
+              padding: '2rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1.5rem',
+              overflowY: 'auto'
+            }}>
+              {/* Image Preview / Cover */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#475569' }}>Photo de couverture</span>
+                <div style={{
+                  width: '100%',
+                  aspectRatio: '16/9',
+                  borderRadius: '12px',
+                  background: '#f1f5f9',
+                  border: '1px solid #e2e8f0',
+                  overflow: 'hidden',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  position: 'relative'
+                }}>
+                  {form.photoUrl ? (
+                    <img
+                      src={form.photoUrl}
+                      alt="Aperçu de la recette"
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        const parent = e.currentTarget.parentElement;
+                        if (parent) {
+                          const fallback = parent.querySelector('.photo-fallback');
+                          if (fallback) fallback.removeAttribute('style');
+                        }
+                      }}
+                    />
+                  ) : null}
+                  <div
+                    className="photo-fallback"
+                    style={form.photoUrl ? { display: 'none' } : {}}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', color: '#94a3b8' }}>
+                      <Camera size={36} />
+                      <span style={{ fontSize: '0.8rem' }}>Aucune image configurée</span>
+                    </div>
+                  </div>
+                </div>
+                <input
+                  type="text"
+                  placeholder="URL de la photo (https://...)"
+                  value={form.photoUrl ?? ''}
+                  onChange={(e) => setForm({ ...form, photoUrl: e.target.value })}
+                  style={{
+                    fontSize: '0.85rem',
+                    padding: '0.6rem 0.8rem',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '8px',
+                    width: '100%',
+                    marginTop: '0.25rem'
+                  }}
+                />
+              </div>
+
+              <hr style={{ border: 'none', borderTop: '1px solid #f1f5f9', margin: '0.25rem 0' }} />
+
+              {/* Form Metadata */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.85rem', fontWeight: 600 }}>
+                  Nom de la fiche *
+                  <input
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    placeholder="ex: Velouté de potimarron"
+                    required
+                    style={{
+                      padding: '0.65rem 0.8rem',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '8px',
+                      fontSize: '0.9rem'
                     }}
                   />
                 </label>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>
-                  Quantité
-                  <input type="number" step="any" min={0.001} value={line.quantity} onChange={(e) => patchIngredient(index, { quantity: Number(e.target.value) })} required />
-                </label>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>
-                  Unité
-                  <select value={line.unitId} onChange={(e) => patchIngredient(index, { unitId: e.target.value })} required style={{ marginBottom: 0 }}>
-                    {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name} ({unit.symbol})</option>)}
+
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.85rem', fontWeight: 600 }}>
+                  Catégorie recette *
+                  <select
+                    value={form.categoryId}
+                    onChange={(e) => setForm({ ...form, categoryId: e.target.value })}
+                    required
+                    style={{
+                      padding: '0.65rem 0.8rem',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '8px',
+                      fontSize: '0.9rem',
+                      background: 'white'
+                    }}
+                  >
+                    <option value="">Choisir une catégorie...</option>
+                    {categories.map((cat) => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
                   </select>
                 </label>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>
-                  Allergènes
-                  <AllergenMultiSelect
-                    allergens={allergens}
-                    selectedIds={line.allergenIds ?? []}
-                    onChange={(ids) => patchIngredient(index, { allergenIds: ids })}
+
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.85rem', fontWeight: 600 }}>
+                  Description
+                  <textarea
+                    rows={4}
+                    value={form.description ?? ''}
+                    onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    placeholder="Détails généraux de la préparation..."
+                    style={{
+                      padding: '0.65rem 0.8rem',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '8px',
+                      fontSize: '0.9rem',
+                      resize: 'vertical',
+                      fontFamily: 'inherit'
+                    }}
                   />
                 </label>
-                <button
-                  type="button"
-                  className="icon-btn danger"
-                  style={{ height: '38px', width: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-                  onClick={() => setForm({ ...form, ingredients: ingredients.filter((_, i) => i !== index) })}
-                  title="Supprimer la ligne"
-                >
-                  <Trash2 size={16} />
-                </button>
+
+                <hr style={{ border: 'none', borderTop: '1px solid #f1f5f9', margin: '0.25rem 0' }} />
+
+                {/* Metrics block */}
+                <h3 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b' }}>
+                  Paramètres de Production
+                </h3>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.85rem', fontWeight: 600 }}>
+                    Portions
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type="number"
+                        min={1}
+                        value={form.referencePortions ?? 1}
+                        onChange={(e) => setForm({ ...form, referencePortions: Number(e.target.value) })}
+                        style={{
+                          padding: '0.65rem 0.8rem 0.65rem 2.25rem',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '8px',
+                          fontSize: '0.9rem',
+                          width: '100%'
+                        }}
+                      />
+                      <Utensils size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                    </div>
+                  </label>
+
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.85rem', fontWeight: 600 }}>
+                    Statut de la fiche
+                    <select
+                      value={form.status}
+                      onChange={(e) => setForm({ ...form, status: e.target.value })}
+                      style={{
+                        padding: '0.65rem 0.8rem',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '8px',
+                        fontSize: '0.9rem',
+                        background: 'white',
+                        width: '100%'
+                      }}
+                    >
+                      {statuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+                    </select>
+                  </label>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.85rem', fontWeight: 600 }}>
+                    Prépa (min)
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type="number"
+                        min={0}
+                        value={form.prepTimeMinutes ?? 0}
+                        onChange={(e) => setForm({ ...form, prepTimeMinutes: Number(e.target.value) })}
+                        style={{
+                          padding: '0.65rem 0.8rem 0.65rem 2.25rem',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '8px',
+                          fontSize: '0.9rem',
+                          width: '100%'
+                        }}
+                      />
+                      <Clock size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                    </div>
+                  </label>
+
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.85rem', fontWeight: 600 }}>
+                    Cuisson (min)
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type="number"
+                        min={0}
+                        value={form.cookTimeMinutes ?? 0}
+                        onChange={(e) => setForm({ ...form, cookTimeMinutes: Number(e.target.value) })}
+                        style={{
+                          padding: '0.65rem 0.8rem 0.65rem 2.25rem',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '8px',
+                          fontSize: '0.9rem',
+                          width: '100%'
+                        }}
+                      />
+                      <Clock size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                    </div>
+                  </label>
+                </div>
               </div>
-              <input
-                placeholder="Commentaire de préparation (ex: émincé finement, réserver le jus...)"
-                value={line.comment ?? ''}
-                onChange={(e) => patchIngredient(index, { comment: e.target.value })}
-                style={{ fontSize: '0.85rem', marginBottom: 0 }}
-              />
             </div>
-          ))}
-          {ingredients.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '1.5rem', border: '2px dashed var(--light-border)', borderRadius: '12px', color: 'var(--text-muted)', fontSize: '0.88rem' }}>
-              Aucun ingrédient renseigné pour le moment.
-            </div>
-          )}
-        </div>
-        
-        <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '0.5rem 0' }} />
-        
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 850, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--primary)' }}>
-            Étapes de préparation
-          </h4>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-            onClick={() => setForm({ ...form, steps: [...steps, { order: steps.length + 1, title: '', description: '', estimatedTimeMinutes: 0 }] })}
-          >
-            <Plus size={14} /> Ajouter une étape
-          </button>
-        </div>
-        
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {steps.map((step, index) => (
-            <div
-              key={index}
-              className="card-modern"
-              style={{
-                padding: '1.25rem',
-                background: '#f8fafc',
+
+            {/* Right Pane (Ingredients and Steps workspace) */}
+            <div style={{
+              padding: '2.5rem 3rem',
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '2.5rem'
+            }}>
+              {/* Ingredients Section */}
+              <div style={{
+                background: '#ffffff',
+                borderRadius: '16px',
                 border: '1px solid #e2e8f0',
-                display: 'grid',
-                gridTemplateColumns: '80px 2fr 3fr 100px auto',
-                gap: '0.75rem',
-                alignItems: 'end',
-                margin: 0
-              }}
-            >
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>
-                Ordre
-                <input type="number" min={1} value={step.order} onChange={(e) => patchStep(index, { order: Number(e.target.value) })} style={{ marginBottom: 0 }} />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>
-                Titre de l'étape
-                <input value={step.title} onChange={(e) => patchStep(index, { title: e.target.value })} placeholder="ex: Cuisson, Dressage..." required style={{ marginBottom: 0 }} />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>
-                Instructions
-                <input value={step.description} onChange={(e) => patchStep(index, { description: e.target.value })} placeholder="Détails étape..." required style={{ marginBottom: 0 }} />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>
-                Durée (min)
-                <input type="number" min={0} value={step.estimatedTimeMinutes} onChange={(e) => patchStep(index, { estimatedTimeMinutes: Number(e.target.value) })} style={{ marginBottom: 0 }} />
-              </label>
+                padding: '2rem',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>
+                      Ingrédients Stocks
+                    </h3>
+                    <span style={{
+                      background: '#eff6ff',
+                      color: '#2563eb',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      padding: '0.2rem 0.6rem',
+                      borderRadius: '9999px'
+                    }}>
+                      {ingredients.length} {ingredients.length > 1 ? 'produits' : 'produit'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', borderRadius: '8px', padding: '0.4rem 0.8rem' }}
+                    onClick={() => setForm({ ...form, ingredients: [...ingredients, { productId: '', unitId: units[0]?.id ?? '', quantity: 1, comment: '', allergenIds: [] }] })}
+                  >
+                    <Plus size={14} /> Ajouter un ingrédient
+                  </button>
+                </div>
+
+                {ingredients.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {ingredients.map((line, index) => {
+                      const selectedProduct = products.find(p => p.id === line.productId);
+                      return (
+                        <div
+                          key={index}
+                          style={{
+                            padding: '1.25rem',
+                            background: '#f8fafc',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '12px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0.75rem',
+                            transition: 'border-color 0.2s',
+                            position: 'relative'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.borderColor = '#cbd5e1'}
+                          onMouseLeave={(e) => e.currentTarget.style.borderColor = '#e2e8f0'}
+                        >
+                          <div style={{ display: 'grid', gridTemplateColumns: '2.5fr 1fr 1fr 1.5fr auto', gap: '0.75rem', alignItems: 'end' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>
+                              Produit Stocks
+                              <ProductSelect
+                                products={products}
+                                value={line.productId}
+                                onChange={(productId) => {
+                                  const product = products.find(p => p.id === productId);
+                                  patchIngredient(index, { productId, unitId: product?.unitId ?? line.unitId });
+                                }}
+                              />
+                            </div>
+                            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>
+                              Quantité
+                              <input
+                                type="number"
+                                step="any"
+                                min={0.001}
+                                value={line.quantity}
+                                onChange={(e) => patchIngredient(index, { quantity: Number(e.target.value) })}
+                                required
+                                style={{
+                                  padding: '0.5rem 0.75rem',
+                                  border: '1px solid #cbd5e1',
+                                  borderRadius: '8px',
+                                  fontSize: '0.85rem'
+                                }}
+                              />
+                            </label>
+                            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>
+                              Unité
+                              <select
+                                value={line.unitId}
+                                onChange={(e) => patchIngredient(index, { unitId: e.target.value })}
+                                required
+                                style={{
+                                  padding: '0.5rem 0.75rem',
+                                  border: '1px solid #cbd5e1',
+                                  borderRadius: '8px',
+                                  fontSize: '0.85rem',
+                                  background: 'white',
+                                  marginBottom: 0
+                                }}
+                              >
+                                {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name} ({unit.symbol})</option>)}
+                              </select>
+                            </label>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>
+                              Allergènes
+                              <AllergenMultiSelect
+                                allergens={allergens}
+                                selectedIds={line.allergenIds ?? []}
+                                onChange={(ids) => patchIngredient(index, { allergenIds: ids })}
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              className="icon-btn danger"
+                              style={{
+                                height: '36px',
+                                width: '36px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                                borderRadius: '8px',
+                                border: '1px solid #fee2e2',
+                                background: '#fef2f2',
+                                color: '#ef4444',
+                                cursor: 'pointer'
+                              }}
+                              onClick={() => setForm({ ...form, ingredients: ingredients.filter((_, i) => i !== index) })}
+                              title="Supprimer la ligne"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                          
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <input
+                              placeholder="Commentaire de préparation (ex: émincé finement, réserver le jus...)"
+                              value={line.comment ?? ''}
+                              onChange={(e) => patchIngredient(index, { comment: e.target.value })}
+                              style={{
+                                fontSize: '0.85rem',
+                                padding: '0.5rem 0.75rem',
+                                border: '1px solid #e2e8f0',
+                                borderRadius: '8px',
+                                width: '100%',
+                                marginBottom: 0,
+                                background: '#ffffff'
+                              }}
+                            />
+                            {selectedProduct?.averagePurchasePrice ? (
+                              <span style={{ fontSize: '0.75rem', color: '#64748b', whiteSpace: 'nowrap', background: '#f1f5f9', padding: '0.3rem 0.6rem', borderRadius: '6px' }}>
+                                Prix estimé : {(Number(selectedProduct.averagePurchasePrice) * line.quantity).toFixed(2)} €
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '2.5rem 1.5rem',
+                    border: '2px dashed #e2e8f0',
+                    borderRadius: '12px',
+                    color: '#94a3b8',
+                    fontSize: '0.88rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}>
+                    <ChefHat size={32} style={{ color: '#cbd5e1' }} />
+                    <span>Aucun ingrédient renseigné pour le moment. Cliquez sur "Ajouter un ingrédient" pour commencer.</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Steps Section */}
+              <div style={{
+                background: '#ffffff',
+                borderRadius: '16px',
+                border: '1px solid #e2e8f0',
+                padding: '2rem',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>
+                      Étapes de préparation
+                    </h3>
+                    <span style={{
+                      background: '#f0fdf4',
+                      color: '#16a34a',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      padding: '0.2rem 0.6rem',
+                      borderRadius: '9999px'
+                    }}>
+                      {steps.length} {steps.length > 1 ? 'étapes' : 'étape'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', borderRadius: '8px', padding: '0.4rem 0.8rem' }}
+                    onClick={() => setForm({ ...form, steps: [...steps, { order: steps.length + 1, title: '', description: '', estimatedTimeMinutes: 0 }] })}
+                  >
+                    <Plus size={14} /> Ajouter une étape
+                  </button>
+                </div>
+
+                {steps.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', position: 'relative' }}>
+                    {/* Vertical timeline line */}
+                    <div style={{
+                      position: 'absolute',
+                      left: '20px',
+                      top: '15px',
+                      bottom: '15px',
+                      width: '2px',
+                      background: '#e2e8f0',
+                      zIndex: 0
+                    }} />
+
+                    {steps.map((step, index) => (
+                      <div
+                        key={index}
+                        style={{
+                          display: 'flex',
+                          gap: '1.25rem',
+                          position: 'relative',
+                          zIndex: 1
+                        }}
+                      >
+                        {/* Timeline Step number circle */}
+                        <div style={{
+                          width: '40px',
+                          height: '40px',
+                          borderRadius: '50%',
+                          background: '#3b82f6',
+                          color: 'white',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 700,
+                          fontSize: '0.9rem',
+                          flexShrink: 0,
+                          border: '4px solid #ffffff',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                          alignSelf: 'flex-start',
+                          marginTop: '6px',
+                          lineHeight: '32px',
+                          textAlign: 'center'
+                        }}>
+                          {step.order}
+                        </div>
+
+                        <div
+                          style={{
+                            flex: 1,
+                            padding: '1.25rem',
+                            background: '#f8fafc',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '12px',
+                            display: 'grid',
+                            gridTemplateColumns: '80px 2fr 3fr 120px auto',
+                            gap: '0.75rem',
+                            alignItems: 'end',
+                            transition: 'border-color 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.borderColor = '#cbd5e1'}
+                          onMouseLeave={(e) => e.currentTarget.style.borderColor = '#e2e8f0'}
+                        >
+                          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>
+                            Ordre
+                            <input
+                              type="number"
+                              min={1}
+                              value={step.order}
+                              onChange={(e) => patchStep(index, { order: Number(e.target.value) })}
+                              style={{
+                                padding: '0.5rem 0.75rem',
+                                border: '1px solid #cbd5e1',
+                                borderRadius: '8px',
+                                fontSize: '0.85rem',
+                                marginBottom: 0
+                              }}
+                            />
+                          </label>
+                          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>
+                            Titre de l'étape
+                            <input
+                              value={step.title}
+                              onChange={(e) => patchStep(index, { title: e.target.value })}
+                              placeholder="ex: Cuisson, Dressage..."
+                              required
+                              style={{
+                                padding: '0.5rem 0.75rem',
+                                border: '1px solid #cbd5e1',
+                                borderRadius: '8px',
+                                fontSize: '0.85rem',
+                                marginBottom: 0
+                              }}
+                            />
+                          </label>
+                          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>
+                            Instructions
+                            <input
+                              value={step.description}
+                              onChange={(e) => patchStep(index, { description: e.target.value })}
+                              placeholder="Détails étape..."
+                              required
+                              style={{
+                                padding: '0.5rem 0.75rem',
+                                border: '1px solid #cbd5e1',
+                                borderRadius: '8px',
+                                fontSize: '0.85rem',
+                                marginBottom: 0
+                              }}
+                            />
+                          </label>
+                          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>
+                            Durée (min)
+                            <div style={{ position: 'relative' }}>
+                              <input
+                                type="number"
+                                min={0}
+                                value={step.estimatedTimeMinutes}
+                                onChange={(e) => patchStep(index, { estimatedTimeMinutes: Number(e.target.value) })}
+                                style={{
+                                  padding: '0.5rem 0.75rem 0.5rem 2.0rem',
+                                  border: '1px solid #cbd5e1',
+                                  borderRadius: '8px',
+                                  fontSize: '0.85rem',
+                                  width: '100%',
+                                  marginBottom: 0
+                                }}
+                              />
+                              <Clock size={12} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                            </div>
+                          </label>
+                          <button
+                            type="button"
+                            className="icon-btn danger"
+                            style={{
+                              height: '36px',
+                              width: '36px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0,
+                              borderRadius: '8px',
+                              border: '1px solid #fee2e2',
+                              background: '#fef2f2',
+                              color: '#ef4444',
+                              cursor: 'pointer'
+                            }}
+                            onClick={() => setForm({ ...form, steps: steps.filter((_, i) => i !== index).map((s, i) => ({ ...s, order: i + 1 })) })}
+                            title="Supprimer l'étape"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '2.5rem 1.5rem',
+                    border: '2px dashed #e2e8f0',
+                    borderRadius: '12px',
+                    color: '#94a3b8',
+                    fontSize: '0.88rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}>
+                    <ClipboardList size={32} style={{ color: '#cbd5e1' }} />
+                    <span>Aucune étape renseignée pour le moment. Cliquez sur "Ajouter une étape" pour commencer.</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Sticky Bottom Validation Banner */}
+          <div style={{
+            height: '64px',
+            background: '#ffffff',
+            borderTop: '1px solid #e2e8f0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '0 2.5rem',
+            flexShrink: 0,
+            boxShadow: '0 -2px 10px rgba(0, 0, 0, 0.02)'
+          }}>
+            <label className="toggle-inline" style={{ userSelect: 'none', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={form.status === 'VALIDATED'}
+                onChange={(e) => setForm({ ...form, status: e.target.checked ? 'VALIDATED' : 'DRAFT' })}
+                style={{ cursor: 'pointer' }}
+              />
+              <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#334155' }}>
+                Fiche validée comme référence de production
+              </span>
+            </label>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button type="button" className="btn btn-secondary" onClick={onClose} style={{ height: '36px', fontSize: '0.88rem' }}>
+                Annuler
+              </button>
               <button
                 type="button"
-                className="icon-btn danger"
-                style={{ height: '38px', width: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-                onClick={() => setForm({ ...form, steps: steps.filter((_, i) => i !== index).map((s, i) => ({ ...s, order: i + 1 })) })}
-                title="Supprimer l'étape"
+                className="btn btn-primary"
+                disabled={loading || !form.name.trim() || !form.categoryId}
+                onClick={onSave}
+                style={{ height: '36px', fontSize: '0.88rem', fontWeight: 600 }}
               >
-                <Trash2 size={16} />
+                {loading ? 'Enregistrement...' : editing ? 'Enregistrer les modifications' : 'Créer la fiche technique'}
               </button>
             </div>
-          ))}
-          {steps.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '1.5rem', border: '2px dashed var(--light-border)', borderRadius: '12px', color: 'var(--text-muted)', fontSize: '0.88rem' }}>
-              Aucune étape renseignée pour le moment.
-            </div>
-          )}
-        </div>
-        
-        <label className="toggle-inline" style={{ marginTop: '0.5rem', userSelect: 'none', margin: 0 }}>
-          <input
-            type="checkbox"
-            checked={form.status === 'VALIDATED'}
-            onChange={(e) => setForm({ ...form, status: e.target.checked ? 'VALIDATED' : 'DRAFT' })}
-          />
-          <span>Fiche validée comme référence de production</span>
-        </label>
-      </div>
-      
-      <div className="modal-footer" style={{ margin: '1.5rem -1.5rem -1.5rem', padding: '1rem 1.5rem', background: '#f8fafc', borderTop: '1px solid #f1f5f9', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-        <button type="button" className="btn btn-secondary" onClick={onClose}>
-          Annuler
-        </button>
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={loading || !form.name.trim() || !form.categoryId}
-          onClick={onSave}
-        >
-          {loading ? 'Enregistrement...' : editing ? 'Enregistrer les modifications' : 'Créer la fiche technique'}
-        </button>
-      </div>
-    </Modal>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

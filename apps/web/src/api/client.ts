@@ -4,6 +4,8 @@ import type {
   DashboardSummary,
   ModularDashboard,
   ModularDashboardPreferences,
+  MyDocumentsResponse,
+  MyDocument,
   Category,
   AuditEntry,
   ArchitectureAnalysis,
@@ -716,6 +718,34 @@ export const api = {
   stocksDashboard(token: string) {
     return request<StocksDashboard>('/stocks/dashboard', {}, token);
   },
+  documents(token: string, params: { search?: string; supplier?: string; type?: string; dateFrom?: string; dateTo?: string } = {}) {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => { if (value !== undefined && value !== '') qs.set(key, String(value)); });
+    return request<MyDocumentsResponse>(`/documents${qs.toString() ? `?${qs.toString()}` : ''}`, {}, token);
+  },
+  async viewDocument(token: string, documentId: string) {
+    const response = await fetch(`${API_URL}/api/documents/${documentId}/download`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) throw new ApiError(await response.text(), response.status);
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+  },
+  async downloadDocument(token: string, documentId: string, filename: string) {
+    const response = await fetch(`${API_URL}/api/documents/${documentId}/download`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) throw new ApiError(await response.text(), response.status);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = globalThis.document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  },
+  renameDocument(token: string, documentId: string, originalName: string) {
+    return request<MyDocument>(`/documents/${documentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ originalName })
+    }, token);
+  },
   stocksOcrConfig(token: string) {
     return request<StocksOcrConfig>('/stocks/ocr/config', {}, token);
   },
@@ -733,6 +763,9 @@ export const api = {
   },
   analyzeStocksOcrBatch(token: string, documentIds: string[]) {
     return request<{ jobs: Array<{ documentId: string; ocrDocumentId: string; status: string }> }>('/stocks/ocr/documents/analyze-batch', { method: 'POST', body: JSON.stringify({ documentIds }) }, token);
+  },
+  stocksOcrStatuses(token: string) {
+    return request<{ statuses: StocksOcrStatus[] }>('/stocks/ocr/documents/statuses', {}, token);
   },
   stocksOcrStatus(token: string, documentId: string) {
     return request<StocksOcrStatus>(`/stocks/ocr/documents/${documentId}/status`, {}, token);
