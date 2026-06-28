@@ -871,17 +871,6 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
         <p className="welcome-desc">
           Centralisez et maîtrisez l’ensemble de vos préparations culinaires, avec des ingrédients, unités et prix d'achat directement synchronisés avec vos Stocks.
         </p>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
-          <span className="badge badge-production" style={{ background: 'rgba(255,255,255,0.08)', color: '#a7f3d0', border: '1px solid rgba(255,255,255,0.12)' }}>
-            📦 Stocks obligatoire
-          </span>
-          <span className="badge badge-reception" style={{ background: 'rgba(255,255,255,0.08)', color: '#93c5fd', border: '1px solid rgba(255,255,255,0.12)' }}>
-            Coûts automatiques
-          </span>
-          <span className="badge badge-inventory" style={{ background: 'rgba(255,255,255,0.08)', color: '#fde047', border: '1px solid rgba(255,255,255,0.12)' }}>
-            Allergènes par ligne
-          </span>
-        </div>
       </motion.section>
 
       {error ? (

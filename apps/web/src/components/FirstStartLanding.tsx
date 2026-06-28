@@ -1,4 +1,4 @@
-import type { ChangeEvent } from 'react';
+import type { ChangeEvent, DragEvent } from 'react';
 import { useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -8,11 +8,17 @@ import {
   CalendarDays,
   CheckCircle2,
   ChefHat,
+  Clock,
+  Database,
   Eye,
   EyeOff,
+  FileArchive,
+  Files,
   HelpCircle,
   ImagePlus,
   LockKeyhole,
+  LockKeyholeOpen,
+  RefreshCcw,
   Server,
   ShieldCheck,
   Sparkles,
@@ -496,48 +502,335 @@ function BootstrapRestorePanel({
   onBack: () => void;
   onLoginRequested: () => void;
 }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const isValidated = phrase === 'RESTAURER TOQUEHUB';
+  const isTyping = phrase.length > 0 && !isValidated;
+
+  function handleDragOver(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    if (!busy && !done) setDragging(true);
+  }
+  function handleDragLeave() {
+    setDragging(false);
+  }
+  function handleDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setDragging(false);
+    if (busy || done) return;
+    const file = e.dataTransfer.files?.[0];
+    if (file) void onFile(file);
+  }
+
   return (
-    <div className="card-modern" style={{ padding: '2.5rem', borderRadius: '24px', background: 'white', boxShadow: '0 30px 80px rgba(9, 13, 22, 0.08)' }}>
+    <div
+      className="card-modern"
+      style={{
+        padding: '2.5rem',
+        borderRadius: '28px',
+        background: 'white',
+        boxShadow: '0 30px 80px rgba(9, 13, 22, 0.08)',
+      }}
+    >
+      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', marginBottom: '2rem' }}>
         <div>
-          <span className="badge badge-reception" style={{ display: 'inline-flex', gap: '0.35rem', marginBottom: '0.8rem' }}>
-            <UploadCloud size={14} /> Restauration premier démarrage
+          <span
+            className="badge badge-reception"
+            style={{ display: 'inline-flex', gap: '0.35rem', marginBottom: '0.85rem', padding: '0.35rem 0.85rem', borderRadius: '999px' }}
+          >
+            <UploadCloud size={13} /> RESTAURATION PREMIER DÉMARRAGE
           </span>
-          <h1 style={{ fontSize: '2.35rem', fontWeight: 900, letterSpacing: '-0.05em', margin: 0 }}>Restaurer une sauvegarde</h1>
-          <p style={{ color: 'var(--text-muted)', lineHeight: 1.65, maxWidth: '680px', marginTop: '0.75rem' }}>
-            Importez une archive ToqueHub complète pour recréer l’environnement depuis sa base PostgreSQL et ses documents métier.
+          <h1 style={{ fontSize: '2.35rem', fontWeight: 900, letterSpacing: '-0.05em', margin: 0, lineHeight: 1.1 }}>
+            Restaurer une sauvegarde
+          </h1>
+          <p style={{ color: 'var(--text-muted)', lineHeight: 1.65, maxWidth: '620px', marginTop: '0.75rem', fontSize: '0.95rem' }}>
+            Importez une archive ToqueHub complète pour recréer l'environnement depuis sa base PostgreSQL et ses documents métier.
           </p>
         </div>
-        {!done ? <button className="btn btn-secondary" onClick={onBack} disabled={busy}><ArrowLeft size={16} /> Retour</button> : null}
+        {!done ? (
+          <button
+            className="btn btn-secondary"
+            onClick={onBack}
+            disabled={busy}
+            style={{ flexShrink: 0, marginTop: '0.25rem' }}
+          >
+            <ArrowLeft size={16} /> Retour
+          </button>
+        ) : null}
       </div>
 
-      {error ? <div className="alert-modern error" style={{ marginBottom: '1rem' }}><AlertCircleIcon /> {error}</div> : null}
-      {message ? <div className="alert-modern success" style={{ marginBottom: '1rem' }}><CheckCircle2 size={18} /> {message}</div> : null}
+      {/* Alerts */}
+      <AnimatePresence>
+        {error ? (
+          <motion.div
+            key="error"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="alert-modern error"
+            style={{ marginBottom: '1.25rem' }}
+          >
+            <AlertCircleIcon /> {error}
+          </motion.div>
+        ) : null}
+        {message ? (
+          <motion.div
+            key="message"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="alert-modern success"
+            style={{ marginBottom: '1.25rem' }}
+          >
+            <CheckCircle2 size={18} /> {message}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(320px, 0.8fr)', gap: '1rem' }}>
-        <div className="card-modern" style={{ padding: '1.25rem', boxShadow: 'var(--shadow-sm)' }}>
-          <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Server size={18} /> Archive</span>
-          <p className="muted">Sélectionnez un fichier `toquehub-backup-*.tar.gz` généré par ToqueHub.</p>
-          <input type="file" accept=".gz,.tgz,.tar.gz,application/gzip" disabled={busy || done} onChange={(event) => void onFile(event.target.files?.[0])} />
-          {inspection ? (
-            <div style={{ marginTop: '1rem', display: 'grid', gap: '0.65rem' }}>
-              <div className="info-card-premium"><span className="info-card-premium-label">Fichier</span><strong>{inspection.filename}</strong></div>
-              <div className="info-card-premium"><span className="info-card-premium-label">Créée le</span><strong>{new Date(inspection.manifest.createdAt).toLocaleString('fr-FR')}</strong></div>
-              <div className="info-card-premium"><span className="info-card-premium-label">Contenu</span><strong>{inspection.manifest.files.totalFileCount} fichier(s), {formatBackupBytes(inspection.manifest.files.totalSizeBytes)}</strong></div>
-              <div className="info-card-premium"><span className="info-card-premium-label">Base</span><strong>PostgreSQL {formatBackupBytes(inspection.manifest.database.sizeBytes)}</strong></div>
+      {/* Two-column grid */}
+      <div className="restore-grid">
+
+        {/* Left: Archive upload card */}
+        <div className="restore-card-modern">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '1.25rem' }}>
+            <span
+              style={{
+                width: 38, height: 38, borderRadius: 12,
+                background: 'rgba(16, 185, 129, 0.08)',
+                color: 'var(--primary)',
+                display: 'grid', placeItems: 'center',
+              }}
+            >
+              <FileArchive size={20} />
+            </span>
+            <div>
+              <p style={{ margin: 0, fontWeight: 750, fontSize: '1.05rem', color: 'var(--text-main)' }}>Archive de sauvegarde</p>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Fichier <code style={{ background: '#f1f5f9', padding: '0 4px', borderRadius: 4 }}>toquehub-backup-*.tar.gz</code>
+              </p>
             </div>
-          ) : null}
+          </div>
+
+          <AnimatePresence mode="wait">
+            {!inspection ? (
+              <motion.div
+                key="dropzone"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
+                {/* Hidden file input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".gz,.tgz,.tar.gz,application/gzip"
+                  style={{ display: 'none' }}
+                  disabled={busy || done}
+                  onChange={(event) => void onFile(event.target.files?.[0])}
+                />
+                {/* Drag & Drop Zone */}
+                <div
+                  className={`restore-drag-zone${dragging ? ' drag-active' : ''}`}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onClick={() => !busy && !done && fileInputRef.current?.click()}
+                >
+                  <div className="restore-drag-icon-wrapper">
+                    <UploadCloud size={28} />
+                  </div>
+                  <p className="restore-drag-title">{dragging ? 'Déposez ici !' : 'Déposez votre archive ici'}</p>
+                  <p className="restore-drag-sub">ou <span style={{ color: 'var(--primary)', fontWeight: 600 }}>cliquez pour parcourir</span></p>
+                  <p className="restore-drag-sub" style={{ marginTop: '-0.25rem' }}>.tar.gz · .tgz · .gz</p>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="inspection"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.2 }}
+              >
+                <div className="restore-file-details-card">
+                  <div className="restore-file-header">
+                    <div className="restore-file-icon"><FileArchive size={22} /></div>
+                    <div className="restore-file-meta">
+                      <p className="restore-file-name">{inspection.filename}</p>
+                      <span className="restore-file-status">
+                        <CheckCircle2 size={12} /> Archive valide – manifeste lu
+                      </span>
+                    </div>
+                    {!busy && !done ? (
+                      <button
+                        title="Changer le fichier"
+                        style={{
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          color: 'var(--text-muted)', padding: '4px', borderRadius: 8,
+                          transition: 'color 0.2s',
+                          flexShrink: 0,
+                        }}
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        <RefreshCcw size={16} />
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {/* Inspection specs grid */}
+                  <div className="restore-specs-grid">
+                    <div className="restore-spec-item">
+                      <span className="restore-spec-label" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <Clock size={12} /> Créée le
+                      </span>
+                      <span className="restore-spec-value">
+                        {new Date(inspection.manifest.createdAt).toLocaleString('fr-FR')}
+                      </span>
+                    </div>
+                    <div className="restore-spec-item">
+                      <span className="restore-spec-label" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <Database size={12} /> Base PostgreSQL
+                      </span>
+                      <span className="restore-spec-value">{formatBackupBytes(inspection.manifest.database.sizeBytes)}</span>
+                    </div>
+                    <div className="restore-spec-item">
+                      <span className="restore-spec-label" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <Files size={12} /> Documents
+                      </span>
+                      <span className="restore-spec-value">{inspection.manifest.files.totalFileCount} fichier(s)</span>
+                    </div>
+                    <div className="restore-spec-item">
+                      <span className="restore-spec-label" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <FileArchive size={12} /> Volume total
+                      </span>
+                      <span className="restore-spec-value">{formatBackupBytes(inspection.manifest.files.totalSizeBytes)}</span>
+                    </div>
+                  </div>
+
+                  {/* Hidden file input for replacement */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".gz,.tgz,.tar.gz,application/gzip"
+                    style={{ display: 'none' }}
+                    disabled={busy || done}
+                    onChange={(event) => void onFile(event.target.files?.[0])}
+                  />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
-        <div className="card-modern" style={{ padding: '1.25rem', borderColor: inspection ? 'rgba(239,68,68,0.35)' : undefined, boxShadow: 'var(--shadow-sm)' }}>
-          <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><ShieldCheck size={18} /> Confirmation</span>
-          <p className="muted">Cette action restaure l’instance. Saisissez exactement la phrase demandée.</p>
-          <input placeholder="RESTAURER TOQUEHUB" value={phrase} disabled={busy || done || !inspection} onChange={(event) => onPhraseChange(event.target.value)} />
-          <button className="btn btn-danger" style={{ width: '100%', marginTop: '1rem' }} disabled={busy || done || !inspection || phrase !== 'RESTAURER TOQUEHUB'} onClick={() => void onRestore()}>
-            {busy ? 'Restauration...' : 'Restaurer cette sauvegarde'}
-          </button>
-          {done ? <button className="btn btn-primary" style={{ width: '100%', marginTop: '0.75rem' }} onClick={onLoginRequested}>Se connecter</button> : null}
+        {/* Right: Confirmation card */}
+        <div
+          className="restore-card-modern"
+          style={{
+            borderColor: isValidated
+              ? 'rgba(16, 185, 129, 0.3)'
+              : isTyping
+              ? 'rgba(239, 68, 68, 0.25)'
+              : undefined,
+            transition: 'border-color 0.3s',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '1.25rem' }}>
+            <span
+              style={{
+                width: 38, height: 38, borderRadius: 12,
+                background: isValidated
+                  ? 'rgba(16, 185, 129, 0.08)'
+                  : isTyping
+                  ? 'rgba(239, 68, 68, 0.08)'
+                  : 'rgba(100, 116, 139, 0.08)',
+                color: isValidated ? 'var(--primary)' : isTyping ? '#ef4444' : '#64748b',
+                display: 'grid', placeItems: 'center',
+                transition: 'all 0.3s',
+              }}
+            >
+              <ShieldCheck size={20} />
+            </span>
+            <div>
+              <p style={{ margin: 0, fontWeight: 750, fontSize: '1.05rem', color: 'var(--text-main)' }}>Confirmation requise</p>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>Cette action est irréversible</p>
+            </div>
+          </div>
+
+          <div className="restore-confirm-container">
+            {/* Lock icon with animation */}
+            <motion.div
+              className={`restore-lock-shield${isValidated ? ' validated' : isTyping ? ' active' : ''}`}
+              animate={isValidated ? { scale: [1, 1.15, 1] } : {}}
+              transition={{ duration: 0.4 }}
+            >
+              {isValidated ? <LockKeyholeOpen size={32} /> : <LockKeyhole size={32} />}
+            </motion.div>
+
+            <div style={{ width: '100%' }}>
+              <p style={{ margin: '0 0 0.75rem', fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                Saisissez exactement la phrase ci-dessous pour débloquer la restauration :
+              </p>
+              <div
+                style={{
+                  background: '#f8fafc',
+                  borderRadius: 10,
+                  padding: '0.6rem 1rem',
+                  marginBottom: '0.75rem',
+                  fontFamily: 'monospace',
+                  fontWeight: 800,
+                  letterSpacing: '0.05em',
+                  fontSize: '0.95rem',
+                  color: 'var(--text-main)',
+                  textAlign: 'center',
+                  border: '1px dashed rgba(16,185,129,0.2)',
+                  userSelect: 'all',
+                }}
+              >
+                RESTAURER TOQUEHUB
+              </div>
+              <div className="restore-input-secure-container">
+                <input
+                  className={`restore-input-secure${isValidated ? ' validated' : isTyping ? ' active' : ''}`}
+                  placeholder="Saisissez la phrase..."
+                  value={phrase}
+                  disabled={busy || done || !inspection}
+                  onChange={(event) => onPhraseChange(event.target.value)}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
+            </div>
+
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+              <button
+                className="btn btn-danger"
+                style={{ width: '100%', padding: '0.9rem', fontSize: '0.95rem', fontWeight: 700, gap: '0.5rem' }}
+                disabled={busy || done || !inspection || !isValidated}
+                onClick={() => void onRestore()}
+              >
+                {busy ? (
+                  <><div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> Restauration en cours...</>
+                ) : (
+                  <><UploadCloud size={17} /> Restaurer cette sauvegarde</>
+                )}
+              </button>
+              {done ? (
+                <motion.button
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="btn btn-primary"
+                  style={{ width: '100%', padding: '0.9rem', fontSize: '0.95rem' }}
+                  onClick={onLoginRequested}
+                >
+                  <CheckCircle2 size={17} /> Se connecter
+                </motion.button>
+              ) : null}
+            </div>
+          </div>
         </div>
+
       </div>
     </div>
   );

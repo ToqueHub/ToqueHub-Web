@@ -292,8 +292,9 @@ export class BackupsService implements OnModuleInit, OnModuleDestroy {
         if ((await this.sha256File(dumpPath)) !== manifest.database.checksumSha256) {
           throw new BadRequestException('Le dump PostgreSQL ne correspond pas au checksum du manifeste.');
         }
+        await this.resetPublicSchemaForRestore();
         await this.prisma.$disconnect();
-        await this.runCommand(this.pgRestorePath, ['--clean', '--if-exists', '--no-owner', '--no-privileges', '--dbname', this.postgresToolDatabaseUrl(), dumpPath]);
+        await this.runCommand(this.pgRestorePath, ['--exit-on-error', '--no-owner', '--no-privileges', '--dbname', this.postgresToolDatabaseUrl(), dumpPath]);
         await this.restoreUploadRoots(extractDir, manifest);
         return {
           restored: true,
@@ -305,6 +306,51 @@ export class BackupsService implements OnModuleInit, OnModuleDestroy {
         await rm(extractDir, { recursive: true, force: true });
       }
     });
+  }
+
+  private async resetPublicSchemaForRestore() {
+    await this.prisma.$executeRawUnsafe(`
+      DO $$
+      DECLARE
+        item record;
+      BEGIN
+        FOR item IN
+          SELECT c.relkind, n.nspname, c.relname
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          LEFT JOIN pg_depend d ON d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype = 'e'
+          WHERE n.nspname = 'public'
+            AND c.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
+            AND d.objid IS NULL
+        LOOP
+          EXECUTE format(
+            'DROP %s IF EXISTS %I.%I CASCADE',
+            CASE item.relkind
+              WHEN 'r' THEN 'TABLE'
+              WHEN 'p' THEN 'TABLE'
+              WHEN 'v' THEN 'VIEW'
+              WHEN 'm' THEN 'MATERIALIZED VIEW'
+              WHEN 'f' THEN 'FOREIGN TABLE'
+              WHEN 'S' THEN 'SEQUENCE'
+            END,
+            item.nspname,
+            item.relname
+          );
+        END LOOP;
+
+        FOR item IN
+          SELECT n.nspname, t.typname
+          FROM pg_type t
+          JOIN pg_namespace n ON n.oid = t.typnamespace
+          LEFT JOIN pg_depend d ON d.classid = 'pg_type'::regclass AND d.objid = t.oid AND d.deptype = 'e'
+          WHERE n.nspname = 'public'
+            AND t.typtype IN ('d', 'e', 'r')
+            AND d.objid IS NULL
+        LOOP
+          EXECUTE format('DROP TYPE IF EXISTS %I.%I CASCADE', item.nspname, item.typname);
+        END LOOP;
+      END $$;
+    `);
   }
 
   private async inspectArchive(archivePath: string): Promise<{ manifest: BackupManifest; sizeBytes: number; extractDir: string }> {
