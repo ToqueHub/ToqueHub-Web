@@ -5411,7 +5411,22 @@ function ApplicationsPage({
     );
   }, [searchQuery]);
 
-  const featuredApp = apps[0]; // Cours des Produits is featured
+  const featuredApps = useMemo(() => {
+    return apps.filter(app => app.status === 'Disponible');
+  }, []);
+
+  const [featuredIndex, setFeaturedIndex] = useState(0);
+
+  useEffect(() => {
+    if (searchQuery !== '') return;
+    const timer = setInterval(() => {
+      setFeaturedIndex(prev => (prev + 1) % featuredApps.length);
+    }, 5500);
+    return () => clearInterval(timer);
+  }, [featuredApps.length, searchQuery]);
+
+  const featuredApp = featuredApps[featuredIndex] || apps[0];
+  const FeaturedIcon = featuredApp.icon;
 
   return (
     <div className="applications-page" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -5419,51 +5434,80 @@ function ApplicationsPage({
       {/* Featured Banner (À la Une) */}
       {searchQuery === '' && (
         <div className="store-featured-banner">
-          <div className="store-featured-content">
-            <span className="store-featured-tag">À LA UNE · INDISPENSABLE</span>
-            <h1 className="store-featured-title">Module {featuredApp.title}</h1>
-            <p className="store-featured-desc">
-              {featuredApp.tagline} Consultez les cotations FranceAgriMer en temps réel sans importer de données RNM dans ToqueHub.
-            </p>
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <button 
-                className="btn btn-primary" 
-                onClick={() => onSelectApp(featuredApp)}
-                style={{ padding: '0.6rem 1.5rem', background: 'white', color: 'var(--dark-bg)', fontWeight: 800 }}
-              >
-                Découvrir
-              </button>
-              {installedApps.includes(featuredApp.id) ? (
-                <span className="badge badge-reception" style={{ background: 'rgba(255,255,255,0.15)', color: 'white' }}>
-                  Déjà installé
-                </span>
-              ) : (
-                <button 
-                  className="btn btn-secondary" 
-                  onClick={(e) => { e.stopPropagation(); onInstallApp(featuredApp.id); }}
-                  disabled={installingAppId !== null}
-                  style={{ background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.15)' }}
-                >
-                  Installer
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="store-featured-visual">
-            <div 
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={featuredApp.id}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.35, ease: 'easeInOut' }}
               style={{
-                width: '130px',
-                height: '130px',
-                borderRadius: '30px',
-                background: featuredApp.gradient,
-                display: 'grid',
-                placeItems: 'center',
-                boxShadow: '0 20px 50px rgba(16, 185, 129, 0.3)',
-                color: 'white'
+                display: 'flex',
+                width: '100%',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '2rem'
               }}
             >
-              <LineChart size={64} />
-            </div>
+              <div className="store-featured-content">
+                <span className="store-featured-tag">À LA UNE · {featuredApp.category.toUpperCase()}</span>
+                <h1 className="store-featured-title">Module {featuredApp.title}</h1>
+                <p className="store-featured-desc">
+                  {featuredApp.tagline}
+                </p>
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button 
+                    className="btn btn-primary" 
+                    onClick={() => onSelectApp(featuredApp)}
+                    style={{ padding: '0.6rem 1.5rem', background: 'white', color: 'var(--dark-bg)', fontWeight: 800 }}
+                  >
+                    Découvrir
+                  </button>
+                  {installedApps.includes(featuredApp.id) ? (
+                    <span className="badge badge-reception" style={{ background: 'rgba(255,255,255,0.15)', color: 'white' }}>
+                      Déjà installé
+                    </span>
+                  ) : (
+                    <button 
+                      className="btn btn-secondary" 
+                      onClick={(e) => { e.stopPropagation(); onInstallApp(featuredApp.id); }}
+                      disabled={installingAppId !== null}
+                      style={{ background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.15)' }}
+                    >
+                      Installer
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="store-featured-visual">
+                <div 
+                  style={{
+                    width: '130px',
+                    height: '130px',
+                    borderRadius: '30px',
+                    background: featuredApp.gradient,
+                    display: 'grid',
+                    placeItems: 'center',
+                    boxShadow: '0 20px 50px rgba(16, 185, 129, 0.3)',
+                    color: 'white'
+                  }}
+                >
+                  <FeaturedIcon size={64} />
+                </div>
+              </div>
+            </motion.div>
+          </AnimatePresence>
+
+          {/* Indicators / Dots */}
+          <div className="store-featured-dots">
+            {featuredApps.map((app, idx) => (
+              <button
+                key={app.id}
+                onClick={() => setFeaturedIndex(idx)}
+                className={`store-featured-dot ${idx === featuredIndex ? 'active' : ''}`}
+                aria-label={`Afficher le module ${app.title}`}
+              />
+            ))}
           </div>
         </div>
       )}
