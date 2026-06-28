@@ -1,18 +1,21 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
 import { AlertCircle, BriefcaseBusiness, CalendarDays, FileText, GraduationCap, History, NotebookText, Search, ShieldCheck, UserRound, UsersRound, X } from 'lucide-react';
-import type { CoreUser, HrCollaborator, HrCollaboratorPayload, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, HrRotation, Site } from '../../../types';
+import { api } from '../../../api/client';
+import type { CoreUser, HrCollaborator, HrCollaboratorPayload, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, HrRotation, PlanningEmployeeEntitlementsResponse, PlanningEntitlementCatalogItem, Site } from '../../../types';
 import { HR_CATALOG } from '../../../hr-catalog';
 
-type TabId = 'profile' | 'professional' | 'contracts' | 'documents' | 'trainings' | 'organization' | 'history';
+type TabId = 'profile' | 'professional' | 'contracts' | 'rights' | 'documents' | 'trainings' | 'organization' | 'history';
 type RequiredFieldId = 'firstName' | 'lastName' | 'departmentId' | 'positionId';
 type RequiredFieldErrors = Partial<Record<RequiredFieldId, string>>;
 export type PendingHrDocumentUpload = { file: File; category: string; notes?: string; expiresAt?: string };
+type OpeningBalanceForm = { entitlementRuleId: string; code: string; label: string; accountType: string; unit: 'DAYS' | 'MINUTES'; openingBalance: string; effectiveFrom: string };
 
 const tabs: Array<{ id: TabId; label: string }> = [
   { id: 'profile', label: 'Profil' },
   { id: 'professional', label: 'Professionnel' },
   { id: 'contracts', label: 'Contrat & salaire' },
+  { id: 'rights', label: 'Droits' },
   { id: 'documents', label: 'Documents' },
   { id: 'trainings', label: 'Formations' },
   { id: 'organization', label: 'Organisation' },
@@ -26,7 +29,7 @@ const statusOptions = [
   { value: 'DEPARTED', label: 'Départ' },
 ];
 
-export function CollaboratorModal({ collaborator, collaborators, departments, positions, users, sites, rotations, onClose, onSubmit, onViewDocument, onDownloadDocument, onReplaceDocument, onDeleteDocument }: { collaborator?: HrCollaborator; collaborators: HrCollaborator[]; departments: HrDepartment[]; positions: HrPosition[]; users: CoreUser[]; sites: Site[]; rotations?: HrRotation[]; onClose: () => void; onSubmit: (payload: HrCollaboratorPayload, documents: PendingHrDocumentUpload[]) => Promise<void>; onViewDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onDownloadDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument?: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument?: (employeeId: string, documentId: string) => Promise<void> }) {
+export function CollaboratorModal({ collaborator, collaborators, departments, positions, users, sites, rotations, token, onClose, onSubmit, onViewDocument, onDownloadDocument, onReplaceDocument, onDeleteDocument }: { collaborator?: HrCollaborator; collaborators: HrCollaborator[]; departments: HrDepartment[]; positions: HrPosition[]; users: CoreUser[]; sites: Site[]; rotations?: HrRotation[]; token: string; onClose: () => void; onSubmit: (payload: HrCollaboratorPayload, documents: PendingHrDocumentUpload[]) => Promise<void>; onViewDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onDownloadDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument?: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument?: (employeeId: string, documentId: string) => Promise<void> }) {
   const [activeTab, setActiveTab] = useState<TabId>('profile');
   const [submitting, setSubmitting] = useState(false);
   const [positionResetMessage, setPositionResetMessage] = useState('');
@@ -39,6 +42,10 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
   const [pendingDocuments, setPendingDocuments] = useState<PendingHrDocumentUpload[]>([]);
   const [selectedTrainings, setSelectedTrainings] = useState<string[]>([]);
   const [customTraining, setCustomTraining] = useState('');
+  const [entitlements, setEntitlements] = useState<PlanningEmployeeEntitlementsResponse | null>(null);
+  const [entitlementsLoading, setEntitlementsLoading] = useState(false);
+  const [entitlementsError, setEntitlementsError] = useState('');
+  const [openingBalanceForm, setOpeningBalanceForm] = useState<OpeningBalanceForm>({ entitlementRuleId: '', code: 'paid_leave', label: 'Congés payés', accountType: 'leave', unit: 'DAYS', openingBalance: '', effectiveFrom: new Date().toISOString().slice(0, 10) });
   const [form, setForm] = useState<HrCollaboratorPayload>({
     photoUrl: collaborator?.photoUrl ?? collaborator?.photoDataUrl ?? '',
     firstName: collaborator?.firstName ?? '',
@@ -75,6 +82,68 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
   const availableManagers = collaborators.filter((item) => item.id !== collaborator?.id && !isArchived(item));
   const availableUsers = users.filter((user) => user.status !== 'DISABLED' || user.id === form.userId);
   const currentRotation = activeRotation(collaborator);
+
+  async function loadEntitlements() {
+    if (!collaborator?.id) {
+      setEntitlements(null);
+      return;
+    }
+    setEntitlementsLoading(true);
+    setEntitlementsError('');
+    try {
+      setEntitlements(await api.employeeHrEntitlements(token, collaborator.id, { year: new Date().getFullYear() }));
+    } catch (error) {
+      setEntitlementsError(error instanceof Error ? error.message : 'Droits indisponibles pour ce collaborateur.');
+    } finally {
+      setEntitlementsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadEntitlements();
+  }, [collaborator?.id, token]);
+
+  async function saveOpeningBalance() {
+    if (!collaborator?.id) return;
+    const selectedRule = entitlements?.rules.find((rule) => rule.id === openingBalanceForm.entitlementRuleId);
+    const openingBalance = Number(openingBalanceForm.openingBalance);
+    await api.upsertEmployeeHrEntitlement(token, collaborator.id, selectedRule ? {
+      entitlementRuleId: selectedRule.id,
+      openingBalance: Number.isFinite(openingBalance) ? Math.round(openingBalance) : 0,
+      openingBalanceDate: openingBalanceForm.effectiveFrom,
+      effectiveFrom: openingBalanceForm.effectiveFrom,
+    } : {
+      code: openingBalanceForm.code,
+      label: openingBalanceForm.label,
+      accountType: openingBalanceForm.accountType,
+      unit: openingBalanceForm.unit,
+      openingBalance: Number.isFinite(openingBalance) ? Math.round(openingBalance) : 0,
+      openingBalanceDate: openingBalanceForm.effectiveFrom,
+      effectiveFrom: openingBalanceForm.effectiveFrom,
+    });
+    setOpeningBalanceForm((current) => ({ ...current, openingBalance: '' }));
+    await loadEntitlements();
+  }
+
+  async function addCatalogRight(item: PlanningEntitlementCatalogItem, openingBalance?: number) {
+    if (!collaborator?.id) return;
+    setEntitlementsLoading(true);
+    setEntitlementsError('');
+    try {
+      await api.activateHrEntitlementCatalogItem(token, item.id, {
+        targetMode: 'MANUAL',
+        employeeIds: [collaborator.id],
+        openingBalance: Number.isFinite(openingBalance) ? openingBalance : 0,
+        openingBalanceDate: new Date().toISOString().slice(0, 10),
+        effectiveFrom: new Date().toISOString().slice(0, 10),
+      });
+      await loadEntitlements();
+    } catch (error) {
+      setEntitlementsError(error instanceof Error ? error.message : 'Impossible d’ajouter ce droit.');
+    } finally {
+      setEntitlementsLoading(false);
+    }
+  }
 
   const set = <K extends keyof HrCollaboratorPayload>(key: K, value: HrCollaboratorPayload[K]) => {
     setDirty(true);
@@ -138,6 +207,7 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
           {activeTab === 'profile' ? <ProfileTab form={form} set={set} requiredErrors={requiredErrors} primaryLanguage={primaryLanguage} secondaryLanguage={secondaryLanguage} onPrimaryLanguage={(value) => { setPrimaryLanguage(value); setDirty(true); }} onSecondaryLanguage={(value) => { setSecondaryLanguage(value); setDirty(true); }} /> : null}
           {activeTab === 'professional' ? <ProfessionalTab form={form} set={set} requiredErrors={requiredErrors} departments={activeDepartments} positions={primaryPositions} allPositions={activePositions} selectedDepartment={selectedDepartment} sites={sites} managers={availableManagers} users={availableUsers} positionResetMessage={positionResetMessage} clearPositionResetMessage={() => setPositionResetMessage('')} /> : null}
           {activeTab === 'contracts' ? <ContractsTab form={form} set={set} collaborator={collaborator} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /> : null}
+          {activeTab === 'rights' ? <RightsCountersPanel collaborator={collaborator} entitlements={entitlements} loading={entitlementsLoading} error={entitlementsError} form={openingBalanceForm} onForm={setOpeningBalanceForm} onSave={saveOpeningBalance} onAddCatalogRight={addCatalogRight} /> : null}
           {activeTab === 'documents' ? <DocumentsTab collaborator={collaborator} pendingDocuments={pendingDocuments} onDocumentsChange={(documents) => { setPendingDocuments(documents); setDirty(true); }} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /> : null}
           {activeTab === 'trainings' ? <TrainingsTab selectedTrainings={selectedTrainings} onSelectedTrainings={(trainings) => { setSelectedTrainings(trainings); setDirty(true); }} customTraining={customTraining} onCustomTraining={setCustomTraining} /> : null}
           {activeTab === 'organization' ? <OrganizationTab collaborator={collaborator} rotations={rotations ?? []} currentRotation={currentRotation} /> : null}
@@ -219,6 +289,89 @@ function ContractsTab({ form, set, collaborator, onViewDocument, onDownloadDocum
     <DataTable title="Historique salarial" rows={(collaborator?.compensations ?? []).map((item) => [`${Number(item.hourlyRate).toFixed(2)} ${item.currency}`, formatDate(item.effectiveFrom), formatDate(item.effectiveTo), item.reason ?? '-'])} empty="Aucune rémunération dédiée enregistrée." />
     <DataTable title="Revalorisations" rows={(collaborator?.salaryReviews ?? []).map((review) => [formatDate(review.dueDate), review.status, review.proposedHourlyRate ? `${review.proposedHourlyRate}` : '-', review.notes ?? '-'])} empty="Aucune revalorisation planifiée." />
   </TabPanel>;
+}
+
+function RightsCountersPanel({ collaborator, entitlements, loading, error, form, onForm, onSave, onAddCatalogRight }: { collaborator?: HrCollaborator; entitlements: PlanningEmployeeEntitlementsResponse | null; loading: boolean; error: string; form: OpeningBalanceForm; onForm: React.Dispatch<React.SetStateAction<OpeningBalanceForm>>; onSave: () => Promise<void>; onAddCatalogRight: (item: PlanningEntitlementCatalogItem, openingBalance?: number) => Promise<void> }) {
+  const [search, setSearch] = useState('');
+  const rules = entitlements?.rules ?? [];
+  const activeEntitlements = entitlements?.entitlements?.filter((item) => item.enabled) ?? [];
+  const activeCodes = new Set(activeEntitlements.map((item) => item.code));
+  const catalog = (entitlements?.catalog ?? []).filter((item) => !activeCodes.has(item.code));
+  const availableRights = search.trim()
+    ? catalog.filter((item) => `${item.label} ${item.category}`.toLowerCase().includes(search.trim().toLowerCase()))
+    : catalog;
+  function selectRule(ruleId: string) {
+    const rule = rules.find((item) => item.id === ruleId);
+    onForm((current) => ({
+      ...current,
+      entitlementRuleId: ruleId,
+      code: rule?.code ?? current.code,
+      label: rule?.label ?? current.label,
+      accountType: rule?.accountType ?? current.accountType,
+      unit: rule?.unit === 'MINUTES' ? 'MINUTES' : 'DAYS',
+    }));
+  }
+  return (
+    <TabPanel icon={<ShieldCheck size={18} />} title={collaborator ? `Droits — ${fullName(collaborator)}` : 'Droits'}>
+      {!collaborator ? <span>Enregistrez d’abord le collaborateur pour rattacher ses droits.</span> : null}
+      {loading ? <span>Chargement des droits...</span> : null}
+      {error ? <small className="hr-inline-error">{error}</small> : null}
+      <div className="hr-salary-preview">
+        <strong>Cadre RH</strong>
+        <span>{countryLabel(entitlements?.setup?.hrCountryCode)} · Profil {entitlements?.setup?.organizationType ?? 'à choisir'}</span>
+        <small>Les modèles sont proposés par pays et restent ajustables selon vos règles internes.</small>
+      </div>
+      <div className="hr-salary-preview">
+        <strong>Droits actifs</strong>
+      {activeEntitlements.length ? activeEntitlements.map((item) => (
+        <div className="hr-contract-history-row" key={item.id}>
+          <div>
+            <span>{item.label}</span>
+            <small>{item.rule?.label ? `Règle : ${item.rule.label}` : 'Règle : manuelle'} · Solde d’ouverture : {formatRightValue(item.openingBalance, item.unit)}</small>
+            {rightNeedsVerification(item) ? <small>Consommé détecté : {formatRightValue(item.account?.consumed ?? 0, item.unit)} · Droits d’ouverture ou mapping incomplets</small> : null}
+          </div>
+          <strong>{rightBalanceLabel(item)}</strong>
+        </div>
+      )) : collaborator && !loading ? <span>Droits d’ouverture non renseignés.</span> : null}
+      {entitlements?.alerts?.some((alert) => alert.type === 'OPENING_BALANCE_MISSING') ? <small>Des congés ou récupérations sont consommés, mais le solde d’ouverture n’est pas encore renseigné.</small> : null}
+      </div>
+      {collaborator ? (
+        <div className="hr-salary-preview">
+          <strong>Droits disponibles</strong>
+          <input placeholder="Rechercher un droit..." value={search} onChange={(event) => setSearch(event.target.value)} />
+          {availableRights.length ? availableRights.map((item) => (
+            <div className="hr-contract-history-row" key={item.id}>
+              <div>
+                <span>{item.label}</span>
+                <small>{categoryLabel(item.category)} · {item.isRecommended ? 'Recommandé' : item.isAdvanced ? 'Avancé' : 'Optionnel'} · {rightsUnitLabel(item.unit)}</small>
+                <small>{item.shortDescription ?? item.description}</small>
+              </div>
+              <button type="button" className="btn btn-secondary" disabled={loading} onClick={() => void onAddCatalogRight(item)}>Ajouter</button>
+            </div>
+          )) : <span>Aucun droit disponible à ajouter depuis le catalogue.</span>}
+        </div>
+      ) : null}
+      {collaborator ? (
+        <div className="hr-salary-preview">
+          <strong>Solde d’ouverture ou ajustement manuel</strong>
+          <small>Pour un collaborateur déjà ancien, saisissez le solde connu et la date d’effet. ToqueHub ne recalcule pas tout l’historique sans demande explicite.</small>
+          <div className="hr-form-grid">
+          <label>Règle applicable<select value={form.entitlementRuleId} onChange={(event) => selectRule(event.target.value)}><option value="">Droit simple</option>{rules.map((rule) => <option key={rule.id} value={rule.id}>{rule.label}</option>)}</select></label>
+          {!form.entitlementRuleId ? <label>Libellé<input value={form.label} onChange={(event) => onForm((current) => ({ ...current, label: event.target.value }))} /></label> : null}
+          {!form.entitlementRuleId ? <label>Code<input value={form.code} onChange={(event) => onForm((current) => ({ ...current, code: event.target.value }))} /></label> : null}
+          {!form.entitlementRuleId ? <label>Unité<select value={form.unit} onChange={(event) => onForm((current) => ({ ...current, unit: event.target.value as 'DAYS' | 'MINUTES' }))}><option value="DAYS">Jours</option><option value="MINUTES">Heures</option></select></label> : null}
+          <label>Solde d’ouverture<input type="number" value={form.openingBalance} onChange={(event) => onForm((current) => ({ ...current, openingBalance: event.target.value }))} /></label>
+          <label>Date d’effet<input type="date" value={form.effectiveFrom} onChange={(event) => onForm((current) => ({ ...current, effectiveFrom: event.target.value }))} /></label>
+          <button type="button" className="btn btn-secondary" disabled={!form.openingBalance} onClick={() => void onSave()}>Enregistrer le droit</button>
+          </div>
+        </div>
+      ) : null}
+      <div className="planning-empty-state compact">
+        <strong>Vous ne trouvez pas le droit souhaité ?</strong>
+        <span>Créez un droit simple ici uniquement pour un cas particulier. Le parcours recommandé reste le catalogue pays.</span>
+      </div>
+    </TabPanel>
+  );
 }
 
 function DocumentsTab({ collaborator, pendingDocuments, onDocumentsChange, onViewDocument, onDownloadDocument, onReplaceDocument, onDeleteDocument }: { collaborator?: HrCollaborator; pendingDocuments: PendingHrDocumentUpload[]; onDocumentsChange: (documents: PendingHrDocumentUpload[]) => void; onViewDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onDownloadDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument?: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument?: (employeeId: string, documentId: string) => Promise<void> }) {
@@ -377,4 +530,10 @@ function cleanLegacyHrNotes(value?: string | null) { return value && /Documents 
 function toInputDate(value?: string | null) { return value ? new Date(value).toISOString().slice(0, 10) : ''; }
 function formatDate(value?: string | null) { return value ? new Intl.DateTimeFormat('fr-FR').format(new Date(value)) : '-'; }
 function formatMinutes(value?: number | null) { if (value == null) return '-'; const hours = Math.floor(value / 60); const minutes = Math.round(value % 60); return `${hours}h${minutes.toString().padStart(2, '0')}`; }
+function formatRightValue(value?: number | null, unit?: string | null) { if (value == null) return '-'; if (unit === 'MINUTES') return formatMinutes(value); return `${Math.round(Number(value) * 10) / 10} j`; }
+function rightsUnitLabel(unit?: string | null) { if (unit === 'MINUTES') return 'Heures'; if (unit === 'DAYS') return 'Jours'; return 'Unité personnalisée'; }
+function countryLabel(code?: string | null) { if (code === 'FR') return 'France'; if (code === 'FI') return 'Finlande'; return 'Cadre RH à choisir'; }
+function categoryLabel(category?: string | null) { const labels: Record<string, string> = { LEAVE: 'Congés', WORKING_TIME: 'Temps de travail', ABSENCE: 'Absences', RECOVERY: 'Récupération', SENIORITY: 'Ancienneté', HEALTH: 'Santé', LOCAL: 'Local', SAVINGS: 'Épargne temps' }; return labels[String(category ?? '')] ?? String(category ?? 'Autre'); }
+function rightNeedsVerification(item: { openingBalanceMissing?: boolean; openingBalance?: number; account?: { openingBalance?: number; consumed?: number; closingBalance?: number } | null; displayBalance?: number | null }) { const opening = item.account?.openingBalance ?? item.openingBalance ?? 0; const consumed = item.account?.consumed ?? 0; const closing = item.displayBalance ?? item.account?.closingBalance ?? opening; return Boolean(item.openingBalanceMissing || (closing < 0 && consumed > 0 && opening <= 0)); }
+function rightBalanceLabel(item: { unit?: string | null; openingBalance?: number; openingBalanceMissing?: boolean; displayBalance?: number | null; account?: { openingBalance?: number; consumed?: number; closingBalance?: number } | null }) { if (rightNeedsVerification(item)) return 'Solde à vérifier'; return formatRightValue(item.displayBalance ?? item.account?.closingBalance ?? item.openingBalance, item.unit); }
 function formatBytes(value?: number | null) { if (!value) return '-'; if (value < 1024 * 1024) return `${Math.round(value / 1024)} Ko`; return `${(value / 1024 / 1024).toFixed(1)} Mo`; }

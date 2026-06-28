@@ -5,15 +5,23 @@ import type { Response } from 'express';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { ActivateHrEntitlementCatalogDto, ActivateHrEntitlementCatalogSelectionDto, AdjustHrEmployeeEntitlementByIdDto, HrEntitlementCatalogQueryDto, PrepareHrEntitlementCatalogDto, UpsertHrEmployeeEntitlementDto, UpsertHrEntitlementRuleDto } from './entitlements/hr-entitlement.dto';
+import { HrEntitlementService } from './entitlements/hr-entitlement.service';
 import { AssignHrRotationDto, ChangeEmployeeRotationDto, CompleteHrServicesDto, CreateHrReferencesDto, HrListQueryDto, RemoveHrRotationDto, UpsertHrEmployeeDto, UpsertHrReferenceDto, UpsertHrRotationDto } from './dto/hr.dto';
 import { HrService } from './hr.service';
+import { AdjustHrTimeAccountDto, HrTimeAccountQueryDto, RecomputeHrTimeAccountsDto } from './time-accounts/hr-time-account.dto';
+import { HrTimeAccountService } from './time-accounts/hr-time-account.service';
 
 @ApiTags('hr')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('hr')
 export class HrController {
-  constructor(private readonly hrService: HrService) {}
+  constructor(
+    private readonly hrService: HrService,
+    private readonly entitlementService: HrEntitlementService,
+    private readonly timeAccountService: HrTimeAccountService,
+  ) {}
   private org(user: AuthenticatedUser) { if (!user.organizationId) throw new BadRequestException('Organization setup is required before using RH endpoints'); return user.organizationId; }
   private actor(user: AuthenticatedUser) { return { id: user.id, role: user.role, employeeId: user.employeeId }; }
 
@@ -29,6 +37,20 @@ export class HrController {
   @Post('onboarding/complete') completeOnboarding(@CurrentUser() user: AuthenticatedUser) { return this.hrService.completeOnboarding(this.org(user), this.actor(user)); }
   @Get('org-chart') orgChart(@CurrentUser() user: AuthenticatedUser, @Query('departmentId') departmentId?: string) { return this.hrService.orgChart(this.org(user), departmentId); }
   @Get('users/available') users(@CurrentUser() user: AuthenticatedUser) { return this.hrService.listAssignableUsers(this.org(user)); }
+
+  @Get('entitlements/setup') entitlementSetup(@CurrentUser() user: AuthenticatedUser) { return this.entitlementService.setup(this.org(user)); }
+  @Get('entitlements/catalog') entitlementCatalog(@CurrentUser() user: AuthenticatedUser, @Query() q: HrEntitlementCatalogQueryDto) { return this.entitlementService.listCatalog(this.org(user), q); }
+  @Post('entitlements/catalog/prepare') prepareEntitlementCatalog(@CurrentUser() user: AuthenticatedUser, @Body() dto: PrepareHrEntitlementCatalogDto) { return this.entitlementService.prepareCatalog(this.org(user), this.actor(user), dto); }
+  @Post('entitlements/catalog/activate') activateEntitlementCatalogSelection(@CurrentUser() user: AuthenticatedUser, @Body() dto: ActivateHrEntitlementCatalogSelectionDto) { return this.entitlementService.activateCatalogItems(this.org(user), this.actor(user), dto); }
+  @Post('entitlements/catalog/:id/activate') activateEntitlementCatalogItem(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: ActivateHrEntitlementCatalogDto) { return this.entitlementService.activateCatalogItem(this.org(user), this.actor(user), id, dto); }
+  @Get('entitlements/rules') entitlementConfigurations(@CurrentUser() user: AuthenticatedUser) { return this.entitlementService.listEstablishmentConfigurations(this.org(user)); }
+  @Post('entitlements/rules') createEntitlementConfiguration(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertHrEntitlementRuleDto) { return this.entitlementService.createEstablishmentConfiguration(this.org(user), this.actor(user), dto); }
+  @Patch('entitlements/rules/:id') updateEntitlementConfiguration(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpsertHrEntitlementRuleDto) { return this.entitlementService.updateEstablishmentConfiguration(this.org(user), this.actor(user), id, dto); }
+
+  @Get('time-accounts') timeAccounts(@CurrentUser() user: AuthenticatedUser, @Query() q: HrTimeAccountQueryDto) { return this.timeAccountService.list(this.org(user), q); }
+  @Post('time-accounts/recompute') recomputeTimeAccounts(@CurrentUser() user: AuthenticatedUser, @Body() dto: RecomputeHrTimeAccountsDto) { return this.timeAccountService.recompute(this.org(user), this.actor(user), dto); }
+  @Post('time-accounts/adjust') adjustTimeAccount(@CurrentUser() user: AuthenticatedUser, @Body() dto: AdjustHrTimeAccountDto) { return this.timeAccountService.adjust(this.org(user), this.actor(user), dto); }
+  @Get('time-accounts/:employeeId') employeeTimeAccounts(@CurrentUser() user: AuthenticatedUser, @Param('employeeId') employeeId: string, @Query() q: HrTimeAccountQueryDto) { return this.timeAccountService.employee(this.org(user), employeeId, q); }
 
   @Get('departments') departments(@CurrentUser() user: AuthenticatedUser, @Query() q: HrListQueryDto) { return this.hrService.listDepartments(this.org(user), q); }
   @Post('departments') createDepartment(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertHrReferenceDto) { return this.hrService.createDepartment(this.org(user), this.actor(user), dto); }
@@ -60,6 +82,10 @@ export class HrController {
   @Patch('employees/:id') updateEmployee(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpsertHrEmployeeDto) { return this.hrService.updateEmployee(this.org(user), this.actor(user), id, dto); }
   @Patch('employees/:id/rotation') setEmployeeRotation(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: ChangeEmployeeRotationDto) { return this.hrService.changeEmployeeRotation(this.org(user), this.actor(user), id, dto); }
   @Delete('employees/:id/rotation') removeEmployeeRotation(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.hrService.removeEmployeeRotation(this.org(user), this.actor(user), id); }
+  @Get('employees/:id/entitlements') employeeEntitlements(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Query() q: HrTimeAccountQueryDto) { return this.entitlementService.employee(this.org(user), id, q); }
+  @Post('employees/:id/entitlements') upsertEmployeeEntitlement(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpsertHrEmployeeEntitlementDto) { return this.entitlementService.upsertEmployeeEntitlement(this.org(user), this.actor(user), id, dto); }
+  @Patch('employees/:id/entitlements/:entitlementId') updateEmployeeEntitlement(@CurrentUser() user: AuthenticatedUser, @Param('id') employeeId: string, @Param('entitlementId') id: string, @Body() dto: UpsertHrEmployeeEntitlementDto) { return this.entitlementService.updateEmployeeEntitlement(this.org(user), this.actor(user), id, { ...dto, metadata: { ...(dto.metadata as Record<string, any> | undefined), employeeId } }); }
+  @Post('employees/:id/entitlements/:entitlementId/adjust') adjustEmployeeEntitlement(@CurrentUser() user: AuthenticatedUser, @Param('id') employeeId: string, @Param('entitlementId') id: string, @Body() dto: AdjustHrEmployeeEntitlementByIdDto) { return this.entitlementService.adjustById(this.org(user), this.actor(user), employeeId, id, dto); }
   @Post('employees/:id/documents')
   @UseInterceptors(FileInterceptor('file'))
   uploadEmployeeDocument(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @UploadedFile() file: any, @Body('category') category?: string, @Body('notes') notes?: string, @Body('expiresAt') expiresAt?: string) {

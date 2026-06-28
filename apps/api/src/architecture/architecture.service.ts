@@ -27,10 +27,10 @@ const MODULE_DEFINITIONS = [
     id: 'hr',
     name: 'RH',
     installedField: 'hrInstalledAt',
-    description: 'Gestion des employés, départements, postes, compétences, rotations et absences.',
+    description: 'Gestion des employés, droits RH, départements, postes, compétences, rotations et absences.',
     dependencies: ['Core'],
-    patterns: [/^Hr/],
-    labels: ['hr', 'employee', 'department', 'position', 'skill', 'absence', 'rotation'],
+    patterns: [/^Hr/, /^Legal/, /^CollectiveAgreement$/, /^PublicRegime$/],
+    labels: ['hr', 'employee', 'department', 'position', 'skill', 'absence', 'rotation', 'legal', 'right', 'entitlement'],
   },
   {
     id: 'planning',
@@ -348,6 +348,7 @@ export class ArchitectureService {
         if (left.moduleOwner === right.moduleOwner) continue;
         if (this.hasDirectRelation(left, right)) continue;
         if (this.isKnownConsumerBridge(left, right) || this.isKnownConsumerBridge(right, left)) continue;
+        if (this.isKnownDistinctConceptPair(left, right)) continue;
 
         const overlap = this.fieldOverlap(left, right);
         const semanticOverlap = this.semanticFieldOverlap(left, right);
@@ -470,6 +471,13 @@ export class ArchitectureService {
       HrPositionSkill: 'Compétences requises par poste.',
       HrDepartmentSkill: 'Compétences requises par département.',
       HrAbsence: 'Absences et demandes RH.',
+      HrEntitlementRule: 'Configurations établissement des droits RH.',
+      HrEntitlementCatalogItem: 'Templates manuels ou internes de droits RH.',
+      HrEmployeeEntitlement: 'Attributions de droits RH aux collaborateurs.',
+      HrTimeAccount: 'Compteurs et soldes RH par collaborateur.',
+      LegalRight: 'Référentiel juridique stable des droits RH.',
+      LegalRightRuleVersion: 'Versions datées, sourcées et calculables des règles juridiques.',
+      LegalJobFamily: 'Classification métier légale utilisée pour router les règles.',
       PlanningAssignment: 'Affectations de planning.',
       PlanningReplacement: 'Remplacements proposés ou validés.',
       PlanningOperationalNeed: 'Besoins opérationnels de planning.',
@@ -577,6 +585,14 @@ export class ArchitectureService {
     if (leftName.includes('ingredient') && rightName === 'product') return true;
     if (leftName.includes('employee') && rightName === 'user') return true;
     if (leftName.includes('history') && rightName.includes('audit')) return true;
+    return false;
+  }
+
+  private isKnownDistinctConceptPair(left: PrismaModel, right: PrismaModel) {
+    const pair = new Set([left.name, right.name]);
+    // Template UI/interne vs classification légale: les champs code/label/category se ressemblent,
+    // mais ce ne sont pas deux sources d'un même droit métier.
+    if (pair.has('HrEntitlementCatalogItem') && pair.has('LegalJobFamily')) return true;
     return false;
   }
 

@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { hash } from 'bcryptjs';
+import { seedFrenchLegalRights } from '../src/legal-rights/legal-rights.seed';
 
 const prisma = new PrismaClient();
 
@@ -27,8 +28,18 @@ const permissions = [
 async function main() {
   const organization = await prisma.organization.upsert({
     where: { code: 'demo' },
-    update: {},
-    create: { name: 'ToqueHub Demo', code: 'demo' },
+    update: {
+      regulatoryCountryCode: 'FR',
+      regulatoryCountrySelectedAt: new Date(),
+      hrCountryCode: 'FR',
+    },
+    create: {
+      name: 'ToqueHub Demo',
+      code: 'demo',
+      regulatoryCountryCode: 'FR',
+      regulatoryCountrySelectedAt: new Date(),
+      hrCountryCode: 'FR',
+    },
   });
 
   const createdPermissions = await Promise.all(
@@ -165,6 +176,8 @@ async function main() {
       roleId: roles.find((role) => role.name === 'Utilisateur')!.id,
     },
   });
+
+  await seedFrenchLegalRights(prisma);
 }
 
 main()

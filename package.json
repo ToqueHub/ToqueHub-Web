@@ -22,6 +22,7 @@
     "prisma:migrate": "npm run prisma:migrate -w apps/api",
     "prisma:reset": "npm run prisma:reset -w apps/api --",
     "prisma:seed": "npm run prisma:seed -w apps/api",
+    "seed:legal-rights": "npm run seed:legal-rights -w apps/api",
     "db:setup:local": "./scripts/setup-local-postgres.sh"
   },
   "devDependencies": {

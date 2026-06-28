@@ -10,6 +10,7 @@ import { BootstrapAdminDto } from './dto/bootstrap-admin.dto';
 import { SetupOrganizationDto } from './dto/setup-organization.dto';
 import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
 import { UpdateOrganizationApiKeysDto } from './dto/api-keys.dto';
+import { UpdateRegulatoryCountryDto } from './dto/regulatory-country.dto';
 import { LoginDto } from './dto/login.dto';
 
 export class PrefillStocksDto {
@@ -84,6 +85,14 @@ export class AuthController {
   @ApiOkResponse({ description: 'Updates organization API keys used server-side.' })
   updateOrganizationApiKeys(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateOrganizationApiKeysDto) {
     return this.authService.updateOrganizationApiKeys(user, dto);
+  }
+
+  @Post('organization/regulatory-country')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOkResponse({ description: 'Updates the legal/regulatory country used by RH rights and Planning compliance.' })
+  updateRegulatoryCountry(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateRegulatoryCountryDto) {
+    return this.authService.updateRegulatoryCountry(user, dto);
   }
 
   @Post('apps/stocks/install')

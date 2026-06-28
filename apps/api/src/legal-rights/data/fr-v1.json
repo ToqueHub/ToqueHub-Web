@@ -1,0 +1,4743 @@
+{
+  "version": "toquehub-fr-legal-rights-v1",
+  "countryCode": "FR",
+  "sourceWorkbook": "docs/legal/toquehub_base_droits_rh_planning_france_v1.xlsx",
+  "sourceWorkbookSha256": "2a9041621fd07930c06289f5207473dc8eab0b443aff8a05486bff245237c7c9",
+  "generatedAt": "2026-06-28T14:41:13.204640+00:00",
+  "readme": {
+    "But du fichier": "Base V1 France pour Toquehub : routage convention/statut + familles de droits planning + premières règles intégrables.",
+    "Date de génération": "2026-06-28",
+    "Périmètre": "Hôtellerie-restauration au sens large : HCR, restauration rapide, restauration collective, campings/HPA, cafétérias, tourisme social, casinos, ferroviaire, hôpitaux/établissements de santé, public/privé.",
+    "Principe d'intégration": "Ne pas lier les droits uniquement au métier : l'app doit router par régime public/privé, IDCC, type d'établissement, contrat, temps de travail, ancienneté, localisation et accords d'entreprise.",
+    "Priorité des règles": "Code/statut public = socle ; convention/accord/usage/contrat peuvent améliorer ou compléter. En privé, appliquer la règle la plus favorable quand applicable ; pour le temps de travail, stocker la source et l'accord applicable.",
+    "Heures vertes": "Terme à traiter comme tag Toquehub interne, non comme droit autonome : relier à récupération, RTT, repos compensateur, compteur d'annualisation, jour férié compensé, CET ou repos hebdomadaire reporté.",
+    "Niveau de confiance": "V1 de structuration et de pré-remplissage. Avant mise en production paie/RH : validation juridique/paie, extraction article par article et mise à jour automatique des sources officielles."
+  },
+  "sheetCounts": {
+    "Conventions_FR": 14,
+    "Droits_communs_prive": 36,
+    "Droits_public": 13,
+    "Regles_conventions": 19,
+    "Mapping_metiers": 12,
+    "Lexique_tags": 10,
+    "Sources": 19,
+    "A_valider_phase2": 9
+  },
+  "regimes": [
+    {
+      "code": "FR_COMMON",
+      "countryCode": "FR",
+      "type": "common",
+      "name": "Socle commun France",
+      "description": "Règles communes importées de la base Toquehub V1.",
+      "sourceUrl": null,
+      "active": true,
+      "metadata": {}
+    },
+    {
+      "code": "FR_PRIVATE",
+      "countryCode": "FR",
+      "type": "private",
+      "name": "Secteur privé France",
+      "description": "Socle droit commun du privé avant convention, contrat et accords locaux.",
+      "sourceUrl": null,
+      "active": true,
+      "metadata": {}
+    },
+    {
+      "code": "FR_PUBLIC",
+      "countryCode": "FR",
+      "type": "public",
+      "name": "Fonction publique France",
+      "description": "Socle commun FPE/FPT/FPH avant règles locales.",
+      "sourceUrl": null,
+      "active": true,
+      "metadata": {}
+    }
+  ],
+  "agreements": [
+    {
+      "key": "CCN_HCR_1979",
+      "countryCode": "FR",
+      "idcc": "1979",
+      "name": "Hôtels, cafés, restaurants (HCR)",
+      "sector": "private",
+      "establishmentTypes": [
+        "Hôtels",
+        "restaurants traditionnels",
+        "brasseries",
+        "cafés",
+        "bars",
+        "traiteurs",
+        "établissements assimilés selon champ"
+      ],
+      "routingHints": "Bulletin/DSN IDCC 1979, activité principale HCR",
+      "rightsToExtract": "Congés, repos hebdo, jours fériés garantis, enfant malade, événements familiaux, maladie/AT, formation syndicale, maternité, temps de travail, nuit, avantages repas",
+      "priority": 1,
+      "sourceUrl": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635534/",
+      "active": true,
+      "metadata": {
+        "notes": "Convention cœur pour Toquehub.",
+        "rawRegime": "Privé"
+      }
+    },
+    {
+      "key": "CCN_REST_RAPIDE_1501",
+      "countryCode": "FR",
+      "idcc": "1501",
+      "name": "Restauration rapide",
+      "sector": "private",
+      "establishmentTypes": [
+        "Fast-food",
+        "vente au comptoir",
+        "livraison",
+        "click&collect",
+        "chaînes de restauration rapide"
+      ],
+      "routingHints": "IDCC 1501 ou activité restauration rapide",
+      "rightsToExtract": "Congés/événements, contingent HS, prime annuelle, blanchissage/uniforme, temps partiel, coupures, nuit, dimanches/JF",
+      "priority": 1,
+      "sourceUrl": "https://code.travail.gouv.fr/convention-collective/1501-restauration-rapide",
+      "active": true,
+      "metadata": {
+        "notes": "Source Code du travail numérique + Légifrance.",
+        "rawRegime": "Privé"
+      }
+    },
+    {
+      "key": "CCN_REST_COLLECTIVE_1266",
+      "countryCode": "FR",
+      "idcc": "1266",
+      "name": "Restauration de collectivités",
+      "sector": "private",
+      "establishmentTypes": [
+        "Cantines d'entreprise",
+        "scolaires",
+        "universitaires",
+        "hospitalières",
+        "EHPAD",
+        "prisons",
+        "concessions restauration collective"
+      ],
+      "routingHints": "Prestataire privé de restauration collective, IDCC 1266",
+      "rightsToExtract": "Travail intermittent scolaire, reprise du personnel, primes, JF/week-end/nuit, temps partiel annualisé, coupures, repas",
+      "priority": 1,
+      "sourceUrl": "https://www.legifrance.gouv.fr/conv_coll/id/KALITEXT000005640425",
+      "active": true,
+      "metadata": {
+        "notes": "Très important pour hôpitaux/écoles quand restauration externalisée.",
+        "rawRegime": "Privé"
+      }
+    },
+    {
+      "key": "CCN_HPA_1631",
+      "countryCode": "FR",
+      "idcc": "1631",
+      "name": "Hôtellerie de plein air",
+      "sector": "private",
+      "establishmentTypes": [
+        "Campings",
+        "parcs résidentiels",
+        "villages de plein air",
+        "activités saisonnières associées"
+      ],
+      "routingHints": "IDCC 1631, camping privé/HPA",
+      "rightsToExtract": "Saisonnalité, CDD saisonnier, RTT/JRTT, repos, astreintes, logement éventuel, jours fériés, temps de travail",
+      "priority": 1,
+      "sourceUrl": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635252",
+      "active": true,
+      "metadata": {
+        "notes": "Prioritaire pour campings.",
+        "rawRegime": "Privé"
+      }
+    },
+    {
+      "key": "CCN_CAFETERIAS_2060",
+      "countryCode": "FR",
+      "idcc": "2060",
+      "name": "Chaînes de cafétérias et assimilés",
+      "sector": "private",
+      "establishmentTypes": [
+        "Cafétérias en chaîne",
+        "self-service",
+        "établissements assimilés"
+      ],
+      "routingHints": "IDCC 2060",
+      "rightsToExtract": "Congés, temps de travail, jours fériés, coupures, salaires/primes, classifications",
+      "priority": 2,
+      "sourceUrl": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635326",
+      "active": true,
+      "metadata": {
+        "notes": "À distinguer de restauration rapide et HCR.",
+        "rawRegime": "Privé"
+      }
+    },
+    {
+      "key": "CCN_TOURISME_SOCIAL_1316",
+      "countryCode": "FR",
+      "idcc": "1316",
+      "name": "Tourisme social et familial",
+      "sector": "private",
+      "establishmentTypes": [
+        "Villages vacances",
+        "centres de vacances",
+        "auberges",
+        "structures sociales selon champ"
+      ],
+      "routingHints": "IDCC 1316",
+      "rightsToExtract": "Saisonnalité, astreintes, logements, nuit, jours fériés, congés, récupérations",
+      "priority": 2,
+      "sourceUrl": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635867",
+      "active": true,
+      "metadata": {
+        "notes": "À activer pour villages vacances/hébergement social.",
+        "rawRegime": "Privé"
+      }
+    },
+    {
+      "key": "CCN_CASINOS_2257",
+      "countryCode": "FR",
+      "idcc": "2257",
+      "name": "Casinos",
+      "sector": "private",
+      "establishmentTypes": [
+        "Casinos avec personnel restauration-hôtellerie",
+        "bars",
+        "accueil"
+      ],
+      "routingHints": "IDCC 2257, restaurant/bar d'un casino",
+      "rightsToExtract": "Travail de nuit, dimanches/JF, classifications restauration-hôtellerie, repos, primes",
+      "priority": 2,
+      "sourceUrl": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635618",
+      "active": true,
+      "metadata": {
+        "notes": "Inclut des avenants récents pour rémunérations et nuit.",
+        "rawRegime": "Privé"
+      }
+    },
+    {
+      "key": "CCN_REST_FERROVIAIRE_1311",
+      "countryCode": "FR",
+      "idcc": "1311",
+      "name": "Restauration ferroviaire",
+      "sector": "private",
+      "establishmentTypes": [
+        "Restauration à bord des trains",
+        "prestations ferroviaires"
+      ],
+      "routingHints": "IDCC 1311",
+      "rightsToExtract": "Déplacements, temps de travail, repos, primes, nuit, jours fériés",
+      "priority": 2,
+      "sourceUrl": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635694",
+      "active": true,
+      "metadata": {
+        "notes": "Cas spécifique mais utile pour couverture complète.",
+        "rawRegime": "Privé"
+      }
+    },
+    {
+      "key": "CCN_HOSP_PRIVEE_2264",
+      "countryCode": "FR",
+      "idcc": "2264",
+      "name": "Hospitalisation privée / FHP",
+      "sector": "private",
+      "establishmentTypes": [
+        "Cliniques",
+        "établissements privés sanitaires",
+        "médico-sociaux commerciaux",
+        "certains EHPAD privés"
+      ],
+      "routingHints": "Personnel salarié par l'établissement privé de santé, IDCC 2264",
+      "rightsToExtract": "Cycles, nuits, dimanches/JF, repos, congés, RTT, sujétions, astreintes, primes",
+      "priority": 1,
+      "sourceUrl": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635813",
+      "active": true,
+      "metadata": {
+        "notes": "Pour cuisine/restauration interne non externalisée.",
+        "rawRegime": "Privé"
+      }
+    },
+    {
+      "key": "CCN_FEHAP_0029",
+      "countryCode": "FR",
+      "idcc": "0029",
+      "name": "Établissements privés d'hospitalisation, soins, cure et garde à but non lucratif (FEHAP 51)",
+      "sector": "private",
+      "establishmentTypes": [
+        "Hôpitaux",
+        "établissements privés associatifs",
+        "ESPIC",
+        "structures non lucratives"
+      ],
+      "routingHints": "IDCC 29/0029, employeur FEHAP",
+      "rightsToExtract": "Congés, repos, cycles, sujétions, nuits/JF, RTT, absences conventionnelles",
+      "priority": 1,
+      "sourceUrl": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635234",
+      "active": true,
+      "metadata": {
+        "notes": "Pour hôpitaux privés non lucratifs.",
+        "rawRegime": "Privé non lucratif"
+      }
+    },
+    {
+      "key": "CCN_A_ROUTER_LEGACY_HOTELS_CHAIN",
+      "countryCode": "FR",
+      "idcc": "800 / 575 / 1253 / 1232 selon bulletin",
+      "name": "Conventions historiques/locales hôtels/restaurants/Outre-mer",
+      "sector": "private",
+      "establishmentTypes": [
+        "Chaînes d'hôtels",
+        "restaurants",
+        "hôtels Guadeloupe",
+        "conventions locales",
+        "historiques"
+      ],
+      "routingHints": "IDCC présent sur DSN/bulletin ou contrat",
+      "rightsToExtract": "À vérifier : congés, JF, primes, classifications, temps de travail",
+      "priority": 3,
+      "sourceUrl": "https://www.legifrance.gouv.fr/liste/idcc",
+      "active": true,
+      "metadata": {
+        "notes": "À maintenir comme table de correspondance plutôt que supposer HCR.",
+        "rawRegime": "Privé"
+      }
+    }
+  ],
+  "publicRegimes": [
+    {
+      "code": "FPH",
+      "countryCode": "FR",
+      "name": "Fonction publique hospitalière",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F573",
+      "active": true,
+      "metadata": {
+        "rawRegime": "Public",
+        "notes": "Pas de convention collective nationale : statut public + règles établissement.",
+        "routingHints": "Employeur public hospitalier, agent titulaire/stagiaire/contractuel public",
+        "rightsToExtract": "Congés annuels, RTT, cycles, repos FPH, HS/IHTS, ASA locales, CET, sujétions nuit/JF",
+        "priority": 1
+      },
+      "publicFunctionType": "FPH"
+    },
+    {
+      "code": "FPT",
+      "countryCode": "FR",
+      "name": "Fonction publique territoriale",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/N20276",
+      "active": true,
+      "metadata": {
+        "rawRegime": "Public",
+        "notes": "Paramétrage local indispensable.",
+        "routingHints": "Collectivité territoriale ou établissement public local",
+        "rightsToExtract": "Congés annuels, RTT, cycles, ASA locales, CET, temps partiel, astreintes, IHTS",
+        "priority": 1
+      },
+      "publicFunctionType": "FPT"
+    },
+    {
+      "code": "FPE",
+      "countryCode": "FR",
+      "name": "Fonction publique d'État",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/N20276",
+      "active": true,
+      "metadata": {
+        "rawRegime": "Public",
+        "notes": "Moins fréquent pour Toquehub mais à prévoir.",
+        "routingHints": "Employeur public d'État",
+        "rightsToExtract": "Congés annuels, RTT, cycles, ASA, CET, astreintes, sujétions",
+        "priority": 3
+      },
+      "publicFunctionType": "FPE"
+    }
+  ],
+  "rights": [
+    {
+      "code": "ABS_ADOPTION",
+      "name": "Arrivée d'un enfant placé en vue d'adoption",
+      "category": "Absences familiales",
+      "description": "3 jours ouvrables",
+      "tags": [
+        "ABS_ADOPTION",
+        "ABS_ADOPTION_ARRIVEE"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "ABS_ADOPTION_ARRIVEE",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "ABS_CIVIQUE",
+      "name": "Journée défense et citoyenneté",
+      "category": "Absences civiques",
+      "description": "Absence autorisée pour participer à la JDC",
+      "tags": [
+        "ABS_CIVIQUE",
+        "JDC"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "JDC",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "ABS_DECES",
+      "name": "Décès d'un enfant",
+      "category": "Absences familiales",
+      "description": "12 jours ouvrables ; 14 jours si enfant <25 ans, enfant lui-même parent, ou personne <25 ans à charge effective et permanente",
+      "tags": [
+        "ABS_DECES",
+        "ABS_DECES_ENFANT",
+        "ABS_DECES_PROCHES"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "ABS_DECES_ENFANT",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "ABS_ENFANT_MALADE",
+      "name": "Congé pour enfant malade",
+      "category": "Absences familiales",
+      "description": "3 jours/an ; 5 jours/an si enfant <1 an ou salarié avec au moins 3 enfants à charge de moins de 16 ans",
+      "tags": [
+        "1979",
+        "ABS_ENFANT_MALADE",
+        "HCR_ENFANT_MALADE_ART25_2"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "ABS_ENFANT_MALADE",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "ABS_FAM_PAYEE",
+      "name": "Mariage ou PACS du salarié",
+      "category": "Absences familiales",
+      "description": "4 jours ouvrables",
+      "tags": [
+        "1979",
+        "ABS_ANNONCE_HANDICAP_ENFANT",
+        "ABS_FAM_PAYEE",
+        "ABS_MARIAGE_ENFANT",
+        "ABS_MARIAGE_PACS",
+        "HCR_EVENT_ART25_1"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "ABS_MARIAGE_PACS",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "ABS_NAISSANCE",
+      "name": "Naissance d'un enfant",
+      "category": "Absences familiales",
+      "description": "3 jours ouvrables, à compter au choix du jour de naissance ou du premier jour ouvrable suivant",
+      "tags": [
+        "ABS_NAISSANCE"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "ABS_NAISSANCE",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "ADOPTION",
+      "name": "Congé adoption",
+      "category": "Parentalité",
+      "description": "Durée selon nombre d'enfants adoptés et enfants à charge ; partage possible entre parents",
+      "tags": [
+        "ADOPTION",
+        "CONGE_ADOPTION"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "CONGE_ADOPTION",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "ALERTE_CONTRAT",
+      "name": "Restauration collective - changement de prestataire",
+      "category": "Contrat",
+      "description": "Avenants sur changement de prestataire : reprise/transfert possible du personnel selon conditions",
+      "tags": [
+        "1266",
+        "ALERTE_CONTRAT",
+        "COLLECTIVE_CHANGEMENT_PRESTATAIRE"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRuleId": "COLLECTIVE_CHANGEMENT_PRESTATAIRE",
+        "idccOrRegime": "1266"
+      }
+    },
+    {
+      "code": "ALLAITEMENT",
+      "name": "Temps d'allaitement",
+      "category": "Parentalité",
+      "description": "Droit d'allaiter pendant les heures de travail pendant une période légale ; modalités à paramétrer",
+      "tags": [
+        "ALLAITEMENT"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "ALLAITEMENT",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "ANNUALISATION_PUBLIC",
+      "name": "Annualisation FPH",
+      "category": "Temps de travail",
+      "description": "Temps annualisé possible après accord collectif ; moyenne hebdomadaire entre 32h et 40h",
+      "tags": [
+        "ANNUALISATION_PUBLIC",
+        "FPH",
+        "FPH_ANNUALISATION"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "FPH_ANNUALISATION",
+        "publicRegime": "FPH"
+      }
+    },
+    {
+      "code": "ASA",
+      "name": "Autorisations spéciales d'absence familiales",
+      "category": "Absences familiales",
+      "description": "Règles variables selon administration/collectivité/établissement pour mariage, décès, enfant malade, etc.",
+      "tags": [
+        "ASA",
+        "FPE/FPT/FPH",
+        "PUBLIC_ASA_FAMILIALES"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "PUBLIC_ASA_FAMILIALES",
+        "publicRegime": "FPE/FPT/FPH"
+      }
+    },
+    {
+      "code": "ASTREINTE",
+      "name": "Astreinte",
+      "category": "Temps de travail",
+      "description": "Période pendant laquelle le salarié reste disponible ; intervention = travail effectif ; compensation obligatoire selon accord/employeur",
+      "tags": [
+        "ASTREINTE"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "ASTREINTE",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "A_EXTRAIRE",
+      "name": "Cafétérias - règles à extraire",
+      "category": "À extraire",
+      "description": "Convention IDCC 2060 : extraire congés, événements, temps de travail, JF, coupures, primes",
+      "tags": [
+        "2060",
+        "A_EXTRAIRE",
+        "CAFETERIAS_TO_EXTRACT"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRuleId": "CAFETERIAS_TO_EXTRACT",
+        "idccOrRegime": "2060"
+      }
+    },
+    {
+      "code": "A_EXTRAIRE_FEHAP",
+      "name": "FEHAP 51 - droits agents privés non lucratifs",
+      "category": "À extraire",
+      "description": "Convention IDCC 29 couvre établissements privés non lucratifs de santé/soins/cure/garde",
+      "tags": [
+        "0029",
+        "A_EXTRAIRE_FEHAP",
+        "FEHAP_TO_EXTRACT"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRuleId": "FEHAP_TO_EXTRACT",
+        "idccOrRegime": "0029"
+      }
+    },
+    {
+      "code": "BLANCHISSAGE",
+      "name": "Restauration rapide - blanchissage",
+      "category": "Frais/uniforme",
+      "description": "Indemnité de blanchissage si tenue spéciale imposée et entretenue par salarié",
+      "tags": [
+        "1501",
+        "BLANCHISSAGE",
+        "RR_BLANCHISSAGE"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRuleId": "RR_BLANCHISSAGE",
+        "idccOrRegime": "1501"
+      }
+    },
+    {
+      "code": "CA_FRACTIONNEMENT_PUBLIC",
+      "name": "Jours de fractionnement public",
+      "category": "Congés",
+      "description": "Jours supplémentaires si congés pris hors 1er mai-31 octobre ; modalités selon versant",
+      "tags": [
+        "CA_FRACTIONNEMENT_PUBLIC",
+        "FPE/FPT/FPH",
+        "FP_CONGES_FRACTIONNEMENT"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "FP_CONGES_FRACTIONNEMENT",
+        "publicRegime": "FPE/FPT/FPH"
+      }
+    },
+    {
+      "code": "CA_PUBLIC",
+      "name": "Congés annuels fonction publique",
+      "category": "Congés",
+      "description": "5 fois le nombre de jours travaillés par semaine ; exemple 25 jours ouvrés pour 5 jours/semaine",
+      "tags": [
+        "CA_PUBLIC",
+        "FPE/FPT/FPH",
+        "FP_CONGES_ANNUELS"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "FP_CONGES_ANNUELS",
+        "publicRegime": "FPE/FPT/FPH"
+      }
+    },
+    {
+      "code": "CET",
+      "name": "Compte épargne-temps",
+      "category": "Congés/compteurs",
+      "description": "Tout agent peut avoir un CET alimenté notamment par jours de congés non utilisés",
+      "tags": [
+        "CET",
+        "FPE/FPT/FPH",
+        "FP_CET"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "FP_CET",
+        "publicRegime": "FPE/FPT/FPH"
+      }
+    },
+    {
+      "code": "CONGE_SUP_NAISSANCE",
+      "name": "Congé supplémentaire de naissance",
+      "category": "Parentalité",
+      "description": "Mis en œuvre au 1er juillet 2026 ; parents d'enfants nés à compter du 1er janvier 2026 sous conditions",
+      "tags": [
+        "CONGE_SUP_NAISSANCE",
+        "CONGE_SUP_NAISSANCE_2026"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "CONGE_SUP_NAISSANCE_2026",
+        "status": "Commun privé/public"
+      }
+    },
+    {
+      "code": "CP",
+      "name": "Acquisition légale des congés payés",
+      "category": "Congés payés",
+      "description": "2,5 jours ouvrables par mois, 30 jours ouvrables / 5 semaines pour une année complète",
+      "tags": [
+        "1979",
+        "CP",
+        "CP_ACQUISITION",
+        "HCR_CP_ART23"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "CP_ACQUISITION",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "CPAIDANT",
+      "name": "Congé de proche aidant",
+      "category": "Parent/aide",
+      "description": "Durée fixée par accord ; à défaut 3 mois renouvelables, maximum 1 an sur carrière",
+      "tags": [
+        "CONGE_PROCHE_AIDANT",
+        "CPAIDANT"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "CONGE_PROCHE_AIDANT",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "CPP",
+      "name": "Congé de présence parentale",
+      "category": "Parent/aide",
+      "description": "Réserve de 310 jours ouvrés par enfant et par maladie/accident/handicap, dans la limite de 3 ans ; renouvellement possible",
+      "tags": [
+        "CONGE_PRESENCE_PARENTALE",
+        "CPP"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "CONGE_PRESENCE_PARENTALE",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "CP_ANCIENNETE",
+      "name": "Restauration rapide - congés d'ancienneté",
+      "category": "Congés",
+      "description": "Code du travail numérique : pas de congés supplémentaires d'ancienneté prévus par la convention",
+      "tags": [
+        "1501",
+        "CP_ANCIENNETE",
+        "RR_CP_ANCIENNETE"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRuleId": "RR_CP_ANCIENNETE",
+        "idccOrRegime": "1501"
+      }
+    },
+    {
+      "code": "CP_ENFANT",
+      "name": "Jours supplémentaires pour enfant à charge",
+      "category": "Congés payés",
+      "description": "2 jours par enfant à charge sous conditions, dans la limite de 30 jours ouvrables",
+      "tags": [
+        "CP_ENFANT",
+        "CP_ENFANT_CHARGE"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "CP_ENFANT_CHARGE",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "CP_FRACTIONNEMENT",
+      "name": "Jours de fractionnement",
+      "category": "Congés payés",
+      "description": "1 jour si 3 à 5 jours du congé principal hors 1er mai-31 octobre ; 2 jours si 6 jours ou plus",
+      "tags": [
+        "CP_FRACTIONNEMENT"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "CP_FRACTIONNEMENT",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "CP_MALADIE",
+      "name": "Acquisition CP pendant maladie/accident non professionnel",
+      "category": "Congés payés",
+      "description": "2 jours ouvrables par mois pendant arrêt, maximum 24 jours ouvrables par période de référence",
+      "tags": [
+        "CP_MALADIE",
+        "CP_MALADIE_NON_PRO"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "CP_MALADIE_NON_PRO",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "CP_MAX_CONSECUTIF",
+      "name": "Limite de congé principal pris en une fois",
+      "category": "Congés payés",
+      "description": "Congé principal limité à 24 jours ouvrables consécutifs, sauf exceptions/accord employeur",
+      "tags": [
+        "CP_MAX_CONSECUTIF",
+        "VALIDATION_CP"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "CP_MAX_CONSECUTIF",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "CP_REPORT",
+      "name": "Report CP non pris du fait d'un arrêt maladie",
+      "category": "Congés payés",
+      "description": "Report possible 15 mois selon situation et information par l'employeur",
+      "tags": [
+        "CP_REPORT",
+        "CP_REPORT_MALADIE"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "CP_REPORT_MALADIE",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "CSF",
+      "name": "Congé de solidarité familiale",
+      "category": "Parent/aide",
+      "description": "Durée fixée par accord ; à défaut 3 mois renouvelable une fois ; fractionnement possible",
+      "tags": [
+        "CONGE_SOLIDARITE_FAMILIALE",
+        "CSF"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "CONGE_SOLIDARITE_FAMILIALE",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "CYCLE_SANTE_PRIVE",
+      "name": "Hospitalisation privée - cycles/modulation",
+      "category": "Temps de travail",
+      "description": "Convention hospitalisation privée prévoit organisation par cycles/modulation dans établissements de santé",
+      "tags": [
+        "2264",
+        "CYCLE_SANTE_PRIVE",
+        "FHP_CYCLES"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRuleId": "FHP_CYCLES",
+        "idccOrRegime": "2264"
+      }
+    },
+    {
+      "code": "FP_TEMPS_TRAVAIL",
+      "name": "Durée annuelle/légale publique",
+      "category": "Temps de travail",
+      "description": "35h/semaine et 1 607h/an ; organisation variable selon administration",
+      "tags": [
+        "FPE/FPT/FPH",
+        "FP_TEMPS_TRAVAIL",
+        "VALIDATION_TT_PUBLIC"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "FP_TEMPS_TRAVAIL",
+        "publicRegime": "FPE/FPT/FPH"
+      }
+    },
+    {
+      "code": "HC",
+      "name": "Temps partiel et heures complémentaires",
+      "category": "Temps de travail",
+      "description": "Contrat inférieur à 35h/semaine, 151,67h/mois ou 1 607h/an ; heures complémentaires selon contrat/accord",
+      "tags": [
+        "HC",
+        "TEMPS_PARTIEL"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "TEMPS_PARTIEL",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "HS",
+      "name": "Heures supplémentaires",
+      "category": "Temps de travail",
+      "description": "Heures demandées au-delà de 35h/semaine ou 1 607h/an selon organisation",
+      "tags": [
+        "1501",
+        "HS",
+        "HS_DECLENCHEMENT",
+        "RR_HS_CONTINGENT"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "HS_DECLENCHEMENT",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "HS_PUBLIC",
+      "name": "Heures supplémentaires FPH",
+      "category": "Heures supplémentaires",
+      "description": "Repos compensateur ou indemnité ; une même heure ne peut pas recevoir les deux",
+      "tags": [
+        "FPH",
+        "FPH_HS",
+        "HS_PUBLIC"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "FPH_HS",
+        "publicRegime": "FPH"
+      }
+    },
+    {
+      "code": "INTERMITTENT_SCOLAIRE",
+      "name": "Restauration collective - travail intermittent scolaire",
+      "category": "Temps de travail",
+      "description": "Accord spécifique sur le travail intermittent dans le secteur scolaire présent dans la convention",
+      "tags": [
+        "1266",
+        "COLLECTIVE_TRAVAIL_INTERMITTENT",
+        "INTERMITTENT_SCOLAIRE"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRuleId": "COLLECTIVE_TRAVAIL_INTERMITTENT",
+        "idccOrRegime": "1266"
+      }
+    },
+    {
+      "code": "JF",
+      "name": "1er mai chômé et payé",
+      "category": "Jours fériés",
+      "description": "1er mai jour férié et chômé ; aucune réduction de salaire",
+      "tags": [
+        "JF",
+        "JF_1MAI_CHOME",
+        "JF_ORDINAIRE_CHOME"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "JF_1MAI_CHOME",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "JF_1MAI",
+      "name": "Travail du 1er mai",
+      "category": "Jours fériés",
+      "description": "Si travaillé : doublement de la rémunération",
+      "tags": [
+        "JF_1MAI",
+        "JF_1MAI_TRAVAIL"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "JF_1MAI_TRAVAIL",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "JF_HCR_GARANTI",
+      "name": "HCR - jours fériés garantis",
+      "category": "Jours fériés",
+      "description": "En plus du 1er mai, 10 jours fériés par an après condition d'ancienneté ; 6 jours fériés garantis selon avenants",
+      "tags": [
+        "1979",
+        "HCR_JF_AVENANT6",
+        "JF_HCR_GARANTI"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRuleId": "HCR_JF_AVENANT6",
+        "idccOrRegime": "1979"
+      }
+    },
+    {
+      "code": "JRTT_HPA",
+      "name": "HPA - JRTT/RTT",
+      "category": "RTT",
+      "description": "Accords HPA sur réduction/aménagement du temps de travail ; JRTT à gérer comme compteur distinct des CP",
+      "tags": [
+        "1631",
+        "HPA_RTT_JRTT",
+        "JRTT_HPA"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRuleId": "HPA_RTT_JRTT",
+        "idccOrRegime": "1631"
+      }
+    },
+    {
+      "code": "J_SOLIDARITE",
+      "name": "Journée de solidarité",
+      "category": "Temps de travail",
+      "description": "Jusqu'à 7 heures précédemment non travaillées ; non considérées comme HS",
+      "tags": [
+        "JOURNEE_SOLIDARITE",
+        "J_SOLIDARITE"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "JOURNEE_SOLIDARITE",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "MALADIE_MAINTIEN",
+      "name": "HCR - maintien salaire maladie/AT",
+      "category": "Maladie",
+      "description": "Maintien conventionnel selon ancienneté et durée d'arrêt ; à extraire article 29 et comparer au légal",
+      "tags": [
+        "1979",
+        "HCR_MALADIE_ART29",
+        "MALADIE_MAINTIEN"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRuleId": "HCR_MALADIE_ART29",
+        "idccOrRegime": "1979"
+      }
+    },
+    {
+      "code": "MATERNITE",
+      "name": "Congé maternité",
+      "category": "Parentalité",
+      "description": "Durée selon nombre d'enfants à naître et déjà à charge ; cas général 16 semaines pour naissance simple 1er/2e enfant",
+      "tags": [
+        "CONGE_MATERNITE",
+        "MATERNITE"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "CONGE_MATERNITE",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "NUIT_CASINO",
+      "name": "Casinos - restauration-hôtellerie",
+      "category": "Nuit/JF",
+      "description": "Convention casinos inclut personnel restauration-hôtellerie et avenants sur travail de nuit/rémunérations",
+      "tags": [
+        "2257",
+        "CASINO_NUIT_RESTO",
+        "NUIT_CASINO"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRuleId": "CASINO_NUIT_RESTO",
+        "idccOrRegime": "2257"
+      }
+    },
+    {
+      "code": "PATERNITE",
+      "name": "Congé paternité et accueil de l'enfant",
+      "category": "Parentalité",
+      "description": "25 jours calendaires ; 32 jours en cas de naissances multiples, avec période obligatoire",
+      "tags": [
+        "CONGE_PATERNITE_ACCUEIL",
+        "PATERNITE"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "CONGE_PATERNITE_ACCUEIL",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "PAUSE_6H",
+      "name": "Pause après 6h de travail",
+      "category": "Repos",
+      "description": "Au moins 20 minutes consécutives dès que 6h de travail de suite sont atteintes",
+      "tags": [
+        "PAUSE_6H",
+        "VALIDATION_PAUSE"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "PAUSE_6H",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "PRIME_ANNUELLE",
+      "name": "Restauration rapide - prime annuelle conventionnelle",
+      "category": "Rémunération",
+      "description": "Prime annuelle selon ancienneté à partir d'1 an, montants par palier ; proratisations/absences selon convention",
+      "tags": [
+        "1501",
+        "PRIME_ANNUELLE",
+        "RR_PRIME_ANNUELLE"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRuleId": "RR_PRIME_ANNUELLE",
+        "idccOrRegime": "1501"
+      }
+    },
+    {
+      "code": "RCR",
+      "name": "Repos compensateur de remplacement",
+      "category": "Temps de travail",
+      "description": "Les heures supplémentaires peuvent donner lieu à rémunération majorée ou repos compensateur équivalent",
+      "tags": [
+        "HS_REPOS_EQUIVALENT",
+        "RCR"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "HS_REPOS_EQUIVALENT",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "RECUP_PONT",
+      "name": "Pont et récupération",
+      "category": "Jours fériés",
+      "description": "Pont possible ; heures non travaillées récupérables dans les 12 mois, sans majoration",
+      "tags": [
+        "PONT_RECUPERATION",
+        "RECUP_PONT"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "PONT_RECUPERATION",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "REPOS_HEBDOMADAIRE",
+      "name": "Repos hebdomadaire",
+      "category": "Repos",
+      "description": "Pas plus de 6 jours de travail/semaine ; repos hebdomadaire au moins 35h consécutives sauf dérogation",
+      "tags": [
+        "REPOS_HEBDOMADAIRE",
+        "VALIDATION_REPOS_HEBDO"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "REPOS_HEBDOMADAIRE",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "REPOS_HEBDO_HCR",
+      "name": "HCR - repos hebdomadaire",
+      "category": "Repos",
+      "description": "2 jours de repos hebdomadaire, consécutifs ou non, avec possibilités de report/compensation selon établissement/saison",
+      "tags": [
+        "1979",
+        "HCR_REPOS_HEBDO_ART21",
+        "REPOS_HEBDO_HCR"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRuleId": "HCR_REPOS_HEBDO_ART21",
+        "idccOrRegime": "1979"
+      }
+    },
+    {
+      "code": "REPOS_QUOTIDIEN",
+      "name": "Repos quotidien",
+      "category": "Repos",
+      "description": "Au moins 11 heures consécutives entre deux journées de travail, sauf dérogations",
+      "tags": [
+        "REPOS_QUOTIDIEN",
+        "VALIDATION_REPOS"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "REPOS_QUOTIDIEN",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "RTT",
+      "name": "Réduction du temps de travail",
+      "category": "Temps de travail",
+      "description": "Journées ou demi-journées de repos pour salariés travaillant plus de 35h/semaine selon accord",
+      "tags": [
+        "RTT"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "RTT",
+        "status": "Commun privé"
+      }
+    },
+    {
+      "code": "RTT_PUBLIC",
+      "name": "RTT FPH",
+      "category": "RTT",
+      "description": "Si cycle >35h/semaine, heures au-delà de la durée légale donnent droit à RTT ; limite 20 jours ouvrés/an",
+      "tags": [
+        "FPH",
+        "FPH_RTT",
+        "RTT_PUBLIC"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "FPH_RTT",
+        "publicRegime": "FPH"
+      }
+    },
+    {
+      "code": "SAISONNIER",
+      "name": "HPA - saisonniers",
+      "category": "Contrat/temps",
+      "description": "Convention HPA contient dispositions saisonnières/temps de travail ; CDD saisonnier à paramétrer selon textes",
+      "tags": [
+        "1631",
+        "HPA_CDD_SAISON",
+        "SAISONNIER"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRuleId": "HPA_CDD_SAISON",
+        "idccOrRegime": "1631"
+      }
+    },
+    {
+      "code": "VALIDATION_AMPLITUDE_FPH",
+      "name": "Durée journalière en travail continu",
+      "category": "Temps de travail",
+      "description": "9h max équipes de jour, 10h nuit ; amplitude max 12h si contraintes de service après avis",
+      "tags": [
+        "FPH",
+        "FPH_DUREE_JOUR_CONTINU",
+        "VALIDATION_AMPLITUDE_FPH"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "FPH_DUREE_JOUR_CONTINU",
+        "publicRegime": "FPH"
+      }
+    },
+    {
+      "code": "VALIDATION_COUPURE_FPH",
+      "name": "Travail discontinu FPH",
+      "category": "Temps de travail",
+      "description": "Amplitude max 10h30, pas plus de 2 vacations de 3h minimum ; cas domicile jusqu'à 12h",
+      "tags": [
+        "FPH",
+        "FPH_TRAVAIL_DISCONTINU",
+        "VALIDATION_COUPURE_FPH"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "FPH_TRAVAIL_DISCONTINU",
+        "publicRegime": "FPH"
+      }
+    },
+    {
+      "code": "VALIDATION_PAUSE_FPH",
+      "name": "Pause FPH",
+      "category": "Repos",
+      "description": "20 minutes pour toute période supérieure à 6h de travail consécutives",
+      "tags": [
+        "FPH",
+        "FPH_PAUSE",
+        "VALIDATION_PAUSE_FPH"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "FPH_PAUSE",
+        "publicRegime": "FPH"
+      }
+    },
+    {
+      "code": "VALIDATION_REPOS_FPH",
+      "name": "Repos quotidien FPH",
+      "category": "Repos",
+      "description": "12h consécutives minimum ; peut être 11h après accord collectif/chef d'établissement",
+      "tags": [
+        "FPH",
+        "FPH_REPOS_QUOTIDIEN",
+        "VALIDATION_REPOS_FPH"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "FPH_REPOS_QUOTIDIEN",
+        "publicRegime": "FPH"
+      }
+    },
+    {
+      "code": "VALIDATION_REPOS_HCR",
+      "name": "HCR - repos quotidien/dérogation saisonniers",
+      "category": "Repos",
+      "description": "Repos quotidien de 11h ; dérogations conventionnelles possibles notamment saisonniers avec contreparties",
+      "tags": [
+        "1979",
+        "HCR_REPOS_QUOTIDIEN_ART21",
+        "VALIDATION_REPOS_HCR"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRuleId": "HCR_REPOS_QUOTIDIEN_ART21",
+        "idccOrRegime": "1979"
+      }
+    },
+    {
+      "code": "VALIDATION_REPOS_HEBDO_FPH",
+      "name": "Repos hebdomadaire FPH",
+      "category": "Repos",
+      "description": "36h consécutives minimum ; 4 jours de repos pour 2 semaines dont au moins 2 consécutifs avec un dimanche",
+      "tags": [
+        "FPH",
+        "FPH_REPOS_HEBDO",
+        "VALIDATION_REPOS_HEBDO_FPH"
+      ],
+      "active": true,
+      "metadata": {
+        "sourceRightId": "FPH_REPOS_HEBDO",
+        "publicRegime": "FPH"
+      }
+    }
+  ],
+  "ruleVersions": [
+    {
+      "stableId": "FR-CONVENTION-CAFETERIAS_TO_EXTRACT-V1",
+      "version": 1,
+      "rightCode": "A_EXTRAIRE",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": "CCN_CAFETERIAS_2060",
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 2,
+      "unit": "compteur",
+      "value": null,
+      "formulaType": "requires_review",
+      "formulaJson": {
+        "rawText": "Convention IDCC 2060 : extraire congés, événements, temps de travail, JF, coupures, primes"
+      },
+      "conditionsJson": {
+        "trigger": "Chaînes de cafétérias",
+        "paid": null,
+        "planningCounter": "A_EXTRAIRE",
+        "parametersToProvide": null,
+        "integrationNotes": "Pas assez de détail V1 ; à enrichir article par article.",
+        "rawSourceLevel": "2060"
+      },
+      "sourceLabel": "Légifrance",
+      "sourceUrl": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635326",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.4,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-CONVENTION-CASINO_NUIT_RESTO-V1",
+      "version": 1,
+      "rightCode": "NUIT_CASINO",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": "CCN_CASINOS_2257",
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 2,
+      "unit": "heure",
+      "value": null,
+      "formulaType": "requires_review",
+      "formulaJson": {
+        "rawText": "Convention casinos inclut personnel restauration-hôtellerie et avenants sur travail de nuit/rémunérations"
+      },
+      "conditionsJson": {
+        "trigger": "Restaurant/bar/hôtel dans casino",
+        "paid": "Selon règles",
+        "planningCounter": "NUIT_CASINO",
+        "parametersToProvide": null,
+        "integrationNotes": "À router seulement si employeur casino.",
+        "rawSourceLevel": "2257"
+      },
+      "sourceLabel": "Légifrance",
+      "sourceUrl": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635618",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.4,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-CONVENTION-COLLECTIVE_CHANGEMENT_PRESTATAIRE-V1",
+      "version": 1,
+      "rightCode": "ALERTE_CONTRAT",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": "CCN_REST_COLLECTIVE_1266",
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 2,
+      "unit": "compteur",
+      "value": null,
+      "formulaType": "requires_review",
+      "formulaJson": {
+        "rawText": "Avenants sur changement de prestataire : reprise/transfert possible du personnel selon conditions"
+      },
+      "conditionsJson": {
+        "trigger": "Marché de restauration change de prestataire",
+        "paid": null,
+        "planningCounter": "ALERTE_CONTRAT",
+        "parametersToProvide": null,
+        "integrationNotes": "Pas planning quotidien, mais important intégration RH.",
+        "rawSourceLevel": "1266"
+      },
+      "sourceLabel": "Légifrance",
+      "sourceUrl": "https://www.legifrance.gouv.fr/conv_coll/id/KALITEXT000005640425",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.4,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-CONVENTION-COLLECTIVE_TRAVAIL_INTERMITTENT-V1",
+      "version": 1,
+      "rightCode": "INTERMITTENT_SCOLAIRE",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": "CCN_REST_COLLECTIVE_1266",
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 1,
+      "unit": "heure",
+      "value": null,
+      "formulaType": "requires_review",
+      "formulaJson": {
+        "rawText": "Accord spécifique sur le travail intermittent dans le secteur scolaire présent dans la convention"
+      },
+      "conditionsJson": {
+        "trigger": "Secteur scolaire/restauration collective",
+        "paid": "Selon contrat",
+        "planningCounter": "INTERMITTENT_SCOLAIRE",
+        "parametersToProvide": null,
+        "integrationNotes": "À extraire en détail pour cantines scolaires privées.",
+        "rawSourceLevel": "1266"
+      },
+      "sourceLabel": "Légifrance",
+      "sourceUrl": "https://www.legifrance.gouv.fr/conv_coll/id/KALITEXT000005640425",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.4,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-CONVENTION-FEHAP_TO_EXTRACT-V1",
+      "version": 1,
+      "rightCode": "A_EXTRAIRE_FEHAP",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": "CCN_FEHAP_0029",
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 1,
+      "unit": "compteur",
+      "value": null,
+      "formulaType": "requires_review",
+      "formulaJson": {
+        "rawText": "Convention IDCC 29 couvre établissements privés non lucratifs de santé/soins/cure/garde"
+      },
+      "conditionsJson": {
+        "trigger": "Personnel cuisine/restauration employé par FEHAP/ESPIC",
+        "paid": null,
+        "planningCounter": "A_EXTRAIRE_FEHAP",
+        "parametersToProvide": null,
+        "integrationNotes": "Très important pour hôpitaux privés associatifs.",
+        "rawSourceLevel": "0029"
+      },
+      "sourceLabel": "Légifrance",
+      "sourceUrl": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635234",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.4,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-CONVENTION-FHP_CYCLES-V1",
+      "version": 1,
+      "rightCode": "CYCLE_SANTE_PRIVE",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": "CCN_HOSP_PRIVEE_2264",
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 1,
+      "unit": "heure",
+      "value": null,
+      "formulaType": "requires_review",
+      "formulaJson": {
+        "rawText": "Convention hospitalisation privée prévoit organisation par cycles/modulation dans établissements de santé"
+      },
+      "conditionsJson": {
+        "trigger": "Personnel restauration interne clinique/EHPAD privé",
+        "paid": null,
+        "planningCounter": "CYCLE_SANTE_PRIVE",
+        "parametersToProvide": null,
+        "integrationNotes": "À utiliser si employé par établissement, pas prestataire 1266.",
+        "rawSourceLevel": "2264"
+      },
+      "sourceLabel": "Légifrance",
+      "sourceUrl": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635813",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.4,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-CONVENTION-HCR_CP_ART23-V1",
+      "version": 1,
+      "rightCode": "CP",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": "CCN_HCR_1979",
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 1,
+      "unit": "jour ouvrable",
+      "value": 23.0,
+      "formulaType": "numeric_rule",
+      "formulaJson": {
+        "extractedValue": 23.0,
+        "requiresHumanVerification": true
+      },
+      "conditionsJson": {
+        "trigger": "HCR ; ancienneté/présence selon texte ; périodes assimilées",
+        "paid": "Oui",
+        "planningCounter": "CP",
+        "parametersToProvide": null,
+        "integrationNotes": "Redondant avec légal mais garder source convention.",
+        "rawSourceLevel": "1979"
+      },
+      "sourceLabel": "Légifrance",
+      "sourceUrl": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635534/",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.52,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-CONVENTION-HCR_ENFANT_MALADE_ART25_2-V1",
+      "version": 1,
+      "rightCode": "ABS_ENFANT_MALADE",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": "CCN_HCR_1979",
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 1,
+      "unit": "jour",
+      "value": null,
+      "formulaType": "requires_review",
+      "formulaJson": {
+        "rawText": "Renvoi aux dispositions légales pour enfant malade"
+      },
+      "conditionsJson": {
+        "trigger": "Enfant malade/accidenté",
+        "paid": "Non par défaut",
+        "planningCounter": "ABS_ENFANT_MALADE",
+        "parametersToProvide": null,
+        "integrationNotes": "Appliquer 3/5 jours légal sauf accord d'entreprise plus favorable.",
+        "rawSourceLevel": "1979"
+      },
+      "sourceLabel": "Légifrance",
+      "sourceUrl": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635534/",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.4,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-CONVENTION-HCR_EVENT_ART25_1-V1",
+      "version": 1,
+      "rightCode": "ABS_FAM_PAYEE",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": "CCN_HCR_1979",
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 1,
+      "unit": "jour",
+      "value": 3.0,
+      "formulaType": "numeric_rule",
+      "formulaJson": {
+        "extractedValue": 3.0,
+        "requiresHumanVerification": true
+      },
+      "conditionsJson": {
+        "trigger": "Comparer au socle légal en vigueur et retenir plus favorable",
+        "paid": "Oui",
+        "planningCounter": "ABS_FAM_PAYEE",
+        "parametersToProvide": null,
+        "integrationNotes": "Certaines durées HCR sont désormais inférieures au légal ; ne pas écraser le légal.",
+        "rawSourceLevel": "1979"
+      },
+      "sourceLabel": "Légifrance",
+      "sourceUrl": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635534/",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.52,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-CONVENTION-HCR_JF_AVENANT6-V1",
+      "version": 1,
+      "rightCode": "JF_HCR_GARANTI",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": "CCN_HCR_1979",
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 1,
+      "unit": "jour",
+      "value": 1.0,
+      "formulaType": "numeric_rule",
+      "formulaJson": {
+        "extractedValue": 1.0,
+        "requiresHumanVerification": true
+      },
+      "conditionsJson": {
+        "trigger": "Salarié HCR ; ancienneté à vérifier ; saisonniers/temps partiel prorata selon texte",
+        "paid": "Oui ou compensation",
+        "planningCounter": "JF_HCR_GARANTI",
+        "parametersToProvide": null,
+        "integrationNotes": "À coder précisément avec règles compensation : travaillé, repos, jour tombant sur repos.",
+        "rawSourceLevel": "1979"
+      },
+      "sourceLabel": "Légifrance",
+      "sourceUrl": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635534/",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.52,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-CONVENTION-HCR_MALADIE_ART29-V1",
+      "version": 1,
+      "rightCode": "MALADIE_MAINTIEN",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": "CCN_HCR_1979",
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 2,
+      "unit": "jour",
+      "value": 29.0,
+      "formulaType": "numeric_rule",
+      "formulaJson": {
+        "extractedValue": 29.0,
+        "requiresHumanVerification": true
+      },
+      "conditionsJson": {
+        "trigger": "Arrêt maladie/AT/MP ; ancienneté ; indemnités IJSS",
+        "paid": "Oui partiel",
+        "planningCounter": "MALADIE_MAINTIEN",
+        "parametersToProvide": null,
+        "integrationNotes": "Impact paie plus que planning, mais statut absence utile.",
+        "rawSourceLevel": "1979"
+      },
+      "sourceLabel": "Légifrance",
+      "sourceUrl": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635534/",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.52,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-CONVENTION-HCR_REPOS_HEBDO_ART21-V1",
+      "version": 1,
+      "rightCode": "REPOS_HEBDO_HCR",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": "CCN_HCR_1979",
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 1,
+      "unit": "jour",
+      "value": 2.0,
+      "formulaType": "numeric_rule",
+      "formulaJson": {
+        "extractedValue": 2.0,
+        "requiresHumanVerification": true
+      },
+      "conditionsJson": {
+        "trigger": "HCR ; permanents/saisonniers ; modalités article/accord",
+        "paid": null,
+        "planningCounter": "REPOS_HEBDO_HCR",
+        "parametersToProvide": null,
+        "integrationNotes": "Règle majeure pour planning.",
+        "rawSourceLevel": "1979"
+      },
+      "sourceLabel": "Légifrance",
+      "sourceUrl": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635534/",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.52,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-CONVENTION-HCR_REPOS_QUOTIDIEN_ART21-V1",
+      "version": 1,
+      "rightCode": "VALIDATION_REPOS_HCR",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": "CCN_HCR_1979",
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 1,
+      "unit": "heure",
+      "value": 11.0,
+      "formulaType": "numeric_rule",
+      "formulaJson": {
+        "extractedValue": 11.0,
+        "requiresHumanVerification": true
+      },
+      "conditionsJson": {
+        "trigger": "HCR ; saisonnier ; conditions de dérogation",
+        "paid": null,
+        "planningCounter": "VALIDATION_REPOS_HCR",
+        "parametersToProvide": null,
+        "integrationNotes": "Vérifier textes à jour et accords établissement.",
+        "rawSourceLevel": "1979"
+      },
+      "sourceLabel": "Légifrance",
+      "sourceUrl": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635534/",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.52,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-CONVENTION-HPA_CDD_SAISON-V1",
+      "version": 1,
+      "rightCode": "SAISONNIER",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": "CCN_HPA_1631",
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 1,
+      "unit": "mois",
+      "value": null,
+      "formulaType": "requires_review",
+      "formulaJson": {
+        "rawText": "Convention HPA contient dispositions saisonnières/temps de travail ; CDD saisonnier à paramétrer selon textes"
+      },
+      "conditionsJson": {
+        "trigger": "Camping/HPA saisonnier",
+        "paid": null,
+        "planningCounter": "SAISONNIER",
+        "parametersToProvide": null,
+        "integrationNotes": "Gérer contrats saisonniers et repos en haute saison.",
+        "rawSourceLevel": "1631"
+      },
+      "sourceLabel": "Légifrance",
+      "sourceUrl": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635252",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.4,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-CONVENTION-HPA_RTT_JRTT-V1",
+      "version": 1,
+      "rightCode": "JRTT_HPA",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": "CCN_HPA_1631",
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 1,
+      "unit": "jour",
+      "value": null,
+      "formulaType": "requires_review",
+      "formulaJson": {
+        "rawText": "Accords HPA sur réduction/aménagement du temps de travail ; JRTT à gérer comme compteur distinct des CP"
+      },
+      "conditionsJson": {
+        "trigger": "Camping/HPA avec aménagement RTT",
+        "paid": "Oui",
+        "planningCounter": "JRTT_HPA",
+        "parametersToProvide": null,
+        "integrationNotes": "Ne pas mélanger JRTT et CP.",
+        "rawSourceLevel": "1631"
+      },
+      "sourceLabel": "Légifrance",
+      "sourceUrl": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635252",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.4,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-CONVENTION-RR_BLANCHISSAGE-V1",
+      "version": 1,
+      "rightCode": "BLANCHISSAGE",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": "CCN_REST_RAPIDE_1501",
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 2,
+      "unit": "heure",
+      "value": null,
+      "formulaType": "requires_review",
+      "formulaJson": {
+        "rawText": "Indemnité de blanchissage si tenue spéciale imposée et entretenue par salarié"
+      },
+      "conditionsJson": {
+        "trigger": "Uniforme imposé + entretien salarié",
+        "paid": "Oui indemnité",
+        "planningCounter": "BLANCHISSAGE",
+        "parametersToProvide": null,
+        "integrationNotes": "À lier à profil poste/établissement.",
+        "rawSourceLevel": "1501"
+      },
+      "sourceLabel": "Code du travail numérique",
+      "sourceUrl": "https://code.travail.gouv.fr/convention-collective/1501-restauration-rapide",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.4,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-CONVENTION-RR_CP_ANCIENNETE-V1",
+      "version": 1,
+      "rightCode": "CP_ANCIENNETE",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": "CCN_REST_RAPIDE_1501",
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 3,
+      "unit": "jour",
+      "value": null,
+      "formulaType": "requires_review",
+      "formulaJson": {
+        "rawText": "Code du travail numérique : pas de congés supplémentaires d'ancienneté prévus par la convention"
+      },
+      "conditionsJson": {
+        "trigger": "RR",
+        "paid": null,
+        "planningCounter": "CP_ANCIENNETE",
+        "parametersToProvide": null,
+        "integrationNotes": "Évite d'ajouter des droits inexistants.",
+        "rawSourceLevel": "1501"
+      },
+      "sourceLabel": "Code du travail numérique",
+      "sourceUrl": "https://code.travail.gouv.fr/convention-collective/1501-restauration-rapide",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.4,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-CONVENTION-RR_HS_CONTINGENT-V1",
+      "version": 1,
+      "rightCode": "HS",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": "CCN_REST_RAPIDE_1501",
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 1,
+      "unit": "heure",
+      "value": 220.0,
+      "formulaType": "numeric_rule",
+      "formulaJson": {
+        "extractedValue": 220.0,
+        "requiresHumanVerification": true
+      },
+      "conditionsJson": {
+        "trigger": "Salarié RR ; heures au-delà 35h/référence",
+        "paid": "Oui/repos",
+        "planningCounter": "HS",
+        "parametersToProvide": null,
+        "integrationNotes": "Taux de majoration à paramétrer via accord/loi.",
+        "rawSourceLevel": "1501"
+      },
+      "sourceLabel": "Code du travail numérique",
+      "sourceUrl": "https://code.travail.gouv.fr/convention-collective/1501-restauration-rapide",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.52,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-CONVENTION-RR_PRIME_ANNUELLE-V1",
+      "version": 1,
+      "rightCode": "PRIME_ANNUELLE",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": "CCN_REST_RAPIDE_1501",
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 2,
+      "unit": "euro",
+      "value": null,
+      "formulaType": "requires_review",
+      "formulaJson": {
+        "rawText": "Prime annuelle selon ancienneté à partir d'1 an, montants par palier ; proratisations/absences selon convention"
+      },
+      "conditionsJson": {
+        "trigger": "Ancienneté ; présence ; temps partiel",
+        "paid": "Oui",
+        "planningCounter": "PRIME_ANNUELLE",
+        "parametersToProvide": null,
+        "integrationNotes": "Pas planning mais utile profil salarié.",
+        "rawSourceLevel": "1501"
+      },
+      "sourceLabel": "Code du travail numérique",
+      "sourceUrl": "https://code.travail.gouv.fr/convention-collective/1501-restauration-rapide",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.4,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-ABS_ADOPTION_ARRIVEE-V1",
+      "version": 1,
+      "rightCode": "ABS_ADOPTION",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour ouvrable",
+      "value": 3.0,
+      "formulaType": "numeric_rule",
+      "formulaJson": {
+        "extractedValue": 3.0,
+        "requiresHumanVerification": true
+      },
+      "conditionsJson": {
+        "trigger": "Arrivée enfant en vue adoption",
+        "paid": "Oui",
+        "planningCounter": "ABS_ADOPTION",
+        "parametersToProvide": "Justificatif",
+        "integrationNotes": "Socle légal.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Légifrance",
+      "sourceUrl": "https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000047864715",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.52,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-ABS_ANNONCE_HANDICAP_ENFANT-V1",
+      "version": 1,
+      "rightCode": "ABS_FAM_PAYEE",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour ouvrable",
+      "value": 10,
+      "formulaType": "family_event_days",
+      "formulaJson": {
+        "event": "child_disability_or_serious_condition_announcement",
+        "days": 10
+      },
+      "conditionsJson": {
+        "trigger": "Annonce concernant un enfant",
+        "paid": "Oui",
+        "planningCounter": "ABS_FAM_PAYEE",
+        "parametersToProvide": "Nature de l'annonce ; justificatif",
+        "integrationNotes": "Mettre à jour les anciens paramétrages à 2 ou 5 jours.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Légifrance",
+      "sourceUrl": "https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000047864715",
+      "validationStatus": "active",
+      "confidenceLevel": 0.78,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-ABS_DECES_ENFANT-V1",
+      "version": 1,
+      "rightCode": "ABS_DECES",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour ouvrable",
+      "value": 12,
+      "formulaType": "family_event_days",
+      "formulaJson": {
+        "event": "child_death",
+        "days": 12,
+        "moreFavorableCases": [
+          {
+            "days": 14,
+            "conditions": [
+              "child_under_25",
+              "child_parent",
+              "dependent_under_25"
+            ]
+          }
+        ]
+      },
+      "conditionsJson": {
+        "trigger": "Décès enfant/personne à charge",
+        "paid": "Oui",
+        "planningCounter": "ABS_DECES",
+        "parametersToProvide": "Âge ; charge effective ; cumul congé de deuil éventuel à paramétrer",
+        "integrationNotes": "Bien distinguer de l'ancienneté/convention parfois moins favorable.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Légifrance",
+      "sourceUrl": "https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000047864715",
+      "validationStatus": "active",
+      "confidenceLevel": 0.78,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-ABS_DECES_PROCHES-V1",
+      "version": 1,
+      "rightCode": "ABS_DECES",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour ouvrable",
+      "value": 3,
+      "formulaType": "family_event_days",
+      "formulaJson": {
+        "event": "close_relative_death",
+        "days": 3
+      },
+      "conditionsJson": {
+        "trigger": "Décès proche listé",
+        "paid": "Oui",
+        "planningCounter": "ABS_DECES",
+        "parametersToProvide": "Lien familial ; justificatif",
+        "integrationNotes": "Socle légal.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Légifrance",
+      "sourceUrl": "https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000047864715",
+      "validationStatus": "active",
+      "confidenceLevel": 0.78,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-ABS_ENFANT_MALADE-V1",
+      "version": 1,
+      "rightCode": "ABS_ENFANT_MALADE",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour",
+      "value": 3,
+      "formulaType": "sick_child_leave",
+      "formulaJson": {
+        "annualDays": 3,
+        "annualDaysIfChildUnderOneOrThreeChildrenUnderSixteen": 5,
+        "childMaxAge": 16,
+        "paidDefault": false
+      },
+      "conditionsJson": {
+        "trigger": "Enfant malade/accidenté à charge de moins de 16 ans",
+        "paid": "Non par défaut",
+        "planningCounter": "ABS_ENFANT_MALADE",
+        "parametersToProvide": "Âge enfant ; nombre enfants ; convention plus favorable",
+        "integrationNotes": "À intégrer comme absence autorisée non payée sauf accord/CCN.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F151",
+      "validationStatus": "active",
+      "confidenceLevel": 0.78,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-ABS_MARIAGE_ENFANT-V1",
+      "version": 1,
+      "rightCode": "ABS_FAM_PAYEE",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour ouvrable",
+      "value": 1,
+      "formulaType": "family_event_days",
+      "formulaJson": {
+        "event": "child_marriage",
+        "days": 1
+      },
+      "conditionsJson": {
+        "trigger": "Mariage enfant",
+        "paid": "Oui",
+        "planningCounter": "ABS_FAM_PAYEE",
+        "parametersToProvide": "Justificatif",
+        "integrationNotes": "Socle légal.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Légifrance",
+      "sourceUrl": "https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000047864715",
+      "validationStatus": "active",
+      "confidenceLevel": 0.78,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-ABS_MARIAGE_PACS-V1",
+      "version": 1,
+      "rightCode": "ABS_FAM_PAYEE",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour ouvrable",
+      "value": 4,
+      "formulaType": "family_event_days",
+      "formulaJson": {
+        "event": "employee_marriage_or_pacs",
+        "days": 4
+      },
+      "conditionsJson": {
+        "trigger": "Événement familial justifié",
+        "paid": "Oui",
+        "planningCounter": "ABS_FAM_PAYEE",
+        "parametersToProvide": "Date événement ; justificatif ; accord plus favorable",
+        "integrationNotes": "Socle légal à comparer à la convention.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Légifrance",
+      "sourceUrl": "https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000047864715",
+      "validationStatus": "active",
+      "confidenceLevel": 0.78,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-ABS_NAISSANCE-V1",
+      "version": 1,
+      "rightCode": "ABS_NAISSANCE",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour ouvrable",
+      "value": 3,
+      "formulaType": "family_event_days",
+      "formulaJson": {
+        "event": "birth_or_adoption",
+        "days": 3
+      },
+      "conditionsJson": {
+        "trigger": "Naissance d'un enfant",
+        "paid": "Oui",
+        "planningCounter": "ABS_NAISSANCE",
+        "parametersToProvide": "Non cumulable avec congé maternité pour même naissance ; cumul paternité",
+        "integrationNotes": "Socle légal.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Légifrance",
+      "sourceUrl": "https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000047864715",
+      "validationStatus": "active",
+      "confidenceLevel": 0.78,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-ALLAITEMENT-V1",
+      "version": 1,
+      "rightCode": "ALLAITEMENT",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "minute",
+      "value": null,
+      "formulaType": "requires_review",
+      "formulaJson": {
+        "rawText": "Droit d'allaiter pendant les heures de travail pendant une période légale ; modalités à paramétrer"
+      },
+      "conditionsJson": {
+        "trigger": "Reprise après maternité et allaitement",
+        "paid": "Variable",
+        "planningCounter": "ALLAITEMENT",
+        "parametersToProvide": "Local dédié ; pauses ; convention/usage",
+        "integrationNotes": "Peut impacter planning.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F1769",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.4,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-ASTREINTE-V1",
+      "version": 1,
+      "rightCode": "ASTREINTE",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "heure",
+      "value": null,
+      "formulaType": "requires_review",
+      "formulaJson": {
+        "rawText": "Période pendant laquelle le salarié reste disponible ; intervention = travail effectif ; compensation obligatoire selon accord/employeur"
+      },
+      "conditionsJson": {
+        "trigger": "Astreinte planifiée ou intervention",
+        "paid": "Compensation/indemnité",
+        "planningCounter": "ASTREINTE",
+        "parametersToProvide": "Délai prévenance ; compensation ; repos après intervention",
+        "integrationNotes": "Pertinent hôtels/campings/maintenance.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F20873",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.4,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-CONGE_ADOPTION-V1",
+      "version": 1,
+      "rightCode": "ADOPTION",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour",
+      "value": null,
+      "formulaType": "requires_review",
+      "formulaJson": {
+        "rawText": "Durée selon nombre d'enfants adoptés et enfants à charge ; partage possible entre parents"
+      },
+      "conditionsJson": {
+        "trigger": "Adoption",
+        "paid": "IJSS/maintien selon conditions",
+        "planningCounter": "ADOPTION",
+        "parametersToProvide": "Arrivée au foyer ; partage ; majorations",
+        "integrationNotes": "Créer règles par cas.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F2268",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.4,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-CONGE_MATERNITE-V1",
+      "version": 1,
+      "rightCode": "MATERNITE",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour",
+      "value": 16.0,
+      "formulaType": "numeric_rule",
+      "formulaJson": {
+        "extractedValue": 16.0,
+        "requiresHumanVerification": true
+      },
+      "conditionsJson": {
+        "trigger": "Grossesse salariée",
+        "paid": "IJSS/maintien selon conditions",
+        "planningCounter": "MATERNITE",
+        "parametersToProvide": "Dates pré/postnatales ; pathologique ; convention maintien",
+        "integrationNotes": "Suspension contrat, protection, pas à confondre avec congé naissance.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F2265",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.52,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-CONGE_PATERNITE_ACCUEIL-V1",
+      "version": 1,
+      "rightCode": "PATERNITE",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour",
+      "value": 25.0,
+      "formulaType": "numeric_rule",
+      "formulaJson": {
+        "extractedValue": 25.0,
+        "requiresHumanVerification": true
+      },
+      "conditionsJson": {
+        "trigger": "Naissance/accueil enfant",
+        "paid": "IJSS/maintien selon conditions",
+        "planningCounter": "PATERNITE",
+        "parametersToProvide": "Délai prévenance ; 4 jours obligatoires ; cumul 3 jours naissance",
+        "integrationNotes": "Paramétrer fractionnement.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F3156",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.52,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-CONGE_PRESENCE_PARENTALE-V1",
+      "version": 1,
+      "rightCode": "CPP",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour",
+      "value": 310.0,
+      "formulaType": "numeric_rule",
+      "formulaJson": {
+        "extractedValue": 310.0,
+        "requiresHumanVerification": true
+      },
+      "conditionsJson": {
+        "trigger": "Enfant gravement malade/accidenté/handicapé",
+        "paid": "Non employeur par défaut",
+        "planningCounter": "CPP",
+        "parametersToProvide": "Certificat médical ; fractionnement ; délai 48h sauf urgence",
+        "integrationNotes": "Absence protégée avec compteur long.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F1631",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.52,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-CONGE_PROCHE_AIDANT-V1",
+      "version": 1,
+      "rightCode": "CPAIDANT",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "mois",
+      "value": 3.0,
+      "formulaType": "numeric_rule",
+      "formulaJson": {
+        "extractedValue": 3.0,
+        "requiresHumanVerification": true
+      },
+      "conditionsJson": {
+        "trigger": "Aide proche handicapé/âgé/perte autonomie",
+        "paid": "Non employeur par défaut",
+        "planningCounter": "CPAIDANT",
+        "parametersToProvide": "Lien/attestation ; fractionnement/temps partiel ; délai 1 mois sauf urgence",
+        "integrationNotes": "À prévoir dans demandes longues.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F16920",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.52,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-CONGE_SOLIDARITE_FAMILIALE-V1",
+      "version": 1,
+      "rightCode": "CSF",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "mois",
+      "value": 3.0,
+      "formulaType": "numeric_rule",
+      "formulaJson": {
+        "extractedValue": 3.0,
+        "requiresHumanVerification": true
+      },
+      "conditionsJson": {
+        "trigger": "Assistance proche en fin de vie/pathologie grave",
+        "paid": "Non employeur par défaut",
+        "planningCounter": "CSF",
+        "parametersToProvide": "Certificat médical ; temps partiel/fractionnement ; AJAP éventuelle",
+        "integrationNotes": "À séparer de proche aidant.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F1767",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.52,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-CONGE_SUP_NAISSANCE_2026-V1",
+      "version": 1,
+      "rightCode": "CONGE_SUP_NAISSANCE",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour",
+      "value": 1.0,
+      "formulaType": "numeric_rule",
+      "formulaJson": {
+        "extractedValue": 1.0,
+        "requiresHumanVerification": true
+      },
+      "conditionsJson": {
+        "trigger": "Naissance/adoption éligible",
+        "paid": "À paramétrer selon textes/IJ",
+        "planningCounter": "CONGE_SUP_NAISSANCE",
+        "parametersToProvide": "Éligibilité 2026 ; délai prévenance ; prise dans les 9 mois pour naissance après 1er juillet",
+        "integrationNotes": "À surveiller car très récent.",
+        "rawSourceLevel": "Commun privé/public"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F16225",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.52,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-CP_ACQUISITION-V1",
+      "version": 1,
+      "rightCode": "CP",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour ouvrable",
+      "value": 2.5,
+      "formulaType": "monthly_accrual",
+      "formulaJson": {
+        "monthlyValue": 2.5,
+        "annualValue": 30,
+        "referenceUnit": "jour ouvrable",
+        "prorateByPresence": true,
+        "prorateByFte": true,
+        "rounding": "ceil_by_applicable_rule"
+      },
+      "conditionsJson": {
+        "trigger": "Dès embauche, temps plein ou temps partiel",
+        "paid": "Oui",
+        "planningCounter": "CP",
+        "parametersToProvide": "Période référence ; ouvrables/ouvrés ; arrondi supérieur",
+        "integrationNotes": "Socle commun, puis appliquer accord/convention plus favorable.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F2258",
+      "validationStatus": "active",
+      "confidenceLevel": 0.82,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-CP_ENFANT_CHARGE-V1",
+      "version": 1,
+      "rightCode": "CP_ENFANT",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour ouvrable",
+      "value": 2,
+      "formulaType": "per_child_capped",
+      "formulaJson": {
+        "daysPerChild": 2,
+        "annualCapIncludingPaidLeave": 30,
+        "requiresChildAgeOrDisabilityCheck": true
+      },
+      "conditionsJson": {
+        "trigger": "Salarié avec enfant à charge ; règles âge/handicap ; cas -21 ans spécifique",
+        "paid": "Oui si CP acquis correspondant",
+        "planningCounter": "CP_ENFANT",
+        "parametersToProvide": "Âge salarié au 30 avril ; âge enfant ; handicap ; plafond",
+        "integrationNotes": "Important pour jeunes salariés et parents.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F2258",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.66,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-CP_FRACTIONNEMENT-V1",
+      "version": 1,
+      "rightCode": "CP_FRACTIONNEMENT",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour ouvrable",
+      "value": null,
+      "formulaType": "threshold_days",
+      "formulaJson": {
+        "thresholds": [
+          {
+            "minDays": 3,
+            "maxDays": 5,
+            "days": 1
+          },
+          {
+            "minDays": 6,
+            "days": 2
+          }
+        ],
+        "period": "outside_mai_octobre",
+        "waivableByAgreement": true
+      },
+      "conditionsJson": {
+        "trigger": "Congé principal fractionné, sauf accord/renonciation applicable",
+        "paid": "Oui",
+        "planningCounter": "CP_FRACTIONNEMENT",
+        "parametersToProvide": "Période légale ; renonciation/accord ; calcul hors 5e semaine",
+        "integrationNotes": "À coder comme règle conditionnelle avec override convention/accord.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F2258",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.68,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-CP_MALADIE_NON_PRO-V1",
+      "version": 1,
+      "rightCode": "CP_MALADIE",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour ouvrable",
+      "value": 2,
+      "formulaType": "monthly_accrual_capped",
+      "formulaJson": {
+        "monthlyValue": 2,
+        "annualCap": 24,
+        "reportMonths": 15,
+        "absenceTypes": [
+          "MALADIE",
+          "ACCIDENT_NON_PRO"
+        ]
+      },
+      "conditionsJson": {
+        "trigger": "Arrêt maladie ou accident non professionnel",
+        "paid": "Oui à la prise",
+        "planningCounter": "CP_MALADIE",
+        "parametersToProvide": "Max annuel ; report 15 mois ; information salarié",
+        "integrationNotes": "Règle récente à intégrer dans les compteurs CP.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F37482",
+      "validationStatus": "active",
+      "confidenceLevel": 0.78,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-CP_MAX_CONSECUTIF-V1",
+      "version": 1,
+      "rightCode": "CP_MAX_CONSECUTIF",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour ouvrable",
+      "value": 24.0,
+      "formulaType": "numeric_rule",
+      "formulaJson": {
+        "extractedValue": 24.0,
+        "requiresHumanVerification": true
+      },
+      "conditionsJson": {
+        "trigger": "Demande de congé > 24 jours ouvrables",
+        "paid": null,
+        "planningCounter": "VALIDATION_CP",
+        "parametersToProvide": "Dérogations : contraintes géographiques, présence enfant/aidant, accord employeur",
+        "integrationNotes": "Règle de validation planning.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F2258",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.52,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-CP_REPORT_MALADIE-V1",
+      "version": 1,
+      "rightCode": "CP_REPORT",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "mois",
+      "value": 15,
+      "formulaType": "carryover_window",
+      "formulaJson": {
+        "reportMonths": 15,
+        "requiresEmployerInformationDate": true
+      },
+      "conditionsJson": {
+        "trigger": "CP non pris à cause de l'arrêt",
+        "paid": null,
+        "planningCounter": "CP_REPORT",
+        "parametersToProvide": "Point de départ du report ; date information salarié",
+        "integrationNotes": "Nécessite champs date_reprise et date_information_droits.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F2258",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.58,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-HS_DECLENCHEMENT-V1",
+      "version": 1,
+      "rightCode": "HS",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "heure",
+      "value": 35,
+      "formulaType": "overtime_threshold",
+      "formulaJson": {
+        "weeklyThresholdHours": 35,
+        "annualThresholdHours": 1607,
+        "requiresAgreementPeriod": true
+      },
+      "conditionsJson": {
+        "trigger": "Dépassement durée légale/référence",
+        "paid": "Oui majoré ou repos",
+        "planningCounter": "HS",
+        "parametersToProvide": "Seuil convention/annualisation ; accord entreprise ; contingent",
+        "integrationNotes": "Moteur doit connaître période de décompte.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F2391",
+      "validationStatus": "active",
+      "confidenceLevel": 0.76,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-HS_REPOS_EQUIVALENT-V1",
+      "version": 1,
+      "rightCode": "RCR",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "heure",
+      "value": null,
+      "formulaType": "compensatory_rest",
+      "formulaJson": {
+        "requiresAgreementOrUsage": true,
+        "conversionIncludesPremium": true
+      },
+      "conditionsJson": {
+        "trigger": "Accord/usage remplaçant paiement par repos",
+        "paid": "Repos payé",
+        "planningCounter": "RCR",
+        "parametersToProvide": "Taux majoration converti en repos ; ex. 1h à +50% = 1h30",
+        "integrationNotes": "À relier aux compteurs de récupération.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F2391",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.62,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-JDC-V1",
+      "version": 1,
+      "rightCode": "ABS_CIVIQUE",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour",
+      "value": null,
+      "formulaType": "requires_review",
+      "formulaJson": {
+        "rawText": "Absence autorisée pour participer à la JDC"
+      },
+      "conditionsJson": {
+        "trigger": "Convocation JDC",
+        "paid": "Oui selon règles applicables",
+        "planningCounter": "ABS_CIVIQUE",
+        "parametersToProvide": "Justificatif",
+        "integrationNotes": "Certaines CCN le listent explicitement.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Légifrance",
+      "sourceUrl": "https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000047864715",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.4,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-JF_1MAI_CHOME-V1",
+      "version": 1,
+      "rightCode": "JF",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour",
+      "value": 1,
+      "formulaType": "holiday_paid_if_not_worked",
+      "formulaJson": {
+        "holiday": "05-01",
+        "paid": true
+      },
+      "conditionsJson": {
+        "trigger": "Jour 1er mai non travaillé",
+        "paid": "Oui",
+        "planningCounter": "JF",
+        "parametersToProvide": "Exceptions établissements/services ne pouvant interrompre activité",
+        "integrationNotes": "HCR peut travailler le 1er mai avec double rémunération.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F2405",
+      "validationStatus": "active",
+      "confidenceLevel": 0.78,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-JF_1MAI_TRAVAIL-V1",
+      "version": 1,
+      "rightCode": "JF_1MAI",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "heure",
+      "value": 2,
+      "formulaType": "pay_multiplier",
+      "formulaJson": {
+        "holiday": "05-01",
+        "payMultiplier": 2,
+        "appliesWhenWorked": true
+      },
+      "conditionsJson": {
+        "trigger": "Heures travaillées le 1er mai",
+        "paid": "Oui majoré",
+        "planningCounter": "JF_1MAI",
+        "parametersToProvide": "Calcul paie ; cumul avec règles conventionnelles si plus favorables",
+        "integrationNotes": "Règle critique en hôtellerie-restauration.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F2405",
+      "validationStatus": "active",
+      "confidenceLevel": 0.78,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-JF_ORDINAIRE_CHOME-V1",
+      "version": 1,
+      "rightCode": "JF",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour",
+      "value": 3,
+      "formulaType": "minimum_seniority_months",
+      "formulaJson": {
+        "minimumSeniorityMonths": 3,
+        "paidIfEmployerCloses": true
+      },
+      "conditionsJson": {
+        "trigger": "Jour férié ordinaire décidé chômé",
+        "paid": "Oui sous conditions",
+        "planningCounter": "JF",
+        "parametersToProvide": "Ancienneté 3 mois ; saisonniers cumulés ; exceptions",
+        "integrationNotes": "Ne signifie pas que tous les jours fériés sont chômés : convention/accord fixe souvent.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F2405",
+      "validationStatus": "active",
+      "confidenceLevel": 0.74,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-JOURNEE_SOLIDARITE-V1",
+      "version": 1,
+      "rightCode": "J_SOLIDARITE",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "heure",
+      "value": 7,
+      "formulaType": "solidarity_day",
+      "formulaJson": {
+        "annualHours": 7,
+        "proratePartTime": true,
+        "notOvertime": true
+      },
+      "conditionsJson": {
+        "trigger": "Modalités fixées par accord/employeur ; prorata temps partiel",
+        "paid": "Non supplémentaire",
+        "planningCounter": "J_SOLIDARITE",
+        "parametersToProvide": "Jour choisi ; prorata ; Alsace-Moselle",
+        "integrationNotes": "Créer un compteur dédié pour éviter de générer des HS.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F2405",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.7,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-PAUSE_6H-V1",
+      "version": 1,
+      "rightCode": "PAUSE_6H",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "minute",
+      "value": 20,
+      "formulaType": "planning_break_after_work",
+      "formulaJson": {
+        "triggerWorkedMinutes": 360,
+        "minimumBreakMinutes": 20,
+        "consecutive": true
+      },
+      "conditionsJson": {
+        "trigger": "6h consécutives travaillées",
+        "paid": null,
+        "planningCounter": "VALIDATION_PAUSE",
+        "parametersToProvide": "Accord plus favorable ; mineurs : règle renforcée",
+        "integrationNotes": "À valider sur chaque shift.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F18205",
+      "validationStatus": "active",
+      "confidenceLevel": 0.82,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-PONT_RECUPERATION-V1",
+      "version": 1,
+      "rightCode": "RECUP_PONT",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "heure",
+      "value": 12,
+      "formulaType": "recovery_window",
+      "formulaJson": {
+        "recoveryWindowMonths": 12,
+        "overtimePremium": false
+      },
+      "conditionsJson": {
+        "trigger": "Jour ouvrable chômé entre JF et repos/congé",
+        "paid": "Non majoré",
+        "planningCounter": "RECUP_PONT",
+        "parametersToProvide": "Fenêtre 12 mois ; accord/employeur",
+        "integrationNotes": "À séparer des récupérations d'heures supplémentaires.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F2405",
+      "validationStatus": "active",
+      "confidenceLevel": 0.72,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-REPOS_HEBDOMADAIRE-V1",
+      "version": 1,
+      "rightCode": "REPOS_HEBDOMADAIRE",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "heure",
+      "value": 35,
+      "formulaType": "planning_weekly_rest",
+      "formulaJson": {
+        "minimumConsecutiveHours": 35,
+        "maxWorkedDaysPerWeek": 6
+      },
+      "conditionsJson": {
+        "trigger": "Cycle hebdomadaire",
+        "paid": null,
+        "planningCounter": "VALIDATION_REPOS_HEBDO",
+        "parametersToProvide": "Dérogations HCR/continuité ; jours reportés",
+        "integrationNotes": "À combiner avec règles HCR/HPA/hôpitaux.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F2327",
+      "validationStatus": "active",
+      "confidenceLevel": 0.82,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-REPOS_QUOTIDIEN-V1",
+      "version": 1,
+      "rightCode": "REPOS_QUOTIDIEN",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "heure",
+      "value": 11,
+      "formulaType": "planning_min_rest",
+      "formulaJson": {
+        "minimumHours": 11,
+        "scope": "between_shifts"
+      },
+      "conditionsJson": {
+        "trigger": "Fin de poste -> reprise suivante",
+        "paid": null,
+        "planningCounter": "VALIDATION_REPOS",
+        "parametersToProvide": "Dérogations secteur/accord ; jeunes travailleurs",
+        "integrationNotes": "Blocage planning automatique.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F990",
+      "validationStatus": "active",
+      "confidenceLevel": 0.82,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-RTT-V1",
+      "version": 1,
+      "rightCode": "RTT",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour",
+      "value": 35.0,
+      "formulaType": "numeric_rule",
+      "formulaJson": {
+        "extractedValue": 35.0,
+        "requiresHumanVerification": true
+      },
+      "conditionsJson": {
+        "trigger": "Organisation >35h avec RTT",
+        "paid": "Oui",
+        "planningCounter": "RTT",
+        "parametersToProvide": "Accord RTT ; forfait jours ; prorata absences",
+        "integrationNotes": "Variable par entreprise : pas une règle unique.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F34151",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.52,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PRIVATE-COMMON-TEMPS_PARTIEL-V1",
+      "version": 1,
+      "rightCode": "HC",
+      "regimeCode": "FR_PRIVATE",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "private",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "heure",
+      "value": 35.0,
+      "formulaType": "numeric_rule",
+      "formulaJson": {
+        "extractedValue": 35.0,
+        "requiresHumanVerification": true
+      },
+      "conditionsJson": {
+        "trigger": "Contrat à temps partiel",
+        "paid": "Oui",
+        "planningCounter": "HC",
+        "parametersToProvide": "Durée contractuelle ; limites HC ; majorations convention/accord",
+        "integrationNotes": "Important pour restauration rapide/HCR.",
+        "rawSourceLevel": "Commun privé"
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F32428",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.52,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PUBLIC-FPH_ANNUALISATION-V1",
+      "version": 1,
+      "rightCode": "ANNUALISATION_PUBLIC",
+      "regimeCode": "FR_PUBLIC",
+      "agreementKey": null,
+      "publicRegimeCode": "FPH",
+      "countryCode": "FR",
+      "sector": "public",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "heure",
+      "value": 32.0,
+      "formulaType": "numeric_rule",
+      "formulaJson": {
+        "extractedValue": 32.0,
+        "requiresHumanVerification": true
+      },
+      "conditionsJson": {
+        "trigger": "Organisation annualisée",
+        "paid": null,
+        "planningCounter": "ANNUALISATION_PUBLIC",
+        "parametersToProvide": "Accord ; bornes ; période annuelle",
+        "integrationNotes": "Utiliser compteur crédit/débit.",
+        "rawSourceLevel": null
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F573",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.52,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PUBLIC-FPH_DUREE_JOUR_CONTINU-V1",
+      "version": 1,
+      "rightCode": "VALIDATION_AMPLITUDE_FPH",
+      "regimeCode": "FR_PUBLIC",
+      "agreementKey": null,
+      "publicRegimeCode": "FPH",
+      "countryCode": "FR",
+      "sector": "public",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "heure",
+      "value": 9.0,
+      "formulaType": "numeric_rule",
+      "formulaJson": {
+        "extractedValue": 9.0,
+        "requiresHumanVerification": true
+      },
+      "conditionsJson": {
+        "trigger": "Poste continu",
+        "paid": null,
+        "planningCounter": "VALIDATION_AMPLITUDE_FPH",
+        "parametersToProvide": "Jour/nuit ; continuité service",
+        "integrationNotes": "Blocage planning hôpital public.",
+        "rawSourceLevel": null
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F573",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.52,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PUBLIC-FPH_HS-V1",
+      "version": 1,
+      "rightCode": "HS_PUBLIC",
+      "regimeCode": "FR_PUBLIC",
+      "agreementKey": null,
+      "publicRegimeCode": "FPH",
+      "countryCode": "FR",
+      "sector": "public",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "heure",
+      "value": null,
+      "formulaType": "requires_review",
+      "formulaJson": {
+        "rawText": "Repos compensateur ou indemnité ; une même heure ne peut pas recevoir les deux"
+      },
+      "conditionsJson": {
+        "trigger": "Heures au-delà après RTT/cycle",
+        "paid": "Repos ou indemnité",
+        "planningCounter": "HS_PUBLIC",
+        "parametersToProvide": "Décision chef d'établissement ; majorations nuit/Samedi/dimanche/JF possibles",
+        "integrationNotes": "À séparer de RTT.",
+        "rawSourceLevel": null
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F595",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.4,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PUBLIC-FPH_PAUSE-V1",
+      "version": 1,
+      "rightCode": "VALIDATION_PAUSE_FPH",
+      "regimeCode": "FR_PUBLIC",
+      "agreementKey": null,
+      "publicRegimeCode": "FPH",
+      "countryCode": "FR",
+      "sector": "public",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "minute",
+      "value": 20.0,
+      "formulaType": "numeric_rule",
+      "formulaJson": {
+        "extractedValue": 20.0,
+        "requiresHumanVerification": true
+      },
+      "conditionsJson": {
+        "trigger": ">6h consécutives",
+        "paid": null,
+        "planningCounter": "VALIDATION_PAUSE_FPH",
+        "parametersToProvide": "Travail continu/discontinu",
+        "integrationNotes": "Règle planning.",
+        "rawSourceLevel": null
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F573",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.52,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PUBLIC-FPH_REPOS_HEBDO-V1",
+      "version": 1,
+      "rightCode": "VALIDATION_REPOS_HEBDO_FPH",
+      "regimeCode": "FR_PUBLIC",
+      "agreementKey": null,
+      "publicRegimeCode": "FPH",
+      "countryCode": "FR",
+      "sector": "public",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "heure",
+      "value": 36.0,
+      "formulaType": "numeric_rule",
+      "formulaJson": {
+        "extractedValue": 36.0,
+        "requiresHumanVerification": true
+      },
+      "conditionsJson": {
+        "trigger": "Cycle FPH",
+        "paid": null,
+        "planningCounter": "VALIDATION_REPOS_HEBDO_FPH",
+        "parametersToProvide": "Cycle ; continuité service",
+        "integrationNotes": "Très important pour agents hospitaliers.",
+        "rawSourceLevel": null
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F573",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.52,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PUBLIC-FPH_REPOS_QUOTIDIEN-V1",
+      "version": 1,
+      "rightCode": "VALIDATION_REPOS_FPH",
+      "regimeCode": "FR_PUBLIC",
+      "agreementKey": null,
+      "publicRegimeCode": "FPH",
+      "countryCode": "FR",
+      "sector": "public",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "heure",
+      "value": 12,
+      "formulaType": "planning_min_rest",
+      "formulaJson": {
+        "minimumHours": 12,
+        "fallbackMinimumWithAgreementHours": 11,
+        "scope": "between_shifts"
+      },
+      "conditionsJson": {
+        "trigger": "Fin de poste -> reprise",
+        "paid": null,
+        "planningCounter": "VALIDATION_REPOS_FPH",
+        "parametersToProvide": "Dérogation 11h ; service",
+        "integrationNotes": "Plus protecteur que privé par défaut.",
+        "rawSourceLevel": null
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F573",
+      "validationStatus": "active",
+      "confidenceLevel": 0.8,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PUBLIC-FPH_RTT-V1",
+      "version": 1,
+      "rightCode": "RTT_PUBLIC",
+      "regimeCode": "FR_PUBLIC",
+      "agreementKey": null,
+      "publicRegimeCode": "FPH",
+      "countryCode": "FR",
+      "sector": "public",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "heure",
+      "value": 35.0,
+      "formulaType": "numeric_rule",
+      "formulaJson": {
+        "extractedValue": 35.0,
+        "requiresHumanVerification": true
+      },
+      "conditionsJson": {
+        "trigger": "Cycle >35h",
+        "paid": "Oui",
+        "planningCounter": "RTT_PUBLIC",
+        "parametersToProvide": "Cycle ; plafond ; repos dans/hors cycle",
+        "integrationNotes": "Calculé à partir du cycle.",
+        "rawSourceLevel": null
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F573",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.52,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PUBLIC-FPH_TRAVAIL_DISCONTINU-V1",
+      "version": 1,
+      "rightCode": "VALIDATION_COUPURE_FPH",
+      "regimeCode": "FR_PUBLIC",
+      "agreementKey": null,
+      "publicRegimeCode": "FPH",
+      "countryCode": "FR",
+      "sector": "public",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "heure",
+      "value": 10.0,
+      "formulaType": "numeric_rule",
+      "formulaJson": {
+        "extractedValue": 10.0,
+        "requiresHumanVerification": true
+      },
+      "conditionsJson": {
+        "trigger": "Planning discontinu",
+        "paid": null,
+        "planningCounter": "VALIDATION_COUPURE_FPH",
+        "parametersToProvide": "Domicile ; avis CSE",
+        "integrationNotes": "À gérer pour cuisine/logistique selon service.",
+        "rawSourceLevel": null
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F573",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.52,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PUBLIC-FP_CET-V1",
+      "version": 1,
+      "rightCode": "CET",
+      "regimeCode": "FR_PUBLIC",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "public",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour",
+      "value": null,
+      "formulaType": "time_savings_account",
+      "formulaJson": {
+        "requiresLocalRules": true,
+        "public": true
+      },
+      "conditionsJson": {
+        "trigger": "Règles versant/locales",
+        "paid": "Selon utilisation",
+        "planningCounter": "CET",
+        "parametersToProvide": "Plafonds ; alimentation ; indemnisation ; report",
+        "integrationNotes": "À prévoir comme compteur générique public.",
+        "rawSourceLevel": null
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/N20276",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.62,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PUBLIC-FP_CONGES_ANNUELS-V1",
+      "version": 1,
+      "rightCode": "CA_PUBLIC",
+      "regimeCode": "FR_PUBLIC",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "public",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour ouvré",
+      "value": 5,
+      "formulaType": "public_annual_leave",
+      "formulaJson": {
+        "multiplierWorkedDaysPerWeek": 5,
+        "exampleDaysForFiveDayWeek": 25,
+        "period": "calendar_year"
+      },
+      "conditionsJson": {
+        "trigger": "Année de service 1er janvier-31 décembre",
+        "paid": "Oui",
+        "planningCounter": "CA_PUBLIC",
+        "parametersToProvide": "Quotité ; jours travaillés/semaine ; prorata ; arrondi",
+        "integrationNotes": "Base commune agents publics titulaires/stagiaires/contractuels.",
+        "rawSourceLevel": null
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F488",
+      "validationStatus": "active",
+      "confidenceLevel": 0.78,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PUBLIC-FP_CONGES_FRACTIONNEMENT-V1",
+      "version": 1,
+      "rightCode": "CA_FRACTIONNEMENT_PUBLIC",
+      "regimeCode": "FR_PUBLIC",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "public",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour ouvré",
+      "value": 1.0,
+      "formulaType": "numeric_rule",
+      "formulaJson": {
+        "extractedValue": 1.0,
+        "requiresHumanVerification": true
+      },
+      "conditionsJson": {
+        "trigger": "CA hors période",
+        "paid": "Oui",
+        "planningCounter": "CA_FRACTIONNEMENT_PUBLIC",
+        "parametersToProvide": "Versant public ; seuils ; accord local",
+        "integrationNotes": "Pour FPH : voir règle dédiée.",
+        "rawSourceLevel": null
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/F488",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.52,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PUBLIC-FP_TEMPS_TRAVAIL-V1",
+      "version": 1,
+      "rightCode": "FP_TEMPS_TRAVAIL",
+      "regimeCode": "FR_PUBLIC",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "public",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "heure",
+      "value": 1607,
+      "formulaType": "annual_working_time",
+      "formulaJson": {
+        "annualHours": 1607,
+        "weeklyReferenceHours": 35
+      },
+      "conditionsJson": {
+        "trigger": "Cycle public",
+        "paid": null,
+        "planningCounter": "VALIDATION_TT_PUBLIC",
+        "parametersToProvide": "Cycle ; sujétions ; annualisation ; service",
+        "integrationNotes": "Socle de calcul RTT/HS.",
+        "rawSourceLevel": null
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/N20276",
+      "validationStatus": "active",
+      "confidenceLevel": 0.78,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    },
+    {
+      "stableId": "FR-PUBLIC-PUBLIC_ASA_FAMILIALES-V1",
+      "version": 1,
+      "rightCode": "ASA",
+      "regimeCode": "FR_PUBLIC",
+      "agreementKey": null,
+      "publicRegimeCode": null,
+      "countryCode": "FR",
+      "sector": "public",
+      "establishmentType": null,
+      "contractType": null,
+      "jobFamilyCode": null,
+      "minSeniorityMonths": null,
+      "maxSeniorityMonths": null,
+      "fullTimeEquivalent": null,
+      "effectiveFrom": "2026-06-28",
+      "effectiveTo": null,
+      "priority": 50,
+      "unit": "jour",
+      "value": null,
+      "formulaType": "requires_review",
+      "formulaJson": {
+        "rawText": "Règles variables selon administration/collectivité/établissement pour mariage, décès, enfant malade, etc."
+      },
+      "conditionsJson": {
+        "trigger": "Événement familial agent public",
+        "paid": "Variable",
+        "planningCounter": "ASA",
+        "parametersToProvide": "Délibération/arrêté/règlement intérieur local",
+        "integrationNotes": "Ne pas appliquer automatiquement la CCN privée.",
+        "rawSourceLevel": null
+      },
+      "sourceLabel": "Service Public",
+      "sourceUrl": "https://www.service-public.gouv.fr/particuliers/vosdroits/N20276",
+      "validationStatus": "requires_review",
+      "confidenceLevel": 0.4,
+      "lastVerifiedAt": "2026-06-28",
+      "active": true
+    }
+  ],
+  "jobFamilies": [
+    {
+      "code": "BAR_CAFE",
+      "label": "Bar / café",
+      "examples": [
+        "Barman",
+        "barista",
+        "limonadier",
+        "cafetier"
+      ],
+      "metadata": {
+        "rightsToWatch": "Nuit, fermeture tardive, repos, JF, sécurité"
+      }
+    },
+    {
+      "code": "CAMPING_HPA",
+      "label": "Camping / HPA",
+      "examples": [
+        "Réception camping",
+        "animateur",
+        "maintenance",
+        "ménage",
+        "snack"
+      ],
+      "metadata": {
+        "rightsToWatch": "Saisonniers, astreintes, logement, JRTT, horaires haute saison"
+      }
+    },
+    {
+      "code": "CASINO_RESTAURATION",
+      "label": "Casino restauration",
+      "examples": [
+        "Serveur",
+        "barman",
+        "cuisinier",
+        "hôtel associé casino"
+      ],
+      "metadata": {
+        "rightsToWatch": "Nuit, dimanches/JF, primes, sécurité"
+      }
+    },
+    {
+      "code": "COLLECTIVE_HOSPITALIERE",
+      "label": "Collective hospitalière",
+      "examples": [
+        "Cuisinier",
+        "agent restauration",
+        "diététique logistique"
+      ],
+      "metadata": {
+        "rightsToWatch": "Cycles, repos FPH, nuit/JF, hygiène, sujétions"
+      }
+    },
+    {
+      "code": "COLLECTIVE_SCOLAIRE",
+      "label": "Collective scolaire",
+      "examples": [
+        "Employé de restauration",
+        "agent de cantine",
+        "chef gérant"
+      ],
+      "metadata": {
+        "rightsToWatch": "Intermittent scolaire, annualisation, coupures, vacances scolaires"
+      }
+    },
+    {
+      "code": "CUISINE",
+      "label": "Cuisine",
+      "examples": [
+        "Chef",
+        "second",
+        "cuisinier",
+        "commis",
+        "plongeur"
+      ],
+      "metadata": {
+        "rightsToWatch": "Repos, coupures, HS, repas, jours fériés, nuit si service tardif"
+      }
+    },
+    {
+      "code": "FERROVIAIRE",
+      "label": "Ferroviaire",
+      "examples": [
+        "Steward",
+        "chef de bord restauration",
+        "préparateur"
+      ],
+      "metadata": {
+        "rightsToWatch": "Déplacements, repos, nuit, JF, primes"
+      }
+    },
+    {
+      "code": "HEBERGEMENT_HOTEL",
+      "label": "Hébergement hôtel",
+      "examples": [
+        "Réceptionniste",
+        "night auditor",
+        "gouvernant",
+        "femme",
+        "valet chambre",
+        "bagagiste"
+      ],
+      "metadata": {
+        "rightsToWatch": "Nuit, astreinte, repos, jours fériés, coupures, logement éventuel"
+      }
+    },
+    {
+      "code": "RESTAURATION_RAPIDE",
+      "label": "Restauration rapide",
+      "examples": [
+        "Équipier polyvalent",
+        "manager",
+        "livreur interne",
+        "préparateur"
+      ],
+      "metadata": {
+        "rightsToWatch": "Temps partiel, heures complémentaires, prime annuelle, blanchissage, coupures"
+      }
+    },
+    {
+      "code": "SALLE_SERVICE",
+      "label": "Salle / service",
+      "examples": [
+        "Serveur",
+        "maître d'hôtel",
+        "chef de rang",
+        "runner",
+        "sommelier"
+      ],
+      "metadata": {
+        "rightsToWatch": "Repos hebdo, coupures, jours fériés, pourboires/service, heures nuit"
+      }
+    },
+    {
+      "code": "SUPPORT_TECHNIQUE",
+      "label": "Support technique",
+      "examples": [
+        "Maintenance",
+        "sécurité",
+        "lingerie",
+        "plonge",
+        "économat"
+      ],
+      "metadata": {
+        "rightsToWatch": "Astreinte, nuit, repos, EPI/blanchissage"
+      }
+    },
+    {
+      "code": "TOURISME_SOCIAL",
+      "label": "Tourisme social",
+      "examples": [
+        "Animateur",
+        "cuisine",
+        "accueil",
+        "hébergement"
+      ],
+      "metadata": {
+        "rightsToWatch": "Saisonnalité, logement, astreinte, nuit, JF"
+      }
+    }
+  ],
+  "jobMappings": [
+    {
+      "jobFamilyCode": "CUISINE",
+      "agreementKey": "CCN_HCR_1979",
+      "publicRegimeCode": null,
+      "establishmentType": "Restaurant/hôtel/café privé",
+      "confidenceLevel": 0.65,
+      "notes": "Même métier peut relever de 1266 en collectivité ou FPH en hôpital public.",
+      "metadata": {
+        "privateRouteHint": "HCR 1979",
+        "publicRouteHint": ""
+      },
+      "stableKey": "CUISINE:CCN_HCR_1979:restaurant_hotel_cafe_prive"
+    },
+    {
+      "jobFamilyCode": "SALLE_SERVICE",
+      "agreementKey": "CCN_HCR_1979",
+      "publicRegimeCode": null,
+      "establishmentType": "Restaurant/hôtel/café privé",
+      "confidenceLevel": 0.65,
+      "notes": "Attention extras/CDD d'usage.",
+      "metadata": {
+        "privateRouteHint": "HCR 1979",
+        "publicRouteHint": ""
+      },
+      "stableKey": "SALLE_SERVICE:CCN_HCR_1979:restaurant_hotel_cafe_prive"
+    },
+    {
+      "jobFamilyCode": "BAR_CAFE",
+      "agreementKey": "CCN_HCR_1979",
+      "publicRegimeCode": null,
+      "establishmentType": "Café, bar, brasserie, salon de thé",
+      "confidenceLevel": 0.65,
+      "notes": "Petit salon de café indépendant souvent HCR ; chaîne rapide peut être 1501/2060.",
+      "metadata": {
+        "privateRouteHint": "HCR 1979 ou 2060/1501 selon concept",
+        "publicRouteHint": ""
+      },
+      "stableKey": "BAR_CAFE:CCN_HCR_1979:cafe_bar_brasserie_salon_de_the"
+    },
+    {
+      "jobFamilyCode": "BAR_CAFE",
+      "agreementKey": "CCN_CAFETERIAS_2060",
+      "publicRegimeCode": null,
+      "establishmentType": "Café, bar, brasserie, salon de thé",
+      "confidenceLevel": 0.65,
+      "notes": "Petit salon de café indépendant souvent HCR ; chaîne rapide peut être 1501/2060.",
+      "metadata": {
+        "privateRouteHint": "HCR 1979 ou 2060/1501 selon concept",
+        "publicRouteHint": ""
+      },
+      "stableKey": "BAR_CAFE:CCN_CAFETERIAS_2060:cafe_bar_brasserie_salon_de_the"
+    },
+    {
+      "jobFamilyCode": "BAR_CAFE",
+      "agreementKey": "CCN_REST_RAPIDE_1501",
+      "publicRegimeCode": null,
+      "establishmentType": "Café, bar, brasserie, salon de thé",
+      "confidenceLevel": 0.65,
+      "notes": "Petit salon de café indépendant souvent HCR ; chaîne rapide peut être 1501/2060.",
+      "metadata": {
+        "privateRouteHint": "HCR 1979 ou 2060/1501 selon concept",
+        "publicRouteHint": ""
+      },
+      "stableKey": "BAR_CAFE:CCN_REST_RAPIDE_1501:cafe_bar_brasserie_salon_de_the"
+    },
+    {
+      "jobFamilyCode": "RESTAURATION_RAPIDE",
+      "agreementKey": "CCN_REST_RAPIDE_1501",
+      "publicRegimeCode": null,
+      "establishmentType": "Fast-food/vente au comptoir",
+      "confidenceLevel": 0.65,
+      "notes": "Attention plateformes/livraison externalisée hors périmètre salarié classique.",
+      "metadata": {
+        "privateRouteHint": "1501",
+        "publicRouteHint": ""
+      },
+      "stableKey": "RESTAURATION_RAPIDE:CCN_REST_RAPIDE_1501:fast_food_vente_au_comptoir"
+    },
+    {
+      "jobFamilyCode": "COLLECTIVE_SCOLAIRE",
+      "agreementKey": "CCN_REST_COLLECTIVE_1266",
+      "publicRegimeCode": null,
+      "establishmentType": "Cantine scolaire privée/externalisée",
+      "confidenceLevel": 0.65,
+      "notes": "Le routeur doit demander employeur : prestataire privé ou collectivité.",
+      "metadata": {
+        "privateRouteHint": "1266",
+        "publicRouteHint": "FPT si régie publique"
+      },
+      "stableKey": "COLLECTIVE_SCOLAIRE:CCN_REST_COLLECTIVE_1266:cantine_scolaire_privee_externalisee"
+    },
+    {
+      "jobFamilyCode": "COLLECTIVE_SCOLAIRE",
+      "agreementKey": null,
+      "publicRegimeCode": "FPT",
+      "establishmentType": "Cantine scolaire privée/externalisée",
+      "confidenceLevel": 0.6,
+      "notes": "Le routeur doit demander employeur : prestataire privé ou collectivité.",
+      "metadata": {
+        "privateRouteHint": "1266",
+        "publicRouteHint": "FPT si régie publique"
+      },
+      "stableKey": "COLLECTIVE_SCOLAIRE:FPT:cantine_scolaire_privee_externalisee"
+    },
+    {
+      "jobFamilyCode": "COLLECTIVE_HOSPITALIERE",
+      "agreementKey": "CCN_REST_COLLECTIVE_1266",
+      "publicRegimeCode": null,
+      "establishmentType": "Hôpital/clinique/EHPAD",
+      "confidenceLevel": 0.65,
+      "notes": "Cas critique privé/public.",
+      "metadata": {
+        "privateRouteHint": "1266 si prestataire ; 2264/FHP ou 0029/FEHAP si salarié établissement",
+        "publicRouteHint": "FPH si hôpital public/EHPAD public"
+      },
+      "stableKey": "COLLECTIVE_HOSPITALIERE:CCN_REST_COLLECTIVE_1266:hopital_clinique_ehpad"
+    },
+    {
+      "jobFamilyCode": "COLLECTIVE_HOSPITALIERE",
+      "agreementKey": "CCN_HOSP_PRIVEE_2264",
+      "publicRegimeCode": null,
+      "establishmentType": "Hôpital/clinique/EHPAD",
+      "confidenceLevel": 0.65,
+      "notes": "Cas critique privé/public.",
+      "metadata": {
+        "privateRouteHint": "1266 si prestataire ; 2264/FHP ou 0029/FEHAP si salarié établissement",
+        "publicRouteHint": "FPH si hôpital public/EHPAD public"
+      },
+      "stableKey": "COLLECTIVE_HOSPITALIERE:CCN_HOSP_PRIVEE_2264:hopital_clinique_ehpad"
+    },
+    {
+      "jobFamilyCode": "COLLECTIVE_HOSPITALIERE",
+      "agreementKey": "CCN_FEHAP_0029",
+      "publicRegimeCode": null,
+      "establishmentType": "Hôpital/clinique/EHPAD",
+      "confidenceLevel": 0.65,
+      "notes": "Cas critique privé/public.",
+      "metadata": {
+        "privateRouteHint": "1266 si prestataire ; 2264/FHP ou 0029/FEHAP si salarié établissement",
+        "publicRouteHint": "FPH si hôpital public/EHPAD public"
+      },
+      "stableKey": "COLLECTIVE_HOSPITALIERE:CCN_FEHAP_0029:hopital_clinique_ehpad"
+    },
+    {
+      "jobFamilyCode": "COLLECTIVE_HOSPITALIERE",
+      "agreementKey": null,
+      "publicRegimeCode": "FPH",
+      "establishmentType": "Hôpital/clinique/EHPAD",
+      "confidenceLevel": 0.6,
+      "notes": "Cas critique privé/public.",
+      "metadata": {
+        "privateRouteHint": "1266 si prestataire ; 2264/FHP ou 0029/FEHAP si salarié établissement",
+        "publicRouteHint": "FPH si hôpital public/EHPAD public"
+      },
+      "stableKey": "COLLECTIVE_HOSPITALIERE:FPH:hopital_clinique_ehpad"
+    },
+    {
+      "jobFamilyCode": "HEBERGEMENT_HOTEL",
+      "agreementKey": "CCN_HCR_1979",
+      "publicRegimeCode": null,
+      "establishmentType": "Hôtel privé",
+      "confidenceLevel": 0.65,
+      "notes": "Les métiers d'étage ont mêmes familles de droits planning.",
+      "metadata": {
+        "privateRouteHint": "HCR 1979",
+        "publicRouteHint": ""
+      },
+      "stableKey": "HEBERGEMENT_HOTEL:CCN_HCR_1979:hotel_prive"
+    },
+    {
+      "jobFamilyCode": "CAMPING_HPA",
+      "agreementKey": "CCN_HPA_1631",
+      "publicRegimeCode": null,
+      "establishmentType": "Camping privé",
+      "confidenceLevel": 0.65,
+      "notes": "Séparer entité camping et entité restaurant.",
+      "metadata": {
+        "privateRouteHint": "1631 HPA ; HCR si restaurant séparé selon employeur",
+        "publicRouteHint": "FPT si camping municipal"
+      },
+      "stableKey": "CAMPING_HPA:CCN_HPA_1631:camping_prive"
+    },
+    {
+      "jobFamilyCode": "CAMPING_HPA",
+      "agreementKey": null,
+      "publicRegimeCode": "FPT",
+      "establishmentType": "Camping privé",
+      "confidenceLevel": 0.6,
+      "notes": "Séparer entité camping et entité restaurant.",
+      "metadata": {
+        "privateRouteHint": "1631 HPA ; HCR si restaurant séparé selon employeur",
+        "publicRouteHint": "FPT si camping municipal"
+      },
+      "stableKey": "CAMPING_HPA:FPT:camping_prive"
+    },
+    {
+      "jobFamilyCode": "TOURISME_SOCIAL",
+      "agreementKey": "CCN_TOURISME_SOCIAL_1316",
+      "publicRegimeCode": null,
+      "establishmentType": "Village vacances/centre social",
+      "confidenceLevel": 0.65,
+      "notes": "À router par IDCC/contrat.",
+      "metadata": {
+        "privateRouteHint": "1316",
+        "publicRouteHint": "FPT/association selon statut"
+      },
+      "stableKey": "TOURISME_SOCIAL:CCN_TOURISME_SOCIAL_1316:village_vacances_centre_social"
+    },
+    {
+      "jobFamilyCode": "TOURISME_SOCIAL",
+      "agreementKey": null,
+      "publicRegimeCode": "FPT",
+      "establishmentType": "Village vacances/centre social",
+      "confidenceLevel": 0.6,
+      "notes": "À router par IDCC/contrat.",
+      "metadata": {
+        "privateRouteHint": "1316",
+        "publicRouteHint": "FPT/association selon statut"
+      },
+      "stableKey": "TOURISME_SOCIAL:FPT:village_vacances_centre_social"
+    },
+    {
+      "jobFamilyCode": "CASINO_RESTAURATION",
+      "agreementKey": "CCN_CASINOS_2257",
+      "publicRegimeCode": null,
+      "establishmentType": "Casino",
+      "confidenceLevel": 0.65,
+      "notes": "Ne pas router automatiquement vers HCR si employeur casino.",
+      "metadata": {
+        "privateRouteHint": "2257",
+        "publicRouteHint": ""
+      },
+      "stableKey": "CASINO_RESTAURATION:CCN_CASINOS_2257:casino"
+    },
+    {
+      "jobFamilyCode": "FERROVIAIRE",
+      "agreementKey": "CCN_REST_FERROVIAIRE_1311",
+      "publicRegimeCode": null,
+      "establishmentType": "Train/restauration ferroviaire",
+      "confidenceLevel": 0.65,
+      "notes": "Convention spécifique.",
+      "metadata": {
+        "privateRouteHint": "1311",
+        "publicRouteHint": ""
+      },
+      "stableKey": "FERROVIAIRE:CCN_REST_FERROVIAIRE_1311:train_restauration_ferroviaire"
+    }
+  ],
+  "tags": [
+    {
+      "code": "HEURE_VERTE",
+      "label": "Heure verte",
+      "origin": "Tag interne Toquehub, pas un droit légal autonome",
+      "planningMeaning": "Créneau disponible/non affecté ou récupérable selon contexte",
+      "associatedCounter": "Aucun sans origine",
+      "doNotConfuseWith": "Repos compensateur, RTT, récupération, CET"
+    },
+    {
+      "code": "RECUP_HS",
+      "label": "Récupération heure supplémentaire",
+      "origin": "Repos compensateur/remplacement d'heures sup",
+      "planningMeaning": "Crédit d'heures à poser",
+      "associatedCounter": "RCR/HS",
+      "doNotConfuseWith": "RTT"
+    },
+    {
+      "code": "RCR",
+      "label": "Repos compensateur de remplacement",
+      "origin": "Remplacement paiement HS par repos équivalent majoré",
+      "planningMeaning": "Compteur repos payé",
+      "associatedCounter": "RCR",
+      "doNotConfuseWith": "Contrepartie obligatoire en repos"
+    },
+    {
+      "code": "COR",
+      "label": "Contrepartie obligatoire en repos",
+      "origin": "Repos dû en cas de dépassement contingent HS",
+      "planningMeaning": "Compteur repos obligatoire",
+      "associatedCounter": "COR",
+      "doNotConfuseWith": "RCR"
+    },
+    {
+      "code": "RTT",
+      "label": "RTT",
+      "origin": "Accord de réduction du temps de travail",
+      "planningMeaning": "Journée/demi-journée à poser",
+      "associatedCounter": "RTT",
+      "doNotConfuseWith": "CP"
+    },
+    {
+      "code": "JRTT",
+      "label": "JRTT",
+      "origin": "Variante branche/entreprise des jours RTT",
+      "planningMeaning": "Journée/demi-journée à poser",
+      "associatedCounter": "JRTT",
+      "doNotConfuseWith": "CP"
+    },
+    {
+      "code": "ANNUALISATION_CREDIT",
+      "label": "Crédit annualisation",
+      "origin": "Aménagement/annualisation du temps de travail",
+      "planningMeaning": "Solde positif à récupérer ou payer selon accord",
+      "associatedCounter": "ANNUALISATION",
+      "doNotConfuseWith": "Heures sup immédiates"
+    },
+    {
+      "code": "JF_COMPENSE",
+      "label": "Jour férié compensé",
+      "origin": "Jour férié travaillé ou garanti selon convention",
+      "planningMeaning": "Repos ou indemnité lié au JF",
+      "associatedCounter": "JF",
+      "doNotConfuseWith": "Repos hebdomadaire"
+    },
+    {
+      "code": "REPOS_HEBDO_REPORTE",
+      "label": "Repos hebdo reporté",
+      "origin": "Dérogation/reports conventionnels",
+      "planningMeaning": "Repos à repositionner",
+      "associatedCounter": "REPOS_HEBDO",
+      "doNotConfuseWith": "Récupération HS"
+    },
+    {
+      "code": "CET",
+      "label": "Compte épargne temps",
+      "origin": "Dispositif d'épargne de jours",
+      "planningMeaning": "Stock long terme",
+      "associatedCounter": "CET",
+      "doNotConfuseWith": "CP acquis de l'année"
+    }
+  ],
+  "sources": [
+    {
+      "id": "SP_CP",
+      "authority": "Service Public",
+      "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F2258",
+      "scope": "Congés payés secteur privé",
+      "type": "Officiel",
+      "recommendedRefresh": "mensuelle + veille réforme"
+    },
+    {
+      "id": "SP_CP_MALADIE",
+      "authority": "Service Public",
+      "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F37482",
+      "scope": "CP pendant maladie",
+      "type": "Officiel",
+      "recommendedRefresh": "mensuelle"
+    },
+    {
+      "id": "LEGIF_FAMILY",
+      "authority": "Légifrance",
+      "url": "https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000047864715",
+      "scope": "Article L3142-4 absences familiales",
+      "type": "Code du travail",
+      "recommendedRefresh": "hebdomadaire"
+    },
+    {
+      "id": "SP_ENFANT_MALADE",
+      "authority": "Service Public",
+      "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F151",
+      "scope": "Enfant malade",
+      "type": "Officiel",
+      "recommendedRefresh": "mensuelle"
+    },
+    {
+      "id": "SP_JOURS_FERIES",
+      "authority": "Service Public",
+      "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F2405",
+      "scope": "Jours fériés, ponts, journée solidarité",
+      "type": "Officiel",
+      "recommendedRefresh": "mensuelle"
+    },
+    {
+      "id": "SP_HS",
+      "authority": "Service Public",
+      "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F2391",
+      "scope": "Heures supplémentaires privé",
+      "type": "Officiel",
+      "recommendedRefresh": "mensuelle"
+    },
+    {
+      "id": "SP_REPOS",
+      "authority": "Service Public",
+      "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F990 ; https://www.service-public.gouv.fr/particuliers/vosdroits/F2327 ; https://www.service-public.gouv.fr/particuliers/vosdroits/F18205",
+      "scope": "Repos quotidien/hebdo/pause",
+      "type": "Officiel",
+      "recommendedRefresh": "mensuelle"
+    },
+    {
+      "id": "HCR",
+      "authority": "Légifrance",
+      "url": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635534/",
+      "scope": "Convention HCR IDCC 1979",
+      "type": "Convention collective",
+      "recommendedRefresh": "hebdomadaire"
+    },
+    {
+      "id": "RR",
+      "authority": "Code du travail numérique",
+      "url": "https://code.travail.gouv.fr/convention-collective/1501-restauration-rapide",
+      "scope": "Restauration rapide IDCC 1501",
+      "type": "Convention/outil officiel",
+      "recommendedRefresh": "hebdomadaire"
+    },
+    {
+      "id": "COLLECTIVE",
+      "authority": "Légifrance",
+      "url": "https://www.legifrance.gouv.fr/conv_coll/id/KALITEXT000005640425",
+      "scope": "Restauration collective IDCC 1266",
+      "type": "Convention collective",
+      "recommendedRefresh": "hebdomadaire"
+    },
+    {
+      "id": "HPA",
+      "authority": "Légifrance",
+      "url": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635252",
+      "scope": "Hôtellerie de plein air IDCC 1631",
+      "type": "Convention collective",
+      "recommendedRefresh": "hebdomadaire"
+    },
+    {
+      "id": "CAFETERIAS",
+      "authority": "Légifrance",
+      "url": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635326",
+      "scope": "Chaînes de cafétérias IDCC 2060",
+      "type": "Convention collective",
+      "recommendedRefresh": "hebdomadaire"
+    },
+    {
+      "id": "TOURISME_SOCIAL",
+      "authority": "Légifrance",
+      "url": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635867",
+      "scope": "Tourisme social/familial IDCC 1316",
+      "type": "Convention collective",
+      "recommendedRefresh": "hebdomadaire"
+    },
+    {
+      "id": "CASINOS",
+      "authority": "Légifrance",
+      "url": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635618",
+      "scope": "Casinos IDCC 2257",
+      "type": "Convention collective",
+      "recommendedRefresh": "hebdomadaire"
+    },
+    {
+      "id": "FERROVIAIRE",
+      "authority": "Légifrance",
+      "url": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635694",
+      "scope": "Restauration ferroviaire IDCC 1311",
+      "type": "Convention collective",
+      "recommendedRefresh": "hebdomadaire"
+    },
+    {
+      "id": "FHP",
+      "authority": "Légifrance",
+      "url": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635813",
+      "scope": "Hospitalisation privée IDCC 2264",
+      "type": "Convention collective",
+      "recommendedRefresh": "hebdomadaire"
+    },
+    {
+      "id": "FEHAP",
+      "authority": "Légifrance",
+      "url": "https://www.legifrance.gouv.fr/conv_coll/id/KALICONT000005635234",
+      "scope": "FEHAP 51 IDCC 29",
+      "type": "Convention collective",
+      "recommendedRefresh": "hebdomadaire"
+    },
+    {
+      "id": "FP_PUBLIC",
+      "authority": "Service Public",
+      "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/N20276 ; https://www.service-public.gouv.fr/particuliers/vosdroits/F488",
+      "scope": "Fonction publique générale",
+      "type": "Officiel",
+      "recommendedRefresh": "mensuelle"
+    },
+    {
+      "id": "FPH",
+      "authority": "Service Public",
+      "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F573 ; https://www.service-public.gouv.fr/particuliers/vosdroits/F595",
+      "scope": "Fonction publique hospitalière",
+      "type": "Officiel",
+      "recommendedRefresh": "mensuelle"
+    }
+  ],
+  "phase2Validation": [
+    {
+      "lot": "Extraction article HCR",
+      "priority": "1",
+      "work": "Extraire précisément articles HCR temps de travail, JF, maladie, nuit, repas, logement, saisonniers",
+      "expectedOutput": "Règles JSON datées pour IDCC 1979",
+      "risk": "Erreurs de compensation JF/repos."
+    },
+    {
+      "lot": "Restauration collective 1266",
+      "priority": "1",
+      "work": "Extraire travail intermittent scolaire, changement prestataire, primes, temps partiel, jours fériés, week-end/nuit",
+      "expectedOutput": "Règles 1266 complètes",
+      "risk": "Mauvais routage cantines/hôpitaux externalisés."
+    },
+    {
+      "lot": "Hôpitaux privés FHP/FEHAP",
+      "priority": "1",
+      "work": "Identifier règles cuisine/restauration interne : cycles, repos, nuit/JF, RTT, absences conventionnelles",
+      "expectedOutput": "Règles santé privé IDCC 2264/29",
+      "risk": "Confusion avec FPH ou 1266."
+    },
+    {
+      "lot": "Campings HPA",
+      "priority": "1",
+      "work": "Extraire saisonniers, RTT/JRTT, astreintes, logement, jours fériés, repos, durée CDD saisonnier",
+      "expectedOutput": "Règles IDCC 1631",
+      "risk": "Mauvais planning haute saison."
+    },
+    {
+      "lot": "Cafétérias 2060",
+      "priority": "2",
+      "work": "Extraire congés, temps de travail, primes, coupures, JF, classifications",
+      "expectedOutput": "Règles IDCC 2060",
+      "risk": "Confusion avec restauration rapide."
+    },
+    {
+      "lot": "Fonction publique locale",
+      "priority": "1",
+      "work": "Créer formulaires de paramétrage par établissement/collectivité pour ASA, RTT, cycles, CET, astreintes",
+      "expectedOutput": "Écran admin 'règles locales public'",
+      "risk": "Application de règles privées à des agents publics."
+    },
+    {
+      "lot": "Territoires",
+      "priority": "2",
+      "work": "Ajouter Alsace-Moselle, DOM/TOM, conventions territoriales et jours fériés locaux",
+      "expectedOutput": "Table localisations/jours fériés",
+      "risk": "Oubli droits locaux."
+    },
+    {
+      "lot": "Accords entreprise",
+      "priority": "1",
+      "work": "Prévoir import/paramétrage accord entreprise et usage : repos, coupures, jours fériés, RTT, primes",
+      "expectedOutput": "Table overrides entreprise",
+      "risk": "Convention de branche insuffisante."
+    },
+    {
+      "lot": "Mise à jour juridique",
+      "priority": "1",
+      "work": "Mettre une veille Légifrance/Service Public avec date d'effet et versionning",
+      "expectedOutput": "Pipeline source_registry + diff",
+      "risk": "Règles obsolètes."
+    }
+  ]
+}

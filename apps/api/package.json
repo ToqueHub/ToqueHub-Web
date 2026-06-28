@@ -12,7 +12,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:reset": "prisma migrate reset --skip-seed",
-    "prisma:seed": "node --env-file=../../.env --import tsx prisma/seed.ts"
+    "prisma:seed": "node --env-file=../../.env --import tsx prisma/seed.ts",
+    "seed:legal-rights": "node --env-file=../../.env --import tsx scripts/seed-legal-rights.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.2",

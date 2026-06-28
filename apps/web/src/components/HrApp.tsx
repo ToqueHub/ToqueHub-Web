@@ -31,8 +31,9 @@ import {
   ChefHat,
   ArrowRight,
 } from 'lucide-react';
-import type { CoreUser, HrCollaborator, HrCollaboratorPayload, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, HrReferencePayload, HrRotation, HrRotationDay, HrRotationPayload, HrRotationWeek, HrSummary, Site } from '../types';
+import type { CoreUser, HrCollaborator, HrCollaboratorPayload, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, HrReferencePayload, HrRotation, HrRotationDay, HrRotationPayload, HrRotationWeek, HrSummary, RegulatoryCountryCode, Site } from '../types';
 import { HR_CATALOG } from '../hr-catalog';
+import { HrEntitlementsPanel } from './hr/HrEntitlementsPanel';
 import { CollaboratorModal as CollaboratorDossierModal } from './hr/collaborator/CollaboratorModal';
 
 const statusLabels: Record<string, string> = {
@@ -52,7 +53,7 @@ const statusOptions = [
 
 const HR_WIZARD_SERVICES_KEY = 'toquehub.hrWizard.selectedServices';
 
-type HrTab = 'dashboard' | 'collaborators' | 'departments' | 'positions' | 'rotations' | 'orgchart';
+type HrTab = 'dashboard' | 'collaborators' | 'departments' | 'positions' | 'rights' | 'orgchart';
 
 type HrAppProps = {
   tab: HrTab;
@@ -64,9 +65,12 @@ type HrAppProps = {
   users: CoreUser[];
   sites: Site[];
   onboarding?: any;
+  token: string;
+  regulatoryCountryCode?: RegulatoryCountryCode | null;
   canWrite: boolean;
   loading?: boolean;
   onNavigate: (tab: HrTab) => void;
+  onConfigureRegulatoryCountry?: () => void;
   onCreateCollaborator: (payload: HrCollaboratorPayload) => Promise<HrCollaborator | void>;
   onUpdateCollaborator: (id: string, payload: Partial<HrCollaboratorPayload>) => Promise<HrCollaborator | void>;
   onArchiveCollaborator: (id: string) => Promise<void>;
@@ -106,9 +110,12 @@ export function HrApp({
   users,
   sites,
   onboarding,
+  token,
+  regulatoryCountryCode,
   canWrite,
   loading,
   onNavigate,
+  onConfigureRegulatoryCountry,
   onCreateCollaborator,
   onUpdateCollaborator,
   onArchiveCollaborator,
@@ -194,7 +201,7 @@ export function HrApp({
     ['departments', 'Services'],
     ...(onboardingHasServices && onboardingHasPositions ? [['positions', 'Postes'] as [HrTab, string]] : []),
     ...(canAccessCollaborators ? [['collaborators', 'Collaborateurs'] as [HrTab, string]] : []),
-    ...(canAccessRotationsAndOrg ? [['rotations', 'Roulements'] as [HrTab, string]] : []),
+    ...(canAccessCollaborators ? [['rights', 'Droits'] as [HrTab, string]] : []),
     ...(canAccessRotationsAndOrg ? [['orgchart', 'Organigramme'] as [HrTab, string]] : []),
   ];
 
@@ -261,8 +268,8 @@ export function HrApp({
         <PositionsPage positions={positions} departments={departments} canWrite={canWrite} onCreate={() => setReferenceModal({ type: 'position' })} onEdit={(item: HrPosition) => setReferenceModal({ type: 'position', item })} onArchive={onArchivePosition} />
       ) : null}
 
-      {tab === 'rotations' ? (
-        <RotationsPage rotations={rotations} collaborators={collaborators} departments={departments} canWrite={canWrite} onCreate={() => setRotationModal('new')} onEdit={setRotationModal} onOpen={setSelectedRotation} onArchive={onArchiveRotation} onAssign={onAssignRotation} onRemoveAssignment={onRemoveRotationAssignment} />
+      {tab === 'rights' ? (
+        <HrEntitlementsPanel token={token} collaborators={collaborators} departments={activeDepartments} positions={activePositions} canWrite={canWrite} regulatoryCountryCode={regulatoryCountryCode} onConfigureRegulatoryCountry={onConfigureRegulatoryCountry} />
       ) : null}
 
       {tab === 'orgchart' ? (
@@ -278,6 +285,7 @@ export function HrApp({
           users={selectableUsers}
           sites={sites.filter((site) => !isArchived(site))}
           rotations={rotations}
+          token={token}
           onClose={() => setCollaboratorModal(null)}
           onDeleteDocument={async (employeeId, documentId) => {
             await onDeleteCollaboratorDocument(employeeId, documentId);
@@ -357,6 +365,7 @@ export function HrApp({
           sites={sites}
           rotations={rotations}
           onboarding={onboarding}
+          token={token}
           onCreateCollaborator={onCreateCollaborator}
           onUploadCollaboratorDocument={onUploadCollaboratorDocument}
           onCreateDepartmentsBulk={onCreateDepartmentsBulk}
@@ -438,10 +447,6 @@ function HrDashboard({
     { label: 'Services', value: summary?.counts?.departments ?? departments.filter((item) => !isArchived(item)).length, icon: Building2 },
     { label: 'Postes', value: summary?.counts?.positions ?? positions.filter((item) => !isArchived(item)).length, icon: BriefcaseBusiness },
     { label: 'Avec compte ToqueHub', value: summary?.counts?.linkedCollaborators ?? activeCollaborators.filter((item) => item.userId || item.user).length, icon: ShieldCheck },
-    { label: 'Roulements actifs', value: summary?.counts?.activeRotations ?? '—', icon: RotateCw },
-    { label: 'Avec roulement', value: summary?.counts?.collaboratorsWithRotation ?? activeCollaborators.filter((item) => activeRotation(item)).length, icon: CalendarDays },
-    { label: 'Sans roulement', value: summary?.counts?.collaboratorsWithoutRotation ?? activeCollaborators.filter((item) => !activeRotation(item)).length, icon: Clock },
-    { label: 'Durée hebdo moyenne', value: formatMinutes(summary?.counts?.averageWeeklyRotationMinutes), icon: Clock },
     ...(withoutContract ? [{ label: 'Sans contrat', value: withoutContract, icon: ShieldCheck }] : []),
     ...(withoutPosition ? [{ label: 'Sans poste principal', value: withoutPosition, icon: BriefcaseBusiness }] : []),
     ...(withoutManager ? [{ label: 'Sans responsable', value: withoutManager, icon: UserRound }] : []),
@@ -737,6 +742,7 @@ function HrOnboardingWizard({
   sites,
   rotations,
   onboarding,
+  token,
   onCreateCollaborator,
   onUploadCollaboratorDocument,
   onCreateDepartmentsBulk,
@@ -754,6 +760,7 @@ function HrOnboardingWizard({
   sites: Site[];
   rotations: HrRotation[];
   onboarding?: any;
+  token: string;
   onCreateCollaborator: (payload: HrCollaboratorPayload) => Promise<HrCollaborator | void>;
   onUploadCollaboratorDocument: (employeeId: string, payload: { file: File; category: string; notes?: string; expiresAt?: string }) => Promise<void>;
   onCreateDepartmentsBulk: (names: string[]) => Promise<void>;
@@ -966,6 +973,7 @@ function HrOnboardingWizard({
             users={users}
             sites={sites.filter((site) => !isArchived(site))}
             rotations={rotations}
+            token={token}
             onClose={() => setCreatingCollaborator(false)}
             onSubmit={async (payload, documents) => {
               const saved = await onCreateCollaborator(payload);

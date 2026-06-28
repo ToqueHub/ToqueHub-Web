@@ -3,7 +3,11 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { AcceptReplacementDto, ApplyPlanningRotationDto, ApplyPlanningTemplateDto, GeneratePlanningDto, MovePlanningAssignmentDto, PlanningContextQueryDto, PlanningPeriodActionDto, PlanningQueryDto, PlanningRotationPreviewDto, PrepareExportDto, SetEmployeePlanningTemplatesDto, SetEmployeeSkillsDto, UpsertDayPlanningAssignmentDto, UpsertDayPresetDto, UpsertHrAbsenceDto, UpsertHrSkillDto, UpsertPlanningAssignmentDto, UpsertPlanningNeedDto, UpsertPlanningTemplateDto, UpsertWeeklyRotationDto } from './dto/planning.dto';
+import { AcceptReplacementDto, ApplyPlanningRotationDto, ApplyPlanningTemplateDto, GeneratePlanningDto, MovePlanningAssignmentDto, PlanningAttendanceQueryDto, PlanningContextQueryDto, PlanningDayStatusQueryDto, PlanningPeriodActionDto, PlanningQueryDto, PlanningRotationPreviewDto, PrepareExportDto, SetEmployeePlanningTemplatesDto, SetEmployeeSkillsDto, UpsertDayPlanningAssignmentDto, UpsertDayPresetDto, UpsertHrAbsenceDto, UpsertHrSkillDto, UpsertPlanningAssignmentDto, UpsertPlanningAttendanceDto, UpsertPlanningCodeDictionaryDto, UpsertPlanningDayStatusDto, UpsertPlanningNeedDto, UpsertPlanningPolicyProfileDto, UpsertPlanningTemplateDto, UpsertWeeklyRotationDto, ValidatePlanningAttendanceDto } from './dto/planning.dto';
+import { PlanningAttendanceService } from './planning-attendance.service';
+import { PlanningCodeDictionaryService } from './planning-code-dictionary.service';
+import { PlanningDayStatusService } from './planning-day-status.service';
+import { PlanningPolicyService } from './planning-policy.service';
 import { PlanningService } from './planning.service';
 
 @ApiTags('planning')
@@ -11,7 +15,13 @@ import { PlanningService } from './planning.service';
 @UseGuards(JwtAuthGuard)
 @Controller('planning')
 export class PlanningController {
-  constructor(private readonly planningService: PlanningService) {}
+  constructor(
+    private readonly planningService: PlanningService,
+    private readonly dayStatusService: PlanningDayStatusService,
+    private readonly codeDictionaryService: PlanningCodeDictionaryService,
+    private readonly policyService: PlanningPolicyService,
+    private readonly attendanceService: PlanningAttendanceService,
+  ) {}
   private org(user: AuthenticatedUser) { if (!user.organizationId) throw new BadRequestException('Organization setup is required before using Planning endpoints'); return user.organizationId; }
   private actor(user: AuthenticatedUser) { return { id: user.id, role: user.role }; }
 
@@ -21,6 +31,24 @@ export class PlanningController {
   @Post('period/control') controlPeriod(@CurrentUser() user: AuthenticatedUser, @Body() dto: PlanningPeriodActionDto) { return this.planningService.controlPeriod(this.org(user), this.actor(user), dto); }
   @Post('period/publish') publishPeriod(@CurrentUser() user: AuthenticatedUser, @Body() dto: PlanningPeriodActionDto) { return this.planningService.publishPeriod(this.org(user), this.actor(user), dto); }
   @Post('period/lock') lockPeriod(@CurrentUser() user: AuthenticatedUser, @Body() dto: PlanningPeriodActionDto) { return this.planningService.lockPeriod(this.org(user), this.actor(user), dto); }
+
+  @Get('day-statuses') dayStatuses(@CurrentUser() user: AuthenticatedUser, @Query() q: PlanningDayStatusQueryDto) { return this.dayStatusService.list(this.org(user), q); }
+  @Post('day-statuses') upsertDayStatus(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertPlanningDayStatusDto) { return this.dayStatusService.upsert(this.org(user), this.actor(user), dto); }
+  @Patch('day-statuses/:id') updateDayStatus(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpsertPlanningDayStatusDto) { return this.dayStatusService.update(this.org(user), this.actor(user), id, dto); }
+
+  @Get('attendance') attendance(@CurrentUser() user: AuthenticatedUser, @Query() q: PlanningAttendanceQueryDto) { return this.attendanceService.list(this.org(user), q); }
+  @Get('attendance/:employeeId') employeeAttendance(@CurrentUser() user: AuthenticatedUser, @Param('employeeId') employeeId: string, @Query() q: PlanningAttendanceQueryDto) { return this.attendanceService.employee(this.org(user), employeeId, q); }
+  @Post('attendance') createAttendance(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertPlanningAttendanceDto) { return this.attendanceService.create(this.org(user), this.actor(user), dto); }
+  @Patch('attendance/:id') updateAttendance(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpsertPlanningAttendanceDto) { return this.attendanceService.update(this.org(user), this.actor(user), id, dto); }
+  @Patch('attendance/:id/validate') validateAttendance(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: ValidatePlanningAttendanceDto) { return this.attendanceService.validate(this.org(user), this.actor(user), id, dto); }
+
+  @Get('code-dictionary') codeDictionary(@CurrentUser() user: AuthenticatedUser) { return this.codeDictionaryService.list(this.org(user)); }
+  @Post('code-dictionary') createCodeDictionary(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertPlanningCodeDictionaryDto) { return this.codeDictionaryService.create(this.org(user), this.actor(user), dto); }
+  @Patch('code-dictionary/:id') updateCodeDictionary(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpsertPlanningCodeDictionaryDto) { return this.codeDictionaryService.update(this.org(user), this.actor(user), id, dto); }
+
+  @Get('policy-profiles') policyProfiles(@CurrentUser() user: AuthenticatedUser) { return this.policyService.list(this.org(user)); }
+  @Post('policy-profiles') createPolicyProfile(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertPlanningPolicyProfileDto) { return this.policyService.create(this.org(user), this.actor(user), dto); }
+  @Patch('policy-profiles/:id') updatePolicyProfile(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpsertPlanningPolicyProfileDto) { return this.policyService.update(this.org(user), this.actor(user), id, dto); }
 
   @Get('assignments') assignments(@CurrentUser() user: AuthenticatedUser, @Query() q: PlanningQueryDto) { return this.planningService.listAssignments(this.org(user), q); }
   @Post('assignments') createAssignment(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertPlanningAssignmentDto) { return this.planningService.createAssignment(this.org(user), this.actor(user), dto); }

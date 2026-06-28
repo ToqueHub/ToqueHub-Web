@@ -10,6 +10,7 @@ import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
 import { LoginDto } from './dto/login.dto';
 import { SetupOrganizationDto } from './dto/setup-organization.dto';
 import { UpdateOrganizationApiKeysDto } from './dto/api-keys.dto';
+import { UpdateRegulatoryCountryDto } from './dto/regulatory-country.dto';
 
 type PrefillStocksDto = {
   categories?: boolean;
@@ -63,6 +64,7 @@ export class AuthService {
         data: {
           name: dto.organizationName,
           establishmentType: dto.establishmentType,
+          hrCountryCode: dto.hrCountryCode,
           teamSize: dto.teamSize,
           logoDataUrl: dto.logoDataUrl,
           mainSiteName: `${dto.organizationName} — Site principal`,
@@ -171,6 +173,7 @@ export class AuthService {
           name: dto.name,
           code: dto.code,
           establishmentType: dto.establishmentType,
+          hrCountryCode: dto.hrCountryCode,
           teamSize: dto.teamSize,
           logoDataUrl: dto.logoDataUrl,
           mainSiteName: `${dto.name} — Site principal`,
@@ -214,6 +217,22 @@ export class AuthService {
       select: { mistralApiKey: true, mistralApiKeyUpdatedAt: true },
     });
     return this.serializeApiKeys(organization);
+  }
+
+  async updateRegulatoryCountry(user: AuthenticatedUser, dto: UpdateRegulatoryCountryDto) {
+    if (!user.organizationId) throw new ForbiddenException('Organization setup is required before updating regulatory country');
+    if (!SETTINGS_ROLES.includes(user.role)) throw new ForbiddenException('Only administrators and managers can update the regulatory country');
+    const regulatoryCountryCode = this.normalizeRegulatoryCountry(dto.regulatoryCountryCode);
+    await this.prisma.organization.update({
+      where: { id: user.organizationId },
+      data: {
+        regulatoryCountryCode,
+        regulatoryCountrySelectedAt: regulatoryCountryCode ? new Date() : null,
+        regulatoryCountrySelectedById: regulatoryCountryCode ? user.id : null,
+        ...(regulatoryCountryCode ? { hrCountryCode: regulatoryCountryCode } : {}),
+      },
+    });
+    return this.getDashboardSummary(user);
   }
 
   async getCurrentSession(user: AuthenticatedUser) {
@@ -468,6 +487,10 @@ export class AuthService {
         id: currentUser.organizationId,
         name: currentUser.organization.name,
         establishmentType: currentUser.organization.establishmentType,
+        hrCountryCode: currentUser.organization.hrCountryCode,
+        regulatoryCountryCode: currentUser.organization.regulatoryCountryCode,
+        regulatoryCountrySelectedAt: currentUser.organization.regulatoryCountrySelectedAt,
+        regulatoryCountrySelectedById: currentUser.organization.regulatoryCountrySelectedById,
         teamSize: currentUser.organization.teamSize,
         logoDataUrl: currentUser.organization.logoDataUrl,
         mainSiteName: currentUser.organization.mainSiteName,
@@ -564,6 +587,10 @@ export class AuthService {
     organization: {
       name: string;
       establishmentType: string | null;
+      hrCountryCode: string | null;
+      regulatoryCountryCode?: string | null;
+      regulatoryCountrySelectedAt?: Date | null;
+      regulatoryCountrySelectedById?: string | null;
       teamSize: string | null;
       logoDataUrl: string | null;
       mainSiteName: string | null;
@@ -587,6 +614,10 @@ export class AuthService {
       organizationId: user.organizationId,
       organizationName: user.organization?.name ?? null,
       organizationType: user.organization?.establishmentType ?? null,
+      hrCountryCode: user.organization?.hrCountryCode ?? null,
+      regulatoryCountryCode: user.organization?.regulatoryCountryCode ?? null,
+      regulatoryCountrySelectedAt: user.organization?.regulatoryCountrySelectedAt ?? null,
+      regulatoryCountrySelectedById: user.organization?.regulatoryCountrySelectedById ?? null,
       teamSize: user.organization?.teamSize ?? null,
       logoUrl: user.organization?.logoDataUrl ?? null,
       logoDataUrl: user.organization?.logoDataUrl ?? null,
@@ -625,6 +656,10 @@ export class AuthService {
     organization?: {
       name: string;
       establishmentType: string | null;
+      hrCountryCode: string | null;
+      regulatoryCountryCode?: string | null;
+      regulatoryCountrySelectedAt?: Date | null;
+      regulatoryCountrySelectedById?: string | null;
       teamSize: string | null;
       logoDataUrl: string | null;
       mainSiteName: string | null;
@@ -668,5 +703,12 @@ export class AuthService {
   private maskSecret(secret: string) {
     if (secret.length <= 10) return '••••';
     return `${secret.slice(0, 4)}••••${secret.slice(-4)}`;
+  }
+
+  private normalizeRegulatoryCountry(value?: string | null) {
+    if (value == null || value === '') return null;
+    const normalized = String(value).trim().toUpperCase();
+    if (normalized === 'FR' || normalized === 'FI') return normalized;
+    throw new BadRequestException('Pays de réglementation invalide');
   }
 }

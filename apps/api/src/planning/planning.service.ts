@@ -1,7 +1,13 @@
-import { BadRequestException, ForbiddenException, GoneException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, GoneException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { HrAbsenceStatus, HrEmployeeStatus, PlanningAssignmentOrigin, PlanningAssignmentStatus, PlanningConflictSeverity, PlanningHistoryAction, PlanningNotificationStatus, PlanningReplacementStatus, Prisma } from '@prisma/client';
+import { HrTimeAccountService } from '../hr/time-accounts/hr-time-account.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AcceptReplacementDto, ApplyPlanningRotationDto, ApplyPlanningTemplateDto, GeneratePlanningDto, MovePlanningAssignmentDto, PlanningContextQueryDto, PlanningPeriodActionDto, PlanningQueryDto, PlanningRotationPreviewDto, PrepareExportDto, SetEmployeePlanningTemplatesDto, UpsertDayPlanningAssignmentDto, UpsertDayPresetDto, UpsertHrAbsenceDto, UpsertHrSkillDto, UpsertPlanningAssignmentDto, UpsertPlanningNeedDto, UpsertPlanningTemplateDto, UpsertWeeklyRotationDto } from './dto/planning.dto';
+import { PlanningCodeDictionaryService } from './planning-code-dictionary.service';
+import { PlanningDayStatusService } from './planning-day-status.service';
+import { PlanningAttendanceService } from './planning-attendance.service';
+import { PlanningPolicyService } from './planning-policy.service';
+import { plannedMinutes } from './planning-time';
 
 type Actor = { id: string; role: string };
 type Period = { start: Date; end: Date; month: number; year: number; days: string[] };
@@ -28,7 +34,14 @@ const ASSIGNMENT_INCLUDE = {
 
 @Injectable()
 export class PlanningService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly dayStatusService?: PlanningDayStatusService,
+    @Optional() private readonly timeAccountService?: HrTimeAccountService,
+    @Optional() private readonly codeDictionaryService?: PlanningCodeDictionaryService,
+    @Optional() private readonly policyService?: PlanningPolicyService,
+    @Optional() private readonly attendanceService?: PlanningAttendanceService,
+  ) {}
 
   private assertWrite(actor: Actor) { if (!WRITE_ROLES.includes(actor.role)) throw new ForbiddenException('Planning write access is restricted to managers and administrators'); }
   private page(q?: PlanningQueryDto) { const take = Math.min(q?.pageSize ?? 100, 200); return { take, skip: ((q?.page ?? 1) - 1) * take }; }
@@ -80,14 +93,20 @@ export class PlanningService {
     const alerts = this.alerts(conflicts, absences, coverage, rotations, employees);
     const dashboard = this.dashboardFrom(assignments, employees, departments, conflicts, alerts, coverage, replacements, period);
     const month = this.monthView(period, assignments, normalizedNeeds);
-    const attendance = this.attendancePlaceholder(assignments);
+    const attendance = this.attendanceService ? await this.attendanceService.list(organizationId, { month: q.month, year: q.year, startDate: q.startDate, endDate: q.endDate, employeeId: q.employeeId, departmentId: q.departmentId, siteId: q.siteId, pageSize: q.pageSize }) : this.attendancePlaceholder(assignments);
     const periodStatus = await this.periodStatus(organizationId, period.start, period.end, q.siteId);
     const historyHuman = history.map(item => this.humanHistoryItem(item));
+    const [dayStatusSummary, countersSummary, codeDictionarySummary, policySummary] = await Promise.all([
+      this.dayStatusService?.periodSummary(organizationId, q) ?? Promise.resolve(null),
+      this.timeAccountService?.contextSummary(organizationId, q) ?? Promise.resolve(null),
+      this.codeDictionaryService?.summary(organizationId) ?? Promise.resolve(null),
+      this.policyService?.summary(organizationId) ?? Promise.resolve(null),
+    ]);
     (dashboard as any).periodStatus = periodStatus;
     (dashboard as any).actions = [...(dashboard.actions ?? []), ...this.periodActions(periodStatus)];
 
     return {
-      meta: { source: 'planning.context', version: 1, period: { month: period.month, year: period.year, startDate: this.iso(period.start), endDate: this.iso(period.end) }, filters: { siteId: q.siteId ?? null, departmentId: q.departmentId ?? null, employeeId: q.employeeId ?? null, seasonalTemplateId: q.seasonalTemplateId ?? null }, temporary: { rotationsSource: 'planning_templates_and_legacy_hr_rotations', employeeTemplateAssignmentsPersistence: 'planning_templates.content', attendancePersistence: false } },
+      meta: { source: 'planning.context', version: 2, period: { month: period.month, year: period.year, startDate: this.iso(period.start), endDate: this.iso(period.end) }, filters: { siteId: q.siteId ?? null, departmentId: q.departmentId ?? null, employeeId: q.employeeId ?? null, seasonalTemplateId: q.seasonalTemplateId ?? null }, temporary: { rotationsSource: 'planning_templates_and_legacy_hr_rotations', employeeTemplateAssignmentsPersistence: 'planning_templates.content', attendancePersistence: Boolean(this.attendanceService), periodStatusPersistence: 'planning_history', dayStatusFallback: 'planning_assignments.comment' } },
       hrReady,
       prerequisites: { hrInstalled: !!org?.hrInstalledAt, planningInstalled: !!org?.planningInstalledAt, employees: employees.length, departments: departments.length, positions: positions.length, rotations: rotations.length },
       collaborators: employees,
@@ -114,9 +133,11 @@ export class PlanningService {
       dashboard,
       summary: dashboard.summary,
       planning: { month, assignmentsByDate: month.days.reduce((acc, day) => ({ ...acc, [day.date]: day.assignments }), {}), periodStatus },
-      settings: { needs: normalizedNeeds, templates: normalizedTemplates, dayPresets, weeklyRotations, legacyRhRotations: rotations, employeeTemplateAssignments, templateApplications, rotations: weeklyRotations, rules: this.planningRulesCatalog(), payrollRuleProfiles: this.payrollRuleProfilesPlaceholder(), notes: ['Les roulements RH restent lisibles temporairement, mais les nouveaux roulements Planning vivent dans planning_templates.', 'Les attributions collaborateur sont stockées provisoirement dans planning_templates.content faute de table dédiée existante.', 'Les règles pays/paie seront configurables dans un lot ultérieur.'] },
+      settings: { needs: normalizedNeeds, templates: normalizedTemplates, dayPresets, weeklyRotations, legacyRhRotations: rotations, employeeTemplateAssignments, templateApplications, rotations: weeklyRotations, rules: this.planningRulesCatalog(), payrollRuleProfiles: this.payrollRuleProfilesPlaceholder(), codeDictionary: codeDictionarySummary, policyProfiles: policySummary, notes: ['Les roulements RH restent lisibles temporairement, mais les nouveaux roulements Planning vivent dans planning_templates.', 'Les attributions collaborateur sont stockées provisoirement dans planning_templates.content faute de table dédiée existante.', 'Les règles pays/paie sont maintenant préparées via planning_policy_profiles sans règle légale codée en dur.'] },
       attendance,
       periodStatus,
+      dayStatusSummary,
+      countersSummary,
       emptyState: hrReady ? null : { title: 'Configurer RH pour planifier', message: 'Le Planning consomme les collaborateurs, services, postes, roulements, absences et compétences RH sans les dupliquer.' },
     };
   }
@@ -723,7 +744,7 @@ export class PlanningService {
     const dateFilter = forcePeriod || this.hasPeriodFilter(q);
     return { organizationId, departmentId: q.departmentId, siteId: q.siteId, positionId: q.positionId, startDate: dateFilter ? { lte: period.end } : undefined, OR: dateFilter ? [{ endDate: null }, { endDate: { gte: period.start } }] : undefined };
   }
-  private assignmentMinutes(a: AnyAssignment) { return Math.max(0, (+a.endTime - +a.startTime) / 60000 - (a.breakMinutes || 0)); }
+  private assignmentMinutes(a: AnyAssignment) { return plannedMinutes(a); }
   private employeeRate(employee: AnyEmployee) { return Number(employee?.compensations?.[0]?.hourlyRate ?? employee?.hourlyRate ?? 0) || 0; }
   private employeeContractMinutes(employee: AnyEmployee) { return Number(employee?.contracts?.[0]?.weeklyHours ?? employee?.contractWeeklyMinutes ?? 0) || 0; }
   private iso(value: Date) { return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`; }
@@ -884,7 +905,12 @@ export class PlanningService {
     const need = this.normalizeOperationalNeed(item.need);
     return { type: code, severity: item.status === 'UNPLANNED' ? 'blocking' : 'warning', message: `${need.label}: ${item.plannedCount}/${item.requiredCount} couvert(s)`, date: this.iso(need.startDate), startDate: this.iso(need.startDate), endDate: need.endDate ? this.iso(need.endDate) : null, departmentId: need.departmentId, departmentName: need.department?.name ?? null, positionId: need.positionId ?? null, positionName: need.position?.name ?? null, siteId: need.siteId ?? null, plannedCount: item.plannedCount, requiredCount: item.requiredCount, season: need.season, timeSlot: need.timeSlot, target: { type: 'PlanningOperationalNeed', id: need.id } };
   }
-  private assignmentData(organizationId: string, dto: UpsertPlanningAssignmentDto) { return { organizationId, employeeId: dto.employeeId, departmentId: dto.departmentId, positionId: dto.positionId, siteId: dto.siteId ?? null, rotationId: dto.rotationId ?? null, date: this.day(this.parseDate(dto.date)), startTime: this.parseTime(dto.date, dto.startTime), endTime: this.parseTime(dto.date, dto.endTime), breakMinutes: dto.breakMinutes ?? 0, status: dto.status ?? PlanningAssignmentStatus.PLANNED, origin: dto.origin ?? PlanningAssignmentOrigin.MANUAL, comment: dto.comment ?? null, allowCriticalOverride: !!dto.allowCriticalOverride, overrideReason: dto.overrideReason ?? null }; }
+  private assignmentData(organizationId: string, dto: UpsertPlanningAssignmentDto) {
+    const startTime = this.parseTime(dto.date, dto.startTime);
+    const endTime = this.parseTime(dto.date, dto.endTime);
+    if (endTime <= startTime) endTime.setDate(endTime.getDate() + 1);
+    return { organizationId, employeeId: dto.employeeId, departmentId: dto.departmentId, positionId: dto.positionId, siteId: dto.siteId ?? null, rotationId: dto.rotationId ?? null, date: this.day(this.parseDate(dto.date)), startTime, endTime, breakMinutes: dto.breakMinutes ?? 0, status: dto.status ?? PlanningAssignmentStatus.PLANNED, origin: dto.origin ?? PlanningAssignmentOrigin.MANUAL, comment: dto.comment ?? null, allowCriticalOverride: !!dto.allowCriticalOverride, overrideReason: dto.overrideReason ?? null };
+  }
   private async validateRefs(organizationId: string, dto: UpsertPlanningAssignmentDto) { const [e, d, p] = await Promise.all([this.ensureEmployee(organizationId, dto.employeeId), this.prisma.hrDepartment.findFirst({ where: { id: dto.departmentId, organizationId, isArchived: false } }), this.prisma.hrPosition.findFirst({ where: { id: dto.positionId, organizationId, isArchived: false } })]); if (!d) throw new NotFoundException('Service RH introuvable'); if (!p) throw new NotFoundException('Poste RH introuvable'); if (e.departmentId !== dto.departmentId) {/* warning handled in controls */} if (dto.siteId && !(await this.prisma.site.findFirst({ where: { id: dto.siteId, organizationId, isArchived: false } }))) throw new NotFoundException('Site introuvable'); }
   private normalizeOperationalNeed(need: any) {
     const metadata = this.parseOperationalNeedMetadata(need.comment);
@@ -945,7 +971,30 @@ export class PlanningService {
   }
   private async validateNeedRefs(organizationId: string, dto: UpsertPlanningNeedDto) { if (!(await this.prisma.hrDepartment.findFirst({ where: { id: dto.departmentId, organizationId, isArchived: false } }))) throw new NotFoundException('Service RH introuvable'); if (dto.positionId && !(await this.prisma.hrPosition.findFirst({ where: { id: dto.positionId, organizationId, isArchived: false } }))) throw new NotFoundException('Poste RH introuvable'); if (dto.requiredSkillId && !(await this.prisma.hrSkill.findFirst({ where: { id: dto.requiredSkillId, organizationId, isArchived: false } }))) throw new NotFoundException('Compétence RH introuvable'); }
   private async ensureEmployee(organizationId: string, id: string) { const e = await this.prisma.hrEmployee.findFirst({ where: { id, organizationId, isArchived: false }, include: { skills: true, user: true } }); if (!e) throw new NotFoundException('Collaborateur RH introuvable'); return e; }
-  private async detectConflicts(organizationId: string, data: any, excludeId?: string) { const conflicts: any[] = []; const employee = await this.prisma.hrEmployee.findFirst({ where: { id: data.employeeId, organizationId }, include: { skills: true } }); if (!employee || employee.isArchived || employee.status !== HrEmployeeStatus.ACTIVE) conflicts.push({ severity: 'BLOCKING', code: 'EMPLOYEE_UNAVAILABLE', label: 'Collaborateur inactif ou archivé' }); const absence = await this.prisma.hrAbsence.findFirst({ where: { organizationId, employeeId: data.employeeId, status: HrAbsenceStatus.APPROVED, startDate: { lte: data.endTime }, endDate: { gte: data.startTime } } }); if (absence) conflicts.push({ severity: 'BLOCKING', code: 'APPROVED_ABSENCE', label: 'Collaborateur affecté pendant une absence validée', absenceId: absence.id }); const overlap = await this.prisma.planningAssignment.findFirst({ where: { organizationId, employeeId: data.employeeId, id: excludeId ? { not: excludeId } : undefined, status: { not: PlanningAssignmentStatus.CANCELLED }, startTime: { lt: data.endTime }, endTime: { gt: data.startTime } } }); if (overlap) conflicts.push({ severity: 'BLOCKING', code: 'TIME_OVERLAP', label: 'Chevauchement horaire bloquant' }); if (employee && employee.departmentId !== data.departmentId) conflicts.push({ severity: 'STRONG_WARNING', code: 'DEPARTMENT_MISMATCH', label: 'Service différent du service habituel' }); if (employee && employee.positionId !== data.positionId) conflicts.push({ severity: 'STRONG_WARNING', code: 'POSITION_MISMATCH', label: 'Poste différent du poste habituel' }); const dayAssignments = await this.prisma.planningAssignment.findMany({ where: { organizationId, employeeId: data.employeeId, date: data.date, status: { not: PlanningAssignmentStatus.CANCELLED }, id: excludeId ? { not: excludeId } : undefined } }); const minutes = dayAssignments.reduce((s, a) => s + (+a.endTime - +a.startTime) / 60000 - (a.breakMinutes || 0), 0) + (+data.endTime - +data.startTime) / 60000 - (data.breakMinutes || 0); if (minutes > 600) conflicts.push({ severity: 'STRONG_WARNING', code: 'DAILY_AMPLITUDE', label: 'Amplitude journalière supérieure à 10h' }); const ws = this.weekStart(data.date), we = new Date(ws); we.setDate(ws.getDate() + 6); we.setHours(23, 59, 59, 999); const week = await this.prisma.planningAssignment.findMany({ where: { organizationId, employeeId: data.employeeId, date: { gte: ws, lte: we }, status: { not: PlanningAssignmentStatus.CANCELLED }, id: excludeId ? { not: excludeId } : undefined } }); const wmin = week.reduce((s, a) => s + (+a.endTime - +a.startTime) / 60000 - (a.breakMinutes || 0), 0) + (+data.endTime - +data.startTime) / 60000 - (data.breakMinutes || 0); if (wmin > 48 * 60) conflicts.push({ severity: 'STRONG_WARNING', code: 'WEEKLY_LOAD', label: 'Charge hebdomadaire supérieure à 48h' }); return conflicts; }
+  private async detectConflicts(organizationId: string, data: any, excludeId?: string) {
+    const conflicts: any[] = [];
+    const employee = await this.prisma.hrEmployee.findFirst({ where: { id: data.employeeId, organizationId }, include: { skills: true } });
+    if (!employee || employee.isArchived || employee.status !== HrEmployeeStatus.ACTIVE) conflicts.push({ severity: 'BLOCKING', code: 'EMPLOYEE_UNAVAILABLE', label: 'Collaborateur inactif ou archivé' });
+    const absence = await this.prisma.hrAbsence.findFirst({ where: { organizationId, employeeId: data.employeeId, status: HrAbsenceStatus.APPROVED, startDate: { lte: data.endTime }, endDate: { gte: data.startTime } } });
+    if (absence) conflicts.push({ severity: 'BLOCKING', code: 'APPROVED_ABSENCE', label: 'Collaborateur affecté pendant une absence validée', absenceId: absence.id });
+    const overlap = await this.prisma.planningAssignment.findFirst({ where: { organizationId, employeeId: data.employeeId, id: excludeId ? { not: excludeId } : undefined, status: { not: PlanningAssignmentStatus.CANCELLED }, startTime: { lt: data.endTime }, endTime: { gt: data.startTime } } });
+    if (overlap) conflicts.push({ severity: 'BLOCKING', code: 'TIME_OVERLAP', label: 'Chevauchement horaire bloquant' });
+    if (employee && employee.departmentId !== data.departmentId) conflicts.push({ severity: 'STRONG_WARNING', code: 'DEPARTMENT_MISMATCH', label: 'Service différent du service habituel' });
+    if (employee && employee.positionId !== data.positionId) conflicts.push({ severity: 'STRONG_WARNING', code: 'POSITION_MISMATCH', label: 'Poste différent du poste habituel' });
+
+    const dayAssignments = await this.prisma.planningAssignment.findMany({ where: { organizationId, employeeId: data.employeeId, date: data.date, status: { not: PlanningAssignmentStatus.CANCELLED }, id: excludeId ? { not: excludeId } : undefined } });
+    const dailyMinutes = dayAssignments.reduce((sum, assignment) => sum + this.assignmentMinutes(assignment), 0) + this.assignmentMinutes(data);
+    if (dailyMinutes > 600) conflicts.push({ severity: 'STRONG_WARNING', code: 'DAILY_AMPLITUDE', label: 'Amplitude journalière supérieure à 10h' });
+
+    const ws = this.weekStart(data.date);
+    const we = new Date(ws);
+    we.setDate(ws.getDate() + 6);
+    we.setHours(23, 59, 59, 999);
+    const week = await this.prisma.planningAssignment.findMany({ where: { organizationId, employeeId: data.employeeId, date: { gte: ws, lte: we }, status: { not: PlanningAssignmentStatus.CANCELLED }, id: excludeId ? { not: excludeId } : undefined } });
+    const weeklyMinutes = week.reduce((sum, assignment) => sum + this.assignmentMinutes(assignment), 0) + this.assignmentMinutes(data);
+    if (weeklyMinutes > 48 * 60) conflicts.push({ severity: 'STRONG_WARNING', code: 'WEEKLY_LOAD', label: 'Charge hebdomadaire supérieure à 48h' });
+    return conflicts;
+  }
   private async persistConflicts(tx: Prisma.TransactionClient, organizationId: string, assignmentId: string, conflicts: any[]) { for (const c of conflicts) await tx.planningConflict.create({ data: { organizationId, assignmentId, severity: c.severity as PlanningConflictSeverity, code: c.code, label: c.label, details: c as Prisma.InputJsonValue } }); }
   private weekStart(d: Date) { const x = this.day(d); const day = x.getDay() || 7; x.setDate(x.getDate() - day + 1); return x; }
   private addDays(d: Date, days: number) { const x = new Date(d); x.setDate(x.getDate() + days); return x; }

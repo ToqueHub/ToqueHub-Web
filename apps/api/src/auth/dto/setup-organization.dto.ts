@@ -3,6 +3,7 @@ import { IsIn, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class
 
 const ESTABLISHMENT_TYPES = ['Restaurant', 'EHPAD', 'Collectivité', 'Hôtel', 'Traiteur', 'Cuisine centrale', 'Autre'];
 const TEAM_SIZES = ['1-5', '6-10', '11-20', '20+'];
+const HR_COUNTRY_CODES = ['FR', 'FI'];
 
 export class SetupOrganizationDto {
   @ApiProperty({ example: 'Bistrot des Halles' })
@@ -26,6 +27,12 @@ export class SetupOrganizationDto {
   @IsString()
   @IsIn(ESTABLISHMENT_TYPES)
   establishmentType?: string;
+
+  @ApiPropertyOptional({ example: 'FR', enum: HR_COUNTRY_CODES, description: 'Pays du cadre RH utilisé, indépendant de la langue de l’interface.' })
+  @IsOptional()
+  @IsString()
+  @IsIn(HR_COUNTRY_CODES)
+  hrCountryCode?: string;
 
   @ApiPropertyOptional({ example: '6-10', enum: TEAM_SIZES })
   @IsOptional()

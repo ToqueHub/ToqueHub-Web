@@ -12,6 +12,7 @@ export const ESTABLISHMENT_TYPES = [
 ] as const;
 
 export const TEAM_SIZES = ['1-5', '6-10', '11-20', '20+'] as const;
+export const HR_COUNTRY_CODES = ['FR', 'FI'] as const;
 
 export class CompleteOnboardingDto {
   @ApiProperty({ example: 'admin' })
@@ -60,6 +61,12 @@ export class CompleteOnboardingDto {
   @IsString()
   @IsIn(ESTABLISHMENT_TYPES)
   establishmentType?: string;
+
+  @ApiPropertyOptional({ enum: HR_COUNTRY_CODES, example: 'FR', description: 'Pays du cadre RH utilisé, indépendant de la langue de l’interface.' })
+  @IsOptional()
+  @IsString()
+  @IsIn(HR_COUNTRY_CODES)
+  hrCountryCode?: string;
 
   @ApiPropertyOptional({ enum: TEAM_SIZES, example: '6-10' })
   @IsOptional()

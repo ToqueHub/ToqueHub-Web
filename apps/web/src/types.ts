@@ -1,5 +1,8 @@
 export type EstablishmentType = 'Restaurant' | 'EHPAD' | 'Collectivité' | 'Hôtel' | 'Traiteur' | 'Cuisine centrale' | 'Autre';
 export type TeamSize = '1-5' | '6-10' | '11-20' | '20+';
+export type HrCountryCode = 'FR' | 'FI';
+export type RegulatoryCountryCode = 'FR' | 'FI';
+export type EmploymentFramework = 'PRIVATE' | 'PUBLIC' | 'MIXED' | 'LOCAL' | 'CUSTOM';
 
 export interface CompleteOnboardingPayload {
   username: string;
@@ -9,6 +12,7 @@ export interface CompleteOnboardingPayload {
   password: string;
   organizationName: string;
   establishmentType?: EstablishmentType;
+  hrCountryCode?: HrCountryCode;
   teamSize?: TeamSize;
   logoDataUrl?: string;
   mistralApiKey?: string;
@@ -45,6 +49,10 @@ export interface UserSession {
     organizationId: string | null;
     organizationName: string | null;
     organizationType?: EstablishmentType | null;
+    hrCountryCode?: HrCountryCode | null;
+    regulatoryCountryCode?: RegulatoryCountryCode | null;
+    regulatoryCountrySelectedAt?: string | null;
+    regulatoryCountrySelectedById?: string | null;
     teamSize?: TeamSize | null;
     logoUrl?: string | null;
     logoDataUrl?: string | null;
@@ -114,6 +122,10 @@ export interface DashboardSummary {
     id: string | null;
     name: string;
     establishmentType?: EstablishmentType | null;
+    hrCountryCode?: HrCountryCode | null;
+    regulatoryCountryCode?: RegulatoryCountryCode | null;
+    regulatoryCountrySelectedAt?: string | null;
+    regulatoryCountrySelectedById?: string | null;
     teamSize?: TeamSize | null;
     logoDataUrl?: string | null;
     mainSiteName?: string | null;
@@ -658,6 +670,381 @@ export interface PlanningPeriodActionResult {
   placeholder?: boolean;
 }
 
+export interface PlanningDayStatus {
+  id: string;
+  employeeId: string;
+  date: string;
+  statusCode: string;
+  label: string;
+  sourceType?: string;
+  sourceId?: string | null;
+  dedupeKey?: string;
+  affectsPlanning?: boolean;
+  affectsCounters?: boolean;
+  visibilityLevel?: string;
+  metadata?: Record<string, any> | null;
+}
+
+export interface PlanningCodeDictionaryEntry {
+  id: string;
+  rawCode: string;
+  normalizedCode: string;
+  label: string;
+  category: string;
+  defaultStatusCode?: string | null;
+  accountType?: string | null;
+  unit?: 'MINUTES' | 'DAYS' | string | null;
+  defaultQuantity?: number | null;
+  affectsWorkedTime?: boolean;
+  affectsPaidTime?: boolean;
+  affectsLeaveBalance?: boolean;
+  visibleInPlanning?: boolean;
+  visibleInCounters?: boolean;
+  requiresAdminValidation?: boolean;
+  metadata?: Record<string, any> | null;
+}
+
+export interface PlanningPolicyProfile {
+  id: string;
+  name: string;
+  description?: string | null;
+  sector?: string | null;
+  annualReferenceMinutes?: number | null;
+  defaultWeeklyMinutes?: number | null;
+  defaultDailyMinutes?: number | null;
+  defaultBreakMinutes?: number | null;
+  countersEnabled?: boolean;
+  annualizationEnabled?: boolean;
+  attendanceEnabled?: boolean;
+  isDefault?: boolean;
+  customRules?: Record<string, any> | null;
+}
+
+export interface PlanningCounterAccount {
+  id: string;
+  employeeId: string;
+  periodYear: number;
+  accountType: string;
+  code: string;
+  label: string;
+  unit: 'MINUTES' | 'DAYS' | string;
+  openingBalance: number;
+  accrued: number;
+  consumed: number;
+  adjusted: number;
+  closingBalance: number;
+  visibleToEmployee?: boolean;
+  visibleToManager?: boolean;
+  visibleToAdmin?: boolean;
+  transactions?: Array<Record<string, any>>;
+}
+
+export interface PlanningCounterAlert {
+  type: string;
+  employeeId?: string;
+  accountType?: string;
+  code?: string;
+  balance?: number;
+  message?: string;
+}
+
+export interface PlanningCounterTotals {
+  plannedMinutes: number;
+  validatedMinutes: number;
+  absenceDays: number;
+  leaveDays: number;
+  recoveryMinutes: number;
+  overtimeMinutes: number;
+}
+
+export interface PlanningCounterEmployeeSummary {
+  employeeId: string;
+  employeeName: string;
+  period: { startDate: string; endDate: string };
+  accounts: Array<{
+    accountId: string;
+    accountType: string;
+    code: string;
+    label: string;
+    unit: 'MINUTES' | 'DAYS' | string;
+    openingBalance: number;
+    accrued: number;
+    consumed: number;
+    adjusted: number;
+    closingBalance: number;
+    visibleToEmployee: boolean;
+    visibleToManager: boolean;
+    visibleToAdmin: boolean;
+  }>;
+  totals: PlanningCounterTotals;
+  alerts: PlanningCounterAlert[];
+}
+
+export interface PlanningCountersResponse {
+  period: { startDate: string; endDate: string };
+  employees: PlanningCounterEmployeeSummary[];
+  accountCount: number;
+  alerts: PlanningCounterAlert[];
+}
+
+export interface PlanningCountersSummary {
+  enabled: boolean;
+  periodYear: number;
+  period?: { startDate: string; endDate: string };
+  accountCount: number;
+  transactionCount: number;
+  neutralizedTransactionCount?: number;
+  negativeBalanceCount: number;
+  totals: Array<{ code: string; accountType: string; label?: string; unit: 'MINUTES' | 'DAYS' | string; total: number }>;
+  employeePreview?: PlanningCounterEmployeeSummary[];
+  hiddenEmployeeCount?: number;
+  alerts?: PlanningCounterAlert[];
+  storage?: string;
+}
+
+export interface PlanningAttendanceRow {
+  id?: string | null;
+  assignmentId?: string | null;
+  employeeId: string;
+  employeeName?: string;
+  date: string;
+  plannedStartTime?: string | null;
+  plannedEndTime?: string | null;
+  plannedMinutes: number;
+  declaredStartTime?: string | null;
+  declaredEndTime?: string | null;
+  declaredMinutes?: number | null;
+  validatedMinutes?: number | null;
+  varianceMinutes?: number | null;
+  status: string;
+  statusLabel?: string;
+  departmentName?: string | null;
+  positionName?: string | null;
+  siteName?: string | null;
+  persistence?: boolean;
+}
+
+export interface PlanningAttendanceEmployeeSummary {
+  employeeId: string;
+  employeeName: string;
+  plannedMinutes: number;
+  declaredMinutes?: number | null;
+  validatedMinutes?: number | null;
+  varianceMinutes?: number | null;
+  rowCount: number;
+  signedCount: number;
+  validatedCount: number;
+  status: string;
+}
+
+export interface PlanningAttendanceResponse {
+  persistence?: boolean;
+  period: { startDate: string; endDate: string };
+  rows: PlanningAttendanceRow[];
+  employees: PlanningAttendanceEmployeeSummary[];
+  totals: { plannedMinutes: number; declaredMinutes: number; validatedMinutes: number; rows: number };
+}
+
+export interface PlanningEntitlementRule {
+  id: string;
+  code: string;
+  label: string;
+  description?: string | null;
+  accountType: string;
+  unit: 'MINUTES' | 'DAYS' | string;
+  accrualFrequency: 'MONTHLY' | 'YEARLY' | 'WEEKLY' | 'MANUAL' | 'EVENT_BASED' | string;
+  accrualQuantity?: number | string | null;
+  startsAfterTrialPeriod?: boolean;
+  minimumSeniorityMonths?: number | null;
+  prorateByContractTime?: boolean;
+  maxBalance?: number | null;
+  carryOverEnabled?: boolean;
+  enabled?: boolean;
+  metadata?: Record<string, any> | null;
+}
+
+export interface PlanningEntitlementSetup {
+  hrCountryCode?: HrCountryCode | null;
+  regulatoryCountryCode?: RegulatoryCountryCode | null;
+  organizationType?: EstablishmentType | string | null;
+  catalogPrepared?: boolean;
+  catalogCount?: number;
+}
+
+export interface PlanningEntitlementCatalogItem {
+  id: string;
+  countryCode: HrCountryCode;
+  employmentFramework?: EmploymentFramework | string | null;
+  organizationType?: EstablishmentType | string | null;
+  code: string;
+  label: string;
+  shortDescription?: string | null;
+  longDescription?: string | null;
+  description?: string | null;
+  category: string;
+  examples?: string[];
+  accountType: string;
+  unit: 'MINUTES' | 'DAYS' | string;
+  defaultAccrualFrequency: 'MONTHLY' | 'YEARLY' | 'WEEKLY' | 'MANUAL' | 'EVENT_BASED' | string;
+  defaultAccrualQuantity?: number | null;
+  defaultStartCondition?: string | null;
+  startsAfterTrialPeriod?: boolean;
+  minimumSeniorityMonths?: number | null;
+  prorateByContractTime?: boolean;
+  maxBalance?: number | null;
+  carryOverEnabled?: boolean;
+  requiresAdminValidation?: boolean;
+  isSystemTemplate?: boolean;
+  enabledByDefault?: boolean;
+  isRecommended?: boolean;
+  isCommon?: boolean;
+  isAdvanced?: boolean;
+  displayOrder?: number;
+  sourceTemplateCode?: string | null;
+  sourceLabel?: string | null;
+  sourceUrl?: string | null;
+  sourceReference?: string | null;
+  active?: boolean;
+  isLegalConfiguration?: boolean;
+  sourceLegalRightId?: string | null;
+  sourceRuleVersionId?: string | null;
+  legalValidationStatus?: string | null;
+}
+
+export interface PlanningEntitlementCatalogResponse {
+  setup: PlanningEntitlementSetup;
+  items: PlanningEntitlementCatalogItem[];
+  categories: string[];
+  counts: { total: number; active: number; recommended: number };
+  notice?: string;
+}
+
+export interface PlanningEmployeeEntitlement {
+  id: string;
+  code: string;
+  label: string;
+  accountType: string;
+  unit: 'MINUTES' | 'DAYS' | string;
+  enabled: boolean;
+  openingBalance: number;
+  openingBalanceDate?: string | null;
+  effectiveFrom?: string | null;
+  effectiveTo?: string | null;
+  rule?: PlanningEntitlementRule | null;
+  policyProfile?: PlanningPolicyProfile | null;
+  account?: PlanningCounterEmployeeSummary['accounts'][number] | null;
+  displayBalance?: number | null;
+  openingBalanceMissing?: boolean;
+}
+
+export interface PlanningEmployeeEntitlementsResponse {
+  employeeId: string;
+  employeeName: string;
+  periodYear: number;
+  setup?: PlanningEntitlementSetup;
+  rules: PlanningEntitlementRule[];
+  entitlements: PlanningEmployeeEntitlement[];
+  accounts: PlanningCounterEmployeeSummary['accounts'];
+  catalog?: PlanningEntitlementCatalogItem[];
+  alerts: PlanningCounterAlert[];
+}
+
+export interface LegalRightRuleSummary {
+  id: string;
+  stableId: string;
+  rightCode?: string;
+  name?: string;
+  regime?: { code: string; type: string; name: string } | null;
+  agreement?: { key: string; idcc?: string | null; name: string } | null;
+  publicRegime?: { code: string; name: string } | null;
+  unit: string;
+  value?: number | null;
+  formulaType: string;
+  priority: number;
+  validationStatus: string;
+  confidenceLevel?: number | null;
+  sourceLabel?: string | null;
+  sourceUrl?: string | null;
+}
+
+export interface LegalRightDetail {
+  id: string;
+  code: string;
+  name: string;
+  category: string;
+  description?: string | null;
+  tags: string[];
+  active: boolean;
+  rules: Array<LegalRightRuleSummary & {
+    formulaJson?: unknown;
+    conditionsJson?: unknown;
+    effectiveFrom?: string | null;
+    effectiveTo?: string | null;
+    lastVerifiedAt?: string | null;
+    active?: boolean;
+  }>;
+}
+
+export interface LegalRightSearchItem {
+  id: string;
+  code: string;
+  name: string;
+  category: string;
+  description?: string | null;
+  tags: string[];
+  score: number;
+  activated?: boolean;
+  organizationRuleId?: string | null;
+  rules: LegalRightRuleSummary[];
+}
+
+export interface LegalRightsSearchResponse {
+  query?: string | null;
+  country: string | null;
+  count: number;
+  status?: string;
+  message?: string;
+  items: LegalRightSearchItem[];
+}
+
+export interface LegalRightsDiagnosticsResponse {
+  migrationApplied: boolean;
+  organizationId?: string | null;
+  regulatoryCountryCode?: RegulatoryCountryCode | null;
+  status?: string;
+  legalBase?: {
+    country: RegulatoryCountryCode;
+    rightsCount: number;
+    ruleVersionsCount: number;
+    requiresReviewCount: number;
+  } | null;
+  establishmentConfigurations?: {
+    total: number;
+    enabled: number;
+    disabled: number;
+  };
+  counts: {
+    regimes: number;
+    collectiveAgreements: number;
+    publicRegimes: number;
+    rights: number;
+    ruleVersions: number;
+    activeRules: number;
+    requiresReviewRules: number;
+    sources: number;
+  };
+  lastImport?: {
+    importedAt: string;
+    sourceVersion: string;
+    sourceFile: string;
+    sourceHash: string;
+    status: string;
+    counts?: Record<string, unknown> | null;
+  } | null;
+  sourceHash?: string | null;
+  importErrors?: string[];
+}
+
 export interface PlanningHistoryEntry {
   id?: string;
   action: string;
@@ -712,8 +1099,22 @@ export interface PlanningBootstrap {
   dashboard?: Record<string, any>;
   planning?: { month?: Record<string, any>; assignmentsByDate?: Record<string, PlanningAssignment[]>; periodStatus?: PlanningPeriodStatus };
   settings?: Record<string, any>;
-  attendance?: Record<string, any>;
+  attendance?: PlanningAttendanceResponse | Record<string, any>;
   periodStatus?: PlanningPeriodStatus;
+  dayStatusSummary?: Record<string, any> | null;
+  countersSummary?: PlanningCountersSummary | null;
+}
+
+export interface PlanningDashboardResponse {
+  stats?: PlanningSummary;
+  dashboard?: Record<string, any> & {
+    summary?: PlanningSummary;
+    hoursByDepartment?: Array<Record<string, any>>;
+    actions?: Array<Record<string, any>>;
+    alerts?: PlanningAlert[];
+  };
+  alerts?: PlanningAlert[];
+  coverage?: Array<Record<string, any>>;
 }
 
 export interface PlanningGenerationResult {

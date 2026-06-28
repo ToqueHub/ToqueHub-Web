@@ -319,7 +319,7 @@ const apps = [
   },
 ];
 
-type ActiveTab = 'overview' | 'applications' | 'settings' | 'organization-general' | 'users' | 'architecture' | 'stocks-dashboard' | 'inventory' | 'movements' | 'products' | 'categories' | 'units' | 'suppliers' | 'inventories' | 'locations' | 'audit' | 'rnm-dashboard' | 'rnm-history' | 'rnm-favorites' | 'rnm-about' | 'hr-dashboard' | 'hr-collaborators' | 'hr-departments' | 'hr-positions' | 'hr-rotations' | 'hr-orgchart' | 'planning-dashboard' | 'planning-planning' | 'planning-settings' | 'planning-attendance' | 'planning-day' | 'planning-week' | 'planning-month' | 'planning-assignments' | 'planning-absences' | 'planning-replacements' | 'planning-templates' | 'planning-requirements' | 'technical-sheets-dashboard' | 'technical-sheets-recipes' | 'technical-sheets-categories' | 'technical-sheets-costs' | 'technical-sheets-allergens' | 'technical-sheets-production' | 'production-dashboard' | 'production-orders' | 'production-calendar' | 'production-today' | 'production-assignments' | 'production-materials' | 'production-exports' | 'production-history' | 'menus-dashboard' | 'menus-list' | 'menus-calendar' | 'menus-cycles' | 'menus-diets' | 'menus-guests' | 'menus-exports' | 'menus-history';
+type ActiveTab = 'overview' | 'applications' | 'settings' | 'organization-general' | 'users' | 'architecture' | 'stocks-dashboard' | 'inventory' | 'movements' | 'products' | 'categories' | 'units' | 'suppliers' | 'inventories' | 'locations' | 'audit' | 'rnm-dashboard' | 'rnm-history' | 'rnm-favorites' | 'rnm-about' | 'hr-dashboard' | 'hr-collaborators' | 'hr-departments' | 'hr-positions' | 'hr-rights' | 'hr-orgchart' | 'planning-dashboard' | 'planning-planning' | 'planning-settings' | 'planning-attendance' | 'planning-day' | 'planning-week' | 'planning-month' | 'planning-assignments' | 'planning-absences' | 'planning-replacements' | 'planning-templates' | 'planning-requirements' | 'technical-sheets-dashboard' | 'technical-sheets-recipes' | 'technical-sheets-categories' | 'technical-sheets-costs' | 'technical-sheets-allergens' | 'technical-sheets-production' | 'production-dashboard' | 'production-orders' | 'production-calendar' | 'production-today' | 'production-assignments' | 'production-materials' | 'production-exports' | 'production-history' | 'menus-dashboard' | 'menus-list' | 'menus-calendar' | 'menus-cycles' | 'menus-diets' | 'menus-guests' | 'menus-exports' | 'menus-history';
 
 type Confirmation = 'install-stocks' | 'uninstall-stocks' | 'uninstall-rnm-prices' | 'uninstall-planning' | 'uninstall-technical-sheets' | 'uninstall-production' | 'uninstall-menus' | null;
 
@@ -432,6 +432,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     return (localStorage.getItem('toquehub_dashboard_layout') as any) || 'split';
   });
   const [showCustomizeModal, setShowCustomizeModal] = useState(false);
+  const [planningCustomizeSignal, setPlanningCustomizeSignal] = useState(0);
   const [showUserModal, setShowUserModal] = useState(false);
   const [editingUser, setEditingUser] = useState<CoreUser | null>(null);
 
@@ -567,7 +568,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   }, [activeTab]);
 
   const isRnmTab = useMemo(() => ['rnm-dashboard', 'rnm-history', 'rnm-favorites', 'rnm-about'].includes(activeTab), [activeTab]);
-  const isHrTab = useMemo(() => ['hr-dashboard', 'hr-collaborators', 'hr-departments', 'hr-positions', 'hr-rotations', 'hr-orgchart'].includes(activeTab), [activeTab]);
+  const isHrTab = useMemo(() => ['hr-dashboard', 'hr-collaborators', 'hr-departments', 'hr-positions', 'hr-rights', 'hr-orgchart'].includes(activeTab), [activeTab]);
   const isPlanningTab = useMemo(() => ['planning-dashboard', 'planning-planning', 'planning-settings', 'planning-attendance', 'planning-day', 'planning-week', 'planning-month', 'planning-assignments', 'planning-absences', 'planning-replacements', 'planning-templates', 'planning-requirements'].includes(activeTab), [activeTab]);
   const isTechnicalSheetsTab = useMemo(() => ['technical-sheets-dashboard', 'technical-sheets-recipes', 'technical-sheets-categories', 'technical-sheets-costs', 'technical-sheets-allergens', 'technical-sheets-production'].includes(activeTab), [activeTab]);
   const isProductionTab = useMemo(() => ['production-dashboard', 'production-orders', 'production-calendar', 'production-today', 'production-assignments', 'production-materials', 'production-exports', 'production-history'].includes(activeTab), [activeTab]);
@@ -690,7 +691,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         ...(hrOnboarding?.servicesCompletedAt ? [{ tab: 'hr-positions' as const, label: 'Postes' as const, icon: BriefcaseBusiness }] : []),
         ...(hrOnboarding?.employeesUnlockedAt ? [
           { tab: 'hr-collaborators' as const, label: 'Collaborateurs' as const, icon: UsersRound },
-          { tab: 'hr-rotations' as const, label: 'Roulements' as const, icon: RefreshCw },
+          { tab: 'hr-rights' as const, label: 'Droits' as const, icon: ShieldCheck },
           { tab: 'hr-orgchart' as const, label: 'Organigramme' as const, icon: Workflow },
         ] : []),
       ]
@@ -831,6 +832,13 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const dashboardZones = modularDashboard?.zones;
   const dashboardWidgets = modularDashboard?.widgets ?? [];
   const dashboardRefreshLabel = modularDashboard?.generatedAt ? new Date(modularDashboard.generatedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—';
+
+  useEffect(() => {
+    const regulatoryCountryCode = dashboardSummary?.organization.regulatoryCountryCode ?? session.user.regulatoryCountryCode ?? null;
+    if (isAdmin && installedApps.includes('hr') && dashboardSummary?.organization && !regulatoryCountryCode && (activeTab === 'overview' || activeTab.startsWith('hr-'))) {
+      setActiveTab('organization-general');
+    }
+  }, [activeTab, dashboardSummary?.organization, installedApps, isAdmin, session.user.regulatoryCountryCode]);
 
   const stockValue = useMemo(() => stocks.reduce((sum, stock) => sum + numeric(stock.stockValue ?? stock.value ?? numeric(stock.currentQuantity ?? stock.quantity) * numeric(stock.product.averagePrice ?? stock.product.averagePurchasePrice ?? stock.product.weightedAveragePrice)), 0), [stocks]);
   const monthStart = useMemo(() => {
@@ -1501,7 +1509,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     'hr-collaborators': 'Collaborateurs',
     'hr-departments': 'Services RH',
     'hr-positions': 'Postes RH',
-    'hr-rotations': 'Roulements',
+    'hr-rights': 'Droits',
     'hr-orgchart': 'Organigramme',
     'planning-dashboard': 'Planning',
     'planning-planning': 'Planning mensuel',
@@ -1853,6 +1861,16 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                 Personnaliser
               </button>
             )}
+            {activeTab === 'planning-dashboard' && (
+              <button
+                className="btn btn-secondary"
+                onClick={() => setPlanningCustomizeSignal((value) => value + 1)}
+                style={{ padding: '0.45rem 0.85rem', fontSize: '0.85rem', height: 'auto', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+              >
+                <SlidersHorizontal size={14} />
+                Personnaliser
+              </button>
+            )}
 
             <div className="status-badge">
               <div className="status-dot"></div>
@@ -2100,7 +2118,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
               {isHrTab && hrInstalled && (
                 <HrApp
-                  tab={activeTab === 'hr-collaborators' ? 'collaborators' : activeTab === 'hr-departments' ? 'departments' : activeTab === 'hr-positions' ? 'positions' : activeTab === 'hr-rotations' ? 'rotations' : activeTab === 'hr-orgchart' ? 'orgchart' : 'dashboard'}
+                  tab={activeTab === 'hr-collaborators' ? 'collaborators' : activeTab === 'hr-departments' ? 'departments' : activeTab === 'hr-positions' ? 'positions' : activeTab === 'hr-rights' ? 'rights' : activeTab === 'hr-orgchart' ? 'orgchart' : 'dashboard'}
                   summary={hrSummary}
                   collaborators={hrCollaborators}
                   departments={hrDepartments}
@@ -2109,9 +2127,12 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   users={users}
                   sites={sites}
                   onboarding={hrOnboarding}
+                  token={token}
+                  regulatoryCountryCode={dashboardSummary?.organization.regulatoryCountryCode ?? session.user.regulatoryCountryCode ?? null}
                   canWrite={canWriteHr}
                   loading={isLoading}
-                  onNavigate={(next) => setActiveTab(next === 'collaborators' ? 'hr-collaborators' : next === 'departments' ? 'hr-departments' : next === 'positions' ? 'hr-positions' : next === 'rotations' ? 'hr-rotations' : next === 'orgchart' ? 'hr-orgchart' : 'hr-dashboard')}
+                  onNavigate={(next) => setActiveTab(next === 'collaborators' ? 'hr-collaborators' : next === 'departments' ? 'hr-departments' : next === 'positions' ? 'hr-positions' : next === 'rights' ? 'hr-rights' : next === 'orgchart' ? 'hr-orgchart' : 'hr-dashboard')}
+                  onConfigureRegulatoryCountry={() => setActiveTab('organization-general')}
                   onExitToOverview={() => setActiveTab('overview')}
                   onCreateCollaborator={handleCreateHrCollaborator}
                   onUpdateCollaborator={handleUpdateHrCollaborator}
@@ -2153,6 +2174,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   rotations={hrRotations}
                   sites={activeSites}
                   canWrite={canWriteHr}
+                  dashboardCustomizeSignal={planningCustomizeSignal}
+                  onDashboardCustomizeSignalConsumed={() => setPlanningCustomizeSignal(0)}
                   onNavigate={(next) => setActiveTab(next === 'planning' ? 'planning-planning' : next === 'settings' ? 'planning-settings' : next === 'attendance' ? 'planning-attendance' : 'planning-dashboard')}
                 />
               )}
@@ -2200,10 +2223,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
               {/* TAB SETTINGS */}
               {activeTab === 'settings' && (
-                <SettingsPage session={session} token={token} dashboardSummary={dashboardSummary} focusApiKeys={apiKeysPanelHint} onApiKeysSaved={() => { setApiKeysPanelHint(false); void refresh(); }} onOpenUsers={() => goToTab('users')} />
+                <SettingsPage session={session} token={token} dashboardSummary={dashboardSummary} focusApiKeys={apiKeysPanelHint} onApiKeysSaved={() => { setApiKeysPanelHint(false); void refresh(); }} onSettingsSaved={() => { void refresh(); }} onOpenUsers={() => goToTab('users')} />
               )}
               {activeTab === 'organization-general' && (
-                <SettingsPage session={session} token={token} dashboardSummary={dashboardSummary} focusApiKeys={apiKeysPanelHint} onApiKeysSaved={() => { setApiKeysPanelHint(false); void refresh(); }} onOpenUsers={() => goToTab('users')} />
+                <SettingsPage session={session} token={token} dashboardSummary={dashboardSummary} focusApiKeys={apiKeysPanelHint} onApiKeysSaved={() => { setApiKeysPanelHint(false); void refresh(); }} onSettingsSaved={() => { void refresh(); }} onOpenUsers={() => goToTab('users')} />
               )}
               {activeTab === 'users' && isAdmin && (
                 <UsersPage
@@ -3940,8 +3963,9 @@ function DevSwitch({ users, currentUserId, onSwitch, onCreate }: { users: CoreUs
 
 
 
-function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKeysSaved, onOpenUsers }: { session: UserSession; token: string; dashboardSummary?: DashboardSummary; focusApiKeys?: boolean; onApiKeysSaved?: () => void; onOpenUsers?: () => void }) {
+function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKeysSaved, onSettingsSaved, onOpenUsers }: { session: UserSession; token: string; dashboardSummary?: DashboardSummary; focusApiKeys?: boolean; onApiKeysSaved?: () => void; onSettingsSaved?: () => void; onOpenUsers?: () => void }) {
   const organization = dashboardSummary?.organization;
+  const regulatoryCountryCode = organization?.regulatoryCountryCode ?? session.user.regulatoryCountryCode ?? null;
   const initialConfigured = organization?.apiKeys?.mistral.configured ?? session.user.apiKeys?.mistral.configured ?? false;
   const initialMasked = organization?.apiKeys?.mistral.masked ?? session.user.apiKeys?.mistral.masked;
   const [mistralKey, setMistralKey] = useState('');
@@ -3950,6 +3974,10 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
   const [apiKeyMessage, setApiKeyMessage] = useState<string>();
   const [apiKeyError, setApiKeyError] = useState<string>();
   const [savingApiKey, setSavingApiKey] = useState(false);
+  const [regulatoryCountryDraft, setRegulatoryCountryDraft] = useState<string>(regulatoryCountryCode ?? '');
+  const [regulatoryCountryMessage, setRegulatoryCountryMessage] = useState<string>();
+  const [regulatoryCountryError, setRegulatoryCountryError] = useState<string>();
+  const [savingRegulatoryCountry, setSavingRegulatoryCountry] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState<'general' | 'users' | 'api-keys' | 'core'>(() => {
     return focusApiKeys ? 'api-keys' : 'general';
   });
@@ -3958,6 +3986,10 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
     setApiKeyConfigured(initialConfigured);
     setApiKeyMasked(initialMasked);
   }, [initialConfigured, initialMasked]);
+
+  useEffect(() => {
+    setRegulatoryCountryDraft(regulatoryCountryCode ?? '');
+  }, [regulatoryCountryCode]);
 
   useEffect(() => {
     if (focusApiKeys) {
@@ -3980,6 +4012,33 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
       setApiKeyError(err instanceof Error ? err.message : 'Impossible d’enregistrer la clé API.');
     } finally {
       setSavingApiKey(false);
+    }
+  }
+
+  async function saveRegulatoryCountry() {
+    const next = regulatoryCountryDraft || null;
+    if (regulatoryCountryCode && next && next !== regulatoryCountryCode) {
+      const confirmed = window.confirm('Changer le pays de réglementation peut modifier les droits salariés, les conventions, les jours fériés et les contrôles planning utilisés par l’organisation. Les anciens calculs doivent rester historisés.');
+      if (!confirmed) return;
+    }
+    setSavingRegulatoryCountry(true);
+    setRegulatoryCountryError(undefined);
+    setRegulatoryCountryMessage(undefined);
+    try {
+      await api.updateOrganizationRegulatoryCountry(token, { regulatoryCountryCode: next as 'FR' | 'FI' | null });
+      if (next === 'FR') {
+        try {
+          await api.importLegalRightsFrance(token);
+        } catch {
+          // L'import reste relançable depuis RH > Droits si la base n'est pas disponible.
+        }
+      }
+      setRegulatoryCountryMessage(next ? `Pays de réglementation enregistré : ${countryLabel(next)}.` : 'Pays de réglementation réinitialisé.');
+      onSettingsSaved?.();
+    } catch (err) {
+      setRegulatoryCountryError(err instanceof Error ? err.message : 'Impossible d’enregistrer le pays de réglementation.');
+    } finally {
+      setSavingRegulatoryCountry(false);
     }
   }
 
@@ -4091,6 +4150,12 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
               <div className="card-modern" style={{ padding: '1.5rem' }}>
                 <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}><Building2 size={18} /> Détails de l'Organisation</span>
                 <p className="muted" style={{ fontSize: '0.85rem', marginBottom: '1.5rem' }}>Ces informations définissent l'identité et la taille de votre structure ToqueHub.</p>
+                {!regulatoryCountryCode ? (
+                  <div className="alert-modern error" style={{ marginBottom: '1.25rem' }}>
+                    <AlertCircle size={16} />
+                    <span>Choisissez le pays de réglementation pour charger les droits RH, conventions, jours fériés et contrôles planning applicables.</span>
+                  </div>
+                ) : null}
                 
                 <div className="settings-grid-premium">
                   <div className="info-card-premium">
@@ -4132,6 +4197,41 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
                       {organization?.mainSiteName ?? session.user.mainSiteName ?? 'Site principal'}
                     </div>
                   </div>
+
+                  <div className="info-card-premium">
+                    <div className="info-card-premium-header">
+                      <span className="info-card-premium-label">Pays de réglementation</span>
+                      <span className="info-card-premium-icon"><Scale size={16} /></span>
+                    </div>
+                    <div className="info-card-premium-value">
+                      {countryLabel(regulatoryCountryCode)}
+                    </div>
+                    <span className={`badge ${regulatoryCountryCode ? 'badge-reception' : 'badge-correction'}`} style={{ width: 'fit-content', marginTop: '0.65rem' }}>
+                      {regulatoryCountryCode ? 'Configuré' : 'À configurer'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="planning-need-form" style={{ marginTop: '1.25rem' }}>
+                  <strong>Choisir le pays de réglementation</strong>
+                  <p className="muted">Ce pays détermine les règles RH, droits salariés, conventions, jours fériés et contrôles planning utilisés par ToqueHub. Il ne modifie pas la langue de l’interface.</p>
+                  <div className="planning-form-row">
+                    <label className="planning-field">Pays
+                      <select value={regulatoryCountryDraft} disabled={savingRegulatoryCountry} onChange={(event) => setRegulatoryCountryDraft(event.target.value)}>
+                        <option value="">Non sélectionné</option>
+                        <option value="FR">France</option>
+                        <option value="FI">Finlande</option>
+                      </select>
+                    </label>
+                    <div className="setup-actions" style={{ alignSelf: 'end', marginTop: 0 }}>
+                      <button type="button" className="btn btn-primary" disabled={savingRegulatoryCountry || regulatoryCountryDraft === (regulatoryCountryCode ?? '')} onClick={() => void saveRegulatoryCountry()}>
+                        {savingRegulatoryCountry ? 'Enregistrement...' : regulatoryCountryCode ? 'Modifier' : 'Valider le pays'}
+                      </button>
+                    </div>
+                  </div>
+                  {regulatoryCountryDraft === 'FI' ? <p className="muted">La structure Finlande est prête côté paramétrage ; la base légale Finlande sera affichée lorsqu’elle sera importée.</p> : null}
+                  {regulatoryCountryMessage ? <div className="alert-modern success"><CheckCircle2 size={16} /> {regulatoryCountryMessage}</div> : null}
+                  {regulatoryCountryError ? <div className="alert-modern error"><AlertCircle size={16} /> {regulatoryCountryError}</div> : null}
                 </div>
               </div>
 
@@ -4334,6 +4434,12 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
       </div>
     </div>
   );
+}
+
+function countryLabel(code?: string | null) {
+  if (code === 'FR') return 'France';
+  if (code === 'FI') return 'Finlande';
+  return 'Non sélectionné';
 }
 
 function ConfirmationModal({
