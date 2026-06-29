@@ -42,8 +42,6 @@ import type {
   HrPosition,
   HrReferencePayload,
   HrSummary,
-  HrRotation,
-  HrRotationPayload,
   PlanningAlert,
   PlanningAssignment,
   PlanningAttendanceResponse,
@@ -59,6 +57,7 @@ import type {
   PlanningEntitlementSetup,
   PlanningEmployeeTemplateAssignment,
   PlanningEntitlementRule,
+  EmployeeApplicableRightsResponse,
   LegalRightDetail,
   LegalRightsDiagnosticsResponse,
   LegalRightsSearchResponse,
@@ -69,7 +68,6 @@ import type {
   PlanningRequirement,
   PlanningTemplate,
   PlanningWeeklyRotationPayload,
-  HrRotationAssignment,
   TechnicalSheetAllergen,
   TechnicalSheetCategory,
   TechnicalSheetDashboard,
@@ -654,6 +652,13 @@ export const api = {
     });
     return request<LegalRightsSearchResponse>(`/rights/search${search.size ? `?${search.toString()}` : ''}`, {}, token);
   },
+  employeeApplicableRights(token: string, employeeId: string, params: { periodStart?: string; periodEnd?: string; effectiveDate?: string } = {}) {
+    const search = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') search.set(key, String(value));
+    });
+    return request<EmployeeApplicableRightsResponse>(`/rights/employees/${employeeId}/applicable${search.size ? `?${search.toString()}` : ''}`, {}, token);
+  },
   legalRightDetail(token: string, id: string) {
     return request<LegalRightDetail>(`/rights/${id}`, {}, token);
   },
@@ -1121,12 +1126,11 @@ export const api = {
     return request<UserSession>('/dev-switch', { method: 'POST', body: JSON.stringify({ userId }) }, token);
   },
   async hrBootstrap(token: string) {
-    const [rawSummary, collaborators, departments, positions, rotations, availableUsers, onboarding] = await Promise.all([
+    const [rawSummary, collaborators, departments, positions, availableUsers, onboarding] = await Promise.all([
       request<any>('/hr/dashboard', {}, token).catch(() => ({})),
       request<HrCollaborator[]>('/hr/employees?includeArchived=true&pageSize=200', {}, token).catch(() => []),
       request<HrDepartment[]>('/hr/departments?includeArchived=true&pageSize=200', {}, token).catch(() => []),
       request<HrPosition[]>('/hr/positions?includeArchived=true&pageSize=200', {}, token).catch(() => []),
-      request<HrRotation[]>('/hr/rotations?includeArchived=true&pageSize=200', {}, token).catch(() => []),
       request<CoreUser[]>('/hr/users/available', {}, token).catch(() => []),
       request<any>('/hr/onboarding', {}, token).catch(() => null),
     ]);
@@ -1136,15 +1140,11 @@ export const api = {
         departments: rawSummary.counts?.departments ?? rawSummary.departmentCount ?? 0,
         positions: rawSummary.counts?.positions ?? rawSummary.positionCount ?? 0,
         linkedCollaborators: rawSummary.counts?.linkedCollaborators ?? rawSummary.linkedCount ?? 0,
-        activeRotations: rawSummary.counts?.activeRotations ?? rawSummary.activeRotations ?? rotations.filter((rotation) => !(rotation.isArchived || rotation.archivedAt)).length,
-        collaboratorsWithRotation: rawSummary.counts?.collaboratorsWithRotation ?? rawSummary.collaboratorsWithRotation ?? collaborators.filter((collaborator) => collaborator.activeRotationAssignment || collaborator.rotationAssignment || collaborator.activeRotation).length,
-        collaboratorsWithoutRotation: rawSummary.counts?.collaboratorsWithoutRotation ?? rawSummary.collaboratorsWithoutRotation,
-        averageWeeklyRotationMinutes: rawSummary.counts?.averageWeeklyRotationMinutes ?? rawSummary.averageWeeklyRotationMinutes,
       },
       latestCollaborators: rawSummary.latestCollaborators ?? rawSummary.latestEmployees ?? [],
       departmentDistribution: rawSummary.departmentDistribution,
     };
-    return { summary, collaborators, departments, positions, rotations, availableUsers, onboarding };
+    return { summary, collaborators, departments, positions, availableUsers, onboarding };
   },
   createHrCollaborator(token: string, payload: HrCollaboratorPayload) {
     return request<HrCollaborator>('/hr/employees', { method: 'POST', body: JSON.stringify(toHrEmployeePayload(payload)) }, token);
@@ -1245,36 +1245,6 @@ export const api = {
   unlockHrEmployees(token: string) {
     return request<any>('/hr/onboarding/unlock-employees', { method: 'POST' }, token);
   },
-  listHrRotations(token: string) {
-    return request<HrRotation[]>('/hr/rotations?includeArchived=true&pageSize=200', {}, token);
-  },
-  createHrRotation(token: string, payload: HrRotationPayload) {
-    return request<HrRotation>('/hr/rotations', { method: 'POST', body: JSON.stringify(toHrRotationPayload(payload)) }, token);
-  },
-  updateHrRotation(token: string, id: string, payload: Partial<HrRotationPayload>) {
-    return request<HrRotation>(`/hr/rotations/${id}`, { method: 'PATCH', body: JSON.stringify(toHrRotationPayload(payload)) }, token);
-  },
-  archiveHrRotation(token: string, id: string) {
-    return request<HrRotation>(`/hr/rotations/${id}/archive`, { method: 'POST' }, token);
-  },
-  hrRotationAssignments(token: string, rotationId: string) {
-    return request<HrRotationAssignment[]>(`/hr/rotations/${rotationId}/assignments`, {}, token);
-  },
-  assignHrRotation(token: string, rotationId: string, payload: { employeeId: string; startDate?: string }) {
-    return request<HrRotationAssignment>(`/hr/rotations/${rotationId}/assignments`, { method: 'POST', body: JSON.stringify(payload) }, token);
-  },
-  removeHrRotationAssignment(token: string, rotationId: string, employeeId: string, payload: { endDate?: string } = {}) {
-    return request<{ ok?: boolean }>(`/hr/rotations/${rotationId}/assignments/${employeeId}/remove`, { method: 'POST', body: JSON.stringify(payload) }, token);
-  },
-  availableHrRotationEmployees(token: string, rotationId: string) {
-    return request<HrCollaborator[]>(`/hr/rotations/available-employees?rotationId=${encodeURIComponent(rotationId)}`, {}, token);
-  },
-  setHrCollaboratorRotation(token: string, employeeId: string, payload: { rotationId: string; startDate?: string }) {
-    return request<HrCollaborator>(`/hr/employees/${employeeId}/rotation`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
-  },
-  removeHrCollaboratorRotation(token: string, employeeId: string) {
-    return request<HrCollaborator>(`/hr/employees/${employeeId}/rotation`, { method: 'DELETE' }, token);
-  },
   createMovement(
     token: string,
     payload: {
@@ -1306,22 +1276,4 @@ export const api = {
 function toHrEmployeePayload(payload: Partial<HrCollaboratorPayload>) {
   const { photoUrl, siteId, ...rest } = payload;
   return { ...rest, photoDataUrl: payload.photoDataUrl ?? photoUrl, mainSiteId: payload.mainSiteId ?? siteId };
-}
-
-function toHrRotationPayload(payload: Partial<HrRotationPayload>) {
-  return {
-    name: payload.name,
-    description: payload.description || undefined,
-    departmentId: payload.departmentId || undefined,
-    cycleLengthWeeks: Math.min(4, Math.max(1, Number(payload.cycleWeeks ?? payload.weeks?.length ?? 1))),
-    weeks: payload.weeks?.map((week) => ({
-      weekNumber: week.weekIndex,
-      days: week.days.map((day) => ({
-        type: day.mode === 'REST' ? 'REST' : 'WORK',
-        startTime: day.mode === 'REST' ? undefined : day.startTime || undefined,
-        endTime: day.mode === 'REST' ? undefined : day.endTime || undefined,
-        breakMinutes: Number(day.breakMinutes ?? 0),
-      })),
-    })),
-  };
 }

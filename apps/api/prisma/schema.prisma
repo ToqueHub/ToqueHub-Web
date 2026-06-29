@@ -294,11 +294,6 @@ enum HrHistoryEventType {
   ONBOARDING_STEP_COMPLETED
 }
 
-enum HrRotationStatus {
-  ACTIVE
-  ARCHIVED
-}
-
 enum HrOnboardingStatus {
   NOT_STARTED
   SERVICES_IN_PROGRESS
@@ -592,8 +587,6 @@ model Organization {
   hrOnboardingProgress           HrOnboardingProgress?
   hrEmploymentContracts          HrEmploymentContract[]
   hrDocuments                    HrDocument[]
-  hrRotations                    HrRotation[]
-  hrRotationAssignments          HrRotationAssignment[]
   hrAbsences                     HrAbsence[]
   hrSkills                       HrSkill[]
   planningAssignments            PlanningAssignment[]
@@ -692,7 +685,6 @@ model User {
   createdHrCompensations             HrEmployeeCompensation[]       @relation("HrCompensationCreatedBy")
   completedHrSalaryReviews           HrSalaryReview[]               @relation("HrSalaryReviewCompletedBy")
   createdHrDocuments                 HrDocument[]                   @relation("HrDocumentCreatedBy")
-  hrRotationAssignments              HrRotationAssignment[]
   validatedHrAbsences                HrAbsence[]                    @relation("HrAbsenceValidator")
   createdPlanningAssignments         PlanningAssignment[]           @relation("PlanningAssignmentCreatedBy")
   updatedPlanningAssignments         PlanningAssignment[]           @relation("PlanningAssignmentUpdatedBy")
@@ -1320,7 +1312,6 @@ model HrDepartment {
   organization        Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   employees           HrEmployee[]
   positions           HrPosition[]
-  rotations           HrRotation[]
   requiredSkills      HrDepartmentSkill[]
   planningAssignments PlanningAssignment[]
   planningNeeds       PlanningOperationalNeed[]
@@ -1407,7 +1398,6 @@ model HrEmployee {
   manager                       HrEmployee?                    @relation("HrManager", fields: [managerId], references: [id], onDelete: SetNull)
   reports                       HrEmployee[]                   @relation("HrManager")
   history                       HrEmployeeHistory[]
-  rotationAssignments           HrRotationAssignment[]
   secondaryPositions            HrEmployeeSecondaryPosition[]
   contracts                     HrEmploymentContract[]
   compensations                 HrEmployeeCompensation[]
@@ -1595,62 +1585,6 @@ model HrDocument {
   @@map("hr_documents")
 }
 
-model HrRotation {
-  id                           String           @id @default(uuid()) @db.Uuid
-  organizationId               String           @db.Uuid
-  name                         String
-  description                  String?          @db.Text
-  departmentId                 String?          @db.Uuid
-  cycleLengthWeeks             Int              @default(1)
-  cycle                        Json
-  weeklyHoursMinutesAverage    Int              @default(0)
-  weeklyPresenceMinutesAverage Int              @default(0)
-  workedDaysAverage            Float            @default(0)
-  restDaysAverage              Float            @default(0)
-  averageDailyPresenceMinutes  Int              @default(0)
-  status                       HrRotationStatus @default(ACTIVE)
-  isArchived                   Boolean          @default(false)
-  archivedAt                   DateTime?
-  createdAt                    DateTime         @default(now())
-  updatedAt                    DateTime         @updatedAt
-
-  organization        Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  department          HrDepartment?          @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  assignments         HrRotationAssignment[]
-  planningAssignments PlanningAssignment[]
-
-  @@unique([organizationId, name])
-  @@index([organizationId])
-  @@index([departmentId])
-  @@index([status])
-  @@index([isArchived])
-  @@map("hr_rotations")
-}
-
-model HrRotationAssignment {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String    @db.Uuid
-  rotationId     String    @db.Uuid
-  employeeId     String    @db.Uuid
-  startDate      DateTime?
-  endDate        DateTime?
-  createdById    String?   @db.Uuid
-  endedById      String?   @db.Uuid
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  rotation     HrRotation   @relation(fields: [rotationId], references: [id], onDelete: Restrict)
-  employee     HrEmployee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  createdBy    User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
-
-  @@index([organizationId])
-  @@index([rotationId])
-  @@index([employeeId])
-  @@index([endDate])
-  @@map("hr_rotation_assignments")
-}
-
 model HrSkill {
   id             String    @id @default(uuid()) @db.Uuid
   organizationId String    @db.Uuid
@@ -1750,7 +1684,6 @@ model PlanningAssignment {
   departmentId          String                   @db.Uuid
   positionId            String                   @db.Uuid
   siteId                String?                  @db.Uuid
-  rotationId            String?                  @db.Uuid
   absenceId             String?                  @db.Uuid
   date                  DateTime
   startTime             DateTime
@@ -1771,7 +1704,6 @@ model PlanningAssignment {
   department            HrDepartment              @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   position              HrPosition                @relation(fields: [positionId], references: [id], onDelete: Restrict)
   site                  Site?                     @relation(fields: [siteId], references: [id], onDelete: SetNull)
-  rotation              HrRotation?               @relation(fields: [rotationId], references: [id], onDelete: SetNull)
   absence               HrAbsence?                @relation(fields: [absenceId], references: [id], onDelete: SetNull)
   createdBy             User?                     @relation("PlanningAssignmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy             User?                     @relation("PlanningAssignmentUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)

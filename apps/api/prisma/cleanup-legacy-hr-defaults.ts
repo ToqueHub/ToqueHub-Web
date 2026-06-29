@@ -47,12 +47,12 @@ async function main() {
   const deptAnalysis = await Promise.all(
     legacyDepts.map(async (dept) => {
       const employeesCount = await prisma.hrEmployee.count({ where: { departmentId: dept.id } });
-      const rotationsCount = await prisma.hrRotation.count({ where: { departmentId: dept.id } });
       const planningAssignmentsCount = await prisma.planningAssignment.count({ where: { departmentId: dept.id } });
       const planningNeedsCount = await prisma.planningOperationalNeed.count({ where: { departmentId: dept.id } });
+      const planningRotationsCount = await prisma.planningTemplate.count({ where: { departmentId: dept.id, isArchived: false, OR: [{ periodType: 'WEEKLY_ROTATION' }, { content: { path: ['type'], equals: 'WEEKLY_ROTATION' } as any }] } });
       const productionOrdersCount = await prisma.productionOrder.count({where: { serviceId: dept.id },});
-      const used = employeesCount + rotationsCount + planningAssignmentsCount + planningNeedsCount + productionOrdersCount > 0;
-      return { ...dept, used, refs: { employees: employeesCount, rotations: rotationsCount, planningAssignments: planningAssignmentsCount, planningNeeds: planningNeedsCount, productionOrders: productionOrdersCount } };
+      const used = employeesCount + planningRotationsCount + planningAssignmentsCount + planningNeedsCount + productionOrdersCount > 0;
+      return { ...dept, used, refs: { employees: employeesCount, rotations: planningRotationsCount, planningAssignments: planningAssignmentsCount, planningNeeds: planningNeedsCount, productionOrders: productionOrdersCount } };
     })
   );
 

@@ -132,8 +132,6 @@ import type {
   HrPosition,
   HrReferencePayload,
   HrSummary,
-  HrRotation,
-  HrRotationPayload,
   BackupInspection,
   BackupCloudStatus,
   BackupListResponse,
@@ -338,7 +336,7 @@ const apps = [
   },
 ];
 
-type ActiveTab = 'overview' | 'applications' | 'settings' | 'organization-general' | 'organization-documents' | 'users' | 'architecture' | 'stocks-dashboard' | 'inventory' | 'movements' | 'products' | 'categories' | 'units' | 'suppliers' | 'inventories' | 'locations' | 'audit' | 'rnm-dashboard' | 'rnm-history' | 'rnm-favorites' | 'rnm-about' | 'hr-dashboard' | 'hr-collaborators' | 'hr-departments' | 'hr-positions' | 'hr-rights' | 'hr-rotations' | 'hr-orgchart' | 'planning-dashboard' | 'planning-planning' | 'planning-settings' | 'planning-attendance' | 'planning-day' | 'planning-week' | 'planning-month' | 'planning-assignments' | 'planning-absences' | 'planning-replacements' | 'planning-templates' | 'planning-requirements' | 'technical-sheets-dashboard' | 'technical-sheets-recipes' | 'technical-sheets-categories' | 'technical-sheets-costs' | 'technical-sheets-allergens' | 'technical-sheets-production' | 'production-dashboard' | 'production-orders' | 'production-calendar' | 'production-today' | 'production-assignments' | 'production-materials' | 'production-exports' | 'production-history' | 'menus-dashboard' | 'menus-list' | 'menus-calendar' | 'menus-cycles' | 'menus-diets' | 'menus-guests' | 'menus-exports' | 'menus-history';
+type ActiveTab = 'overview' | 'applications' | 'settings' | 'organization-general' | 'organization-documents' | 'users' | 'architecture' | 'stocks-dashboard' | 'inventory' | 'movements' | 'products' | 'categories' | 'units' | 'suppliers' | 'inventories' | 'locations' | 'audit' | 'rnm-dashboard' | 'rnm-history' | 'rnm-favorites' | 'rnm-about' | 'hr-dashboard' | 'hr-collaborators' | 'hr-departments' | 'hr-positions' | 'hr-rights' | 'hr-orgchart' | 'planning-dashboard' | 'planning-planning' | 'planning-settings' | 'planning-attendance' | 'planning-day' | 'planning-week' | 'planning-month' | 'planning-assignments' | 'planning-absences' | 'planning-replacements' | 'planning-templates' | 'planning-requirements' | 'technical-sheets-dashboard' | 'technical-sheets-recipes' | 'technical-sheets-categories' | 'technical-sheets-costs' | 'technical-sheets-allergens' | 'technical-sheets-production' | 'production-dashboard' | 'production-orders' | 'production-calendar' | 'production-today' | 'production-assignments' | 'production-materials' | 'production-exports' | 'production-history' | 'menus-dashboard' | 'menus-list' | 'menus-calendar' | 'menus-cycles' | 'menus-diets' | 'menus-guests' | 'menus-exports' | 'menus-history';
 
 type Confirmation = 'install-stocks' | 'uninstall-stocks' | 'uninstall-rnm-prices' | 'uninstall-planning' | 'uninstall-technical-sheets' | 'uninstall-production' | 'uninstall-menus' | null;
 type AppNotification = {
@@ -387,7 +385,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [hrCollaborators, setHrCollaborators] = useState<HrCollaborator[]>([]);
   const [hrDepartments, setHrDepartments] = useState<HrDepartment[]>([]);
   const [hrPositions, setHrPositions] = useState<HrPosition[]>([]);
-  const [hrRotations, setHrRotations] = useState<HrRotation[]>([]);
   const [hrOnboarding, setHrOnboarding] = useState<any>(null);
 
   // UI State
@@ -582,7 +579,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         setHrCollaborators(hrData.collaborators ?? []);
         setHrDepartments(hrData.departments ?? []);
         setHrPositions(hrData.positions ?? []);
-        setHrRotations(hrData.rotations ?? []);
         setHrOnboarding(hrData.onboarding);
       }
     } catch (err) {
@@ -685,7 +681,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   }, [activeTab]);
 
   const isRnmTab = useMemo(() => ['rnm-dashboard', 'rnm-history', 'rnm-favorites', 'rnm-about'].includes(activeTab), [activeTab]);
-  const isHrTab = useMemo(() => ['hr-dashboard', 'hr-collaborators', 'hr-departments', 'hr-positions', 'hr-rights', 'hr-rotations', 'hr-orgchart'].includes(activeTab), [activeTab]);
+  const isHrTab = useMemo(() => ['hr-dashboard', 'hr-collaborators', 'hr-departments', 'hr-positions', 'hr-rights', 'hr-orgchart'].includes(activeTab), [activeTab]);
   const isPlanningTab = useMemo(() => ['planning-dashboard', 'planning-planning', 'planning-settings', 'planning-attendance', 'planning-day', 'planning-week', 'planning-month', 'planning-assignments', 'planning-absences', 'planning-replacements', 'planning-templates', 'planning-requirements'].includes(activeTab), [activeTab]);
   const isTechnicalSheetsTab = useMemo(() => ['technical-sheets-dashboard', 'technical-sheets-recipes', 'technical-sheets-categories', 'technical-sheets-costs', 'technical-sheets-allergens', 'technical-sheets-production'].includes(activeTab), [activeTab]);
   const isProductionTab = useMemo(() => ['production-dashboard', 'production-orders', 'production-calendar', 'production-today', 'production-assignments', 'production-materials', 'production-exports', 'production-history'].includes(activeTab), [activeTab]);
@@ -821,7 +817,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         ...(hrOnboarding?.employeesUnlockedAt ? [
           { tab: 'hr-collaborators' as const, label: 'Collaborateurs' as const, icon: UsersRound },
           { tab: 'hr-rights' as const, label: 'Droits' as const, icon: ShieldCheck },
-          { tab: 'hr-rotations' as const, label: 'Roulements' as const, icon: RefreshCw },
           { tab: 'hr-orgchart' as const, label: 'Organigramme' as const, icon: Workflow },
         ] : []),
       ]
@@ -1277,12 +1272,20 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   // Submit wrappers
   async function refreshHr() {
     const data = await api.hrBootstrap(token);
+    const activeCollaboratorsCount = (data.collaborators ?? []).filter((collaborator) => !isArchived(collaborator)).length;
     setHrSummary(data.summary);
     setHrCollaborators(data.collaborators ?? []);
     setHrDepartments(data.departments ?? []);
     setHrPositions(data.positions ?? []);
-    setHrRotations(data.rotations ?? []);
     setHrOnboarding(data.onboarding);
+    setDashboardSummary((current) => current ? {
+      ...current,
+      counts: {
+        ...current.counts,
+        collaborators: activeCollaboratorsCount,
+        hrCollaborators: activeCollaboratorsCount,
+      },
+    } : current);
   }
 
   async function handleCreateHrCollaborator(payload: HrCollaboratorPayload) {
@@ -1386,42 +1389,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
   async function handleArchiveHrPosition(id: string) {
     await submit(() => api.archiveHrPosition(token, id), 'Poste RH archivé.');
-    await refreshHr();
-  }
-
-  async function handleCreateHrRotation(payload: HrRotationPayload) {
-    await submit(() => api.createHrRotation(token, payload), 'Roulement créé.');
-    await refreshHr();
-  }
-
-  async function handleUpdateHrRotation(id: string, payload: Partial<HrRotationPayload>) {
-    await submit(() => api.updateHrRotation(token, id, payload), 'Roulement mis à jour.');
-    await refreshHr();
-  }
-
-  async function handleArchiveHrRotation(id: string) {
-    if (!window.confirm('Archiver ce roulement ? Les assignations historiques seront conservées.')) return;
-    await submit(() => api.archiveHrRotation(token, id), 'Roulement archivé.');
-    await refreshHr();
-  }
-
-  async function handleAssignHrRotation(rotationId: string, employeeId: string, startDate?: string) {
-    await submit(() => api.assignHrRotation(token, rotationId, { employeeId, startDate }), 'Collaborateur assigné au roulement.');
-    await refreshHr();
-  }
-
-  async function handleRemoveHrRotationAssignment(rotationId: string, employeeId: string) {
-    await submit(() => api.removeHrRotationAssignment(token, rotationId, employeeId), 'Collaborateur retiré du roulement.');
-    await refreshHr();
-  }
-
-  async function handleSetHrCollaboratorRotation(employeeId: string, rotationId: string, startDate?: string) {
-    await submit(() => api.setHrCollaboratorRotation(token, employeeId, { rotationId, startDate }), 'Roulement du collaborateur modifié.');
-    await refreshHr();
-  }
-
-  async function handleRemoveHrCollaboratorRotation(employeeId: string) {
-    await submit(() => api.removeHrCollaboratorRotation(token, employeeId), 'Roulement actif retiré.');
     await refreshHr();
   }
 
@@ -1682,7 +1649,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     'hr-departments': 'Services RH',
     'hr-positions': 'Postes RH',
     'hr-rights': 'Droits',
-    'hr-rotations': 'Roulements',
     'hr-orgchart': 'Organigramme',
     'planning-dashboard': 'Planning',
     'planning-planning': 'Planning mensuel',
@@ -2303,12 +2269,11 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
               {isHrTab && hrInstalled && (
                 <HrApp
-                  tab={activeTab === 'hr-collaborators' ? 'collaborators' : activeTab === 'hr-departments' ? 'departments' : activeTab === 'hr-positions' ? 'positions' : activeTab === 'hr-rights' ? 'rights' : activeTab === 'hr-rotations' ? 'rotations' : activeTab === 'hr-orgchart' ? 'orgchart' : 'dashboard'}
+                  tab={activeTab === 'hr-collaborators' ? 'collaborators' : activeTab === 'hr-departments' ? 'departments' : activeTab === 'hr-positions' ? 'positions' : activeTab === 'hr-rights' ? 'rights' : activeTab === 'hr-orgchart' ? 'orgchart' : 'dashboard'}
                   summary={hrSummary}
                   collaborators={hrCollaborators}
                   departments={hrDepartments}
                   positions={hrPositions}
-                  rotations={hrRotations}
                   users={users}
                   sites={sites}
                   onboarding={hrOnboarding}
@@ -2317,7 +2282,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   regulatorySector={dashboardSummary?.organization.regulatorySector ?? session.user.regulatorySector ?? null}
                   canWrite={canWriteHr}
                   loading={isLoading}
-                  onNavigate={(next) => setActiveTab(next === 'collaborators' ? 'hr-collaborators' : next === 'departments' ? 'hr-departments' : next === 'positions' ? 'hr-positions' : next === 'rights' ? 'hr-rights' : next === 'rotations' ? 'hr-rotations' : next === 'orgchart' ? 'hr-orgchart' : 'hr-dashboard')}
+                  onNavigate={(next) => setActiveTab(next === 'collaborators' ? 'hr-collaborators' : next === 'departments' ? 'hr-departments' : next === 'positions' ? 'hr-positions' : next === 'rights' ? 'hr-rights' : next === 'orgchart' ? 'hr-orgchart' : 'hr-dashboard')}
                   onConfigureRegulatoryCountry={() => setActiveTab('organization-general')}
                   onExitToOverview={() => setActiveTab('overview')}
                   onCreateCollaborator={handleCreateHrCollaborator}
@@ -2336,13 +2301,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   onCreatePositionsBulk={handleCreateHrPositionsBulk}
                   onUpdatePosition={handleUpdateHrPosition}
                   onArchivePosition={handleArchiveHrPosition}
-                  onCreateRotation={handleCreateHrRotation}
-                  onUpdateRotation={handleUpdateHrRotation}
-                  onArchiveRotation={handleArchiveHrRotation}
-                  onAssignRotation={handleAssignHrRotation}
-                  onRemoveRotationAssignment={handleRemoveHrRotationAssignment}
-                  onSetCollaboratorRotation={handleSetHrCollaboratorRotation}
-                  onRemoveCollaboratorRotation={handleRemoveHrCollaboratorRotation}
                   onCompleteServices={handleCompleteHrServices}
                   onCompletePositions={handleCompleteHrPositions}
                   onUnlockEmployees={handleUnlockHrEmployees}
@@ -2357,7 +2315,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   collaborators={hrCollaborators}
                   departments={hrDepartments}
                   positions={hrPositions}
-                  rotations={hrRotations}
                   sites={activeSites}
                   canWrite={canWriteHr}
                   dashboardCustomizeSignal={planningCustomizeSignal}
@@ -3847,6 +3804,8 @@ function MyDocumentsPage({ data, loading, search, supplierFilter, typeFilter, da
               <option value="all">Tous les types</option>
               <option value="invoice">Factures</option>
               <option value="delivery_note">Bons de livraison</option>
+              <option value="supplier_order">Commandes fournisseur</option>
+              <option value="order_confirmation">Confirmations de commande</option>
               <option value="unknown">Non classés</option>
             </select>
           </div>
@@ -6184,7 +6143,7 @@ function BackupRestorePage({ token, onRestoreComplete }: { token: string; onRest
 }
 
 type SettingsSubTab = 'general' | 'users' | 'architecture' | 'backups' | 'api-keys' | 'core';
-type OrganizationSettingModal = 'name' | 'establishmentType' | 'teamSize' | 'regulatoryCountry' | 'regulatorySector' | null;
+type OrganizationSettingModal = 'name' | 'establishmentType' | 'regulatoryCountry' | 'regulatorySector' | null;
 
 const establishmentTypeOptions: EstablishmentType[] = ['Restaurant', 'EHPAD', 'Collectivité', 'Hôtel', 'Traiteur', 'Cuisine centrale', 'Autre'];
 const teamSizeOptions: Array<{ label: string; value: TeamSize }> = [
@@ -6194,11 +6153,34 @@ const teamSizeOptions: Array<{ label: string; value: TeamSize }> = [
   { label: 'Plus de 20 personnes', value: '20+' },
 ];
 
+function teamSizeFromCollaboratorCount(count: number): TeamSize {
+  if (count <= 5) return '1-5';
+  if (count <= 10) return '6-10';
+  if (count <= 20) return '11-20';
+  return '20+';
+}
+
+function teamSizeLabel(value?: TeamSize | string | null) {
+  return teamSizeOptions.find((option) => option.value === value)?.label ?? value ?? 'Non renseigné';
+}
+
+function collaboratorCountLabel(count: number) {
+  return `${count} collaborateur${count > 1 ? 's' : ''}`;
+}
+
 function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKeysSaved, onSettingsSaved, onOpenUsers, onRestoreComplete, isAdmin = false }: { session: UserSession; token: string; dashboardSummary?: DashboardSummary; focusApiKeys?: boolean; onApiKeysSaved?: () => void; onSettingsSaved?: () => void; onOpenUsers?: () => void; onRestoreComplete: () => void; isAdmin?: boolean }) {
   const organization = dashboardSummary?.organization;
   const organizationName = organization?.name ?? session.user.organizationName ?? 'Organisation';
   const organizationType = organization?.establishmentType ?? session.user.organizationType ?? null;
   const organizationTeamSize = organization?.teamSize ?? session.user.teamSize ?? null;
+  const hrCollaboratorCount = dashboardSummary?.counts.hrCollaborators ?? dashboardSummary?.counts.collaborators ?? null;
+  const computedTeamSize = typeof hrCollaboratorCount === 'number' ? teamSizeFromCollaboratorCount(hrCollaboratorCount) : organizationTeamSize;
+  const teamSizeDisplay = typeof hrCollaboratorCount === 'number' ? collaboratorCountLabel(hrCollaboratorCount) : teamSizeLabel(organizationTeamSize);
+  const teamSizeMeta = typeof hrCollaboratorCount === 'number'
+    ? hrCollaboratorCount > 0
+      ? `Palier RH : ${teamSizeLabel(computedTeamSize)}`
+      : 'Synchronisé RH'
+    : 'Valeur onboarding';
   const regulatoryCountryCode = organization?.regulatoryCountryCode ?? session.user.regulatoryCountryCode ?? null;
   const regulatorySector = organization?.regulatorySector ?? session.user.regulatorySector ?? null;
   const initialConfigured = organization?.apiKeys?.mistral.configured ?? session.user.apiKeys?.mistral.configured ?? false;
@@ -6218,7 +6200,6 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
   const [identityDraft, setIdentityDraft] = useState({
     name: organizationName,
     establishmentType: organizationType ?? '',
-    teamSize: organizationTeamSize ?? '',
   });
   const [identityMessage, setIdentityMessage] = useState<string>();
   const [identityError, setIdentityError] = useState<string>();
@@ -6241,9 +6222,8 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
     setIdentityDraft({
       name: organizationName,
       establishmentType: organizationType ?? '',
-      teamSize: organizationTeamSize ?? '',
     });
-  }, [organizationName, organizationType, organizationTeamSize]);
+  }, [organizationName, organizationType]);
 
   useEffect(() => {
     if (focusApiKeys) {
@@ -6274,7 +6254,7 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
     setIdentityError(undefined);
     setIdentityMessage(undefined);
     try {
-      const payload: { name?: string; establishmentType?: string | null; teamSize?: string | null } = {};
+      const payload: { name?: string; establishmentType?: string | null } = {};
       if (editingSetting === 'name') {
         if (!identityDraft.name.trim()) {
           setIdentityError('Le nom de l’établissement est requis.');
@@ -6283,7 +6263,6 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
         payload.name = identityDraft.name.trim();
       }
       if (editingSetting === 'establishmentType') payload.establishmentType = identityDraft.establishmentType || null;
-      if (editingSetting === 'teamSize') payload.teamSize = identityDraft.teamSize || null;
       await api.updateOrganizationIdentity(token, payload);
       setIdentityMessage('Réglage enregistré.');
       setEditingSetting(null);
@@ -6462,14 +6441,17 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
                     </div>
                   </div>
 
-                  <div role="button" tabIndex={0} className="info-card-premium" onClick={() => setEditingSetting('teamSize')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setEditingSetting('teamSize'); }} style={{ cursor: 'pointer' }}>
+                  <div className="info-card-premium">
                     <div className="info-card-premium-header">
                       <span className="info-card-premium-label">Taille de l'équipe</span>
                       <span className="info-card-premium-icon"><UsersRound size={16} /></span>
                     </div>
                     <div className="info-card-premium-value">
-                      {organizationTeamSize ?? 'Non renseigné'}
+                      {teamSizeDisplay}
                     </div>
+                    <span className="badge badge-reception" style={{ width: 'fit-content', marginTop: '0.65rem' }}>
+                      {teamSizeMeta}
+                    </span>
                   </div>
 
                   <div className="info-card-premium">
@@ -6729,10 +6711,9 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
         title={
           editingSetting === 'name' ? 'Modifier le nom de l’établissement'
             : editingSetting === 'establishmentType' ? 'Modifier le type d’établissement'
-              : editingSetting === 'teamSize' ? 'Modifier la taille de l’équipe'
-                : editingSetting === 'regulatoryCountry' ? 'Modifier le pays de réglementation'
-                  : editingSetting === 'regulatorySector' ? 'Modifier le secteur'
-                    : 'Modifier le réglage'
+              : editingSetting === 'regulatoryCountry' ? 'Modifier le pays de réglementation'
+                : editingSetting === 'regulatorySector' ? 'Modifier le secteur'
+                  : 'Modifier le réglage'
         }
       >
         {editingSetting === 'name' ? (
@@ -6755,22 +6736,6 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
               <select value={identityDraft.establishmentType} onChange={(event) => setIdentityDraft((current) => ({ ...current, establishmentType: event.target.value }))} autoFocus>
                 <option value="">Non renseigné</option>
                 {establishmentTypeOptions.map((type) => <option key={type} value={type}>{type}</option>)}
-              </select>
-            </label>
-            <div className="modal-footer" style={{ margin: '1rem -1.75rem -1.75rem' }}>
-              <button type="button" className="btn btn-secondary" onClick={() => setEditingSetting(null)}>Annuler</button>
-              <button className="btn btn-primary" disabled={savingIdentity}>{savingIdentity ? 'Enregistrement...' : 'Enregistrer'}</button>
-            </div>
-          </form>
-        ) : null}
-
-        {editingSetting === 'teamSize' ? (
-          <form onSubmit={(event) => { event.preventDefault(); void saveOrganizationIdentity(); }} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {identityError ? <div className="alert-modern error"><AlertCircle size={16} /> {identityError}</div> : null}
-            <label>Taille de l’équipe
-              <select value={identityDraft.teamSize} onChange={(event) => setIdentityDraft((current) => ({ ...current, teamSize: event.target.value }))} autoFocus>
-                <option value="">Non renseigné</option>
-                {teamSizeOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
               </select>
             </label>
             <div className="modal-footer" style={{ margin: '1rem -1.75rem -1.75rem' }}>
@@ -8845,12 +8810,16 @@ function formatDocumentDate(value?: string | null) {
 function documentTypeLabel(type?: string | null) {
   if (type === 'invoice') return 'Facture';
   if (type === 'delivery_note') return 'BL';
+  if (type === 'supplier_order') return 'Commande';
+  if (type === 'order_confirmation') return 'Confirmation';
   return 'Non classé';
 }
 
 function documentTypeBadge(type?: string | null) {
   if (type === 'invoice') return 'badge-stock';
   if (type === 'delivery_note') return 'badge-reception';
+  if (type === 'supplier_order') return 'badge-production';
+  if (type === 'order_confirmation') return 'badge-correction';
   return 'badge-correction';
 }
 

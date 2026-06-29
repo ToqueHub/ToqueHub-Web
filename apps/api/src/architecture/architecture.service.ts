@@ -464,8 +464,6 @@ export class ArchitectureService {
       HrPosition: 'Postes et fonctions RH.',
       HrEmployee: 'Employés de l’établissement.',
       HrEmployeeHistory: 'Historique des événements collaborateurs.',
-      HrRotation: 'Rotations et cycles de travail.',
-      HrRotationAssignment: 'Affectations des rotations aux employés.',
       HrSkill: 'Compétences RH.',
       HrEmployeeSkill: 'Compétences rattachées aux employés.',
       HrPositionSkill: 'Compétences requises par poste.',
