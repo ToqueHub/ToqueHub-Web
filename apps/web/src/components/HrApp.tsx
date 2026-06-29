@@ -31,7 +31,8 @@ import {
   ChefHat,
   ArrowRight,
 } from 'lucide-react';
-import type { CoreUser, HrCollaborator, HrCollaboratorPayload, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, HrReferencePayload, HrRotation, HrRotationDay, HrRotationPayload, HrRotationWeek, HrSummary, RegulatoryCountryCode, Site } from '../types';
+import { api } from '../api/client';
+import type { CoreUser, HrCollaborator, HrCollaboratorPayload, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, HrReferencePayload, HrRotation, HrRotationDay, HrRotationPayload, HrRotationWeek, HrSummary, LegalRightSearchItem, PlanningEntitlementCatalogItem, RegulatoryCountryCode, RegulatorySector, Site } from '../types';
 import { HR_CATALOG } from '../hr-catalog';
 import { HrEntitlementsPanel } from './hr/HrEntitlementsPanel';
 import { CollaboratorModal as CollaboratorDossierModal } from './hr/collaborator/CollaboratorModal';
@@ -52,6 +53,7 @@ const statusOptions = [
 ];
 
 const HR_WIZARD_SERVICES_KEY = 'toquehub.hrWizard.selectedServices';
+const HR_WIZARD_RIGHTS_KEY = 'toquehub.hrWizard.rightsCompleted';
 
 type HrTab = 'dashboard' | 'collaborators' | 'departments' | 'positions' | 'rights' | 'rotations' | 'orgchart';
 
@@ -67,6 +69,7 @@ type HrAppProps = {
   onboarding?: any;
   token: string;
   regulatoryCountryCode?: RegulatoryCountryCode | null;
+  regulatorySector?: RegulatorySector | null;
   canWrite: boolean;
   loading?: boolean;
   onNavigate: (tab: HrTab) => void;
@@ -112,6 +115,7 @@ export function HrApp({
   onboarding,
   token,
   regulatoryCountryCode,
+  regulatorySector,
   canWrite,
   loading,
   onNavigate,
@@ -270,7 +274,7 @@ export function HrApp({
       ) : null}
 
       {tab === 'rights' ? (
-        <HrEntitlementsPanel token={token} collaborators={collaborators} departments={activeDepartments} positions={activePositions} canWrite={canWrite} regulatoryCountryCode={regulatoryCountryCode} onConfigureRegulatoryCountry={onConfigureRegulatoryCountry} />
+        <HrEntitlementsPanel token={token} collaborators={collaborators} departments={activeDepartments} positions={activePositions} canWrite={canWrite} regulatoryCountryCode={regulatoryCountryCode} regulatorySector={regulatorySector} onConfigureRegulatoryCountry={onConfigureRegulatoryCountry} />
       ) : null}
 
       {tab === 'rotations' ? (
@@ -371,6 +375,9 @@ export function HrApp({
           rotations={rotations}
           onboarding={onboarding}
           token={token}
+          regulatoryCountryCode={regulatoryCountryCode}
+          regulatorySector={regulatorySector}
+          onConfigureRegulatoryCountry={onConfigureRegulatoryCountry}
           onCreateCollaborator={onCreateCollaborator}
           onUploadCollaboratorDocument={onUploadCollaboratorDocument}
           onCreateDepartmentsBulk={onCreateDepartmentsBulk}
@@ -660,11 +667,12 @@ function WelcomeStep({ onStart, onClose }: { onStart: () => void; onClose?: () =
   );
 }
 
-function HrOnboardingAside({ step }: { step: 'services' | 'positions' | 'review' }) {
+function HrOnboardingAside({ step }: { step: 'services' | 'positions' | 'rights' | 'review' }) {
   const steps = [
     { key: 'welcome', label: 'Bienvenue' },
     { key: 'services', label: 'Sélection des services' },
     { key: 'positions', label: 'Création des postes' },
+    { key: 'rights', label: 'Gestion des droits' },
     { key: 'review', label: 'Premier collaborateur' },
   ];
   const currentIdx = steps.findIndex((s) => s.key === step);
@@ -748,6 +756,9 @@ function HrOnboardingWizard({
   rotations,
   onboarding,
   token,
+  regulatoryCountryCode,
+  regulatorySector,
+  onConfigureRegulatoryCountry,
   onCreateCollaborator,
   onUploadCollaboratorDocument,
   onCreateDepartmentsBulk,
@@ -766,6 +777,9 @@ function HrOnboardingWizard({
   rotations: HrRotation[];
   onboarding?: any;
   token: string;
+  regulatoryCountryCode?: RegulatoryCountryCode | null;
+  regulatorySector?: RegulatorySector | null;
+  onConfigureRegulatoryCountry?: () => void;
   onCreateCollaborator: (payload: HrCollaboratorPayload) => Promise<HrCollaborator | void>;
   onUploadCollaboratorDocument: (employeeId: string, payload: { file: File; category: string; notes?: string; expiresAt?: string }) => Promise<void>;
   onCreateDepartmentsBulk: (names: string[]) => Promise<void>;
@@ -778,6 +792,7 @@ function HrOnboardingWizard({
 }) {
   const hasServices = Boolean(onboarding?.servicesCompletedAt);
   const hasPositions = Boolean(onboarding?.positionsCompletedAt);
+  const rightsStorageKey = `${HR_WIZARD_RIGHTS_KEY}.${onboarding?.organizationId ?? 'current'}`;
   const [selectedServiceNames, setSelectedServiceNames] = useState<string[]>(() => {
     try {
       return JSON.parse(sessionStorage.getItem(HR_WIZARD_SERVICES_KEY) ?? '[]');
@@ -788,9 +803,12 @@ function HrOnboardingWizard({
   const [selectedPositionsByDept, setSelectedPositionsByDept] = useState<Record<string, Set<string>>>({});
   const [creatingCollaborator, setCreatingCollaborator] = useState(false);
   const [employeesUnlockedInWizard, setEmployeesUnlockedInWizard] = useState(Boolean(onboarding?.employeesUnlockedAt));
-  const [step, setStep] = useState<'welcome' | 'services' | 'positions' | 'review'>(() => {
+  const [rightsCompletedInWizard, setRightsCompletedInWizard] = useState(() => sessionStorage.getItem(rightsStorageKey) === 'done');
+  const [step, setStep] = useState<'welcome' | 'services' | 'positions' | 'rights' | 'review'>(() => {
     if (!hasServices) return 'welcome';
     if (!hasPositions) return 'positions';
+    if (rightsCompletedInWizard) return 'review';
+    if (!onboarding?.employeesUnlockedAt) return 'rights';
     return 'review';
   });
 
@@ -812,8 +830,8 @@ function HrOnboardingWizard({
     ? positions.filter((position) => wizardDepartmentIds.has(position.departmentId ?? '') || (position.department?.id ? wizardDepartmentIds.has(position.department.id) : false))
     : positions;
   const activeWizardCollaborators = collaborators.filter((collaborator) => !isArchived(collaborator));
-  const stepIndex = step === 'welcome' ? 1 : step === 'services' ? 2 : step === 'positions' ? 3 : 4;
-  const progress = (stepIndex / 4) * 100;
+  const stepIndex = step === 'welcome' ? 1 : step === 'services' ? 2 : step === 'positions' ? 3 : step === 'rights' ? 4 : 5;
+  const progress = (stepIndex / 5) * 100;
 
   return (
     <div
@@ -868,13 +886,13 @@ function HrOnboardingWizard({
             </div>
 
             {/* Main Content Area */}
-            <div style={{ padding: '2.5rem', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto', minHeight: 0, justifyContent: 'space-between' }}>
+            <div style={{ padding: '2.5rem', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', minHeight: 0, justifyContent: 'space-between' }}>
               {/* Stepper Progress bar */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexShrink: 0, position: 'relative' }}>
                 <div style={{ display: 'flex', gap: '0.5rem', flexDirection: 'column', flexGrow: 1 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span className="badge badge-reception" style={{ background: 'rgba(16, 185, 129, 0.08)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.15)', textTransform: 'none', fontSize: '0.8rem' }}>
-                      Étape {stepIndex} / 4
+                      Étape {stepIndex} / 5
                     </span>
                     <span style={{ fontWeight: 800, fontSize: '0.85rem', color: 'var(--text-muted)', marginRight: onClose ? '2.5rem' : '0' }}>{Math.round(progress)}%</span>
                   </div>
@@ -945,6 +963,20 @@ function HrOnboardingWizard({
                         onSubmit={async (items) => {
                           await onCreatePositionsBulk(items);
                           if (onCompletePositions) await onCompletePositions();
+                          setStep('rights');
+                        }}
+                      />
+                    )}
+                    {step === 'rights' && (
+                      <OnboardingRightsStep
+                        token={token}
+                        regulatoryCountryCode={regulatoryCountryCode}
+                        regulatorySector={regulatorySector}
+                        onConfigureRegulatoryCountry={onConfigureRegulatoryCountry}
+                        onBack={() => setStep('positions')}
+                        onSubmit={() => {
+                          sessionStorage.setItem(rightsStorageKey, 'done');
+                          setRightsCompletedInWizard(true);
                           setStep('review');
                         }}
                       />
@@ -955,7 +987,7 @@ function HrOnboardingWizard({
                         positions={wizardPositions}
                         collaborators={activeWizardCollaborators}
                         employeesUnlocked={employeesUnlockedInWizard}
-                        onBack={() => setStep('positions')}
+                        onBack={() => setStep('rights')}
                         onCreate={() => setCreatingCollaborator(true)}
                         onUnlockEmployees={async () => {
                           if (onUnlockEmployees) await onUnlockEmployees();
@@ -1010,8 +1042,8 @@ function ServiceCatalogGrid({ initialNames = [], onBack, onSubmit }: { initialNa
   const visibleCatalog = HR_CATALOG.filter((item) => `${item.name} ${item.description} ${item.examplePositions.join(' ')}`.toLowerCase().includes(serviceQuery.trim().toLowerCase()));
   const canAddCustom = customName.trim().length > 0 && !selectedNames.some((name) => name.toLowerCase() === customName.trim().toLowerCase());
   return (
-    <div className="hr-catalog" style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between' }}>
-      <div>
+    <div className="hr-catalog" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      <div className="hr-catalog-scroll">
         <p className="muted" style={{ marginBottom: 16, fontSize: '0.9rem' }}>Sélectionnez les services présents dans votre établissement. Vous pourrez en ajouter d'autres plus tard.</p>
         <div className="search-input-wrapper hr-wizard-search" style={{ border: '1px solid #cbd5e1', borderRadius: '12px', padding: '0.25rem 0.75rem', background: '#f8fafc', marginBottom: '1.25rem' }}>
           <Search size={18} style={{ color: '#64748b' }} />
@@ -1081,7 +1113,7 @@ function ServiceCatalogGrid({ initialNames = [], onBack, onSubmit }: { initialNa
           </div>
         ) : null}
       </div>
-      <div className="hr-catalog-actions sticky" style={{ borderTop: '1px solid #eef2f7', background: 'rgba(255,255,255,0.9)', padding: '1rem 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+      <div className="hr-catalog-actions" style={{ borderTop: '1px solid #eef2f7', background: 'rgba(255,255,255,0.9)', padding: '1rem 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
         <span style={{ fontSize: '0.88rem', color: '#64748b', fontWeight: 500 }}>{selected.size} service{selected.size > 1 ? 's' : ''} sélectionné{selected.size > 1 ? 's' : ''}</span>
         <div className="row-actions" style={{ display: 'flex', gap: '0.75rem' }}>
           {onBack ? <button type="button" className="btn btn-secondary" disabled={submitting} onClick={onBack} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Retour</button> : null}
@@ -1133,8 +1165,8 @@ function PositionCatalogSelector({ departments, initialSelection = {}, onSelecti
   const payload = () => activeDepartments.flatMap((department) => [...(selectedByDept[department.id] ?? new Set<string>())].map((name) => ({ name, departmentId: department.id, description: buildJobDescription(name, department.name) })));
   if (!currentDepartment) return <EmptyState title="Aucun service actif" description="Créez d’abord les services avant de sélectionner les postes." />;
   return (
-    <div className="hr-catalog" style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between' }}>
-      <div>
+    <div className="hr-catalog" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      <div className="hr-catalog-scroll">
         <p className="muted" style={{ marginBottom: 16, fontSize: '0.9rem' }}>Sélectionnez les postes pour chaque service. Le parcours avance service par service.</p>
         <div className="hr-position-stepper" style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
           {activeDepartments.map((department, index) => {
@@ -1248,7 +1280,7 @@ function PositionCatalogSelector({ departments, initialSelection = {}, onSelecti
           </div>
         </div>
       </div>
-      <div className="hr-catalog-actions sticky" style={{ borderTop: '1px solid #eef2f7', background: 'rgba(255,255,255,0.9)', padding: '1rem 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+      <div className="hr-catalog-actions" style={{ borderTop: '1px solid #eef2f7', background: 'rgba(255,255,255,0.9)', padding: '1rem 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
         <span style={{ fontSize: '0.88rem', color: '#64748b', fontWeight: 500 }}>{totalSelected} poste{totalSelected > 1 ? 's' : ''} sélectionné{totalSelected > 1 ? 's' : ''}</span>
         <div className="row-actions" style={{ display: 'flex', gap: '0.75rem' }}>
           <button type="button" className="btn btn-secondary" disabled={submitting} onClick={() => currentIndex === 0 ? onBack?.() : setCurrentIndex((index) => Math.max(index - 1, 0))} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Retour</button>
@@ -1259,6 +1291,301 @@ function PositionCatalogSelector({ departments, initialSelection = {}, onSelecti
               {submitting ? 'Création…' : 'Terminer et créer les postes'}
             </button>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type WizardRightCard = {
+  id: string;
+  kind: 'catalog' | 'legal';
+  sourceId: string;
+  title: string;
+  description: string;
+  category: string;
+  source: string;
+  active: boolean;
+  requiresReview: boolean;
+  searchText: string;
+};
+
+function regulatoryCountryLabel(code?: RegulatoryCountryCode | null) {
+  if (code === 'FR') return 'France';
+  if (code === 'FI') return 'Finlande';
+  return 'Pays non configuré';
+}
+
+function regulatorySectorLabel(code?: RegulatorySector | null) {
+  if (code === 'PRIVATE') return 'Secteur privé';
+  if (code === 'PUBLIC') return 'Secteur public';
+  return 'Secteur non configuré';
+}
+
+function regimeForSector(sector?: RegulatorySector | null) {
+  if (sector === 'PRIVATE') return 'private';
+  if (sector === 'PUBLIC') return 'public';
+  return 'all';
+}
+
+function frameworkForSector(sector?: RegulatorySector | null) {
+  if (sector === 'PRIVATE') return 'PRIVATE';
+  if (sector === 'PUBLIC') return 'PUBLIC';
+  return undefined;
+}
+
+function wizardSearchText(value: string) {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function shortWizardDescription(value?: string | null) {
+  const description = String(value ?? '').trim();
+  if (!description) return 'Droit disponible pour votre établissement.';
+  if (description.length <= 120) return description;
+  return `${description.slice(0, 117).trim()}...`;
+}
+
+function categoryFromRight(value?: string | null) {
+  const normalized = wizardSearchText(String(value ?? ''));
+  if (normalized.includes('conge') || normalized.includes('leave')) return 'Congés';
+  if (normalized.includes('absence') || normalized.includes('maladie')) return 'Absences';
+  if (normalized.includes('temps') || normalized.includes('travail') || normalized.includes('heure')) return 'Temps de travail';
+  if (normalized.includes('recup') || normalized.includes('compens')) return 'Récupération';
+  return value ? String(value) : 'Droit';
+}
+
+function legalRightSource(item: LegalRightSearchItem) {
+  const rule = item.rules[0];
+  return rule?.sourceLabel || rule?.agreement?.name || rule?.publicRegime?.name || rule?.regime?.name || 'Base légale';
+}
+
+function buildWizardCatalogCard(item: PlanningEntitlementCatalogItem): WizardRightCard {
+  const text = [item.label, item.shortDescription, item.longDescription, item.category, item.sourceLabel, item.code, JSON.stringify(item.examples ?? [])].join(' ');
+  return {
+    id: `catalog-${item.id}`,
+    kind: 'catalog',
+    sourceId: item.id,
+    title: item.label,
+    description: shortWizardDescription(item.shortDescription ?? item.description ?? item.longDescription),
+    category: categoryFromRight(item.category),
+    source: item.sourceLabel || 'Modèle RH',
+    active: Boolean(item.active),
+    requiresReview: Boolean(item.requiresAdminValidation || item.legalValidationStatus === 'requires_review'),
+    searchText: wizardSearchText(text),
+  };
+}
+
+function buildWizardLegalCard(item: LegalRightSearchItem): WizardRightCard {
+  const source = legalRightSource(item);
+  const text = [item.name, item.description, item.category, source, item.tags.join(' ')].join(' ');
+  return {
+    id: `legal-${item.id}`,
+    kind: 'legal',
+    sourceId: item.id,
+    title: item.name,
+    description: shortWizardDescription(item.description),
+    category: categoryFromRight(item.category),
+    source,
+    active: Boolean(item.activated),
+    requiresReview: item.rules.some((rule) => rule.validationStatus !== 'active'),
+    searchText: wizardSearchText(text),
+  };
+}
+
+function OnboardingRightsStep({
+  token,
+  regulatoryCountryCode,
+  regulatorySector,
+  onConfigureRegulatoryCountry,
+  onBack,
+  onSubmit,
+}: {
+  token: string;
+  regulatoryCountryCode?: RegulatoryCountryCode | null;
+  regulatorySector?: RegulatorySector | null;
+  onConfigureRegulatoryCountry?: () => void;
+  onBack: () => void;
+  onSubmit: () => void;
+}) {
+  const [cards, setCards] = useState<WizardRightCard[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [query, setQuery] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string>();
+
+  const missingSetup = !regulatoryCountryCode || !regulatorySector;
+
+  useEffect(() => {
+    if (missingSetup) return;
+    let cancelled = false;
+    async function loadRights() {
+      setLoading(true);
+      setError(undefined);
+      try {
+        const [catalog, legal] = await Promise.all([
+          api.hrEntitlementCatalog(token, { employmentFramework: frameworkForSector(regulatorySector), advanced: false }),
+          regulatoryCountryCode
+            ? api.legalRightsSearch(token, {
+                regime: regimeForSector(regulatorySector),
+                status: 'all',
+                includeRequiresReview: true,
+              })
+            : Promise.resolve({ items: [] }),
+        ]);
+        if (cancelled) return;
+        const catalogCards = (catalog.items ?? []).map(buildWizardCatalogCard);
+        const legalCards = (legal.items ?? []).map(buildWizardLegalCard);
+        const merged = [...legalCards, ...catalogCards].sort((a, b) => {
+          if (a.active !== b.active) return a.active ? -1 : 1;
+          if (a.requiresReview !== b.requiresReview) return a.requiresReview ? 1 : -1;
+          return a.title.localeCompare(b.title, 'fr');
+        });
+        setCards(merged);
+        setSelected(new Set(merged.filter((card) => card.active).map((card) => card.id)));
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Droits RH indisponibles.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void loadRights();
+    return () => {
+      cancelled = true;
+    };
+  }, [missingSetup, regulatoryCountryCode, regulatorySector, token]);
+
+  const visibleCards = useMemo(() => {
+    const needle = wizardSearchText(query.trim());
+    return needle ? cards.filter((card) => card.searchText.includes(needle)) : cards;
+  }, [cards, query]);
+  const selectedCards = cards.filter((card) => selected.has(card.id) && !card.active);
+  const canContinue = !missingSetup && (cards.length === 0 || selected.size > 0);
+
+  function toggle(card: WizardRightCard) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(card.id)) next.delete(card.id);
+      else next.add(card.id);
+      return next;
+    });
+  }
+
+  async function activateAndContinue() {
+    if (!canContinue) return;
+    setSubmitting(true);
+    setError(undefined);
+    try {
+      const catalogIds = selectedCards.filter((card) => card.kind === 'catalog').map((card) => card.sourceId);
+      const legalIds = selectedCards.filter((card) => card.kind === 'legal').map((card) => card.sourceId);
+      if (catalogIds.length) await api.activateHrEntitlementCatalogSelection(token, { catalogItemIds: catalogIds, targetMode: 'NONE' });
+      for (const legalId of legalIds) await api.activateLegalRight(token, legalId);
+      onSubmit();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Activation des droits impossible.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="hr-catalog" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      <div className="hr-catalog-scroll">
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', marginBottom: '1rem' }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: '1.45rem', color: 'var(--text-main)' }}>Droits de l'établissement</h2>
+            <p className="muted" style={{ margin: '0.4rem 0 0', fontSize: '0.9rem' }}>
+              Sélectionnez les droits à activer pour votre structure avant de créer le premier collaborateur.
+            </p>
+          </div>
+          <button type="button" className="btn btn-secondary" onClick={onConfigureRegulatoryCountry} style={{ borderRadius: '10px', padding: '0.45rem 0.8rem', fontSize: '0.8rem' }}>
+            {regulatoryCountryLabel(regulatoryCountryCode)} · {regulatorySectorLabel(regulatorySector)}
+          </button>
+        </div>
+
+        {missingSetup ? (
+          <div className="alert-modern error" style={{ marginBottom: '1rem' }}>
+            <Info size={16} />
+            <span>Configurez le pays de réglementation et le secteur dans Organisation &gt; Général pour proposer les droits adaptés.</span>
+          </div>
+        ) : null}
+        {error ? <div className="alert-modern error" style={{ marginBottom: '1rem' }}><Info size={16} /> {error}</div> : null}
+
+        {!missingSetup ? (
+          <>
+            <div className="search-input-wrapper hr-wizard-search" style={{ border: '1px solid #cbd5e1', borderRadius: '12px', padding: '0.25rem 0.75rem', background: '#f8fafc', marginBottom: '1rem' }}>
+              <Search size={18} style={{ color: '#64748b' }} />
+              <input className="search-input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Rechercher : congés payés, RTT, enfant malade..." style={{ border: 'none', background: 'transparent', boxShadow: 'none', height: '38px', fontSize: '0.9rem' }} />
+            </div>
+            {loading ? <div className="card-modern" style={{ padding: '1rem' }}>Chargement des droits...</div> : null}
+            {!loading && cards.length === 0 ? (
+              <div className="rights-empty-state" style={{ marginTop: '1rem' }}>
+                <strong>Aucun droit disponible</strong>
+                <span>Vous pourrez continuer l'assistant et configurer les droits plus tard depuis RH &gt; Droits.</span>
+              </div>
+            ) : null}
+            <div className="hr-catalog-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
+              {visibleCards.map((card) => {
+                const isSelected = selected.has(card.id);
+                return (
+                  <button
+                    type="button"
+                    key={card.id}
+                    className={`hr-catalog-card ${isSelected ? 'selected' : ''}`}
+                    onClick={() => toggle(card)}
+                    style={{
+                      border: isSelected ? '2px solid #10b981' : '1px solid #e2e8f0',
+                      borderRadius: '14px',
+                      padding: '1rem',
+                      background: isSelected ? 'rgba(16, 185, 129, 0.04)' : 'white',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '0.75rem',
+                      minHeight: '148px',
+                    }}
+                  >
+                    <div
+                      className="hr-catalog-check"
+                      style={{
+                        background: isSelected ? '#10b981' : '#f1f5f9',
+                        color: isSelected ? 'white' : 'transparent',
+                        borderRadius: '8px',
+                        width: '24px',
+                        height: '24px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        border: isSelected ? 'none' : '2px solid #cbd5e1',
+                        flexShrink: 0,
+                        marginTop: '2px',
+                      }}
+                    >
+                      {isSelected ? <Check size={14} strokeWidth={3} /> : null}
+                    </div>
+                    <div className="hr-catalog-body" style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '0.3rem', minWidth: 0 }}>
+                      <span className="badge" style={{ width: 'fit-content', padding: '0.22rem 0.5rem', fontSize: '0.68rem' }}>{card.category}</span>
+                      <strong style={{ fontSize: '0.92rem', color: '#1e293b', fontWeight: 750 }}>{card.title}</strong>
+                      <span style={{ fontSize: '0.8rem', color: '#64748b', lineHeight: 1.35 }}>{card.description}</span>
+                      <small style={{ fontSize: '0.73rem', color: '#94a3b8', marginTop: 'auto' }}>
+                        {card.source}{card.active ? ' · déjà activé' : card.requiresReview ? ' · à valider' : ''}
+                      </small>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        ) : null}
+      </div>
+      <div className="hr-catalog-actions" style={{ borderTop: '1px solid #eef2f7', background: 'rgba(255,255,255,0.9)', padding: '1rem 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+        <span style={{ fontSize: '0.88rem', color: '#64748b', fontWeight: 500 }}>
+          {selected.size} droit{selected.size > 1 ? 's' : ''} sélectionné{selected.size > 1 ? 's' : ''}
+        </span>
+        <div className="row-actions" style={{ display: 'flex', gap: '0.75rem' }}>
+          <button type="button" className="btn btn-secondary" disabled={submitting} onClick={onBack} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Retour</button>
+          <button className="btn btn-primary" disabled={submitting || loading || !canContinue} onClick={() => void activateAndContinue()} style={{ borderRadius: '10px', padding: '0.5rem 1.5rem' }}>
+            {submitting ? 'Activation...' : 'Valider les droits'}
+          </button>
         </div>
       </div>
     </div>
@@ -1930,7 +2257,11 @@ function CollaboratorSheet({ collaborator, rotations, canWrite, onClose, onEdit,
               [<Mail size={14} />, collaborator.email || 'Non renseigné'],
               [<Phone size={14} />, collaborator.phone || 'Non renseigné'],
               [<MapPin size={14} />, collaborator.address || 'Non renseignée'],
+              [<MapPin size={14} />, formatLocation(collaborator)],
               [<CalendarDays size={14} />, formatDate(collaborator.birthDate)],
+              [<NotebookText size={14} />, `Langue principale : ${collaborator.primaryLanguage || 'Non renseignée'}`],
+              [<NotebookText size={14} />, `Langue secondaire : ${collaborator.secondaryLanguage || 'Non renseignée'}`],
+              [<ShieldCheck size={14} />, `Contact d'urgence : ${collaborator.emergencyContact || 'Non renseigné'}`],
             ]}
           />
           <InfoBlock
@@ -2198,6 +2529,12 @@ function collaboratorToPayload(collaborator: HrCollaborator, patch: Partial<HrCo
     email: collaborator.email ?? undefined,
     phone: collaborator.phone ?? undefined,
     address: collaborator.address ?? undefined,
+    postalCode: collaborator.postalCode ?? undefined,
+    city: collaborator.city ?? undefined,
+    country: collaborator.country ?? undefined,
+    primaryLanguage: collaborator.primaryLanguage ?? undefined,
+    secondaryLanguage: collaborator.secondaryLanguage ?? undefined,
+    emergencyContact: collaborator.emergencyContact ?? undefined,
     birthDate: toInputDate(collaborator.birthDate) || undefined,
     hireDate: toInputDate(collaborator.hireDate) || new Date().toISOString().slice(0, 10),
     departmentId: collaborator.departmentId ?? collaborator.department?.id ?? '',
@@ -2226,6 +2563,10 @@ function documentCategoryLabel(value?: string | null) {
   return labels[value ?? 'OTHER'] ?? value ?? 'Autre';
 }
 function formatBytes(value?: number | null) { if (!value) return '—'; if (value < 1024 * 1024) return `${Math.round(value / 1024)} Ko`; return `${(value / 1024 / 1024).toFixed(1)} Mo`; }
+function formatLocation(collaborator: Pick<HrCollaborator, 'postalCode' | 'city' | 'country'>) {
+  const location = [collaborator.postalCode, collaborator.city, collaborator.country].filter(Boolean).join(' ');
+  return location || 'Code postal, ville et pays non renseignés';
+}
 function formatDate(value?: string | null) { if (!value) return '—'; return new Intl.DateTimeFormat('fr-FR').format(new Date(value)); }
 function dateValue(value?: string | null) { return value ? new Date(value).getTime() : 0; }
 function toInputDate(value?: string | null) { return value ? new Date(value).toISOString().slice(0, 10) : ''; }

@@ -13108,7 +13108,19 @@ input:checked + .slider-round:before {
 
 /* ─── RH Onboarding & Catalog ─── */
 
-.hr-catalog { padding: 0.5rem 0; }
+.hr-catalog {
+  min-height: 0;
+  padding: 0.5rem 0 0;
+}
+
+.hr-catalog-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.25rem;
+  padding-bottom: 1rem;
+}
 
 .hr-wizard-overlay { align-items: center; }
 

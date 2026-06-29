@@ -2,6 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsIn, IsOptional, IsString } from 'class-validator';
 
 export const REGULATORY_COUNTRY_CODES = ['FR', 'FI'] as const;
+export const REGULATORY_SECTORS = ['PRIVATE', 'PUBLIC'] as const;
 
 export class UpdateRegulatoryCountryDto {
   @ApiPropertyOptional({
@@ -13,4 +14,14 @@ export class UpdateRegulatoryCountryDto {
   @IsString()
   @IsIn(REGULATORY_COUNTRY_CODES)
   regulatoryCountryCode?: string | null;
+
+  @ApiPropertyOptional({
+    enum: REGULATORY_SECTORS,
+    nullable: true,
+    description: 'Secteur réglementaire de l’organisation pour filtrer les droits RH.',
+  })
+  @IsOptional()
+  @IsString()
+  @IsIn(REGULATORY_SECTORS)
+  regulatorySector?: string | null;
 }

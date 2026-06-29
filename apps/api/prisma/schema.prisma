@@ -548,6 +548,7 @@ model Organization {
   establishmentType             String?
   hrCountryCode                 String?
   regulatoryCountryCode         String?
+  regulatorySector              String?
   regulatoryCountrySelectedAt   DateTime?
   regulatoryCountrySelectedById String?   @db.Uuid
   teamSize                      String?
@@ -1368,6 +1369,12 @@ model HrEmployee {
   email                 String?
   phone                 String?
   address               String?          @db.Text
+  postalCode            String?
+  city                  String?
+  country               String?
+  primaryLanguage       String?
+  secondaryLanguage     String?
+  emergencyContact      String?          @db.Text
   birthDate             DateTime?
   hireDate              DateTime
   departmentId          String           @db.Uuid

@@ -37,8 +37,6 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
   const [errors, setErrors] = useState<Partial<Record<TabId, string>>>({});
   const [requiredErrors, setRequiredErrors] = useState<RequiredFieldErrors>({});
   const [submitError, setSubmitError] = useState('');
-  const [primaryLanguage, setPrimaryLanguage] = useState('');
-  const [secondaryLanguage, setSecondaryLanguage] = useState('');
   const [pendingDocuments, setPendingDocuments] = useState<PendingHrDocumentUpload[]>([]);
   const [selectedTrainings, setSelectedTrainings] = useState<string[]>([]);
   const [customTraining, setCustomTraining] = useState('');
@@ -53,6 +51,12 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
     email: collaborator?.email ?? '',
     phone: collaborator?.phone ?? '',
     address: collaborator?.address ?? '',
+    postalCode: collaborator?.postalCode ?? '',
+    city: collaborator?.city ?? '',
+    country: collaborator?.country ?? '',
+    primaryLanguage: collaborator?.primaryLanguage ?? '',
+    secondaryLanguage: collaborator?.secondaryLanguage ?? '',
+    emergencyContact: collaborator?.emergencyContact ?? '',
     birthDate: toInputDate(collaborator?.birthDate),
     hireDate: toInputDate(collaborator?.hireDate) || new Date().toISOString().slice(0, 10),
     departmentId: collaborator?.departmentId ?? collaborator?.department?.id ?? '',
@@ -204,7 +208,7 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
           ))}
         </div>
         <div className="hr-collaborator-body">
-          {activeTab === 'profile' ? <ProfileTab form={form} set={set} requiredErrors={requiredErrors} primaryLanguage={primaryLanguage} secondaryLanguage={secondaryLanguage} onPrimaryLanguage={(value) => { setPrimaryLanguage(value); setDirty(true); }} onSecondaryLanguage={(value) => { setSecondaryLanguage(value); setDirty(true); }} /> : null}
+          {activeTab === 'profile' ? <ProfileTab form={form} set={set} requiredErrors={requiredErrors} /> : null}
           {activeTab === 'professional' ? <ProfessionalTab form={form} set={set} requiredErrors={requiredErrors} departments={activeDepartments} positions={primaryPositions} allPositions={activePositions} selectedDepartment={selectedDepartment} sites={sites} managers={availableManagers} users={availableUsers} positionResetMessage={positionResetMessage} clearPositionResetMessage={() => setPositionResetMessage('')} /> : null}
           {activeTab === 'contracts' ? <ContractsTab form={form} set={set} collaborator={collaborator} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /> : null}
           {activeTab === 'rights' ? <RightsCountersPanel collaborator={collaborator} entitlements={entitlements} loading={entitlementsLoading} error={entitlementsError} form={openingBalanceForm} onForm={setOpeningBalanceForm} onSave={saveOpeningBalance} onAddCatalogRight={addCatalogRight} /> : null}
@@ -225,7 +229,7 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
   );
 }
 
-function ProfileTab({ form, set, requiredErrors, primaryLanguage, secondaryLanguage, onPrimaryLanguage, onSecondaryLanguage }: TabProps & { requiredErrors: RequiredFieldErrors; primaryLanguage: string; secondaryLanguage: string; onPrimaryLanguage: (value: string) => void; onSecondaryLanguage: (value: string) => void }) {
+function ProfileTab({ form, set, requiredErrors }: TabProps & { requiredErrors: RequiredFieldErrors }) {
   return <TabPanel icon={<UserRound size={18} />} title="Profil">
     <div className="hr-form-grid">
       <input className="span-2" placeholder="URL photo optionnelle" value={form.photoUrl ?? ''} onChange={(e) => set('photoUrl', e.target.value)} />
@@ -238,13 +242,13 @@ function ProfileTab({ form, set, requiredErrors, primaryLanguage, secondaryLangu
       <input type="email" placeholder="Email" value={form.email ?? ''} onChange={(e) => set('email', e.target.value)} />
       <input placeholder="Téléphone" value={form.phone ?? ''} onChange={(e) => set('phone', e.target.value)} />
       <input className="span-2" placeholder="Adresse" value={form.address ?? ''} onChange={(e) => set('address', e.target.value)} />
-      <input placeholder="Code postal" disabled />
-      <input placeholder="Ville" disabled />
-      <input placeholder="Pays" disabled />
+      <input placeholder="Code postal" value={form.postalCode ?? ''} onChange={(e) => set('postalCode', e.target.value)} />
+      <input placeholder="Ville" value={form.city ?? ''} onChange={(e) => set('city', e.target.value)} />
+      <input placeholder="Pays" value={form.country ?? ''} onChange={(e) => set('country', e.target.value)} />
       <label>Date de naissance<input type="date" value={form.birthDate ?? ''} onChange={(e) => set('birthDate', e.target.value)} /></label>
-      <input placeholder="Langue principale" value={primaryLanguage} onChange={(e) => onPrimaryLanguage(e.target.value)} />
-      <input placeholder="Langue secondaire" value={secondaryLanguage} onChange={(e) => onSecondaryLanguage(e.target.value)} />
-      <input placeholder="Contact d'urgence" disabled />
+      <input placeholder="Langue principale" value={form.primaryLanguage ?? ''} onChange={(e) => set('primaryLanguage', e.target.value)} />
+      <input placeholder="Langue secondaire" value={form.secondaryLanguage ?? ''} onChange={(e) => set('secondaryLanguage', e.target.value)} />
+      <input className="span-2" placeholder="Contact d'urgence" value={form.emergencyContact ?? ''} onChange={(e) => set('emergencyContact', e.target.value)} />
     </div>
   </TabPanel>;
 }
@@ -518,7 +522,36 @@ function validateRequiredFields(form: HrCollaboratorPayload) {
 
 function validate(form: HrCollaboratorPayload) { const errors: Partial<Record<TabId, string>> = {}; if (!form.firstName.trim() || !form.lastName.trim()) errors.profile = 'Prénom et nom obligatoires'; if (!form.hireDate || !form.departmentId || !form.positionId) errors.professional = 'Champs professionnels obligatoires'; return errors; }
 function isRequiredField(key: keyof HrCollaboratorPayload): key is RequiredFieldId { return key === 'firstName' || key === 'lastName' || key === 'departmentId' || key === 'positionId'; }
-function cleanPayload(form: HrCollaboratorPayload): HrCollaboratorPayload { return { ...form, email: form.email || undefined, phone: form.phone || undefined, address: form.address || undefined, birthDate: form.birthDate || undefined, siteId: form.siteId || undefined, employeeNumber: form.employeeNumber || undefined, notes: form.notes || undefined, userId: form.userId || undefined, managerId: form.managerId || undefined, secondaryPositionIds: form.secondaryPositionIds?.length ? form.secondaryPositionIds : undefined, contractType: form.contractType || undefined, contractEndDate: form.contractEndDate || undefined, trialEndDate: form.trialEndDate || undefined, contractWeeklyMinutes: form.contractWeeklyMinutes ?? undefined, hourlyRate: form.hourlyRate ?? undefined, currency: form.currency || undefined, rateEffectiveDate: form.rateEffectiveDate || undefined, nextReviewDate: form.nextReviewDate || undefined, reviewFrequency: form.reviewFrequency || undefined }; }
+function cleanPayload(form: HrCollaboratorPayload): HrCollaboratorPayload {
+  return {
+    ...form,
+    email: form.email || undefined,
+    phone: form.phone || undefined,
+    address: form.address || undefined,
+    postalCode: form.postalCode || undefined,
+    city: form.city || undefined,
+    country: form.country || undefined,
+    primaryLanguage: form.primaryLanguage || undefined,
+    secondaryLanguage: form.secondaryLanguage || undefined,
+    emergencyContact: form.emergencyContact || undefined,
+    birthDate: form.birthDate || undefined,
+    siteId: form.siteId || undefined,
+    employeeNumber: form.employeeNumber || undefined,
+    notes: form.notes || undefined,
+    userId: form.userId || undefined,
+    managerId: form.managerId || undefined,
+    secondaryPositionIds: form.secondaryPositionIds?.length ? form.secondaryPositionIds : undefined,
+    contractType: form.contractType || undefined,
+    contractEndDate: form.contractEndDate || undefined,
+    trialEndDate: form.trialEndDate || undefined,
+    contractWeeklyMinutes: form.contractWeeklyMinutes ?? undefined,
+    hourlyRate: form.hourlyRate ?? undefined,
+    currency: form.currency || undefined,
+    rateEffectiveDate: form.rateEffectiveDate || undefined,
+    nextReviewDate: form.nextReviewDate || undefined,
+    reviewFrequency: form.reviewFrequency || undefined,
+  };
+}
 function positionBelongsToDepartment(position: HrPosition, department?: HrDepartment) { if (!department) return false; if (position.departmentId) return position.departmentId === department.id; const catalog = HR_CATALOG.find((item) => normalizeLabel(item.name) === normalizeLabel(department.name)); return Boolean(catalog?.positions.some((name) => normalizeLabel(name) === normalizeLabel(position.name))); }
 function activeRotation(collaborator?: HrCollaborator) { return collaborator?.activeRotation ?? collaborator?.activeRotationAssignment?.rotation ?? collaborator?.rotationAssignment?.rotation ?? null; }
 function rotationMetrics(rotation: HrRotation) { const metrics = rotation.metrics as any; return { averageWeeklyMinutes: metrics?.averageWeeklyMinutes ?? metrics?.weeklyMinutes ?? metrics?.weeklyHoursMinutesAverage ?? 0 }; }

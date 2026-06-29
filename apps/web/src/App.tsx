@@ -79,7 +79,7 @@ export function App() {
     }
   }
 
-  async function handleSetupOrganization(payload: { name: string; code?: string; establishmentType?: string; teamSize?: string; logoDataUrl?: string }) {
+  async function handleSetupOrganization(payload: { name: string; code?: string; establishmentType?: string; teamSize?: string; regulatoryCountryCode?: 'FR' | 'FI'; regulatorySector?: 'PRIVATE' | 'PUBLIC'; logoDataUrl?: string }) {
     if (!session) throw new Error('Session administrateur introuvable');
     const nextSession = await api.setupOrganization(session.accessToken, payload);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSession));
@@ -133,7 +133,7 @@ function SetupOrganizationPage({
   onBackHome,
 }: {
   session: UserSession | null;
-  onSubmit: (payload: { name: string; code?: string; establishmentType?: string; teamSize?: string; logoDataUrl?: string }) => Promise<void>;
+  onSubmit: (payload: { name: string; code?: string; establishmentType?: string; teamSize?: string; regulatoryCountryCode?: 'FR' | 'FI'; regulatorySector?: 'PRIVATE' | 'PUBLIC'; logoDataUrl?: string }) => Promise<void>;
   onBackHome: () => void;
 }) {
   const [name, setName] = useState('');

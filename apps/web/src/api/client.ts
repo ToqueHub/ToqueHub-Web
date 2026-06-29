@@ -260,6 +260,8 @@ export const api = {
     code?: string;
     establishmentType?: string;
     teamSize?: string;
+    regulatoryCountryCode?: 'FR' | 'FI';
+    regulatorySector?: 'PRIVATE' | 'PUBLIC';
     logoDataUrl?: string;
     mistralApiKey?: string;
   }) {
@@ -286,7 +288,10 @@ export const api = {
   updateOrganizationApiKeys(token: string, payload: { mistralApiKey?: string }) {
     return request<DashboardSummary['organization']['apiKeys']>('/auth/organization/api-keys', { method: 'POST', body: JSON.stringify(payload) }, token);
   },
-  updateOrganizationRegulatoryCountry(token: string, payload: { regulatoryCountryCode?: 'FR' | 'FI' | null }) {
+  updateOrganizationIdentity(token: string, payload: { name?: string; establishmentType?: string | null; teamSize?: string | null }) {
+    return request<DashboardSummary>('/auth/organization/identity', { method: 'POST', body: JSON.stringify(payload) }, token);
+  },
+  updateOrganizationRegulatoryCountry(token: string, payload: { regulatoryCountryCode?: 'FR' | 'FI' | null; regulatorySector?: 'PRIVATE' | 'PUBLIC' | null }) {
     return request<DashboardSummary>('/auth/organization/regulatory-country', { method: 'POST', body: JSON.stringify(payload) }, token);
   },
   modularDashboard(token: string) {

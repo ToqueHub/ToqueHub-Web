@@ -28,7 +28,7 @@ import {
   X,
 } from 'lucide-react';
 import { api } from '../api/client';
-import type { BackupInspection, EstablishmentType, SystemStatus, TeamSize, UserSession } from '../types';
+import type { BackupInspection, EstablishmentType, RegulatoryCountryCode, RegulatorySector, SystemStatus, TeamSize, UserSession } from '../types';
 
 interface FirstStartLandingProps {
   status?: SystemStatus;
@@ -41,9 +41,17 @@ interface FirstStartLandingProps {
 
 type OnboardingStep = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 type AdminForm = { username: string; firstName: string; lastName: string; email: string; password: string; confirm: string };
-type OrganizationForm = { name: string; type: string; teamSize: TeamSize; logo?: string };
+type OrganizationForm = { name: string; type: string; regulatoryCountryCode: RegulatoryCountryCode | ''; regulatorySector: RegulatorySector | ''; teamSize: TeamSize; logo?: string };
 
 const establishmentTypes = ['Restaurant', 'EHPAD', 'Collectivité', 'Hôtel', 'Traiteur', 'Cuisine centrale', 'Autre'];
+const regulatoryCountries: Array<{ label: string; value: RegulatoryCountryCode }> = [
+  { label: 'France', value: 'FR' },
+  { label: 'Finlande', value: 'FI' },
+];
+const regulatorySectors: Array<{ label: string; value: RegulatorySector }> = [
+  { label: 'Secteur privé', value: 'PRIVATE' },
+  { label: 'Secteur public', value: 'PUBLIC' },
+];
 const teamSizes: Array<{ label: string; value: TeamSize }> = [
   { label: '1 à 5 personnes', value: '1-5' },
   { label: '6 à 10 personnes', value: '6-10' },
@@ -73,7 +81,7 @@ export function FirstStartLanding({
 }: FirstStartLandingProps) {
   const [step, setStep] = useState<OnboardingStep>(0);
   const [admin, setAdmin] = useState<AdminForm>({ username: '', firstName: '', lastName: '', email: '', password: '', confirm: '' });
-  const [organization, setOrganization] = useState<OrganizationForm>({ name: '', type: '', teamSize: '1-5' });
+  const [organization, setOrganization] = useState<OrganizationForm>({ name: '', type: '', regulatoryCountryCode: '', regulatorySector: '', teamSize: '1-5' });
   const [showPassword, setShowPassword] = useState(false);
   const [mistralApiKey, setMistralApiKey] = useState('');
   const [formError, setFormError] = useState<string>();
@@ -100,6 +108,14 @@ export function FirstStartLanding({
     if (step === 1 && !validateAdmin()) return;
     if (step === 2 && !organization.name.trim()) {
       setFormError('Le nom de l’établissement est requis.');
+      return;
+    }
+    if (step === 2 && !organization.regulatoryCountryCode) {
+      setFormError('Le pays de réglementation est requis.');
+      return;
+    }
+    if (step === 2 && !organization.regulatorySector) {
+      setFormError('Le secteur est requis.');
       return;
     }
     if (step < 5) setStep((step + 1) as OnboardingStep);
@@ -135,7 +151,14 @@ export function FirstStartLanding({
   document.title = "Bienvenue sur ToqueHub";
 
   function updateOrganization(field: keyof Omit<OrganizationForm, 'logo'>) {
-    return (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setOrganization((prev) => ({ ...prev, [field]: event.target.value }));
+    return (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setOrganization((prev) => {
+      const value = event.target.value;
+      return {
+        ...prev,
+        [field]: value,
+        ...(field === 'regulatoryCountryCode' && !value ? { regulatorySector: '' } : {}),
+      };
+    });
   }
 
   async function handleLogo(event: ChangeEvent<HTMLInputElement>) {
@@ -167,6 +190,11 @@ export function FirstStartLanding({
       setStep(2);
       return;
     }
+    if (!organization.regulatoryCountryCode || !organization.regulatorySector) {
+      setFormError('Le pays de réglementation et le secteur sont requis.');
+      setStep(2);
+      return;
+    }
 
     setSubmitting(true);
     setStep(6);
@@ -181,6 +209,8 @@ export function FirstStartLanding({
         password: admin.password,
         organizationName: organization.name.trim(),
         establishmentType: (organization.type || undefined) as EstablishmentType | undefined,
+        regulatoryCountryCode: organization.regulatoryCountryCode || undefined,
+        regulatorySector: organization.regulatorySector || undefined,
         teamSize: (organization.teamSize || undefined) as TeamSize | undefined,
         logoDataUrl: organization.logo,
         mistralApiKey: mistralApiKey.trim() || undefined,
@@ -1083,6 +1113,28 @@ function OrganizationStep({ organization, updateOrganization }: OrganizationStep
           ))}
         </select>
       </label>
+
+      <label>
+        Pays de réglementation *
+        <select value={organization.regulatoryCountryCode} onChange={updateOrganization('regulatoryCountryCode')} required>
+          <option value="">Choisir le pays de réglementation...</option>
+          {regulatoryCountries.map((country) => (
+            <option key={country.value} value={country.value}>{country.label}</option>
+          ))}
+        </select>
+      </label>
+
+      {organization.regulatoryCountryCode ? (
+        <label>
+          Secteur *
+          <select value={organization.regulatorySector} onChange={updateOrganization('regulatorySector')} required>
+            <option value="">Choisir le secteur...</option>
+            {regulatorySectors.map((sector) => (
+              <option key={sector.value} value={sector.value}>{sector.label}</option>
+            ))}
+          </select>
+        </label>
+      ) : null}
     </div>
   );
 }

@@ -37,6 +37,12 @@ export class UpsertHrEmployeeDto {
   @IsOptional() @IsEmail() @MaxLength(180) email?: string;
   @IsOptional() @IsString() @MaxLength(60) phone?: string;
   @IsOptional() @IsString() @MaxLength(1000) address?: string;
+  @IsOptional() @IsString() @MaxLength(40) postalCode?: string;
+  @IsOptional() @IsString() @MaxLength(120) city?: string;
+  @IsOptional() @IsString() @MaxLength(120) country?: string;
+  @IsOptional() @IsString() @MaxLength(80) primaryLanguage?: string;
+  @IsOptional() @IsString() @MaxLength(80) secondaryLanguage?: string;
+  @IsOptional() @IsString() @MaxLength(1000) emergencyContact?: string;
   @IsOptional() @IsString() birthDate?: string;
   @IsString() hireDate!: string;
   @IsUUID() departmentId!: string;

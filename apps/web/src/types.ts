@@ -2,6 +2,7 @@ export type EstablishmentType = 'Restaurant' | 'EHPAD' | 'Collectivité' | 'Hôt
 export type TeamSize = '1-5' | '6-10' | '11-20' | '20+';
 export type HrCountryCode = 'FR' | 'FI';
 export type RegulatoryCountryCode = 'FR' | 'FI';
+export type RegulatorySector = 'PRIVATE' | 'PUBLIC';
 export type EmploymentFramework = 'PRIVATE' | 'PUBLIC' | 'MIXED' | 'LOCAL' | 'CUSTOM';
 
 export interface CompleteOnboardingPayload {
@@ -13,6 +14,8 @@ export interface CompleteOnboardingPayload {
   organizationName: string;
   establishmentType?: EstablishmentType;
   hrCountryCode?: HrCountryCode;
+  regulatoryCountryCode?: RegulatoryCountryCode;
+  regulatorySector?: RegulatorySector;
   teamSize?: TeamSize;
   logoDataUrl?: string;
   mistralApiKey?: string;
@@ -140,6 +143,7 @@ export interface UserSession {
     organizationType?: EstablishmentType | null;
     hrCountryCode?: HrCountryCode | null;
     regulatoryCountryCode?: RegulatoryCountryCode | null;
+    regulatorySector?: RegulatorySector | null;
     regulatoryCountrySelectedAt?: string | null;
     regulatoryCountrySelectedById?: string | null;
     teamSize?: TeamSize | null;
@@ -213,6 +217,7 @@ export interface DashboardSummary {
     establishmentType?: EstablishmentType | null;
     hrCountryCode?: HrCountryCode | null;
     regulatoryCountryCode?: RegulatoryCountryCode | null;
+    regulatorySector?: RegulatorySector | null;
     regulatoryCountrySelectedAt?: string | null;
     regulatoryCountrySelectedById?: string | null;
     teamSize?: TeamSize | null;
@@ -483,6 +488,12 @@ export interface HrCollaborator {
   email?: string | null;
   phone?: string | null;
   address?: string | null;
+  postalCode?: string | null;
+  city?: string | null;
+  country?: string | null;
+  primaryLanguage?: string | null;
+  secondaryLanguage?: string | null;
+  emergencyContact?: string | null;
   birthDate?: string | null;
   hireDate: string;
   departmentId?: string | null;
@@ -544,6 +555,12 @@ export interface HrCollaboratorPayload {
   email?: string;
   phone?: string;
   address?: string;
+  postalCode?: string;
+  city?: string;
+  country?: string;
+  primaryLanguage?: string;
+  secondaryLanguage?: string;
+  emergencyContact?: string;
   birthDate?: string;
   hireDate: string;
   departmentId: string;
@@ -991,6 +1008,7 @@ export interface PlanningEntitlementRule {
 export interface PlanningEntitlementSetup {
   hrCountryCode?: HrCountryCode | null;
   regulatoryCountryCode?: RegulatoryCountryCode | null;
+  regulatorySector?: RegulatorySector | null;
   organizationType?: EstablishmentType | string | null;
   catalogPrepared?: boolean;
   catalogCount?: number;

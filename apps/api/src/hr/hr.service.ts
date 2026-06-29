@@ -683,8 +683,77 @@ export class HrService {
   private cleanText(value?: string | null) { return value && value.trim() ? value : null; }
   private sameLabel(a?: string | null, b?: string | null) { return this.normalizeLabel(a) === this.normalizeLabel(b); }
   private normalizeLabel(value?: string | null) { return (value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim(); }
-  private employeeData(organizationId: string, dto: UpsertHrEmployeeDto): Prisma.HrEmployeeUncheckedCreateInput { return { organizationId, firstName: dto.firstName, lastName: dto.lastName, photoDataUrl: this.cleanText(dto.photoDataUrl), email: this.cleanText(dto.email), phone: this.cleanText(dto.phone), address: this.cleanText(dto.address), birthDate: this.optionalDate(dto.birthDate, 'Date de naissance'), hireDate: this.requiredDate(dto.hireDate, 'Date d\'embauche'), departmentId: dto.departmentId, positionId: dto.positionId, mainSiteId: this.cleanText(dto.mainSiteId), employeeNumber: this.cleanText(dto.employeeNumber), notes: this.cleanText(dto.notes), status: dto.status ?? HrEmployeeStatus.ACTIVE, userId: this.cleanText(dto.userId), managerId: this.cleanText(dto.managerId), contractType: this.cleanText(dto.contractType), contractEndDate: this.optionalDate(dto.contractEndDate, 'Date de fin de contrat'), trialEndDate: this.optionalDate(dto.trialEndDate, 'Date de fin de période d\'essai'), contractWeeklyMinutes: dto.contractWeeklyMinutes ?? null, hourlyRate: dto.hourlyRate != null && Number.isFinite(dto.hourlyRate) ? new Prisma.Decimal(dto.hourlyRate) : null, currency: this.cleanText(dto.currency), rateEffectiveDate: this.optionalDate(dto.rateEffectiveDate, 'Date d\'effet'), nextReviewDate: this.optionalDate(dto.nextReviewDate, 'Date de prochaine revalorisation'), reviewFrequency: this.cleanText(dto.reviewFrequency) }; }
-  private employeeUpdateData(dto: UpsertHrEmployeeDto): Prisma.HrEmployeeUncheckedUpdateInput { return { firstName: dto.firstName, lastName: dto.lastName, photoDataUrl: this.cleanText(dto.photoDataUrl), email: this.cleanText(dto.email), phone: this.cleanText(dto.phone), address: this.cleanText(dto.address), birthDate: this.optionalDate(dto.birthDate, 'Date de naissance'), hireDate: this.requiredDate(dto.hireDate, 'Date d\'embauche'), departmentId: dto.departmentId, positionId: dto.positionId, mainSiteId: this.cleanText(dto.mainSiteId), employeeNumber: this.cleanText(dto.employeeNumber), notes: this.cleanText(dto.notes), status: dto.status ?? HrEmployeeStatus.ACTIVE, userId: this.cleanText(dto.userId), managerId: this.cleanText(dto.managerId), contractType: this.cleanText(dto.contractType), contractEndDate: this.optionalDate(dto.contractEndDate, 'Date de fin de contrat'), trialEndDate: this.optionalDate(dto.trialEndDate, 'Date de fin de période d\'essai'), contractWeeklyMinutes: dto.contractWeeklyMinutes ?? null, hourlyRate: dto.hourlyRate != null && Number.isFinite(dto.hourlyRate) ? new Prisma.Decimal(dto.hourlyRate) : null, currency: this.cleanText(dto.currency), rateEffectiveDate: this.optionalDate(dto.rateEffectiveDate, 'Date d\'effet'), nextReviewDate: this.optionalDate(dto.nextReviewDate, 'Date de prochaine revalorisation'), reviewFrequency: this.cleanText(dto.reviewFrequency) }; }
+  private employeeData(organizationId: string, dto: UpsertHrEmployeeDto): Prisma.HrEmployeeUncheckedCreateInput {
+    return {
+      organizationId,
+      firstName: dto.firstName,
+      lastName: dto.lastName,
+      photoDataUrl: this.cleanText(dto.photoDataUrl),
+      email: this.cleanText(dto.email),
+      phone: this.cleanText(dto.phone),
+      address: this.cleanText(dto.address),
+      postalCode: this.cleanText(dto.postalCode),
+      city: this.cleanText(dto.city),
+      country: this.cleanText(dto.country),
+      primaryLanguage: this.cleanText(dto.primaryLanguage),
+      secondaryLanguage: this.cleanText(dto.secondaryLanguage),
+      emergencyContact: this.cleanText(dto.emergencyContact),
+      birthDate: this.optionalDate(dto.birthDate, 'Date de naissance'),
+      hireDate: this.requiredDate(dto.hireDate, 'Date d\'embauche'),
+      departmentId: dto.departmentId,
+      positionId: dto.positionId,
+      mainSiteId: this.cleanText(dto.mainSiteId),
+      employeeNumber: this.cleanText(dto.employeeNumber),
+      notes: this.cleanText(dto.notes),
+      status: dto.status ?? HrEmployeeStatus.ACTIVE,
+      userId: this.cleanText(dto.userId),
+      managerId: this.cleanText(dto.managerId),
+      contractType: this.cleanText(dto.contractType),
+      contractEndDate: this.optionalDate(dto.contractEndDate, 'Date de fin de contrat'),
+      trialEndDate: this.optionalDate(dto.trialEndDate, 'Date de fin de période d\'essai'),
+      contractWeeklyMinutes: dto.contractWeeklyMinutes ?? null,
+      hourlyRate: dto.hourlyRate != null && Number.isFinite(dto.hourlyRate) ? new Prisma.Decimal(dto.hourlyRate) : null,
+      currency: this.cleanText(dto.currency),
+      rateEffectiveDate: this.optionalDate(dto.rateEffectiveDate, 'Date d\'effet'),
+      nextReviewDate: this.optionalDate(dto.nextReviewDate, 'Date de prochaine revalorisation'),
+      reviewFrequency: this.cleanText(dto.reviewFrequency),
+    };
+  }
+  private employeeUpdateData(dto: UpsertHrEmployeeDto): Prisma.HrEmployeeUncheckedUpdateInput {
+    return {
+      firstName: dto.firstName,
+      lastName: dto.lastName,
+      photoDataUrl: this.cleanText(dto.photoDataUrl),
+      email: this.cleanText(dto.email),
+      phone: this.cleanText(dto.phone),
+      address: this.cleanText(dto.address),
+      postalCode: this.cleanText(dto.postalCode),
+      city: this.cleanText(dto.city),
+      country: this.cleanText(dto.country),
+      primaryLanguage: this.cleanText(dto.primaryLanguage),
+      secondaryLanguage: this.cleanText(dto.secondaryLanguage),
+      emergencyContact: this.cleanText(dto.emergencyContact),
+      birthDate: this.optionalDate(dto.birthDate, 'Date de naissance'),
+      hireDate: this.requiredDate(dto.hireDate, 'Date d\'embauche'),
+      departmentId: dto.departmentId,
+      positionId: dto.positionId,
+      mainSiteId: this.cleanText(dto.mainSiteId),
+      employeeNumber: this.cleanText(dto.employeeNumber),
+      notes: this.cleanText(dto.notes),
+      status: dto.status ?? HrEmployeeStatus.ACTIVE,
+      userId: this.cleanText(dto.userId),
+      managerId: this.cleanText(dto.managerId),
+      contractType: this.cleanText(dto.contractType),
+      contractEndDate: this.optionalDate(dto.contractEndDate, 'Date de fin de contrat'),
+      trialEndDate: this.optionalDate(dto.trialEndDate, 'Date de fin de période d\'essai'),
+      contractWeeklyMinutes: dto.contractWeeklyMinutes ?? null,
+      hourlyRate: dto.hourlyRate != null && Number.isFinite(dto.hourlyRate) ? new Prisma.Decimal(dto.hourlyRate) : null,
+      currency: this.cleanText(dto.currency),
+      rateEffectiveDate: this.optionalDate(dto.rateEffectiveDate, 'Date d\'effet'),
+      nextReviewDate: this.optionalDate(dto.nextReviewDate, 'Date de prochaine revalorisation'),
+      reviewFrequency: this.cleanText(dto.reviewFrequency),
+    };
+  }
   private async syncContractAndCompensation(tx: Tx, organizationId: string, employeeId: string, dto: UpsertHrEmployeeDto, actorId: string) {
     const lastContract = await tx.hrEmploymentContract.findFirst({ where: { employeeId, status: HrContractStatus.ACTIVE }, orderBy: { startDate: 'desc' } });
     const lastCompensation = await tx.hrEmployeeCompensation.findFirst({ where: { employeeId, effectiveTo: null }, orderBy: { effectiveFrom: 'desc' } });

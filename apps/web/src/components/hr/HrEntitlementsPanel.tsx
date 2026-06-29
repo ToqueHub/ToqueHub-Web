@@ -11,6 +11,7 @@ import type {
   PlanningEntitlementCatalogItem,
   PlanningEntitlementCatalogResponse,
   RegulatoryCountryCode,
+  RegulatorySector,
 } from '../../types';
 
 type RightsFilter =
@@ -61,6 +62,7 @@ type Props = {
   positions: HrPosition[];
   canWrite: boolean;
   regulatoryCountryCode?: RegulatoryCountryCode | null;
+  regulatorySector?: RegulatorySector | null;
   onConfigureRegulatoryCountry?: () => void;
 };
 
@@ -265,17 +267,36 @@ function filterMatches(card: UnifiedRightCard, filter: RightsFilter) {
   return true;
 }
 
+function sectorLabel(sector?: RegulatorySector | null) {
+  if (sector === 'PRIVATE') return 'Secteur privé';
+  if (sector === 'PUBLIC') return 'Secteur public';
+  return 'Secteur non configuré';
+}
+
+function legalRegimeForFilter(filter?: RightsFilter | null) {
+  if (filter === 'private') return 'private';
+  if (filter === 'public') return 'public';
+  return 'all';
+}
+
+function employmentFrameworkForFilter(filter?: RightsFilter | null) {
+  if (filter === 'private') return 'PRIVATE';
+  if (filter === 'public') return 'PUBLIC';
+  return undefined;
+}
+
 export function HrEntitlementsPanel({
   token,
   canWrite,
   regulatoryCountryCode,
+  regulatorySector,
   onConfigureRegulatoryCountry,
 }: Props) {
   const [catalog, setCatalog] = useState<PlanningEntitlementCatalogResponse | null>(null);
   const [diagnostics, setDiagnostics] = useState<LegalRightsDiagnosticsResponse | null>(null);
   const [legalResults, setLegalResults] = useState<LegalRightSearchItem[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeFilter, setActiveFilter] = useState<RightsFilter>('all');
+  const [activeFilter, setActiveFilter] = useState<RightsFilter | null>(null);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -286,12 +307,12 @@ export function HrEntitlementsPanel({
     setLoading(true);
     try {
       const [nextCatalog, nextDiagnostics, nextLegal] = await Promise.all([
-        api.hrEntitlementCatalog(token, { search: query.trim() || undefined }),
+        api.hrEntitlementCatalog(token, { search: query.trim() || undefined, employmentFramework: employmentFrameworkForFilter(activeFilter) }),
         api.legalRightsDiagnostics(token),
         regulatoryCountryCode
           ? api.legalRightsSearch(token, {
               query: query.trim() || undefined,
-              regime: 'all',
+              regime: legalRegimeForFilter(activeFilter),
               status: 'all',
               includeRequiresReview: true,
             })
@@ -308,11 +329,12 @@ export function HrEntitlementsPanel({
   }
 
   useEffect(() => {
+    if (!activeFilter || !regulatoryCountryCode || !regulatorySector) return;
     const timer = window.setTimeout(() => {
       void loadData(searchTerm);
     }, 220);
     return () => window.clearTimeout(timer);
-  }, [searchTerm, token, regulatoryCountryCode]);
+  }, [searchTerm, token, regulatoryCountryCode, regulatorySector, activeFilter]);
 
   const cards = useMemo(() => {
     const catalogItems = catalog?.items ?? [];
@@ -342,21 +364,24 @@ export function HrEntitlementsPanel({
       .map(buildInternalCard);
 
     return [...legalCards, ...manualCards]
-      .filter((card) => filterMatches(card, activeFilter))
+      .filter((card) => activeFilter ? filterMatches(card, activeFilter) : false)
       .filter((card) => !searchTerm.trim() || card.searchText.includes(normalizeText(searchTerm)))
       .sort((a, b) => {
         if (a.activated !== b.activated) return a.activated ? -1 : 1;
         if (a.requiresReview !== b.requiresReview) return a.requiresReview ? 1 : -1;
         return a.title.localeCompare(b.title, 'fr');
       });
-  }, [catalog?.items, legalResults, activeFilter, searchTerm]);
+  }, [catalog?.items, legalResults, activeFilter, searchTerm, regulatorySector]);
 
   const country = countryLabel(regulatoryCountryCode);
-  const rightsCount = diagnostics?.legalBase?.rightsCount ?? legalResults.length;
+  const visibleFilters = FILTERS;
+  const hasSelectedFilter = Boolean(activeFilter);
+  const rightsCount = hasSelectedFilter ? cards.length : null;
   const configuredCount = diagnostics?.establishmentConfigurations?.enabled ?? catalog?.counts.active ?? 0;
   const organizationType = catalog?.setup.organizationType ? String(catalog.setup.organizationType) : 'Restaurant / Café';
   const emptyCountry = !regulatoryCountryCode;
-  const finlandPending = regulatoryCountryCode === 'FI' && rightsCount === 0;
+  const emptySector = !regulatorySector;
+  const finlandPending = hasSelectedFilter && regulatoryCountryCode === 'FI' && rightsCount === 0;
 
   async function activateCard(card: UnifiedRightCard) {
     if (!canWrite) return;
@@ -368,7 +393,7 @@ export function HrEntitlementsPanel({
       } else if (card.catalogItemId) {
         await api.activateHrEntitlementCatalogItem(token, card.catalogItemId, { targetMode: 'NONE' });
       }
-      await loadData(searchTerm);
+      if (activeFilter) await loadData(searchTerm);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Activation impossible');
     } finally {
@@ -402,7 +427,8 @@ export function HrEntitlementsPanel({
           <div>
             <h2>Droits salariés</h2>
             <p>
-              {country} · {organizationType} · {rightsCount} droits disponibles · {configuredCount} configurés
+              {country} · {sectorLabel(regulatorySector)} · {organizationType}
+              {hasSelectedFilter && rightsCount !== null ? ` · ${rightsCount} droits disponibles · ${configuredCount} configurés` : ' · choisissez un sous-onglet'}
             </p>
           </div>
         </div>
@@ -423,7 +449,7 @@ export function HrEntitlementsPanel({
           />
         </label>
         <div className="rights-filter-row" aria-label="Filtres droits salariés">
-          {FILTERS.map((filter) => (
+          {visibleFilters.map((filter) => (
             <button
               key={filter.key}
               type="button"
@@ -446,6 +472,14 @@ export function HrEntitlementsPanel({
             <button type="button" onClick={onConfigureRegulatoryCountry}>Configurer le pays</button>
           ) : null}
         </div>
+      ) : emptySector ? (
+        <div className="rights-empty-state">
+          <strong>Secteur non configuré</strong>
+          <span>Choisissez Secteur privé ou Secteur public dans Organisation &gt; Général pour afficher uniquement les droits correspondants.</span>
+          {onConfigureRegulatoryCountry ? (
+            <button type="button" onClick={onConfigureRegulatoryCountry}>Configurer le secteur</button>
+          ) : null}
+        </div>
       ) : finlandPending ? (
         <div className="rights-empty-state">
           <strong>Base Finlande en préparation</strong>
@@ -453,7 +487,14 @@ export function HrEntitlementsPanel({
         </div>
       ) : null}
 
-      {!emptyCountry && !finlandPending ? (
+      {!emptyCountry && !emptySector && !finlandPending && !hasSelectedFilter ? (
+        <div className="rights-empty-state">
+          <strong>Sélectionnez un sous-onglet</strong>
+          <span>Les droits ne sont chargés qu’au clic sur Tous, Activés, Disponibles, À valider ou une catégorie afin de garder l’affichage rapide.</span>
+        </div>
+      ) : null}
+
+      {!emptyCountry && !emptySector && !finlandPending && hasSelectedFilter ? (
         <>
           <div className="rights-catalog-meta">
             <span>{loading ? 'Chargement…' : `${cards.length} résultat(s)`}</span>

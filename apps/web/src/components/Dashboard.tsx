@@ -119,6 +119,8 @@ import type {
   Supplier,
   Unit,
   UserSession,
+  EstablishmentType,
+  TeamSize,
   CoreUser,
   CoreRole,
   CorePermission,
@@ -2312,6 +2314,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   onboarding={hrOnboarding}
                   token={token}
                   regulatoryCountryCode={dashboardSummary?.organization.regulatoryCountryCode ?? session.user.regulatoryCountryCode ?? null}
+                  regulatorySector={dashboardSummary?.organization.regulatorySector ?? session.user.regulatorySector ?? null}
                   canWrite={canWriteHr}
                   loading={isLoading}
                   onNavigate={(next) => setActiveTab(next === 'collaborators' ? 'hr-collaborators' : next === 'departments' ? 'hr-departments' : next === 'positions' ? 'hr-positions' : next === 'rights' ? 'hr-rights' : next === 'rotations' ? 'hr-rotations' : next === 'orgchart' ? 'hr-orgchart' : 'hr-dashboard')}
@@ -6181,10 +6184,23 @@ function BackupRestorePage({ token, onRestoreComplete }: { token: string; onRest
 }
 
 type SettingsSubTab = 'general' | 'users' | 'architecture' | 'backups' | 'api-keys' | 'core';
+type OrganizationSettingModal = 'name' | 'establishmentType' | 'teamSize' | 'regulatoryCountry' | 'regulatorySector' | null;
+
+const establishmentTypeOptions: EstablishmentType[] = ['Restaurant', 'EHPAD', 'Collectivité', 'Hôtel', 'Traiteur', 'Cuisine centrale', 'Autre'];
+const teamSizeOptions: Array<{ label: string; value: TeamSize }> = [
+  { label: '1 à 5 personnes', value: '1-5' },
+  { label: '6 à 10 personnes', value: '6-10' },
+  { label: '11 à 20 personnes', value: '11-20' },
+  { label: 'Plus de 20 personnes', value: '20+' },
+];
 
 function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKeysSaved, onSettingsSaved, onOpenUsers, onRestoreComplete, isAdmin = false }: { session: UserSession; token: string; dashboardSummary?: DashboardSummary; focusApiKeys?: boolean; onApiKeysSaved?: () => void; onSettingsSaved?: () => void; onOpenUsers?: () => void; onRestoreComplete: () => void; isAdmin?: boolean }) {
   const organization = dashboardSummary?.organization;
+  const organizationName = organization?.name ?? session.user.organizationName ?? 'Organisation';
+  const organizationType = organization?.establishmentType ?? session.user.organizationType ?? null;
+  const organizationTeamSize = organization?.teamSize ?? session.user.teamSize ?? null;
   const regulatoryCountryCode = organization?.regulatoryCountryCode ?? session.user.regulatoryCountryCode ?? null;
+  const regulatorySector = organization?.regulatorySector ?? session.user.regulatorySector ?? null;
   const initialConfigured = organization?.apiKeys?.mistral.configured ?? session.user.apiKeys?.mistral.configured ?? false;
   const initialMasked = organization?.apiKeys?.mistral.masked ?? session.user.apiKeys?.mistral.masked;
   const [mistralKey, setMistralKey] = useState('');
@@ -6194,9 +6210,19 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
   const [apiKeyError, setApiKeyError] = useState<string>();
   const [savingApiKey, setSavingApiKey] = useState(false);
   const [regulatoryCountryDraft, setRegulatoryCountryDraft] = useState<string>(regulatoryCountryCode ?? '');
+  const [regulatorySectorDraft, setRegulatorySectorDraft] = useState<string>(regulatorySector ?? '');
   const [regulatoryCountryMessage, setRegulatoryCountryMessage] = useState<string>();
   const [regulatoryCountryError, setRegulatoryCountryError] = useState<string>();
   const [savingRegulatoryCountry, setSavingRegulatoryCountry] = useState(false);
+  const [editingSetting, setEditingSetting] = useState<OrganizationSettingModal>(null);
+  const [identityDraft, setIdentityDraft] = useState({
+    name: organizationName,
+    establishmentType: organizationType ?? '',
+    teamSize: organizationTeamSize ?? '',
+  });
+  const [identityMessage, setIdentityMessage] = useState<string>();
+  const [identityError, setIdentityError] = useState<string>();
+  const [savingIdentity, setSavingIdentity] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState<SettingsSubTab>(() => {
     return focusApiKeys ? 'api-keys' : 'general';
   });
@@ -6208,7 +6234,16 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
 
   useEffect(() => {
     setRegulatoryCountryDraft(regulatoryCountryCode ?? '');
-  }, [regulatoryCountryCode]);
+    setRegulatorySectorDraft(regulatorySector ?? '');
+  }, [regulatoryCountryCode, regulatorySector]);
+
+  useEffect(() => {
+    setIdentityDraft({
+      name: organizationName,
+      establishmentType: organizationType ?? '',
+      teamSize: organizationTeamSize ?? '',
+    });
+  }, [organizationName, organizationType, organizationTeamSize]);
 
   useEffect(() => {
     if (focusApiKeys) {
@@ -6234,8 +6269,35 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
     }
   }
 
-  async function saveRegulatoryCountry() {
+  async function saveOrganizationIdentity() {
+    setSavingIdentity(true);
+    setIdentityError(undefined);
+    setIdentityMessage(undefined);
+    try {
+      const payload: { name?: string; establishmentType?: string | null; teamSize?: string | null } = {};
+      if (editingSetting === 'name') {
+        if (!identityDraft.name.trim()) {
+          setIdentityError('Le nom de l’établissement est requis.');
+          return;
+        }
+        payload.name = identityDraft.name.trim();
+      }
+      if (editingSetting === 'establishmentType') payload.establishmentType = identityDraft.establishmentType || null;
+      if (editingSetting === 'teamSize') payload.teamSize = identityDraft.teamSize || null;
+      await api.updateOrganizationIdentity(token, payload);
+      setIdentityMessage('Réglage enregistré.');
+      setEditingSetting(null);
+      onSettingsSaved?.();
+    } catch (err) {
+      setIdentityError(err instanceof Error ? err.message : 'Impossible d’enregistrer ce réglage.');
+    } finally {
+      setSavingIdentity(false);
+    }
+  }
+
+  async function saveRegulatoryCountry(closeOnSuccess = false) {
     const next = regulatoryCountryDraft || null;
+    const nextSector = regulatorySectorDraft || null;
     if (regulatoryCountryCode && next && next !== regulatoryCountryCode) {
       const confirmed = window.confirm('Changer le pays de réglementation peut modifier les droits salariés, les conventions, les jours fériés et les contrôles planning utilisés par l’organisation. Les anciens calculs doivent rester historisés.');
       if (!confirmed) return;
@@ -6244,7 +6306,7 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
     setRegulatoryCountryError(undefined);
     setRegulatoryCountryMessage(undefined);
     try {
-      await api.updateOrganizationRegulatoryCountry(token, { regulatoryCountryCode: next as 'FR' | 'FI' | null });
+      await api.updateOrganizationRegulatoryCountry(token, { regulatoryCountryCode: next as 'FR' | 'FI' | null, regulatorySector: nextSector as 'PRIVATE' | 'PUBLIC' | null });
       if (next === 'FR') {
         try {
           await api.importLegalRightsFrance(token);
@@ -6252,7 +6314,8 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
           // L'import reste relançable depuis RH > Droits si la base n'est pas disponible.
         }
       }
-      setRegulatoryCountryMessage(next ? `Pays de réglementation enregistré : ${countryLabel(next)}.` : 'Pays de réglementation réinitialisé.');
+      setRegulatoryCountryMessage(next ? `Réglementation enregistrée : ${countryLabel(next)} · ${sectorLabel(nextSector)}.` : 'Pays de réglementation réinitialisé.');
+      if (closeOnSuccess) setEditingSetting(null);
       onSettingsSaved?.();
     } catch (err) {
       setRegulatoryCountryError(err instanceof Error ? err.message : 'Impossible d’enregistrer le pays de réglementation.');
@@ -6371,41 +6434,41 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
               <div className="card-modern" style={{ padding: '1.5rem' }}>
                 <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}><Building2 size={18} /> Détails de l'Organisation</span>
                 <p className="muted" style={{ fontSize: '0.85rem', marginBottom: '1.5rem' }}>Ces informations définissent l'identité et la taille de votre structure ToqueHub.</p>
-                {!regulatoryCountryCode ? (
+                {!regulatoryCountryCode || !regulatorySector ? (
                   <div className="alert-modern error" style={{ marginBottom: '1.25rem' }}>
                     <AlertCircle size={16} />
-                    <span>Choisissez le pays de réglementation pour charger les droits RH, conventions, jours fériés et contrôles planning applicables.</span>
+                    <span>Choisissez le pays de réglementation et le secteur pour charger les droits RH, conventions, jours fériés et contrôles planning applicables.</span>
                   </div>
                 ) : null}
 
                 <div className="settings-grid-premium">
-                  <div className="info-card-premium">
+                  <div role="button" tabIndex={0} className="info-card-premium" onClick={() => setEditingSetting('name')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setEditingSetting('name'); }} style={{ cursor: 'pointer' }}>
                     <div className="info-card-premium-header">
                       <span className="info-card-premium-label">Nom Établissement</span>
                       <span className="info-card-premium-icon"><Building2 size={16} /></span>
                     </div>
                     <div className="info-card-premium-value">
-                      {organization?.name ?? session.user.organizationName ?? 'Organisation'}
+                      {organizationName}
                     </div>
                   </div>
 
-                  <div className="info-card-premium">
+                  <div role="button" tabIndex={0} className="info-card-premium" onClick={() => setEditingSetting('establishmentType')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setEditingSetting('establishmentType'); }} style={{ cursor: 'pointer' }}>
                     <div className="info-card-premium-header">
                       <span className="info-card-premium-label">Secteur / Type</span>
                       <span className="info-card-premium-icon"><BriefcaseBusiness size={16} /></span>
                     </div>
                     <div className="info-card-premium-value">
-                      {organization?.establishmentType ?? session.user.organizationType ?? 'Non renseigné'}
+                      {organizationType ?? 'Non renseigné'}
                     </div>
                   </div>
 
-                  <div className="info-card-premium">
+                  <div role="button" tabIndex={0} className="info-card-premium" onClick={() => setEditingSetting('teamSize')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setEditingSetting('teamSize'); }} style={{ cursor: 'pointer' }}>
                     <div className="info-card-premium-header">
                       <span className="info-card-premium-label">Taille de l'équipe</span>
                       <span className="info-card-premium-icon"><UsersRound size={16} /></span>
                     </div>
                     <div className="info-card-premium-value">
-                      {organization?.teamSize ?? session.user.teamSize ?? 'Non renseigné'}
+                      {organizationTeamSize ?? 'Non renseigné'}
                     </div>
                   </div>
 
@@ -6419,7 +6482,7 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
                     </div>
                   </div>
 
-                  <div className="info-card-premium">
+                  <div role="button" tabIndex={0} className="info-card-premium" onClick={() => setEditingSetting('regulatoryCountry')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setEditingSetting('regulatoryCountry'); }} style={{ cursor: 'pointer' }}>
                     <div className="info-card-premium-header">
                       <span className="info-card-premium-label">Pays de réglementation</span>
                       <span className="info-card-premium-icon"><Scale size={16} /></span>
@@ -6431,29 +6494,22 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
                       {regulatoryCountryCode ? 'Configuré' : 'À configurer'}
                     </span>
                   </div>
-                </div>
 
-                <div className="planning-need-form" style={{ marginTop: '1.25rem' }}>
-                  <strong>Choisir le pays de réglementation</strong>
-                  <p className="muted">Ce pays détermine les règles RH, droits salariés, conventions, jours fériés et contrôles planning utilisés par ToqueHub. Il ne modifie pas la langue de l’interface.</p>
-                  <div className="planning-form-row">
-                    <label className="planning-field">Pays
-                      <select value={regulatoryCountryDraft} disabled={savingRegulatoryCountry} onChange={(event) => setRegulatoryCountryDraft(event.target.value)}>
-                        <option value="">Non sélectionné</option>
-                        <option value="FR">France</option>
-                        <option value="FI">Finlande</option>
-                      </select>
-                    </label>
-                    <div className="setup-actions" style={{ alignSelf: 'end', marginTop: 0 }}>
-                      <button type="button" className="btn btn-primary" disabled={savingRegulatoryCountry || regulatoryCountryDraft === (regulatoryCountryCode ?? '')} onClick={() => void saveRegulatoryCountry()}>
-                        {savingRegulatoryCountry ? 'Enregistrement...' : regulatoryCountryCode ? 'Modifier' : 'Valider le pays'}
-                      </button>
+                  <div role="button" tabIndex={0} className="info-card-premium" onClick={() => setEditingSetting('regulatorySector')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setEditingSetting('regulatorySector'); }} style={{ cursor: 'pointer' }}>
+                    <div className="info-card-premium-header">
+                      <span className="info-card-premium-label">Secteur</span>
+                      <span className="info-card-premium-icon"><BriefcaseBusiness size={16} /></span>
                     </div>
+                    <div className="info-card-premium-value">
+                      {sectorLabel(regulatorySector)}
+                    </div>
+                    <span className={`badge ${regulatorySector ? 'badge-reception' : 'badge-correction'}`} style={{ width: 'fit-content', marginTop: '0.65rem' }}>
+                      {regulatorySector ? 'Configuré' : 'À configurer'}
+                    </span>
                   </div>
-                  {regulatoryCountryDraft === 'FI' ? <p className="muted">La structure Finlande est prête côté paramétrage ; la base légale Finlande sera affichée lorsqu’elle sera importée.</p> : null}
-                  {regulatoryCountryMessage ? <div className="alert-modern success"><CheckCircle2 size={16} /> {regulatoryCountryMessage}</div> : null}
-                  {regulatoryCountryError ? <div className="alert-modern error"><AlertCircle size={16} /> {regulatoryCountryError}</div> : null}
                 </div>
+                {identityMessage ? <div className="alert-modern success" style={{ marginTop: '1rem' }}><CheckCircle2 size={16} /> {identityMessage}</div> : null}
+                {regulatoryCountryMessage ? <div className="alert-modern success" style={{ marginTop: '1rem' }}><CheckCircle2 size={16} /> {regulatoryCountryMessage}</div> : null}
               </div>
 
               <div className="card-modern" style={{ padding: '1.5rem', background: 'linear-gradient(135deg, rgba(16,185,129,0.04) 0%, rgba(59,130,246,0.04) 100%)', border: '1px solid rgba(16,185,129,0.1)' }}>
@@ -6662,6 +6718,104 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
           )}
         </div>
       </div>
+
+      <Modal
+        isOpen={editingSetting !== null}
+        onClose={() => {
+          setEditingSetting(null);
+          setIdentityError(undefined);
+          setRegulatoryCountryError(undefined);
+        }}
+        title={
+          editingSetting === 'name' ? 'Modifier le nom de l’établissement'
+            : editingSetting === 'establishmentType' ? 'Modifier le type d’établissement'
+              : editingSetting === 'teamSize' ? 'Modifier la taille de l’équipe'
+                : editingSetting === 'regulatoryCountry' ? 'Modifier le pays de réglementation'
+                  : editingSetting === 'regulatorySector' ? 'Modifier le secteur'
+                    : 'Modifier le réglage'
+        }
+      >
+        {editingSetting === 'name' ? (
+          <form onSubmit={(event) => { event.preventDefault(); void saveOrganizationIdentity(); }} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {identityError ? <div className="alert-modern error"><AlertCircle size={16} /> {identityError}</div> : null}
+            <label>Nom de l’établissement
+              <input value={identityDraft.name} onChange={(event) => setIdentityDraft((current) => ({ ...current, name: event.target.value }))} autoFocus />
+            </label>
+            <div className="modal-footer" style={{ margin: '1rem -1.75rem -1.75rem' }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setEditingSetting(null)}>Annuler</button>
+              <button className="btn btn-primary" disabled={savingIdentity || !identityDraft.name.trim()}>{savingIdentity ? 'Enregistrement...' : 'Enregistrer'}</button>
+            </div>
+          </form>
+        ) : null}
+
+        {editingSetting === 'establishmentType' ? (
+          <form onSubmit={(event) => { event.preventDefault(); void saveOrganizationIdentity(); }} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {identityError ? <div className="alert-modern error"><AlertCircle size={16} /> {identityError}</div> : null}
+            <label>Type d’établissement
+              <select value={identityDraft.establishmentType} onChange={(event) => setIdentityDraft((current) => ({ ...current, establishmentType: event.target.value }))} autoFocus>
+                <option value="">Non renseigné</option>
+                {establishmentTypeOptions.map((type) => <option key={type} value={type}>{type}</option>)}
+              </select>
+            </label>
+            <div className="modal-footer" style={{ margin: '1rem -1.75rem -1.75rem' }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setEditingSetting(null)}>Annuler</button>
+              <button className="btn btn-primary" disabled={savingIdentity}>{savingIdentity ? 'Enregistrement...' : 'Enregistrer'}</button>
+            </div>
+          </form>
+        ) : null}
+
+        {editingSetting === 'teamSize' ? (
+          <form onSubmit={(event) => { event.preventDefault(); void saveOrganizationIdentity(); }} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {identityError ? <div className="alert-modern error"><AlertCircle size={16} /> {identityError}</div> : null}
+            <label>Taille de l’équipe
+              <select value={identityDraft.teamSize} onChange={(event) => setIdentityDraft((current) => ({ ...current, teamSize: event.target.value }))} autoFocus>
+                <option value="">Non renseigné</option>
+                {teamSizeOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              </select>
+            </label>
+            <div className="modal-footer" style={{ margin: '1rem -1.75rem -1.75rem' }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setEditingSetting(null)}>Annuler</button>
+              <button className="btn btn-primary" disabled={savingIdentity}>{savingIdentity ? 'Enregistrement...' : 'Enregistrer'}</button>
+            </div>
+          </form>
+        ) : null}
+
+        {editingSetting === 'regulatoryCountry' ? (
+          <form onSubmit={(event) => { event.preventDefault(); void saveRegulatoryCountry(true); }} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {regulatoryCountryError ? <div className="alert-modern error"><AlertCircle size={16} /> {regulatoryCountryError}</div> : null}
+            <label>Pays de réglementation
+              <select value={regulatoryCountryDraft} disabled={savingRegulatoryCountry} onChange={(event) => setRegulatoryCountryDraft(event.target.value)} autoFocus>
+                <option value="">Non sélectionné</option>
+                <option value="FR">France</option>
+                <option value="FI">Finlande</option>
+              </select>
+            </label>
+            <p className="muted" style={{ margin: 0 }}>Ce pays détermine les règles RH, conventions, jours fériés et contrôles planning.</p>
+            <div className="modal-footer" style={{ margin: '1rem -1.75rem -1.75rem' }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setEditingSetting(null)}>Annuler</button>
+              <button className="btn btn-primary" disabled={savingRegulatoryCountry || regulatoryCountryDraft === (regulatoryCountryCode ?? '')}>{savingRegulatoryCountry ? 'Enregistrement...' : 'Enregistrer'}</button>
+            </div>
+          </form>
+        ) : null}
+
+        {editingSetting === 'regulatorySector' ? (
+          <form onSubmit={(event) => { event.preventDefault(); void saveRegulatoryCountry(true); }} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {regulatoryCountryError ? <div className="alert-modern error"><AlertCircle size={16} /> {regulatoryCountryError}</div> : null}
+            <label>Secteur
+              <select value={regulatorySectorDraft} disabled={savingRegulatoryCountry} onChange={(event) => setRegulatorySectorDraft(event.target.value)} autoFocus>
+                <option value="">Non sélectionné</option>
+                <option value="PRIVATE">Secteur privé</option>
+                <option value="PUBLIC">Secteur public</option>
+              </select>
+            </label>
+            <p className="muted" style={{ margin: 0 }}>Le secteur filtre les droits RH proposés et affichés dans le module RH.</p>
+            <div className="modal-footer" style={{ margin: '1rem -1.75rem -1.75rem' }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setEditingSetting(null)}>Annuler</button>
+              <button className="btn btn-primary" disabled={savingRegulatoryCountry || regulatorySectorDraft === (regulatorySector ?? '')}>{savingRegulatoryCountry ? 'Enregistrement...' : 'Enregistrer'}</button>
+            </div>
+          </form>
+        ) : null}
+      </Modal>
     </div>
   );
 }
@@ -6669,6 +6823,12 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
 function countryLabel(code?: string | null) {
   if (code === 'FR') return 'France';
   if (code === 'FI') return 'Finlande';
+  return 'Non sélectionné';
+}
+
+function sectorLabel(code?: string | null) {
+  if (code === 'PRIVATE') return 'Secteur privé';
+  if (code === 'PUBLIC') return 'Secteur public';
   return 'Non sélectionné';
 }
 

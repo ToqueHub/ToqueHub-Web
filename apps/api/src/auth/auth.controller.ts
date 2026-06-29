@@ -10,6 +10,7 @@ import { BootstrapAdminDto } from './dto/bootstrap-admin.dto';
 import { SetupOrganizationDto } from './dto/setup-organization.dto';
 import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
 import { UpdateOrganizationApiKeysDto } from './dto/api-keys.dto';
+import { UpdateOrganizationIdentityDto } from './dto/organization-identity.dto';
 import { UpdateRegulatoryCountryDto } from './dto/regulatory-country.dto';
 import { LoginDto } from './dto/login.dto';
 
@@ -85,6 +86,14 @@ export class AuthController {
   @ApiOkResponse({ description: 'Updates organization API keys used server-side.' })
   updateOrganizationApiKeys(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateOrganizationApiKeysDto) {
     return this.authService.updateOrganizationApiKeys(user, dto);
+  }
+
+  @Post('organization/identity')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOkResponse({ description: 'Updates organization identity fields displayed in settings.' })
+  updateOrganizationIdentity(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateOrganizationIdentityDto) {
+    return this.authService.updateOrganizationIdentity(user, dto);
   }
 
   @Post('organization/regulatory-country')
