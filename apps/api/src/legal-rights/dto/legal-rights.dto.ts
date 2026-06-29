@@ -65,6 +65,14 @@ export class CalculateLegalRightsDto {
   @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() persist?: boolean;
 }
 
+export class ApplicableEmployeeRightsQueryDto {
+  @IsOptional() @IsString() period_start?: string;
+  @IsOptional() @IsString() periodStart?: string;
+  @IsOptional() @IsString() period_end?: string;
+  @IsOptional() @IsString() periodEnd?: string;
+  @IsOptional() @IsString() effectiveDate?: string;
+}
+
 export class PlanningComplianceCheckDto {
   @IsOptional() @IsUUID() employee_id?: string;
   @IsOptional() @IsUUID() employeeId?: string;

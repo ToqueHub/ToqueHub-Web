@@ -27,7 +27,6 @@ const ASSIGNMENT_INCLUDE = {
   department: true,
   position: true,
   site: true,
-  rotation: true,
   absence: true,
   conflicts: true,
 };
@@ -60,16 +59,15 @@ export class PlanningService {
     const needWhere = this.needWhere(organizationId, q, period, true);
     const templateWhere = { organizationId, isArchived: false, departmentId: q.departmentId, siteId: q.siteId, id: q.seasonalTemplateId, name: q.search ? { contains: q.search, mode: 'insensitive' as const } : undefined };
 
-    const [org, employees, departments, positions, rotations, sites, skills, assignments, needs, templates, templateApplications, replacements, conflicts, notifications, history, absences] = await Promise.all([
+    const [org, employees, departments, positions, sites, skills, assignments, needs, templates, templateApplications, replacements, conflicts, notifications, history, absences] = await Promise.all([
       this.prisma.organization.findUnique({ where: { id: organizationId }, select: { hrInstalledAt: true, planningInstalledAt: true } }),
       this.prisma.hrEmployee.findMany({
         where: { organizationId, isArchived: false, status: HrEmployeeStatus.ACTIVE, id: q.employeeId },
-        include: { department: true, position: { include: { department: true } }, secondaryPositions: { include: { position: true } }, mainSite: true, rotationAssignments: { where: { endDate: null }, include: { rotation: { include: { department: true } } }, take: 1 }, skills: { include: { skill: true } }, contracts: { orderBy: { startDate: 'desc' }, take: 1 }, compensations: { orderBy: { effectiveFrom: 'desc' }, take: 1 } },
+        include: { department: true, position: { include: { department: true } }, secondaryPositions: { include: { position: true } }, mainSite: true, skills: { include: { skill: true } }, contracts: { orderBy: { startDate: 'desc' }, take: 1 }, compensations: { orderBy: { effectiveFrom: 'desc' }, take: 1 } },
         orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
       }),
       this.prisma.hrDepartment.findMany({ where: { organizationId, isArchived: false, id: q.departmentId }, orderBy: { name: 'asc' } }),
       this.prisma.hrPosition.findMany({ where: { organizationId, isArchived: false, id: q.positionId, departmentId: q.departmentId }, include: { department: true }, orderBy: { name: 'asc' } }),
-      this.listPlanningRotations(organizationId, q),
       this.prisma.site.findMany({ where: { organizationId, isArchived: false, id: q.siteId }, orderBy: { name: 'asc' } }),
       this.prisma.hrSkill.findMany({ where: { organizationId, isArchived: false }, orderBy: { name: 'asc' } }),
       this.prisma.planningAssignment.findMany({ where: assignmentWhere, include: ASSIGNMENT_INCLUDE, orderBy: [{ date: 'asc' }, { startTime: 'asc' }], take: 1000 }),
@@ -90,7 +88,7 @@ export class PlanningService {
     const employeeTemplateAssignments = this.employeeTemplateAssignments(normalizedTemplates, employees);
     const hrReady = !!org?.hrInstalledAt && employees.length > 0 && departments.length > 0 && positions.length > 0;
     const coverage = await this.coverage(organizationId, period.start, period.end);
-    const alerts = this.alerts(conflicts, absences, coverage, rotations, employees);
+    const alerts = this.alerts(conflicts, absences, coverage, weeklyRotations, employees);
     const dashboard = this.dashboardFrom(assignments, employees, departments, conflicts, alerts, coverage, replacements, period);
     const month = this.monthView(period, assignments, normalizedNeeds);
     const attendance = this.attendanceService ? await this.attendanceService.list(organizationId, { month: q.month, year: q.year, startDate: q.startDate, endDate: q.endDate, employeeId: q.employeeId, departmentId: q.departmentId, siteId: q.siteId, pageSize: q.pageSize }) : this.attendancePlaceholder(assignments);
@@ -106,9 +104,9 @@ export class PlanningService {
     (dashboard as any).actions = [...(dashboard.actions ?? []), ...this.periodActions(periodStatus)];
 
     return {
-      meta: { source: 'planning.context', version: 2, period: { month: period.month, year: period.year, startDate: this.iso(period.start), endDate: this.iso(period.end) }, filters: { siteId: q.siteId ?? null, departmentId: q.departmentId ?? null, employeeId: q.employeeId ?? null, seasonalTemplateId: q.seasonalTemplateId ?? null }, temporary: { rotationsSource: 'planning_templates_and_legacy_hr_rotations', employeeTemplateAssignmentsPersistence: 'planning_templates.content', attendancePersistence: Boolean(this.attendanceService), periodStatusPersistence: 'planning_history', dayStatusFallback: 'planning_assignments.comment' } },
+      meta: { source: 'planning.context', version: 2, period: { month: period.month, year: period.year, startDate: this.iso(period.start), endDate: this.iso(period.end) }, filters: { siteId: q.siteId ?? null, departmentId: q.departmentId ?? null, employeeId: q.employeeId ?? null, seasonalTemplateId: q.seasonalTemplateId ?? null }, temporary: { rotationsSource: 'planning_templates', employeeTemplateAssignmentsPersistence: 'planning_templates.content', attendancePersistence: Boolean(this.attendanceService), periodStatusPersistence: 'planning_history', dayStatusFallback: 'planning_assignments.comment' } },
       hrReady,
-      prerequisites: { hrInstalled: !!org?.hrInstalledAt, planningInstalled: !!org?.planningInstalledAt, employees: employees.length, departments: departments.length, positions: positions.length, rotations: rotations.length },
+      prerequisites: { hrInstalled: !!org?.hrInstalledAt, planningInstalled: !!org?.planningInstalledAt, employees: employees.length, departments: departments.length, positions: positions.length, rotations: weeklyRotations.length },
       collaborators: employees,
       employees,
       departments,
@@ -116,7 +114,7 @@ export class PlanningService {
       positions,
       sites,
       skills,
-      rotations,
+      rotations: weeklyRotations,
       assignments,
       needs: normalizedNeeds,
       requirements: normalizedNeeds,
@@ -133,7 +131,7 @@ export class PlanningService {
       dashboard,
       summary: dashboard.summary,
       planning: { month, assignmentsByDate: month.days.reduce((acc, day) => ({ ...acc, [day.date]: day.assignments }), {}), periodStatus },
-      settings: { needs: normalizedNeeds, templates: normalizedTemplates, dayPresets, weeklyRotations, legacyRhRotations: rotations, employeeTemplateAssignments, templateApplications, rotations: weeklyRotations, rules: this.planningRulesCatalog(), payrollRuleProfiles: this.payrollRuleProfilesPlaceholder(), codeDictionary: codeDictionarySummary, policyProfiles: policySummary, notes: ['Les roulements RH restent lisibles temporairement, mais les nouveaux roulements Planning vivent dans planning_templates.', 'Les attributions collaborateur sont stockées provisoirement dans planning_templates.content faute de table dédiée existante.', 'Les règles pays/paie sont maintenant préparées via planning_policy_profiles sans règle légale codée en dur.'] },
+      settings: { needs: normalizedNeeds, templates: normalizedTemplates, dayPresets, weeklyRotations, employeeTemplateAssignments, templateApplications, rotations: weeklyRotations, rules: this.planningRulesCatalog(), payrollRuleProfiles: this.payrollRuleProfilesPlaceholder(), codeDictionary: codeDictionarySummary, policyProfiles: policySummary, notes: ['Les roulements Planning vivent uniquement dans planning_templates.', 'Les attributions collaborateur sont stockées provisoirement dans planning_templates.content faute de table dédiée existante.', 'Les règles pays/paie sont maintenant préparées via planning_policy_profiles sans règle légale codée en dur.'] },
       attendance,
       periodStatus,
       dayStatusSummary,
@@ -247,7 +245,7 @@ export class PlanningService {
 
   async moveAssignment(organizationId: string, actor: Actor, id: string, dto: MovePlanningAssignmentDto) {
     const current = await this.getAssignment(organizationId, id);
-    return this.updateAssignment(organizationId, actor, id, { employeeId: dto.employeeId ?? current.employeeId, departmentId: dto.departmentId ?? current.departmentId, positionId: dto.positionId ?? current.positionId, siteId: dto.siteId ?? current.siteId ?? undefined, rotationId: current.rotationId ?? undefined, date: (dto.date ?? current.date.toISOString()).slice(0, 10), startTime: dto.startTime ?? current.startTime.toISOString(), endTime: dto.endTime ?? current.endTime.toISOString(), breakMinutes: current.breakMinutes, status: PlanningAssignmentStatus.MODIFIED, origin: PlanningAssignmentOrigin.DRAG_DROP, comment: dto.comment ?? current.comment ?? undefined, allowCriticalOverride: dto.allowCriticalOverride, overrideReason: dto.overrideReason });
+    return this.updateAssignment(organizationId, actor, id, { employeeId: dto.employeeId ?? current.employeeId, departmentId: dto.departmentId ?? current.departmentId, positionId: dto.positionId ?? current.positionId, siteId: dto.siteId ?? current.siteId ?? undefined, date: (dto.date ?? current.date.toISOString()).slice(0, 10), startTime: dto.startTime ?? current.startTime.toISOString(), endTime: dto.endTime ?? current.endTime.toISOString(), breakMinutes: current.breakMinutes, status: PlanningAssignmentStatus.MODIFIED, origin: PlanningAssignmentOrigin.DRAG_DROP, comment: dto.comment ?? current.comment ?? undefined, allowCriticalOverride: dto.allowCriticalOverride, overrideReason: dto.overrideReason });
   }
   async deleteAssignment(organizationId: string, actor: Actor, id: string) { this.assertWrite(actor); const old = await this.getAssignment(organizationId, id); const updated = await this.prisma.planningAssignment.update({ where: { id, organizationId }, data: { status: PlanningAssignmentStatus.CANCELLED, updatedById: actor.id }, include: ASSIGNMENT_INCLUDE }); await this.prisma.planningConflict.deleteMany({ where: { assignmentId: id, resolvedAt: null } }); await this.prisma.planningHistory.create({ data: { organizationId, actorUserId: actor.id, action: PlanningHistoryAction.ASSIGNMENT_DELETED, entityType: 'PlanningAssignment', entityId: id, label: 'Affectation supprimée', oldValue: old as Prisma.InputJsonValue, newValue: updated as Prisma.InputJsonValue } }); await this.recordAssignmentPeriodMutation(organizationId, actor.id, updated, 'Affectation supprimée après publication'); await this.recalculateBaseAlerts(organizationId, this.weekStart(updated.date), this.endDay(this.addDays(updated.date, 6))); return updated; }
   async getAssignment(organizationId: string, id: string) { const a = await this.prisma.planningAssignment.findFirst({ where: { id, organizationId }, include: ASSIGNMENT_INCLUDE }); if (!a) throw new NotFoundException('Affectation introuvable'); return a; }
@@ -370,37 +368,25 @@ export class PlanningService {
   async prepareExport(organizationId: string, actor: Actor, dto: PrepareExportDto) { this.assertWrite(actor); const exp = await this.prisma.planningExport.create({ data: { organizationId, requestedById: actor.id, ...dto, startDate: this.parseDate(dto.startDate), endDate: this.parseDate(dto.endDate), filters: (dto.filters ?? {}) as Prisma.InputJsonValue } }); await this.prisma.planningHistory.create({ data: { organizationId, actorUserId: actor.id, action: PlanningHistoryAction.EXPORT_GENERATED, entityType: 'PlanningExport', entityId: exp.id, label: 'Export préparé', newValue: exp as Prisma.InputJsonValue } }); return { ...exp, prepared: true, message: 'Export préparé pour génération PDF/Excel/impression.' }; }
 
   async listPlanningRotations(organizationId: string, q: PlanningQueryDto = {}) {
-    return this.prisma.hrRotation.findMany({ where: { organizationId, isArchived: false, departmentId: q.departmentId, id: q.seasonalTemplateId, name: q.search ? { contains: q.search, mode: 'insensitive' } : undefined }, include: { department: true, assignments: { where: { endDate: null, employeeId: q.employeeId }, include: { employee: { include: { department: true, position: true } } }, orderBy: { createdAt: 'desc' } } }, orderBy: { name: 'asc' }, take: 200 });
+    return this.listWeeklyRotationTemplates(organizationId, q);
   }
   async getEmployeePlanningRotations(organizationId: string, employeeId: string) {
     await this.ensureEmployee(organizationId, employeeId);
-    return this.prisma.hrRotationAssignment.findMany({ where: { organizationId, employeeId }, include: { rotation: { include: { department: true } }, employee: { include: { department: true, position: true } } }, orderBy: [{ endDate: 'asc' }, { createdAt: 'desc' }] });
+    const rotations = await this.listWeeklyRotationTemplates(organizationId);
+    return rotations.filter((rotation: any) => this.stringArray(rotation.employeeIds ?? rotation.content?.employeeIds).includes(employeeId));
   }
   async applyWeeklyRotationPreview(organizationId: string, rotationId: string, dto: PlanningRotationPreviewDto) {
     const planningTemplate = await this.prisma.planningTemplate.findFirst({ where: { id: rotationId, organizationId, isArchived: false }, include: { department: true, site: true } });
-    if (planningTemplate && this.templateKind(planningTemplate) === 'WEEKLY_ROTATION') {
-      const template = this.normalizePlanningTemplate(planningTemplate);
-      const start = this.day(this.parseDate(dto.startDate));
-      const end = this.endDay(this.parseDate(dto.endDate));
-      const employeeIds = dto.employeeId ? [dto.employeeId] : this.stringArray(template.employeeIds);
-      const employees = employeeIds.length
-        ? await this.prisma.hrEmployee.findMany({ where: { organizationId, id: { in: employeeIds }, isArchived: false, status: HrEmployeeStatus.ACTIVE }, include: { department: true, position: true, mainSite: true } })
-        : [];
-      const assignments = this.planningRotationAssignmentsPreview(template, employees, start, end, dto.siteId);
-      return { rotation: template, assignments, temporarySource: 'planning_templates', applied: false };
-    }
-    const rotation = await this.prisma.hrRotation.findFirst({ where: { id: rotationId, organizationId, isArchived: false }, include: { department: true, assignments: { where: { endDate: null, employeeId: dto.employeeId }, include: { employee: { include: { department: true, position: true, mainSite: true } } } } } });
-    if (!rotation) throw new NotFoundException('Roulement temporaire introuvable');
-    const previewRotation: any = { ...rotation };
-    if (dto.employeeId && previewRotation.assignments.length === 0) {
-      const employee = await this.prisma.hrEmployee.findFirst({ where: { id: dto.employeeId, organizationId, isArchived: false }, include: { department: true, position: true, mainSite: true } });
-      if (!employee) throw new NotFoundException('Collaborateur RH introuvable');
-      previewRotation.assignments = [{ employee }];
-    }
+    if (!planningTemplate || this.templateKind(planningTemplate) !== 'WEEKLY_ROTATION') throw new NotFoundException('Roulement Planning introuvable');
+    const template = this.normalizePlanningTemplate(planningTemplate);
     const start = this.day(this.parseDate(dto.startDate));
     const end = this.endDay(this.parseDate(dto.endDate));
-    const previews = this.rotationAssignmentsPreview(previewRotation, start, end, dto.siteId);
-    return { rotation: previewRotation, assignments: previews, temporarySource: 'hr_rotations', applied: false };
+    const employeeIds = dto.employeeId ? [dto.employeeId] : this.stringArray(template.employeeIds);
+    const employees = employeeIds.length
+      ? await this.prisma.hrEmployee.findMany({ where: { organizationId, id: { in: employeeIds }, isArchived: false, status: HrEmployeeStatus.ACTIVE }, include: { department: true, position: true, mainSite: true } })
+      : [];
+    const assignments = this.planningRotationAssignmentsPreview(template, employees, start, end, dto.siteId);
+    return { rotation: template, assignments, temporarySource: 'planning_templates', applied: false };
   }
 
   async applyWeeklyRotation(organizationId: string, actor: Actor, rotationId: string, dto: ApplyPlanningRotationDto) {
@@ -412,12 +398,6 @@ export class PlanningService {
     const applied: any[] = [];
     const skipped: any[] = [];
 
-    if (dto.replaceExisting !== false && dto.employeeId && preview.temporarySource === 'hr_rotations') {
-      await this.prisma.planningAssignment.updateMany({
-        where: { organizationId, employeeId: dto.employeeId, rotationId, date: { gte: start, lte: end }, status: { not: PlanningAssignmentStatus.CANCELLED } },
-        data: { status: PlanningAssignmentStatus.CANCELLED, updatedById: actor.id },
-      });
-    }
     if (dto.replaceExisting !== false && dto.employeeId && preview.temporarySource === 'planning_templates') {
       await this.prisma.planningAssignment.updateMany({
         where: { organizationId, employeeId: dto.employeeId, date: { gte: start, lte: end }, origin: PlanningAssignmentOrigin.AUTO_GENERATION, comment: { contains: `Roulement Planning ${preview.rotation?.name ?? ''}` }, status: { not: PlanningAssignmentStatus.CANCELLED } },
@@ -440,7 +420,7 @@ export class PlanningService {
       }
     }
 
-    await this.prisma.planningHistory.create({ data: { organizationId, actorUserId: actor.id, action: PlanningHistoryAction.GENERATION_APPLIED, entityType: preview.temporarySource === 'planning_templates' ? 'PlanningTemplate' : 'HrRotation', entityId: rotationId, label: 'Roulement semaine appliqué', newValue: { startDate: dto.startDate, endDate: dto.endDate, employeeId: dto.employeeId, source: preview.temporarySource, applied: applied.length, skipped: skipped.length } as Prisma.InputJsonValue } });
+    await this.prisma.planningHistory.create({ data: { organizationId, actorUserId: actor.id, action: PlanningHistoryAction.GENERATION_APPLIED, entityType: 'PlanningTemplate', entityId: rotationId, label: 'Roulement semaine appliqué', newValue: { startDate: dto.startDate, endDate: dto.endDate, employeeId: dto.employeeId, source: preview.temporarySource, applied: applied.length, skipped: skipped.length } as Prisma.InputJsonValue } });
     await this.recalculateBaseAlerts(organizationId, start, end);
     return { rotation: preview.rotation, appliedAssignments: applied, skipped, applied: true, temporarySource: preview.temporarySource };
   }
@@ -750,13 +730,13 @@ export class PlanningService {
   private iso(value: Date) { return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`; }
   private alertLevel(severity: string) { return severity === 'BLOCKING' ? 'critical' : severity === 'STRONG_WARNING' ? 'warning' : 'info'; }
   private alerts(conflicts: any[], absences: any[], coverage: any[], rotations: any[], employees: any[]) {
-    const employeesWithRotation = new Set(rotations.flatMap((rotation: any) => (rotation.assignments ?? []).map((assignment: any) => assignment.employeeId)));
+    const employeesWithRotation = new Set(rotations.flatMap((rotation: any) => this.stringArray(rotation.employeeIds ?? rotation.content?.employeeIds)));
     const missingRotations = employees.filter(employee => !employeesWithRotation.has(employee.id)).length;
     return [
       ...conflicts.map(conflict => ({ id: conflict.id, level: this.alertLevel(conflict.severity), title: conflict.label, message: conflict.label, code: conflict.code, entityType: 'PlanningConflict', entityId: conflict.id, details: conflict.details, createdAt: conflict.createdAt })),
       ...coverage.filter(item => ['UNDERSTAFFED', 'PARTIAL', 'UNPLANNED'].includes(item.status)).map(item => ({ id: `coverage-${item.need.id}`, level: item.status === 'UNPLANNED' ? 'warning' : 'info', title: 'Besoin a traiter', message: `${item.need.label}: ${item.plannedCount}/${item.requiredCount} couvert(s)`, code: item.status, entityType: 'PlanningOperationalNeed', entityId: item.need.id })),
       ...absences.map(absence => ({ id: `absence-${absence.id}`, level: 'info', title: 'Absence RH a prendre en compte', message: `${absence.employee?.firstName ?? ''} ${absence.employee?.lastName ?? ''}`.trim(), code: 'HR_ABSENCE_READONLY', entityType: 'HrAbsence', entityId: absence.id })),
-      ...(missingRotations ? [{ id: 'employees-without-rotation', level: 'info', title: 'Roulements temporaires incomplets', message: `${missingRotations} collaborateur(s) sans roulement actif`, code: 'EMPLOYEES_WITHOUT_ROTATION', entityType: 'HrRotation' }] : []),
+      ...(missingRotations ? [{ id: 'employees-without-rotation', level: 'info', title: 'Roulements Planning incomplets', message: `${missingRotations} collaborateur(s) sans roulement Planning attribué`, code: 'EMPLOYEES_WITHOUT_PLANNING_ROTATION', entityType: 'PlanningTemplate' }] : []),
     ];
   }
   private dashboardFrom(assignments: any[], employees: any[], departments: any[], conflicts: any[], alerts: any[], coverage: any[], replacements: any[], period: Period) {
@@ -816,27 +796,6 @@ export class PlanningService {
     await this.recordAssignmentPeriodMutation(organizationId, actor.id, assignment, id ? 'Affectation modifiée après publication' : 'Affectation ajoutée après publication');
     return assignment;
   }
-  private rotationAssignmentsPreview(rotation: any, start: Date, end: Date, siteId?: string) {
-    const employees = (rotation.assignments ?? []).map((assignment: any) => assignment.employee).filter(Boolean);
-    const weeks = ((rotation.cycle as any)?.weeks ?? []) as Array<{ weekNumber?: number; weekIndex?: number; days?: any[] }>;
-    const previews: any[] = [];
-    for (const employee of employees) {
-      for (let cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
-        const diffDays = Math.floor((+this.day(cursor) - +start) / 86400000);
-        const weekIndex = Math.floor(diffDays / 7) % Math.max(rotation.cycleLengthWeeks, 1);
-        const dayOfWeek = cursor.getDay() || 7;
-        const dayIndex = dayOfWeek - 1;
-        const week = weeks[weekIndex] ?? weeks.find(item => Number(item.weekNumber ?? item.weekIndex) === weekIndex + 1);
-        const day = (week?.days ?? []).find((item: any) => Number(item.dayOfWeek) === dayOfWeek || Number(item.dayOfWeek) === dayIndex) ?? week?.days?.[dayIndex];
-        if (!day || this.rotationDayIsRest(day)) continue;
-        const startTime = day.startTime ?? day.start ?? day.from;
-        const endTime = day.endTime ?? day.end ?? day.to;
-        if (!startTime || !endTime) continue;
-        previews.push({ employeeId: employee.id, departmentId: rotation.departmentId ?? employee.departmentId, positionId: employee.positionId, siteId: siteId ?? employee.mainSiteId ?? null, rotationId: rotation.id, date: this.iso(cursor), startTime, endTime, breakMinutes: day.breakMinutes ?? 0, status: PlanningAssignmentStatus.PLANNED, origin: PlanningAssignmentOrigin.AUTO_GENERATION, comment: `Roulement ${rotation.name}` });
-      }
-    }
-    return previews;
-  }
   private planningRotationAssignmentsPreview(template: any, employees: any[], start: Date, end: Date, siteId?: string) {
     const days: any[] = Array.isArray(template.days) ? template.days : this.normalizeWeeklyRotationDays(template.content?.days);
     const byWeekDay = new Map(days.map((day: any) => [Number(day.dayOfWeek), day]));
@@ -854,7 +813,6 @@ export class PlanningService {
           departmentId,
           positionId,
           siteId: siteId ?? day.siteId ?? template.siteId ?? employee.mainSiteId ?? null,
-          rotationId: undefined,
           date: this.iso(cursor),
           startTime: day.startTime,
           endTime: day.endTime,
@@ -909,7 +867,7 @@ export class PlanningService {
     const startTime = this.parseTime(dto.date, dto.startTime);
     const endTime = this.parseTime(dto.date, dto.endTime);
     if (endTime <= startTime) endTime.setDate(endTime.getDate() + 1);
-    return { organizationId, employeeId: dto.employeeId, departmentId: dto.departmentId, positionId: dto.positionId, siteId: dto.siteId ?? null, rotationId: dto.rotationId ?? null, date: this.day(this.parseDate(dto.date)), startTime, endTime, breakMinutes: dto.breakMinutes ?? 0, status: dto.status ?? PlanningAssignmentStatus.PLANNED, origin: dto.origin ?? PlanningAssignmentOrigin.MANUAL, comment: dto.comment ?? null, allowCriticalOverride: !!dto.allowCriticalOverride, overrideReason: dto.overrideReason ?? null };
+    return { organizationId, employeeId: dto.employeeId, departmentId: dto.departmentId, positionId: dto.positionId, siteId: dto.siteId ?? null, date: this.day(this.parseDate(dto.date)), startTime, endTime, breakMinutes: dto.breakMinutes ?? 0, status: dto.status ?? PlanningAssignmentStatus.PLANNED, origin: dto.origin ?? PlanningAssignmentOrigin.MANUAL, comment: dto.comment ?? null, allowCriticalOverride: !!dto.allowCriticalOverride, overrideReason: dto.overrideReason ?? null };
   }
   private async validateRefs(organizationId: string, dto: UpsertPlanningAssignmentDto) { const [e, d, p] = await Promise.all([this.ensureEmployee(organizationId, dto.employeeId), this.prisma.hrDepartment.findFirst({ where: { id: dto.departmentId, organizationId, isArchived: false } }), this.prisma.hrPosition.findFirst({ where: { id: dto.positionId, organizationId, isArchived: false } })]); if (!d) throw new NotFoundException('Service RH introuvable'); if (!p) throw new NotFoundException('Poste RH introuvable'); if (e.departmentId !== dto.departmentId) {/* warning handled in controls */} if (dto.siteId && !(await this.prisma.site.findFirst({ where: { id: dto.siteId, organizationId, isArchived: false } }))) throw new NotFoundException('Site introuvable'); }
   private normalizeOperationalNeed(need: any) {
@@ -1038,5 +996,5 @@ export class PlanningService {
   }
   private async detectAbsenceImpact(organizationId: string, actor: Actor, absenceId: string) { const absence = await this.prisma.hrAbsence.findFirst({ where: { id: absenceId, organizationId } }); if (!absence || absence.status !== HrAbsenceStatus.APPROVED) return; const impacted = await this.prisma.planningAssignment.findMany({ where: { organizationId, employeeId: absence.employeeId, status: { not: PlanningAssignmentStatus.CANCELLED }, startTime: { lte: absence.endDate }, endTime: { gte: absence.startDate } } }); for (const a of impacted) { const exists = await this.prisma.planningReplacement.findFirst({ where: { organizationId, assignmentId: a.id, absenceId } }); if (!exists) await this.prisma.planningReplacement.create({ data: { organizationId, assignmentId: a.id, absenceId, absentEmployeeId: absence.employeeId, status: PlanningReplacementStatus.TO_PROCESS, requestedById: actor.id, rationale: await this.replacementCandidates(organizationId, a) as Prisma.InputJsonValue } }); } }
   private async replacementCandidates(organizationId: string, a: any) { const emps = await this.prisma.hrEmployee.findMany({ where: { organizationId, isArchived: false, status: HrEmployeeStatus.ACTIVE, id: { not: a.employeeId } }, include: { skills: { include: { skill: true } }, department: true, position: true } }); const busy = await this.prisma.planningAssignment.findMany({ where: { organizationId, startTime: { lt: a.endTime }, endTime: { gt: a.startTime }, status: { not: PlanningAssignmentStatus.CANCELLED } } }); const busyIds = new Set(busy.map(b => b.employeeId)); return emps.map(e => ({ employeeId: e.id, score: (e.departmentId === a.departmentId ? 40 : 0) + (e.positionId === a.positionId ? 30 : 0) + (!busyIds.has(e.id) ? 20 : -100), reasons: [e.departmentId === a.departmentId ? 'Même service' : 'Service différent', e.positionId === a.positionId ? 'Même poste' : 'Poste différent', !busyIds.has(e.id) ? 'Disponible' : 'Conflit horaire'] })).filter(c => c.score > 0).sort((x, y) => y.score - x.score).slice(0, 5); }
-  private async buildGenerationPreview(organizationId: string, start: Date, end: Date, siteId?: string) { const [needs, employees, absences, existing] = await Promise.all([this.prisma.planningOperationalNeed.findMany({ where: { organizationId, siteId: siteId ?? undefined }, include: { department: true, position: true } }), this.prisma.hrEmployee.findMany({ where: { organizationId, isArchived: false, status: HrEmployeeStatus.ACTIVE, mainSiteId: siteId ?? undefined }, include: { rotationAssignments: { where: { endDate: null }, include: { rotation: true }, take: 1 }, skills: true } }), this.prisma.hrAbsence.findMany({ where: { organizationId, status: HrAbsenceStatus.APPROVED, startDate: { lte: end }, endDate: { gte: start } } }), this.prisma.planningAssignment.findMany({ where: { organizationId, date: { gte: start, lte: end }, status: { not: PlanningAssignmentStatus.CANCELLED } } })]); const assignments: any[] = [], alerts: any[] = []; for (const need of needs) { for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) { const already = existing.filter(a => a.departmentId === need.departmentId && a.date.toDateString() === d.toDateString()).length + assignments.filter(a => a.departmentId === need.departmentId && a.date === d.toISOString().slice(0, 10)).length; for (let i = already; i < need.requiredCount; i++) { const candidate = employees.find(e => e.departmentId === need.departmentId && !absences.some(ab => ab.employeeId === e.id && ab.startDate <= d && ab.endDate >= d) && !assignments.some(a => a.employeeId === e.id && a.date === d.toISOString().slice(0, 10))); if (!candidate) { alerts.push({ level: 'critical', code: 'UNCOVERED_NEED', needId: need.id, date: d.toISOString().slice(0, 10) }); continue; } assignments.push({ employeeId: candidate.id, departmentId: need.departmentId, positionId: need.positionId ?? candidate.positionId, siteId: need.siteId ?? siteId, date: d.toISOString().slice(0, 10), startTime: need.startTime, endTime: need.endTime, breakMinutes: 30, status: PlanningAssignmentStatus.PLANNED, origin: PlanningAssignmentOrigin.AUTO_GENERATION }); } } } return { assignments, alerts, summary: { created: assignments.length, uncovered: alerts.length }, deterministicRules: ['besoins par service', 'collaborateur actif', 'absence validée exclue', 'pas de doublon journalier'] }; }
+  private async buildGenerationPreview(organizationId: string, start: Date, end: Date, siteId?: string) { const [needs, employees, absences, existing] = await Promise.all([this.prisma.planningOperationalNeed.findMany({ where: { organizationId, siteId: siteId ?? undefined }, include: { department: true, position: true } }), this.prisma.hrEmployee.findMany({ where: { organizationId, isArchived: false, status: HrEmployeeStatus.ACTIVE, mainSiteId: siteId ?? undefined }, include: { skills: true } }), this.prisma.hrAbsence.findMany({ where: { organizationId, status: HrAbsenceStatus.APPROVED, startDate: { lte: end }, endDate: { gte: start } } }), this.prisma.planningAssignment.findMany({ where: { organizationId, date: { gte: start, lte: end }, status: { not: PlanningAssignmentStatus.CANCELLED } } })]); const assignments: any[] = [], alerts: any[] = []; for (const need of needs) { for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) { const already = existing.filter(a => a.departmentId === need.departmentId && a.date.toDateString() === d.toDateString()).length + assignments.filter(a => a.departmentId === need.departmentId && a.date === d.toISOString().slice(0, 10)).length; for (let i = already; i < need.requiredCount; i++) { const candidate = employees.find(e => e.departmentId === need.departmentId && !absences.some(ab => ab.employeeId === e.id && ab.startDate <= d && ab.endDate >= d) && !assignments.some(a => a.employeeId === e.id && a.date === d.toISOString().slice(0, 10))); if (!candidate) { alerts.push({ level: 'critical', code: 'UNCOVERED_NEED', needId: need.id, date: d.toISOString().slice(0, 10) }); continue; } assignments.push({ employeeId: candidate.id, departmentId: need.departmentId, positionId: need.positionId ?? candidate.positionId, siteId: need.siteId ?? siteId, date: d.toISOString().slice(0, 10), startTime: need.startTime, endTime: need.endTime, breakMinutes: 30, status: PlanningAssignmentStatus.PLANNED, origin: PlanningAssignmentOrigin.AUTO_GENERATION }); } } } return { assignments, alerts, summary: { created: assignments.length, uncovered: alerts.length }, deterministicRules: ['besoins par service', 'collaborateur actif', 'absence validée exclue', 'pas de doublon journalier'] }; }
 }

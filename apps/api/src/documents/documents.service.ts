@@ -96,7 +96,18 @@ export class DocumentsService {
     const invoiceNumber = reception?.invoiceNumber || this.string(data.invoiceNumber) || this.string(documentData.invoiceNumber);
     const deliveryNoteNumber = reception?.deliveryNoteNumber || this.string(data.deliveryNoteNumber) || this.string(documentData.deliveryNoteNumber);
     const documentDate = this.dateString(reception?.documentDate) || this.string(data.documentDate) || this.string(documentData.documentDate) || this.dateString(document.createdAt);
-    const type = invoiceNumber ? 'invoice' : deliveryNoteNumber ? 'delivery_note' : extraction?.type === 'INVOICE' ? 'invoice' : extraction?.type === 'DELIVERY_NOTE' ? 'delivery_note' : 'unknown';
+    const extractedType = this.string(data.documentType);
+    const type: string = invoiceNumber
+      ? 'invoice'
+      : deliveryNoteNumber
+        ? 'delivery_note'
+        : ['invoice', 'delivery_note', 'supplier_order', 'order_confirmation'].includes(extractedType || '')
+          ? extractedType || 'unknown'
+          : extraction?.type === 'INVOICE'
+            ? 'invoice'
+            : extraction?.type === 'DELIVERY_NOTE'
+              ? 'delivery_note'
+              : 'unknown';
     const processingState = document.status === DocumentStatus.FAILED || ocr?.status === 'FAILED'
       ? 'failed'
       : extraction?.status && extraction.status !== OcrBusinessExtractionStatus.VALIDATED

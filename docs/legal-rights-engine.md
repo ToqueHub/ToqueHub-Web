@@ -147,6 +147,38 @@ Les règles publiques sont stockées dans `public_regimes` et `legal_right_rule_
 
 Les règles communes du privé restent séparées des règles publiques, même si leur libellé métier se ressemble.
 
+## Socle Commun France Privé
+
+Pour une organisation dont `Organization.regulatoryCountryCode = "FR"` et un collaborateur rattaché au régime privé, les droits issus du droit du travail commun sont inclus automatiquement. Ils ne sont pas à activer manuellement pour prouver leur existence.
+
+La couche est identifiée par :
+
+- `sourceLayer = "common_law"` ;
+- `country = "FR"` ;
+- `regime = "private"` ou règle commune compatible privé ;
+- `autoApplicable = true` ;
+- `applicableByDefault = true`.
+
+Les droits prioritaires de cette passe sont : congés payés (`CP`), congés payés et maladie (`CP_MALADIE`), heures supplémentaires (`HS`), pause obligatoire après 6h (`PAUSE_6H`), repos quotidien (`REPOS_QUOTIDIEN`), repos hebdomadaire (`REPOS_HEBDOMADAIRE`), jours fériés (`JF`), 1er mai (`JF_1MAI`) et récupération de pont (`RECUP_PONT`).
+
+Dans `GET /rights/search`, ces droits reviennent avec `uiStatus = "included"` ou `uiStatus = "included_requires_review"` si la règle reste juridiquement à valider. Le frontend doit afficher “Inclus automatiquement” et ne pas proposer de bouton principal “Activer” pour ces droits. Les règles `requires_review` restent visibles avec un badge “À valider juridiquement”.
+
+Une configuration établissement (`hr_entitlement_rules`) est nécessaire uniquement quand l’établissement veut définir ou modifier un paramètre local : méthode de décompte, seuil local autorisé, rattachement manuel, surcharge documentée, etc. Cliquer sur “Configurer” peut créer ou mettre à jour cette configuration, mais aucun enregistrement établissement n’est créé automatiquement au simple fait que le droit commun s’applique.
+
+`GET /rights/employees/:employeeId/applicable` retourne les droits applicables à la personne avec :
+
+- le profil légal résolu ;
+- `hasActiveContract` ;
+- les droits du socle commun ;
+- les compteurs disponibles ;
+- les avertissements bloquants ou partiels.
+
+Si le pays réglementaire est absent, le statut est bloqué avec `missing_regulatory_country`. Si le salarié n’a pas de contrat actif, les droits potentiels peuvent rester visibles, mais le calcul des compteurs revient en `partial` avec `missing_active_contract`.
+
+Les compteurs ne doivent pas inventer de soldes. Quand aucune donnée n’existe encore dans `legal_right_counters` ou `hr_time_accounts`, l’API retourne un état explicite comme `not_initialized`, `partial` ou `incomplete`. Les contrôles planning, repos et pause peuvent apparaître comme contrôles applicables même sans solde salarié.
+
+Les conventions collectives HCR, restauration rapide, hôtellerie de plein air et autres couches conventionnelles seront ajoutées ensuite comme couches supplémentaires. Elles ne doivent pas transformer le socle commun en template optionnel ni créer de doublons de `LegalRight`.
+
 ## Ajouter Ou Modifier Une Règle
 
 Créer une nouvelle version avec un nouveau `stableId` ou incrémenter `version` si la même règle stable change.
