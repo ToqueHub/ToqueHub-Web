@@ -41,21 +41,13 @@ const STOCKS_OCR_CATEGORY_HINTS = [
   { categoryName: 'Nutrition médicale', examples: ['clinutren', 'thickenup', 'resource', 'complément nutritionnel', 'nutrition', 'épaississant'] },
 ];
 
-type BusinessDocumentType = 'invoice' | 'delivery_note' | 'supplier_order' | 'order_confirmation' | 'unknown';
-const BUSINESS_DOCUMENT_TYPES: BusinessDocumentType[] = ['invoice', 'delivery_note', 'supplier_order', 'order_confirmation', 'unknown'];
-
 type Actor = { id: string; role: string };
 type UploadedFile = { originalname: string; mimetype: string; size: number; buffer: Buffer };
 type Tx = Prisma.TransactionClient;
 
 interface ExtractedLine {
-  ignored?: boolean;
   label: string | null;
   reference: string | null;
-  supplierProductCode?: string | null;
-  nameOriginal?: string | null;
-  nameNormalized?: string | null;
-  descriptionOriginal?: string | null;
   quantity: number | null;
   unit: string | null;
   unitPrice: number | null;
@@ -63,12 +55,6 @@ interface ExtractedLine {
   vatRate: number | null;
   lotNumber: string | null;
   bestBeforeDate: string | null;
-  originCountry?: string | null;
-  statisticalCode?: string | null;
-  netWeight?: number | null;
-  isFreight?: boolean;
-  isStockItem?: boolean;
-  packageDescription?: string | null;
   productId?: string | null;
   unitId?: string | null;
   categoryId?: string | null;
@@ -92,11 +78,9 @@ interface ExtractedLineRow {
 }
 
 interface BusinessExtraction {
-  documentType: BusinessDocumentType;
+  documentType: 'invoice' | 'delivery_note' | 'unknown';
   supplier: {
     name: string | null;
-    vatNumber?: string | null;
-    address?: string | null;
     supplierId?: string | null;
     supplierName?: string | null;
     matchingStatus?: StockReceptionLineMatchingStatus;
@@ -115,53 +99,12 @@ interface BusinessExtraction {
     documentDate: string | null;
     deliveryDate: string | null;
   };
-  customer?: {
-    name: string | null;
-    customerNumber?: string | null;
-    vatNumber?: string | null;
-    deliveryAddress?: string | null;
-  };
-  invoice?: {
-    invoiceNumber: string | null;
-    invoiceDate: string | null;
-    dueDate: string | null;
-    paymentMethod: string | null;
-    orderNumber: string | null;
-    currency: 'EUR';
-    netTotal: number | null;
-    vatTotal: number | null;
-    rounding: number | null;
-    grandTotal: number | null;
-    iban?: string | null;
-    bic?: string | null;
-    deliveryTerms?: string | null;
-    deliveryMethod?: string | null;
-    lateInterestRate?: number | null;
-    requesterName?: string | null;
-  };
-  order?: {
-    orderNumber: string | null;
-    orderDate: string | null;
-    selectedDeliveryDate: string | null;
-    deliveryAddress?: string | null;
-    company?: string | null;
-    customerNumber?: string | null;
-    orderer?: string | null;
-  };
   totals: {
     totalExcludingTax: number | null;
     totalTax: number | null;
     totalIncludingTax: number | null;
-    rounding?: number | null;
   };
   lines: ExtractedLine[];
-  items?: ExtractedLine[];
-  confidence?: {
-    documentType: number;
-    header: number;
-    items: number;
-    totals: number;
-  };
   aiAnalysis?: {
     provider: string;
     model: string;
@@ -562,13 +505,24 @@ export class StocksOcrService {
   private async extractBusinessData(organizationId: string, markdown: string, rawJson?: any): Promise<BusinessExtraction> {
     const text = markdown || '';
     const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-    const specialized = this.extractKnownSupplierBusinessData(text, lines);
-    const supplierName = specialized?.supplier.name || specialized?.supplierName || this.extractSupplier(lines);
+    const supplierName = this.extractSupplier(lines);
     const supplierMatch = await this.matchSupplier(organizationId, supplierName, lines);
     const totals = this.extractTotals(text);
-    const extraction: BusinessExtraction = specialized ?? {
-      documentType: this.detectDocumentType(text),
-      supplier: { name: supplierName },
+    const extraction: BusinessExtraction = {
+      documentType: /\bfacture\b/i.test(text) ? 'invoice' : /\b(bon de livraison|bl\b|livraison)\b/i.test(text) ? 'delivery_note' : 'unknown',
+      supplier: {
+        name: supplierName,
+        supplierId: supplierMatch.supplierId,
+        supplierName: supplierMatch.supplierName,
+        matchingStatus: supplierMatch.matchingStatus,
+        matchingScore: supplierMatch.matchingScore,
+        candidates: supplierMatch.candidates,
+      },
+      supplierId: supplierMatch.supplierId,
+      supplierName: supplierMatch.supplierName || supplierName,
+      supplierMatchingStatus: supplierMatch.matchingStatus,
+      supplierMatchingScore: supplierMatch.matchingScore,
+      supplierCandidates: supplierMatch.candidates,
       document: {
         invoiceNumber: this.extractInvoiceNumber(text),
         deliveryNoteNumber: this.extractDeliveryNoteNumber(text),
@@ -577,34 +531,14 @@ export class StocksOcrService {
         deliveryDate: this.extractDeliveryDate(text),
       },
       totals,
-      lines: this.extractLines(lines),
+      lines: [],
     };
-    const matchedSupplierExtraction: BusinessExtraction = {
-      ...extraction,
-      supplier: {
-        ...extraction.supplier,
-        name: extraction.supplier.name || supplierName,
-        supplierId: supplierMatch.supplierId,
-        supplierName: supplierMatch.supplierName,
-        matchingStatus: supplierMatch.matchingStatus,
-        matchingScore: supplierMatch.matchingScore,
-        candidates: supplierMatch.candidates,
-      },
-      supplierId: supplierMatch.supplierId,
-      supplierName: supplierMatch.supplierName || extraction.supplierName || supplierName,
-      supplierMatchingStatus: supplierMatch.matchingStatus,
-      supplierMatchingScore: supplierMatch.matchingScore,
-      supplierCandidates: supplierMatch.candidates,
-    };
-    if (specialized) {
-      const matched = await this.matchLines(organizationId, matchedSupplierExtraction.lines, matchedSupplierExtraction.supplierId);
-      return { ...matchedSupplierExtraction, lines: matched, items: matched };
-    }
-    const aiExtraction = await this.analyzeOcrWithMistralAi(organizationId, markdown, rawJson, matchedSupplierExtraction).catch((error) => {
+    extraction.lines = this.extractLines(lines);
+    const aiExtraction = await this.analyzeOcrWithMistralAi(organizationId, markdown, rawJson, extraction).catch((error) => {
       this.logger.warn(`Analyse IA OCR indisponible org=${organizationId}: ${error?.message || error}`);
-      return this.aiFallback(matchedSupplierExtraction, error?.message || 'Analyse IA indisponible');
+      return this.aiFallback(extraction, error?.message || 'Analyse IA indisponible');
     });
-    const merged = this.mergeAiAnalysis(matchedSupplierExtraction, aiExtraction);
+    const merged = this.mergeAiAnalysis(extraction, aiExtraction);
     const matched = await this.matchLines(organizationId, merged.lines, merged.supplierId);
     return { ...merged, lines: matched };
   }
@@ -616,15 +550,9 @@ export class StocksOcrService {
     const prompt = [
       'Tu analyses un bon de livraison ou une facture fournisseur pour un module de stock restauration.',
       'Retourne uniquement le JSON conforme au schema.',
-      'Objectifs: extraire le fournisseur, les numéros documentaires, dates, totaux et les lignes utiles pour réception fournisseur.',
-      'Types possibles: invoice, delivery_note, supplier_order, order_confirmation, unknown.',
-      'Tu dois reconnaître les factures finlandaises: Lasku=facture, Lasku päiväys=date facture, Eräpäivä=échéance, Asiakasnumero=numero client, Toimitusasiakas=adresse de livraison, Nimike=code article, Nimi=nom, Määrä=quantité, Yksikkö=unité, á hinta=prix unitaire, Yhteensä=total ligne, Alkuperämaa=pays origine, Nettopaino=poids net, Loppusumma=total final.',
-      'Tu dois reconnaître les historiques/confirmations de commande Kespro: Order information, Order date, Selected delivery date, Order number, Delivery address, Confirmed quantity / ME.',
+      'Objectifs: extraire le fournisseur, les numéros documentaires, dates, totaux et uniquement les lignes produits réceptionnables.',
       'Ignore les lignes adresse, SIRET, téléphone, fax, RCS, conditions, totaux, mentions légales, pieds de page et en-têtes.',
       'Regroupe les lignes produit éclatées. Conserve les lots et DLC/DDM si présents.',
-      'Conserve le texte original du produit dans nameOriginal ou label. Ne traduis pas les noms produits.',
-      'Les quantités collées aux unités comme 1,00ltk doivent devenir quantity=1.00 et unit=ltk.',
-      'Les lignes RAHTI/transport doivent être conservées mais classées non_product_line, isFreight=true, isStockItem=false, ignored=true.',
       'Classe chaque ligne avec lineStatus parmi ready, needs_review, missing_product, price_mismatch, quantity_suspicious, non_product_line, duplicate_line.',
       'Utilise les référentiels ToqueHub pour proposer supplierId, productId, unitId, categoryId quand fiable.',
       'Si aucun produit fiable, propose un libellé propre, une unité, une catégorie et un SKU/référence si présent.',
@@ -684,7 +612,7 @@ export class StocksOcrService {
       additionalProperties: false,
       required: ['documentType', 'supplier', 'document', 'totals', 'lines', 'warnings', 'suggestedActions', 'documentConfidence', 'totalsCheck'],
       properties: {
-        documentType: { type: 'string', enum: BUSINESS_DOCUMENT_TYPES },
+        documentType: { type: 'string', enum: ['invoice', 'delivery_note', 'unknown'] },
         documentConfidence: nullableNumber,
         warnings: { type: 'array', items: { type: 'string' } },
         suggestedActions: { type: 'array', items: { type: 'string' } },
@@ -727,9 +655,6 @@ export class StocksOcrService {
             properties: {
               label: nullableString,
               reference: nullableString,
-              supplierProductCode: nullableString,
-              nameOriginal: nullableString,
-              descriptionOriginal: nullableString,
               quantity: nullableNumber,
               unit: nullableString,
               unitPrice: nullableNumber,
@@ -737,13 +662,6 @@ export class StocksOcrService {
               vatRate: nullableNumber,
               lotNumber: nullableString,
               bestBeforeDate: nullableString,
-              originCountry: nullableString,
-              statisticalCode: nullableString,
-              netWeight: nullableNumber,
-              isFreight: { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
-              isStockItem: { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
-              packageDescription: nullableString,
-              ignored: { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
               productId: nullableString,
               unitId: nullableString,
               categoryId: nullableString,
@@ -769,14 +687,10 @@ export class StocksOcrService {
   private normalizeAiExtraction(ai: any, fallback: BusinessExtraction): Partial<BusinessExtraction> {
     const warnings = Array.isArray(ai?.warnings) ? ai.warnings.map(String).slice(0, 12) : [];
     const lines = Array.isArray(ai?.lines) ? ai.lines
-      .filter((line: any) => line?.lineStatus !== 'duplicate_line')
+      .filter((line: any) => line?.lineStatus !== 'non_product_line' && line?.lineStatus !== 'duplicate_line')
       .map((line: any) => ({
         label: this.cleanString(line.label) || null,
         reference: this.cleanString(line.reference) || null,
-        supplierProductCode: this.cleanString(line.supplierProductCode) || this.cleanString(line.reference) || null,
-        nameOriginal: this.cleanString(line.nameOriginal) || this.cleanString(line.label) || null,
-        nameNormalized: this.normalizeProductText(this.cleanString(line.nameOriginal) || this.cleanString(line.label) || ''),
-        descriptionOriginal: this.cleanString(line.descriptionOriginal) || null,
         quantity: this.numberOrNull(line.quantity),
         unit: this.cleanString(line.unit) || null,
         unitPrice: this.numberOrNull(line.unitPrice),
@@ -784,13 +698,6 @@ export class StocksOcrService {
         vatRate: this.numberOrNull(line.vatRate),
         lotNumber: this.cleanString(line.lotNumber) || null,
         bestBeforeDate: this.cleanDate(line.bestBeforeDate),
-        originCountry: this.cleanString(line.originCountry) || null,
-        statisticalCode: this.cleanString(line.statisticalCode) || null,
-        netWeight: this.numberOrNull(line.netWeight),
-        isFreight: typeof line.isFreight === 'boolean' ? line.isFreight : /\bRAHTI\b/i.test(String(line.label || '')),
-        isStockItem: typeof line.isStockItem === 'boolean' ? line.isStockItem : line.lineStatus !== 'non_product_line',
-        packageDescription: this.cleanString(line.packageDescription) || null,
-        ignored: Boolean(line.ignored) || line.lineStatus === 'non_product_line',
         productId: this.uuidOrNull(line.productId),
         unitId: this.uuidOrNull(line.unitId),
         categoryId: this.uuidOrNull(line.categoryId),
@@ -804,7 +711,7 @@ export class StocksOcrService {
       .slice(0, 120) : [];
     const documentConfidence = this.numberOrNull(ai?.documentConfidence);
     return {
-      documentType: BUSINESS_DOCUMENT_TYPES.includes(ai?.documentType) ? ai.documentType : fallback.documentType,
+      documentType: ['invoice', 'delivery_note', 'unknown'].includes(ai?.documentType) ? ai.documentType : fallback.documentType,
       supplier: { name: this.cleanString(ai?.supplier?.name) || fallback.supplier.name },
       supplierId: this.uuidOrNull(ai?.supplier?.supplierId) || fallback.supplierId,
       supplierName: this.cleanString(ai?.supplier?.name) || fallback.supplierName,
@@ -917,470 +824,6 @@ export class StocksOcrService {
     if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
     if (/^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$/.test(str)) return this.normalizeDate(str);
     return null;
-  }
-
-  private detectDocumentType(text: string): BusinessDocumentType {
-    if (this.isTingstadFinnishInvoice(text)) return 'invoice';
-    if (this.isKesproOrder(text)) return /confirmed quantity/i.test(text) ? 'order_confirmation' : 'supplier_order';
-    if (/\bfacture\b|\binvoice\b/i.test(text)) return 'invoice';
-    if (/\b(bon de livraison|bl\b|livraison|delivery note)\b/i.test(text)) return 'delivery_note';
-    return 'unknown';
-  }
-
-  private extractKnownSupplierBusinessData(text: string, lines: string[]): BusinessExtraction | null {
-    if (this.isTingstadFinnishInvoice(text)) return this.extractTingstadFinnishInvoice(text, lines);
-    if (this.isKesproOrder(text)) return this.extractKesproOrder(text, lines);
-    return null;
-  }
-
-  private isTingstadFinnishInvoice(text: string) {
-    return /AB Tingstad papper/i.test(text) && /Lasku päiväys/i.test(text) && /Nimike/i.test(text) && /Yhteensä/i.test(text);
-  }
-
-  private isKesproOrder(text: string) {
-    return /Order information/i.test(text) && /Order number/i.test(text) && /(kespro\.fi|Tilauksen tiedot|Tilaushistoria)/i.test(text);
-  }
-
-  private extractTingstadFinnishInvoice(text: string, lines: string[]): BusinessExtraction {
-    const items = this.extractTingstadLines(lines);
-    const invoiceDate = this.extractDate(text, /Lasku päiväys[\s\S]{0,120}?([0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{4})/i);
-    const invoiceNumber = this.extractAfter(text, /Lasku päiväys[\s\S]{0,160}?\bLasku\s+([0-9]{5,})/i, 1)
-      || this.extractAfter(text, /\bLasku\s*\n\s*([0-9]{5,})/i, 1);
-    const dueDate = this.extractDate(text, /Maksutapa\s+Eräpäivä[\s\S]{0,80}?\bLasku\s+([0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{4})/i);
-    const orderRequester = text.match(/tingstad\.se\s+(.+?)\s+([0-9]{6,})\s+([^\n]+)/i);
-    const customer = this.extractTingstadCustomer(lines, text);
-    const delivery = this.extractTingstadDeliveryTerms(lines);
-    const totals = this.extractTingstadTotals(text, items);
-    const computedTotal = this.roundMoney(items.reduce((sum, item) => sum + (item.total ?? 0), 0));
-    const delta = totals.totalIncludingTax == null ? null : this.roundMoney(computedTotal - totals.totalIncludingTax);
-    const warnings = delta != null && Math.abs(delta) > 0.05
-      ? [`La somme des lignes (${computedTotal.toFixed(2)} EUR) ne correspond pas au total facture (${totals.totalIncludingTax.toFixed(2)} EUR).`]
-      : [];
-
-    const extraction: BusinessExtraction = {
-      documentType: 'invoice',
-      supplier: {
-        name: 'AB Tingstad papper',
-        vatNumber: this.extractAfter(text, /\bALV\s+(SE[0-9]+)/i, 1),
-        address: 'BOX 13013, 402 51 GÖTEBORG',
-      },
-      supplierName: 'AB Tingstad papper',
-      customer,
-      document: {
-        invoiceNumber,
-        deliveryNoteNumber: null,
-        purchaseOrderNumber: orderRequester?.[2]?.trim() || null,
-        documentDate: invoiceDate,
-        deliveryDate: null,
-      },
-      invoice: {
-        invoiceNumber,
-        invoiceDate,
-        dueDate,
-        paymentMethod: this.extractAfter(text, /Maksutapa\s+Eräpäivä[\s\S]{0,60}?\n\s*([^\s\n]+)/i, 1),
-        orderNumber: orderRequester?.[2]?.trim() || null,
-        currency: 'EUR',
-        netTotal: totals.totalExcludingTax,
-        vatTotal: totals.totalTax,
-        rounding: totals.rounding ?? null,
-        grandTotal: totals.totalIncludingTax,
-        iban: this.extractAfter(text, /\bIBAN:\s*([A-Z]{2}[A-Z0-9\s]+)/i, 1)?.replace(/\s+/g, ' ') || null,
-        bic: this.extractAfter(text, /\bBIC:\s*([A-Z0-9]+)/i, 1),
-        deliveryTerms: delivery.deliveryTerms,
-        deliveryMethod: delivery.deliveryMethod,
-        lateInterestRate: this.extractMoney(text, /Viivästyskorko\s*([0-9]+(?:[.,][0-9]+)?)\s*%/i),
-        requesterName: orderRequester?.[3]?.replace(/\s+/g, ' ').trim() || null,
-      },
-      totals,
-      lines: items,
-      items,
-      confidence: {
-        documentType: 1,
-        header: invoiceNumber && invoiceDate && dueDate ? 0.99 : 0.82,
-        items: items.length ? 1 : 0.2,
-        totals: totals.totalIncludingTax != null && (delta == null || Math.abs(delta) <= 0.05) ? 1 : 0.65,
-      },
-      aiAnalysis: {
-        provider: 'internal',
-        model: 'finnish-tingstad-parser',
-        status: 'applied',
-        confidence: 0.99,
-        warnings,
-        suggestedActions: items.some((item) => item.isFreight)
-          ? ['La ligne RAHTI est classée en frais de livraison et ignorée pour le stock.']
-          : [],
-        totalsCheck: {
-          computedTotal,
-          documentTotal: totals.totalIncludingTax,
-          delta,
-          status: delta == null ? 'missing_document_total' : Math.abs(delta) <= 0.05 ? 'ok' : 'mismatch',
-        },
-      },
-      warnings,
-      suggestedActions: items.some((item) => item.isFreight)
-        ? ['Vérifier que les frais de livraison restent exclus de la réception stock.']
-        : [],
-      documentConfidence: 0.99,
-    };
-    return extraction;
-  }
-
-  private extractTingstadCustomer(lines: string[], text: string) {
-    const customerLine = lines.find((line) => /THE FRENCH CAF/i.test(line) && /\b[0-9]{4,}\b/.test(line));
-    const match = customerLine?.match(/^(THE FRENCH CAF[ÉE] OY)\s+([0-9]{4,})\s+(.+)$/i);
-    return {
-      name: match?.[3]?.trim() || 'The French Café Oy',
-      customerNumber: match?.[2]?.trim() || this.extractAfter(text, /Asiakasnumero[\s\S]{0,100}?([0-9]{4,})/i, 1),
-      vatNumber: this.extractAfter(text, /\b(FI[0-9]{8})\b/i, 1),
-      deliveryAddress: this.extractTingstadDeliveryAddress(lines),
-    };
-  }
-
-  private extractTingstadDeliveryAddress(lines: string[]) {
-    const start = lines.findIndex((line) => /^THE FRENCH CAF/i.test(line));
-    if (start < 0) return null;
-    const addressLines: string[] = [];
-    for (const line of lines.slice(start, start + 8)) {
-      if (/^Toimitusehdot\b/i.test(line) || /\bFI[0-9]{8}\b/i.test(line)) break;
-      const clean = line
-        .replace(/\s+[0-9]{4,}\s+The French Caf.*$/i, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-      if (clean) addressLines.push(clean);
-      if (/^[0-9]{5}\s+/.test(clean)) break;
-    }
-    return addressLines.join(', ') || null;
-  }
-
-  private extractTingstadDeliveryTerms(lines: string[]) {
-    const idx = lines.findIndex((line) => /^Toimitusehdot\b/i.test(line));
-    const valueLine = idx >= 0 ? lines.slice(idx + 1).find((line) => line.trim() && !/^Maksutapa\b/i.test(line)) : null;
-    const parts = valueLine?.split(/\s{2,}/).map((part) => part.trim()).filter(Boolean) ?? [];
-    return {
-      deliveryTerms: parts[0] || null,
-      deliveryMethod: parts[1] || null,
-    };
-  }
-
-  private extractTingstadTotals(text: string, items: ExtractedLine[]) {
-    const block = text.match(/Yhteensä netto[\s\S]*?(?=IBAN:|AB Tingstad|$)/i)?.[0] || '';
-    const grandTotal = this.parseFrenchNumber(block.match(/Loppusumma[\s\S]{0,140}?([0-9]+,[0-9]{2})\s*\n\s*hintaan/i)?.[1] || '')
-      ?? this.parseFrenchNumber(block.match(/Loppusumma[\s\S]{0,80}?([0-9]+,[0-9]{2})/i)?.[1] || '');
-    const afterHintaan = block.match(/hintaan\s*\n\s*([^\n]+)/i)?.[1] || '';
-    const values = [...afterHintaan.matchAll(/[0-9]+,[0-9]{2}/g)]
-      .map((match) => this.parseFrenchNumber(match[0]))
-      .filter((value): value is number => value != null);
-    const computedTotal = this.roundMoney(items.reduce((sum, item) => sum + (item.total ?? 0), 0));
-    return {
-      totalExcludingTax: values[0] ?? grandTotal ?? computedTotal,
-      totalTax: values.length >= 2 ? values[values.length - 2] : 0,
-      totalIncludingTax: grandTotal ?? computedTotal,
-      rounding: values.length >= 1 ? values[values.length - 1] : null,
-    };
-  }
-
-  private extractTingstadLines(lines: string[]) {
-    const items: ExtractedLine[] = [];
-    const productLineRe = /^\s*([0-9]{4,})\s+(.+?)\s+([0-9]+[,.][0-9]{2})\s*([A-Za-zÅÄÖåäö]{2,6})\s+([0-9]+[,.][0-9]{2})\s+([0-9]+[,.][0-9]{2})\s*$/;
-    for (let i = 0; i < lines.length; i += 1) {
-      const match = lines[i].match(productLineRe);
-      if (!match) continue;
-      const [, code, rawName, quantityRaw, unitRaw, unitPriceRaw, totalRaw] = match;
-      const description: string[] = [];
-      let originCountry: string | null = null;
-      let statisticalCode: string | null = null;
-      let netWeight: number | null = null;
-      let j = i + 1;
-      for (; j < lines.length; j += 1) {
-        const next = lines[j];
-        if (productLineRe.test(next) || /^(Pakkaukset|Yhteensä netto|AB Tingstad papper)\b/i.test(next)) break;
-        if (/Alkuperämaa/i.test(next)) {
-          const originLine = lines[j + 1]?.trim() || '';
-          const originMatch = originLine.match(/^([A-Z]{2})(?:\s+\[?([A-Z0-9]+)\]?)?\s+([0-9]+(?:[,.][0-9]+)?)$/);
-          if (originMatch) {
-            originCountry = originMatch[1];
-            statisticalCode = originMatch[2] || null;
-            netWeight = this.parseFrenchNumber(originMatch[3]);
-            j += 1;
-          }
-          continue;
-        }
-        const clean = next.replace(/\s+/g, ' ').trim();
-        if (clean && !/^(Määrä|Nimike|Nimi)\b/i.test(clean)) description.push(clean);
-      }
-      const nameOriginal = rawName.replace(/\s+/g, ' ').trim();
-      const isFreight = code === '5555' || /\bRAHTI\b/i.test(nameOriginal);
-      items.push({
-        ignored: isFreight,
-        label: nameOriginal,
-        reference: code,
-        supplierProductCode: code,
-        nameOriginal,
-        nameNormalized: this.normalizeProductText(nameOriginal),
-        descriptionOriginal: description.join(' ') || null,
-        quantity: this.parseFrenchNumber(quantityRaw),
-        unit: unitRaw.toLowerCase(),
-        unitPrice: this.parseFrenchNumber(unitPriceRaw),
-        total: this.parseFrenchNumber(totalRaw),
-        vatRate: 0,
-        lotNumber: null,
-        bestBeforeDate: null,
-        originCountry,
-        statisticalCode,
-        netWeight,
-        isFreight,
-        isStockItem: !isFreight,
-        categoryName: isFreight ? 'Frais de livraison' : 'Emballages',
-        lineStatus: isFreight ? 'non_product_line' : undefined,
-        lineConfidence: 1,
-        warnings: isFreight ? ['Ligne RAHTI classée en frais de livraison, non stockable.'] : [],
-        sourceText: [lines[i], ...description].join('\n'),
-      });
-      i = Math.max(i, j - 1);
-    }
-    return items;
-  }
-
-  private extractKesproOrder(text: string, lines: string[]): BusinessExtraction {
-    const orderNumber = this.extractAfter(text, /Order number\s+([0-9]+)/i, 1);
-    const orderDate = this.extractDate(text, /Order date:\s+[A-Za-z]+\s+([0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{4})/i);
-    const deliveryDate = this.extractDate(text, /Selected delivery date\s+[A-Za-z]+\s+([0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{4})/i)
-      || this.extractDate(text, /Delivery date\s+([0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{4})/i);
-    const deliveryAddress = this.extractAfter(text, /Delivery address\s+(.+)/i, 1);
-    const company = this.extractAfter(text, /Company\s+(.+?)\s+Order type/i, 1);
-    const customerNumber = this.extractAfter(text, /Customer number\s+([0-9]+)/i, 1);
-    const orderer = this.extractAfter(text, /Orderer\s+(.+?)\s+Your reference/i, 1);
-    const items = this.extractKesproLines(lines);
-    const totals = {
-      totalExcludingTax: this.extractMoney(text, /Without tax\s*([0-9]+,[0-9]{2})\s*€/i),
-      totalTax: this.extractMoney(text, /Total VAT\s*([0-9]+,[0-9]{2})\s*€/i),
-      totalIncludingTax: this.extractMoney(text, /Total\s*([0-9]+,[0-9]{2})\s*€/i),
-    };
-    const computedTotal = this.roundMoney(items.reduce((sum, item) => sum + (item.total ?? 0), 0));
-    const documentTotal = totals.totalIncludingTax;
-    const delta = documentTotal == null ? null : this.roundMoney(computedTotal - documentTotal);
-    const warnings = delta != null && Math.abs(delta) > 0.05
-      ? [`La somme des lignes commande (${computedTotal.toFixed(2)} EUR) ne correspond pas au total (${documentTotal!.toFixed(2)} EUR), probablement à cause de la TVA incluse dans le total final.`]
-      : [];
-
-    return {
-      documentType: /confirmed quantity/i.test(text) ? 'order_confirmation' : 'supplier_order',
-      supplier: { name: /kespro\.fi/i.test(text) ? 'Kespro' : null },
-      supplierName: /kespro\.fi/i.test(text) ? 'Kespro' : null,
-      customer: {
-        name: company || null,
-        customerNumber,
-        deliveryAddress,
-      },
-      document: {
-        invoiceNumber: null,
-        deliveryNoteNumber: null,
-        purchaseOrderNumber: orderNumber,
-        documentDate: orderDate,
-        deliveryDate,
-      },
-      order: {
-        orderNumber,
-        orderDate,
-        selectedDeliveryDate: deliveryDate,
-        deliveryAddress,
-        company,
-        customerNumber,
-        orderer,
-      },
-      totals,
-      lines: items,
-      items,
-      confidence: {
-        documentType: 1,
-        header: orderNumber && orderDate && deliveryDate ? 0.99 : 0.82,
-        items: items.length ? 0.99 : 0.2,
-        totals: totals.totalIncludingTax != null ? 0.95 : 0.5,
-      },
-      aiAnalysis: {
-        provider: 'internal',
-        model: 'kespro-order-history-parser',
-        status: 'applied',
-        confidence: 0.98,
-        warnings,
-        suggestedActions: ['Document classé comme commande/confirmation fournisseur, pas comme facture.'],
-        totalsCheck: {
-          computedTotal,
-          documentTotal: totals.totalIncludingTax,
-          delta,
-          status: documentTotal == null || delta == null ? 'missing_document_total' : Math.abs(delta) <= Math.max(0.05, documentTotal * 0.3) ? 'order_total_includes_vat' : 'mismatch',
-        },
-      },
-      warnings,
-      suggestedActions: ['Valider les lignes confirmées avant réception stock si la commande sert de base de réception.'],
-      documentConfidence: 0.98,
-    };
-  }
-
-  private extractKesproLines(lines: string[]) {
-    const items: ExtractedLine[] = [];
-    const confirmedRe = /^\s*(.+?)\s+([0-9]+,[0-9]{2})\s*€\s*\/\s*([A-Z]{2,5})\s+([0-9]+(?:[,.][0-9]+)?)\s+Confirmed quantity\s*\/\s*ME\s+([0-9]+,[0-9]{2})\s*€/i;
-    const pendingPriceRe = /^\s*([0-9]+,[0-9]{2})\s*€\s*\/\s*([A-Z]{2,5})\s+([0-9]+(?:[,.][0-9]+)?)\s+Confirmed quantity\s*\/\s*ME\s+([0-9]+,[0-9]{2})\s*€/i;
-    let categoryName: string | null = null;
-    let pendingPrice: { unitPrice: number | null; unit: string; quantity: number | null; total: number | null; source: string } | null = null;
-
-    for (let i = 0; i < lines.length; i += 1) {
-      const raw = lines[i];
-      const clean = this.cleanKesproText(raw);
-      const nextCategory = this.kesproCategoryName(clean);
-      if (nextCategory) {
-        categoryName = nextCategory;
-        continue;
-      }
-      if (this.isKesproFooterLine(clean) || /Replaced quantity/i.test(clean)) continue;
-      const pendingMatch = raw.match(pendingPriceRe);
-      if (pendingMatch && !confirmedRe.test(raw)) {
-        pendingPrice = {
-          unitPrice: this.parseFrenchNumber(pendingMatch[1]),
-          unit: pendingMatch[2],
-          quantity: this.parseFrenchNumber(pendingMatch[3]),
-          total: this.parseFrenchNumber(pendingMatch[4]),
-          source: raw,
-        };
-        continue;
-      }
-
-      const confirmedMatch = raw.match(confirmedRe);
-      if (confirmedMatch) {
-        const continuation = this.collectKesproContinuation(lines, i + 1, confirmedRe, pendingPriceRe);
-        const nameOriginal = [this.cleanKesproProductName(confirmedMatch[1]), continuation.nameContinuation].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
-        items.push(this.kesproLine({
-          nameOriginal,
-          categoryName,
-          quantity: this.parseFrenchNumber(confirmedMatch[4]),
-          unit: confirmedMatch[3],
-          unitPrice: this.parseFrenchNumber(confirmedMatch[2]),
-          total: this.parseFrenchNumber(confirmedMatch[5]),
-          packageDescription: continuation.packageDescription,
-          sourceText: [raw, ...continuation.sourceLines].join('\n'),
-        }));
-        i = continuation.nextIndex - 1;
-        continue;
-      }
-
-      if (pendingPrice && clean && /[A-Za-zÀ-ÿ]/.test(clean) && !this.isKesproHeaderLine(clean)) {
-        const continuation = this.collectKesproContinuation(lines, i + 1, confirmedRe, pendingPriceRe);
-        const nameOriginal = [this.cleanKesproProductName(clean), continuation.nameContinuation].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
-        if (nameOriginal) {
-          items.push(this.kesproLine({
-            nameOriginal,
-            categoryName,
-            quantity: pendingPrice.quantity,
-            unit: pendingPrice.unit,
-            unitPrice: pendingPrice.unitPrice,
-            total: pendingPrice.total,
-            packageDescription: continuation.packageDescription,
-            sourceText: [pendingPrice.source, raw, ...continuation.sourceLines].join('\n'),
-          }));
-          pendingPrice = null;
-          i = continuation.nextIndex - 1;
-        }
-      }
-    }
-    return items;
-  }
-
-  private collectKesproContinuation(lines: string[], start: number, confirmedRe: RegExp, pendingPriceRe: RegExp) {
-    const sourceLines: string[] = [];
-    const nameParts: string[] = [];
-    let packageDescription: string | null = null;
-    let i = start;
-    for (; i < lines.length && i < start + 8; i += 1) {
-      const raw = lines[i];
-      const clean = this.cleanKesproText(raw);
-      if (!clean) continue;
-      if (confirmedRe.test(raw) || pendingPriceRe.test(raw) || this.kesproCategoryName(clean) || this.isKesproFooterLine(clean)) break;
-      sourceLines.push(raw);
-      const packageMatch = clean.match(/^([0-9]+(?:[,.][0-9]+)?)\s+([A-Z]{2,5})(?:\s+\(([^)]+)\))?$/);
-      if (packageMatch) {
-        packageDescription = clean;
-        i += 1;
-        break;
-      }
-      const beforeVat = clean.split(/VAT\s*0\s*%/i)[0]?.trim() || '';
-      const namePart = this.cleanKesproProductName(beforeVat);
-      if (namePart && /[A-Za-zÀ-ÿ]/.test(namePart) && !/^units$/i.test(namePart)) nameParts.push(namePart);
-    }
-    return {
-      nameContinuation: nameParts.join(' '),
-      packageDescription,
-      sourceLines,
-      nextIndex: i,
-    };
-  }
-
-  private kesproLine(input: { nameOriginal: string; categoryName: string | null; quantity: number | null; unit: string; unitPrice: number | null; total: number | null; packageDescription: string | null; sourceText: string }) {
-    return {
-      ignored: false,
-      label: input.nameOriginal,
-      reference: null,
-      supplierProductCode: null,
-      nameOriginal: input.nameOriginal,
-      nameNormalized: this.normalizeProductText(input.nameOriginal),
-      descriptionOriginal: input.packageDescription,
-      quantity: input.quantity,
-      unit: input.unit,
-      unitPrice: input.unitPrice,
-      total: input.total,
-      vatRate: 0,
-      lotNumber: null,
-      bestBeforeDate: null,
-      originCountry: null,
-      statisticalCode: null,
-      netWeight: null,
-      isFreight: false,
-      isStockItem: true,
-      packageDescription: input.packageDescription,
-      categoryName: input.categoryName,
-      lineConfidence: 0.98,
-      warnings: [],
-      sourceText: input.sourceText,
-    } satisfies ExtractedLine;
-  }
-
-  private cleanKesproText(value: string) {
-    return value.replace(/[\uE000-\uF8FF]/g, ' ').replace(/\s+/g, ' ').trim();
-  }
-
-  private cleanKesproProductName(value: string) {
-    return this.cleanKesproText(value)
-      .replace(/\bProduct replaced\b/ig, ' ')
-      .replace(/\bVAT\s*0\s*%\b.*$/i, ' ')
-      .replace(/\bunits\b.*$/i, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
-  private kesproCategoryName(cleanLine: string) {
-    const categories = [
-      'Bread & pastry',
-      'Seasoning & baking',
-      'Dairy products & eggs',
-      'Fruits & vegetables',
-      'Cleaning & tissue paper',
-      'Frozen food',
-      'Drinks',
-      'Dry foods & canned food',
-      'Kertakäyttöastiat & kattaus',
-      'Sweets & snacks',
-      'Meat, fresh, frozen and plant-based proteins',
-    ];
-    return categories.find((category) => cleanLine === category || cleanLine.endsWith(` ${category}`)) || null;
-  }
-
-  private isKesproHeaderLine(cleanLine: string) {
-    return /^(Order information|Delivery information|Order number|Company|Customer number|Orderer|Delivery date|Product|Quantity|Unit price|date|products?)\b/i.test(cleanLine);
-  }
-
-  private isKesproFooterLine(cleanLine: string) {
-    return !cleanLine
-      || /^(Tax breakdown|Tax base|VAT %|Price excluding tax|Descriptions for product labelling|Without tax|Total VAT|Total |The price and availability|Direct delivery|Stock product|24h|On-demand|Frozen product|https:\/\/|Page [0-9])/i.test(cleanLine)
-      || /^[0-9]+,[0-9]{2}\s*€\s+[0-9.]+\s*%/i.test(cleanLine);
   }
 
   private extractLines(lines: string[]) {
@@ -1508,23 +951,6 @@ export class StocksOcrService {
   private async matchLines(organizationId: string, lines: ExtractedLine[], supplierId?: string | null) {
     const products = await this.prisma.product.findMany({ where: { organizationId, isArchived: false }, include: { unit: true, category: true, primarySupplier: true } });
     return lines.map((line) => {
-      if ((line as any).ignored || (line as any).isFreight || (line as any).isStockItem === false || (line as any).lineStatus === 'non_product_line') {
-        return {
-          ...line,
-          ignored: true,
-          productId: null,
-          productName: null,
-          unitId: null,
-          matchedUnitSymbol: null,
-          matchingScore: 0,
-          matchingStatus: StockReceptionLineMatchingStatus.NOT_FOUND,
-          lineStatus: 'non_product_line',
-          lineConfidence: (line as any).lineConfidence ?? 1,
-          warnings: (line as any).warnings ?? ['Ligne non stockable ignorée pour la réception.'],
-          sourceText: (line as any).sourceText ?? null,
-          productCandidates: [],
-        };
-      }
       const ranked = products
         .map((product) => {
           const aiProductId = (line as any).productId;
@@ -1625,8 +1051,8 @@ export class StocksOcrService {
 
   private normalizeProductText(value: string) {
     return this.normalize(value)
-      .replace(/\b(?:lot|dlc|ddm|prix|total|montant|tva|ht|ttc|net|brut|colis|carton|cartons|pieces|piece|unite|unites|kg|kgs|g|gr|l|litre|litres|ml|cl|x|ltk|kpl|pkt|pak|pss|rs|tlk|prk|plo|yksikko|maara|hinta|yhteensa)\b/g, ' ')
-      .replace(/\b\d+(?:[.,]\d+)?\s*(?:kg|kgs|g|gr|l|ml|cl|pc|pcs|u|x|ltk|kpl|pkt|pak|pss|rs|tlk|prk|plo)\b/g, ' ')
+      .replace(/\b(?:lot|dlc|ddm|prix|total|montant|tva|ht|ttc|net|brut|colis|carton|cartons|pieces|piece|unite|unites|kg|kgs|g|gr|l|litre|litres|ml|cl|x)\b/g, ' ')
+      .replace(/\b\d+(?:[.,]\d+)?\s*(?:kg|kgs|g|gr|l|ml|cl|pc|pcs|u|x)\b/g, ' ')
       .replace(/\b\d{4,}\b/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
@@ -1635,7 +1061,7 @@ export class StocksOcrService {
   private normalizeProductUnit(value: string) {
     const unit = this.normalize(value);
     if (['pu', 'u', 'unite', 'unites', 'piece', 'pieces', 'pc', 'pcs'].includes(unit)) return 'piece';
-    if (['col', 'colis', 'carton', 'cartons', 'caisse', 'ltk'].includes(unit)) return 'carton';
+    if (['col', 'colis', 'carton', 'cartons', 'caisse'].includes(unit)) return 'carton';
     return unit;
   }
 
@@ -1824,10 +1250,6 @@ export class StocksOcrService {
     return Number.isFinite(parsed) ? parsed : null;
   }
 
-  private roundMoney(value: number) {
-    return Math.round((value + Number.EPSILON) * 100) / 100;
-  }
-
   private normalizeDate(value: string) {
     const parts = value.split(/[./-]/).map(Number);
     if (parts.length !== 3) return null;
@@ -1838,7 +1260,6 @@ export class StocksOcrService {
   }
 
   private confidenceForExtraction(extraction: BusinessExtraction) {
-    if (extraction.documentConfidence != null) return extraction.documentConfidence;
     if (!extraction.lines.length) return 0.2;
     const recognized = extraction.lines.filter((line: any) => line.matchingStatus === StockReceptionLineMatchingStatus.RECOGNIZED).length;
     return Math.min(0.99, Math.max(0.3, recognized / extraction.lines.length));

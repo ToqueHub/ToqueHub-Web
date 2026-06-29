@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 
 type Zone = 'kpi' | 'activity' | 'analytics' | 'alerts';
 type WidgetSize = 'sm' | 'md' | 'lg' | 'xl';
-type AppId = 'core' | 'stocks' | 'rnm-prices' | 'hr' | 'planning' | 'technical-sheets' | 'production' | 'menus' | 'purchases' | 'quality' | 'finance';
+type AppId = 'core' | 'stocks' | 'rnm-prices' | 'hr' | 'planning' | 'technical-sheets' | 'production' | 'menus' | 'haccp' | 'purchases' | 'quality' | 'finance';
 
 type RegistryWidget = {
   id: string;
@@ -43,6 +43,7 @@ type OrganizationInstallState = {
   technicalSheetsInstalledAt: Date | null;
   productionInstalledAt: Date | null;
   menusInstalledAt: Date | null;
+  haccpInstalledAt: Date | null;
 };
 
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
@@ -57,6 +58,7 @@ const APP_PERMISSIONS: Partial<Record<AppId, string>> = {
   'technical-sheets': 'technical-sheets.read',
   production: 'production.read',
   menus: 'menus.read',
+  haccp: 'haccp.read',
 };
 
 const INSTALL_FIELDS: Partial<Record<AppId, keyof OrganizationInstallState>> = {
@@ -67,6 +69,7 @@ const INSTALL_FIELDS: Partial<Record<AppId, keyof OrganizationInstallState>> = {
   'technical-sheets': 'technicalSheetsInstalledAt',
   production: 'productionInstalledAt',
   menus: 'menusInstalledAt',
+  haccp: 'haccpInstalledAt',
 };
 
 const REGISTRY: RegistryWidget[] = [
@@ -83,6 +86,7 @@ const REGISTRY: RegistryWidget[] = [
   { id: 'rnm-prices.market-watch', appId: 'rnm-prices', moduleLabel: 'Cours des produits', title: 'Veille RNM', description: 'Favoris et cours disponibles.', zone: 'analytics', defaultOrder: 20, size: 'md' },
 
   { id: 'hr.headcount', appId: 'hr', moduleLabel: 'RH', title: 'Effectif', description: 'Collaborateurs actifs et rattachements.', zone: 'kpi', defaultOrder: 40, size: 'md' },
+  { id: 'hr.rotation-coverage', appId: 'hr', moduleLabel: 'RH', title: 'Roulements', description: 'Couverture des roulements actifs.', zone: 'analytics', defaultOrder: 30, size: 'md' },
   { id: 'hr.latest-employees', appId: 'hr', moduleLabel: 'RH', title: 'Collaborateurs récents', description: 'Derniers collaborateurs ajoutés.', zone: 'activity', defaultOrder: 40, size: 'lg' },
 
   { id: 'planning.today', appId: 'planning', moduleLabel: 'Planning', title: 'Planning du jour', description: 'Présences, absences et services couverts.', zone: 'kpi', defaultOrder: 50, size: 'lg' },
@@ -199,6 +203,7 @@ export class DashboardService {
       case 'stocks.top-consumed': return this.topConsumed(organizationId);
       case 'rnm-prices.market-watch': return this.rnmSummary(organizationId, context.user.id);
       case 'hr.headcount': return this.hrHeadcount(organizationId);
+      case 'hr.rotation-coverage': return this.hrRotation(organizationId);
       case 'hr.latest-employees': return this.latestEmployees(organizationId);
       case 'planning.today': return this.planningToday(organizationId);
       case 'planning.alerts': return this.planningAlerts(organizationId);
@@ -300,6 +305,15 @@ export class DashboardService {
       this.prisma.hrEmployee.count({ where: { organizationId, isArchived: false, userId: { not: null } } }),
     ]);
     return { employees, departments, linked };
+  }
+
+  private async hrRotation(organizationId: string) {
+    const [activeRotations, employees, withRotation] = await Promise.all([
+      this.prisma.hrRotation.count({ where: { organizationId, isArchived: false } }),
+      this.prisma.hrEmployee.count({ where: { organizationId, isArchived: false } }),
+      this.prisma.hrRotationAssignment.groupBy({ by: ['employeeId'], where: { organizationId, endDate: null }, _count: { _all: true } }),
+    ]);
+    return { activeRotations, employeesWithRotation: withRotation.length, employeesWithoutRotation: Math.max(employees - withRotation.length, 0) };
   }
 
   private latestEmployees(organizationId: string) { return this.prisma.hrEmployee.findMany({ where: { organizationId, isArchived: false }, include: { department: true, position: true }, orderBy: { createdAt: 'desc' }, take: 6 }); }

@@ -214,6 +214,12 @@ export class AuthController {
     return this.authService.login(dto);
   }
 
+  @Post('mobile-dev-session')
+  @ApiOkResponse({ description: 'Returns a development JWT for the mobile app when enabled locally.' })
+  mobileDevSession() {
+    return this.authService.mobileDevSession();
+  }
+
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

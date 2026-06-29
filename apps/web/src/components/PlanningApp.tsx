@@ -31,6 +31,7 @@ import type {
   HrCollaborator,
   HrDepartment,
   HrPosition,
+  HrRotation,
   PlanningAlert,
   PlanningAssignment,
   PlanningBootstrap,
@@ -65,7 +66,9 @@ type PlanningDashboardConfig = {
 type DashboardPeriodRange = { startDate: string; endDate: string; label: string; mode: DashboardPeriod | PlanningBlockMode };
 type DashboardPeriodData = { range: DashboardPeriodRange; summary: PlanningDashboardResponse | null; assignments: PlanningAssignment[] };
 type PlanningSetupStatus = 'todo' | 'partial' | 'done';
-type PlanningRotationOption = Pick<PlanningTemplate, 'id' | 'name' | 'description' | 'departmentId' | 'siteId' | 'days' | 'employeeIds' | 'source' | 'templateType'>;
+type PlanningRotationOption = Pick<PlanningTemplate, 'id' | 'name' | 'description' | 'departmentId' | 'siteId' | 'days' | 'employeeIds' | 'source' | 'templateType'> & {
+  assignments?: HrRotation['assignments'];
+};
 type PlanningSetupStep = {
   key: string;
   title: string;
@@ -109,6 +112,7 @@ type Props = {
   collaborators: HrCollaborator[];
   departments: HrDepartment[];
   positions: HrPosition[];
+  rotations: HrRotation[];
   sites: Site[];
   canWrite: boolean;
   dashboardCustomizeSignal?: number;
@@ -175,7 +179,7 @@ const planningBusinessStatuses = [
   { value: 'other', label: 'Autre', className: 'other', countsHours: false },
 ];
 
-export function PlanningApp({ token, tab, session, collaborators, departments, positions, sites, canWrite, dashboardCustomizeSignal, onDashboardCustomizeSignalConsumed, onNavigate }: Props) {
+export function PlanningApp({ token, tab, session, collaborators, departments, positions, rotations, sites, canWrite, dashboardCustomizeSignal, onDashboardCustomizeSignalConsumed, onNavigate }: Props) {
   const [data, setData] = useState<PlanningBootstrap>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
@@ -282,7 +286,8 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
   const templates = data?.templates ?? [];
   const planningDayPresets = planningSettingsArray<PlanningTemplate>(data?.settings, 'dayPresets').length ? planningSettingsArray<PlanningTemplate>(data?.settings, 'dayPresets') : dayPresetTemplates(templates);
   const planningWeeklyRotations = planningSettingsArray<PlanningTemplate>(data?.settings, 'weeklyRotations');
-  const effectiveRotations: PlanningRotationOption[] = planningWeeklyRotations;
+  const legacyRhRotations = planningSettingsArray<HrRotation>(data?.settings, 'legacyRhRotations').length ? planningSettingsArray<HrRotation>(data?.settings, 'legacyRhRotations') : data?.rotations?.length ? data.rotations : rotations;
+  const effectiveRotations: PlanningRotationOption[] = [...planningWeeklyRotations, ...legacyRhRotations];
   const employeeTemplateAssignments = planningSettingsArray<PlanningEmployeeTemplateAssignment>(data?.settings, 'employeeTemplateAssignments');
   const assignments = data?.assignments ?? [];
   const absences = data?.absences ?? [];
@@ -689,6 +694,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
           requirements={requirements}
           templates={templates}
           rotations={planningWeeklyRotations}
+          legacyRotations={legacyRhRotations}
           dayPresets={planningDayPresets}
           employeeTemplateAssignments={employeeTemplateAssignments}
           absences={absences}
@@ -1738,7 +1744,7 @@ function QuickAssignmentPanel(props: { selectedDate: string; collaborators: HrCo
             <div className="chip-row">
               {props.rotations.slice(0, 5).map((rotation) => <button key={rotation.id} className={`planning-chip ${props.quickAssignmentSelection?.kind === 'weekly-rotation' && props.quickAssignmentSelection.rotation?.id === rotation.id ? 'active' : ''}`} type="button" onClick={() => selectRotation(rotation)}><Repeat2 size={13} /> {rotation.name}</button>)}
             </div>
-            {props.rotations.length ? <span className="muted tiny">Roulements configurés dans Planning.</span> : <GuidedEmptyState title="Aucun roulement semaine" description="Vous pouvez planifier en manuel ou préparer les roulements dans Paramétrage." actionLabel="Voir les roulements" onAction={props.onOpenSettings} />}
+            {props.rotations.length ? <span className="muted tiny">Roulements lus temporairement depuis RH.</span> : <GuidedEmptyState title="Aucun roulement semaine" description="Vous pouvez planifier en manuel ou préparer les roulements dans Paramétrage." actionLabel="Voir les roulements" onAction={props.onOpenSettings} />}
           </div>
           <div className="quick-section">
             <strong>Horaire personnalisé</strong>
@@ -1812,7 +1818,7 @@ function AssignmentEditModal({ assignment, collaborators, departments, positions
   );
 }
 
-function PlanningSettings({ selected, setSelected, requirements, templates, rotations, dayPresets, employeeTemplateAssignments, absences, departments, positions, sites, collaborators, settings, setup, onOpenInitialSetup, selectedDate, canWrite, onSaveRequirement, onDeleteRequirement, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { selected: SettingKey; setSelected: (value: SettingKey) => void; requirements: PlanningRequirement[]; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; dayPresets: PlanningTemplate[]; employeeTemplateAssignments: PlanningEmployeeTemplateAssignment[]; absences: Array<Record<string, any>>; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; settings?: Record<string, any>; setup: ReturnType<typeof buildPlanningSetup>; onOpenInitialSetup: () => void; selectedDate: string; canWrite: boolean; onSaveRequirement: (payload: RequirementPayload, id?: string) => Promise<void>; onDeleteRequirement: (id: string) => Promise<void>; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
+function PlanningSettings({ selected, setSelected, requirements, templates, rotations, legacyRotations, dayPresets, employeeTemplateAssignments, absences, departments, positions, sites, collaborators, settings, setup, onOpenInitialSetup, selectedDate, canWrite, onSaveRequirement, onDeleteRequirement, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { selected: SettingKey; setSelected: (value: SettingKey) => void; requirements: PlanningRequirement[]; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; legacyRotations: HrRotation[]; dayPresets: PlanningTemplate[]; employeeTemplateAssignments: PlanningEmployeeTemplateAssignment[]; absences: Array<Record<string, any>>; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; settings?: Record<string, any>; setup: ReturnType<typeof buildPlanningSetup>; onOpenInitialSetup: () => void; selectedDate: string; canWrite: boolean; onSaveRequirement: (payload: RequirementPayload, id?: string) => Promise<void>; onDeleteRequirement: (id: string) => Promise<void>; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
   const cards: Array<{ key: SettingKey; title: string; description: string; count: string; status: PlanningSetupStatus; Icon: typeof ClipboardList }> = [
     { key: 'needs', title: 'Besoins par service', description: 'Saison, jour, créneau, service et besoin opérationnel.', count: `${requirements.length} besoin(s)`, status: requirements.length ? 'done' : 'todo', Icon: ClipboardList },
     { key: 'presets', title: 'Presets & roulements', description: 'Presets journaliers et roulements semaine propriétaires Planning.', count: `${dayPresets.length + rotations.length} élément(s)`, status: dayPresets.length && rotations.length ? 'done' : dayPresets.length || rotations.length ? 'partial' : 'todo', Icon: Repeat2 },
@@ -1831,16 +1837,16 @@ function PlanningSettings({ selected, setSelected, requirements, templates, rota
           {cards.map(({ key, title, count, status, Icon }) => <button key={key} className={`settings-tab ${selected === key ? 'active' : ''}`} onClick={() => setSelected(key)}><Icon size={16} /><span>{title}</span><small>{count}</small><em className={`setup-status ${status}`}>{setupStatusLabel(status)}</em></button>)}
         </div>
         <div className="card-modern settings-detail">
-          <SettingsDetail selected={selected} requirements={requirements} templates={templates} rotations={rotations} dayPresets={dayPresets} employeeTemplateAssignments={employeeTemplateAssignments} absences={absences} departments={departments} positions={positions} sites={sites} collaborators={collaborators} settings={settings} selectedDate={selectedDate} canWrite={canWrite} onSaveRequirement={onSaveRequirement} onDeleteRequirement={onDeleteRequirement} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} onSaveWeeklyRotation={onSaveWeeklyRotation} onDeleteWeeklyRotation={onDeleteWeeklyRotation} onSaveEmployeeTemplateAssignment={onSaveEmployeeTemplateAssignment} />
+          <SettingsDetail selected={selected} requirements={requirements} templates={templates} rotations={rotations} legacyRotations={legacyRotations} dayPresets={dayPresets} employeeTemplateAssignments={employeeTemplateAssignments} absences={absences} departments={departments} positions={positions} sites={sites} collaborators={collaborators} settings={settings} selectedDate={selectedDate} canWrite={canWrite} onSaveRequirement={onSaveRequirement} onDeleteRequirement={onDeleteRequirement} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} onSaveWeeklyRotation={onSaveWeeklyRotation} onDeleteWeeklyRotation={onDeleteWeeklyRotation} onSaveEmployeeTemplateAssignment={onSaveEmployeeTemplateAssignment} />
         </div>
       </div>
     </>
   );
 }
 
-function SettingsDetail({ selected, requirements, rotations, dayPresets, employeeTemplateAssignments, absences, departments, positions, sites, collaborators, settings, selectedDate, canWrite, onSaveRequirement, onDeleteRequirement, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { selected: SettingKey; requirements: PlanningRequirement[]; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; dayPresets: PlanningTemplate[]; employeeTemplateAssignments: PlanningEmployeeTemplateAssignment[]; absences: Array<Record<string, any>>; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; settings?: Record<string, any>; selectedDate: string; canWrite: boolean; onSaveRequirement: (payload: RequirementPayload, id?: string) => Promise<void>; onDeleteRequirement: (id: string) => Promise<void>; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
+function SettingsDetail({ selected, requirements, rotations, legacyRotations, dayPresets, employeeTemplateAssignments, absences, departments, positions, sites, collaborators, settings, selectedDate, canWrite, onSaveRequirement, onDeleteRequirement, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { selected: SettingKey; requirements: PlanningRequirement[]; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; legacyRotations: HrRotation[]; dayPresets: PlanningTemplate[]; employeeTemplateAssignments: PlanningEmployeeTemplateAssignment[]; absences: Array<Record<string, any>>; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; settings?: Record<string, any>; selectedDate: string; canWrite: boolean; onSaveRequirement: (payload: RequirementPayload, id?: string) => Promise<void>; onDeleteRequirement: (id: string) => Promise<void>; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
   if (selected === 'needs') return <NeedsSettingsDetail requirements={requirements} departments={departments} positions={positions} sites={sites} selectedDate={selectedDate} canWrite={canWrite} onSaveRequirement={onSaveRequirement} onDeleteRequirement={onDeleteRequirement} />;
-  if (selected === 'presets') return <PresetsRotationsSettings dayPresets={dayPresets} weeklyRotations={rotations} assignments={employeeTemplateAssignments} departments={departments} positions={positions} sites={sites} collaborators={collaborators} canWrite={canWrite} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} onSaveWeeklyRotation={onSaveWeeklyRotation} onDeleteWeeklyRotation={onDeleteWeeklyRotation} onSaveEmployeeTemplateAssignment={onSaveEmployeeTemplateAssignment} />;
+  if (selected === 'presets') return <PresetsRotationsSettings dayPresets={dayPresets} weeklyRotations={rotations} legacyRotations={legacyRotations} assignments={employeeTemplateAssignments} departments={departments} positions={positions} sites={sites} collaborators={collaborators} canWrite={canWrite} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} onSaveWeeklyRotation={onSaveWeeklyRotation} onDeleteWeeklyRotation={onDeleteWeeklyRotation} onSaveEmployeeTemplateAssignment={onSaveEmployeeTemplateAssignment} />;
   if (selected === 'availability') return <><span className="card-title">Indisponibilités & absences</span><div className="settings-list">{absences.map((absence) => <div key={absence.id}><strong>{collaboratorName(findCollaborator(collaborators, absence.employeeId ?? absence.collaboratorId))}</strong><span>{absence.type ?? absence.reason ?? 'Absence'} - {formatShort(absence.startDate)} à {formatShort(absence.endDate)} - lecture seule RH</span></div>)}{!absences.length ? <p className="muted">Aucune absence RH sur la période. Les indisponibilités Planning auront leur propre stockage plus tard.</p> : null}</div></>;
   if (selected === 'rules') return <PlanningRulesSettings rules={settings?.rules as Array<Record<string, any>> | undefined} />;
   if (selected === 'costs') return <EmployerCostsSettings />;
@@ -1849,7 +1855,7 @@ function SettingsDetail({ selected, requirements, rotations, dayPresets, employe
   return <PlaceholderList title="Imports" items={['Import ODS/XLSX', 'Dictionnaire de codes', 'Rapport de contrôle']} />;
 }
 
-function PresetsRotationsSettings({ dayPresets, weeklyRotations, assignments, departments, positions, sites, collaborators, canWrite, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { dayPresets: PlanningTemplate[]; weeklyRotations: PlanningTemplate[]; assignments: PlanningEmployeeTemplateAssignment[]; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; canWrite: boolean; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
+function PresetsRotationsSettings({ dayPresets, weeklyRotations, legacyRotations, assignments, departments, positions, sites, collaborators, canWrite, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { dayPresets: PlanningTemplate[]; weeklyRotations: PlanningTemplate[]; legacyRotations: HrRotation[]; assignments: PlanningEmployeeTemplateAssignment[]; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; canWrite: boolean; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
   const [editingPresetId, setEditingPresetId] = useState<string>();
   const [presetForm, setPresetForm] = useState<PlanningDayPresetPayload>(() => defaultDayPresetForm(departments[0]?.id));
   const [editingRotationId, setEditingRotationId] = useState<string>();
@@ -1954,7 +1960,7 @@ function PresetsRotationsSettings({ dayPresets, weeklyRotations, assignments, de
         </form>
         <div className="settings-list planning-settings-list">
           {weeklyRotations.map((rotation) => <div key={rotation.id} className="planning-settings-item"><div><strong>{cleanBusinessLabel(rotation.name)}</strong><span>{weeklyRotationSummary(rotation)} · {rotation.employeeIds?.length ?? 0} personne(s) associée(s)</span><small>{presetDefaultScope(rotation, departments, positions, sites)}</small></div><div className="planning-item-actions"><button className="btn btn-secondary btn-compact" type="button" onClick={() => editRotation(rotation)}>Modifier</button><button className="btn btn-secondary btn-compact" type="button" disabled={!canWrite} onClick={() => { setEditingRotationId(undefined); setRotationForm({ name: `${cleanBusinessLabel(rotation.name)} copie`, description: rotation.description ?? '', departmentId: rotation.departmentId ?? undefined, siteId: rotation.siteId ?? undefined, days: rotation.days?.length ? rotation.days : defaultWeekDays() }); }}>Dupliquer</button><button className="btn btn-secondary btn-compact danger" type="button" disabled={!canWrite} onClick={() => void onDeleteWeeklyRotation(rotation.id)}>Archiver</button></div></div>)}
-          {!weeklyRotations.length ? <p className="muted">Aucun roulement Planning.</p> : null}
+          {!weeklyRotations.length ? <p className="muted">Aucun roulement Planning. Les roulements RH ci-dessous restent temporaires en lecture seule.</p> : null}
         </div>
       </div>
       <form className="planning-need-form" onSubmit={(event) => void submitAssignment(event)}>
@@ -1967,6 +1973,10 @@ function PresetsRotationsSettings({ dayPresets, weeklyRotations, assignments, de
         </div>
         <p className="muted">Les attributions s’appuient sur les collaborateurs RH existants, sans les recréer dans Planning.</p>
       </form>
+      <div className="settings-list">
+        <div><strong>Roulements RH legacy</strong><span>{legacyRotations.length} élément(s) encore lisibles/applicables temporairement. Aucune écriture RH depuis Planning.</span></div>
+        {legacyRotations.slice(0, 5).map((rotation) => <div key={rotation.id}><strong>{rotation.name}</strong><span>{rotation.assignments?.length ?? 0} collaborateur(s) attribué(s) - source temporaire RH</span></div>)}
+      </div>
     </>
   );
 }

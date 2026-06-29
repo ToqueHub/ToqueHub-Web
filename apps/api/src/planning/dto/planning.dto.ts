@@ -234,6 +234,7 @@ export class UpsertPlanningAssignmentDto {
   @IsUUID() departmentId!: string;
   @IsUUID() positionId!: string;
   @IsOptional() @IsUUID() siteId?: string;
+  @IsOptional() @IsUUID() rotationId?: string;
   @IsString() date!: string;
   @IsString() startTime!: string;
   @IsString() endTime!: string;

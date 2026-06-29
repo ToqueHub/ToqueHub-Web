@@ -47,6 +47,14 @@ function mockPrisma(overrides?: any): any {
     hrAbsence: {
       findFirst: jest.fn(),
     },
+    hrRotation: {
+      findFirst: jest.fn(),
+      update: jest.fn(),
+    },
+    hrRotationAssignment: {
+      create: jest.fn(),
+      update: jest.fn(),
+    },
     site: {
       findFirst: jest.fn(),
     },
@@ -299,18 +307,20 @@ describe('PlanningService weekly rotations', () => {
     expect(result.assignments).toEqual([expect.objectContaining({
       employeeId: 'emp-1',
       date: '2026-06-22',
+      rotationId: undefined,
       comment: 'Roulement Planning Semaine salle',
     })]);
+    expect(prisma.hrRotation.findFirst).not.toHaveBeenCalled();
   });
 
-  it('applies a Planning weekly rotation template into Planning assignments', async () => {
+  it('applies a RH-read rotation into Planning assignments without writing RH', async () => {
     const prisma = mockPrisma();
     prisma.planningAssignment.findFirst.mockResolvedValue(null);
     const service = new PlanningService(prisma);
     jest.spyOn(service, 'applyWeeklyRotationPreview').mockResolvedValue({
       rotation: { id: 'rotation-1' },
-      assignments: [{ ...assignmentPayload }],
-      temporarySource: 'planning_templates',
+      assignments: [{ ...assignmentPayload, rotationId: 'rotation-1' }],
+      temporarySource: 'hr_rotations',
       applied: false,
     } as any);
     const saveAssignmentAllowingConflicts = jest.spyOn(service as any, 'saveAssignmentAllowingConflicts').mockResolvedValue({ id: 'assignment-1' });
@@ -324,9 +334,13 @@ describe('PlanningService weekly rotations', () => {
     });
 
     expect(saveAssignmentAllowingConflicts).toHaveBeenCalledWith('org-1', actor, undefined, expect.objectContaining({
+      rotationId: 'rotation-1',
       origin: PlanningAssignmentOrigin.AUTO_GENERATION,
       allowCriticalOverride: true,
     }));
+    expect(prisma.hrRotation.update).not.toHaveBeenCalled();
+    expect(prisma.hrRotationAssignment.create).not.toHaveBeenCalled();
+    expect(prisma.hrRotationAssignment.update).not.toHaveBeenCalled();
   });
 });
 
@@ -393,6 +407,8 @@ describe('PlanningService planning templates', () => {
       weeklyRotationIds: ['rotation-1'],
       defaultWeeklyRotationId: 'rotation-1',
     }));
+    expect(prisma.hrRotationAssignment.create).not.toHaveBeenCalled();
+    expect(prisma.hrRotationAssignment.update).not.toHaveBeenCalled();
   });
 });
 
@@ -449,6 +465,7 @@ describe('PlanningService period workflow', () => {
     expect(prisma.planningNotification.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ eventType: 'PLANNING_PERIOD_PUBLISHED', entityType: 'PlanningPeriod' }),
     }));
+    expect(prisma.hrRotationAssignment.create).not.toHaveBeenCalled();
   });
 
   it('records modification after publication when an assignment changes inside a published period', async () => {

@@ -3,7 +3,7 @@ import { HrAbsenceStatus, HrAbsenceType, HrEntitlementAccrualFrequency, Planning
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { calculatePlanningAssignmentMinutes } from '../planning/planning-time';
-import { ActivateLegalRightDto, ApplicableEmployeeRightsQueryDto, CalculateLegalRightsDto, LegalProfileDto, LegalRightsSearchQueryDto, PlanningComplianceCheckDto, PlanningComplianceShiftDto } from './dto/legal-rights.dto';
+import { ActivateLegalRightDto, CalculateLegalRightsDto, LegalProfileDto, LegalRightsSearchQueryDto, PlanningComplianceCheckDto, PlanningComplianceShiftDto } from './dto/legal-rights.dto';
 import legalSeed from './data/fr-v1.json';
 import { seedFrenchLegalRights } from './legal-rights.seed';
 
@@ -58,9 +58,6 @@ const CALCULABLE_FORMULAS = new Set([
 ]);
 
 const WRITE_ROLES = ['SUPER_ADMIN', 'Administrateur', 'ADMIN', 'Manager', 'MANAGER', 'Chef', 'Responsable'];
-const PRIORITY_FR_PRIVATE_COMMON_CODES = new Set(['CP', 'CP_MALADIE', 'HS', 'PAUSE_6H', 'REPOS_QUOTIDIEN', 'REPOS_HEBDOMADAIRE', 'JF', 'JF_1MAI', 'RECUP_PONT']);
-type LegalSourceLayer = 'common_law' | 'collective_agreement' | 'public_regime' | 'legal_reference';
-type LegalUiStatus = 'included' | 'included_requires_review' | 'activated' | 'requires_review' | 'available';
 
 @Injectable()
 export class LegalRightsService {
@@ -210,22 +207,18 @@ export class LegalRightsService {
       query: q.query ?? null,
       country: resolvedCountryCode,
       count: scored.length,
-      items: scored.map(({ right, score }) => {
-        const metadata = this.rightCatalogueMetadata(right, right.ruleVersions, activated.get(right.id) ?? null);
-        return {
-          id: right.id,
-          code: right.code,
-          name: right.name,
-          category: right.category,
-          description: right.description,
-          tags: right.tags,
-          score,
-          activated: activated.has(right.id),
-          organizationRuleId: activated.get(right.id) ?? null,
-          ...metadata,
-          rules: right.ruleVersions.map((rule) => this.ruleSummary(rule)),
-        };
-      }),
+      items: scored.map(({ right, score }) => ({
+        id: right.id,
+        code: right.code,
+        name: right.name,
+        category: right.category,
+        description: right.description,
+        tags: right.tags,
+        score,
+        activated: activated.has(right.id),
+        organizationRuleId: activated.get(right.id) ?? null,
+        rules: right.ruleVersions.map((rule) => this.ruleSummary(rule)),
+      })),
     };
   }
 
@@ -351,93 +344,6 @@ export class LegalRightsService {
   async employeeProfile(organizationId: string, employeeId: string, effectiveDate?: string) {
     await this.ensureEmployee(organizationId, employeeId);
     return this.resolveEmployeeProfile(organizationId, employeeId, this.day(effectiveDate ?? new Date()));
-  }
-
-  async employeeApplicableRights(organizationId: string, employeeId: string, q: ApplicableEmployeeRightsQueryDto = {}) {
-    const regulatoryCountryCode = await this.regulatoryCountryForOrganization(organizationId);
-    if (!regulatoryCountryCode) {
-      return {
-        employeeId,
-        organizationId,
-        regulatoryCountryCode: null,
-        legalProfile: null,
-        hasActiveContract: false,
-        calculationStatus: 'blocked',
-        applicableRights: [],
-        counters: [],
-        warnings: [{ code: 'missing_regulatory_country', message: 'Pays de réglementation non configuré.' }],
-      };
-    }
-
-    const year = new Date().getUTCFullYear();
-    const periodStart = this.day(q.periodStart ?? q.period_start ?? new Date(Date.UTC(year, 0, 1)));
-    const periodEnd = this.endOfDay(q.periodEnd ?? q.period_end ?? new Date(Date.UTC(year, 11, 31)));
-    const effectiveDate = this.day(q.effectiveDate ?? new Date());
-    const employee = await this.ensureEmployee(organizationId, employeeId);
-    const hasActiveContract = this.hasActiveContract(employee, periodStart, periodEnd);
-    const profile = await this.resolveEmployeeProfile(organizationId, employeeId, effectiveDate);
-    const rules = await this.applicableRules(profile, effectiveDate);
-    const commonLawRules = profile.countryCode === 'FR' && profile.regimeType === 'private'
-      ? rules.filter((rule) => this.isFrancePrivateCommonLawRule(rule))
-      : [];
-    const grouped = this.groupRulesByRight(commonLawRules);
-    const calculation = hasActiveContract
-      ? await this.calculate(organizationId, { employeeId, periodStart: this.iso(periodStart), periodEnd: this.iso(periodEnd), effectiveDate: this.iso(effectiveDate), persist: false })
-      : null;
-    const countersByCode = new Map<string, any>((calculation?.counters ?? []).map((counter: any) => [String(counter.right?.code ?? ''), counter]));
-    const warnings = [
-      ...profile.warnings.map((message) => ({ code: 'legal_profile_warning', message })),
-      ...(hasActiveContract ? [] : [{ code: 'missing_active_contract', message: 'Contrat actif nécessaire pour calculer les compteurs.' }]),
-      ...((calculation?.warnings ?? []) as string[]).map((message) => ({ code: 'calculation_warning', message })),
-    ];
-    const applicableRights = [...grouped.values()].map((rightRules) => {
-      const selected = this.selectRule(rightRules);
-      const bestRule = selected.rule ?? rightRules[0];
-      const counter = countersByCode.get(bestRule.right.code);
-      const validationStatus = this.validationStatusForRules(rightRules);
-      const counterSupported = this.employeeCounterSupported(rightRules);
-      return {
-        id: bestRule.right.id,
-        code: bestRule.right.code,
-        label: bestRule.right.name,
-        name: bestRule.right.name,
-        category: bestRule.right.category,
-        sourceLayer: 'common_law',
-        sourceLabel: 'Socle commun France',
-        autoApplicable: true,
-        applicableByDefault: true,
-        requiresConfiguration: false,
-        employeeCounterSupported: counterSupported,
-        validationStatus,
-        uiStatus: validationStatus === 'requires_review' ? 'included_requires_review' : 'included',
-        priorityCommonLaw: PRIORITY_FR_PRIVATE_COMMON_CODES.has(bestRule.right.code),
-        calculationStatus: !hasActiveContract
-          ? 'partial'
-          : counter?.calculation_status ?? (counterSupported ? 'not_initialized' : 'not_applicable'),
-        counter: counter ? this.employeeApplicableCounter(counter) : null,
-        warnings: [
-          ...(validationStatus === 'requires_review' ? [{ code: 'requires_review', message: 'Règle à valider juridiquement.' }] : []),
-          ...(!hasActiveContract ? [{ code: 'missing_active_contract', message: 'Contrat actif nécessaire pour calculer ce droit.' }] : []),
-        ],
-        rules: rightRules.map((rule) => this.ruleSummary(rule)),
-      };
-    }).sort((a, b) => {
-      if (a.priorityCommonLaw !== b.priorityCommonLaw) return a.priorityCommonLaw ? -1 : 1;
-      return a.label.localeCompare(b.label, 'fr');
-    });
-
-    return {
-      employeeId,
-      organizationId,
-      regulatoryCountryCode,
-      legalProfile: this.profileSummary(profile),
-      hasActiveContract,
-      calculationStatus: !hasActiveContract ? 'partial' : calculation?.calculation_status === 'incomplete' ? 'partial' : 'complete',
-      period: { startDate: this.iso(periodStart), endDate: this.iso(periodEnd) },
-      applicableRights,
-      counters: applicableRights.map((right) => right.counter).filter(Boolean),
-      warnings,
-    };
   }
 
   async upsertEmployeeProfile(organizationId: string, employeeId: string, dto: LegalProfileDto) {
@@ -955,100 +861,12 @@ export class LegalRightsService {
       .sort((a, b) => this.ruleSpecificity(b) - this.ruleSpecificity(a) || a.priority - b.priority)[0] ?? null;
   }
 
-  private rightCatalogueMetadata(right: any, rules: any[], establishmentConfigurationId: string | null) {
-    const commonLawRules = rules.filter((rule) => this.isFrancePrivateCommonLawRule(rule));
-    const sourceLayer = this.sourceLayerForRules(commonLawRules.length ? commonLawRules : rules);
-    const autoApplicable = commonLawRules.length > 0;
-    const validationStatus = this.validationStatusForRules(commonLawRules.length ? commonLawRules : rules);
-    const uiStatus = this.uiStatusForRight(autoApplicable, validationStatus, establishmentConfigurationId);
-    return {
-      sourceLayer,
-      autoApplicable,
-      applicableByDefault: autoApplicable,
-      requiresConfiguration: autoApplicable ? false : !establishmentConfigurationId,
-      employeeCounterSupported: this.employeeCounterSupported(commonLawRules.length ? commonLawRules : rules),
-      establishmentConfigurationId,
-      validationStatus,
-      uiStatus,
-      priorityCommonLaw: autoApplicable && PRIORITY_FR_PRIVATE_COMMON_CODES.has(right.code),
-    };
-  }
-
-  private sourceLayerForRules(rules: any[]): LegalSourceLayer {
-    if (rules.some((rule) => this.isFrancePrivateCommonLawRule(rule))) return 'common_law';
-    if (rules.some((rule) => rule.agreementId || rule.agreement)) return 'collective_agreement';
-    if (rules.some((rule) => rule.publicRegimeId || rule.publicRegime)) return 'public_regime';
-    return 'legal_reference';
-  }
-
-  private uiStatusForRight(autoApplicable: boolean, validationStatus: string, establishmentConfigurationId: string | null): LegalUiStatus {
-    if (autoApplicable) return validationStatus === 'requires_review' ? 'included_requires_review' : 'included';
-    if (establishmentConfigurationId) return 'activated';
-    if (validationStatus === 'requires_review') return 'requires_review';
-    return 'available';
-  }
-
-  private isFrancePrivateCommonLawRule(rule: any) {
-    return rule?.countryCode === 'FR'
-      && (rule.sector === 'private' || rule.sector === 'common')
-      && !rule.agreementId
-      && !rule.agreement
-      && !rule.publicRegimeId
-      && !rule.publicRegime;
-  }
-
-  private validationStatusForRules(rules: any[]) {
-    if (!rules.length) return 'unknown';
-    if (rules.some((rule) => rule.validationStatus === 'active')) return 'active';
-    if (rules.some((rule) => rule.validationStatus === 'requires_review')) return 'requires_review';
-    return String(rules[0].validationStatus ?? 'unknown');
-  }
-
-  private employeeCounterSupported(rules: any[]) {
-    return rules.some((rule) => CALCULABLE_FORMULAS.has(rule.formulaType) || rule.formulaType === 'compensatory_rest');
-  }
-
-  private employeeApplicableCounter(counter: any) {
-    return {
-      right: counter.right,
-      acquired: counter.acquired ?? null,
-      used: counter.used ?? null,
-      remaining: counter.remaining ?? null,
-      unit: counter.unit ?? null,
-      counterStatus: counter.calculation_status ?? 'not_initialized',
-      calculationStatus: counter.calculation_status ?? 'not_initialized',
-      validationStatus: counter.validation_status ?? null,
-      source: counter.source ?? null,
-      formula: counter.formula ?? null,
-    };
-  }
-
-  private hasActiveContract(employee: any, periodStart: Date, periodEnd: Date) {
-    const activeContract = (employee.contracts ?? []).some((contract: any) => {
-      const start = contract.startDate ? this.day(contract.startDate) : null;
-      const end = contract.endDate ? this.day(contract.endDate) : null;
-      return contract.status === 'ACTIVE'
-        && (!start || start <= periodEnd)
-        && (!end || end >= periodStart);
-    });
-    if (activeContract) return true;
-    const hireDate = employee.hireDate ? this.day(employee.hireDate) : null;
-    const endDate = employee.contractEndDate ? this.day(employee.contractEndDate) : null;
-    return employee.status === 'ACTIVE'
-      && Boolean(employee.contractType)
-      && (!hireDate || hireDate <= periodEnd)
-      && (!endDate || endDate >= periodStart);
-  }
-
   private ruleSummary(rule: any) {
     return {
       id: rule.id,
       stableId: rule.stableId,
       rightCode: rule.right?.code,
       name: rule.right?.name,
-      countryCode: rule.countryCode,
-      sector: rule.sector,
-      sourceLayer: this.sourceLayerForRules([rule]),
       regime: rule.regime ? { code: rule.regime.code, type: rule.regime.type, name: rule.regime.name } : null,
       agreement: rule.agreement ? { key: rule.agreement.key, idcc: rule.agreement.idcc, name: rule.agreement.name } : null,
       publicRegime: rule.publicRegime ? { code: rule.publicRegime.code, name: rule.publicRegime.name } : null,

@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { ActivateLegalRightDto, ApplicableEmployeeRightsQueryDto, CalculateLegalRightsDto, LegalProfileDto, LegalRightsSearchQueryDto, PlanningComplianceCheckDto } from './dto/legal-rights.dto';
+import { ActivateLegalRightDto, CalculateLegalRightsDto, LegalProfileDto, LegalRightsSearchQueryDto, PlanningComplianceCheckDto } from './dto/legal-rights.dto';
 import { LegalRightsService } from './legal-rights.service';
 
 @ApiTags('rights')
@@ -31,11 +31,6 @@ export class LegalRightsController {
   @Post('calculate')
   calculate(@CurrentUser() user: AuthenticatedUser, @Body() dto: CalculateLegalRightsDto) {
     return this.legalRightsService.calculate(this.org(user), dto);
-  }
-
-  @Get('employees/:employeeId/applicable')
-  employeeApplicableRights(@CurrentUser() user: AuthenticatedUser, @Param('employeeId') employeeId: string, @Query() q: ApplicableEmployeeRightsQueryDto) {
-    return this.legalRightsService.employeeApplicableRights(this.org(user), employeeId, q);
   }
 
   @Get('employees/:employeeId/profile')

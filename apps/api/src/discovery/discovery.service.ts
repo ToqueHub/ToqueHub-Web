@@ -1,0 +1,136 @@
+import { Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'crypto';
+import { PrismaService } from '../prisma/prisma.service';
+import { MdnsPublisher } from './mdns-publisher';
+import type { DiscoveryInfo, DiscoveryTxtRecords } from './discovery.types';
+
+const INSTANCE_ID_SETTING_KEY = 'discovery.instanceId';
+const API_VERSION = 1;
+const FALLBACK_INSTANCE_NAME = 'ToqueHub';
+
+@Injectable()
+export class DiscoveryService implements OnApplicationBootstrap, OnApplicationShutdown {
+  private readonly logger = new Logger(DiscoveryService.name);
+
+  constructor(
+    private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
+    private readonly publisher: MdnsPublisher,
+  ) {}
+
+  async onApplicationBootstrap() {
+    if (!this.discoveryEnabled()) {
+      this.logger.log('Publication mDNS desactivee par TOQUEHUB_DISCOVERY_ENABLED.');
+      return;
+    }
+
+    try {
+      await this.publish();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Publication mDNS non demarree: ${message}`);
+    }
+  }
+
+  onApplicationShutdown() {
+    this.publisher.stop();
+  }
+
+  async getDiscoveryInfo(): Promise<DiscoveryInfo> {
+    const [instanceId, organizationName] = await Promise.all([
+      this.getInstanceId(),
+      this.resolveOrganizationName(),
+    ]);
+    const instanceName = this.config.get<string>('TOQUEHUB_DISCOVERY_NAME')?.trim() || organizationName || FALLBACK_INSTANCE_NAME;
+
+    return {
+      instanceId,
+      instanceName,
+      organization: organizationName || instanceName,
+      version: this.resolveVersion(),
+      apiVersion: API_VERSION,
+      serverTime: new Date().toISOString(),
+      supportsMobile: true,
+    };
+  }
+
+  async publish() {
+    const info = await this.getDiscoveryInfo();
+    const port = this.resolvePort();
+    const host = this.config.get<string>('TOQUEHUB_DISCOVERY_HOST')?.trim() || undefined;
+    const txt = this.toTxtRecords(info);
+
+    this.publisher.publish({
+      name: info.instanceName,
+      port,
+      host,
+      txt,
+    });
+  }
+
+  private discoveryEnabled() {
+    const value = this.config.get<string>('TOQUEHUB_DISCOVERY_ENABLED');
+    if (value == null || value.trim() === '') return true;
+    return ['true', '1', 'yes', 'on'].includes(value.trim().toLowerCase());
+  }
+
+  private async getInstanceId() {
+    const configured = this.config.get<string>('TOQUEHUB_INSTANCE_ID')?.trim();
+    if (configured) return configured;
+
+    const existing = await this.prisma.systemSetting.findUnique({
+      where: { key: INSTANCE_ID_SETTING_KEY },
+    });
+    if (existing?.value) return existing.value;
+
+    const value = randomUUID();
+    try {
+      const created = await this.prisma.systemSetting.create({
+        data: { key: INSTANCE_ID_SETTING_KEY, value },
+      });
+      return created.value;
+    } catch {
+      const raced = await this.prisma.systemSetting.findUnique({
+        where: { key: INSTANCE_ID_SETTING_KEY },
+      });
+      if (raced?.value) return raced.value;
+      throw new Error('Impossible de persister l’identifiant de l’instance ToqueHub.');
+    }
+  }
+
+  private async resolveOrganizationName() {
+    const configured = this.config.get<string>('TOQUEHUB_DISCOVERY_ORGANIZATION')?.trim();
+    if (configured) return configured;
+
+    const organization = await this.prisma.organization.findFirst({
+      orderBy: { createdAt: 'asc' },
+      select: { name: true },
+    });
+    return organization?.name?.trim() || '';
+  }
+
+  private resolveVersion() {
+    return this.config.get<string>('npm_package_version') || '0.1.0';
+  }
+
+  private resolvePort() {
+    const port = Number(this.config.get<string>('PORT') || 3000);
+    return Number.isFinite(port) && port > 0 ? port : 3000;
+  }
+
+  private toTxtRecords(info: DiscoveryInfo): DiscoveryTxtRecords {
+    const https = ['true', '1', 'yes', 'on'].includes(
+      String(this.config.get<string>('TOQUEHUB_DISCOVERY_HTTPS') || '').trim().toLowerCase(),
+    );
+
+    return {
+      instanceId: info.instanceId,
+      instanceName: info.instanceName,
+      version: info.version,
+      apiVersion: String(info.apiVersion),
+      organization: info.organization,
+      https: String(https),
+    };
+  }
+}

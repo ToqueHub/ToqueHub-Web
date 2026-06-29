@@ -2,7 +2,7 @@
 import type React from 'react';
 import { AlertCircle, BriefcaseBusiness, CalendarDays, FileText, GraduationCap, History, NotebookText, Search, ShieldCheck, UserRound, UsersRound, X } from 'lucide-react';
 import { api } from '../../../api/client';
-import type { CoreUser, EmployeeApplicableRight, EmployeeApplicableRightsResponse, HrCollaborator, HrCollaboratorPayload, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, PlanningEmployeeEntitlementsResponse, PlanningEntitlementCatalogItem, Site } from '../../../types';
+import type { CoreUser, HrCollaborator, HrCollaboratorPayload, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, HrRotation, PlanningEmployeeEntitlementsResponse, PlanningEntitlementCatalogItem, Site } from '../../../types';
 import { HR_CATALOG } from '../../../hr-catalog';
 
 type TabId = 'profile' | 'professional' | 'contracts' | 'rights' | 'documents' | 'trainings' | 'organization' | 'history';
@@ -29,7 +29,7 @@ const statusOptions = [
   { value: 'DEPARTED', label: 'Départ' },
 ];
 
-export function CollaboratorModal({ collaborator, collaborators, departments, positions, users, sites, token, onClose, onSubmit, onViewDocument, onDownloadDocument, onReplaceDocument, onDeleteDocument }: { collaborator?: HrCollaborator; collaborators: HrCollaborator[]; departments: HrDepartment[]; positions: HrPosition[]; users: CoreUser[]; sites: Site[]; token: string; onClose: () => void; onSubmit: (payload: HrCollaboratorPayload, documents: PendingHrDocumentUpload[]) => Promise<void>; onViewDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onDownloadDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument?: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument?: (employeeId: string, documentId: string) => Promise<void> }) {
+export function CollaboratorModal({ collaborator, collaborators, departments, positions, users, sites, rotations, token, onClose, onSubmit, onViewDocument, onDownloadDocument, onReplaceDocument, onDeleteDocument }: { collaborator?: HrCollaborator; collaborators: HrCollaborator[]; departments: HrDepartment[]; positions: HrPosition[]; users: CoreUser[]; sites: Site[]; rotations?: HrRotation[]; token: string; onClose: () => void; onSubmit: (payload: HrCollaboratorPayload, documents: PendingHrDocumentUpload[]) => Promise<void>; onViewDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onDownloadDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument?: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument?: (employeeId: string, documentId: string) => Promise<void> }) {
   const [activeTab, setActiveTab] = useState<TabId>('profile');
   const [submitting, setSubmitting] = useState(false);
   const [positionResetMessage, setPositionResetMessage] = useState('');
@@ -41,7 +41,6 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
   const [selectedTrainings, setSelectedTrainings] = useState<string[]>([]);
   const [customTraining, setCustomTraining] = useState('');
   const [entitlements, setEntitlements] = useState<PlanningEmployeeEntitlementsResponse | null>(null);
-  const [applicableRights, setApplicableRights] = useState<EmployeeApplicableRightsResponse | null>(null);
   const [entitlementsLoading, setEntitlementsLoading] = useState(false);
   const [entitlementsError, setEntitlementsError] = useState('');
   const [openingBalanceForm, setOpeningBalanceForm] = useState<OpeningBalanceForm>({ entitlementRuleId: '', code: 'paid_leave', label: 'Congés payés', accountType: 'leave', unit: 'DAYS', openingBalance: '', effectiveFrom: new Date().toISOString().slice(0, 10) });
@@ -86,22 +85,17 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
   const primaryPositions = useMemo(() => activePositions.filter((position) => positionBelongsToDepartment(position, selectedDepartment)), [activePositions, selectedDepartment]);
   const availableManagers = collaborators.filter((item) => item.id !== collaborator?.id && !isArchived(item));
   const availableUsers = users.filter((user) => user.status !== 'DISABLED' || user.id === form.userId);
+  const currentRotation = activeRotation(collaborator);
+
   async function loadEntitlements() {
     if (!collaborator?.id) {
       setEntitlements(null);
-      setApplicableRights(null);
       return;
     }
     setEntitlementsLoading(true);
     setEntitlementsError('');
     try {
-      const year = new Date().getFullYear();
-      const [nextEntitlements, nextApplicableRights] = await Promise.all([
-        api.employeeHrEntitlements(token, collaborator.id, { year }),
-        api.employeeApplicableRights(token, collaborator.id, { periodStart: `${year}-01-01`, periodEnd: `${year}-12-31` }),
-      ]);
-      setEntitlements(nextEntitlements);
-      setApplicableRights(nextApplicableRights);
+      setEntitlements(await api.employeeHrEntitlements(token, collaborator.id, { year: new Date().getFullYear() }));
     } catch (error) {
       setEntitlementsError(error instanceof Error ? error.message : 'Droits indisponibles pour ce collaborateur.');
     } finally {
@@ -217,10 +211,10 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
           {activeTab === 'profile' ? <ProfileTab form={form} set={set} requiredErrors={requiredErrors} /> : null}
           {activeTab === 'professional' ? <ProfessionalTab form={form} set={set} requiredErrors={requiredErrors} departments={activeDepartments} positions={primaryPositions} allPositions={activePositions} selectedDepartment={selectedDepartment} sites={sites} managers={availableManagers} users={availableUsers} positionResetMessage={positionResetMessage} clearPositionResetMessage={() => setPositionResetMessage('')} /> : null}
           {activeTab === 'contracts' ? <ContractsTab form={form} set={set} collaborator={collaborator} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /> : null}
-          {activeTab === 'rights' ? <RightsCountersPanel collaborator={collaborator} entitlements={entitlements} applicableRights={applicableRights} loading={entitlementsLoading} error={entitlementsError} form={openingBalanceForm} onForm={setOpeningBalanceForm} onSave={saveOpeningBalance} onAddCatalogRight={addCatalogRight} /> : null}
+          {activeTab === 'rights' ? <RightsCountersPanel collaborator={collaborator} entitlements={entitlements} loading={entitlementsLoading} error={entitlementsError} form={openingBalanceForm} onForm={setOpeningBalanceForm} onSave={saveOpeningBalance} onAddCatalogRight={addCatalogRight} /> : null}
           {activeTab === 'documents' ? <DocumentsTab collaborator={collaborator} pendingDocuments={pendingDocuments} onDocumentsChange={(documents) => { setPendingDocuments(documents); setDirty(true); }} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /> : null}
           {activeTab === 'trainings' ? <TrainingsTab selectedTrainings={selectedTrainings} onSelectedTrainings={(trainings) => { setSelectedTrainings(trainings); setDirty(true); }} customTraining={customTraining} onCustomTraining={setCustomTraining} /> : null}
-          {activeTab === 'organization' ? <OrganizationTab collaborator={collaborator} /> : null}
+          {activeTab === 'organization' ? <OrganizationTab collaborator={collaborator} rotations={rotations ?? []} currentRotation={currentRotation} /> : null}
           {activeTab === 'history' ? <HistoryTab history={collaborator?.history ?? []} /> : null}
         </div>
         <div className="modal-actions hr-modal-footer">
@@ -301,24 +295,12 @@ function ContractsTab({ form, set, collaborator, onViewDocument, onDownloadDocum
   </TabPanel>;
 }
 
-function RightsCountersPanel({ collaborator, entitlements, applicableRights, loading, error, form, onForm, onSave, onAddCatalogRight }: { collaborator?: HrCollaborator; entitlements: PlanningEmployeeEntitlementsResponse | null; applicableRights: EmployeeApplicableRightsResponse | null; loading: boolean; error: string; form: OpeningBalanceForm; onForm: React.Dispatch<React.SetStateAction<OpeningBalanceForm>>; onSave: () => Promise<void>; onAddCatalogRight: (item: PlanningEntitlementCatalogItem, openingBalance?: number) => Promise<void> }) {
+function RightsCountersPanel({ collaborator, entitlements, loading, error, form, onForm, onSave, onAddCatalogRight }: { collaborator?: HrCollaborator; entitlements: PlanningEmployeeEntitlementsResponse | null; loading: boolean; error: string; form: OpeningBalanceForm; onForm: React.Dispatch<React.SetStateAction<OpeningBalanceForm>>; onSave: () => Promise<void>; onAddCatalogRight: (item: PlanningEntitlementCatalogItem, openingBalance?: number) => Promise<void> }) {
   const [search, setSearch] = useState('');
   const rules = entitlements?.rules ?? [];
   const activeEntitlements = entitlements?.entitlements?.filter((item) => item.enabled) ?? [];
   const activeCodes = new Set(activeEntitlements.map((item) => item.code));
-  const catalog = (entitlements?.catalog ?? []).filter((item) => item.active && !activeCodes.has(item.code));
-  const employeeApplicableRights = useMemo(() => {
-    const priority = ['CP', 'HS', 'PAUSE_6H', 'REPOS_QUOTIDIEN', 'REPOS_HEBDOMADAIRE', 'JF', 'JF_1MAI', 'CP_MALADIE'];
-    return [...(applicableRights?.applicableRights ?? [])].sort((a, b) => {
-      const aIndex = priority.indexOf(a.code);
-      const bIndex = priority.indexOf(b.code);
-      if (aIndex !== bIndex) return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
-      if (a.priorityCommonLaw !== b.priorityCommonLaw) return a.priorityCommonLaw ? -1 : 1;
-      return a.label.localeCompare(b.label, 'fr');
-    });
-  }, [applicableRights?.applicableRights]);
-  const missingRegulatoryCountry = applicableRights?.warnings?.some((warning) => warning.code === 'missing_regulatory_country');
-  const missingActiveContract = applicableRights?.warnings?.some((warning) => warning.code === 'missing_active_contract');
+  const catalog = (entitlements?.catalog ?? []).filter((item) => !activeCodes.has(item.code));
   const availableRights = search.trim()
     ? catalog.filter((item) => `${item.label} ${item.category}`.toLowerCase().includes(search.trim().toLowerCase()))
     : catalog;
@@ -344,30 +326,6 @@ function RightsCountersPanel({ collaborator, entitlements, applicableRights, loa
         <small>Les modèles sont proposés par pays et restent ajustables selon vos règles internes.</small>
       </div>
       <div className="hr-salary-preview">
-        <strong>Droits applicables</strong>
-        {missingRegulatoryCountry ? <small>Pays de réglementation non configuré.</small> : null}
-        {missingActiveContract ? <small>Contrat actif nécessaire pour calculer les compteurs.</small> : null}
-        {employeeApplicableRights.length ? (
-          <div className="hr-applicable-rights-list">
-            {employeeApplicableRights.map((right) => (
-              <div className="hr-contract-history-row hr-applicable-right-row" key={right.id}>
-                <div>
-                  <span>{right.label}</span>
-                  <small>{applicableRightOrigin(right)} · {applicableRightCounterLabel(right)}</small>
-                  {right.warnings?.some((warning) => warning.code === 'requires_review') ? <small>Règle à valider juridiquement.</small> : null}
-                </div>
-                <div className="hr-right-badge-row">
-                  <span className="hr-right-badge included">Inclus automatiquement</span>
-                  {right.validationStatus === 'requires_review' ? <span className="hr-right-badge review">À valider</span> : null}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : collaborator && !loading && !missingRegulatoryCountry ? (
-          <span>Aucun droit applicable retourné pour ce collaborateur.</span>
-        ) : null}
-      </div>
-      <div className="hr-salary-preview">
         <strong>Droits actifs</strong>
       {activeEntitlements.length ? activeEntitlements.map((item) => (
         <div className="hr-contract-history-row" key={item.id}>
@@ -378,12 +336,12 @@ function RightsCountersPanel({ collaborator, entitlements, applicableRights, loa
           </div>
           <strong>{rightBalanceLabel(item)}</strong>
         </div>
-      )) : collaborator && !loading ? <span>Aucun droit encore rattaché à ce collaborateur.</span> : null}
+      )) : collaborator && !loading ? <span>Droits d’ouverture non renseignés.</span> : null}
       {entitlements?.alerts?.some((alert) => alert.type === 'OPENING_BALANCE_MISSING') ? <small>Des congés ou récupérations sont consommés, mais le solde d’ouverture n’est pas encore renseigné.</small> : null}
       </div>
       {collaborator ? (
         <div className="hr-salary-preview">
-          <strong>Droits activés dans l'établissement</strong>
+          <strong>Droits disponibles</strong>
           <input placeholder="Rechercher un droit..." value={search} onChange={(event) => setSearch(event.target.value)} />
           {availableRights.length ? availableRights.map((item) => (
             <div className="hr-contract-history-row" key={item.id}>
@@ -394,7 +352,7 @@ function RightsCountersPanel({ collaborator, entitlements, applicableRights, loa
               </div>
               <button type="button" className="btn btn-secondary" disabled={loading} onClick={() => void onAddCatalogRight(item)}>Ajouter</button>
             </div>
-          )) : <span>Aucun droit activé dans l'établissement n'est disponible à ajouter.</span>}
+          )) : <span>Aucun droit disponible à ajouter depuis le catalogue.</span>}
         </div>
       ) : null}
       {collaborator ? (
@@ -499,14 +457,18 @@ function TrainingsTab({ selectedTrainings, onSelectedTrainings, customTraining, 
   </TabPanel>;
 }
 
-function OrganizationTab({ collaborator }: { collaborator?: HrCollaborator }) {
+function OrganizationTab({ collaborator, currentRotation }: { collaborator?: HrCollaborator; rotations: HrRotation[]; currentRotation?: HrRotation | null }) {
   const contractMinutes = collaborator?.activeContract?.weeklyHours ?? collaborator?.contractWeeklyMinutes ?? null;
+  const rotationMinutes = currentRotation ? rotationMetrics(currentRotation).averageWeeklyMinutes : null;
   return <TabPanel icon={<UsersRound size={18} />} title="Organisation de travail">
     <div className="hr-summary-list">
       <InfoRow label="Service principal" value={collaborator?.department?.name} />
       <InfoRow label="Poste principal" value={collaborator?.position?.name} />
       <InfoRow label="Postes secondaires" value={collaborator?.secondaryPositions?.map((p) => p.name).join(', ')} />
+      <InfoRow label="Roulement actif" value={currentRotation?.name} />
+      <InfoRow label="Durée hebdo roulement" value={rotationMinutes != null ? formatMinutes(rotationMinutes) : undefined} />
       <InfoRow label="Durée hebdo contractuelle" value={contractMinutes != null ? formatMinutes(contractMinutes) : undefined} />
+      <InfoRow label="Écart contrat / roulement" value={contractMinutes != null && rotationMinutes != null ? formatMinutes(Math.abs(contractMinutes - rotationMinutes)) : undefined} />
       <InfoRow label="Établissement" value={collaborator?.mainSite?.name ?? collaborator?.site?.name} />
       <InfoRow label="Responsable direct" value={collaborator?.manager ? fullName(collaborator.manager) : undefined} />
     </div>
@@ -591,6 +553,8 @@ function cleanPayload(form: HrCollaboratorPayload): HrCollaboratorPayload {
   };
 }
 function positionBelongsToDepartment(position: HrPosition, department?: HrDepartment) { if (!department) return false; if (position.departmentId) return position.departmentId === department.id; const catalog = HR_CATALOG.find((item) => normalizeLabel(item.name) === normalizeLabel(department.name)); return Boolean(catalog?.positions.some((name) => normalizeLabel(name) === normalizeLabel(position.name))); }
+function activeRotation(collaborator?: HrCollaborator) { return collaborator?.activeRotation ?? collaborator?.activeRotationAssignment?.rotation ?? collaborator?.rotationAssignment?.rotation ?? null; }
+function rotationMetrics(rotation: HrRotation) { const metrics = rotation.metrics as any; return { averageWeeklyMinutes: metrics?.averageWeeklyMinutes ?? metrics?.weeklyMinutes ?? metrics?.weeklyHoursMinutesAverage ?? 0 }; }
 function displayUser(user: Pick<CoreUser, 'firstName' | 'lastName' | 'email'>) { return `${`${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email} - ${user.email}`; }
 function fullName(item: { firstName?: string | null; lastName?: string | null }) { return `${item.firstName ?? ''} ${item.lastName ?? ''}`.trim() || 'Collaborateur'; }
 function isArchived(item: { isArchived?: boolean; archivedAt?: string | null }) { return Boolean(item.isArchived || item.archivedAt); }
@@ -602,31 +566,6 @@ function formatMinutes(value?: number | null) { if (value == null) return '-'; c
 function formatRightValue(value?: number | null, unit?: string | null) { if (value == null) return '-'; if (unit === 'MINUTES') return formatMinutes(value); return `${Math.round(Number(value) * 10) / 10} j`; }
 function rightsUnitLabel(unit?: string | null) { if (unit === 'MINUTES') return 'Heures'; if (unit === 'DAYS') return 'Jours'; return 'Unité personnalisée'; }
 function countryLabel(code?: string | null) { if (code === 'FR') return 'France'; if (code === 'FI') return 'Finlande'; return 'Cadre RH à choisir'; }
-function applicableRightOrigin(right: EmployeeApplicableRight) { return right.sourceLayer === 'common_law' ? 'Socle commun France' : right.sourceLabel ?? 'Droit RH'; }
-function applicableRightCounterLabel(right: EmployeeApplicableRight) {
-  const code = right.code.toUpperCase();
-  const counter = right.counter;
-  if (code === 'CP' || code === 'CP_MALADIE') {
-    if (!counter || (counter.acquired == null && counter.used == null && counter.remaining == null)) return 'Compteur non initialisé';
-    return `Acquis : ${formatApplicableQuantity(counter.acquired, counter.unit)} · Pris : ${formatApplicableQuantity(counter.used, counter.unit)} · Solde : ${formatApplicableQuantity(counter.remaining, counter.unit)}`;
-  }
-  if (code === 'HS') {
-    if (!counter || counter.acquired == null || Number(counter.acquired) === 0) return 'Aucune heure suivie';
-    return `Heures suivies : ${formatApplicableQuantity(counter.acquired, counter.unit ?? 'heure')}`;
-  }
-  if (code === 'PAUSE_6H' || code === 'REPOS_QUOTIDIEN' || code === 'REPOS_HEBDOMADAIRE') return 'Contrôle planning';
-  if (code === 'JF' || code === 'JF_1MAI' || code === 'RECUP_PONT') return counter ? `Suivi : ${formatApplicableQuantity(counter.remaining ?? counter.acquired, counter.unit)}` : 'Suivi planning';
-  if (right.calculationStatus === 'not_initialized' || !counter) return 'Compteur non initialisé';
-  return counter.remaining != null ? `Solde : ${formatApplicableQuantity(counter.remaining, counter.unit)}` : right.calculationStatus ?? 'Suivi RH';
-}
-function formatApplicableQuantity(value?: number | null, unit?: string | null) {
-  if (value == null) return '-';
-  const rounded = Math.round(Number(value) * 100) / 100;
-  const normalizedUnit = String(unit ?? '').toLowerCase();
-  if (normalizedUnit.includes('minute') || unit === 'MINUTES') return formatMinutes(Number(value));
-  if (normalizedUnit.includes('heure')) return `${rounded} h`;
-  return `${rounded} j`;
-}
 function categoryLabel(category?: string | null) { const labels: Record<string, string> = { LEAVE: 'Congés', WORKING_TIME: 'Temps de travail', ABSENCE: 'Absences', RECOVERY: 'Récupération', SENIORITY: 'Ancienneté', HEALTH: 'Santé', LOCAL: 'Local', SAVINGS: 'Épargne temps' }; return labels[String(category ?? '')] ?? String(category ?? 'Autre'); }
 function rightNeedsVerification(item: { openingBalanceMissing?: boolean; openingBalance?: number; account?: { openingBalance?: number; consumed?: number; closingBalance?: number } | null; displayBalance?: number | null }) { const opening = item.account?.openingBalance ?? item.openingBalance ?? 0; const consumed = item.account?.consumed ?? 0; const closing = item.displayBalance ?? item.account?.closingBalance ?? opening; return Boolean(item.openingBalanceMissing || (closing < 0 && consumed > 0 && opening <= 0)); }
 function rightBalanceLabel(item: { unit?: string | null; openingBalance?: number; openingBalanceMissing?: boolean; displayBalance?: number | null; account?: { openingBalance?: number; consumed?: number; closingBalance?: number } | null }) { if (rightNeedsVerification(item)) return 'Solde à vérifier'; return formatRightValue(item.displayBalance ?? item.account?.closingBalance ?? item.openingBalance, item.unit); }

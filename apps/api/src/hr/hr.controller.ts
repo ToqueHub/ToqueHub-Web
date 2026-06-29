@@ -7,7 +7,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { ActivateHrEntitlementCatalogDto, ActivateHrEntitlementCatalogSelectionDto, AdjustHrEmployeeEntitlementByIdDto, HrEntitlementCatalogQueryDto, PrepareHrEntitlementCatalogDto, UpsertHrEmployeeEntitlementDto, UpsertHrEntitlementRuleDto } from './entitlements/hr-entitlement.dto';
 import { HrEntitlementService } from './entitlements/hr-entitlement.service';
-import { CompleteHrServicesDto, CreateHrReferencesDto, HrListQueryDto, UpsertHrEmployeeDto, UpsertHrReferenceDto } from './dto/hr.dto';
+import { AssignHrRotationDto, ChangeEmployeeRotationDto, CompleteHrServicesDto, CreateHrReferencesDto, HrListQueryDto, RemoveHrRotationDto, UpsertHrEmployeeDto, UpsertHrReferenceDto, UpsertHrRotationDto } from './dto/hr.dto';
 import { HrService } from './hr.service';
 import { AdjustHrTimeAccountDto, HrTimeAccountQueryDto, RecomputeHrTimeAccountsDto } from './time-accounts/hr-time-account.dto';
 import { HrTimeAccountService } from './time-accounts/hr-time-account.service';
@@ -64,10 +64,24 @@ export class HrController {
   @Patch('positions/:id') updatePosition(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpsertHrReferenceDto) { return this.hrService.updatePosition(this.org(user), this.actor(user), id, dto); }
   @Post('positions/:id/archive') archivePosition(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.hrService.archivePosition(this.org(user), this.actor(user), id); }
 
+  @Get('rotations/available-employees') availableEmployees(@CurrentUser() user: AuthenticatedUser, @Query('rotationId') rotationId: string) { return this.hrService.listAvailableEmployeesForRotation(this.org(user), rotationId); }
+  @Get('rotations') rotations(@CurrentUser() user: AuthenticatedUser, @Query() q: HrListQueryDto) { return this.hrService.listRotations(this.org(user), q); }
+  @Get('rotations/:id') rotation(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.hrService.getRotation(this.org(user), id); }
+  @Post('rotations') createRotation(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertHrRotationDto) { return this.hrService.createRotation(this.org(user), this.actor(user), dto); }
+  @Patch('rotations/:id') updateRotation(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpsertHrRotationDto) { return this.hrService.updateRotation(this.org(user), this.actor(user), id, dto); }
+  @Post('rotations/:id/archive') archiveRotation(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.hrService.archiveRotation(this.org(user), this.actor(user), id); }
+  @Get('rotations/:id/available-employees') availableEmployeesForRotation(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.hrService.listAvailableEmployeesForRotation(this.org(user), id); }
+  @Get('rotations/:id/assignments') rotationAssignments(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.hrService.listRotationAssignments(this.org(user), id); }
+  @Post('rotations/:id/assignments') assignRotation(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: AssignHrRotationDto) { return this.hrService.assignRotation(this.org(user), this.actor(user), id, dto); }
+  @Post('rotations/:id/assignments/:employeeId/remove') removeRotationAssignment(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('employeeId') employeeId: string, @Body() dto: RemoveHrRotationDto) { return this.hrService.removeRotationAssignment(this.org(user), this.actor(user), id, employeeId, dto); }
+  @Delete('rotations/:id/assignments/:employeeId') deleteRotationAssignment(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('employeeId') employeeId: string) { return this.hrService.removeRotationAssignment(this.org(user), this.actor(user), id, employeeId, {}); }
+
   @Get('employees') employees(@CurrentUser() user: AuthenticatedUser, @Query() q: HrListQueryDto) { return this.hrService.listEmployees(this.org(user), this.actor(user), q); }
   @Get('employees/:id') employee(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.hrService.getEmployee(this.org(user), this.actor(user), id); }
   @Post('employees') createEmployee(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertHrEmployeeDto) { return this.hrService.createEmployee(this.org(user), this.actor(user), dto); }
   @Patch('employees/:id') updateEmployee(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpsertHrEmployeeDto) { return this.hrService.updateEmployee(this.org(user), this.actor(user), id, dto); }
+  @Patch('employees/:id/rotation') setEmployeeRotation(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: ChangeEmployeeRotationDto) { return this.hrService.changeEmployeeRotation(this.org(user), this.actor(user), id, dto); }
+  @Delete('employees/:id/rotation') removeEmployeeRotation(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.hrService.removeEmployeeRotation(this.org(user), this.actor(user), id); }
   @Get('employees/:id/entitlements') employeeEntitlements(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Query() q: HrTimeAccountQueryDto) { return this.entitlementService.employee(this.org(user), id, q); }
   @Post('employees/:id/entitlements') upsertEmployeeEntitlement(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpsertHrEmployeeEntitlementDto) { return this.entitlementService.upsertEmployeeEntitlement(this.org(user), this.actor(user), id, dto); }
   @Patch('employees/:id/entitlements/:entitlementId') updateEmployeeEntitlement(@CurrentUser() user: AuthenticatedUser, @Param('id') employeeId: string, @Param('entitlementId') id: string, @Body() dto: UpsertHrEmployeeEntitlementDto) { return this.entitlementService.updateEmployeeEntitlement(this.org(user), this.actor(user), id, { ...dto, metadata: { ...(dto.metadata as Record<string, any> | undefined), employeeId } }); }

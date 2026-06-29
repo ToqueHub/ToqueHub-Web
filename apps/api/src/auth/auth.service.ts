@@ -497,6 +497,7 @@ export class AuthService {
       ...(currentUser.organization.technicalSheetsInstalledAt ? ['technical-sheets'] : []),
       ...(currentUser.organization.productionInstalledAt ? ['production'] : []),
       ...(currentUser.organization.menusInstalledAt ? ['menus'] : []),
+      ...(currentUser.organization.haccpInstalledAt ? ['haccp'] : []),
     ];
     const checklist = {
       applicationInstalled: installedApplications.length > 0,
@@ -550,6 +551,27 @@ export class AuthService {
     });
 
     return this.createSession(updatedLoginUser);
+  }
+
+  async mobileDevSession() {
+    const enabled = ['true', '1', 'yes'].includes(String(this.configService.get('ENABLE_MOBILE_DEV_AUTH') ?? '').toLowerCase());
+    if (!enabled) throw new ForbiddenException('Mobile development authentication is disabled');
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        organizationId: { not: null },
+        isActive: true,
+        status: { not: UserStatus.DISABLED },
+      },
+      orderBy: [
+        { isPrimaryAdmin: 'desc' },
+        { createdAt: 'asc' },
+      ],
+      include: { role: { include: { permissions: { include: { permission: true } } } }, organization: true },
+    });
+
+    if (!user) throw new UnauthorizedException('No active organization user available for mobile development');
+    return this.createSession(user);
   }
 
   private async seedConversions(tx: Prisma.TransactionClient, organizationId: string) {
@@ -637,6 +659,7 @@ export class AuthService {
       technicalSheetsInstalledAt?: Date | null;
       productionInstalledAt?: Date | null;
       menusInstalledAt?: Date | null;
+      haccpInstalledAt?: Date | null;
       mistralApiKey?: string | null;
       mistralApiKeyUpdatedAt?: Date | null;
     } | null;
@@ -668,6 +691,7 @@ export class AuthService {
         ...(user.organization?.technicalSheetsInstalledAt ? ['technical-sheets'] : []),
         ...(user.organization?.productionInstalledAt ? ['production'] : []),
         ...(user.organization?.menusInstalledAt ? ['menus'] : []),
+        ...(user.organization?.haccpInstalledAt ? ['haccp'] : []),
       ],
       role: user.role.name,
       status: 'status' in user ? user.status : undefined,
@@ -708,6 +732,7 @@ export class AuthService {
       technicalSheetsInstalledAt?: Date | null;
       productionInstalledAt?: Date | null;
       menusInstalledAt?: Date | null;
+      haccpInstalledAt?: Date | null;
       mistralApiKey?: string | null;
       mistralApiKeyUpdatedAt?: Date | null;
     } | null;

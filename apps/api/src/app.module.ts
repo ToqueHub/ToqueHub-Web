@@ -16,6 +16,8 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { LegalRightsModule } from './legal-rights/legal-rights.module';
 import { BackupsModule } from './backups/backups.module';
 import { DocumentsModule } from './documents/documents.module';
+import { HaccpModule } from './haccp/haccp.module';
+import { DiscoveryModule } from './discovery/discovery.module';
 
 @Module({
   imports: [
@@ -39,6 +41,8 @@ import { DocumentsModule } from './documents/documents.module';
     LegalRightsModule,
     BackupsModule,
     DocumentsModule,
+    HaccpModule,
+    DiscoveryModule,
   ],
 })
 export class AppModule {}

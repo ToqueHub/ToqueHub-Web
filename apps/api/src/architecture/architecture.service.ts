@@ -68,6 +68,15 @@ const MODULE_DEFINITIONS = [
     patterns: [/^Menu/],
     labels: ['menu', 'cycle', 'diet', 'guest', 'variant'],
   },
+  {
+    id: 'haccp',
+    name: 'HACCP',
+    installedField: 'haccpInstalledAt',
+    description: 'Traçabilité sanitaire, relevés HACCP, nettoyage, huiles, températures et rapports.',
+    dependencies: ['Core'],
+    patterns: [/^Haccp/],
+    labels: ['haccp', 'temperature', 'traceability', 'cleaning', 'reception', 'oil', 'cooling'],
+  },
 ] as const;
 
 const COMMON_FIELD_NAMES = new Set(['id', 'organizationId', 'createdAt', 'updatedAt', 'isArchived', 'archivedAt']);
@@ -464,6 +473,8 @@ export class ArchitectureService {
       HrPosition: 'Postes et fonctions RH.',
       HrEmployee: 'Employés de l’établissement.',
       HrEmployeeHistory: 'Historique des événements collaborateurs.',
+      HrRotation: 'Rotations et cycles de travail.',
+      HrRotationAssignment: 'Affectations des rotations aux employés.',
       HrSkill: 'Compétences RH.',
       HrEmployeeSkill: 'Compétences rattachées aux employés.',
       HrPositionSkill: 'Compétences requises par poste.',

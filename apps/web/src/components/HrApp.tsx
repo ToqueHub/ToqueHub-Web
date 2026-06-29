@@ -6,17 +6,20 @@ import {
   Building2,
   CalendarDays,
   Check,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   Clock,
   Edit3,
+  Eye,
   GitBranch,
+  HelpCircle,
   Info,
   Mail,
   MapPin,
   NotebookText,
   Printer,
+  RotateCw,
   Phone,
   Plus,
   Search,
@@ -29,7 +32,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { api } from '../api/client';
-import type { CoreUser, HrCollaborator, HrCollaboratorPayload, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, HrReferencePayload, HrSummary, LegalRightSearchItem, PlanningEntitlementCatalogItem, RegulatoryCountryCode, RegulatorySector, Site } from '../types';
+import type { CoreUser, HrCollaborator, HrCollaboratorPayload, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, HrReferencePayload, HrRotation, HrRotationDay, HrRotationPayload, HrRotationWeek, HrSummary, LegalRightSearchItem, PlanningEntitlementCatalogItem, RegulatoryCountryCode, RegulatorySector, Site } from '../types';
 import { HR_CATALOG } from '../hr-catalog';
 import { HrEntitlementsPanel } from './hr/HrEntitlementsPanel';
 import { CollaboratorModal as CollaboratorDossierModal } from './hr/collaborator/CollaboratorModal';
@@ -52,7 +55,7 @@ const statusOptions = [
 const HR_WIZARD_SERVICES_KEY = 'toquehub.hrWizard.selectedServices';
 const HR_WIZARD_RIGHTS_KEY = 'toquehub.hrWizard.rightsCompleted';
 
-type HrTab = 'dashboard' | 'collaborators' | 'departments' | 'positions' | 'rights' | 'orgchart';
+type HrTab = 'dashboard' | 'collaborators' | 'departments' | 'positions' | 'rights' | 'rotations' | 'orgchart';
 
 type HrAppProps = {
   tab: HrTab;
@@ -60,6 +63,7 @@ type HrAppProps = {
   collaborators: HrCollaborator[];
   departments: HrDepartment[];
   positions: HrPosition[];
+  rotations: HrRotation[];
   users: CoreUser[];
   sites: Site[];
   onboarding?: any;
@@ -86,6 +90,13 @@ type HrAppProps = {
   onCreatePositionsBulk: (items: HrReferencePayload[]) => Promise<void>;
   onUpdatePosition: (id: string, payload: HrReferencePayload) => Promise<void>;
   onArchivePosition: (id: string) => Promise<void>;
+  onCreateRotation: (payload: HrRotationPayload) => Promise<void>;
+  onUpdateRotation: (id: string, payload: Partial<HrRotationPayload>) => Promise<void>;
+  onArchiveRotation: (id: string) => Promise<void>;
+  onAssignRotation: (rotationId: string, employeeId: string, startDate?: string) => Promise<void>;
+  onRemoveRotationAssignment: (rotationId: string, employeeId: string) => Promise<void>;
+  onSetCollaboratorRotation: (employeeId: string, rotationId: string, startDate?: string) => Promise<void>;
+  onRemoveCollaboratorRotation: (employeeId: string) => Promise<void>;
   onCompleteServices?: (names?: string[]) => Promise<void>;
   onCompletePositions?: () => Promise<void>;
   onUnlockEmployees?: () => Promise<void>;
@@ -98,6 +109,7 @@ export function HrApp({
   collaborators,
   departments,
   positions,
+  rotations,
   users,
   sites,
   onboarding,
@@ -124,6 +136,13 @@ export function HrApp({
   onCreatePositionsBulk,
   onUpdatePosition,
   onArchivePosition,
+  onCreateRotation,
+  onUpdateRotation,
+  onArchiveRotation,
+  onAssignRotation,
+  onRemoveRotationAssignment,
+  onSetCollaboratorRotation,
+  onRemoveCollaboratorRotation,
   onCompleteServices,
   onCompletePositions,
   onUnlockEmployees,
@@ -131,6 +150,8 @@ export function HrApp({
 }: HrAppProps) {
   const [collaboratorModal, setCollaboratorModal] = useState<HrCollaborator | 'new' | null>(null);
   const [selectedCollaborator, setSelectedCollaborator] = useState<HrCollaborator | null>(null);
+  const [rotationModal, setRotationModal] = useState<HrRotation | 'new' | null>(null);
+  const [selectedRotation, setSelectedRotation] = useState<HrRotation | null>(null);
   const [referenceModal, setReferenceModal] = useState<{ type: 'department' | 'position'; item?: HrDepartment | HrPosition } | null>(null);
   const [departmentSetupOpen, setDepartmentSetupOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -171,7 +192,7 @@ export function HrApp({
   const onboardingHasPositions = onboarding ? Boolean(onboarding.positionsCompletedAt) : hasPositions;
   const employeesUnlocked = onboarding ? Boolean(onboarding.employeesUnlockedAt) : hasCollaborators;
   const canAccessCollaborators = employeesUnlocked;
-  const canAccessOrgChart = employeesUnlocked;
+  const canAccessRotationsAndOrg = employeesUnlocked;
   const needsInitialWizard = canWrite && !employeesUnlocked;
   const canRenderWizard = canWrite && wizardOpen && !onboarding?.completedAt;
 
@@ -185,24 +206,20 @@ export function HrApp({
     ...(onboardingHasServices && onboardingHasPositions ? [['positions', 'Postes'] as [HrTab, string]] : []),
     ...(canAccessCollaborators ? [['collaborators', 'Collaborateurs'] as [HrTab, string]] : []),
     ...(canAccessCollaborators ? [['rights', 'Droits'] as [HrTab, string]] : []),
-    ...(canAccessOrgChart ? [['orgchart', 'Organigramme'] as [HrTab, string]] : []),
+    ...(canAccessRotationsAndOrg ? [['rotations', 'Roulements'] as [HrTab, string]] : []),
+    ...(canAccessRotationsAndOrg ? [['orgchart', 'Organigramme'] as [HrTab, string]] : []),
   ];
 
   return (
     <div className="hr-shell">
-      <motion.section
-        className="welcome-hero stocks-hero hr-hero"
-        initial={{ opacity: 0, y: 15 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35 }}
-      >
+      <div className="hr-hero">
         <div>
-          <span className="welcome-tag"><UsersRound size={14} /> ToqueHub RH</span>
-          <h1 className="welcome-title">Ressources Humaines</h1>
-          <p className="welcome-desc">Vue d’ensemble de votre organisation. Centralisez les collaborateurs, services, postes et responsables sans recréer le Core.</p>
+          <span className="welcome-tag">ToqueHub RH</span>
+          <h1>Ressources Humaines</h1>
+          <p>Vue d’ensemble de votre organisation. Centralisez les collaborateurs, services, postes et responsables sans recréer le Core.</p>
         </div>
         {canWrite && canAccessCollaborators ? <button className="btn btn-primary" onClick={() => setCollaboratorModal('new')}><Plus size={16} /> Nouveau collaborateur</button> : null}
-      </motion.section>
+      </div>
 
       <div className="hr-tabs">
         {visibleTabs.map(([value, label]) => (
@@ -260,6 +277,10 @@ export function HrApp({
         <HrEntitlementsPanel token={token} collaborators={collaborators} departments={activeDepartments} positions={activePositions} canWrite={canWrite} regulatoryCountryCode={regulatoryCountryCode} regulatorySector={regulatorySector} onConfigureRegulatoryCountry={onConfigureRegulatoryCountry} />
       ) : null}
 
+      {tab === 'rotations' ? (
+        <RotationsPage rotations={rotations} collaborators={collaborators} departments={departments} canWrite={canWrite} onCreate={() => setRotationModal('new')} onEdit={setRotationModal} onOpen={setSelectedRotation} onArchive={onArchiveRotation} onAssign={onAssignRotation} onRemoveAssignment={onRemoveRotationAssignment} />
+      ) : null}
+
       {tab === 'orgchart' ? (
         <OrgChart collaborators={collaborators.filter((collaborator) => !isArchived(collaborator))} departments={departments} departmentFilter={orgDepartment} onDepartmentFilter={setOrgDepartment} />
       ) : null}
@@ -272,6 +293,7 @@ export function HrApp({
           positions={activePositions}
           users={selectableUsers}
           sites={sites.filter((site) => !isArchived(site))}
+          rotations={rotations}
           token={token}
           onClose={() => setCollaboratorModal(null)}
           onDeleteDocument={async (employeeId, documentId) => {
@@ -298,7 +320,22 @@ export function HrApp({
         />
       ) : null}
 
-      {selectedCollaborator ? <CollaboratorSheet collaborator={selectedCollaborator} onClose={() => setSelectedCollaborator(null)} onEdit={() => { setCollaboratorModal(selectedCollaborator); setSelectedCollaborator(null); }} canWrite={canWrite} onSaveNotes={async (notes) => { const updated = await onUpdateCollaborator(selectedCollaborator.id, collaboratorToPayload(selectedCollaborator, { notes })); setSelectedCollaborator((current) => current?.id === selectedCollaborator.id ? { ...(updated ?? current), notes } : current); }} onViewDocument={onViewCollaboratorDocument} onReplaceDocument={async (employeeId, documentId, file) => { const updated = await onReplaceCollaboratorDocument(employeeId, documentId, file); if (updated) setSelectedCollaborator((current) => current?.id === employeeId ? { ...current, documents: (current.documents ?? []).map((document) => document.id === documentId ? updated : document) } : current); return updated; }} onDeleteDocument={async (employeeId, documentId) => { await onDeleteCollaboratorDocument(employeeId, documentId); setSelectedCollaborator((current) => current?.id === employeeId ? { ...current, documents: (current.documents ?? []).filter((document) => document.id !== documentId) } : current); }} onDownloadDocument={onDownloadCollaboratorDocument} /> : null}
+      {selectedCollaborator ? <CollaboratorSheet collaborator={selectedCollaborator} rotations={rotations} onClose={() => setSelectedCollaborator(null)} onEdit={() => { setCollaboratorModal(selectedCollaborator); setSelectedCollaborator(null); }} canWrite={canWrite} onSetRotation={onSetCollaboratorRotation} onRemoveRotation={onRemoveCollaboratorRotation} onSaveNotes={async (notes) => { const updated = await onUpdateCollaborator(selectedCollaborator.id, collaboratorToPayload(selectedCollaborator, { notes })); setSelectedCollaborator((current) => current?.id === selectedCollaborator.id ? { ...(updated ?? current), notes } : current); }} onViewDocument={onViewCollaboratorDocument} onReplaceDocument={async (employeeId, documentId, file) => { const updated = await onReplaceCollaboratorDocument(employeeId, documentId, file); if (updated) setSelectedCollaborator((current) => current?.id === employeeId ? { ...current, documents: (current.documents ?? []).map((document) => document.id === documentId ? updated : document) } : current); return updated; }} onDeleteDocument={async (employeeId, documentId) => { await onDeleteCollaboratorDocument(employeeId, documentId); setSelectedCollaborator((current) => current?.id === employeeId ? { ...current, documents: (current.documents ?? []).filter((document) => document.id !== documentId) } : current); }} onDownloadDocument={onDownloadCollaboratorDocument} /> : null}
+
+      {selectedRotation ? <RotationDetailSheet rotation={selectedRotation} collaborators={collaborators} canWrite={canWrite} onClose={() => setSelectedRotation(null)} onEdit={() => { setRotationModal(selectedRotation); setSelectedRotation(null); }} onAssign={onAssignRotation} onRemoveAssignment={onRemoveRotationAssignment} /> : null}
+
+      {rotationModal ? (
+        <RotationModal
+          rotation={rotationModal === 'new' ? undefined : rotationModal}
+          departments={activeDepartments}
+          onClose={() => setRotationModal(null)}
+          onSubmit={async (payload) => {
+            if (rotationModal === 'new') await onCreateRotation(payload);
+            else await onUpdateRotation(rotationModal.id, payload);
+            setRotationModal(null);
+          }}
+        />
+      ) : null}
 
       {referenceModal ? (
         <ReferenceModal
@@ -335,6 +372,7 @@ export function HrApp({
           positions={positions}
           users={users}
           sites={sites}
+          rotations={rotations}
           onboarding={onboarding}
           token={token}
           regulatoryCountryCode={regulatoryCountryCode}
@@ -411,25 +449,21 @@ function HrDashboard({
   const employeesUnlocked = onboarding ? Boolean(onboarding.employeesUnlockedAt) : hasCollaborators;
   const onboardingComplete = employeesUnlocked;
   const [configExpanded, setConfigExpanded] = useState(false);
-  const activeDepartmentsCount = departments.filter((item) => !isArchived(item)).length;
-  const activePositionsCount = positions.filter((item) => !isArchived(item)).length;
-  const linkedCollaboratorsCount = activeCollaborators.filter((item) => item.userId || item.user).length;
-  const setupProgress = Math.round(([onboardingHasServices, onboardingHasPositions, employeesUnlocked].filter(Boolean).length / 3) * 100);
-  const setupSteps = [
-    { title: 'Services', text: `${activeDepartmentsCount} service${activeDepartmentsCount > 1 ? 's' : ''}`, done: onboardingHasServices },
-    { title: 'Postes', text: `${activePositionsCount} poste${activePositionsCount > 1 ? 's' : ''}`, done: onboardingHasPositions },
-    { title: 'Structure', text: employeesUnlocked ? 'Collaborateurs débloqués' : 'Structure à valider', done: employeesUnlocked },
-  ];
+  const onCreateDepartmentsBulk = async (_names: string[]) => {};
+  const onCreatePositionsBulk = async (_items: HrReferencePayload[]) => {};
+  const onCompleteServices = undefined as undefined | ((names?: string[]) => Promise<void>);
+  const onCompletePositions = undefined as undefined | (() => Promise<void>);
+  const onUnlockEmployees = undefined as undefined | (() => Promise<void>);
   const stats = [
-    { label: 'Collaborateurs', value: summary?.counts?.collaborators ?? activeCollaborators.length, icon: UsersRound, tone: 'emerald' },
-    { label: 'Services', value: summary?.counts?.departments ?? activeDepartmentsCount, icon: Building2, tone: 'blue' },
-    { label: 'Postes', value: summary?.counts?.positions ?? activePositionsCount, icon: BriefcaseBusiness, tone: 'orange' },
-    { label: 'Avec compte ToqueHub', value: summary?.counts?.linkedCollaborators ?? linkedCollaboratorsCount, icon: ShieldCheck, tone: 'purple' },
-    ...(withoutContract ? [{ label: 'Sans contrat', value: withoutContract, icon: ShieldCheck, tone: 'orange' }] : []),
-    ...(withoutPosition ? [{ label: 'Sans poste principal', value: withoutPosition, icon: BriefcaseBusiness, tone: 'blue' }] : []),
-    ...(withoutManager ? [{ label: 'Sans responsable', value: withoutManager, icon: UserRound, tone: 'emerald' }] : []),
-    ...(contractsEndingSoon ? [{ label: 'Contrats à échéance', value: contractsEndingSoon, icon: CalendarDays, tone: 'purple' }] : []),
-    ...(reviewsSoon ? [{ label: 'Revalorisations prévues', value: reviewsSoon, icon: Sparkles, tone: 'orange' }] : []),
+    { label: 'Collaborateurs', value: summary?.counts?.collaborators ?? activeCollaborators.length, icon: UsersRound },
+    { label: 'Services', value: summary?.counts?.departments ?? departments.filter((item) => !isArchived(item)).length, icon: Building2 },
+    { label: 'Postes', value: summary?.counts?.positions ?? positions.filter((item) => !isArchived(item)).length, icon: BriefcaseBusiness },
+    { label: 'Avec compte ToqueHub', value: summary?.counts?.linkedCollaborators ?? activeCollaborators.filter((item) => item.userId || item.user).length, icon: ShieldCheck },
+    ...(withoutContract ? [{ label: 'Sans contrat', value: withoutContract, icon: ShieldCheck }] : []),
+    ...(withoutPosition ? [{ label: 'Sans poste principal', value: withoutPosition, icon: BriefcaseBusiness }] : []),
+    ...(withoutManager ? [{ label: 'Sans responsable', value: withoutManager, icon: UserRound }] : []),
+    ...(contractsEndingSoon ? [{ label: 'Contrats à échéance', value: contractsEndingSoon, icon: CalendarDays }] : []),
+    ...(reviewsSoon ? [{ label: 'Revalorisations prévues', value: reviewsSoon, icon: Sparkles }] : []),
   ];
 
   const nextStepLabel = !onboardingHasServices
@@ -451,89 +485,59 @@ function HrDashboard({
       </div>
     ) : null}
     {canWrite ? (
-      <div className="stocks-dashboard-setup-row hr-dashboard-setup-row">
-        <motion.section className="card-modern stocks-setup-card hr-setup-card" style={{ position: 'relative' }} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <div className="section-header-modern">
-            <div className="section-info">
-              <span className="card-title"><Sparkles size={18} /> Configuration initiale du module RH</span>
-              <span className="section-tagline">{nextStepLabel}</span>
-            </div>
-            <div className="stocks-setup-actions">
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setConfigExpanded((value) => !value)}>{configExpanded ? 'Replier' : 'Détails'}</button>
-              <button type="button" className="btn btn-primary btn-sm" onClick={onStartWizard}>{onboardingComplete ? 'Revoir' : 'Continuer'}</button>
-            </div>
-          </div>
-          <div className="stocks-setup-progress">
-            <div className="progress-bar-bg"><div className="progress-bar-fill" style={{ width: `${setupProgress}%` }} /></div>
-            <strong>{setupProgress}%</strong>
-          </div>
+      <div className="card-modern" style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.06) 0%, rgba(59,130,246,0.04) 100%)', borderColor: 'rgba(16,185,129,0.15)' }}>
+        <div className="section-header-modern" style={{ justifyContent: 'space-between' }}>
+          <span className="card-title"><Sparkles size={18} /> Configuration initiale du module RH</span>
           {configExpanded ? (
-            <div className="stocks-setup-step-grid">
-              {setupSteps.map((step) => (
-                <div key={step.title} className={`stocks-setup-step ${step.done ? 'done' : 'todo'}`}>
-                  {step.done ? <CheckCircle2 size={16} /> : <Clock size={16} />}
-                  <div><strong>{step.title}</strong><span>{step.text}</span></div>
-                </div>
-              ))}
-            </div>
+            <button type="button" className="btn btn-secondary" onClick={() => setConfigExpanded(false)}>Replier</button>
           ) : null}
-        </motion.section>
+        </div>
+        {!configExpanded ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+            <div>
+              <p style={{ margin: 0, fontWeight: 500, color: '#334155' }}>{nextStepLabel}</p>
+              <p className="muted" style={{ margin: '0.25rem 0 0' }}>
+                {onboardingHasServices ? `${departments.filter((d) => !isArchived(d)).length} services` : 'Aucun service configuré'}
+                {onboardingHasPositions ? ` · ${positions.filter((p) => !isArchived(p)).length} postes` : ''}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                if (!onboardingComplete) {
+                  onStartWizard();
+                } else {
+                  setConfigExpanded(true);
+                }
+              }}
+            >
+              {onboardingComplete ? 'Déplier' : 'Continuer la configuration'}
+            </button>
+          </div>
+        ) : !onboardingHasServices ? (
+          <ServiceCatalogGrid onSubmit={async (names) => { await onCreateDepartmentsBulk(names); if (onCompleteServices) await onCompleteServices(); setConfigExpanded(true); }} />
+        ) : !onboardingHasPositions ? (
+          <PositionCatalogSelector departments={departments} onSubmit={async (items) => { await onCreatePositionsBulk(items); if (onCompletePositions) await onCompletePositions(); if (onUnlockEmployees) await onUnlockEmployees(); setConfigExpanded(false); }} />
+        ) : !employeesUnlocked ? (
+          <OnboardingStructureReview departments={departments} positions={positions} onOpenCollaborators={onOpenCollaborators} onUnlockEmployees={onUnlockEmployees} onClose={() => setConfigExpanded(false)} />
+        ) : (
+          <OnboardingStructureReview departments={departments} positions={positions} onOpenCollaborators={onOpenCollaborators} onClose={() => setConfigExpanded(false)} />
+        )}
       </div>
     ) : null}
-    <div className="metrics-grid hr-metrics-grid">
-      {stats.map((stat, index) => {
-        const Icon = stat.icon;
-        return <HrMetric key={stat.label} icon={<Icon size={20} />} value={stat.value} label={stat.label} tone={stat.tone} delay={index + 1} />;
-      })}
-    </div>
+    <div className="hr-stat-grid">{stats.map((stat, index) => <motion.div key={stat.label} className="card-modern hr-stat-card" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}><div className="metric-icon-wrapper emerald"><stat.icon /></div><div><span>{stat.label}</span><strong>{stat.value}</strong></div></motion.div>)}</div>
     <div className="double-panel">
-      <motion.div
-        className="card-modern widget-card-modern hr-dashboard-widget"
-        initial={{ opacity: 0, y: 15 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.25 }}
-      >
-        <div className="card-title-container">
-          <span className="card-title"><Sparkles size={18} /> Dernières arrivées</span>
-          <button className="btn btn-secondary btn-sm" onClick={onOpenCollaborators}>Voir tous <ChevronRight size={16} /></button>
-        </div>
+      <div className="card-modern">
+        <div className="section-header-modern"><span className="card-title"><Sparkles size={18} /> Dernières arrivées</span><button className="btn btn-secondary" onClick={onOpenCollaborators}>Voir tous <ChevronRight size={16} /></button></div>
         {latest.length === 0 ? <EmptyState title="Aucun collaborateur" description="Ajoutez votre premier collaborateur RH avec ou sans compte ToqueHub." /> : <div className="hr-list">{latest.map((collaborator) => <PersonRow key={collaborator.id} collaborator={collaborator} detail={formatDate(collaborator.hireDate)} />)}</div>}
-      </motion.div>
-      <motion.div
-        className="card-modern widget-card-modern hr-dashboard-widget"
-        initial={{ opacity: 0, y: 15 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.35 }}
-      >
+      </div>
+      <div className="card-modern">
         <span className="card-title"><Building2 size={18} /> Répartition des services</span>
         {distribution.length === 0 ? <EmptyState title="Aucune répartition" description="La visualisation apparaîtra dès qu’un collaborateur sera rattaché à un service." /> : <div className="hr-bars">{distribution.map(([name, count]) => <div key={name} className="hr-bar-row"><div><strong>{name}</strong><span>{count} collaborateur{count > 1 ? 's' : ''}</span></div><div className="hr-bar"><span style={{ width: `${(count / max) * 100}%` }} /></div></div>)}</div>}
-      </motion.div>
+      </div>
     </div>
   </>;
-}
-
-function HrMetric({ icon, value, label, tone, delay = 0 }: { icon: React.ReactNode; value: React.ReactNode; label: string; tone: string; delay?: number }) {
-  return (
-    <motion.div
-      className={`metric-card-modern tone-${tone}`}
-      initial={{ opacity: 0, y: 15 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.38, delay: delay * 0.05, ease: 'easeOut' }}
-      whileHover={{ y: -5, boxShadow: '0 20px 30px rgba(9, 13, 22, 0.06)' }}
-    >
-      <div className="metric-header">
-        <div className={`metric-icon-wrapper-modern tone-${tone}`}>
-          {icon}
-        </div>
-        <span className="metric-badge-trend">Mise à jour</span>
-      </div>
-      <div className="metric-body-modern">
-        <span className="metric-value-modern">{value}</span>
-        <span className="metric-label-modern">{label}</span>
-      </div>
-      <div className="metric-shine" />
-    </motion.div>
-  );
 }
 
 function HrIllustration() {
@@ -749,6 +753,7 @@ function HrOnboardingWizard({
   positions,
   users,
   sites,
+  rotations,
   onboarding,
   token,
   regulatoryCountryCode,
@@ -769,6 +774,7 @@ function HrOnboardingWizard({
   positions: HrPosition[];
   users: CoreUser[];
   sites: Site[];
+  rotations: HrRotation[];
   onboarding?: any;
   token: string;
   regulatoryCountryCode?: RegulatoryCountryCode | null;
@@ -1003,6 +1009,7 @@ function HrOnboardingWizard({
             positions={wizardPositions}
             users={users}
             sites={sites.filter((site) => !isArchived(site))}
+            rotations={rotations}
             token={token}
             onClose={() => setCreatingCollaborator(false)}
             onSubmit={async (payload, documents) => {
@@ -1810,6 +1817,203 @@ function PositionsPage({ positions, departments, canWrite, onCreate, onEdit, onA
   );
 }
 
+function RotationsPage({ rotations, collaborators, departments, canWrite, onCreate, onEdit, onOpen, onArchive, onAssign, onRemoveAssignment }: { rotations: HrRotation[]; collaborators: HrCollaborator[]; departments: HrDepartment[]; canWrite: boolean; onCreate: () => void; onEdit: (rotation: HrRotation) => void; onOpen: (rotation: HrRotation) => void; onArchive: (id: string) => void; onAssign: (rotationId: string, employeeId: string, startDate?: string) => Promise<void>; onRemoveAssignment: (rotationId: string, employeeId: string) => Promise<void> }) {
+  const [query, setQuery] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
+  const [assigning, setAssigning] = useState<Record<string, string>>({});
+  const filtered = rotations.filter((rotation) => (showArchived || !isArchived(rotation)) && `${rotation.name} ${rotation.description ?? ''} ${rotationDepartment(rotation)?.name ?? 'Tous services'}`.toLowerCase().includes(query.toLowerCase()));
+  const availableFor = (rotation: HrRotation) => collaborators.filter((collaborator) => !isArchived(collaborator) && !activeRotation(collaborator) && (!rotationDepartment(rotation)?.id || collaborator.departmentId === rotationDepartment(rotation)?.id || collaborator.department?.id === rotationDepartment(rotation)?.id));
+  return <div className="card-modern"><div className="section-header-modern"><div className="section-info"><span className="card-title"><RotateCw size={18} /> Roulements</span><span className="section-tagline">Définissez les cycles de travail réutilisables de votre établissement.</span></div>{canWrite ? <button className="btn btn-primary" onClick={onCreate}><Plus size={16} /> Créer</button> : null}</div><div className="filter-bar"><div className="search-input-wrapper"><Search /><input className="search-input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nom, service, description…" /></div><label className="toggle-inline"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} /> Archives</label></div>{filtered.length === 0 ? <EmptyState title="Aucun roulement" description="Créez vos cycles de travail standards : matin, soir, week-end, polyvalence…" action={canWrite ? <button className="btn btn-primary" onClick={onCreate}><Plus size={16} /> Nouveau roulement</button> : undefined} /> : <div className="table-wrapper"><table className="table-modern hr-table"><thead><tr><th>Nom</th><th>Service</th><th>Cycle</th><th>Durée hebdomadaire</th><th>Collaborateurs assignés</th><th>Statut</th><th>Actions</th></tr></thead><tbody>{filtered.map((rotation) => { const assignments = activeAssignments(rotation); const available = availableFor(rotation); const currentValue = assigning[rotation.id] ?? ''; return <tr key={rotation.id}><td><button className="link-button" onClick={() => onOpen(rotation)}>{rotation.name}</button><small>{rotation.description || 'Cycle standard'}</small></td><td>{rotationDepartment(rotation)?.name ?? 'Tous services'}</td><td>{rotation.cycleWeeks} semaine{rotation.cycleWeeks > 1 ? 's' : ''}</td><td>{formatMinutes(rotationMetrics(rotation).averageWeeklyMinutes)}</td><td><strong>{assignments.length}</strong>{assignments.length ? <small>{assignments.map((assignment) => fullName(assignment.collaborator ?? assignment.employee ?? {})).join(', ')}</small> : <small>Aucun</small>}{canWrite && !isArchived(rotation) ? <div className="inline-assign"><select value={currentValue} onChange={(e) => setAssigning((prev) => ({ ...prev, [rotation.id]: e.target.value }))}><option value="">Assigner…</option>{available.map((collaborator) => <option key={collaborator.id} value={collaborator.id}>{fullName(collaborator)}</option>)}</select><button className="btn btn-secondary" disabled={!currentValue} onClick={async () => { await onAssign(rotation.id, currentValue); setAssigning((prev) => ({ ...prev, [rotation.id]: '' })); }}>Ajouter</button></div> : null}</td><td>{isArchived(rotation) ? <span className="badge">Archivé</span> : <span className="badge badge-reception">Actif</span>}</td><td><div className="row-actions"><button className="icon-btn" onClick={() => onOpen(rotation)} title="Détail"><Eye size={16} /></button>{canWrite ? <><button className="icon-btn" onClick={() => onEdit(rotation)} title="Modifier"><Edit3 size={16} /></button><button className="icon-btn danger" onClick={() => onArchive(rotation.id)} title="Archiver"><Archive size={16} /></button></> : null}</div>{canWrite && assignments.map((assignment) => { const employee = assignment.collaborator ?? assignment.employee; return employee ? <button key={assignment.id} className="link-button danger-text" onClick={() => onRemoveAssignment(rotation.id, employee.id)}>Retirer {fullName(employee)}</button> : null; })}</td></tr>; })}</tbody></table></div>}</div>;
+}
+
+function RotationModal({ rotation, departments, onClose, onSubmit }: { rotation?: HrRotation; departments: HrDepartment[]; onClose: () => void; onSubmit: (payload: HrRotationPayload) => Promise<void> }) {
+  const [form, setForm] = useState<HrRotationPayload>(() => ({ name: rotation?.name ?? '', description: rotation?.description ?? '', departmentId: rotationDepartment(rotation)?.id ?? '', cycleWeeks: rotation?.cycleWeeks ?? 1, weeks: normalizeWeeks(rotation) }));
+  const [submitting, setSubmitting] = useState(false);
+  const metrics = cycleMetrics(form.weeks);
+  function setCycleWeeks(value: number) { setForm((prev) => ({ ...prev, cycleWeeks: value, weeks: normalizeWeeks({ ...prev, cycleWeeks: value, weeks: prev.weeks }) })); }
+  function updateDay(weekIndex: number, dayOfWeek: number, patch: Partial<HrRotationDay>) { setForm((prev) => ({ ...prev, weeks: prev.weeks.map((week) => week.weekIndex === weekIndex ? { ...week, days: week.days.map((day) => day.dayOfWeek === dayOfWeek ? { ...day, ...patch } : day) } : week) })); }
+  return (
+    <div className="modal-overlay">
+      <motion.form
+        className="modal-card hr-modal rotation-modal"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          setSubmitting(true);
+          try {
+            await onSubmit({
+              ...form,
+              departmentId: form.departmentId || null,
+              weeks: form.weeks.map((week) => ({
+                ...week,
+                days: week.days.map((day) => ({
+                  ...day,
+                  breakMinutes: Number(day.breakMinutes ?? 0),
+                })),
+              })),
+            });
+          } finally {
+            setSubmitting(false);
+          }
+        }}
+        initial={{ opacity: 0, scale: 0.98 }}
+        animate={{ opacity: 1, scale: 1 }}
+      >
+        <div className="modal-header">
+          <h2>{rotation ? 'Modifier le roulement' : 'Nouveau roulement'}</h2>
+          <button type="button" className="modal-close-btn" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <div style={{ padding: '1.5rem 1.75rem', maxHeight: 'calc(85vh - 140px)', overflowY: 'auto' }}>
+          {/* Informations générales */}
+          <div className="rotation-section">
+            <span className="rotation-section-title">Informations générales</span>
+            <div className="rotation-general-grid">
+              <input
+                placeholder="Nom du roulement *"
+                value={form.name}
+                onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                required
+              />
+              <select
+                value={form.departmentId ?? ''}
+                onChange={(e) => setForm((prev) => ({ ...prev, departmentId: e.target.value }))}
+              >
+                <option value="">Tous services</option>
+                {departments.map((department) => (
+                  <option key={department.id} value={department.id}>
+                    {department.name}
+                  </option>
+                ))}
+              </select>
+              <textarea
+                placeholder="Description du roulement (ex: horaires, contraintes, spécificités...)"
+                value={form.description ?? ''}
+                onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          {/* Définition du cycle */}
+          <div className="rotation-section">
+            <span className="rotation-section-title">Définition du cycle</span>
+            
+            <div className="rotation-cycle-controls">
+              <div className="rotation-cycle-select-wrapper">
+                <label style={{ fontSize: '0.8rem', fontWeight: 650, color: 'var(--text-muted)' }}>Longueur du cycle</label>
+                <select value={form.cycleWeeks} onChange={(e) => setCycleWeeks(Number(e.target.value))}>
+                  {[1, 2, 3, 4].map((week) => (
+                    <option key={week} value={week}>
+                      Cycle sur {week} semaine{week > 1 ? 's' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="rotation-totals">
+                <div className="rotation-total-card">
+                  <span>Durée hebdomadaire</span>
+                  <strong>{formatMinutes(metrics.averageWeeklyMinutes)}</strong>
+                </div>
+                <div className="rotation-total-card">
+                  <span>Jours travaillés</span>
+                  <strong>{metrics.workedDays} j</strong>
+                </div>
+                <div className="rotation-total-card">
+                  <span>Jours de repos</span>
+                  <strong>{metrics.restDays} j</strong>
+                </div>
+                <div className="rotation-total-card">
+                  <span>Amplitude moyenne</span>
+                  <strong>{formatMinutes(metrics.averagePresenceMinutes)}</strong>
+                </div>
+              </div>
+            </div>
+
+            {form.weeks.map((week) => (
+              <div key={week.weekIndex} className="rotation-week-editor">
+                <h3>
+                  <span>{weekLabel(week.weekIndex)}</span>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+                    Total : {formatMinutes(weekMetrics(week).totalMinutes)}
+                  </span>
+                </h3>
+                <div className="rotation-days-grid">
+                  {week.days.map((day) => {
+                    const duration = dayDuration(day);
+                    const isRest = day.mode === 'REST';
+                    return (
+                      <div key={day.dayOfWeek} className={`rotation-day-card ${isRest ? 'rest' : ''}`}>
+                        <strong>{dayName(day.dayOfWeek)}</strong>
+                        <select
+                          value={day.mode}
+                          onChange={(e) => updateDay(week.weekIndex, day.dayOfWeek, { mode: e.target.value })}
+                        >
+                          <option value="WORK">Travail</option>
+                          <option value="REST">Repos</option>
+                        </select>
+                        {!isRest ? (
+                          <>
+                            <input
+                              type="time"
+                              value={day.startTime ?? '08:00'}
+                              onChange={(e) => updateDay(week.weekIndex, day.dayOfWeek, { startTime: e.target.value })}
+                            />
+                            <input
+                              type="time"
+                              value={day.endTime ?? '16:00'}
+                              onChange={(e) => updateDay(week.weekIndex, day.dayOfWeek, { endTime: e.target.value })}
+                            />
+                            <input
+                              type="number"
+                              min={0}
+                              step={5}
+                              value={day.breakMinutes ?? 0}
+                              onChange={(e) => updateDay(week.weekIndex, day.dayOfWeek, { breakMinutes: Number(e.target.value) })}
+                              placeholder="Pause (min)"
+                            />
+                            <small>
+                              {formatMinutes(duration.worked)} ({formatMinutes(duration.presence)} amp)
+                              {duration.endsNextDay ? ' +1j' : ''}
+                            </small>
+                          </>
+                        ) : (
+                          <span className="rest-label">Repos</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="modal-actions" style={{ padding: '1.25rem 1.75rem', borderTop: '1px solid #f1f5f9', background: '#f8fafc' }}>
+          <button type="button" className="btn btn-secondary" onClick={onClose}>
+            Annuler
+          </button>
+          <button className="btn btn-primary" disabled={submitting}>
+            {submitting ? 'Enregistrement…' : 'Enregistrer'}
+          </button>
+        </div>
+      </motion.form>
+    </div>
+  );
+}
+
+function RotationDetailSheet({ rotation, collaborators, canWrite, onClose, onEdit, onAssign, onRemoveAssignment }: { rotation: HrRotation; collaborators: HrCollaborator[]; canWrite: boolean; onClose: () => void; onEdit: () => void; onAssign: (rotationId: string, employeeId: string, startDate?: string) => Promise<void>; onRemoveAssignment: (rotationId: string, employeeId: string) => Promise<void> }) {
+  const [employeeId, setEmployeeId] = useState('');
+  const metrics = rotationMetrics(rotation);
+  const available = collaborators.filter((collaborator) => !isArchived(collaborator) && !activeRotation(collaborator) && (!rotationDepartment(rotation)?.id || collaborator.departmentId === rotationDepartment(rotation)?.id || collaborator.department?.id === rotationDepartment(rotation)?.id));
+  return <div className="modal-overlay"><motion.div className="modal-card hr-sheet" initial={{ x: 30, opacity: 0 }} animate={{ x: 0, opacity: 1 }}><div className="modal-header"><div><h2>{rotation.name}</h2><p>{rotationDepartment(rotation)?.name ?? 'Tous services'} · Cycle {rotation.cycleWeeks} semaine{rotation.cycleWeeks > 1 ? 's' : ''}</p></div><div className="row-actions">{canWrite ? <button className="btn btn-secondary" onClick={onEdit}><Edit3 size={14} /> Modifier</button> : null}<button className="modal-close-btn" onClick={onClose}><X size={18} /></button></div></div><div className="rotation-totals"><span>Durée hebdo <strong>{formatMinutes(metrics.averageWeeklyMinutes)}</strong></span><span>Jours travaillés <strong>{metrics.workedDays}</strong></span><span>Repos <strong>{metrics.restDays}</strong></span><span>Amplitude moyenne <strong>{formatMinutes(metrics.averagePresenceMinutes)}</strong></span></div><RotationCalendar rotation={rotation} /><div className="card-modern"><span className="card-title"><UsersRound size={18} /> Collaborateurs associés</span>{canWrite && !isArchived(rotation) ? <div className="inline-assign"><select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}><option value="">Ajouter un collaborateur disponible</option>{available.map((collaborator) => <option key={collaborator.id} value={collaborator.id}>{fullName(collaborator)} · {collaborator.department?.name ?? '—'}</option>)}</select><button className="btn btn-primary" disabled={!employeeId} onClick={async () => { await onAssign(rotation.id, employeeId); setEmployeeId(''); }}>Assigner</button></div> : null}<div className="hr-list">{activeAssignments(rotation).map((assignment) => { const employee = assignment.collaborator ?? assignment.employee; return employee ? <div className="hr-person-row" key={assignment.id}><AvatarInitial collaborator={employee} /><div><strong>{fullName(employee)}</strong><span>Depuis {formatDate(assignment.startDate)}</span></div>{canWrite ? <button className="btn btn-secondary" onClick={() => onRemoveAssignment(rotation.id, employee.id)}>Retirer</button> : null}</div> : null; })}</div></div></motion.div></div>;
+}
+
+function RotationCalendar({ rotation }: { rotation: HrRotation }) {
+  return <div className="rotation-calendar">{normalizeWeeks(rotation).map((week) => <div key={week.weekIndex} className="rotation-calendar-week"><h3>{weekLabel(week.weekIndex)} · {formatMinutes(weekMetrics(week).totalMinutes)}</h3><div className="rotation-days-grid">{week.days.map((day) => { const duration = dayDuration(day); return <div key={day.dayOfWeek} className={`rotation-day-card ${day.mode === 'REST' ? 'rest' : ''}`}><strong>{dayName(day.dayOfWeek)}</strong>{day.mode === 'REST' ? <span className="rest-label">Repos</span> : <><span>{day.startTime} → {day.endTime}</span><small>Pause {day.breakMinutes ?? 0} min</small><small>{formatMinutes(duration.worked)} travaillées</small>{duration.endsNextDay ? <span className="badge badge-warning">Fin le lendemain</span> : null}</>}</div>; })}</div></div>)}</div>;
+}
+
 function DepartmentSetupModal({ departments, positions, onClose, onCreateDepartmentsBulk, onCreatePositionsBulk }: { departments: HrDepartment[]; positions: HrPosition[]; onClose: () => void; onCreateDepartmentsBulk: (names: string[]) => Promise<void>; onCreatePositionsBulk: (items: HrReferencePayload[]) => Promise<void> }) {
   const [step, setStep] = useState<'services' | 'positions'>('services');
   const [selectedNames, setSelectedNames] = useState<string[]>([]);
@@ -1966,12 +2170,15 @@ function ReferenceModal({
   );
 }
 
-function CollaboratorSheet({ collaborator, canWrite, onClose, onEdit, onSaveNotes, onViewDocument, onReplaceDocument, onDeleteDocument, onDownloadDocument }: { collaborator: HrCollaborator; canWrite: boolean; onClose: () => void; onEdit: () => void; onSaveNotes: (notes: string) => Promise<void>; onViewDocument: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument: (employeeId: string, documentId: string) => Promise<void>; onDownloadDocument: (employeeId: string, document: HrDocument) => Promise<void> }) {
+function CollaboratorSheet({ collaborator, rotations, canWrite, onClose, onEdit, onSetRotation, onRemoveRotation, onSaveNotes, onViewDocument, onReplaceDocument, onDeleteDocument, onDownloadDocument }: { collaborator: HrCollaborator; rotations: HrRotation[]; canWrite: boolean; onClose: () => void; onEdit: () => void; onSetRotation: (employeeId: string, rotationId: string, startDate?: string) => Promise<void>; onRemoveRotation: (employeeId: string) => Promise<void>; onSaveNotes: (notes: string) => Promise<void>; onViewDocument: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument: (employeeId: string, documentId: string) => Promise<void>; onDownloadDocument: (employeeId: string, document: HrDocument) => Promise<void> }) {
+  const [rotationId, setRotationId] = useState('');
   const [detailSection, setDetailSection] = useState<'contracts' | 'trainings' | 'documents' | 'leaves' | 'planning'>('contracts');
   const initialNotes = cleanLegacyHrNotes(collaborator.notes);
   const [notesDraft, setNotesDraft] = useState(initialNotes);
   const [savingNotes, setSavingNotes] = useState(false);
   useEffect(() => setNotesDraft(cleanLegacyHrNotes(collaborator.notes)), [collaborator.id, collaborator.notes]);
+  const currentRotation = activeRotation(collaborator);
+  const compatibleRotations = rotations.filter((rotation) => !isArchived(rotation) && (!rotationDepartment(rotation)?.id || rotationDepartment(rotation)?.id === (collaborator.departmentId ?? collaborator.department?.id)));
   const primaryContract = collaborator.activeContract ?? collaborator.contracts?.find((contract) => contract.status === 'ACTIVE') ?? collaborator.contracts?.[0];
   const contractType = primaryContract?.contractType ?? collaborator.contractType;
   const contractWeeklyMinutes = toFiniteNumber(primaryContract?.weeklyHours ?? collaborator.contractWeeklyMinutes);
@@ -2089,7 +2296,12 @@ function CollaboratorSheet({ collaborator, canWrite, onClose, onEdit, onSaveNote
               [<BriefcaseBusiness size={14} />, `Poste principal : ${collaborator.position?.name ?? '—'}`],
               ...(collaborator.secondaryPositions?.length ? [[<BriefcaseBusiness size={14} />, <div className="hr-position-badges">{collaborator.secondaryPositions.map((p) => <span key={p.id} className="badge badge-reception">{p.name}</span>)}</div>] as [React.ReactNode, React.ReactNode]] : []),
               [<MapPin size={14} />, `Établissement : ${collaborator.mainSite?.name ?? collaborator.site?.name ?? '—'}`],
+              [<RotateCw size={14} />, `Roulement : ${currentRotation?.name ?? 'Aucun roulement actif'}`],
+              [<Clock size={14} />, currentRotation ? `Durée hebdo roulement : ${formatMinutes(rotationMetrics(currentRotation).averageWeeklyMinutes)}` : 'Durée hebdo roulement : —'],
               [<Clock size={14} />, contractWeeklyMinutes != null ? `Durée hebdo contrat : ${formatMinutes(contractWeeklyMinutes)}` : 'Durée hebdo contrat : —'],
+              ...(currentRotation && contractWeeklyMinutes != null ? [[<Clock size={14} />, `Écart contrat / roulement : ${formatMinutes(Math.abs((contractWeeklyMinutes ?? 0) - (rotationMetrics(currentRotation).averageWeeklyMinutes ?? 0)))}`] as [React.ReactNode, React.ReactNode]] : []),
+              [<CalendarDays size={14} />, currentRotation ? `${rotationMetrics(currentRotation).workedDays} jours travaillés / ${rotationMetrics(currentRotation).restDays} repos` : 'Jours travaillés / repos : —'],
+              [<Building2 size={14} />, `Service du roulement : ${currentRotation ? rotationDepartment(currentRotation)?.name ?? 'Tous services' : '—'}`],
             ] as [React.ReactNode, React.ReactNode][]}
           />
           <InfoBlock
@@ -2112,6 +2324,10 @@ function CollaboratorSheet({ collaborator, canWrite, onClose, onEdit, onSaveNote
           </div>
         </div>
         <div className="card-modern" style={{ marginTop: '0.5rem', marginBottom: '1rem' }}>
+          <div className="section-header-modern"><span className="card-title"><RotateCw size={18} /> Organisation de travail</span>{currentRotation ? <span className="badge badge-reception">1 roulement actif</span> : <span className="badge">Aucun</span>}</div>
+          {canWrite ? <div className="inline-assign"><select value={rotationId} onChange={(e) => setRotationId(e.target.value)}><option value="">Sélectionner un roulement compatible</option>{compatibleRotations.map((rotation) => <option key={rotation.id} value={rotation.id}>{rotation.name} · {rotationDepartment(rotation)?.name ?? 'Tous services'}</option>)}</select><button className="btn btn-primary" disabled={!rotationId} onClick={async () => { await onSetRotation(collaborator.id, rotationId); setRotationId(''); }}>Modifier le roulement</button>{currentRotation ? <button className="btn btn-secondary" onClick={() => onRemoveRotation(collaborator.id)}>Retirer le roulement</button> : null}</div> : null}
+        </div>
+        <div className="card-modern" style={{ marginTop: '0.5rem', marginBottom: '1rem' }}>
           <span className="card-title">Historique</span>
           <HistoryList history={collaborator.history ?? []} />
         </div>
@@ -2121,7 +2337,7 @@ function CollaboratorSheet({ collaborator, canWrite, onClose, onEdit, onSaveNote
             { id: 'trainings' as const, label: 'Formations', icon: <Sparkles size={18} />, status: hasTrainings ? 'ok' : 'pending', hint: hasTrainings ? 'À jour' : 'À paramétrer' },
             { id: 'documents' as const, label: 'Documents', icon: <NotebookText size={18} />, status: hasDocuments ? 'ok' : 'missing', hint: hasDocuments ? `${collaborator.documents?.length} document${(collaborator.documents?.length ?? 0) > 1 ? 's' : ''}` : 'Aucun document' },
             { id: 'leaves' as const, label: 'Congés', icon: <CalendarDays size={18} />, status: 'pending', hint: 'À venir' },
-            { id: 'planning' as const, label: 'Planning', icon: <Clock size={18} />, status: 'pending', hint: 'Géré dans Planning' },
+            { id: 'planning' as const, label: 'Planning', icon: <Clock size={18} />, status: currentRotation ? 'ok' : 'missing', hint: currentRotation ? `Roulement : ${currentRotation.name}` : 'Non assigné' },
           ].map((item) => (
             <button key={item.label} type="button" className={`hr-future-card ${detailSection === item.id ? 'active' : ''} ${item.status}`} onClick={() => setDetailSection(item.id)}>
               <div className="hr-future-icon">{item.icon}</div>
@@ -2130,13 +2346,25 @@ function CollaboratorSheet({ collaborator, canWrite, onClose, onEdit, onSaveNote
             </button>
           ))}
         </div>
-        <CollaboratorDetailPanel collaborator={collaborator} section={detailSection} primaryContract={primaryContract} contractType={contractType} contractWeeklyMinutes={contractWeeklyMinutes} contractEndDate={contractEndDate} trialEndDate={trialEndDate} canWrite={false} onViewDocument={onViewDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} onDownloadDocument={onDownloadDocument} />
+        <CollaboratorDetailPanel collaborator={collaborator} section={detailSection} currentRotation={currentRotation} primaryContract={primaryContract} contractType={contractType} contractWeeklyMinutes={contractWeeklyMinutes} contractEndDate={contractEndDate} trialEndDate={trialEndDate} canWrite={false} onViewDocument={onViewDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} onDownloadDocument={onDownloadDocument} />
       </motion.div>
     </div>
   );
 }
 
+function activeRotation(collaborator: HrCollaborator) { return collaborator.activeRotation ?? collaborator.activeRotationAssignment?.rotation ?? collaborator.rotationAssignment?.rotation ?? null; }
+function activeAssignments(rotation: HrRotation) { return (rotation.activeAssignments ?? rotation.assignments ?? []).filter((assignment) => !assignment.endDate); }
+function rotationDepartment(rotation?: HrRotation | null) { return rotation?.department ?? rotation?.service ?? null; }
+function dayName(day: number) { return ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'][day - 1] ?? `Jour ${day}`; }
+function weekLabel(index: number) { return ['Semaine A', 'Semaine B', 'Semaine C', 'Semaine D'][index - 1] ?? `Semaine ${index}`; }
+function defaultDay(dayOfWeek: number): HrRotationDay { return dayOfWeek <= 5 ? { dayOfWeek, mode: 'WORK', startTime: '08:00', endTime: '16:00', breakMinutes: 30 } : { dayOfWeek, mode: 'REST', breakMinutes: 0 }; }
+function normalizeWeeks(rotation?: Pick<HrRotation, 'cycleWeeks' | 'weeks' | 'days'> | HrRotationPayload | null): HrRotationWeek[] { const sourceWeeks = rotation?.weeks ?? (rotation as any)?.cycle?.weeks; const count = Math.min(4, Math.max(1, Number(rotation?.cycleWeeks ?? sourceWeeks?.length ?? 1))); return Array.from({ length: count }, (_, index) => { const weekIndex = index + 1; const existing = sourceWeeks?.find((week: any) => week.weekIndex === weekIndex || week.weekNumber === weekIndex); const legacyDays = weekIndex === 1 && rotation && 'days' in rotation ? rotation.days : undefined; return { weekIndex, label: weekLabel(weekIndex), days: Array.from({ length: 7 }, (_, dayIndex) => { const dayOfWeek = dayIndex + 1; const found = existing?.days?.find((day: any) => day.dayOfWeek === dayOfWeek); return found ? { ...found, dayOfWeek } : legacyDays?.find((day: HrRotationDay) => day.dayOfWeek === dayOfWeek) ?? defaultDay(dayOfWeek); }) }; }); }
 function FormSection({ title, children }: { title: string; children: React.ReactNode }) { return <fieldset className="hr-form-section"><legend>{title}</legend>{children}</fieldset>; }
+function minutesOf(time?: string | null) { if (!time) return 0; const [hours, minutes] = time.split(':').map(Number); return (hours || 0) * 60 + (minutes || 0); }
+function dayDuration(day: HrRotationDay) { if (day.mode === 'REST') return { presence: 0, worked: 0, endsNextDay: false }; const start = minutesOf(day.startTime ?? '08:00'); let end = minutesOf(day.endTime ?? '16:00'); const endsNextDay = end <= start; if (endsNextDay) end += 24 * 60; const presence = Math.max(0, end - start); return { presence, worked: Math.max(0, presence - Number(day.breakMinutes ?? 0)), endsNextDay }; }
+function weekMetrics(week: HrRotationWeek) { const work = week.days.filter((day) => day.mode !== 'REST'); const totalMinutes = work.reduce((sum, day) => sum + dayDuration(day).worked, 0); const totalPresence = work.reduce((sum, day) => sum + dayDuration(day).presence, 0); return { totalMinutes, workedDays: work.length, restDays: 7 - work.length, averagePresenceMinutes: work.length ? Math.round(totalPresence / work.length) : 0 }; }
+function cycleMetrics(weeks: HrRotationWeek[]) { const weekly = weeks.map(weekMetrics); const divisor = Math.max(1, weekly.length); return { averageWeeklyMinutes: Math.round(weekly.reduce((sum, item) => sum + item.totalMinutes, 0) / divisor), workedDays: Math.round(weekly.reduce((sum, item) => sum + item.workedDays, 0) / divisor), restDays: Math.round(weekly.reduce((sum, item) => sum + item.restDays, 0) / divisor), averagePresenceMinutes: Math.round(weekly.reduce((sum, item) => sum + item.averagePresenceMinutes, 0) / divisor) }; }
+function rotationMetrics(rotation: HrRotation) { const computed = cycleMetrics(normalizeWeeks(rotation)); const metrics = rotation.metrics as any; return { averageWeeklyMinutes: metrics?.averageWeeklyMinutes ?? metrics?.weeklyMinutes ?? metrics?.weeklyHoursMinutesAverage ?? computed.averageWeeklyMinutes, workedDays: metrics?.workedDays ?? metrics?.workedDaysAverage ?? computed.workedDays, restDays: metrics?.restDays ?? metrics?.restDaysAverage ?? computed.restDays, averagePresenceMinutes: metrics?.averagePresenceMinutes ?? metrics?.averageDailyPresenceMinutes ?? computed.averagePresenceMinutes }; }
 function formatMinutes(value?: number | null) { if (value === undefined || value === null || Number.isNaN(value)) return '—'; const hours = Math.floor(value / 60); const minutes = Math.round(value % 60); return `${hours}h${minutes.toString().padStart(2, '0')}`; }
 function toFiniteNumber(value: unknown): number | null { if (value === undefined || value === null || value === '') return null; const number = typeof value === 'number' ? value : Number(value); return Number.isFinite(number) ? number : null; }
 function formatMoneyAmount(value: unknown, currency = 'EUR', fallback = '—') { const number = toFiniteNumber(value); return number != null ? `${number.toFixed(2)} ${currency}` : fallback; }
@@ -2166,7 +2394,7 @@ function DocumentList({ employeeId, documents, canWrite, onView, onReplace, onDe
     </div>
   );
 }
-function CollaboratorDetailPanel({ collaborator, section, primaryContract, contractType, contractWeeklyMinutes, contractEndDate, trialEndDate, canWrite, onViewDocument, onReplaceDocument, onDeleteDocument, onDownloadDocument }: { collaborator: HrCollaborator; section: 'contracts' | 'trainings' | 'documents' | 'leaves' | 'planning'; primaryContract?: any; contractType?: string | null; contractWeeklyMinutes?: number | null; contractEndDate?: string | null; trialEndDate?: string | null; canWrite: boolean; onViewDocument: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument: (employeeId: string, documentId: string) => Promise<void>; onDownloadDocument: (employeeId: string, document: HrDocument) => Promise<void> }) {
+function CollaboratorDetailPanel({ collaborator, section, currentRotation, primaryContract, contractType, contractWeeklyMinutes, contractEndDate, trialEndDate, canWrite, onViewDocument, onReplaceDocument, onDeleteDocument, onDownloadDocument }: { collaborator: HrCollaborator; section: 'contracts' | 'trainings' | 'documents' | 'leaves' | 'planning'; currentRotation?: HrRotation | null; primaryContract?: any; contractType?: string | null; contractWeeklyMinutes?: number | null; contractEndDate?: string | null; trialEndDate?: string | null; canWrite: boolean; onViewDocument: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument: (employeeId: string, documentId: string) => Promise<void>; onDownloadDocument: (employeeId: string, document: HrDocument) => Promise<void> }) {
   const title = section === 'contracts' ? 'Contrat de travail' : section === 'trainings' ? 'Formations' : section === 'documents' ? 'Documents justificatifs' : section === 'leaves' ? 'Conges' : 'Planning';
   const contractDocuments = (collaborator.documents ?? []).filter((document) => document.category === 'CONTRACT' || document.category === 'AMENDMENT');
   const trainingDocuments = (collaborator.documents ?? []).filter((document) => document.category === 'CERTIFICATION' || document.category === 'DIPLOMA');
@@ -2177,6 +2405,7 @@ function CollaboratorDetailPanel({ collaborator, section, primaryContract, contr
         <span className="card-title">{title}</span>
         {section === 'contracts' && (contractType || contractDocuments.length) ? <span className="badge badge-reception">Complet</span> : null}
         {section === 'documents' && collaborator.documents?.length ? <span className="badge badge-reception">{collaborator.documents.length} document{collaborator.documents.length > 1 ? 's' : ''}</span> : null}
+        {section === 'planning' && currentRotation ? <span className="badge badge-reception">Assigne</span> : null}
       </div>
       {section === 'contracts' ? (
         contractType || contractDocuments.length ? (
@@ -2200,7 +2429,14 @@ function CollaboratorDetailPanel({ collaborator, section, primaryContract, contr
         visibleDocuments.length ? <DocumentList employeeId={collaborator.id} documents={visibleDocuments} canWrite={canWrite} onView={onViewDocument} onReplace={onReplaceDocument} onDelete={onDeleteDocument} onDownload={onDownloadDocument} /> : <EmptyState title="Aucun document" description="Les justificatifs PDF du collaborateur apparaitront ici apres enregistrement dans la fiche collaborateur." />
       ) : null}
       {section === 'leaves' ? <EmptyState title="Conges a venir" description="La liaison avec les absences et conges sera traitee dans une prochaine etape." /> : null}
-      {section === 'planning' ? <EmptyState title="Planning géré dans le module Planning" description="Les roulements et cycles de travail sont configurés dans Planning pour éviter les doublons avec RH." /> : null}
+      {section === 'planning' ? (
+        currentRotation ? <InfoBlock title="Roulement actif" rows={[
+          [<RotateCw size={14} />, currentRotation.name],
+          [<Building2 size={14} />, rotationDepartment(currentRotation)?.name ?? 'Tous services'],
+          [<Clock size={14} />, 'Duree hebdo : ' + formatMinutes(rotationMetrics(currentRotation).averageWeeklyMinutes)],
+          [<CalendarDays size={14} />, rotationMetrics(currentRotation).workedDays + ' jours travailles / ' + rotationMetrics(currentRotation).restDays + ' repos'],
+        ]} /> : <EmptyState title="Planning non assigne" description="Assignez un roulement pour afficher l'organisation de travail du collaborateur." />
+      ) : null}
     </div>
   );
 }

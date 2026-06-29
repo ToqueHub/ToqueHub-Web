@@ -294,6 +294,11 @@ enum HrHistoryEventType {
   ONBOARDING_STEP_COMPLETED
 }
 
+enum HrRotationStatus {
+  ACTIVE
+  ARCHIVED
+}
+
 enum HrOnboardingStatus {
   NOT_STARTED
   SERVICES_IN_PROGRESS
@@ -556,6 +561,7 @@ model Organization {
   technicalSheetsInstalledAt    DateTime?
   productionInstalledAt         DateTime?
   menusInstalledAt              DateTime?
+  haccpInstalledAt              DateTime?
   mistralApiKey                 String?   @db.Text
   mistralApiKeyUpdatedAt        DateTime?
   createdAt                     DateTime  @default(now())
@@ -587,6 +593,8 @@ model Organization {
   hrOnboardingProgress           HrOnboardingProgress?
   hrEmploymentContracts          HrEmploymentContract[]
   hrDocuments                    HrDocument[]
+  hrRotations                    HrRotation[]
+  hrRotationAssignments          HrRotationAssignment[]
   hrAbsences                     HrAbsence[]
   hrSkills                       HrSkill[]
   planningAssignments            PlanningAssignment[]
@@ -649,10 +657,32 @@ model Organization {
   backupCloudConnections         BackupCloudConnection[]
   backupCloudObjects             BackupCloudObject[]
   backupCloudOAuthStates         BackupCloudOAuthState[]
+  haccpProducts                  HaccpProduct[]
+  haccpTemperatureEquipment      HaccpTemperatureEquipment[]
+  haccpTemperatureReadings       HaccpTemperatureReading[]
+  haccpReceptions                HaccpReception[]
+  haccpTraceabilityItems         HaccpTraceability[]
+  haccpProcessEquipment          HaccpProcessEquipment[]
+  haccpProcessSessions           HaccpProcessSession[]
+  haccpOilEquipment              HaccpOilEquipment[]
+  haccpOilSessions               HaccpOilSession[]
+  haccpCleaningZones             HaccpCleaningZone[]
+  haccpCleaningSurfaces          HaccpCleaningSurface[]
+  haccpCleaningSessions          HaccpCleaningSession[]
+  haccpCleanedSurfaces           HaccpCleanedSurface[]
+  haccpProductionSessions        HaccpProductionSession[]
+  haccpDailyReports              HaccpDailyReport[]
 
   @@index([regulatoryCountryCode])
   @@index([regulatoryCountrySelectedById])
   @@map("organizations")
+}
+
+model SystemSetting {
+  key       String   @id
+  value     String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model User {
@@ -685,6 +715,7 @@ model User {
   createdHrCompensations             HrEmployeeCompensation[]       @relation("HrCompensationCreatedBy")
   completedHrSalaryReviews           HrSalaryReview[]               @relation("HrSalaryReviewCompletedBy")
   createdHrDocuments                 HrDocument[]                   @relation("HrDocumentCreatedBy")
+  hrRotationAssignments              HrRotationAssignment[]
   validatedHrAbsences                HrAbsence[]                    @relation("HrAbsenceValidator")
   createdPlanningAssignments         PlanningAssignment[]           @relation("PlanningAssignmentCreatedBy")
   updatedPlanningAssignments         PlanningAssignment[]           @relation("PlanningAssignmentUpdatedBy")
@@ -722,6 +753,21 @@ model User {
   actorMenuHistory                   MenuHistory[]                  @relation("MenuHistoryActor")
   menuExports                        MenuExport[]                   @relation("MenuExportRequestedBy")
   confirmedDestockingProposals       ProductionDestockingProposal[] @relation("ProductionDestockingConfirmedBy")
+  createdHaccpProducts               HaccpProduct[]                 @relation("HaccpProductCreatedBy")
+  createdHaccpTemperatureEquipment   HaccpTemperatureEquipment[]     @relation("HaccpTemperatureEquipmentCreatedBy")
+  createdHaccpTemperatureReadings    HaccpTemperatureReading[]       @relation("HaccpTemperatureReadingCreatedBy")
+  createdHaccpReceptions             HaccpReception[]               @relation("HaccpReceptionCreatedBy")
+  createdHaccpTraceabilityItems      HaccpTraceability[]            @relation("HaccpTraceabilityCreatedBy")
+  createdHaccpProcessEquipment       HaccpProcessEquipment[]        @relation("HaccpProcessEquipmentCreatedBy")
+  createdHaccpProcessSessions        HaccpProcessSession[]          @relation("HaccpProcessSessionCreatedBy")
+  createdHaccpOilEquipment           HaccpOilEquipment[]            @relation("HaccpOilEquipmentCreatedBy")
+  createdHaccpOilSessions            HaccpOilSession[]              @relation("HaccpOilSessionCreatedBy")
+  createdHaccpCleaningZones          HaccpCleaningZone[]            @relation("HaccpCleaningZoneCreatedBy")
+  createdHaccpCleaningSurfaces       HaccpCleaningSurface[]         @relation("HaccpCleaningSurfaceCreatedBy")
+  createdHaccpCleaningSessions       HaccpCleaningSession[]         @relation("HaccpCleaningSessionCreatedBy")
+  createdHaccpCleanedSurfaces        HaccpCleanedSurface[]          @relation("HaccpCleanedSurfaceCreatedBy")
+  createdHaccpProductionSessions     HaccpProductionSession[]       @relation("HaccpProductionSessionCreatedBy")
+  createdHaccpDailyReports           HaccpDailyReport[]             @relation("HaccpDailyReportCreatedBy")
   dashboardPreferences               DashboardPreference[]
   backupCloudOAuthStates         BackupCloudOAuthState[]        @relation("BackupCloudOAuthStateUser")
 
@@ -1101,6 +1147,7 @@ model Document {
   uploadedBy      User?            @relation("DocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
   ocrDocuments    OcrDocument[]
   stockReceptions StockReception[]
+  haccpOilSessions HaccpOilSession[]
 
   @@index([organizationId])
   @@index([uploadedById])
@@ -1312,6 +1359,7 @@ model HrDepartment {
   organization        Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   employees           HrEmployee[]
   positions           HrPosition[]
+  rotations           HrRotation[]
   requiredSkills      HrDepartmentSkill[]
   planningAssignments PlanningAssignment[]
   planningNeeds       PlanningOperationalNeed[]
@@ -1398,6 +1446,7 @@ model HrEmployee {
   manager                       HrEmployee?                    @relation("HrManager", fields: [managerId], references: [id], onDelete: SetNull)
   reports                       HrEmployee[]                   @relation("HrManager")
   history                       HrEmployeeHistory[]
+  rotationAssignments           HrRotationAssignment[]
   secondaryPositions            HrEmployeeSecondaryPosition[]
   contracts                     HrEmploymentContract[]
   compensations                 HrEmployeeCompensation[]
@@ -1585,6 +1634,62 @@ model HrDocument {
   @@map("hr_documents")
 }
 
+model HrRotation {
+  id                           String           @id @default(uuid()) @db.Uuid
+  organizationId               String           @db.Uuid
+  name                         String
+  description                  String?          @db.Text
+  departmentId                 String?          @db.Uuid
+  cycleLengthWeeks             Int              @default(1)
+  cycle                        Json
+  weeklyHoursMinutesAverage    Int              @default(0)
+  weeklyPresenceMinutesAverage Int              @default(0)
+  workedDaysAverage            Float            @default(0)
+  restDaysAverage              Float            @default(0)
+  averageDailyPresenceMinutes  Int              @default(0)
+  status                       HrRotationStatus @default(ACTIVE)
+  isArchived                   Boolean          @default(false)
+  archivedAt                   DateTime?
+  createdAt                    DateTime         @default(now())
+  updatedAt                    DateTime         @updatedAt
+
+  organization        Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  department          HrDepartment?          @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  assignments         HrRotationAssignment[]
+  planningAssignments PlanningAssignment[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([departmentId])
+  @@index([status])
+  @@index([isArchived])
+  @@map("hr_rotations")
+}
+
+model HrRotationAssignment {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  rotationId     String    @db.Uuid
+  employeeId     String    @db.Uuid
+  startDate      DateTime?
+  endDate        DateTime?
+  createdById    String?   @db.Uuid
+  endedById      String?   @db.Uuid
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  rotation     HrRotation   @relation(fields: [rotationId], references: [id], onDelete: Restrict)
+  employee     HrEmployee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([rotationId])
+  @@index([employeeId])
+  @@index([endDate])
+  @@map("hr_rotation_assignments")
+}
+
 model HrSkill {
   id             String    @id @default(uuid()) @db.Uuid
   organizationId String    @db.Uuid
@@ -1684,6 +1789,7 @@ model PlanningAssignment {
   departmentId          String                   @db.Uuid
   positionId            String                   @db.Uuid
   siteId                String?                  @db.Uuid
+  rotationId            String?                  @db.Uuid
   absenceId             String?                  @db.Uuid
   date                  DateTime
   startTime             DateTime
@@ -1704,6 +1810,7 @@ model PlanningAssignment {
   department            HrDepartment              @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   position              HrPosition                @relation(fields: [positionId], references: [id], onDelete: Restrict)
   site                  Site?                     @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  rotation              HrRotation?               @relation(fields: [rotationId], references: [id], onDelete: SetNull)
   absence               HrAbsence?                @relation(fields: [absenceId], references: [id], onDelete: SetNull)
   createdBy             User?                     @relation("PlanningAssignmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy             User?                     @relation("PlanningAssignmentUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
@@ -3637,4 +3744,403 @@ model BackupCloudOAuthState {
   @@index([provider])
   @@index([expiresAt])
   @@map("backup_cloud_oauth_states")
+}
+
+model HaccpProduct {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  createdById    String?   @db.Uuid
+  name           String
+  type           String
+  dlc            DateTime?
+  dlcDays        Int?
+  description    String?   @db.Text
+  price          Decimal?  @db.Decimal(12, 4)
+  quantity       Decimal?  @db.Decimal(12, 3)
+  unit           String?
+  isActive       Boolean   @default(true)
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization      Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy         User?                    @relation("HaccpProductCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  processSessions   HaccpProcessSession[]
+  productionSessions HaccpProductionSession[]
+
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([type])
+  @@index([isActive])
+  @@map("haccp_products")
+}
+
+model HaccpTemperatureEquipment {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  createdById    String?   @db.Uuid
+  name           String
+  type           String
+  isActive       Boolean   @default(true)
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?                      @relation("HaccpTemperatureEquipmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  readings     HaccpTemperatureReading[]
+
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([type])
+  @@index([isActive])
+  @@map("haccp_temperature_equipment")
+}
+
+model HaccpTemperatureReading {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  createdById    String?  @db.Uuid
+  equipmentId    String   @db.Uuid
+  temperature    Decimal  @db.Decimal(7, 2)
+  date           DateTime
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?                      @relation("HaccpTemperatureReadingCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  equipment    HaccpTemperatureEquipment  @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([equipmentId])
+  @@index([date])
+  @@map("haccp_temperature_readings")
+}
+
+model HaccpReception {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  createdById    String?  @db.Uuid
+  supplier       String
+  productName    String
+  productType    String?
+  temperature    String
+  lotNumber      String?
+  quantity       Decimal  @db.Decimal(12, 3)
+  unit           String
+  unitPrice      Decimal  @default(0) @db.Decimal(12, 4)
+  photo          String?  @db.Text
+  date           DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("HaccpReceptionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([date])
+  @@index([supplier])
+  @@index([lotNumber])
+  @@map("haccp_receptions")
+}
+
+model HaccpTraceability {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  createdById    String?  @db.Uuid
+  date           DateTime
+  photo          String   @db.Text
+  productName    String
+  lotNumber      String
+  barcode        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("HaccpTraceabilityCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([date])
+  @@index([lotNumber])
+  @@index([barcode])
+  @@map("haccp_traceability")
+}
+
+model HaccpProcessEquipment {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  createdById    String?   @db.Uuid
+  name           String
+  type           String
+  brand          String?
+  model          String?
+  serialNumber   String?
+  location       String?
+  capacity       String?
+  temperatureMin Decimal?  @db.Decimal(7, 2)
+  temperatureMax Decimal?  @db.Decimal(7, 2)
+  notes          String?   @db.Text
+  isActive       Boolean   @default(true)
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?                 @relation("HaccpProcessEquipmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  sessions     HaccpProcessSession[]
+
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([type])
+  @@index([isActive])
+  @@map("haccp_process_equipment")
+}
+
+model HaccpProcessSession {
+  id               String    @id @default(uuid()) @db.Uuid
+  organizationId   String    @db.Uuid
+  createdById      String?   @db.Uuid
+  type             String
+  productId        String    @db.Uuid
+  equipmentId      String    @db.Uuid
+  sessionDate      DateTime
+  startTime        DateTime
+  endTime          DateTime?
+  startTemperature Decimal   @db.Decimal(7, 2)
+  endTemperature   Decimal?  @db.Decimal(7, 2)
+  status           String    @default("en_cours")
+  notes            String?   @db.Text
+  duration         Int?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?                 @relation("HaccpProcessSessionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  product      HaccpProduct          @relation(fields: [productId], references: [id], onDelete: Restrict)
+  equipment    HaccpProcessEquipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([type])
+  @@index([sessionDate])
+  @@index([status])
+  @@index([productId])
+  @@index([equipmentId])
+  @@map("haccp_process_sessions")
+}
+
+model HaccpOilEquipment {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  createdById    String?   @db.Uuid
+  name           String
+  type           String
+  brand          String?
+  model          String?
+  serialNumber   String?
+  location       String?
+  capacity       String?
+  notes          String?   @db.Text
+  isActive       Boolean   @default(true)
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?              @relation("HaccpOilEquipmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  sessions     HaccpOilSession[]
+
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([type])
+  @@index([isActive])
+  @@map("haccp_oil_equipment")
+}
+
+model HaccpOilSession {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  createdById    String?  @db.Uuid
+  equipmentId    String   @db.Uuid
+  testMethod     String
+  action         String
+  sessionDate    DateTime
+  photo          String?  @db.Text
+  photoDocumentId String? @db.Uuid
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?             @relation("HaccpOilSessionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  equipment    HaccpOilEquipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  photoDocument Document?         @relation(fields: [photoDocumentId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([equipmentId])
+  @@index([sessionDate])
+  @@index([action])
+  @@map("haccp_oil_sessions")
+}
+
+model HaccpCleaningZone {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  createdById    String?   @db.Uuid
+  name           String
+  description    String?   @db.Text
+  isActive       Boolean   @default(true)
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?                    @relation("HaccpCleaningZoneCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  surfaces     HaccpCleaningSurface[]
+  cleanedSurfaces HaccpCleanedSurface[]
+
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([isActive])
+  @@map("haccp_cleaning_zones")
+}
+
+model HaccpCleaningSurface {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  createdById    String?   @db.Uuid
+  zoneId         String    @db.Uuid
+  name           String
+  frequency      String
+  lastCleaned    DateTime?
+  isActive       Boolean   @default(true)
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?                  @relation("HaccpCleaningSurfaceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  zone         HaccpCleaningZone       @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  cleanedIn   HaccpCleanedSurface[]
+
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([zoneId])
+  @@index([frequency])
+  @@index([isActive])
+  @@map("haccp_cleaning_surfaces")
+}
+
+model HaccpCleaningSession {
+  id                String    @id @default(uuid()) @db.Uuid
+  organizationId    String    @db.Uuid
+  createdById       String?   @db.Uuid
+  sessionDate       DateTime
+  startTime         DateTime
+  endTime           DateTime?
+  totalSurfaces     Int       @default(0)
+  completedSurfaces Int       @default(0)
+  status            String    @default("active")
+  notes             String?   @db.Text
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy       User?                  @relation("HaccpCleaningSessionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  cleanedSurfaces HaccpCleanedSurface[]
+
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([sessionDate])
+  @@index([status])
+  @@map("haccp_cleaning_sessions")
+}
+
+model HaccpCleanedSurface {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  createdById    String?  @db.Uuid
+  sessionId      String   @db.Uuid
+  surfaceId      String   @db.Uuid
+  surfaceName    String
+  zoneId         String   @db.Uuid
+  zoneName       String
+  cleanedAt      DateTime
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now())
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?                 @relation("HaccpCleanedSurfaceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  session      HaccpCleaningSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  surface      HaccpCleaningSurface  @relation(fields: [surfaceId], references: [id], onDelete: Restrict)
+  zone         HaccpCleaningZone      @relation(fields: [zoneId], references: [id], onDelete: Restrict)
+
+  @@unique([sessionId, surfaceId])
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([sessionId])
+  @@index([surfaceId])
+  @@index([zoneId])
+  @@index([cleanedAt])
+  @@map("haccp_cleaned_surfaces")
+}
+
+model HaccpProductionSession {
+  id                String    @id @default(uuid()) @db.Uuid
+  organizationId    String    @db.Uuid
+  createdById       String?   @db.Uuid
+  lotNumber         String
+  finishedProductId String    @db.Uuid
+  quantity          Decimal   @db.Decimal(12, 3)
+  unit              String
+  productionDate    DateTime
+  startTime         DateTime
+  endTime           DateTime?
+  photos            Json      @default("[]")
+  notes             String?   @db.Text
+  status            String    @default("en_cours")
+  duration          Int?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy       User?        @relation("HaccpProductionSessionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  finishedProduct HaccpProduct @relation(fields: [finishedProductId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([finishedProductId])
+  @@index([productionDate])
+  @@index([status])
+  @@map("haccp_production_sessions")
+}
+
+model HaccpDailyReport {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  createdById    String?  @db.Uuid
+  reportDate     DateTime
+  modules        Json
+  summary        Json
+  generatedAt    DateTime @default(now())
+  pdfPath        String?
+  fileSize       Int?
+  status         String   @default("completed")
+  errorMessage   String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("HaccpDailyReportCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, reportDate])
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([status])
+  @@map("haccp_daily_reports")
 }
