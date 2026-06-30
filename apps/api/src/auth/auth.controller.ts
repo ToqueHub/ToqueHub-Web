@@ -192,6 +192,22 @@ export class AuthController {
     return this.authService.uninstallRnmPricesApplication(user);
   }
 
+  @Post('apps/haccp/install')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOkResponse({ description: 'Installs the HACCP application for the current organization.' })
+  installHaccp(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.installHaccpApplication(user);
+  }
+
+  @Post('apps/haccp/uninstall')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOkResponse({ description: 'Uninstalls HACCP from navigation while preserving controls and reports.' })
+  uninstallHaccp(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.uninstallHaccpApplication(user);
+  }
+
   @Get('dev-switch/config')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

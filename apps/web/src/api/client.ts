@@ -327,6 +327,36 @@ export const api = {
   uninstallMenus(token: string) {
     return request<DashboardSummary | { installed: boolean; installedApplications: string[] }>('/menus/uninstall', { method: 'POST' }, token);
   },
+  installHaccp(token: string) {
+    return request<DashboardSummary>('/auth/apps/haccp/install', { method: 'POST' }, token);
+  },
+  uninstallHaccp(token: string) {
+    return request<DashboardSummary>('/auth/apps/haccp/uninstall', { method: 'POST' }, token);
+  },
+  haccpDashboard(token: string) {
+    return request<{ success: boolean; data: any }>('/haccp/dashboard', {}, token).then((result) => result.data ?? result);
+  },
+  haccpList(token: string, endpoint: string) {
+    return request<{ success?: boolean; data?: any[]; pagination?: any }>(endpoint, {}, token);
+  },
+  haccpCreate(token: string, endpoint: string, payload: Record<string, unknown>) {
+    return request<{ success?: boolean; data?: any }>(endpoint, { method: 'POST', body: JSON.stringify(payload) }, token);
+  },
+  haccpUpdate(token: string, endpoint: string, payload: Record<string, unknown>) {
+    return request<{ success?: boolean; data?: any }>(endpoint, { method: 'PUT', body: JSON.stringify(payload) }, token);
+  },
+  haccpDelete(token: string, endpoint: string) {
+    return request<{ success?: boolean; data?: any }>(endpoint, { method: 'DELETE' }, token);
+  },
+  haccpAnalyzeTraceabilityImage(token: string, image: string) {
+    return request<{ success?: boolean; data?: any }>('/traceability/analyze-image', { method: 'POST', body: JSON.stringify({ image }) }, token);
+  },
+  haccpGenerateDailyReport(token: string) {
+    return request<{ success?: boolean; data?: any }>('/daily-reports/generate', { method: 'POST' }, token);
+  },
+  haccpDownloadDailyReportUrl(reportId: string) {
+    return `${API_URL}/api/daily-reports/${reportId}/download`;
+  },
   menusDashboard(token: string) {
     return request<MenuModuleDashboard>('/menus/dashboard', {}, token);
   },

@@ -3750,6 +3750,8 @@ model HaccpProduct {
   id             String    @id @default(uuid()) @db.Uuid
   organizationId String    @db.Uuid
   createdById    String?   @db.Uuid
+  clientId       String?
+  clientUpdatedAt DateTime?
   name           String
   type           String
   dlc            DateTime?
@@ -3760,6 +3762,8 @@ model HaccpProduct {
   unit           String?
   isActive       Boolean   @default(true)
   archivedAt     DateTime?
+  deletedAt      DateTime?
+  syncVersion    Int       @default(1)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -3772,6 +3776,7 @@ model HaccpProduct {
   @@index([createdById])
   @@index([type])
   @@index([isActive])
+  @@unique([organizationId, clientId])
   @@map("haccp_products")
 }
 
@@ -3779,10 +3784,14 @@ model HaccpTemperatureEquipment {
   id             String    @id @default(uuid()) @db.Uuid
   organizationId String    @db.Uuid
   createdById    String?   @db.Uuid
+  clientId       String?
+  clientUpdatedAt DateTime?
   name           String
   type           String
   isActive       Boolean   @default(true)
   archivedAt     DateTime?
+  deletedAt      DateTime?
+  syncVersion    Int       @default(1)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -3794,6 +3803,7 @@ model HaccpTemperatureEquipment {
   @@index([createdById])
   @@index([type])
   @@index([isActive])
+  @@unique([organizationId, clientId])
   @@map("haccp_temperature_equipment")
 }
 
@@ -3801,10 +3811,14 @@ model HaccpTemperatureReading {
   id             String   @id @default(uuid()) @db.Uuid
   organizationId String   @db.Uuid
   createdById    String?  @db.Uuid
+  clientId       String?
+  clientUpdatedAt DateTime?
   equipmentId    String   @db.Uuid
   temperature    Decimal  @db.Decimal(7, 2)
   date           DateTime
   notes          String?  @db.Text
+  deletedAt      DateTime?
+  syncVersion    Int      @default(1)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -3816,6 +3830,7 @@ model HaccpTemperatureReading {
   @@index([createdById])
   @@index([equipmentId])
   @@index([date])
+  @@unique([organizationId, clientId])
   @@map("haccp_temperature_readings")
 }
 
@@ -3823,6 +3838,8 @@ model HaccpReception {
   id             String   @id @default(uuid()) @db.Uuid
   organizationId String   @db.Uuid
   createdById    String?  @db.Uuid
+  clientId       String?
+  clientUpdatedAt DateTime?
   supplier       String
   productName    String
   productType    String?
@@ -3833,6 +3850,8 @@ model HaccpReception {
   unitPrice      Decimal  @default(0) @db.Decimal(12, 4)
   photo          String?  @db.Text
   date           DateTime
+  deletedAt      DateTime?
+  syncVersion    Int      @default(1)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -3844,6 +3863,7 @@ model HaccpReception {
   @@index([date])
   @@index([supplier])
   @@index([lotNumber])
+  @@unique([organizationId, clientId])
   @@map("haccp_receptions")
 }
 
@@ -3851,11 +3871,15 @@ model HaccpTraceability {
   id             String   @id @default(uuid()) @db.Uuid
   organizationId String   @db.Uuid
   createdById    String?  @db.Uuid
+  clientId       String?
+  clientUpdatedAt DateTime?
   date           DateTime
   photo          String   @db.Text
   productName    String
   lotNumber      String
   barcode        String?
+  deletedAt      DateTime?
+  syncVersion    Int      @default(1)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -3867,6 +3891,7 @@ model HaccpTraceability {
   @@index([date])
   @@index([lotNumber])
   @@index([barcode])
+  @@unique([organizationId, clientId])
   @@map("haccp_traceability")
 }
 
@@ -3874,6 +3899,8 @@ model HaccpProcessEquipment {
   id             String    @id @default(uuid()) @db.Uuid
   organizationId String    @db.Uuid
   createdById    String?   @db.Uuid
+  clientId       String?
+  clientUpdatedAt DateTime?
   name           String
   type           String
   brand          String?
@@ -3886,6 +3913,8 @@ model HaccpProcessEquipment {
   notes          String?   @db.Text
   isActive       Boolean   @default(true)
   archivedAt     DateTime?
+  deletedAt      DateTime?
+  syncVersion    Int       @default(1)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -3897,6 +3926,7 @@ model HaccpProcessEquipment {
   @@index([createdById])
   @@index([type])
   @@index([isActive])
+  @@unique([organizationId, clientId])
   @@map("haccp_process_equipment")
 }
 
@@ -3904,6 +3934,8 @@ model HaccpProcessSession {
   id               String    @id @default(uuid()) @db.Uuid
   organizationId   String    @db.Uuid
   createdById      String?   @db.Uuid
+  clientId         String?
+  clientUpdatedAt  DateTime?
   type             String
   productId        String    @db.Uuid
   equipmentId      String    @db.Uuid
@@ -3915,6 +3947,8 @@ model HaccpProcessSession {
   status           String    @default("en_cours")
   notes            String?   @db.Text
   duration         Int?
+  deletedAt        DateTime?
+  syncVersion      Int       @default(1)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -3930,6 +3964,7 @@ model HaccpProcessSession {
   @@index([status])
   @@index([productId])
   @@index([equipmentId])
+  @@unique([organizationId, clientId])
   @@map("haccp_process_sessions")
 }
 
@@ -3937,6 +3972,8 @@ model HaccpOilEquipment {
   id             String    @id @default(uuid()) @db.Uuid
   organizationId String    @db.Uuid
   createdById    String?   @db.Uuid
+  clientId       String?
+  clientUpdatedAt DateTime?
   name           String
   type           String
   brand          String?
@@ -3947,6 +3984,8 @@ model HaccpOilEquipment {
   notes          String?   @db.Text
   isActive       Boolean   @default(true)
   archivedAt     DateTime?
+  deletedAt      DateTime?
+  syncVersion    Int       @default(1)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -3958,6 +3997,7 @@ model HaccpOilEquipment {
   @@index([createdById])
   @@index([type])
   @@index([isActive])
+  @@unique([organizationId, clientId])
   @@map("haccp_oil_equipment")
 }
 
@@ -3965,6 +4005,8 @@ model HaccpOilSession {
   id             String   @id @default(uuid()) @db.Uuid
   organizationId String   @db.Uuid
   createdById    String?  @db.Uuid
+  clientId       String?
+  clientUpdatedAt DateTime?
   equipmentId    String   @db.Uuid
   testMethod     String
   action         String
@@ -3972,6 +4014,8 @@ model HaccpOilSession {
   photo          String?  @db.Text
   photoDocumentId String? @db.Uuid
   notes          String?  @db.Text
+  deletedAt      DateTime?
+  syncVersion    Int      @default(1)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -3985,6 +4029,7 @@ model HaccpOilSession {
   @@index([equipmentId])
   @@index([sessionDate])
   @@index([action])
+  @@unique([organizationId, clientId])
   @@map("haccp_oil_sessions")
 }
 
@@ -3992,10 +4037,14 @@ model HaccpCleaningZone {
   id             String    @id @default(uuid()) @db.Uuid
   organizationId String    @db.Uuid
   createdById    String?   @db.Uuid
+  clientId       String?
+  clientUpdatedAt DateTime?
   name           String
   description    String?   @db.Text
   isActive       Boolean   @default(true)
   archivedAt     DateTime?
+  deletedAt      DateTime?
+  syncVersion    Int       @default(1)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -4007,6 +4056,7 @@ model HaccpCleaningZone {
   @@index([organizationId])
   @@index([createdById])
   @@index([isActive])
+  @@unique([organizationId, clientId])
   @@map("haccp_cleaning_zones")
 }
 
@@ -4014,12 +4064,16 @@ model HaccpCleaningSurface {
   id             String    @id @default(uuid()) @db.Uuid
   organizationId String    @db.Uuid
   createdById    String?   @db.Uuid
+  clientId       String?
+  clientUpdatedAt DateTime?
   zoneId         String    @db.Uuid
   name           String
   frequency      String
   lastCleaned    DateTime?
   isActive       Boolean   @default(true)
   archivedAt     DateTime?
+  deletedAt      DateTime?
+  syncVersion    Int       @default(1)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -4033,6 +4087,7 @@ model HaccpCleaningSurface {
   @@index([zoneId])
   @@index([frequency])
   @@index([isActive])
+  @@unique([organizationId, clientId])
   @@map("haccp_cleaning_surfaces")
 }
 
@@ -4040,6 +4095,8 @@ model HaccpCleaningSession {
   id                String    @id @default(uuid()) @db.Uuid
   organizationId    String    @db.Uuid
   createdById       String?   @db.Uuid
+  clientId          String?
+  clientUpdatedAt   DateTime?
   sessionDate       DateTime
   startTime         DateTime
   endTime           DateTime?
@@ -4047,6 +4104,8 @@ model HaccpCleaningSession {
   completedSurfaces Int       @default(0)
   status            String    @default("active")
   notes             String?   @db.Text
+  deletedAt         DateTime?
+  syncVersion       Int       @default(1)
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -4058,6 +4117,7 @@ model HaccpCleaningSession {
   @@index([createdById])
   @@index([sessionDate])
   @@index([status])
+  @@unique([organizationId, clientId])
   @@map("haccp_cleaning_sessions")
 }
 
@@ -4065,6 +4125,8 @@ model HaccpCleanedSurface {
   id             String   @id @default(uuid()) @db.Uuid
   organizationId String   @db.Uuid
   createdById    String?  @db.Uuid
+  clientId       String?
+  clientUpdatedAt DateTime?
   sessionId      String   @db.Uuid
   surfaceId      String   @db.Uuid
   surfaceName    String
@@ -4072,6 +4134,8 @@ model HaccpCleanedSurface {
   zoneName       String
   cleanedAt      DateTime
   notes          String?  @db.Text
+  deletedAt      DateTime?
+  syncVersion    Int      @default(1)
   createdAt      DateTime @default(now())
 
   organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -4087,6 +4151,7 @@ model HaccpCleanedSurface {
   @@index([surfaceId])
   @@index([zoneId])
   @@index([cleanedAt])
+  @@unique([organizationId, clientId])
   @@map("haccp_cleaned_surfaces")
 }
 
@@ -4094,6 +4159,8 @@ model HaccpProductionSession {
   id                String    @id @default(uuid()) @db.Uuid
   organizationId    String    @db.Uuid
   createdById       String?   @db.Uuid
+  clientId          String?
+  clientUpdatedAt   DateTime?
   lotNumber         String
   finishedProductId String    @db.Uuid
   quantity          Decimal   @db.Decimal(12, 3)
@@ -4105,6 +4172,8 @@ model HaccpProductionSession {
   notes             String?   @db.Text
   status            String    @default("en_cours")
   duration          Int?
+  deletedAt         DateTime?
+  syncVersion       Int       @default(1)
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -4117,6 +4186,7 @@ model HaccpProductionSession {
   @@index([finishedProductId])
   @@index([productionDate])
   @@index([status])
+  @@unique([organizationId, clientId])
   @@map("haccp_production_sessions")
 }
 
@@ -4124,6 +4194,8 @@ model HaccpDailyReport {
   id             String   @id @default(uuid()) @db.Uuid
   organizationId String   @db.Uuid
   createdById    String?  @db.Uuid
+  clientId       String?
+  clientUpdatedAt DateTime?
   reportDate     DateTime
   modules        Json
   summary        Json
@@ -4132,6 +4204,8 @@ model HaccpDailyReport {
   fileSize       Int?
   status         String   @default("completed")
   errorMessage   String?  @db.Text
+  deletedAt      DateTime?
+  syncVersion    Int      @default(1)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -4142,5 +4216,6 @@ model HaccpDailyReport {
   @@index([organizationId])
   @@index([createdById])
   @@index([status])
+  @@unique([organizationId, clientId])
   @@map("haccp_daily_reports")
 }

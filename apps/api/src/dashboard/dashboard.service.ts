@@ -104,6 +104,10 @@ const REGISTRY: RegistryWidget[] = [
   { id: 'menus.week', appId: 'menus', moduleLabel: 'Menus', title: 'Menus de la semaine', description: 'Menus publiés et à valider.', zone: 'analytics', defaultOrder: 60, size: 'lg' },
   { id: 'menus.today', appId: 'menus', moduleLabel: 'Menus', title: 'Menus du jour', description: 'Services menus prévus aujourd’hui.', zone: 'activity', defaultOrder: 70, size: 'lg' },
 
+  { id: 'haccp.score', appId: 'haccp', moduleLabel: 'HACCP', title: 'Score HACCP', description: 'Conformité du jour sur les contrôles sanitaires.', zone: 'kpi', defaultOrder: 80, size: 'md' },
+  { id: 'haccp.alerts', appId: 'haccp', moduleLabel: 'HACCP', title: 'Alertes HACCP', description: 'Contrôles manquants et anomalies à traiter.', zone: 'alerts', defaultOrder: 40, size: 'lg' },
+  { id: 'haccp.today', appId: 'haccp', moduleLabel: 'HACCP', title: 'Contrôles du jour', description: 'Activité HACCP enregistrée aujourd’hui.', zone: 'activity', defaultOrder: 80, size: 'lg' },
+
   { id: 'purchases.coming-soon', appId: 'purchases', moduleLabel: 'Achats', title: 'Achats', description: 'Suivi des commandes fournisseurs.', zone: 'analytics', defaultOrder: 900, size: 'md', comingSoon: true },
   { id: 'quality.coming-soon', appId: 'quality', moduleLabel: 'Qualité', title: 'Qualité', description: 'PMS, contrôles et non-conformités.', zone: 'alerts', defaultOrder: 900, size: 'md', comingSoon: true },
   { id: 'finance.coming-soon', appId: 'finance', moduleLabel: 'Finance', title: 'Finance', description: 'Budgets et marges.', zone: 'kpi', defaultOrder: 900, size: 'md', comingSoon: true },
@@ -216,6 +220,9 @@ export class DashboardService {
       case 'production.destocking': return this.productionDestocking(organizationId);
       case 'menus.week': return this.menusWeek(organizationId);
       case 'menus.today': return this.menusToday(organizationId);
+      case 'haccp.score': return this.haccpScore(organizationId);
+      case 'haccp.alerts': return this.haccpAlerts(organizationId);
+      case 'haccp.today': return this.haccpToday(organizationId);
       default: return null;
     }
   }
@@ -392,6 +399,46 @@ export class DashboardService {
   private menusToday(organizationId: string) {
     const { start, end } = this.todayRange();
     return this.prisma.menu.findMany({ where: { organizationId, date: { gte: start, lte: end } }, include: { items: { include: { technicalSheet: true } }, site: true }, orderBy: [{ service: 'asc' }, { date: 'asc' }], take: 8 });
+  }
+
+  private async haccpScore(organizationId: string) {
+    const { start, end } = this.todayRange();
+    const [temperatureEquipment, temperature, dueCleaning, cleaned, reports] = await Promise.all([
+      this.prisma.haccpTemperatureEquipment.count({ where: { organizationId, isActive: true } }),
+      this.prisma.haccpTemperatureReading.count({ where: { organizationId, date: { gte: start, lte: end } } }),
+      this.prisma.haccpCleaningSurface.count({ where: { organizationId, isActive: true, zone: { isActive: true } } }),
+      this.prisma.haccpCleanedSurface.count({ where: { organizationId, cleanedAt: { gte: start, lte: end } } }),
+      this.prisma.haccpDailyReport.count({ where: { organizationId, reportDate: { gte: start, lte: end } } }),
+    ]);
+    const temperatureScore = temperatureEquipment ? Math.min(1, temperature / temperatureEquipment) : 1;
+    const cleaningScore = dueCleaning ? Math.min(1, cleaned / dueCleaning) : 1;
+    const reportScore = reports ? 1 : 0;
+    const score = Math.round((temperatureScore * 0.4 + cleaningScore * 0.4 + reportScore * 0.2) * 100);
+    return { score, grade: score >= 90 ? 'A' : score >= 75 ? 'B' : score >= 60 ? 'C' : 'D', temperature, temperatureEquipment, cleaned, dueCleaning, reportGenerated: reports > 0 };
+  }
+
+  private async haccpAlerts(organizationId: string) {
+    const score = await this.haccpScore(organizationId);
+    const alerts = [
+      ...(score.temperature < score.temperatureEquipment ? [{ level: 'critical', message: `${score.temperatureEquipment - score.temperature} relevé(s) température manquant(s).` }] : []),
+      ...(score.cleaned < score.dueCleaning ? [{ level: 'warning', message: `${score.dueCleaning - score.cleaned} surface(s) à nettoyer.` }] : []),
+      ...(!score.reportGenerated ? [{ level: 'info', message: 'Rapport HACCP quotidien à générer.' }] : []),
+    ];
+    return { alerts };
+  }
+
+  private async haccpToday(organizationId: string) {
+    const { start, end } = this.todayRange();
+    const [temperature, traceability, receptions, cleaning, process, oil, production] = await Promise.all([
+      this.prisma.haccpTemperatureReading.count({ where: { organizationId, date: { gte: start, lte: end } } }),
+      this.prisma.haccpTraceability.count({ where: { organizationId, date: { gte: start, lte: end } } }),
+      this.prisma.haccpReception.count({ where: { organizationId, date: { gte: start, lte: end } } }),
+      this.prisma.haccpCleaningSession.count({ where: { organizationId, sessionDate: { gte: start, lte: end } } }),
+      this.prisma.haccpProcessSession.count({ where: { organizationId, sessionDate: { gte: start, lte: end } } }),
+      this.prisma.haccpOilSession.count({ where: { organizationId, sessionDate: { gte: start, lte: end } } }),
+      this.prisma.haccpProductionSession.count({ where: { organizationId, productionDate: { gte: start, lte: end } } }),
+    ]);
+    return { total: temperature + traceability + receptions + cleaning + process + oil + production, temperature, traceability, receptions, cleaning, process, oil, production };
   }
 
   private todayRange() { const start = new Date(); start.setHours(0, 0, 0, 0); const end = new Date(start); end.setHours(23, 59, 59, 999); return { start, end }; }

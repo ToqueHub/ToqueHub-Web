@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { BadRequestException, Injectable, NotFoundException, StreamableFile } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { createReadStream, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, extname, join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -13,7 +14,7 @@ const PROCESS_TYPES = new Set(['refroidissement', 'congelation', 'rechauffement'
 
 @Injectable()
 export class HaccpService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly configService?: ConfigService) {}
 
   private page(q: any = {}) {
     const take = Math.min(Number(q.limit ?? q.pageSize ?? 20), 200);
@@ -136,22 +137,354 @@ export class HaccpService {
     if (!PROCESS_TYPES.has(type)) throw new BadRequestException('Type de session HACCP invalide');
   }
 
+  async syncOperations(organizationId: string, actor: Actor, dto: any = {}) {
+    const operations = Array.isArray(dto.operations) ? dto.operations : [];
+    if (!operations.length) return this.ok({ results: [], mappings: {} });
+
+    const mappings: Record<string, string> = {};
+    const results = [];
+
+    for (const operation of operations) {
+      try {
+        const payload = this.replaceLocalReferences(operation.payload ?? {}, mappings);
+        const entityType = this.normalizeSyncEntityType(operation.entityType);
+        const serverId = operation.serverId || mappings[operation.entityLocalId];
+        const response = await this.applySyncOperation(organizationId, actor, {
+          ...operation,
+          entityType,
+          serverId,
+          payload,
+        });
+        const entity = response?.data ?? response;
+        const syncedId = entity?._id || entity?.id || serverId || null;
+        if (operation.entityLocalId && syncedId) mappings[operation.entityLocalId] = syncedId;
+        results.push({
+          operationId: operation.operationId,
+          entityType: operation.entityType,
+          entityLocalId: operation.entityLocalId,
+          serverId: syncedId,
+          status: 'synced',
+          entity,
+        });
+      } catch (error: any) {
+        results.push({
+          operationId: operation.operationId,
+          entityType: operation.entityType,
+          entityLocalId: operation.entityLocalId,
+          serverId: operation.serverId || mappings[operation.entityLocalId] || null,
+          status: 'failed',
+          error: error?.response?.message || error?.message || 'Synchronisation impossible',
+        });
+      }
+    }
+
+    return this.ok({ results, mappings });
+  }
+
+  private normalizeSyncEntityType(entityType: string) {
+    if (String(entityType).startsWith('process_session')) return 'process_session';
+    return entityType;
+  }
+
+  private replaceLocalReferences(value: any, mappings: Record<string, string>): any {
+    if (Array.isArray(value)) return value.map((item) => this.replaceLocalReferences(item, mappings));
+    if (!value || typeof value !== 'object') return typeof value === 'string' && mappings[value] ? mappings[value] : value;
+    return Object.entries(value).reduce((acc, [key, entry]) => {
+      acc[key] = this.replaceLocalReferences(entry, mappings);
+      return acc;
+    }, {} as Record<string, any>);
+  }
+
+  private syncData(dto: any = {}) {
+    return {
+      clientId: dto.clientId || undefined,
+      clientUpdatedAt: dto.clientUpdatedAt ? this.parseDate(dto.clientUpdatedAt) : undefined,
+    };
+  }
+
+  private syncUpdateData(dto: any = {}) {
+    return {
+      clientUpdatedAt: dto.clientUpdatedAt ? this.parseDate(dto.clientUpdatedAt) : undefined,
+      syncVersion: { increment: 1 },
+    };
+  }
+
+  private syncModel(entityType: string) {
+    const map: Record<string, string> = {
+      traceability: 'haccpTraceability',
+      temperature_equipment: 'haccpTemperatureEquipment',
+      temperature_reading: 'haccpTemperatureReading',
+      reception: 'haccpReception',
+      haccp_product: 'haccpProduct',
+      process_equipment: 'haccpProcessEquipment',
+      process_session: 'haccpProcessSession',
+      oil_equipment: 'haccpOilEquipment',
+      oil_session: 'haccpOilSession',
+      cleaning_zone: 'haccpCleaningZone',
+      cleaning_session: 'haccpCleaningSession',
+      production_session: 'haccpProductionSession',
+      daily_report: 'haccpDailyReport',
+    };
+    return map[entityType];
+  }
+
+  private serializeSyncEntity(entityType: string, item: any) {
+    if (!item) return item;
+    if (entityType === 'haccp_product') return this.serializeProduct(item);
+    if (entityType === 'temperature_equipment') return this.serializeTemperatureEquipment(item);
+    if (entityType === 'temperature_reading') return this.serializeTemperatureReading(item);
+    if (entityType === 'process_equipment') return this.serializeProcessEquipment(item);
+    if (entityType === 'process_session') return this.serializeProcessSession(item);
+    if (entityType === 'oil_equipment') return this.serializeOilEquipment(item);
+    if (entityType === 'oil_session') return this.serializeOilSession(item);
+    if (entityType === 'cleaning_zone') return this.serializeCleaningZone(item);
+    if (entityType === 'cleaning_session') return this.serializeCleaningSession(item);
+    if (entityType === 'production_session') return this.serializeProductionSession(item);
+    if (entityType === 'daily_report') return this.serializeReport(item);
+    return this.withId(item);
+  }
+
+  private async findExistingClientEntity(organizationId: string, entityType: string, clientId?: string | null) {
+    if (!clientId) return null;
+    const model = this.syncModel(entityType);
+    if (!model) return null;
+    const include = entityType === 'temperature_reading' ? { equipment: true }
+      : entityType === 'process_session' ? { product: true, equipment: true }
+        : entityType === 'oil_session' ? { equipment: true }
+          : entityType === 'cleaning_zone' ? { surfaces: { where: { isActive: true }, orderBy: { name: 'asc' } } }
+            : entityType === 'cleaning_session' ? { cleanedSurfaces: { orderBy: { cleanedAt: 'asc' } } }
+              : entityType === 'production_session' ? { finishedProduct: true }
+                : undefined;
+    return this.prisma[model].findFirst({ where: { organizationId, clientId }, ...(include ? { include } : {}) });
+  }
+
+  private async applySyncOperation(organizationId: string, actor: Actor, operation: any) {
+    const action = operation.action;
+    const payload = operation.payload ?? {};
+    const id = operation.serverId;
+
+    if (action === 'create') {
+      const existing = await this.findExistingClientEntity(organizationId, operation.entityType, payload.clientId);
+      if (existing) return this.ok(this.serializeSyncEntity(operation.entityType, existing));
+    }
+
+    switch (operation.entityType) {
+      case 'traceability':
+        if (action === 'create') return this.createTraceability(organizationId, actor, payload);
+        if (action === 'update') return this.updateTraceability(organizationId, id, payload);
+        if (action === 'delete') return this.deleteTraceability(organizationId, id);
+        break;
+      case 'temperature_equipment':
+        if (action === 'create') return this.createTemperatureEquipment(organizationId, actor, payload);
+        if (action === 'delete') return this.deleteTemperatureEquipment(organizationId, id);
+        break;
+      case 'temperature_reading':
+        if (action === 'create') return this.createTemperatureReading(organizationId, actor, payload);
+        break;
+      case 'reception':
+        if (action === 'create') return this.createReception(organizationId, actor, payload);
+        if (action === 'update') return this.updateReception(organizationId, id, payload);
+        if (action === 'delete') return this.deleteReception(organizationId, id);
+        break;
+      case 'haccp_product':
+        if (action === 'create') return this.createProduct(organizationId, actor, payload);
+        if (action === 'update') return this.updateProduct(organizationId, id, payload);
+        if (action === 'delete') return this.deleteProduct(organizationId, id);
+        break;
+      case 'process_equipment':
+        if (action === 'create') return this.createProcessEquipment(organizationId, actor, payload);
+        if (action === 'update') return this.updateProcessEquipment(organizationId, id, payload);
+        if (action === 'delete') return this.deleteProcessEquipment(organizationId, id);
+        break;
+      case 'process_session':
+        if (action === 'create') return this.createProcessSession(organizationId, actor, payload.type, payload);
+        if (action === 'update') return this.updateProcessSession(organizationId, id, payload);
+        if (action === 'complete') return this.completeProcessSession(organizationId, id, payload.endTemperature);
+        if (action === 'delete') return this.deleteProcessSession(organizationId, id);
+        break;
+      case 'oil_equipment':
+        if (action === 'create') return this.createOilEquipment(organizationId, actor, payload);
+        if (action === 'update') return this.updateOilEquipment(organizationId, id, payload);
+        if (action === 'delete') return this.deleteOilEquipment(organizationId, id);
+        break;
+      case 'oil_session':
+        if (action === 'create') return this.createOilSession(organizationId, actor, payload);
+        if (action === 'uploadPhoto') {
+          const item = await this.prisma.haccpOilSession.update({ where: { id, organizationId }, data: { photo: payload.photoUri || payload.photo || null }, include: { equipment: true } });
+          return this.ok(this.serializeOilSession(item));
+        }
+        if (action === 'delete') return this.deleteOilSession(organizationId, id);
+        break;
+      case 'cleaning_zone':
+        if (action === 'create') return this.createCleaningZone(organizationId, actor, payload);
+        if (action === 'update') return this.updateCleaningZone(organizationId, actor, id, payload);
+        if (action === 'delete') return this.deleteCleaningZone(organizationId, id);
+        break;
+      case 'cleaning_session':
+        if (action === 'create') return this.startCleaningSession(organizationId, actor, payload);
+        if (action === 'update') return this.markSurfaceCleaned(organizationId, actor, payload);
+        if (action === 'complete') return this.completeCleaningSession(organizationId, payload);
+        if (action === 'delete') return this.deleteCleaningSession(organizationId, id);
+        break;
+      case 'production_session':
+        if (action === 'create') return this.createProductionSession(organizationId, actor, payload);
+        if (action === 'complete') return this.completeProductionSession(organizationId, id);
+        if (action === 'uploadPhoto') {
+          const current = await this.prisma.haccpProductionSession.findFirst({ where: { id, organizationId } });
+          if (!current) throw new NotFoundException('Production HACCP introuvable');
+          const photos = [...(Array.isArray(current.photos) ? current.photos : []), ...(Array.isArray(payload.photos) ? payload.photos : [])];
+          const item = await this.prisma.haccpProductionSession.update({ where: { id }, data: { photos }, include: { finishedProduct: true } });
+          return this.ok(this.serializeProductionSession(item));
+        }
+        if (action === 'delete') return this.deleteProductionSession(organizationId, id);
+        break;
+      case 'daily_report':
+        if (action === 'create') return this.generateDailyReport(organizationId, actor);
+        if (action === 'update') return id ? this.regenerateReport(organizationId, actor, id) : this.generateDailyReport(organizationId, actor);
+        if (action === 'delete') return this.deleteReport(organizationId, id);
+        break;
+      default:
+        break;
+    }
+
+    throw new BadRequestException(`Opération HACCP non supportée: ${operation.entityType}/${action}`);
+  }
+
+  async dashboard(organizationId: string) {
+    const { start, end } = this.dayRange();
+    const historyStart = new Date(start);
+    historyStart.setDate(historyStart.getDate() - 29);
+    const [
+      temperatureEquipment,
+      temperature,
+      cleaningDue,
+      cleaningToday,
+      traceability,
+      receptions,
+      production,
+      refroidissement,
+      congelation,
+      rechauffement,
+      oilEquipment,
+      oil,
+      products,
+      reports,
+    ] = await Promise.all([
+      this.prisma.haccpTemperatureEquipment.findMany({ where: { organizationId, isActive: true, deletedAt: null } }),
+      this.prisma.haccpTemperatureReading.findMany({ where: { organizationId, deletedAt: null, date: { gte: start, lt: end } }, include: { equipment: true }, orderBy: { date: 'desc' } }),
+      this.todayCleaningSurfaces(organizationId).then((response) => response.data ?? []),
+      this.prisma.haccpCleaningSession.findMany({ where: { organizationId, deletedAt: null, sessionDate: { gte: start, lt: end } }, include: { cleanedSurfaces: true }, orderBy: { sessionDate: 'desc' } }),
+      this.prisma.haccpTraceability.findMany({ where: { organizationId, deletedAt: null, date: { gte: start, lt: end } }, orderBy: { date: 'desc' } }),
+      this.prisma.haccpReception.findMany({ where: { organizationId, deletedAt: null, date: { gte: start, lt: end } }, orderBy: { date: 'desc' } }),
+      this.prisma.haccpProductionSession.findMany({ where: { organizationId, deletedAt: null, productionDate: { gte: start, lt: end } }, include: { finishedProduct: true }, orderBy: { productionDate: 'desc' } }),
+      this.prisma.haccpProcessSession.findMany({ where: { organizationId, deletedAt: null, type: 'refroidissement', sessionDate: { gte: start, lt: end } }, include: { product: true, equipment: true }, orderBy: { sessionDate: 'desc' } }),
+      this.prisma.haccpProcessSession.findMany({ where: { organizationId, deletedAt: null, type: 'congelation', sessionDate: { gte: start, lt: end } }, include: { product: true, equipment: true }, orderBy: { sessionDate: 'desc' } }),
+      this.prisma.haccpProcessSession.findMany({ where: { organizationId, deletedAt: null, type: 'rechauffement', sessionDate: { gte: start, lt: end } }, include: { product: true, equipment: true }, orderBy: { sessionDate: 'desc' } }),
+      this.prisma.haccpOilEquipment.findMany({ where: { organizationId, isActive: true, deletedAt: null } }),
+      this.prisma.haccpOilSession.findMany({ where: { organizationId, deletedAt: null, sessionDate: { gte: start, lt: end } }, include: { equipment: true }, orderBy: { sessionDate: 'desc' } }),
+      this.prisma.haccpProduct.findMany({ where: { organizationId, isActive: true, deletedAt: null }, orderBy: { name: 'asc' }, take: 8 }),
+      this.prisma.haccpDailyReport.findMany({ where: { organizationId, deletedAt: null, reportDate: { gte: historyStart, lt: end } }, orderBy: { reportDate: 'asc' } }),
+    ]);
+
+    const processSessions = [...refroidissement, ...congelation, ...rechauffement];
+    const cleanedSurfaceIds = new Set(cleaningToday.flatMap((session) => (session.cleanedSurfaces ?? []).map((surface) => surface.surfaceId)));
+    const completedProcess = processSessions.filter((session) => session.status === 'termine' && session.endTime && session.endTemperature != null).length;
+    const missingTemperatureEquipment = Math.max(temperatureEquipment.length - new Set(temperature.map((item) => item.equipmentId)).size, 0);
+    const missingCleaning = cleaningDue.filter((surface) => !cleanedSurfaceIds.has(surface.surfaceId)).length;
+    const incompleteProcess = processSessions.length - completedProcess;
+    const receptionIssues = receptions.filter((item) => !item.temperature || !item.supplier || !item.productName).length;
+    const traceabilityIssues = traceability.filter((item) => !item.photo || !item.lotNumber || !item.productName).length;
+    const oilMissing = Math.max(oilEquipment.length - new Set(oil.map((item) => item.equipmentId)).size, 0);
+    const reportToday = reports.find((report) => new Date(report.reportDate).getTime() === start.getTime());
+
+    const modules = [
+      this.scoreModule('temperature', 'Températures', 20, temperature.length, temperatureEquipment.length, missingTemperatureEquipment, 'Relevés attendus sur les enceintes actives'),
+      this.scoreModule('cleaning', 'Nettoyage', 20, cleanedSurfaceIds.size, cleaningDue.length, missingCleaning, 'Surfaces prévues au plan de nettoyage'),
+      this.scoreModule('traceability', 'Traçabilité', 15, traceability.length - traceabilityIssues, Math.max(traceability.length, 1), traceabilityIssues, 'Photos, lots et produits renseignés'),
+      this.scoreModule('receptions', 'Réceptions', 10, receptions.length - receptionIssues, Math.max(receptions.length, 1), receptionIssues, 'Températures et fournisseurs des entrées marchandises'),
+      this.scoreModule('process', 'Processus froid/chaud', 15, completedProcess, Math.max(processSessions.length, 1), incompleteProcess, 'Refroidissement, congélation et remise en température terminés'),
+      this.scoreModule('oil', 'Huiles', 10, oil.length, oilEquipment.length, oilMissing, 'Contrôle des friteuses actives'),
+      this.scoreModule('production', 'Production', 5, production.filter((item) => item.status === 'termine').length, Math.max(production.length, 1), production.filter((item) => item.status !== 'termine').length, 'Productions terminées'),
+      this.scoreModule('reports', 'Rapports', 5, reportToday ? 1 : 0, 1, reportToday ? 0 : 1, 'Rapport quotidien généré'),
+    ];
+
+    const score = Math.round(modules.reduce((sum, item) => sum + item.scoreContribution, 0));
+    const alerts = [
+      ...this.alertIf(missingTemperatureEquipment > 0, 'temperature', 'critical', `${missingTemperatureEquipment} enceinte(s) sans relevé aujourd’hui.`),
+      ...this.alertIf(missingCleaning > 0, 'cleaning', 'critical', `${missingCleaning} surface(s) prévues restent à nettoyer.`),
+      ...this.alertIf(incompleteProcess > 0, 'process', 'warning', `${incompleteProcess} session(s) froid/chaud non terminée(s).`),
+      ...this.alertIf(receptionIssues > 0, 'receptions', 'warning', `${receptionIssues} réception(s) incomplète(s).`),
+      ...this.alertIf(traceabilityIssues > 0, 'traceability', 'warning', `${traceabilityIssues} traçabilité(s) sans photo, lot ou produit.`),
+      ...this.alertIf(oilMissing > 0, 'oil', 'warning', `${oilMissing} équipement(s) huile sans contrôle aujourd’hui.`),
+      ...this.alertIf(!reportToday, 'reports', 'info', 'Le rapport quotidien HACCP n’a pas encore été généré.'),
+    ];
+
+    const activities = [
+      ...temperature.slice(0, 4).map((item) => ({ id: item.id, module: 'Températures', label: item.equipment?.name ?? 'Équipement', detail: `${Number(item.temperature)}°C`, at: item.date })),
+      ...cleaningToday.slice(0, 4).map((item) => ({ id: item.id, module: 'Nettoyage', label: `${item.completedSurfaces}/${item.totalSurfaces} surfaces`, detail: item.status, at: item.sessionDate })),
+      ...processSessions.slice(0, 4).map((item) => ({ id: item.id, module: this.processLabel(item.type), label: item.product?.name ?? 'Produit', detail: item.status, at: item.sessionDate })),
+      ...oil.slice(0, 4).map((item) => ({ id: item.id, module: 'Huiles', label: item.equipment?.name ?? 'Équipement', detail: item.action, at: item.sessionDate })),
+    ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()).slice(0, 10);
+
+    return this.ok({
+      date: start.toISOString(),
+      score,
+      grade: score >= 90 ? 'A' : score >= 75 ? 'B' : score >= 60 ? 'C' : 'D',
+      alerts,
+      modules,
+      today: {
+        totalActivities: temperature.length + traceability.length + receptions.length + production.length + processSessions.length + oil.length + cleaningToday.length,
+        temperatureReadings: temperature.length,
+        cleaningCompleted: cleanedSurfaceIds.size,
+        cleaningDue: cleaningDue.length,
+        traceability: traceability.length,
+        receptions: receptions.length,
+        processSessions: processSessions.length,
+        oilSessions: oil.length,
+        productionSessions: production.length,
+        reportGenerated: Boolean(reportToday),
+      },
+      activities,
+      products: products.map((item) => this.serializeProduct(item)),
+      reports: reports.map((report) => ({ id: report.id, _id: report.id, reportDate: report.reportDate, score: Number((report.summary as any)?.score ?? 0), totalActivities: Number((report.summary as any)?.totalActivities ?? 0), status: report.status })),
+    });
+  }
+
+  private scoreModule(id: string, label: string, weight: number, completed: number, expected: number, issues: number, description: string) {
+    const denominator = Math.max(expected, 1);
+    const completion = Math.max(0, Math.min(1, completed / denominator));
+    const issuePenalty = Math.min(0.7, issues * 0.18);
+    const ratio = Math.max(0, completion - issuePenalty);
+    return { id, label, weight, completed, expected, issues, description, score: Math.round(ratio * 100), scoreContribution: ratio * weight };
+  }
+
+  private alertIf(condition: boolean, module: string, severity: 'critical' | 'warning' | 'info', message: string) {
+    return condition ? [{ module, severity, message }] : [];
+  }
+
+  private processLabel(type: string) {
+    if (type === 'refroidissement') return 'Refroidissement';
+    if (type === 'congelation') return 'Congélation';
+    if (type === 'rechauffement') return 'Remise en température';
+    return 'Processus';
+  }
+
   async listTemperatureEquipment(organizationId: string) {
-    return this.ok((await this.prisma.haccpTemperatureEquipment.findMany({ where: { organizationId, isActive: true }, orderBy: { name: 'asc' } })).map((item) => this.serializeTemperatureEquipment(item)));
+    return this.ok((await this.prisma.haccpTemperatureEquipment.findMany({ where: { organizationId, isActive: true, deletedAt: null }, orderBy: { name: 'asc' } })).map((item) => this.serializeTemperatureEquipment(item)));
   }
 
   async createTemperatureEquipment(organizationId: string, actor: Actor, dto: any) {
-    const item = await this.prisma.haccpTemperatureEquipment.create({ data: { organizationId, createdById: actor.id, name: dto.name, type: dto.type } });
+    const item = await this.prisma.haccpTemperatureEquipment.create({ data: { organizationId, createdById: actor.id, ...this.syncData(dto), name: dto.name, type: dto.type } });
     return this.ok(this.serializeTemperatureEquipment(item));
   }
 
   async deleteTemperatureEquipment(organizationId: string, id: string) {
-    await this.prisma.haccpTemperatureEquipment.update({ where: { id, organizationId }, data: { isActive: false, archivedAt: new Date() } });
+    await this.prisma.haccpTemperatureEquipment.update({ where: { id, organizationId }, data: { isActive: false, archivedAt: new Date(), deletedAt: new Date(), syncVersion: { increment: 1 } } });
     return this.ok({ deleted: true });
   }
 
   async listTemperatureReadings(organizationId: string) {
-    const items = await this.prisma.haccpTemperatureReading.findMany({ where: { organizationId }, include: { equipment: true }, orderBy: { date: 'desc' } });
+    const items = await this.prisma.haccpTemperatureReading.findMany({ where: { organizationId, deletedAt: null }, include: { equipment: true }, orderBy: { date: 'desc' } });
     return this.ok(items.map((item) => this.serializeTemperatureReading(item)));
   }
 
@@ -163,17 +496,17 @@ export class HaccpService {
 
   async createTemperatureReading(organizationId: string, actor: Actor, dto: any) {
     await this.ensureTemperatureEquipment(organizationId, dto.equipmentId);
-    const item = await this.prisma.haccpTemperatureReading.create({ data: { organizationId, createdById: actor.id, equipmentId: dto.equipmentId, temperature: dto.temperature, date: this.parseDate(dto.date), notes: dto.notes }, include: { equipment: true } });
+    const item = await this.prisma.haccpTemperatureReading.create({ data: { organizationId, createdById: actor.id, ...this.syncData(dto), equipmentId: dto.equipmentId, temperature: dto.temperature, date: this.parseDate(dto.date), notes: dto.notes }, include: { equipment: true } });
     return this.ok(this.serializeTemperatureReading(item));
   }
 
   async listReceptions(organizationId: string) {
-    const items = await this.prisma.haccpReception.findMany({ where: { organizationId }, orderBy: { date: 'desc' } });
+    const items = await this.prisma.haccpReception.findMany({ where: { organizationId, deletedAt: null }, orderBy: { date: 'desc' } });
     return this.ok(items.map((item) => this.withId(item)));
   }
 
   async createReception(organizationId: string, actor: Actor, dto: any) {
-    const item = await this.prisma.haccpReception.create({ data: { organizationId, createdById: actor.id, supplier: dto.supplier, productName: dto.productName, productType: dto.productType, temperature: dto.temperature, lotNumber: dto.lotNumber, quantity: dto.quantity ?? 1, unit: dto.unit, unitPrice: dto.unitPrice ?? 0, photo: dto.photo, date: this.parseDate(dto.date) } });
+    const item = await this.prisma.haccpReception.create({ data: { organizationId, createdById: actor.id, ...this.syncData(dto), supplier: dto.supplier, productName: dto.productName, productType: dto.productType, temperature: dto.temperature, lotNumber: dto.lotNumber, quantity: dto.quantity ?? 1, unit: dto.unit, unitPrice: dto.unitPrice ?? 0, photo: dto.photo, date: this.parseDate(dto.date) } });
     return this.ok(this.withId(item));
   }
 
@@ -185,22 +518,22 @@ export class HaccpService {
 
   async updateReception(organizationId: string, id: string, dto: any) {
     await this.ensure('haccpReception', organizationId, id, 'Réception introuvable');
-    const item = await this.prisma.haccpReception.update({ where: { id }, data: { ...dto, quantity: dto.quantity == null ? undefined : dto.quantity, unitPrice: dto.unitPrice == null ? undefined : dto.unitPrice, date: dto.date ? this.parseDate(dto.date) : undefined } });
+    const item = await this.prisma.haccpReception.update({ where: { id }, data: { ...dto, ...this.syncUpdateData(dto), quantity: dto.quantity == null ? undefined : dto.quantity, unitPrice: dto.unitPrice == null ? undefined : dto.unitPrice, date: dto.date ? this.parseDate(dto.date) : undefined } });
     return this.ok(this.withId(item));
   }
 
   async deleteReception(organizationId: string, id: string) {
-    await this.prisma.haccpReception.delete({ where: { id, organizationId } });
+    await this.prisma.haccpReception.update({ where: { id, organizationId }, data: { deletedAt: new Date(), syncVersion: { increment: 1 } } });
     return this.ok({ deleted: true });
   }
 
   async listTraceability(organizationId: string) {
-    const items = await this.prisma.haccpTraceability.findMany({ where: { organizationId }, orderBy: { date: 'desc' } });
+    const items = await this.prisma.haccpTraceability.findMany({ where: { organizationId, deletedAt: null }, orderBy: { date: 'desc' } });
     return this.ok(items.map((item) => this.withId(item)));
   }
 
   async createTraceability(organizationId: string, actor: Actor, dto: any) {
-    const item = await this.prisma.haccpTraceability.create({ data: { organizationId, createdById: actor.id, photo: dto.photo, productName: dto.productName, lotNumber: dto.lotNumber, barcode: dto.barcode, date: this.parseDate(dto.date) } });
+    const item = await this.prisma.haccpTraceability.create({ data: { organizationId, createdById: actor.id, ...this.syncData(dto), photo: dto.photo, productName: dto.productName, lotNumber: dto.lotNumber, barcode: dto.barcode, date: this.parseDate(dto.date) } });
     return this.ok(this.withId(item));
   }
 
@@ -212,21 +545,66 @@ export class HaccpService {
 
   async updateTraceability(organizationId: string, id: string, dto: any) {
     await this.ensure('haccpTraceability', organizationId, id, 'Traçabilité introuvable');
-    const item = await this.prisma.haccpTraceability.update({ where: { id }, data: { ...dto, date: dto.date ? this.parseDate(dto.date) : undefined } });
+    const item = await this.prisma.haccpTraceability.update({ where: { id }, data: { ...dto, ...this.syncUpdateData(dto), date: dto.date ? this.parseDate(dto.date) : undefined } });
     return this.ok(this.withId(item));
   }
 
   async deleteTraceability(organizationId: string, id: string) {
-    await this.prisma.haccpTraceability.delete({ where: { id, organizationId } });
+    await this.prisma.haccpTraceability.update({ where: { id, organizationId }, data: { deletedAt: new Date(), syncVersion: { increment: 1 } } });
     return this.ok({ deleted: true });
   }
 
-  analyzeImage() {
-    return this.ok({});
+  async analyzeImage(organizationId: string, dto: any = {}) {
+    const image = String(dto.image || '');
+    if (!image) throw new BadRequestException('Image manquante');
+    const apiKey = await this.resolveMistralApiKey(organizationId);
+    if (!apiKey) return this.ok({ productName: null, lotNumber: null, barcode: null, confidence: 0, rawText: '', provider: 'manual', message: 'OCR non configuré' });
+    const mimeType = image.match(/^data:([^;]+);base64,/)?.[1] || 'image/jpeg';
+    const dataUrl = image.startsWith('data:') ? image : `data:${mimeType};base64,${image}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), Number(process.env.OCR_TIMEOUT_MS ?? 60_000));
+    try {
+      const response = await fetch('https://api.mistral.ai/v1/ocr', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: process.env.OCR_MISTRAL_MODEL || 'mistral-ocr-latest',
+          document: { type: 'image_url', image_url: dataUrl },
+          include_image_base64: false,
+        }),
+        signal: controller.signal,
+      });
+      const json: any = await response.json().catch(() => ({}));
+      if (!response.ok) throw new BadRequestException('Image HACCP illisible ou OCR indisponible');
+      const rawText = (Array.isArray(json.pages) ? json.pages.map((page: any) => page.markdown || page.text).filter(Boolean).join('\n') : json.markdown || json.text || '').trim();
+      return this.ok({ ...this.extractTraceabilityFromText(rawText), rawText, provider: 'mistral', confidence: rawText ? 0.72 : 0.1 });
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private async resolveMistralApiKey(organizationId: string) {
+    const organization = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { mistralApiKey: true } });
+    return organization?.mistralApiKey || this.configService?.get<string>('MISTRAL_API_KEY') || this.configService?.get<string>('OCR_MISTRAL_API_KEY') || null;
+  }
+
+  private extractTraceabilityFromText(rawText: string) {
+    const lines = rawText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const lotNumber = this.extractAfter(rawText, /\b(?:lot|n[°o]\s*lot|batch)\s*[:#-]?\s*([A-Z0-9][A-Z0-9/_-]{2,})/i);
+    const barcode = this.extractAfter(rawText, /\b(?:ean|gtin|code(?:\s*barres)?|barcode)\s*[:#-]?\s*([0-9]{8,14})/i) || rawText.match(/\b[0-9]{8,14}\b/)?.[0] || null;
+    const productName = lines.find((line) => {
+      const normalized = line.toLowerCase();
+      return line.length >= 3 && line.length <= 80 && !normalized.includes('lot') && !normalized.includes('code') && !/^[0-9\s:/.-]+$/.test(line);
+    }) || null;
+    return { productName, lotNumber, barcode };
+  }
+
+  private extractAfter(text: string, pattern: RegExp) {
+    return text.match(pattern)?.[1]?.trim() || null;
   }
 
   async listProducts(organizationId: string, type?: string) {
-    const items = await this.prisma.haccpProduct.findMany({ where: { organizationId, isActive: true, type: type || undefined }, orderBy: { name: 'asc' } });
+    const items = await this.prisma.haccpProduct.findMany({ where: { organizationId, isActive: true, deletedAt: null, type: type || undefined }, orderBy: { name: 'asc' } });
     return this.ok(items.map((item) => this.serializeProduct(item)));
   }
 
@@ -237,23 +615,23 @@ export class HaccpService {
   }
 
   async createProduct(organizationId: string, actor: Actor, dto: any) {
-    const item = await this.prisma.haccpProduct.create({ data: { organizationId, createdById: actor.id, name: dto.name, type: dto.type, dlc: dto.dlc ? this.parseDate(dto.dlc) : null, dlcDays: dto.dlcDays, description: dto.description, price: dto.price, quantity: dto.quantity, unit: dto.unit } });
+    const item = await this.prisma.haccpProduct.create({ data: { organizationId, createdById: actor.id, ...this.syncData(dto), name: dto.name, type: dto.type, dlc: dto.dlc ? this.parseDate(dto.dlc) : null, dlcDays: dto.dlcDays, description: dto.description, price: dto.price, quantity: dto.quantity, unit: dto.unit } });
     return this.ok(this.serializeProduct(item));
   }
 
   async updateProduct(organizationId: string, id: string, dto: any) {
     await this.ensure('haccpProduct', organizationId, id, 'Produit HACCP introuvable');
-    const item = await this.prisma.haccpProduct.update({ where: { id }, data: { ...dto, dlc: dto.dlc ? this.parseDate(dto.dlc) : undefined } });
+    const item = await this.prisma.haccpProduct.update({ where: { id }, data: { ...dto, ...this.syncUpdateData(dto), dlc: dto.dlc ? this.parseDate(dto.dlc) : undefined } });
     return this.ok(this.serializeProduct(item));
   }
 
   async deleteProduct(organizationId: string, id: string) {
-    await this.prisma.haccpProduct.update({ where: { id, organizationId }, data: { isActive: false, archivedAt: new Date() } });
+    await this.prisma.haccpProduct.update({ where: { id, organizationId }, data: { isActive: false, archivedAt: new Date(), deletedAt: new Date(), syncVersion: { increment: 1 } } });
     return this.ok({ deleted: true });
   }
 
   async listProcessEquipment(organizationId: string, type?: string) {
-    const where = type ? { organizationId, isActive: true, OR: [{ type }, { type: 'mixte' }] } : { organizationId, isActive: true };
+    const where = type ? { organizationId, isActive: true, deletedAt: null, OR: [{ type }, { type: 'mixte' }] } : { organizationId, isActive: true, deletedAt: null };
     const items = await this.prisma.haccpProcessEquipment.findMany({ where, orderBy: { name: 'asc' } });
     return this.ok(items.map((item) => this.serializeProcessEquipment(item)));
   }
@@ -271,29 +649,29 @@ export class HaccpService {
 
   async updateProcessEquipment(organizationId: string, id: string, dto: any) {
     await this.ensure('haccpProcessEquipment', organizationId, id, 'Équipement introuvable');
-    const item = await this.prisma.haccpProcessEquipment.update({ where: { id }, data: this.processEquipmentData(undefined, undefined, dto) });
+    const item = await this.prisma.haccpProcessEquipment.update({ where: { id }, data: { ...this.processEquipmentData(undefined, undefined, dto), ...this.syncUpdateData(dto) } });
     return this.ok(this.serializeProcessEquipment(item));
   }
 
   async deleteProcessEquipment(organizationId: string, id: string) {
-    await this.prisma.haccpProcessEquipment.update({ where: { id, organizationId }, data: { isActive: false, archivedAt: new Date() } });
+    await this.prisma.haccpProcessEquipment.update({ where: { id, organizationId }, data: { isActive: false, archivedAt: new Date(), deletedAt: new Date(), syncVersion: { increment: 1 } } });
     return this.ok({ deleted: true });
   }
 
   private processEquipmentData(organizationId: string | undefined, createdById: string | undefined, dto: any) {
-    return { organizationId, createdById, name: dto.name, type: dto.type, brand: dto.brand, model: dto.model, serialNumber: dto.serialNumber, location: dto.location, capacity: dto.capacity, temperatureMin: dto.temperatureRange?.min, temperatureMax: dto.temperatureRange?.max, notes: dto.notes, isActive: dto.isActive };
+    return { organizationId, createdById, ...this.syncData(dto), name: dto.name, type: dto.type, brand: dto.brand, model: dto.model, serialNumber: dto.serialNumber, location: dto.location, capacity: dto.capacity, temperatureMin: dto.temperatureRange?.min, temperatureMax: dto.temperatureRange?.max, notes: dto.notes, isActive: dto.isActive };
   }
 
   async listProcessSessions(organizationId: string, type: string) {
     this.assertProcessType(type);
-    const items = await this.prisma.haccpProcessSession.findMany({ where: { organizationId, type }, include: { product: true, equipment: true }, orderBy: { sessionDate: 'desc' } });
+    const items = await this.prisma.haccpProcessSession.findMany({ where: { organizationId, type, deletedAt: null }, include: { product: true, equipment: true }, orderBy: { sessionDate: 'desc' } });
     return this.ok(items.map((item) => this.serializeProcessSession(item)));
   }
 
   async listTodayProcessSessions(organizationId: string, type: string) {
     this.assertProcessType(type);
     const { start, end } = this.dayRange();
-    const items = await this.prisma.haccpProcessSession.findMany({ where: { organizationId, type, sessionDate: { gte: start, lt: end } }, include: { product: true, equipment: true }, orderBy: { startTime: 'desc' } });
+    const items = await this.prisma.haccpProcessSession.findMany({ where: { organizationId, type, deletedAt: null, sessionDate: { gte: start, lt: end } }, include: { product: true, equipment: true }, orderBy: { startTime: 'desc' } });
     return this.ok(items.map((item) => this.serializeProcessSession(item)));
   }
 
@@ -303,7 +681,7 @@ export class HaccpService {
     const start = new Date();
     const end = dto.endTime ? this.parseDate(dto.endTime) : null;
     const status = dto.endTemperature != null || end ? 'termine' : 'en_cours';
-    const item = await this.prisma.haccpProcessSession.create({ data: { organizationId, createdById: actor.id, type, productId: dto.productId, equipmentId: dto.equipmentId, sessionDate: start, startTime: start, endTime: end, startTemperature: dto.startTemperature, endTemperature: dto.endTemperature, status, notes: dto.notes, duration: this.duration(start, end) }, include: { product: true, equipment: true } });
+    const item = await this.prisma.haccpProcessSession.create({ data: { organizationId, createdById: actor.id, ...this.syncData(dto), type, productId: dto.productId, equipmentId: dto.equipmentId, sessionDate: start, startTime: start, endTime: end, startTemperature: dto.startTemperature, endTemperature: dto.endTemperature, status, notes: dto.notes, duration: this.duration(start, end) }, include: { product: true, equipment: true } });
     return this.ok(this.serializeProcessSession(item));
   }
 
@@ -318,7 +696,7 @@ export class HaccpService {
     if (!current) throw new NotFoundException('Session introuvable');
     const endTime = dto.endTime ? this.parseDate(dto.endTime) : current.endTime;
     const endTemperature = dto.endTemperature ?? current.endTemperature;
-    const item = await this.prisma.haccpProcessSession.update({ where: { id }, data: { endTime, endTemperature, notes: dto.notes, status: endTime || endTemperature != null ? 'termine' : current.status, duration: this.duration(current.startTime, endTime) }, include: { product: true, equipment: true } });
+    const item = await this.prisma.haccpProcessSession.update({ where: { id }, data: { ...this.syncUpdateData(dto), endTime, endTemperature, notes: dto.notes, status: endTime || endTemperature != null ? 'termine' : current.status, duration: this.duration(current.startTime, endTime) }, include: { product: true, equipment: true } });
     return this.ok(this.serializeProcessSession(item));
   }
 
@@ -326,22 +704,22 @@ export class HaccpService {
     const current = await this.prisma.haccpProcessSession.findFirst({ where: { id, organizationId } });
     if (!current) throw new NotFoundException('Session introuvable');
     const endTime = new Date();
-    const item = await this.prisma.haccpProcessSession.update({ where: { id }, data: { endTemperature, endTime, status: 'termine', duration: this.duration(current.startTime, endTime) }, include: { product: true, equipment: true } });
+    const item = await this.prisma.haccpProcessSession.update({ where: { id }, data: { endTemperature, endTime, status: 'termine', duration: this.duration(current.startTime, endTime), syncVersion: { increment: 1 } }, include: { product: true, equipment: true } });
     return this.ok(this.serializeProcessSession(item));
   }
 
   async deleteProcessSession(organizationId: string, id: string) {
-    await this.prisma.haccpProcessSession.delete({ where: { id, organizationId } });
+    await this.prisma.haccpProcessSession.update({ where: { id, organizationId }, data: { deletedAt: new Date(), syncVersion: { increment: 1 } } });
     return this.ok({ deleted: true });
   }
 
   async listOilEquipment(organizationId: string) {
-    const items = await this.prisma.haccpOilEquipment.findMany({ where: { organizationId, isActive: true }, orderBy: { name: 'asc' } });
+    const items = await this.prisma.haccpOilEquipment.findMany({ where: { organizationId, isActive: true, deletedAt: null }, orderBy: { name: 'asc' } });
     return this.ok(items.map((item) => this.serializeOilEquipment(item)));
   }
 
   async createOilEquipment(organizationId: string, actor: Actor, dto: any) {
-    const item = await this.prisma.haccpOilEquipment.create({ data: { organizationId, createdById: actor.id, name: dto.name, type: dto.type, brand: dto.brand, model: dto.model, serialNumber: dto.serialNumber, location: dto.location, capacity: dto.capacity, notes: dto.notes } });
+    const item = await this.prisma.haccpOilEquipment.create({ data: { organizationId, createdById: actor.id, ...this.syncData(dto), name: dto.name, type: dto.type, brand: dto.brand, model: dto.model, serialNumber: dto.serialNumber, location: dto.location, capacity: dto.capacity, notes: dto.notes } });
     return this.ok(this.serializeOilEquipment(item));
   }
 
@@ -353,32 +731,32 @@ export class HaccpService {
 
   async updateOilEquipment(organizationId: string, id: string, dto: any) {
     await this.ensure('haccpOilEquipment', organizationId, id, 'Équipement huile introuvable');
-    const item = await this.prisma.haccpOilEquipment.update({ where: { id }, data: dto });
+    const item = await this.prisma.haccpOilEquipment.update({ where: { id }, data: { ...dto, ...this.syncUpdateData(dto) } });
     return this.ok(this.serializeOilEquipment(item));
   }
 
   async deleteOilEquipment(organizationId: string, id: string) {
-    await this.prisma.haccpOilEquipment.update({ where: { id, organizationId }, data: { isActive: false, archivedAt: new Date() } });
+    await this.prisma.haccpOilEquipment.update({ where: { id, organizationId }, data: { isActive: false, archivedAt: new Date(), deletedAt: new Date(), syncVersion: { increment: 1 } } });
     return this.ok({ deleted: true });
   }
 
   async listOilSessions(organizationId: string, q: any = {}) {
     const [items, total] = await Promise.all([
-      this.prisma.haccpOilSession.findMany({ where: { organizationId }, include: { equipment: true }, orderBy: { sessionDate: 'desc' }, ...this.page(q) }),
-      this.prisma.haccpOilSession.count({ where: { organizationId } }),
+      this.prisma.haccpOilSession.findMany({ where: { organizationId, deletedAt: null }, include: { equipment: true }, orderBy: { sessionDate: 'desc' }, ...this.page(q) }),
+      this.prisma.haccpOilSession.count({ where: { organizationId, deletedAt: null } }),
     ]);
     return this.ok(items.map((item) => this.serializeOilSession(item)), { pagination: { page: Number(q.page ?? 1), limit: Number(q.limit ?? 20), total, pages: Math.ceil(total / Number(q.limit ?? 20)) } });
   }
 
   async listTodayOilSessions(organizationId: string) {
     const { start, end } = this.dayRange();
-    const items = await this.prisma.haccpOilSession.findMany({ where: { organizationId, sessionDate: { gte: start, lt: end } }, include: { equipment: true }, orderBy: { sessionDate: 'desc' } });
+    const items = await this.prisma.haccpOilSession.findMany({ where: { organizationId, deletedAt: null, sessionDate: { gte: start, lt: end } }, include: { equipment: true }, orderBy: { sessionDate: 'desc' } });
     return this.ok(items.map((item) => this.serializeOilSession(item)));
   }
 
   async createOilSession(organizationId: string, actor: Actor, dto: any) {
     await this.ensure('haccpOilEquipment', organizationId, dto.equipmentId, 'Équipement huile introuvable');
-    const item = await this.prisma.haccpOilSession.create({ data: { organizationId, createdById: actor.id, equipmentId: dto.equipmentId, testMethod: dto.testMethod, action: dto.action, notes: dto.notes, sessionDate: new Date() }, include: { equipment: true } });
+    const item = await this.prisma.haccpOilSession.create({ data: { organizationId, createdById: actor.id, ...this.syncData(dto), equipmentId: dto.equipmentId, testMethod: dto.testMethod, action: dto.action, notes: dto.notes, sessionDate: new Date() }, include: { equipment: true } });
     return this.ok(this.serializeOilSession(item));
   }
 
@@ -389,7 +767,7 @@ export class HaccpService {
   }
 
   async deleteOilSession(organizationId: string, id: string) {
-    await this.prisma.haccpOilSession.delete({ where: { id, organizationId } });
+    await this.prisma.haccpOilSession.update({ where: { id, organizationId }, data: { deletedAt: new Date(), syncVersion: { increment: 1 } } });
     return this.ok({ deleted: true });
   }
 
@@ -404,17 +782,17 @@ export class HaccpService {
     mkdirSync(dirname(absolutePath), { recursive: true });
     writeFileSync(absolutePath, file.buffer);
     const document = await this.prisma.document.create({ data: { organizationId, uploadedById: actor.id, internalFilename, originalName, mimeType: file.mimetype || 'image/jpeg', sizeBytes: file.size ?? file.buffer?.length ?? 0, storagePath, sourceModule: 'haccp', sourceType: 'oil-session', sourceId: id } });
-    const updated = await this.prisma.haccpOilSession.update({ where: { id }, data: { photo: `/uploads/haccp/${storagePath}`, photoDocumentId: document.id }, include: { equipment: true } });
+    const updated = await this.prisma.haccpOilSession.update({ where: { id }, data: { photo: `/uploads/haccp/${storagePath}`, photoDocumentId: document.id, syncVersion: { increment: 1 } }, include: { equipment: true } });
     return this.ok(this.serializeOilSession(updated));
   }
 
   async listCleaningZones(organizationId: string) {
-    const items = await this.prisma.haccpCleaningZone.findMany({ where: { organizationId, isActive: true }, include: { surfaces: { where: { isActive: true }, orderBy: { name: 'asc' } } }, orderBy: { name: 'asc' } });
+    const items = await this.prisma.haccpCleaningZone.findMany({ where: { organizationId, isActive: true, deletedAt: null }, include: { surfaces: { where: { isActive: true, deletedAt: null }, orderBy: { name: 'asc' } } }, orderBy: { name: 'asc' } });
     return this.ok(items.map((item) => this.serializeCleaningZone(item)));
   }
 
   async createCleaningZone(organizationId: string, actor: Actor, dto: any) {
-    const item = await this.prisma.haccpCleaningZone.create({ data: { organizationId, createdById: actor.id, name: dto.name, description: dto.description, surfaces: { create: (dto.surfaces ?? []).map((surface) => ({ organizationId, createdById: actor.id, name: surface.name, frequency: surface.frequency, lastCleaned: surface.lastCleaned ? this.parseDate(surface.lastCleaned) : null, isActive: surface.isActive ?? true })) } }, include: { surfaces: true } });
+    const item = await this.prisma.haccpCleaningZone.create({ data: { organizationId, createdById: actor.id, ...this.syncData(dto), name: dto.name, description: dto.description, surfaces: { create: (dto.surfaces ?? []).map((surface) => ({ organizationId, createdById: actor.id, ...this.syncData(surface), name: surface.name, frequency: surface.frequency, lastCleaned: surface.lastCleaned ? this.parseDate(surface.lastCleaned) : null, isActive: surface.isActive ?? true })) } }, include: { surfaces: true } });
     return this.ok(this.serializeCleaningZone(item));
   }
 
@@ -428,15 +806,15 @@ export class HaccpService {
         const surfaceId = surface.id || surface._id;
         if (surfaceId && zone.surfaces.some((existing) => existing.id === surfaceId)) {
           seen.add(surfaceId);
-          await tx.haccpCleaningSurface.update({ where: { id: surfaceId }, data: { name: surface.name, frequency: surface.frequency, lastCleaned: surface.lastCleaned ? this.parseDate(surface.lastCleaned) : undefined, isActive: surface.isActive ?? true } });
+          await tx.haccpCleaningSurface.update({ where: { id: surfaceId }, data: { name: surface.name, frequency: surface.frequency, lastCleaned: surface.lastCleaned ? this.parseDate(surface.lastCleaned) : undefined, isActive: surface.isActive ?? true, ...this.syncUpdateData(surface) } });
         } else {
-          await tx.haccpCleaningSurface.create({ data: { organizationId, createdById: actor.id, zoneId: id, name: surface.name, frequency: surface.frequency, lastCleaned: surface.lastCleaned ? this.parseDate(surface.lastCleaned) : null, isActive: surface.isActive ?? true } });
+          await tx.haccpCleaningSurface.create({ data: { organizationId, createdById: actor.id, ...this.syncData(surface), zoneId: id, name: surface.name, frequency: surface.frequency, lastCleaned: surface.lastCleaned ? this.parseDate(surface.lastCleaned) : null, isActive: surface.isActive ?? true } });
         }
       }
       const missing = zone.surfaces.filter((surface) => !seen.has(surface.id) && !incoming.some((item) => (item.id || item._id) === surface.id)).map((surface) => surface.id);
-      if (missing.length) await tx.haccpCleaningSurface.updateMany({ where: { organizationId, id: { in: missing } }, data: { isActive: false, archivedAt: new Date() } });
-      await tx.haccpCleaningZone.update({ where: { id }, data: { name: dto.name, description: dto.description } });
-      const updated = await tx.haccpCleaningZone.findUnique({ where: { id }, include: { surfaces: { where: { isActive: true }, orderBy: { name: 'asc' } } } });
+      if (missing.length) await tx.haccpCleaningSurface.updateMany({ where: { organizationId, id: { in: missing } }, data: { isActive: false, archivedAt: new Date(), deletedAt: new Date(), syncVersion: { increment: 1 } } });
+      await tx.haccpCleaningZone.update({ where: { id }, data: { name: dto.name, description: dto.description, ...this.syncUpdateData(dto) } });
+      const updated = await tx.haccpCleaningZone.findUnique({ where: { id }, include: { surfaces: { where: { isActive: true, deletedAt: null }, orderBy: { name: 'asc' } } } });
       return this.ok(this.serializeCleaningZone(updated));
     });
   }
@@ -447,64 +825,66 @@ export class HaccpService {
       data: {
         isActive: false,
         archivedAt: new Date(),
-        surfaces: { updateMany: { where: { isActive: true }, data: { isActive: false, archivedAt: new Date() } } },
+        deletedAt: new Date(),
+        syncVersion: { increment: 1 },
+        surfaces: { updateMany: { where: { isActive: true }, data: { isActive: false, archivedAt: new Date(), deletedAt: new Date(), syncVersion: { increment: 1 } } } },
       },
     });
     return this.ok({ deleted: true });
   }
 
-  async startCleaningSession(organizationId: string, actor: Actor) {
-    const active = await this.prisma.haccpCleaningSession.findFirst({ where: { organizationId, status: 'active' }, include: { cleanedSurfaces: true } });
+  async startCleaningSession(organizationId: string, actor: Actor, dto: any = {}) {
+    const active = await this.prisma.haccpCleaningSession.findFirst({ where: { organizationId, status: 'active', deletedAt: null }, include: { cleanedSurfaces: true } });
     if (active) return this.ok(this.serializeCleaningSession(active));
-    const totalSurfaces = await this.prisma.haccpCleaningSurface.count({ where: { organizationId, isActive: true, zone: { isActive: true } } });
+    const totalSurfaces = await this.prisma.haccpCleaningSurface.count({ where: { organizationId, isActive: true, deletedAt: null, zone: { isActive: true, deletedAt: null } } });
     const now = new Date();
-    const item = await this.prisma.haccpCleaningSession.create({ data: { organizationId, createdById: actor.id, sessionDate: now, startTime: now, totalSurfaces }, include: { cleanedSurfaces: true } });
+    const item = await this.prisma.haccpCleaningSession.create({ data: { organizationId, createdById: actor.id, ...this.syncData(dto), sessionDate: now, startTime: now, totalSurfaces }, include: { cleanedSurfaces: true } });
     return this.ok(this.serializeCleaningSession(item));
   }
 
   async getActiveCleaningSession(organizationId: string) {
-    const item = await this.prisma.haccpCleaningSession.findFirst({ where: { organizationId, status: 'active' }, include: { cleanedSurfaces: { orderBy: { cleanedAt: 'asc' } } } });
+    const item = await this.prisma.haccpCleaningSession.findFirst({ where: { organizationId, status: 'active', deletedAt: null }, include: { cleanedSurfaces: { orderBy: { cleanedAt: 'asc' } } } });
     return this.ok(item ? this.serializeCleaningSession(item) : null);
   }
 
   async markSurfaceCleaned(organizationId: string, actor: Actor, dto: any) {
-    const session = await this.prisma.haccpCleaningSession.findFirst({ where: { organizationId, status: 'active' } });
+    const session = await this.prisma.haccpCleaningSession.findFirst({ where: { organizationId, status: 'active', deletedAt: null } });
     if (!session) throw new BadRequestException('Aucune session de nettoyage active');
     await Promise.all([this.ensure('haccpCleaningSurface', organizationId, dto.surfaceId, 'Surface introuvable'), this.ensure('haccpCleaningZone', organizationId, dto.zoneId, 'Zone introuvable')]);
     const cleanedAt = new Date();
-    await this.prisma.haccpCleanedSurface.upsert({ where: { sessionId_surfaceId: { sessionId: session.id, surfaceId: dto.surfaceId } }, update: { notes: dto.notes, cleanedAt }, create: { organizationId, createdById: actor.id, sessionId: session.id, surfaceId: dto.surfaceId, surfaceName: dto.surfaceName, zoneId: dto.zoneId, zoneName: dto.zoneName, cleanedAt, notes: dto.notes } });
+    await this.prisma.haccpCleanedSurface.upsert({ where: { sessionId_surfaceId: { sessionId: session.id, surfaceId: dto.surfaceId } }, update: { notes: dto.notes, cleanedAt, syncVersion: { increment: 1 } }, create: { organizationId, createdById: actor.id, ...this.syncData(dto), sessionId: session.id, surfaceId: dto.surfaceId, surfaceName: dto.surfaceName, zoneId: dto.zoneId, zoneName: dto.zoneName, cleanedAt, notes: dto.notes } });
     await this.prisma.haccpCleaningSurface.update({ where: { id: dto.surfaceId }, data: { lastCleaned: cleanedAt } });
     const completedSurfaces = await this.prisma.haccpCleanedSurface.count({ where: { sessionId: session.id } });
-    const totalSurfaces = await this.prisma.haccpCleaningSurface.count({ where: { organizationId, isActive: true, zone: { isActive: true } } });
-    const item = await this.prisma.haccpCleaningSession.update({ where: { id: session.id }, data: { completedSurfaces, totalSurfaces }, include: { cleanedSurfaces: { orderBy: { cleanedAt: 'asc' } } } });
+    const totalSurfaces = await this.prisma.haccpCleaningSurface.count({ where: { organizationId, isActive: true, deletedAt: null, zone: { isActive: true, deletedAt: null } } });
+    const item = await this.prisma.haccpCleaningSession.update({ where: { id: session.id }, data: { completedSurfaces, totalSurfaces, syncVersion: { increment: 1 } }, include: { cleanedSurfaces: { orderBy: { cleanedAt: 'asc' } } } });
     return this.ok(this.serializeCleaningSession(item));
   }
 
   async completeCleaningSession(organizationId: string, dto: any = {}) {
-    const session = await this.prisma.haccpCleaningSession.findFirst({ where: { organizationId, status: 'active' } });
+    const session = await this.prisma.haccpCleaningSession.findFirst({ where: { organizationId, status: 'active', deletedAt: null } });
     if (!session) throw new BadRequestException('Aucune session de nettoyage active');
     const endTime = new Date();
     const completedSurfaces = await this.prisma.haccpCleanedSurface.count({ where: { sessionId: session.id } });
-    const item = await this.prisma.haccpCleaningSession.update({ where: { id: session.id }, data: { status: 'completed', notes: dto.notes, endTime, completedSurfaces }, include: { cleanedSurfaces: { orderBy: { cleanedAt: 'asc' } } } });
+    const item = await this.prisma.haccpCleaningSession.update({ where: { id: session.id }, data: { status: 'completed', notes: dto.notes, endTime, completedSurfaces, ...this.syncUpdateData(dto) }, include: { cleanedSurfaces: { orderBy: { cleanedAt: 'asc' } } } });
     return this.ok(this.serializeCleaningSession(item));
   }
 
   async listCleaningHistory(organizationId: string, q: any = {}) {
     const [items, total] = await Promise.all([
-      this.prisma.haccpCleaningSession.findMany({ where: { organizationId, status: { not: 'active' } }, include: { cleanedSurfaces: true }, orderBy: { sessionDate: 'desc' }, ...this.page(q) }),
-      this.prisma.haccpCleaningSession.count({ where: { organizationId, status: { not: 'active' } } }),
+      this.prisma.haccpCleaningSession.findMany({ where: { organizationId, deletedAt: null, status: { not: 'active' } }, include: { cleanedSurfaces: true }, orderBy: { sessionDate: 'desc' }, ...this.page(q) }),
+      this.prisma.haccpCleaningSession.count({ where: { organizationId, deletedAt: null, status: { not: 'active' } } }),
     ]);
     const limit = Number(q.limit ?? 20);
     return { data: items.map((item) => this.serializeCleaningSession(item)), pagination: { page: Number(q.page ?? 1), limit, total, pages: Math.ceil(total / limit) } };
   }
 
   async deleteCleaningSession(organizationId: string, id: string) {
-    await this.prisma.haccpCleaningSession.delete({ where: { id, organizationId } });
+    await this.prisma.haccpCleaningSession.update({ where: { id, organizationId }, data: { deletedAt: new Date(), syncVersion: { increment: 1 } } });
     return this.ok({ deleted: true });
   }
 
   async todayCleaningSurfaces(organizationId: string) {
-    const zones = await this.prisma.haccpCleaningZone.findMany({ where: { organizationId, isActive: true }, include: { surfaces: { where: { isActive: true } } } });
+    const zones = await this.prisma.haccpCleaningZone.findMany({ where: { organizationId, isActive: true, deletedAt: null }, include: { surfaces: { where: { isActive: true, deletedAt: null } } } });
     const surfaces = zones.flatMap((zone) => zone.surfaces.filter((surface) => this.shouldCleanToday(surface)).map((surface) => ({ surfaceId: surface.id, surfaceName: surface.name, zoneId: zone.id, zoneName: zone.name, frequency: surface.frequency, lastCleaned: surface.lastCleaned })));
     return this.ok(surfaces);
   }
@@ -522,20 +902,20 @@ export class HaccpService {
   }
 
   async listProductionSessions(organizationId: string) {
-    const items = await this.prisma.haccpProductionSession.findMany({ where: { organizationId }, include: { finishedProduct: true }, orderBy: { productionDate: 'desc' } });
+    const items = await this.prisma.haccpProductionSession.findMany({ where: { organizationId, deletedAt: null }, include: { finishedProduct: true }, orderBy: { productionDate: 'desc' } });
     return this.ok(items.map((item) => this.serializeProductionSession(item)));
   }
 
   async listTodayProductionSessions(organizationId: string) {
     const { start, end } = this.dayRange();
-    const items = await this.prisma.haccpProductionSession.findMany({ where: { organizationId, productionDate: { gte: start, lt: end } }, include: { finishedProduct: true }, orderBy: { startTime: 'desc' } });
+    const items = await this.prisma.haccpProductionSession.findMany({ where: { organizationId, deletedAt: null, productionDate: { gte: start, lt: end } }, include: { finishedProduct: true }, orderBy: { startTime: 'desc' } });
     return this.ok(items.map((item) => this.serializeProductionSession(item)));
   }
 
   async createProductionSession(organizationId: string, actor: Actor, dto: any) {
     await this.ensure('haccpProduct', organizationId, dto.finishedProductId, 'Produit fini introuvable');
     const now = new Date();
-    const item = await this.prisma.haccpProductionSession.create({ data: { organizationId, createdById: actor.id, lotNumber: dto.lotNumber, finishedProductId: dto.finishedProductId, quantity: dto.quantity, unit: dto.unit || 'kg', notes: dto.notes, photos: Array.isArray(dto.photos) ? dto.photos : [], productionDate: now, startTime: now }, include: { finishedProduct: true } });
+    const item = await this.prisma.haccpProductionSession.create({ data: { organizationId, createdById: actor.id, ...this.syncData(dto), lotNumber: dto.lotNumber, finishedProductId: dto.finishedProductId, quantity: dto.quantity, unit: dto.unit || 'kg', notes: dto.notes, photos: Array.isArray(dto.photos) ? dto.photos : [], productionDate: now, startTime: now }, include: { finishedProduct: true } });
     return this.ok(this.serializeProductionSession(item));
   }
 
@@ -549,12 +929,12 @@ export class HaccpService {
     const current = await this.prisma.haccpProductionSession.findFirst({ where: { id, organizationId } });
     if (!current) throw new NotFoundException('Production HACCP introuvable');
     const endTime = new Date();
-    const item = await this.prisma.haccpProductionSession.update({ where: { id }, data: { endTime, status: 'termine', duration: this.duration(current.startTime, endTime) }, include: { finishedProduct: true } });
+    const item = await this.prisma.haccpProductionSession.update({ where: { id }, data: { endTime, status: 'termine', duration: this.duration(current.startTime, endTime), syncVersion: { increment: 1 } }, include: { finishedProduct: true } });
     return this.ok(this.serializeProductionSession(item));
   }
 
   async deleteProductionSession(organizationId: string, id: string) {
-    await this.prisma.haccpProductionSession.delete({ where: { id, organizationId } });
+    await this.prisma.haccpProductionSession.update({ where: { id, organizationId }, data: { deletedAt: new Date(), syncVersion: { increment: 1 } } });
     return this.ok({ deleted: true });
   }
 
@@ -572,22 +952,22 @@ export class HaccpService {
       const document = await this.prisma.document.create({ data: { organizationId, uploadedById: actor.id, internalFilename, originalName, mimeType: file.mimetype || 'image/jpeg', sizeBytes: file.size ?? file.buffer?.length ?? 0, storagePath, sourceModule: 'haccp', sourceType: 'production-session', sourceId: id } });
       photos.push({ documentId: document.id, filename: storagePath, originalName, path: `/uploads/haccp/${storagePath}`, size: file.size ?? file.buffer?.length ?? 0, mimetype: file.mimetype || 'image/jpeg', uploadDate: new Date().toISOString() });
     }
-    const item = await this.prisma.haccpProductionSession.update({ where: { id }, data: { photos }, include: { finishedProduct: true } });
+    const item = await this.prisma.haccpProductionSession.update({ where: { id }, data: { photos, syncVersion: { increment: 1 } }, include: { finishedProduct: true } });
     return this.ok(this.serializeProductionSession(item));
   }
 
   async generateDailyReport(organizationId: string, actor: Actor, date = new Date()) {
     const { start, end } = this.dayRange(date);
     const [temperature, traceability, reception, production, refroidissement, congelation, rechauffement, oil, cleaning] = await Promise.all([
-      this.prisma.haccpTemperatureReading.findMany({ where: { organizationId, date: { gte: start, lt: end } }, include: { equipment: true } }),
-      this.prisma.haccpTraceability.findMany({ where: { organizationId, date: { gte: start, lt: end } } }),
-      this.prisma.haccpReception.findMany({ where: { organizationId, date: { gte: start, lt: end } } }),
-      this.prisma.haccpProductionSession.findMany({ where: { organizationId, productionDate: { gte: start, lt: end } }, include: { finishedProduct: true } }),
-      this.prisma.haccpProcessSession.findMany({ where: { organizationId, type: 'refroidissement', sessionDate: { gte: start, lt: end } }, include: { product: true, equipment: true } }),
-      this.prisma.haccpProcessSession.findMany({ where: { organizationId, type: 'congelation', sessionDate: { gte: start, lt: end } }, include: { product: true, equipment: true } }),
-      this.prisma.haccpProcessSession.findMany({ where: { organizationId, type: 'rechauffement', sessionDate: { gte: start, lt: end } }, include: { product: true, equipment: true } }),
-      this.prisma.haccpOilSession.findMany({ where: { organizationId, sessionDate: { gte: start, lt: end } }, include: { equipment: true } }),
-      this.prisma.haccpCleaningSession.findMany({ where: { organizationId, sessionDate: { gte: start, lt: end } }, include: { cleanedSurfaces: true } }),
+      this.prisma.haccpTemperatureReading.findMany({ where: { organizationId, deletedAt: null, date: { gte: start, lt: end } }, include: { equipment: true } }),
+      this.prisma.haccpTraceability.findMany({ where: { organizationId, deletedAt: null, date: { gte: start, lt: end } } }),
+      this.prisma.haccpReception.findMany({ where: { organizationId, deletedAt: null, date: { gte: start, lt: end } } }),
+      this.prisma.haccpProductionSession.findMany({ where: { organizationId, deletedAt: null, productionDate: { gte: start, lt: end } }, include: { finishedProduct: true } }),
+      this.prisma.haccpProcessSession.findMany({ where: { organizationId, deletedAt: null, type: 'refroidissement', sessionDate: { gte: start, lt: end } }, include: { product: true, equipment: true } }),
+      this.prisma.haccpProcessSession.findMany({ where: { organizationId, deletedAt: null, type: 'congelation', sessionDate: { gte: start, lt: end } }, include: { product: true, equipment: true } }),
+      this.prisma.haccpProcessSession.findMany({ where: { organizationId, deletedAt: null, type: 'rechauffement', sessionDate: { gte: start, lt: end } }, include: { product: true, equipment: true } }),
+      this.prisma.haccpOilSession.findMany({ where: { organizationId, deletedAt: null, sessionDate: { gte: start, lt: end } }, include: { equipment: true } }),
+      this.prisma.haccpCleaningSession.findMany({ where: { organizationId, deletedAt: null, sessionDate: { gte: start, lt: end } }, include: { cleanedSurfaces: true } }),
     ]);
     const modules = {
       temperature: { count: temperature.length, data: temperature.map((item) => this.serializeTemperatureReading(item)) },
@@ -605,7 +985,7 @@ export class HaccpService {
     const flatCounts = [modules.temperature, modules.traceability, modules.reception, modules.production, modules.cooling.refroidissement, modules.cooling.congelation, modules.cooling.rechauffement, modules.oil, modules.cleaning];
     const totalActivities = flatCounts.reduce((sum, item) => sum + item.count, 0);
     const summary = { totalActivities, modulesCovered: Object.entries({ temperature: modules.temperature.count, traceability: modules.traceability.count, reception: modules.reception.count, production: modules.production.count, refroidissement: modules.cooling.refroidissement.count, congelation: modules.cooling.congelation.count, rechauffement: modules.cooling.rechauffement.count, oil: modules.oil.count, cleaning: modules.cleaning.count }).filter(([, count]) => count > 0).map(([name]) => name), criticalAlerts: [] };
-    const report = await this.prisma.haccpDailyReport.upsert({ where: { organizationId_reportDate: { organizationId, reportDate: start } }, update: { createdById: actor.id, modules, summary, generatedAt: new Date(), status: 'completed', errorMessage: null }, create: { organizationId, createdById: actor.id, reportDate: start, modules, summary, status: 'completed' } });
+    const report = await this.prisma.haccpDailyReport.upsert({ where: { organizationId_reportDate: { organizationId, reportDate: start } }, update: { createdById: actor.id, modules, summary, generatedAt: new Date(), status: 'completed', errorMessage: null, syncVersion: { increment: 1 } }, create: { organizationId, createdById: actor.id, reportDate: start, modules, summary, status: 'completed' } });
     return this.ok(this.serializeReport(report));
   }
 
@@ -617,7 +997,7 @@ export class HaccpService {
   }
 
   async listReports(organizationId: string, q: any = {}) {
-    const where: any = { organizationId };
+    const where: any = { organizationId, deletedAt: null };
     if (q.startDate || q.endDate) where.reportDate = { gte: q.startDate ? this.parseDate(q.startDate) : undefined, lt: q.endDate ? this.parseDate(q.endDate) : undefined };
     const [items, total] = await Promise.all([
       this.prisma.haccpDailyReport.findMany({ where, orderBy: { reportDate: 'desc' }, ...this.page(q) }),
@@ -634,7 +1014,7 @@ export class HaccpService {
   }
 
   async deleteReport(organizationId: string, id: string) {
-    await this.prisma.haccpDailyReport.delete({ where: { id, organizationId } });
+    await this.prisma.haccpDailyReport.update({ where: { id, organizationId }, data: { deletedAt: new Date(), syncVersion: { increment: 1 } } });
     return this.ok({ deleted: true });
   }
 
@@ -647,12 +1027,12 @@ export class HaccpService {
   async historyReports(organizationId: string) {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 30);
-    const items = await this.prisma.haccpDailyReport.findMany({ where: { organizationId, reportDate: { gte: cutoff } }, orderBy: { reportDate: 'desc' } });
+    const items = await this.prisma.haccpDailyReport.findMany({ where: { organizationId, deletedAt: null, reportDate: { gte: cutoff } }, orderBy: { reportDate: 'desc' } });
     return this.ok(items.map((item) => this.serializeReport(item)));
   }
 
   async reportStats(organizationId: string) {
-    const reports = await this.prisma.haccpDailyReport.findMany({ where: { organizationId }, orderBy: { reportDate: 'desc' } });
+    const reports = await this.prisma.haccpDailyReport.findMany({ where: { organizationId, deletedAt: null }, orderBy: { reportDate: 'desc' } });
     const recentCutoff = new Date();
     recentCutoff.setDate(recentCutoff.getDate() - 30);
     const totalActivities = reports.reduce((sum, report) => sum + Number(report.summary?.totalActivities ?? 0), 0);

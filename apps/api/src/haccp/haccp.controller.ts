@@ -47,6 +47,9 @@ export class HaccpController {
     return { id: user.id, role: user.role };
   }
 
+  @Get('haccp/dashboard') dashboard(@CurrentUser() user: AuthenticatedUser) { return this.service.dashboard(this.org(user)); }
+  @Post('haccp/sync') sync(@CurrentUser() user: AuthenticatedUser, @Body() dto: any) { return this.service.syncOperations(this.org(user), this.actor(user), dto); }
+
   @Get('temperature/equipment') listTemperatureEquipment(@CurrentUser() user: AuthenticatedUser) { return this.service.listTemperatureEquipment(this.org(user)); }
   @Post('temperature/equipment') createTemperatureEquipment(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateTemperatureEquipmentDto) { return this.service.createTemperatureEquipment(this.org(user), this.actor(user), dto); }
   @Delete('temperature/equipment/:id') deleteTemperatureEquipment(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.service.deleteTemperatureEquipment(this.org(user), id); }
@@ -63,7 +66,7 @@ export class HaccpController {
 
   @Get('traceability') listTraceability(@CurrentUser() user: AuthenticatedUser) { return this.service.listTraceability(this.org(user)); }
   @Post('traceability') createTraceability(@CurrentUser() user: AuthenticatedUser, @Body() dto: TraceabilityDto) { return this.service.createTraceability(this.org(user), this.actor(user), dto); }
-  @Post('traceability/analyze-image') analyzeImage(@Body() dto: AnalyzeImageDto) { return this.service.analyzeImage(); }
+  @Post('traceability/analyze-image') analyzeImage(@CurrentUser() user: AuthenticatedUser, @Body() dto: AnalyzeImageDto) { return this.service.analyzeImage(this.org(user), dto); }
   @Get('traceability/:id') getTraceability(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.service.getTraceability(this.org(user), id); }
   @Put('traceability/:id') updateTraceability(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpdateTraceabilityDto) { return this.service.updateTraceability(this.org(user), id, dto); }
   @Delete('traceability/:id') deleteTraceability(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.service.deleteTraceability(this.org(user), id); }

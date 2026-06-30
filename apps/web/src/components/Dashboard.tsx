@@ -32,6 +32,8 @@ import {
   Filter,
   Calendar,
   Thermometer,
+  Droplets,
+  Snowflake,
   ShoppingCart,
   ShoppingBag,
   LogOut,
@@ -95,6 +97,7 @@ import { PlanningApp } from './PlanningApp';
 import { TechnicalSheetsApp } from './TechnicalSheetsApp';
 import { ProductionApp } from './ProductionApp';
 import { MenusApp } from './MenusApp';
+import { HaccpApp } from './HaccpApp';
 
 import { ApiError, api } from '../api/client';
 import type {
@@ -251,10 +254,10 @@ const apps = [
     tagline: 'Traçabilité sanitaire, relevés de températures et contrôles de nettoyage.',
     description: 'Garantissez la conformité réglementaire de votre cuisine avec le plan de maîtrise sanitaire (PMS) digitalisé.\n\nFonctionnalités clés :\n- Relevés de température automatiques et manuels pour enceintes froides.\n- Traçabilité des étiquettes produits en fin de service (appareil photo).\n- Enregistrement des plannings de nettoyage de la cuisine.\n- alertes immédiates en cas d\'anomalie de température.',
     screenshots: ['Enregistrement température', 'Photo d\'étiquettes', 'Nettoyage des zones'],
-    changelog: 'Ajout de la prise en charge des capteurs Bluetooth connectés.',
-    version: 'v1.1.0',
+    changelog: 'Lancement du module web avec dashboard conformité, contrôles, traçabilité, processus, huiles, étiquettes et rapports.',
+    version: 'v1.0.0',
     compatibility: 'ToqueHub Core v0.1.0+',
-    status: 'Bientôt disponible',
+    status: 'Disponible',
   },
   {
     id: 'purchasing',
@@ -338,7 +341,7 @@ const apps = [
   },
 ];
 
-type ActiveTab = 'overview' | 'applications' | 'settings' | 'organization-general' | 'organization-documents' | 'users' | 'architecture' | 'stocks-dashboard' | 'inventory' | 'movements' | 'products' | 'categories' | 'units' | 'suppliers' | 'inventories' | 'locations' | 'audit' | 'rnm-dashboard' | 'rnm-history' | 'rnm-favorites' | 'rnm-about' | 'hr-dashboard' | 'hr-collaborators' | 'hr-departments' | 'hr-positions' | 'hr-rights' | 'hr-rotations' | 'hr-orgchart' | 'planning-dashboard' | 'planning-planning' | 'planning-settings' | 'planning-attendance' | 'planning-day' | 'planning-week' | 'planning-month' | 'planning-assignments' | 'planning-absences' | 'planning-replacements' | 'planning-templates' | 'planning-requirements' | 'technical-sheets-dashboard' | 'technical-sheets-recipes' | 'technical-sheets-categories' | 'technical-sheets-costs' | 'technical-sheets-allergens' | 'technical-sheets-production' | 'production-dashboard' | 'production-orders' | 'production-calendar' | 'production-today' | 'production-assignments' | 'production-materials' | 'production-exports' | 'production-history' | 'menus-dashboard' | 'menus-list' | 'menus-calendar' | 'menus-cycles' | 'menus-diets' | 'menus-guests' | 'menus-exports' | 'menus-history';
+type ActiveTab = 'overview' | 'applications' | 'settings' | 'organization-general' | 'organization-documents' | 'users' | 'architecture' | 'stocks-dashboard' | 'inventory' | 'movements' | 'products' | 'categories' | 'units' | 'suppliers' | 'inventories' | 'locations' | 'audit' | 'rnm-dashboard' | 'rnm-history' | 'rnm-favorites' | 'rnm-about' | 'hr-dashboard' | 'hr-collaborators' | 'hr-departments' | 'hr-positions' | 'hr-rights' | 'hr-rotations' | 'hr-orgchart' | 'planning-dashboard' | 'planning-planning' | 'planning-settings' | 'planning-attendance' | 'planning-day' | 'planning-week' | 'planning-month' | 'planning-assignments' | 'planning-absences' | 'planning-replacements' | 'planning-templates' | 'planning-requirements' | 'technical-sheets-dashboard' | 'technical-sheets-recipes' | 'technical-sheets-categories' | 'technical-sheets-costs' | 'technical-sheets-allergens' | 'technical-sheets-production' | 'production-dashboard' | 'production-orders' | 'production-calendar' | 'production-today' | 'production-assignments' | 'production-materials' | 'production-exports' | 'production-history' | 'menus-dashboard' | 'menus-list' | 'menus-calendar' | 'menus-cycles' | 'menus-diets' | 'menus-guests' | 'menus-exports' | 'menus-history' | 'haccp-dashboard' | 'haccp-temperatures' | 'haccp-cleaning' | 'haccp-traceability' | 'haccp-receptions' | 'haccp-process' | 'haccp-oil' | 'haccp-production' | 'haccp-products' | 'haccp-labels' | 'haccp-reports';
 
 type Confirmation = 'install-stocks' | 'uninstall-stocks' | 'uninstall-rnm-prices' | 'uninstall-planning' | 'uninstall-technical-sheets' | 'uninstall-production' | 'uninstall-menus' | null;
 type AppNotification = {
@@ -409,6 +412,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [planningMenuExpanded, setPlanningMenuExpanded] = useState(() => false);
   const [productionMenuExpanded, setProductionMenuExpanded] = useState(() => false);
   const [menusMenuExpanded, setMenusMenuExpanded] = useState(() => false);
+  const [haccpMenuExpanded, setHaccpMenuExpanded] = useState(() => false);
   const [technicalSheetsMenuExpanded, setTechnicalSheetsMenuExpanded] = useState(() => false);
   const [appSearchQuery, setAppSearchQuery] = useState('');
   const [showAppSearch, setShowAppSearch] = useState(false);
@@ -674,6 +678,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const technicalSheetsInstalled = installedApps.includes('technical-sheets');
   const productionInstalled = installedApps.includes('production');
   const menusInstalled = installedApps.includes('menus');
+  const haccpInstalled = installedApps.includes('haccp');
   const planningPrerequisiteMessage = rhPlanningReadiness.ready ? undefined : rhPlanningReadiness.message;
 
   const isStocksTab = useMemo(() => {
@@ -690,12 +695,19 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const isTechnicalSheetsTab = useMemo(() => ['technical-sheets-dashboard', 'technical-sheets-recipes', 'technical-sheets-categories', 'technical-sheets-costs', 'technical-sheets-allergens', 'technical-sheets-production'].includes(activeTab), [activeTab]);
   const isProductionTab = useMemo(() => ['production-dashboard', 'production-orders', 'production-calendar', 'production-today', 'production-assignments', 'production-materials', 'production-exports', 'production-history'].includes(activeTab), [activeTab]);
   const isMenusTab = useMemo(() => ['menus-dashboard', 'menus-list', 'menus-calendar', 'menus-cycles', 'menus-diets', 'menus-guests', 'menus-exports', 'menus-history'].includes(activeTab), [activeTab]);
+  const isHaccpTab = useMemo(() => ['haccp-dashboard', 'haccp-temperatures', 'haccp-cleaning', 'haccp-traceability', 'haccp-receptions', 'haccp-process', 'haccp-oil', 'haccp-production', 'haccp-products', 'haccp-labels', 'haccp-reports'].includes(activeTab), [activeTab]);
 
   useEffect(() => {
     if (isMenusTab) {
       setMenusMenuExpanded(true);
     }
   }, [isMenusTab]);
+
+  useEffect(() => {
+    if (isHaccpTab) {
+      setHaccpMenuExpanded(true);
+    }
+  }, [isHaccpTab]);
 
   useEffect(() => {
     if (isProductionTab) {
@@ -901,6 +913,29 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       ]
     },
     {
+      id: 'haccp',
+      title: 'HACCP',
+      icon: Thermometer,
+      installed: haccpInstalled,
+      expanded: haccpMenuExpanded,
+      setExpanded: setHaccpMenuExpanded,
+      isActive: isHaccpTab,
+      defaultTab: 'haccp-dashboard',
+      submenu: [
+        { tab: 'haccp-dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { tab: 'haccp-temperatures', label: 'Températures', icon: Thermometer },
+        { tab: 'haccp-cleaning', label: 'Nettoyage', icon: ShieldCheck },
+        { tab: 'haccp-traceability', label: 'Traçabilité', icon: ClipboardList },
+        { tab: 'haccp-receptions', label: 'Réceptions', icon: ShoppingCart },
+        { tab: 'haccp-process', label: 'Processus', icon: Snowflake },
+        { tab: 'haccp-oil', label: 'Huiles', icon: Droplets },
+        { tab: 'haccp-production', label: 'Production', icon: Factory },
+        { tab: 'haccp-products', label: 'Produits', icon: Package },
+        { tab: 'haccp-labels', label: 'Étiquettes', icon: FileText },
+        { tab: 'haccp-reports', label: 'Rapports', icon: History },
+      ]
+    },
+    {
       id: 'rnm-prices',
       title: 'Cours des Produits',
       icon: LineChart,
@@ -923,6 +958,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     technicalSheetsInstalled, technicalSheetsMenuExpanded, isTechnicalSheetsTab,
     productionInstalled, productionMenuExpanded, isProductionTab,
     menusInstalled, menusMenuExpanded, isMenusTab,
+    haccpInstalled, haccpMenuExpanded, isHaccpTab,
     rnmInstalled, rnmMenuExpanded, isRnmTab
   ]);
 
@@ -1198,7 +1234,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   }
 
   async function triggerInstallApp(appId: string) {
-    if (!['stocks', 'rnm-prices', 'hr', 'planning', 'technical-sheets', 'production', 'menus'].includes(appId)) return;
+    if (!['stocks', 'rnm-prices', 'hr', 'planning', 'technical-sheets', 'production', 'menus', 'haccp'].includes(appId)) return;
     setInstallingAppId(appId);
     setInstallProgress(0);
 
@@ -1221,10 +1257,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         if (appId === 'planning' && planningPrerequisiteMessage) throw new Error(planningPrerequisiteMessage);
         if (appId === 'production' && (!stocksInstalled || !technicalSheetsInstalled)) throw new Error('Installez Stocks et Fiches Techniques avant Production. RH et Planning restent optionnels.');
         if (appId === 'menus' && (!technicalSheetsInstalled || !productionInstalled)) throw new Error('Installez Fiches Techniques et Production avant Menus. Menus ne fonctionne pas en mode autonome.');
-        const summary = appId === 'rnm-prices' ? await api.installRnmPrices(token) : appId === 'hr' ? await api.installHr(token) : appId === 'planning' ? await api.installPlanning(token) : appId === 'technical-sheets' ? await api.installTechnicalSheets(token) : appId === 'production' ? await api.installProduction(token) : appId === 'menus' ? await api.installMenus(token) : await api.installStocks(token);
+        const summary = appId === 'rnm-prices' ? await api.installRnmPrices(token) : appId === 'hr' ? await api.installHr(token) : appId === 'planning' ? await api.installPlanning(token) : appId === 'technical-sheets' ? await api.installTechnicalSheets(token) : appId === 'production' ? await api.installProduction(token) : appId === 'menus' ? await api.installMenus(token) : appId === 'haccp' ? await api.installHaccp(token) : await api.installStocks(token);
         setDashboardSummary((prev) => ({ ...prev, ...summary } as DashboardSummary));
         setInstalledApps(summary.installedApplications ?? Array.from(new Set([...installedApps, appId])));
-        setSuccess(appId === 'rnm-prices' ? 'L’application Cours des Produits a été installée. La navigation RNM est maintenant visible.' : appId === 'hr' ? 'L’application RH a été installée. Services et postes de départ sont disponibles.' : appId === 'planning' ? 'L’application Planning a été installée. Les vues opérationnelles consomment désormais le référentiel RH.' : appId === 'technical-sheets' ? 'L’application Fiches Techniques a été installée. Catégories recettes et allergènes standards sont disponibles.' : appId === 'production' ? 'L’application Production a été installée. Les ordres peuvent être créés depuis les fiches techniques sans dupliquer les référentiels.' : appId === 'menus' ? 'L’application Menus a été installée. Planification, cycles, convives et génération Production sont disponibles.' : 'L’application Stocks a été installée avec succès. Lancez l’assistant de préremplissage pour ajouter catégories, unités et emplacements métier.');
+        setSuccess(appId === 'rnm-prices' ? 'L’application Cours des Produits a été installée. La navigation RNM est maintenant visible.' : appId === 'hr' ? 'L’application RH a été installée. Services et postes de départ sont disponibles.' : appId === 'planning' ? 'L’application Planning a été installée. Les vues opérationnelles consomment désormais le référentiel RH.' : appId === 'technical-sheets' ? 'L’application Fiches Techniques a été installée. Catégories recettes et allergènes standards sont disponibles.' : appId === 'production' ? 'L’application Production a été installée. Les ordres peuvent être créés depuis les fiches techniques sans dupliquer les référentiels.' : appId === 'menus' ? 'L’application Menus a été installée. Planification, cycles, convives et génération Production sont disponibles.' : appId === 'haccp' ? 'L’application HACCP a été installée. Dashboard conformité, contrôles et rapports sont disponibles.' : 'L’application Stocks a été installée avec succès. Lancez l’assistant de préremplissage pour ajouter catégories, unités et emplacements métier.');
         if (appId === 'stocks') setShowStocksOnboarding(true);
         if (appId === 'rnm-prices') setActiveTab('rnm-dashboard');
         if (appId === 'hr') setActiveTab('hr-dashboard');
@@ -1232,6 +1268,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         if (appId === 'technical-sheets') setActiveTab('technical-sheets-dashboard');
         if (appId === 'production') setActiveTab('production-dashboard');
         if (appId === 'menus') setActiveTab('menus-dashboard');
+        if (appId === 'haccp') setActiveTab('haccp-dashboard');
         await refresh();
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Erreur lors de l’installation.');
@@ -1718,6 +1755,17 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     'menus-guests': 'Convives Menus',
     'menus-exports': 'Exports Menus',
     'menus-history': 'Historique Menus',
+    'haccp-dashboard': 'HACCP',
+    'haccp-temperatures': 'Températures HACCP',
+    'haccp-cleaning': 'Nettoyage HACCP',
+    'haccp-traceability': 'Traçabilité HACCP',
+    'haccp-receptions': 'Réceptions HACCP',
+    'haccp-process': 'Processus HACCP',
+    'haccp-oil': 'Huiles HACCP',
+    'haccp-production': 'Production HACCP',
+    'haccp-products': 'Produits HACCP',
+    'haccp-labels': 'Étiquettes HACCP',
+    'haccp-reports': 'Rapports HACCP',
   }[activeTab];
 
   return (
@@ -2404,6 +2452,13 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   canManage={canWriteHr}
                   onNavigate={(next) => setActiveTab(next === 'menus' ? 'menus-list' : next === 'calendar' ? 'menus-calendar' : next === 'cycles' ? 'menus-cycles' : next === 'diets' ? 'menus-diets' : next === 'guests' ? 'menus-guests' : next === 'exports' ? 'menus-exports' : next === 'history' ? 'menus-history' : 'menus-dashboard')}
                   onInstalled={(apps) => { if (apps) setInstalledApps(apps); void refresh(); }}
+                />
+              )}
+
+              {isHaccpTab && haccpInstalled && (
+                <HaccpApp
+                  token={token}
+                  tab={activeTab === 'haccp-temperatures' ? 'temperatures' : activeTab === 'haccp-cleaning' ? 'cleaning' : activeTab === 'haccp-traceability' ? 'traceability' : activeTab === 'haccp-receptions' ? 'receptions' : activeTab === 'haccp-process' ? 'process' : activeTab === 'haccp-oil' ? 'oil' : activeTab === 'haccp-production' ? 'production' : activeTab === 'haccp-products' ? 'products' : activeTab === 'haccp-labels' ? 'labels' : activeTab === 'haccp-reports' ? 'reports' : 'dashboard'}
                 />
               )}
 

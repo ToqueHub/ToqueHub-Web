@@ -32,12 +32,16 @@ const BASE_PERMISSIONS = [
   { key: 'production.write', description: 'Modifier la production' },
   { key: 'menus.read', description: 'Consulter les menus' },
   { key: 'menus.write', description: 'Modifier les menus' },
+  { key: 'haccp.read', description: 'Consulter le module HACCP' },
+  { key: 'haccp.write', description: 'Modifier les contrôles HACCP' },
+  { key: 'haccp.validate', description: 'Valider les contrôles HACCP' },
+  { key: 'haccp.export', description: 'Exporter les rapports HACCP' },
 ];
 
 const DEFAULT_ROLE_PERMISSIONS: Record<CoreRoleName, string[]> = {
   [CoreRoleName.ADMIN]: BASE_PERMISSIONS.map((permission) => permission.key),
-  [CoreRoleName.MANAGER]: ['catalog.read', 'catalog.write', 'stocks.read', 'stocks.write', 'stocks.audit.read', 'hr.read', 'hr.write', 'planning.read', 'planning.write', 'rnm-prices.read', 'technical-sheets.read', 'technical-sheets.write', 'production.read', 'production.write', 'menus.read', 'menus.write'],
-  [CoreRoleName.USER]: ['catalog.read', 'stocks.read', 'hr.read', 'planning.read', 'rnm-prices.read', 'technical-sheets.read', 'production.read', 'menus.read'],
+  [CoreRoleName.MANAGER]: ['catalog.read', 'catalog.write', 'stocks.read', 'stocks.write', 'stocks.audit.read', 'hr.read', 'hr.write', 'planning.read', 'planning.write', 'rnm-prices.read', 'technical-sheets.read', 'technical-sheets.write', 'production.read', 'production.write', 'menus.read', 'menus.write', 'haccp.read', 'haccp.write', 'haccp.validate', 'haccp.export'],
+  [CoreRoleName.USER]: ['catalog.read', 'stocks.read', 'hr.read', 'planning.read', 'rnm-prices.read', 'technical-sheets.read', 'production.read', 'menus.read', 'haccp.read'],
 };
 
 type UserWithRole = Prisma.UserGetPayload<{ include: { role: { include: { permissions: { include: { permission: true } } } } } }>;
@@ -182,11 +186,8 @@ export class UsersService {
     await this.prisma.permission.createMany({ data: BASE_PERMISSIONS, skipDuplicates: true });
     for (const roleName of Object.values(CoreRoleName)) {
       const role = await this.prisma.role.upsert({ where: { name: roleName }, update: { isSystem: true }, create: { name: roleName, description: `Rôle Core ${roleName}`, isSystem: true } });
-      const existingCount = await this.prisma.rolePermission.count({ where: { roleId: role.id } });
-      if (existingCount === 0) {
-        const permissions = await this.prisma.permission.findMany({ where: { key: { in: DEFAULT_ROLE_PERMISSIONS[roleName] } } });
-        await this.prisma.rolePermission.createMany({ data: permissions.map((permission) => ({ roleId: role.id, permissionId: permission.id })), skipDuplicates: true });
-      }
+      const permissions = await this.prisma.permission.findMany({ where: { key: { in: DEFAULT_ROLE_PERMISSIONS[roleName] } } });
+      await this.prisma.rolePermission.createMany({ data: permissions.map((permission) => ({ roleId: role.id, permissionId: permission.id })), skipDuplicates: true });
     }
   }
 

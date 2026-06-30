@@ -396,6 +396,26 @@ export class AuthService {
     return this.getDashboardSummary(user);
   }
 
+  async installHaccpApplication(user: AuthenticatedUser) {
+    if (!user.organizationId) throw new ForbiddenException('Organization setup is required before installing applications');
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: user.organizationId },
+      select: { haccpInstalledAt: true },
+    });
+    if (!organization) throw new ForbiddenException('Organization setup is required before installing applications');
+    await this.prisma.organization.update({
+      where: { id: user.organizationId },
+      data: { haccpInstalledAt: organization.haccpInstalledAt ?? new Date() },
+    });
+    return this.getDashboardSummary(user);
+  }
+
+  async uninstallHaccpApplication(user: AuthenticatedUser) {
+    if (!user.organizationId) throw new ForbiddenException('Organization setup is required before uninstalling applications');
+    await this.prisma.organization.update({ where: { id: user.organizationId }, data: { haccpInstalledAt: null } });
+    return this.getDashboardSummary(user);
+  }
+
   async installHrApplication(user: AuthenticatedUser) {
     if (!user.organizationId) throw new ForbiddenException('Organization setup is required before installing applications');
     const organizationId = user.organizationId;
