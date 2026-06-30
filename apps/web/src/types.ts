@@ -344,85 +344,6 @@ export interface HrPosition {
   archivedAt?: string | null;
 }
 
-export type HrDayMode = 'WORK' | 'REST';
-
-export interface HrRotationDay {
-  id?: string;
-  dayOfWeek: number;
-  mode: HrDayMode | string;
-  startTime?: string | null;
-  endTime?: string | null;
-  breakMinutes?: number | null;
-  durationMinutes?: number | null;
-  presenceMinutes?: number | null;
-  endsNextDay?: boolean;
-}
-
-export interface HrRotationWeek {
-  id?: string;
-  weekIndex: number;
-  label?: string | null;
-  days: HrRotationDay[];
-  totalMinutes?: number;
-  workedDays?: number;
-  restDays?: number;
-  averagePresenceMinutes?: number;
-}
-
-export interface HrRotationMetrics {
-  weeklyMinutes?: number;
-  averageWeeklyMinutes?: number;
-  workedDays?: number;
-  restDays?: number;
-  averagePresenceMinutes?: number;
-  weeklyHoursMinutesAverage?: number;
-  workedDaysAverage?: number;
-  restDaysAverage?: number;
-  averageDailyPresenceMinutes?: number;
-  weeks?: Array<{ weekIndex: number; totalMinutes: number; workedDays: number; restDays: number; averagePresenceMinutes?: number }>;
-}
-
-export interface HrRotationAssignment {
-  id: string;
-  collaboratorId?: string;
-  employeeId?: string;
-  rotationId?: string;
-  startDate?: string | null;
-  endDate?: string | null;
-  collaborator?: HrCollaborator | null;
-  employee?: HrCollaborator | null;
-  rotation?: HrRotation | null;
-}
-
-export interface HrRotation {
-  id: string;
-  name: string;
-  description?: string | null;
-  departmentId?: string | null;
-  serviceId?: string | null;
-  department?: HrDepartment | null;
-  service?: HrDepartment | null;
-  cycleWeeks: number;
-  cycle?: { weeks?: Array<HrRotationWeek & { weekNumber?: number }> } | null;
-  weeks?: HrRotationWeek[];
-  days?: HrRotationDay[];
-  assignments?: HrRotationAssignment[];
-  activeAssignments?: HrRotationAssignment[];
-  metrics?: HrRotationMetrics;
-  isArchived?: boolean;
-  archivedAt?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface HrRotationPayload {
-  name: string;
-  description?: string;
-  departmentId?: string | null;
-  cycleWeeks: number;
-  weeks: HrRotationWeek[];
-}
-
 export interface HrHistoryEntry {
   id?: string;
   type: string;
@@ -515,9 +436,6 @@ export interface HrCollaborator {
   site?: Site | null;
   user?: CoreUser | null;
   manager?: HrCollaborator | null;
-  activeRotationAssignment?: HrRotationAssignment | null;
-  rotationAssignment?: HrRotationAssignment | null;
-  activeRotation?: HrRotation | null;
   /** @deprecated Champs plats – utiliser activeContract */
   contractType?: string | null;
   /** @deprecated Champs plats – utiliser activeContract */
@@ -597,10 +515,6 @@ export interface HrSummary {
     departments: number;
     positions: number;
     linkedCollaborators: number;
-    activeRotations?: number;
-    collaboratorsWithRotation?: number;
-    collaboratorsWithoutRotation?: number;
-    averageWeeklyRotationMinutes?: number;
   };
   latestCollaborators?: HrCollaborator[];
   departmentDistribution?: Array<{ department: string; count: number }>;
@@ -1097,6 +1011,9 @@ export interface LegalRightRuleSummary {
   stableId: string;
   rightCode?: string;
   name?: string;
+  countryCode?: string;
+  sector?: string;
+  sourceLayer?: LegalRightSourceLayer;
   regime?: { code: string; type: string; name: string } | null;
   agreement?: { key: string; idcc?: string | null; name: string } | null;
   publicRegime?: { code: string; name: string } | null;
@@ -1109,6 +1026,9 @@ export interface LegalRightRuleSummary {
   sourceLabel?: string | null;
   sourceUrl?: string | null;
 }
+
+export type LegalRightSourceLayer = 'common_law' | 'collective_agreement' | 'public_regime' | 'public_status' | 'legal_reference' | 'manual_template' | 'establishment_manual' | 'employee_assignment';
+export type LegalRightUiStatus = 'included' | 'included_requires_review' | 'activated' | 'requires_review' | 'available';
 
 export interface LegalRightDetail {
   id: string;
@@ -1138,6 +1058,15 @@ export interface LegalRightSearchItem {
   score: number;
   activated?: boolean;
   organizationRuleId?: string | null;
+  sourceLayer?: LegalRightSourceLayer;
+  autoApplicable?: boolean;
+  applicableByDefault?: boolean;
+  requiresConfiguration?: boolean;
+  employeeCounterSupported?: boolean;
+  establishmentConfigurationId?: string | null;
+  validationStatus?: string;
+  uiStatus?: LegalRightUiStatus;
+  priorityCommonLaw?: boolean;
   rules: LegalRightRuleSummary[];
 }
 
@@ -1188,6 +1117,179 @@ export interface LegalRightsDiagnosticsResponse {
   importErrors?: string[];
 }
 
+export interface EmployeeApplicableRightCounter {
+  right?: { id: string; code: string; name: string; category: string } | null;
+  acquired?: number | null;
+  used?: number | null;
+  remaining?: number | null;
+  unit?: string | null;
+  counterStatus?: string | null;
+  calculationStatus?: string | null;
+  validationStatus?: string | null;
+  source?: { label?: string | null; url?: string | null } | null;
+  formula?: unknown;
+}
+
+export interface EmployeeApplicableRight {
+  id: string;
+  code: string;
+  label: string;
+  name?: string;
+  category: string;
+  sourceLayer: LegalRightSourceLayer;
+  sourceLabel?: string;
+  autoApplicable: boolean;
+  applicableByDefault: boolean;
+  requiresConfiguration: boolean;
+  employeeCounterSupported: boolean;
+  validationStatus: string;
+  uiStatus: LegalRightUiStatus;
+  priorityCommonLaw?: boolean;
+  calculationStatus?: string;
+  counter?: EmployeeApplicableRightCounter | null;
+  warnings?: Array<{ code: string; message: string }>;
+  rules?: LegalRightRuleSummary[];
+}
+
+export interface EmployeeApplicableRightsResponse {
+  employeeId: string;
+  organizationId: string;
+  regulatoryCountryCode: RegulatoryCountryCode | null;
+  legalProfile?: {
+    regimeType: string;
+    agreement?: { id: string; key: string; idcc?: string | null; name: string } | null;
+    publicRegime?: { id: string; code: string; name: string } | null;
+    contractType?: string | null;
+    weeklyHours?: number | null;
+    annualHours?: number | null;
+    seniorityStartDate?: string | null;
+    fullTimeEquivalent?: number | null;
+    isSeasonal?: boolean;
+    source?: string;
+  } | null;
+  hasActiveContract: boolean;
+  calculationStatus: string;
+  period?: { startDate: string; endDate: string };
+  applicableRights: EmployeeApplicableRight[];
+  counters: EmployeeApplicableRightCounter[];
+  warnings: Array<{ code: string; message: string }>;
+}
+
+export interface EstablishmentRightsRecommendation {
+  id: string;
+  code: string;
+  name: string;
+  category: string;
+  description?: string | null;
+  activated?: boolean;
+  organizationRuleId?: string | null;
+  sourceLayer: LegalRightSourceLayer;
+  validationStatus?: string | null;
+  uiStatus?: LegalRightUiStatus;
+  recommendation?: string;
+  canBeUsedInPlanningStatus?: boolean;
+  planningStatusCode?: string | null;
+  hasBalance?: boolean;
+  balanceUnit?: string | null;
+  rules?: LegalRightRuleSummary[];
+}
+
+export interface EstablishmentManualTemplateRecommendation {
+  templateCode: string;
+  code: string;
+  label: string;
+  category: string;
+  shortDescription?: string | null;
+  longDescription?: string | null;
+  accountType: string;
+  unit: 'MINUTES' | 'DAYS' | string;
+  sourceLayer: LegalRightSourceLayer;
+  sourceKind: 'manual_template';
+  requiresAdminValidation?: boolean;
+  isRecommended?: boolean;
+  isAdvanced?: boolean;
+  hasBalance?: boolean;
+  balanceUnit?: string | null;
+  canBeUsedInPlanningStatus?: boolean;
+  planningStatusCode?: string | null;
+}
+
+export interface EstablishmentRightsRecommendationsResponse {
+  context: {
+    country: RegulatoryCountryCode | null;
+    sector: RegulatorySector | null;
+    establishmentType: EstablishmentType | string | null;
+    idcc?: string | null;
+    publicRegime?: string | null;
+    query?: string | null;
+  };
+  hiddenAutoIncludedCount: number;
+  recommendedRights: EstablishmentRightsRecommendation[];
+  manualTemplates: EstablishmentManualTemplateRecommendation[];
+  warnings: Array<{ code: string; message: string }>;
+}
+
+export interface EmployeeRightsOverviewResponse {
+  employee: { id: string; name: string; position?: string | null; department?: string | null };
+  organizationContext?: {
+    regulatoryCountryCode?: RegulatoryCountryCode | null;
+    regulatorySector?: RegulatorySector | string | null;
+    establishmentType?: EstablishmentType | string | null;
+  };
+  regulatoryCountryCode: RegulatoryCountryCode | null;
+  sector?: RegulatorySector | string | null;
+  establishmentType?: EstablishmentType | string | null;
+  activeContract?: Record<string, unknown> | null;
+  mandatoryRights: Array<EmployeeApplicableRight & {
+    uiGroup?: string;
+    applicability?: string;
+    hasBalance?: boolean;
+    balanceUnit?: string | null;
+    counterStatus?: string | null;
+    canBeUsedInPlanningStatus?: boolean;
+    planningStatusCode?: string | null;
+  }>;
+  applicableRights: Array<{
+    id: string;
+    code: string;
+    label: string;
+    category?: string | null;
+    sourceLayer?: LegalRightSourceLayer | string;
+    sourceLabel?: string | null;
+    applicability?: string;
+    uiGroup?: string;
+    hasBalance?: boolean;
+    balanceUnit?: string | null;
+    counterStatus?: string | null;
+    validationStatus?: string | null;
+    canBeUsedInPlanningStatus?: boolean;
+    planningStatusCode?: string | null;
+    establishmentConfigurationId?: string | null;
+    entitlementRuleId?: string | null;
+    counterAccountId?: string | null;
+  }>;
+  activeBalances: Array<{
+    source: string;
+    id?: string;
+    code: string;
+    label: string;
+    hasBalance?: boolean;
+    balanceUnit?: string | null;
+    initial?: number | null;
+    acquired?: number | null;
+    used?: number | null;
+    adjusted?: number | null;
+    remaining?: number | null;
+    counterStatus?: string | null;
+    validationStatus?: string | null;
+    lastUpdatedAt?: string | null;
+    periodYear?: number;
+    period?: { startDate: string; endDate: string };
+  }>;
+  warnings: Array<{ code: string; message: string }>;
+  calculationStatus: string;
+}
+
 export interface PlanningHistoryEntry {
   id?: string;
   action: string;
@@ -1224,7 +1326,7 @@ export interface PlanningBootstrap {
   departments?: HrDepartment[];
   services?: HrDepartment[];
   positions?: HrPosition[];
-  rotations?: HrRotation[];
+  rotations?: PlanningTemplate[];
   sites?: Site[];
   assignments?: PlanningAssignment[];
   absences?: Array<Record<string, any>>;

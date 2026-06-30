@@ -2,9 +2,9 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { randomUUID } from 'crypto';
 import { mkdir, unlink, writeFile } from 'fs/promises';
 import { extname, join, resolve } from 'path';
-import { AuditAction, HrContractStatus, HrDocumentCategory, HrEmployeeStatus, HrHistoryEventType, HrOnboardingStatus, HrRotationStatus, Prisma } from '@prisma/client';
+import { AuditAction, HrContractStatus, HrDocumentCategory, HrEmployeeStatus, HrHistoryEventType, HrOnboardingStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { AssignHrRotationDto, ChangeEmployeeRotationDto, HrListQueryDto, RemoveHrRotationDto, UpsertHrEmployeeDto, UpsertHrReferenceDto, UpsertHrRotationDto } from './dto/hr.dto';
+import { HrListQueryDto, UpsertHrEmployeeDto, UpsertHrReferenceDto } from './dto/hr.dto';
 import { HR_CATALOG } from './hr.catalog';
 
 type Actor = { id: string; role: string; employeeId?: string | null };
@@ -12,11 +12,9 @@ type Tx = Prisma.TransactionClient;
 const WRITE_ROLES = ['SUPER_ADMIN', 'Administrateur', 'ADMIN', 'Manager', 'MANAGER', 'Chef', 'Responsable'];
 const MANAGER_ROLES = [...WRITE_ROLES, 'Manager', 'MANAGER', 'Chef', 'Responsable'];
 const ADMIN_ROLES = ['SUPER_ADMIN', 'Administrateur', 'ADMIN'];
-const ROTATION_DAY_NAMES = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
 const LEGACY_HR_DEFAULT_DEPARTMENTS = ['Cuisine', 'Pâtisserie', 'Administration', 'Entretien', 'Soins', 'Animation', 'Direction', 'Magasin'];
 const LEGACY_HR_DEFAULT_POSITIONS = ['Chef de cuisine', 'Second de cuisine', 'Commis', 'Pâtissier', 'Magasinier', 'Agent polyvalent', 'Directeur', 'Infirmier', 'Animateur'];
-const includeRotation = { department: true, assignments: { where: { endDate: null }, include: { employee: { include: { department: true, position: true } } }, orderBy: { createdAt: 'desc' as const } } };
-const includeEmployee: any = { department: true, position: { include: { department: true } }, secondaryPositions: { include: { position: { include: { department: true } } } }, mainSite: true, user: { select: { id: true, email: true, firstName: true, lastName: true, role: { select: { name: true } } } }, manager: { select: { id: true, firstName: true, lastName: true } }, rotationAssignments: { where: { endDate: null }, include: { rotation: { include: { department: true } } }, orderBy: { createdAt: 'desc' }, take: 1 }, history: { orderBy: { createdAt: 'desc' }, take: 30, include: { user: { select: { id: true, email: true, firstName: true, lastName: true } } } }, contracts: { orderBy: { startDate: 'desc' } }, compensations: { orderBy: { effectiveFrom: 'desc' } }, salaryReviews: { orderBy: { dueDate: 'asc' } }, documents: { orderBy: { createdAt: 'desc' } } };
+const includeEmployee: any = { department: true, position: { include: { department: true } }, secondaryPositions: { include: { position: { include: { department: true } } } }, mainSite: true, user: { select: { id: true, email: true, firstName: true, lastName: true, role: { select: { name: true } } } }, manager: { select: { id: true, firstName: true, lastName: true } }, history: { orderBy: { createdAt: 'desc' }, take: 30, include: { user: { select: { id: true, email: true, firstName: true, lastName: true } } } }, contracts: { orderBy: { startDate: 'desc' } }, compensations: { orderBy: { effectiveFrom: 'desc' } }, salaryReviews: { orderBy: { dueDate: 'asc' } }, documents: { orderBy: { createdAt: 'desc' } } };
 const HR_UPLOAD_ROOT = resolve(process.env.HR_UPLOAD_DIR || process.env.UPLOAD_DIR || 'uploads', 'hr');
 
 @Injectable()
@@ -158,7 +156,6 @@ export class HrService {
     this.assertWrite(actor);
     return this.prisma.$transaction(async (tx) => {
       await tx.organization.update({ where: { id: organizationId }, data: { hrInstalledAt: new Date() } });
-      await this.ensureDefaultRotations(tx, organizationId);
       await tx.auditLog.create({ data: { organizationId, userId: actor.id, action: AuditAction.MODULE_HR_INSTALLED, entityType: 'Module', entityId: 'hr', entityName: 'RH' } });
       return { installed: true };
     });
@@ -242,19 +239,16 @@ export class HrService {
   }
 
   private async buildDashboard(organizationId: string) {
-    const [employeeCount, departmentCount, positionCount, linkedCount, latestEmployees, grouped, activeRotationCount, employeesWithRotation, rotationAverage] = await Promise.all([
+    const [employeeCount, departmentCount, positionCount, linkedCount, latestEmployees, grouped] = await Promise.all([
       this.prisma.hrEmployee.count({ where: { organizationId, isArchived: false } }),
       this.prisma.hrDepartment.count({ where: { organizationId, isArchived: false } }),
       this.prisma.hrPosition.count({ where: { organizationId, isArchived: false } }),
       this.prisma.hrEmployee.count({ where: { organizationId, isArchived: false, userId: { not: null } } }),
-      this.prisma.hrEmployee.findMany({ where: { organizationId, isArchived: false }, include: { department: true, position: true, rotationAssignments: { where: { endDate: null }, include: { rotation: { include: { department: true } } }, take: 1 } }, orderBy: { createdAt: 'desc' }, take: 6 }),
+      this.prisma.hrEmployee.findMany({ where: { organizationId, isArchived: false }, include: { department: true, position: true }, orderBy: { createdAt: 'desc' }, take: 6 }),
       this.prisma.hrEmployee.groupBy({ by: ['departmentId'], where: { organizationId, isArchived: false }, _count: { _all: true } }),
-      this.prisma.hrRotation.count({ where: { organizationId, isArchived: false } }),
-      this.prisma.hrRotationAssignment.groupBy({ by: ['employeeId'], where: { organizationId, endDate: null }, _count: { _all: true } }),
-      this.prisma.hrRotation.aggregate({ where: { organizationId, isArchived: false }, _avg: { weeklyHoursMinutesAverage: true } }),
     ]);
     const departments = await this.prisma.hrDepartment.findMany({ where: { id: { in: grouped.map((g) => g.departmentId) } } });
-    return { employeeCount, departmentCount, positionCount, linkedCount, latestEmployees, departmentDistribution: grouped.map((g) => ({ department: departments.find((d) => d.id === g.departmentId), count: g._count._all })), rotationStats: { activeRotationCount, employeesWithRotationCount: employeesWithRotation.length, employeesWithoutRotationCount: Math.max(employeeCount - employeesWithRotation.length, 0), averageWeeklyHoursMinutes: Math.round(rotationAverage._avg.weeklyHoursMinutesAverage ?? 0) } };
+    return { employeeCount, departmentCount, positionCount, linkedCount, latestEmployees, departmentDistribution: grouped.map((g) => ({ department: departments.find((d) => d.id === g.departmentId), count: g._count._all })) };
   }
 
   listDepartments(organizationId: string, q: HrListQueryDto = {}) { return this.prisma.hrDepartment.findMany({ where: { organizationId, ...(q.includeArchived ? {} : { isArchived: false }), name: q.search ? { contains: q.search, mode: 'insensitive' } : undefined }, orderBy: { name: 'asc' }, ...this.page(q) }); }
@@ -435,144 +429,9 @@ export class HrService {
 
   listAssignableUsers(organizationId: string) { return this.prisma.user.findMany({ where: { organizationId, isActive: true, hrEmployee: null }, select: { id: true, email: true, firstName: true, lastName: true, role: { select: { name: true } } }, orderBy: { email: 'asc' } }); }
 
-  async listRotations(organizationId: string, q: HrListQueryDto = {}) {
-    return this.prisma.hrRotation.findMany({ where: { organizationId, ...(q.includeArchived ? {} : { isArchived: false }), departmentId: q.departmentId, name: q.search ? { contains: q.search, mode: 'insensitive' } : undefined }, include: includeRotation, orderBy: [{ isArchived: 'asc' }, { name: 'asc' }], ...this.page(q) });
-  }
-
-  async getRotation(organizationId: string, id: string) {
-    const rotation = await this.prisma.hrRotation.findFirst({ where: { id, organizationId }, include: includeRotation });
-    if (!rotation) throw new NotFoundException('Roulement introuvable');
-    return rotation;
-  }
-
-  async createRotation(organizationId: string, actor: Actor, dto: UpsertHrRotationDto) {
-    this.assertWrite(actor);
-    await this.validateRotation(organizationId, dto);
-    const metrics = this.rotationMetrics(dto);
-    return this.prisma.hrRotation.create({ data: { organizationId, name: dto.name, description: dto.description || null, departmentId: dto.departmentId || null, cycleLengthWeeks: dto.cycleLengthWeeks, cycle: this.rotationCycle(dto), ...metrics }, include: includeRotation });
-  }
-
-  async updateRotation(organizationId: string, actor: Actor, id: string, dto: UpsertHrRotationDto) {
-    this.assertWrite(actor);
-    await this.getRotation(organizationId, id);
-    await this.validateRotation(organizationId, dto);
-    const metrics = this.rotationMetrics(dto);
-    return this.prisma.hrRotation.update({ where: { id, organizationId }, data: { name: dto.name, description: dto.description || null, departmentId: dto.departmentId || null, cycleLengthWeeks: dto.cycleLengthWeeks, cycle: this.rotationCycle(dto), ...metrics }, include: includeRotation });
-  }
-
-  async archiveRotation(organizationId: string, actor: Actor, id: string) {
-    this.assertWrite(actor);
-    return this.prisma.hrRotation.update({ where: { id, organizationId }, data: { isArchived: true, status: HrRotationStatus.ARCHIVED, archivedAt: new Date() }, include: includeRotation });
-  }
-
-  async listRotationAssignments(organizationId: string, rotationId: string) {
-    await this.getRotation(organizationId, rotationId);
-    return this.prisma.hrRotationAssignment.findMany({ where: { organizationId, rotationId }, include: { employee: { include: { department: true, position: true } }, rotation: { include: { department: true } } }, orderBy: [{ endDate: 'asc' }, { createdAt: 'desc' }] });
-  }
-
-  async listAvailableEmployeesForRotation(organizationId: string, rotationId: string) {
-    const rotation = await this.getRotation(organizationId, rotationId);
-    return this.prisma.hrEmployee.findMany({ where: { organizationId, isArchived: false, status: HrEmployeeStatus.ACTIVE, ...(rotation.departmentId ? { departmentId: rotation.departmentId } : {}), rotationAssignments: { none: { endDate: null } } }, include: { department: true, position: true }, orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }] });
-  }
-
-  async assignRotation(organizationId: string, actor: Actor, rotationId: string, dto: AssignHrRotationDto) {
-    this.assertWrite(actor);
-    await this.ensureRotationAssignable(organizationId, rotationId, dto.employeeId);
-    return this.prisma.$transaction(async (tx) => {
-      await tx.hrRotationAssignment.updateMany({ where: { organizationId, employeeId: dto.employeeId, endDate: null }, data: { endDate: dto.startDate ? new Date(dto.startDate) : new Date(), endedById: actor.id } });
-      const assignment = await tx.hrRotationAssignment.create({ data: { organizationId, rotationId, employeeId: dto.employeeId, startDate: dto.startDate ? new Date(dto.startDate) : new Date(), createdById: actor.id }, include: { rotation: { include: { department: true } }, employee: { include: { department: true, position: true } } } });
-      await this.history(tx, organizationId, dto.employeeId, actor.id, HrHistoryEventType.ROTATION_ASSIGNED, 'Assignation à un roulement', { rotationId });
-      return assignment;
-    });
-  }
-
-  async removeRotationAssignment(organizationId: string, actor: Actor, rotationId: string, employeeId: string, dto: RemoveHrRotationDto = {}) {
-    this.assertWrite(actor);
-    const active = await this.prisma.hrRotationAssignment.findFirst({ where: { organizationId, rotationId, employeeId, endDate: null } });
-    if (!active) throw new NotFoundException('Assignation active introuvable');
-    return this.prisma.$transaction(async (tx) => {
-      const assignment = await tx.hrRotationAssignment.update({ where: { id: active.id }, data: { endDate: dto.endDate ? new Date(dto.endDate) : new Date(), endedById: actor.id }, include: { rotation: { include: { department: true } }, employee: true } });
-      await this.history(tx, organizationId, employeeId, actor.id, HrHistoryEventType.ROTATION_REMOVED, 'Retrait du roulement', { rotationId });
-      return assignment;
-    });
-  }
-
-  async changeEmployeeRotation(organizationId: string, actor: Actor, employeeId: string, dto: ChangeEmployeeRotationDto) {
-    this.assertWrite(actor);
-    if (!dto.rotationId) return this.removeEmployeeRotation(organizationId, actor, employeeId, {});
-    await this.ensureRotationAssignable(organizationId, dto.rotationId, employeeId);
-    return this.assignRotation(organizationId, actor, dto.rotationId, { employeeId, startDate: dto.startDate });
-  }
-
-  async removeEmployeeRotation(organizationId: string, actor: Actor, employeeId: string, dto: RemoveHrRotationDto = {}) {
-    this.assertWrite(actor);
-    const active = await this.prisma.hrRotationAssignment.findFirst({ where: { organizationId, employeeId, endDate: null } });
-    if (!active) throw new NotFoundException('Aucun roulement actif');
-    return this.removeRotationAssignment(organizationId, actor, active.rotationId, employeeId, dto);
-  }
-
-  private async validateRotation(organizationId: string, dto: UpsertHrRotationDto) {
-    if (dto.weeks.length !== dto.cycleLengthWeeks) throw new BadRequestException('Le nombre de semaines doit correspondre à la durée du cycle');
-    if (dto.departmentId && !(await this.prisma.hrDepartment.findFirst({ where: { id: dto.departmentId, organizationId, isArchived: false } }))) throw new NotFoundException('Service RH introuvable');
-    dto.weeks.forEach((week, wi) => {
-      if (week.days.length !== 7) throw new BadRequestException(`La semaine ${wi + 1} doit contenir 7 jours`);
-      week.days.forEach((day, di) => {
-        if (day.type === 'WORK' && (!day.startTime || !day.endTime)) throw new BadRequestException(`${ROTATION_DAY_NAMES[di]}: heures de début et fin obligatoires`);
-      });
-    });
-  }
-
-  private async ensureRotationAssignable(organizationId: string, rotationId: string, employeeId: string) {
-    const [rotation, employee, active] = await Promise.all([
-      this.prisma.hrRotation.findFirst({ where: { id: rotationId, organizationId, isArchived: false } }),
-      this.prisma.hrEmployee.findFirst({ where: { id: employeeId, organizationId, isArchived: false } }),
-      this.prisma.hrRotationAssignment.findFirst({ where: { organizationId, employeeId, endDate: null } }),
-    ]);
-    if (!rotation) throw new NotFoundException('Roulement actif introuvable');
-    if (!employee) throw new NotFoundException('Collaborateur actif introuvable');
-    if (active && active.rotationId === rotationId) throw new ConflictException('Le collaborateur possède déjà ce roulement actif');
-    if (rotation.departmentId && rotation.departmentId !== employee.departmentId) throw new BadRequestException('Collaborateur incompatible avec le service du roulement');
-  }
-
-  private rotationCycle(dto: UpsertHrRotationDto): Prisma.InputJsonValue { return { weeks: dto.weeks.map((week) => ({ weekNumber: week.weekNumber, days: week.days.map((day) => ({ type: day.type, startTime: day.startTime ?? null, endTime: day.endTime ?? null, breakMinutes: day.breakMinutes ?? 0 })) })) }; }
-
-  private rotationMetrics(dto: UpsertHrRotationDto): Pick<Prisma.HrRotationUncheckedCreateInput, 'weeklyHoursMinutesAverage' | 'weeklyPresenceMinutesAverage' | 'workedDaysAverage' | 'restDaysAverage' | 'averageDailyPresenceMinutes'> {
-    const weekMetrics = dto.weeks.map((week) => week.days.reduce((acc, day) => {
-      if (day.type === 'REST') return { ...acc, restDays: acc.restDays + 1 };
-      const presence = this.minutesBetween(day.startTime!, day.endTime!);
-      const worked = Math.max(presence - (day.breakMinutes ?? 0), 0);
-      return { workedMinutes: acc.workedMinutes + worked, presenceMinutes: acc.presenceMinutes + presence, workedDays: acc.workedDays + 1, restDays: acc.restDays };
-    }, { workedMinutes: 0, presenceMinutes: 0, workedDays: 0, restDays: 0 }));
-    const sum = weekMetrics.reduce((acc, w) => ({ workedMinutes: acc.workedMinutes + w.workedMinutes, presenceMinutes: acc.presenceMinutes + w.presenceMinutes, workedDays: acc.workedDays + w.workedDays, restDays: acc.restDays + w.restDays }), { workedMinutes: 0, presenceMinutes: 0, workedDays: 0, restDays: 0 });
-    const divisor = Math.max(dto.cycleLengthWeeks, 1);
-    return { weeklyHoursMinutesAverage: Math.round(sum.workedMinutes / divisor), weeklyPresenceMinutesAverage: Math.round(sum.presenceMinutes / divisor), workedDaysAverage: sum.workedDays / divisor, restDaysAverage: sum.restDays / divisor, averageDailyPresenceMinutes: sum.workedDays ? Math.round(sum.presenceMinutes / sum.workedDays) : 0 };
-  }
-
   private minutesBetween(start: string, end: string) {
     const parse = (value: string) => { const [h, m] = value.split(':').map(Number); if (!Number.isFinite(h) || !Number.isFinite(m) || h < 0 || h > 23 || m < 0 || m > 59) throw new BadRequestException('Format horaire invalide'); return h * 60 + m; };
     const s = parse(start); let e = parse(end); if (e <= s) e += 24 * 60; return e - s;
-  }
-
-  private defaultWeek(startTime: string, endTime: string, breakMinutes = 30) {
-    return { weekNumber: 1, days: ROTATION_DAY_NAMES.map((_, index) => index < 5 ? { type: 'WORK', startTime, endTime, breakMinutes } : { type: 'REST' }) };
-  }
-
-  private async ensureDefaultRotations(tx: Tx, organizationId: string) {
-    const departments = await tx.hrDepartment.findMany({ where: { organizationId } });
-    const dep = (name: string) => departments.find((d) => d.name === name)?.id;
-    const samples = [
-      { name: 'Cuisine matin', departmentId: dep('Cuisine'), start: '06:00', end: '14:00' },
-      { name: 'Cuisine soir', departmentId: dep('Cuisine'), start: '14:00', end: '22:00' },
-      { name: 'Pâtisserie', departmentId: dep('Pâtisserie'), start: '05:00', end: '13:00' },
-      { name: 'Week-end', departmentId: null, start: '08:00', end: '16:00' },
-      { name: 'Cuisine centrale', departmentId: dep('Cuisine'), start: '07:00', end: '15:00' },
-      { name: 'Agent polyvalent', departmentId: null, start: '09:00', end: '17:00' },
-      { name: 'Administration', departmentId: dep('Administration'), start: '09:00', end: '17:00' },
-    ];
-    for (const sample of samples) {
-      const dto = { name: sample.name, description: 'Roulement exemple modifiable', departmentId: sample.departmentId ?? undefined, cycleLengthWeeks: 1, weeks: [this.defaultWeek(sample.start, sample.end)] } as UpsertHrRotationDto;
-      await tx.hrRotation.upsert({ where: { organizationId_name: { organizationId, name: sample.name } }, update: {}, create: { organizationId, name: sample.name, description: dto.description, departmentId: sample.departmentId, cycleLengthWeeks: 1, cycle: this.rotationCycle(dto), ...this.rotationMetrics(dto) } });
-    }
   }
 
   private async validateEmployeeRefs(organizationId: string, dto: UpsertHrEmployeeDto, employeeId?: string) {

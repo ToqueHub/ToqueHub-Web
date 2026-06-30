@@ -25,7 +25,7 @@ function mockPrisma(overrides?: any): any {
     hrAbsence: { findMany: jest.fn() },
     planningAssignment: { findMany: jest.fn() },
     legalCalculationRun: { create: jest.fn(), update: jest.fn() },
-    legalRightCounter: { upsert: jest.fn() },
+    legalRightCounter: { upsert: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     legalCalculationAuditLog: { create: jest.fn() },
     hrTimeAccount: { upsert: jest.fn(), findMany: jest.fn(), update: jest.fn() },
     hrTimeAccountTransaction: { create: jest.fn(), upsert: jest.fn() },
@@ -249,6 +249,312 @@ describe('LegalRightsService search', () => {
     await new LegalRightsService(prisma).search({ country: 'FR', regime: 'all' });
 
     expect(prisma.legalRight.findMany.mock.calls[0][0].include.ruleVersions.where.validationStatus).toEqual({ in: ['active', 'requires_review'] });
+  });
+
+  it('marks France private common law CP as included automatically without required establishment configuration', async () => {
+    const prisma = mockPrisma();
+    prisma.legalRight.findMany.mockResolvedValue([
+      { ...right('CP', 'Congés payés', 'Congés'), ruleVersions: [rule('CP', 'monthly_accrual', { monthlyValue: 2.5 }, { category: 'Congés' })] },
+    ]);
+
+    const result = await new LegalRightsService(prisma).search({ country: 'FR', regime: 'private', status: 'all', includeRequiresReview: true });
+
+    expect(result.items[0]).toEqual(expect.objectContaining({
+      code: 'CP',
+      sourceLayer: 'common_law',
+      autoApplicable: true,
+      applicableByDefault: true,
+      requiresConfiguration: false,
+      uiStatus: 'included',
+      establishmentConfigurationId: null,
+    }));
+  });
+
+  it('marks France private common law overtime as applicable by default', async () => {
+    const prisma = mockPrisma();
+    prisma.legalRight.findMany.mockResolvedValue([
+      { ...right('HS', 'Heures supplémentaires', 'Temps de travail'), ruleVersions: [rule('HS', 'overtime_threshold', { weeklyThresholdHours: 35 }, { category: 'Temps de travail' })] },
+    ]);
+
+    const result = await new LegalRightsService(prisma).search({ country: 'FR', regime: 'private', status: 'all', includeRequiresReview: true });
+
+    expect(result.items[0]).toEqual(expect.objectContaining({
+      code: 'HS',
+      autoApplicable: true,
+      applicableByDefault: true,
+      sourceLayer: 'common_law',
+    }));
+  });
+
+  it('keeps common law rules requiring review visible with an included review status', async () => {
+    const prisma = mockPrisma();
+    prisma.legalRight.findMany.mockResolvedValue([
+      {
+        ...right('MATERNITE', 'Congé maternité', 'Absences'),
+        ruleVersions: [rule('MATERNITE', 'requires_review', { rawText: 'À valider' }, { category: 'Absences', validationStatus: 'requires_review' })],
+      },
+    ]);
+
+    const result = await new LegalRightsService(prisma).search({ country: 'FR', regime: 'private', status: 'all', includeRequiresReview: true });
+
+    expect(result.count).toBe(1);
+    expect(result.items[0]).toEqual(expect.objectContaining({
+      code: 'MATERNITE',
+      autoApplicable: true,
+      validationStatus: 'requires_review',
+      uiStatus: 'included_requires_review',
+    }));
+  });
+});
+
+describe('LegalRightsService onboarding recommendations', () => {
+  it('excludes auto-included common law rights and recommends HCR for a private restaurant', async () => {
+    const cp = right('CP', 'Congés payés', 'Congés');
+    const hcr = right('JF_HCR_GARANTI', 'HCR - jours fériés garantis', 'Jours fériés');
+    const prisma = mockPrisma();
+    prisma.legalRight.findMany.mockResolvedValue([
+      { ...cp, ruleVersions: [rule('CP', 'monthly_accrual', { monthlyValue: 2.5 }, { right: cp, rightId: cp.id })] },
+      {
+        ...hcr,
+        ruleVersions: [
+          rule('JF_HCR_GARANTI', 'requires_review', { rawText: 'Convention à vérifier' }, {
+            right: hcr,
+            rightId: hcr.id,
+            agreementId: 'agreement-hcr',
+            agreement: { id: 'agreement-hcr', key: 'CCN_HCR_1979', idcc: '1979', name: 'Hôtels, cafés, restaurants (HCR)' },
+          }),
+        ],
+      },
+    ]);
+
+    const result = await new LegalRightsService(prisma).establishmentRightsRecommendations({ country: 'FR', sector: 'PRIVATE', establishmentType: 'Restaurant' });
+
+    expect(result.hiddenAutoIncludedCount).toBe(1);
+    expect(result.recommendedRights.map((item: any) => item.code)).toEqual(['JF_HCR_GARANTI']);
+    expect(result.recommendedRights[0]).toEqual(expect.objectContaining({
+      sourceLayer: 'collective_agreement',
+      autoApplicable: false,
+      recommendation: expect.stringContaining('Hôtels, cafés, restaurants'),
+    }));
+  });
+
+  it('recommends restauration collective for private cuisine centrale when available', async () => {
+    const collective = right('JF_RESTAU_COLL', 'Restauration collective - jours fériés', 'Jours fériés');
+    const prisma = mockPrisma();
+    prisma.legalRight.findMany.mockResolvedValue([
+      {
+        ...collective,
+        ruleVersions: [
+          rule('JF_RESTAU_COLL', 'requires_review', { rawText: 'Convention à vérifier' }, {
+            right: collective,
+            rightId: collective.id,
+            agreementId: 'agreement-collective',
+            agreement: { id: 'agreement-collective', key: 'CCN_RESTAURATION_COLLECTIVE_1266', idcc: '1266', name: 'Restauration collective' },
+          }),
+        ],
+      },
+    ]);
+
+    const result = await new LegalRightsService(prisma).establishmentRightsRecommendations({ country: 'FR', sector: 'PRIVATE', establishmentType: 'Cuisine centrale' });
+
+    expect(result.recommendedRights.map((item: any) => item.code)).toEqual(['JF_RESTAU_COLL']);
+    expect(result.recommendedRights[0].recommendation).toContain('Restauration collective');
+  });
+
+  it('does not return France rights for Finland onboarding', async () => {
+    const prisma = mockPrisma();
+
+    const result = await new LegalRightsService(prisma).establishmentRightsRecommendations({ country: 'FI', sector: 'PRIVATE', establishmentType: 'Restaurant' });
+
+    expect(result.recommendedRights).toEqual([]);
+    expect(result.manualTemplates).toEqual([]);
+    expect(result.warnings).toEqual([expect.objectContaining({ code: 'finland_pending' })]);
+    expect(prisma.legalRight.findMany).not.toHaveBeenCalled();
+  });
+
+  it('keeps public recommendations separate from private conventions', async () => {
+    const hcr = right('JF_HCR_GARANTI', 'HCR - jours fériés garantis', 'Jours fériés');
+    const publicRight = right('CA_FPH', 'Congés annuels FPH', 'Congés');
+    const prisma = mockPrisma();
+    prisma.legalRight.findMany.mockResolvedValue([
+      {
+        ...hcr,
+        ruleVersions: [
+          rule('JF_HCR_GARANTI', 'requires_review', {}, {
+            right: hcr,
+            rightId: hcr.id,
+            agreementId: 'agreement-hcr',
+            agreement: { id: 'agreement-hcr', key: 'CCN_HCR_1979', idcc: '1979', name: 'HCR' },
+          }),
+        ],
+      },
+      {
+        ...publicRight,
+        ruleVersions: [
+          rule('CA_FPH', 'public_annual_leave', { multiplierWorkedDaysPerWeek: 5 }, {
+            right: publicRight,
+            rightId: publicRight.id,
+            sector: 'public',
+            regime: { code: 'FR_PUBLIC', type: 'public', name: 'Fonction publique France' },
+            publicRegimeId: 'public-fph',
+            publicRegime: { id: 'public-fph', code: 'FPH', name: 'Fonction publique hospitalière' },
+          }),
+        ],
+      },
+    ]);
+
+    const result = await new LegalRightsService(prisma).establishmentRightsRecommendations({ country: 'FR', sector: 'PUBLIC', establishmentType: 'EHPAD' });
+
+    expect(result.recommendedRights.map((item: any) => item.code)).toEqual(['CA_FPH']);
+    expect(result.recommendedRights[0].sourceLayer).toBe('public_regime');
+    expect(result.warnings).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'public_base_partial' })]));
+  });
+});
+
+describe('LegalRightsService employee applicable rights', () => {
+  function serviceWithCommonLawRules(rules: any[], employeeOverride: Record<string, any> = {}, organizationOverride: Record<string, any> = {}) {
+    const prisma = mockPrisma(organizationOverride);
+    prisma.hrEmployee.findFirst.mockResolvedValue(employee({
+      organization: { establishmentType: 'Entreprise privée' },
+      ...employeeOverride,
+    }));
+    prisma.employeeLegalProfile.findFirst.mockResolvedValue(null);
+    prisma.collectiveAgreement.findFirst.mockResolvedValue(null);
+    prisma.publicRegime.findFirst.mockResolvedValue(null);
+    prisma.legalRightRuleVersion.findMany.mockResolvedValue(rules);
+    prisma.hrAbsence.findMany.mockResolvedValue([]);
+    prisma.planningAssignment.findMany.mockResolvedValue([]);
+    return { prisma, service: new LegalRightsService(prisma) };
+  }
+
+  it('returns France private common law rights for an employee with an active contract', async () => {
+    const activeContract = { status: 'ACTIVE', startDate: new Date('2026-01-01T00:00:00.000Z'), endDate: null, contractType: 'CDI', weeklyHours: 35 };
+    const { service } = serviceWithCommonLawRules([
+      rule('CP', 'monthly_accrual', { monthlyValue: 2.5 }, { name: 'Congés payés', category: 'Congés' }),
+      rule('HS', 'overtime_threshold', { weeklyThresholdHours: 35 }, { name: 'Heures supplémentaires', category: 'Temps de travail' }),
+      rule('PAUSE_6H', 'planning_break_after_work', { triggerWorkedMinutes: 360, minimumBreakMinutes: 20 }, { name: 'Pause obligatoire', category: 'Temps de travail' }),
+    ], { status: 'ACTIVE', contracts: [activeContract] });
+
+    const result = await service.employeeApplicableRights('org-1', 'emp-1', { periodStart: '2026-01-01', periodEnd: '2026-01-31' });
+
+    expect(result.hasActiveContract).toBe(true);
+    expect(result.calculationStatus).toBe('complete');
+    expect(result.applicableRights.map((item: any) => item.code)).toEqual(expect.arrayContaining(['CP', 'HS', 'PAUSE_6H']));
+    expect(result.applicableRights.find((item: any) => item.code === 'CP')).toEqual(expect.objectContaining({
+      sourceLayer: 'common_law',
+      autoApplicable: true,
+      applicableByDefault: true,
+      uiStatus: 'included',
+    }));
+  });
+
+  it('separates mandatory rights, configured rights and active balances in the employee overview', async () => {
+    const activeContract = { status: 'ACTIVE', startDate: new Date('2026-01-01T00:00:00.000Z'), endDate: null, contractType: 'CDI', weeklyHours: 35 };
+    const hcr = right('JF_HCR_GARANTI', 'HCR - jours fériés garantis', 'Jours fériés');
+    const hcrRule = rule('JF_HCR_GARANTI', 'requires_review', { rawText: 'Convention à vérifier' }, {
+      id: 'rule-hcr',
+      stableId: 'FR-HCR-JF-GARANTI-V1',
+      right: hcr,
+      rightId: hcr.id,
+      agreementId: 'agreement-hcr',
+      agreement: { id: 'agreement-hcr', key: 'CCN_HCR_1979', idcc: '1979', name: 'HCR' },
+    });
+    const { prisma, service } = serviceWithCommonLawRules([
+      rule('CP', 'monthly_accrual', { monthlyValue: 2.5 }, { name: 'Congés payés', category: 'Congés' }),
+    ], { status: 'ACTIVE', contracts: [activeContract] });
+    prisma.hrEntitlementRule.findMany.mockResolvedValue([
+      {
+        id: 'config-hcr',
+        organizationId: 'org-1',
+        code: 'legal_fr_jf_hcr_garanti',
+        label: 'HCR - jours fériés garantis',
+        accountType: 'holiday',
+        unit: PlanningTimeUnit.DAYS,
+        metadata: {},
+        sourceRightId: hcr.id,
+        sourceRuleVersionId: hcrRule.id,
+        sourceRight: hcr,
+        sourceRuleVersion: hcrRule,
+      },
+    ]);
+    prisma.hrEmployeeEntitlement.findMany.mockResolvedValue([
+      {
+        id: 'entitlement-recovery',
+        organizationId: 'org-1',
+        employeeId: 'emp-1',
+        entitlementRuleId: 'rule-recovery',
+        counterAccountId: null,
+        code: 'recovery',
+        label: 'Récupération interne',
+        accountType: 'recovery',
+        unit: PlanningTimeUnit.MINUTES,
+        counterAccount: null,
+        entitlementRule: { id: 'rule-recovery', label: 'Récupération interne' },
+      },
+    ]);
+    prisma.legalRightCounter.findMany.mockResolvedValue([
+      {
+        id: 'counter-cp',
+        rightId: 'right-CP',
+        right: { id: 'right-CP', code: 'CP', name: 'Congés payés', category: 'Congés' },
+        unit: 'jour',
+        acquired: 2.5,
+        used: 1,
+        remaining: 1.5,
+        status: 'ACTIVE',
+        periodStart: new Date('2026-01-01T00:00:00.000Z'),
+        periodEnd: new Date('2026-12-31T00:00:00.000Z'),
+        updatedAt: new Date('2026-02-01T00:00:00.000Z'),
+      },
+    ]);
+    prisma.hrTimeAccount.findMany.mockResolvedValue([
+      {
+        id: 'account-recovery',
+        code: 'recovery',
+        label: 'Récupération interne',
+        unit: PlanningTimeUnit.MINUTES,
+        openingBalance: 60,
+        accrued: 30,
+        consumed: 15,
+        adjusted: 0,
+        closingBalance: 75,
+        updatedAt: new Date('2026-02-01T00:00:00.000Z'),
+        periodYear: 2026,
+      },
+    ]);
+
+    const result = await service.employeeRightsOverview('org-1', 'emp-1', { periodStart: '2026-01-01', periodEnd: '2026-12-31' });
+
+    expect(result.mandatoryRights.map((item: any) => item.code)).toEqual(['CP']);
+    expect(result.mandatoryRights[0]).toEqual(expect.objectContaining({ sourceLayer: 'common_law', applicability: 'mandatory' }));
+    expect(result.applicableRights.map((item: any) => item.code)).toEqual(expect.arrayContaining(['legal_fr_jf_hcr_garanti', 'recovery']));
+    expect(result.activeBalances.map((item: any) => `${item.source}:${item.code}`)).toEqual(expect.arrayContaining(['legal_counter:CP', 'hr_time_account:recovery']));
+    expect(result.activeBalances.find((item: any) => item.code === 'CP')).toEqual(expect.objectContaining({ acquired: 2.5, used: 1, remaining: 1.5 }));
+  });
+
+  it('returns common law potential rights with a warning when the employee has no active contract', async () => {
+    const { service } = serviceWithCommonLawRules([
+      rule('CP', 'monthly_accrual', { monthlyValue: 2.5 }, { name: 'Congés payés', category: 'Congés' }),
+    ], { status: 'ACTIVE', contractType: null, contracts: [] });
+
+    const result = await service.employeeApplicableRights('org-1', 'emp-1', { periodStart: '2026-01-01', periodEnd: '2026-01-31' });
+
+    expect(result.hasActiveContract).toBe(false);
+    expect(result.calculationStatus).toBe('partial');
+    expect(result.warnings).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'missing_active_contract' })]));
+    expect(result.applicableRights.find((item: any) => item.code === 'CP')).toEqual(expect.objectContaining({ autoApplicable: true }));
+  });
+
+  it('blocks employee applicable rights when the organization regulatory country is missing', async () => {
+    const { prisma, service } = serviceWithCommonLawRules([], {}, {
+      organization: { findUnique: jest.fn().mockResolvedValue({ id: 'org-1', regulatoryCountryCode: null }) },
+    });
+
+    const result = await service.employeeApplicableRights('org-1', 'emp-1', { periodStart: '2026-01-01', periodEnd: '2026-01-31' });
+
+    expect(result.calculationStatus).toBe('blocked');
+    expect(result.warnings).toEqual([expect.objectContaining({ code: 'missing_regulatory_country' })]);
+    expect(prisma.hrEmployee.findFirst).not.toHaveBeenCalled();
   });
 });
 

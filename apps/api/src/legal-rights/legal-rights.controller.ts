@@ -3,8 +3,22 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { ActivateLegalRightDto, CalculateLegalRightsDto, LegalProfileDto, LegalRightsSearchQueryDto, PlanningComplianceCheckDto } from './dto/legal-rights.dto';
+import { OptionalJwtAuthGuard } from '../common/guards/optional-jwt-auth.guard';
+import { ActivateLegalRightDto, ApplicableEmployeeRightsQueryDto, CalculateLegalRightsDto, EstablishmentRightsRecommendationsQueryDto, LegalProfileDto, LegalRightsSearchQueryDto, PlanningComplianceCheckDto } from './dto/legal-rights.dto';
 import { LegalRightsService } from './legal-rights.service';
+
+@ApiTags('rights')
+@ApiBearerAuth()
+@UseGuards(OptionalJwtAuthGuard)
+@Controller('rights/onboarding')
+export class LegalRightsOnboardingController {
+  constructor(private readonly legalRightsService: LegalRightsService) {}
+
+  @Get('recommendations')
+  recommendations(@CurrentUser() user: AuthenticatedUser | null, @Query() q: EstablishmentRightsRecommendationsQueryDto) {
+    return this.legalRightsService.establishmentRightsRecommendations(q, user?.organizationId ?? undefined);
+  }
+}
 
 @ApiTags('rights')
 @ApiBearerAuth()
@@ -31,6 +45,16 @@ export class LegalRightsController {
   @Post('calculate')
   calculate(@CurrentUser() user: AuthenticatedUser, @Body() dto: CalculateLegalRightsDto) {
     return this.legalRightsService.calculate(this.org(user), dto);
+  }
+
+  @Get('employees/:employeeId/applicable')
+  employeeApplicableRights(@CurrentUser() user: AuthenticatedUser, @Param('employeeId') employeeId: string, @Query() q: ApplicableEmployeeRightsQueryDto) {
+    return this.legalRightsService.employeeApplicableRights(this.org(user), employeeId, q);
+  }
+
+  @Get('employees/:employeeId/overview')
+  employeeRightsOverview(@CurrentUser() user: AuthenticatedUser, @Param('employeeId') employeeId: string, @Query() q: ApplicableEmployeeRightsQueryDto) {
+    return this.legalRightsService.employeeRightsOverview(this.org(user), employeeId, q);
   }
 
   @Get('employees/:employeeId/profile')

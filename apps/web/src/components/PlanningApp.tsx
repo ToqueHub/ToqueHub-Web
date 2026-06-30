@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -31,10 +31,10 @@ import type {
   HrCollaborator,
   HrDepartment,
   HrPosition,
-  HrRotation,
   PlanningAlert,
   PlanningAssignment,
   PlanningBootstrap,
+  PlanningCounterEmployeeSummary,
   PlanningDashboardResponse,
   PlanningDayPresetPayload,
   PlanningEmployeeTemplateAssignment,
@@ -66,9 +66,7 @@ type PlanningDashboardConfig = {
 type DashboardPeriodRange = { startDate: string; endDate: string; label: string; mode: DashboardPeriod | PlanningBlockMode };
 type DashboardPeriodData = { range: DashboardPeriodRange; summary: PlanningDashboardResponse | null; assignments: PlanningAssignment[] };
 type PlanningSetupStatus = 'todo' | 'partial' | 'done';
-type PlanningRotationOption = Pick<PlanningTemplate, 'id' | 'name' | 'description' | 'departmentId' | 'siteId' | 'days' | 'employeeIds' | 'source' | 'templateType'> & {
-  assignments?: HrRotation['assignments'];
-};
+type PlanningRotationOption = Pick<PlanningTemplate, 'id' | 'name' | 'description' | 'departmentId' | 'siteId' | 'days' | 'employeeIds' | 'source' | 'templateType'>;
 type PlanningSetupStep = {
   key: string;
   title: string;
@@ -88,6 +86,47 @@ type QuickAssignmentSelection = {
   preset?: Partial<PlanningAssignment>;
   rotation?: PlanningRotationOption;
 };
+type RightBalanceRow = {
+  employeeId: string;
+  employeeName: string;
+  jobTitle: string;
+  accountType: string;
+  code: string;
+  label: string;
+  family: string;
+  status: 'OK' | 'NOT_INITIALIZED' | 'TO_VALIDATE' | 'ALERT';
+  unit: string;
+  openingBalance: number;
+  accrued: number;
+  consumed: number;
+  adjusted: number;
+  closingBalance: number;
+};
+type RightBalanceGroup = {
+  employeeId: string;
+  employeeName: string;
+  jobTitle: string;
+  rows: RightBalanceRow[];
+};
+type RightBalancePositionSection = {
+  positionName: string;
+  groups: RightBalanceGroup[];
+};
+const rightFamilyFilters = [
+  { value: '', label: 'Tous' },
+  { value: 'leave', label: 'Congés' },
+  { value: 'rtt', label: 'RTT' },
+  { value: 'recovery', label: 'Récupération' },
+  { value: 'sickness', label: 'Maladie' },
+  { value: 'hours', label: 'Heures' },
+];
+const rightStatusFilters = [
+  { value: '', label: 'Tous' },
+  { value: 'OK', label: 'OK' },
+  { value: 'NOT_INITIALIZED', label: 'Non initialisé' },
+  { value: 'TO_VALIDATE', label: 'À valider' },
+  { value: 'ALERT', label: 'Alerte' },
+];
 type CalendarAssignmentGroup = {
   employeeId: string;
   collaborator?: HrCollaborator;
@@ -112,7 +151,6 @@ type Props = {
   collaborators: HrCollaborator[];
   departments: HrDepartment[];
   positions: HrPosition[];
-  rotations: HrRotation[];
   sites: Site[];
   canWrite: boolean;
   dashboardCustomizeSignal?: number;
@@ -179,7 +217,7 @@ const planningBusinessStatuses = [
   { value: 'other', label: 'Autre', className: 'other', countsHours: false },
 ];
 
-export function PlanningApp({ token, tab, session, collaborators, departments, positions, rotations, sites, canWrite, dashboardCustomizeSignal, onDashboardCustomizeSignalConsumed, onNavigate }: Props) {
+export function PlanningApp({ token, tab, session, collaborators, departments, positions, sites, canWrite, dashboardCustomizeSignal, onDashboardCustomizeSignalConsumed, onNavigate }: Props) {
   const [data, setData] = useState<PlanningBootstrap>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
@@ -286,8 +324,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
   const templates = data?.templates ?? [];
   const planningDayPresets = planningSettingsArray<PlanningTemplate>(data?.settings, 'dayPresets').length ? planningSettingsArray<PlanningTemplate>(data?.settings, 'dayPresets') : dayPresetTemplates(templates);
   const planningWeeklyRotations = planningSettingsArray<PlanningTemplate>(data?.settings, 'weeklyRotations');
-  const legacyRhRotations = planningSettingsArray<HrRotation>(data?.settings, 'legacyRhRotations').length ? planningSettingsArray<HrRotation>(data?.settings, 'legacyRhRotations') : data?.rotations?.length ? data.rotations : rotations;
-  const effectiveRotations: PlanningRotationOption[] = [...planningWeeklyRotations, ...legacyRhRotations];
+  const effectiveRotations: PlanningRotationOption[] = planningWeeklyRotations;
   const employeeTemplateAssignments = planningSettingsArray<PlanningEmployeeTemplateAssignment>(data?.settings, 'employeeTemplateAssignments');
   const assignments = data?.assignments ?? [];
   const absences = data?.absences ?? [];
@@ -694,7 +731,6 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
           requirements={requirements}
           templates={templates}
           rotations={planningWeeklyRotations}
-          legacyRotations={legacyRhRotations}
           dayPresets={planningDayPresets}
           employeeTemplateAssignments={employeeTemplateAssignments}
           absences={absences}
@@ -718,7 +754,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
       ) : null}
 
       {tab === 'attendance' ? (
-        <AttendanceView rows={attendanceRows} assignments={filteredAssignments} collaborators={effectiveCollaborators} selectedMonth={selectedDate.slice(0, 7)} employeeFilter={employeeFilter} />
+        <AttendanceView token={token} rows={attendanceRows} assignments={filteredAssignments} collaborators={effectiveCollaborators} selectedMonth={selectedDate.slice(0, 7)} employeeFilter={employeeFilter} />
       ) : null}
 
       {showInitialSetup ? (
@@ -1525,8 +1561,7 @@ function PlanningPlannerFilters(props: { selectedDate: string; setSelectedDate: 
           {props.templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
         </select>
         <select value={props.employeeFilter} onChange={(event) => props.setEmployeeFilter(event.target.value)}>
-          <option value="">Voir salarié</option>
-          {props.collaborators.map((collaborator) => <option key={collaborator.id} value={collaborator.id}>{collaboratorName(collaborator)}</option>)}
+          <CollaboratorOptions collaborators={props.collaborators} placeholder="Voir salarié" />
         </select>
         <div className="search-input-wrapper">
           <Search size={16} />
@@ -1715,8 +1750,7 @@ function QuickAssignmentPanel(props: { selectedDate: string; collaborators: HrCo
       <label className="planning-field">
         Collaborateur
         <select value={props.selectedEmployeeId} onChange={(event) => props.setSelectedEmployeeId(event.target.value)}>
-          <option value="">Sélectionner...</option>
-          {props.collaborators.map((collaborator) => <option key={collaborator.id} value={collaborator.id}>{collaboratorName(collaborator)}</option>)}
+          <CollaboratorOptions collaborators={props.collaborators} placeholder="Sélectionner..." />
         </select>
       </label>
 
@@ -1744,7 +1778,7 @@ function QuickAssignmentPanel(props: { selectedDate: string; collaborators: HrCo
             <div className="chip-row">
               {props.rotations.slice(0, 5).map((rotation) => <button key={rotation.id} className={`planning-chip ${props.quickAssignmentSelection?.kind === 'weekly-rotation' && props.quickAssignmentSelection.rotation?.id === rotation.id ? 'active' : ''}`} type="button" onClick={() => selectRotation(rotation)}><Repeat2 size={13} /> {rotation.name}</button>)}
             </div>
-            {props.rotations.length ? <span className="muted tiny">Roulements lus temporairement depuis RH.</span> : <GuidedEmptyState title="Aucun roulement semaine" description="Vous pouvez planifier en manuel ou préparer les roulements dans Paramétrage." actionLabel="Voir les roulements" onAction={props.onOpenSettings} />}
+            {props.rotations.length ? <span className="muted tiny">Roulements configurés dans Planning.</span> : <GuidedEmptyState title="Aucun roulement semaine" description="Vous pouvez planifier en manuel ou préparer les roulements dans Paramétrage." actionLabel="Voir les roulements" onAction={props.onOpenSettings} />}
           </div>
           <div className="quick-section">
             <strong>Horaire personnalisé</strong>
@@ -1795,7 +1829,7 @@ function AssignmentEditModal({ assignment, collaborators, departments, positions
           <span className={`status-pill status-${status.className}`}>{status.label}</span>
         </div>
         <div className="planning-form-row">
-          <label className="planning-field">Collaborateur<select value={form.employeeId} onChange={(event) => setForm((current) => ({ ...current, employeeId: event.target.value }))}>{collaborators.map((collaborator) => <option key={collaborator.id} value={collaborator.id}>{collaboratorName(collaborator)}</option>)}</select></label>
+          <label className="planning-field">Collaborateur<select value={form.employeeId} onChange={(event) => setForm((current) => ({ ...current, employeeId: event.target.value }))}><CollaboratorOptions collaborators={collaborators} /></select></label>
           <label className="planning-field">Statut<select value={form.businessStatus} onChange={(event) => setForm((current) => ({ ...current, businessStatus: event.target.value }))}>{planningBusinessStatuses.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
         </div>
         <div className="planning-form-row">
@@ -1818,7 +1852,7 @@ function AssignmentEditModal({ assignment, collaborators, departments, positions
   );
 }
 
-function PlanningSettings({ selected, setSelected, requirements, templates, rotations, legacyRotations, dayPresets, employeeTemplateAssignments, absences, departments, positions, sites, collaborators, settings, setup, onOpenInitialSetup, selectedDate, canWrite, onSaveRequirement, onDeleteRequirement, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { selected: SettingKey; setSelected: (value: SettingKey) => void; requirements: PlanningRequirement[]; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; legacyRotations: HrRotation[]; dayPresets: PlanningTemplate[]; employeeTemplateAssignments: PlanningEmployeeTemplateAssignment[]; absences: Array<Record<string, any>>; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; settings?: Record<string, any>; setup: ReturnType<typeof buildPlanningSetup>; onOpenInitialSetup: () => void; selectedDate: string; canWrite: boolean; onSaveRequirement: (payload: RequirementPayload, id?: string) => Promise<void>; onDeleteRequirement: (id: string) => Promise<void>; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
+function PlanningSettings({ selected, setSelected, requirements, templates, rotations, dayPresets, employeeTemplateAssignments, absences, departments, positions, sites, collaborators, settings, setup, onOpenInitialSetup, selectedDate, canWrite, onSaveRequirement, onDeleteRequirement, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { selected: SettingKey; setSelected: (value: SettingKey) => void; requirements: PlanningRequirement[]; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; dayPresets: PlanningTemplate[]; employeeTemplateAssignments: PlanningEmployeeTemplateAssignment[]; absences: Array<Record<string, any>>; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; settings?: Record<string, any>; setup: ReturnType<typeof buildPlanningSetup>; onOpenInitialSetup: () => void; selectedDate: string; canWrite: boolean; onSaveRequirement: (payload: RequirementPayload, id?: string) => Promise<void>; onDeleteRequirement: (id: string) => Promise<void>; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
   const cards: Array<{ key: SettingKey; title: string; description: string; count: string; status: PlanningSetupStatus; Icon: typeof ClipboardList }> = [
     { key: 'needs', title: 'Besoins par service', description: 'Saison, jour, créneau, service et besoin opérationnel.', count: `${requirements.length} besoin(s)`, status: requirements.length ? 'done' : 'todo', Icon: ClipboardList },
     { key: 'presets', title: 'Presets & roulements', description: 'Presets journaliers et roulements semaine propriétaires Planning.', count: `${dayPresets.length + rotations.length} élément(s)`, status: dayPresets.length && rotations.length ? 'done' : dayPresets.length || rotations.length ? 'partial' : 'todo', Icon: Repeat2 },
@@ -1837,16 +1871,16 @@ function PlanningSettings({ selected, setSelected, requirements, templates, rota
           {cards.map(({ key, title, count, status, Icon }) => <button key={key} className={`settings-tab ${selected === key ? 'active' : ''}`} onClick={() => setSelected(key)}><Icon size={16} /><span>{title}</span><small>{count}</small><em className={`setup-status ${status}`}>{setupStatusLabel(status)}</em></button>)}
         </div>
         <div className="card-modern settings-detail">
-          <SettingsDetail selected={selected} requirements={requirements} templates={templates} rotations={rotations} legacyRotations={legacyRotations} dayPresets={dayPresets} employeeTemplateAssignments={employeeTemplateAssignments} absences={absences} departments={departments} positions={positions} sites={sites} collaborators={collaborators} settings={settings} selectedDate={selectedDate} canWrite={canWrite} onSaveRequirement={onSaveRequirement} onDeleteRequirement={onDeleteRequirement} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} onSaveWeeklyRotation={onSaveWeeklyRotation} onDeleteWeeklyRotation={onDeleteWeeklyRotation} onSaveEmployeeTemplateAssignment={onSaveEmployeeTemplateAssignment} />
+          <SettingsDetail selected={selected} requirements={requirements} templates={templates} rotations={rotations} dayPresets={dayPresets} employeeTemplateAssignments={employeeTemplateAssignments} absences={absences} departments={departments} positions={positions} sites={sites} collaborators={collaborators} settings={settings} selectedDate={selectedDate} canWrite={canWrite} onSaveRequirement={onSaveRequirement} onDeleteRequirement={onDeleteRequirement} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} onSaveWeeklyRotation={onSaveWeeklyRotation} onDeleteWeeklyRotation={onDeleteWeeklyRotation} onSaveEmployeeTemplateAssignment={onSaveEmployeeTemplateAssignment} />
         </div>
       </div>
     </>
   );
 }
 
-function SettingsDetail({ selected, requirements, rotations, legacyRotations, dayPresets, employeeTemplateAssignments, absences, departments, positions, sites, collaborators, settings, selectedDate, canWrite, onSaveRequirement, onDeleteRequirement, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { selected: SettingKey; requirements: PlanningRequirement[]; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; legacyRotations: HrRotation[]; dayPresets: PlanningTemplate[]; employeeTemplateAssignments: PlanningEmployeeTemplateAssignment[]; absences: Array<Record<string, any>>; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; settings?: Record<string, any>; selectedDate: string; canWrite: boolean; onSaveRequirement: (payload: RequirementPayload, id?: string) => Promise<void>; onDeleteRequirement: (id: string) => Promise<void>; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
+function SettingsDetail({ selected, requirements, rotations, dayPresets, employeeTemplateAssignments, absences, departments, positions, sites, collaborators, settings, selectedDate, canWrite, onSaveRequirement, onDeleteRequirement, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { selected: SettingKey; requirements: PlanningRequirement[]; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; dayPresets: PlanningTemplate[]; employeeTemplateAssignments: PlanningEmployeeTemplateAssignment[]; absences: Array<Record<string, any>>; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; settings?: Record<string, any>; selectedDate: string; canWrite: boolean; onSaveRequirement: (payload: RequirementPayload, id?: string) => Promise<void>; onDeleteRequirement: (id: string) => Promise<void>; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
   if (selected === 'needs') return <NeedsSettingsDetail requirements={requirements} departments={departments} positions={positions} sites={sites} selectedDate={selectedDate} canWrite={canWrite} onSaveRequirement={onSaveRequirement} onDeleteRequirement={onDeleteRequirement} />;
-  if (selected === 'presets') return <PresetsRotationsSettings dayPresets={dayPresets} weeklyRotations={rotations} legacyRotations={legacyRotations} assignments={employeeTemplateAssignments} departments={departments} positions={positions} sites={sites} collaborators={collaborators} canWrite={canWrite} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} onSaveWeeklyRotation={onSaveWeeklyRotation} onDeleteWeeklyRotation={onDeleteWeeklyRotation} onSaveEmployeeTemplateAssignment={onSaveEmployeeTemplateAssignment} />;
+  if (selected === 'presets') return <PresetsRotationsSettings dayPresets={dayPresets} weeklyRotations={rotations} assignments={employeeTemplateAssignments} departments={departments} positions={positions} sites={sites} collaborators={collaborators} canWrite={canWrite} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} onSaveWeeklyRotation={onSaveWeeklyRotation} onDeleteWeeklyRotation={onDeleteWeeklyRotation} onSaveEmployeeTemplateAssignment={onSaveEmployeeTemplateAssignment} />;
   if (selected === 'availability') return <><span className="card-title">Indisponibilités & absences</span><div className="settings-list">{absences.map((absence) => <div key={absence.id}><strong>{collaboratorName(findCollaborator(collaborators, absence.employeeId ?? absence.collaboratorId))}</strong><span>{absence.type ?? absence.reason ?? 'Absence'} - {formatShort(absence.startDate)} à {formatShort(absence.endDate)} - lecture seule RH</span></div>)}{!absences.length ? <p className="muted">Aucune absence RH sur la période. Les indisponibilités Planning auront leur propre stockage plus tard.</p> : null}</div></>;
   if (selected === 'rules') return <PlanningRulesSettings rules={settings?.rules as Array<Record<string, any>> | undefined} />;
   if (selected === 'costs') return <EmployerCostsSettings />;
@@ -1855,7 +1889,7 @@ function SettingsDetail({ selected, requirements, rotations, legacyRotations, da
   return <PlaceholderList title="Imports" items={['Import ODS/XLSX', 'Dictionnaire de codes', 'Rapport de contrôle']} />;
 }
 
-function PresetsRotationsSettings({ dayPresets, weeklyRotations, legacyRotations, assignments, departments, positions, sites, collaborators, canWrite, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { dayPresets: PlanningTemplate[]; weeklyRotations: PlanningTemplate[]; legacyRotations: HrRotation[]; assignments: PlanningEmployeeTemplateAssignment[]; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; canWrite: boolean; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
+function PresetsRotationsSettings({ dayPresets, weeklyRotations, assignments, departments, positions, sites, collaborators, canWrite, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { dayPresets: PlanningTemplate[]; weeklyRotations: PlanningTemplate[]; assignments: PlanningEmployeeTemplateAssignment[]; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; canWrite: boolean; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
   const [editingPresetId, setEditingPresetId] = useState<string>();
   const [presetForm, setPresetForm] = useState<PlanningDayPresetPayload>(() => defaultDayPresetForm(departments[0]?.id));
   const [editingRotationId, setEditingRotationId] = useState<string>();
@@ -1960,12 +1994,12 @@ function PresetsRotationsSettings({ dayPresets, weeklyRotations, legacyRotations
         </form>
         <div className="settings-list planning-settings-list">
           {weeklyRotations.map((rotation) => <div key={rotation.id} className="planning-settings-item"><div><strong>{cleanBusinessLabel(rotation.name)}</strong><span>{weeklyRotationSummary(rotation)} · {rotation.employeeIds?.length ?? 0} personne(s) associée(s)</span><small>{presetDefaultScope(rotation, departments, positions, sites)}</small></div><div className="planning-item-actions"><button className="btn btn-secondary btn-compact" type="button" onClick={() => editRotation(rotation)}>Modifier</button><button className="btn btn-secondary btn-compact" type="button" disabled={!canWrite} onClick={() => { setEditingRotationId(undefined); setRotationForm({ name: `${cleanBusinessLabel(rotation.name)} copie`, description: rotation.description ?? '', departmentId: rotation.departmentId ?? undefined, siteId: rotation.siteId ?? undefined, days: rotation.days?.length ? rotation.days : defaultWeekDays() }); }}>Dupliquer</button><button className="btn btn-secondary btn-compact danger" type="button" disabled={!canWrite} onClick={() => void onDeleteWeeklyRotation(rotation.id)}>Archiver</button></div></div>)}
-          {!weeklyRotations.length ? <p className="muted">Aucun roulement Planning. Les roulements RH ci-dessous restent temporaires en lecture seule.</p> : null}
+          {!weeklyRotations.length ? <p className="muted">Aucun roulement Planning.</p> : null}
         </div>
       </div>
       <form className="planning-need-form" onSubmit={(event) => void submitAssignment(event)}>
         <strong>Affectations par défaut</strong>
-        <label className="planning-field">Collaborateur<select value={assignmentEmployeeId} onChange={(event) => setAssignmentEmployeeId(event.target.value)}><option value="">Choisir...</option>{collaborators.map((collaborator) => <option key={collaborator.id} value={collaborator.id}>{collaboratorName(collaborator)}</option>)}</select></label>
+        <label className="planning-field">Collaborateur<select value={assignmentEmployeeId} onChange={(event) => setAssignmentEmployeeId(event.target.value)}><CollaboratorOptions collaborators={collaborators} placeholder="Choisir..." /></select></label>
         <div className="settings-list">
           <div><strong>Presets jour attribués</strong><span>{dayPresets.map((preset) => <button key={preset.id} type="button" className={`planning-chip ${selectedAssignment?.dayPresetIds?.includes(preset.id) ? 'active' : ''}`} disabled={!assignmentEmployeeId || !canWrite} onClick={() => toggleAssignment('day', preset.id)}>{preset.name}</button>)}</span></div>
           <div><strong>Roulements attribués</strong><span>{weeklyRotations.map((rotation) => <button key={rotation.id} type="button" className={`planning-chip ${selectedAssignment?.weeklyRotationIds?.includes(rotation.id) ? 'active' : ''}`} disabled={!assignmentEmployeeId || !canWrite} onClick={() => toggleAssignment('rotation', rotation.id)}>{rotation.name}</button>)}</span></div>
@@ -1973,10 +2007,6 @@ function PresetsRotationsSettings({ dayPresets, weeklyRotations, legacyRotations
         </div>
         <p className="muted">Les attributions s’appuient sur les collaborateurs RH existants, sans les recréer dans Planning.</p>
       </form>
-      <div className="settings-list">
-        <div><strong>Roulements RH legacy</strong><span>{legacyRotations.length} élément(s) encore lisibles/applicables temporairement. Aucune écriture RH depuis Planning.</span></div>
-        {legacyRotations.slice(0, 5).map((rotation) => <div key={rotation.id}><strong>{rotation.name}</strong><span>{rotation.assignments?.length ?? 0} collaborateur(s) attribué(s) - source temporaire RH</span></div>)}
-      </div>
     </>
   );
 }
@@ -2298,16 +2328,50 @@ function GuidedEmptyState({ title, description, actionLabel, onAction }: { title
   return <div className="planning-empty-state guided"><strong>{title}</strong><span>{description}</span>{actionLabel && onAction ? <button type="button" className="btn btn-secondary btn-compact" onClick={onAction}>{actionLabel}</button> : null}</div>;
 }
 
-function AttendanceView({ rows, assignments, collaborators, selectedMonth, employeeFilter }: { rows: Array<Record<string, any>>; assignments: PlanningAssignment[]; collaborators: HrCollaborator[]; selectedMonth: string; employeeFilter: string }) {
+function AttendanceView({ token, rows, assignments, collaborators, selectedMonth, employeeFilter }: { token: string; rows: Array<Record<string, any>>; assignments: PlanningAssignment[]; collaborators: HrCollaborator[]; selectedMonth: string; employeeFilter: string }) {
   const [statusFilter, setStatusFilter] = useState('');
   const [attendanceView, setAttendanceView] = useState<'sheets' | 'validation' | 'rights'>('sheets');
   const [selectedEmployee, setSelectedEmployee] = useState<string>('');
+  const [rightsEmployees, setRightsEmployees] = useState<PlanningCounterEmployeeSummary[]>([]);
+  const [rightsLoading, setRightsLoading] = useState(false);
+  const [rightsError, setRightsError] = useState('');
+  const [rightsSearch, setRightsSearch] = useState('');
+  const [rightsFamilyFilter, setRightsFamilyFilter] = useState('');
+  const [rightsStatusFilter, setRightsStatusFilter] = useState('');
+  const rightsYear = Number(selectedMonth.slice(0, 4)) || new Date().getFullYear();
   const displayRows = rows.length ? rows : assignments.map((assignment) => ({ assignmentId: assignment.id, employeeId: assignment.employeeId ?? assignment.collaboratorId, employeeName: collaboratorName(findCollaborator(collaborators, assignment.employeeId ?? assignment.collaboratorId)), date: assignment.date, plannedStartTime: assignment.startTime, plannedEndTime: assignment.endTime, plannedMinutes: Math.round(assignmentHours(assignment) * 60), declaredMinutes: null, validatedMinutes: null, varianceMinutes: null, status: 'DRAFT', statusLabel: 'Non signé', persistence: false }));
   const filteredRows = displayRows.filter((row) => String(row.date ?? '').slice(0, 7) === selectedMonth && (!employeeFilter || row.employeeId === employeeFilter) && (!statusFilter || normalizeAttendanceStatus(row.status) === statusFilter));
   const employeeSummaries = attendanceEmployeeSummaries(filteredRows, collaborators);
   const activeEmployeeId = selectedEmployee || employeeFilter;
   const detailRows = activeEmployeeId ? filteredRows.filter((row) => row.employeeId === activeEmployeeId) : [];
   const detailCollaborator = findCollaborator(collaborators, activeEmployeeId);
+  const rightsAllRows = useMemo(() => rightsBalanceRows(rightsEmployees, collaborators, employeeFilter), [rightsEmployees, collaborators, employeeFilter]);
+  const rightsRows = useMemo(() => filterRightBalanceRows(rightsAllRows, rightsSearch, rightsFamilyFilter, rightsStatusFilter), [rightsAllRows, rightsSearch, rightsFamilyFilter, rightsStatusFilter]);
+  const rightsGroups = useMemo(() => groupRightBalanceRows(rightsRows), [rightsRows]);
+  const rightsPositionSections = useMemo(() => groupRightBalanceGroupsByPosition(rightsGroups), [rightsGroups]);
+  const rightsTotals = useMemo(() => rightsBalanceTotals(rightsRows), [rightsRows]);
+
+  useEffect(() => {
+    if (attendanceView !== 'rights') return;
+    let alive = true;
+    setRightsLoading(true);
+    setRightsError('');
+    api.hrTimeAccounts(token, { periodYear: rightsYear, employeeId: employeeFilter || undefined })
+      .then((payload) => {
+        if (!alive) return;
+        setRightsEmployees(Array.isArray(payload.employees) ? payload.employees : []);
+      })
+      .catch((error) => {
+        if (!alive) return;
+        setRightsEmployees([]);
+        setRightsError(error instanceof Error ? error.message : 'Soldes indisponibles');
+      })
+      .finally(() => {
+        if (alive) setRightsLoading(false);
+      });
+    return () => { alive = false; };
+  }, [attendanceView, token, rightsYear, employeeFilter]);
+
   return (
     <div className="card-modern attendance-card">
       <div className="section-header-modern">
@@ -2319,20 +2383,98 @@ function AttendanceView({ rows, assignments, collaborators, selectedMonth, emplo
         <button type="button" className={attendanceView === 'validation' ? 'active' : ''} onClick={() => setAttendanceView('validation')}>Validation manager</button>
         <button type="button" className={attendanceView === 'rights' ? 'active' : ''} onClick={() => setAttendanceView('rights')}>Droits & soldes</button>
       </div>
-      <div className="planning-settings-controls">
-        <label className="planning-field">Mois<input type="month" value={selectedMonth} disabled /></label>
-        <label className="planning-field">Statut
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-            <option value="">Tous</option>
-            <option value="NOT_SIGNED">Non signé</option>
-            <option value="TO_VALIDATE">À valider</option>
-            <option value="VALIDATED">Validé</option>
-            <option value="REJECTED">À reprendre</option>
-          </select>
-        </label>
-      </div>
       {attendanceView === 'rights' ? (
-        <GuidedEmptyState title="Droits consultables dans Collaborateurs" description="Les soldes utiles restent visibles ici plus tard, mais leur configuration principale se fait dans la fiche collaborateur." />
+        <div className="attendance-rights-toolbar">
+          <label className="planning-field">Mois<input type="month" value={selectedMonth} disabled /></label>
+          <label className="planning-field attendance-rights-search">Recherche
+            <span className="rights-search-field">
+              <Search size={16} />
+              <input value={rightsSearch} onChange={(event) => setRightsSearch(event.target.value)} placeholder="Collaborateur, poste, droit..." />
+            </span>
+          </label>
+          <label className="planning-field">Droit
+            <select value={rightsFamilyFilter} onChange={(event) => setRightsFamilyFilter(event.target.value)}>
+              {rightFamilyFilters.map((item) => <option key={item.value || 'all'} value={item.value}>{item.label}</option>)}
+            </select>
+          </label>
+          <label className="planning-field">Statut
+            <select value={rightsStatusFilter} onChange={(event) => setRightsStatusFilter(event.target.value)}>
+              {rightStatusFilters.map((item) => <option key={item.value || 'all'} value={item.value}>{item.label}</option>)}
+            </select>
+          </label>
+        </div>
+      ) : (
+        <div className="planning-settings-controls">
+          <label className="planning-field">Mois<input type="month" value={selectedMonth} disabled /></label>
+          <label className="planning-field">Statut
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <option value="">Tous</option>
+              <option value="NOT_SIGNED">Non signé</option>
+              <option value="TO_VALIDATE">À valider</option>
+              <option value="VALIDATED">Validé</option>
+              <option value="REJECTED">À reprendre</option>
+            </select>
+          </label>
+        </div>
+      )}
+      {attendanceView === 'rights' ? (
+        <div className="attendance-rights-panel">
+          {rightsLoading ? <GuidedEmptyState title="Chargement des droits" description="Lecture des comptes de temps RH pour cette organisation et cette période." /> : null}
+          {rightsError ? <GuidedEmptyState title="Soldes indisponibles" description={rightsError} /> : null}
+          {!rightsLoading && !rightsError && rightsTotals.length ? (
+            <div className="attendance-rights-summary">
+              {rightsTotals.map((item) => (
+                <div key={item.key} className="attendance-rights-total">
+                  <span>{item.label}</span>
+                  <strong>{formatRightBalanceValue(item.closingBalance, item.unit)}</strong>
+                  <small>{item.employeeCount} collaborateur(s)</small>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {!rightsLoading && !rightsError && rightsPositionSections.length ? (
+            <div className="attendance-rights-table-wrap">
+              <table className="attendance-rights-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Collaborateur</th>
+                    <th scope="col">Droit</th>
+                    <th scope="col">Initial</th>
+                    <th scope="col">Acquis</th>
+                    <th scope="col">Utilisé</th>
+                    <th scope="col">Ajusté</th>
+                    <th scope="col">Solde</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rightsPositionSections.map((section) => (
+                    <Fragment key={section.positionName}>
+                      <tr key={`${section.positionName}:header`} className="attendance-rights-position-row"><th scope="rowgroup" colSpan={7}>{section.positionName}</th></tr>
+                      {section.groups.map((group) => group.rows.map((row, index) => (
+                        <tr key={`${row.employeeId}:${row.code}:${row.accountType}`} className={index === 0 ? 'attendance-rights-group-start' : 'attendance-rights-subrow'}>
+                          {index === 0 ? (
+                            <th scope="rowgroup" rowSpan={group.rows.length} className="attendance-rights-employee">
+                              <strong>{group.employeeName}</strong>
+                            </th>
+                          ) : null}
+                          <td className="attendance-rights-label">{row.label}</td>
+                          <td className="attendance-rights-number">{formatRightBalanceValue(row.openingBalance, row.unit)}</td>
+                          <td className="attendance-rights-number">{formatRightBalanceValue(row.accrued, row.unit)}</td>
+                          <td className="attendance-rights-number">{formatRightBalanceValue(row.consumed, row.unit)}</td>
+                          <td className="attendance-rights-number">{formatRightBalanceValue(row.adjusted, row.unit)}</td>
+                          <td className="attendance-rights-balance-cell"><span className={`attendance-rights-balance ${rightBalanceTone(row)}`}>{formatRightBalanceValue(row.closingBalance, row.unit)}</span></td>
+                        </tr>
+                      )))}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+          {!rightsLoading && !rightsError && !rightsGroups.length ? (
+            <GuidedEmptyState title="Aucun solde trouvé" description={`Aucun compte de droits n’est enregistré pour cette organisation sur ${rightsYear}. Vérifiez l’organisation active ou relancez l’import des droits salariés.`} />
+          ) : null}
+        </div>
       ) : activeEmployeeId ? (
         <div className="attendance-detail-panel">
           <div className="section-header-modern">
@@ -2614,6 +2756,39 @@ function requirementMatchesDay(requirement: PlanningRequirement, day: string) {
 
 function findCollaborator(collaborators: HrCollaborator[], id?: string | null) { return collaborators.find((item) => item.id === id); }
 function collaboratorName(collaborator?: HrCollaborator | null) { return collaborator ? `${collaborator.firstName} ${collaborator.lastName}`.trim() : 'Collaborateur RH'; }
+function collaboratorPositionTitle(collaborator?: HrCollaborator | null) { return formatPositionTitle(collaborator?.position?.name); }
+function CollaboratorOptions({ collaborators, placeholder }: { collaborators: HrCollaborator[]; placeholder?: string }) {
+  return (
+    <>
+      {placeholder !== undefined ? <option value="">{placeholder}</option> : null}
+      {groupCollaboratorsByPosition(collaborators).map((group) => (
+        <optgroup key={group.positionName} label={group.positionName}>
+          {group.collaborators.map((collaborator) => <option key={collaborator.id} value={collaborator.id}>{collaboratorName(collaborator)}</option>)}
+        </optgroup>
+      ))}
+    </>
+  );
+}
+function groupCollaboratorsByPosition(collaborators: HrCollaborator[]) {
+  const groups = new Map<string, HrCollaborator[]>();
+  collaborators.forEach((collaborator) => {
+    const title = collaboratorPositionTitle(collaborator);
+    groups.set(title, [...(groups.get(title) ?? []), collaborator]);
+  });
+  return [...groups.entries()]
+    .map(([positionName, items]) => ({ positionName, collaborators: items.sort((a, b) => collaboratorName(a).localeCompare(collaboratorName(b))) }))
+    .sort((a, b) => comparePositionTitles(a.positionName, b.positionName));
+}
+function comparePositionTitles(a: string, b: string) {
+  const missing = 'Poste non renseigné';
+  if (a === missing && b !== missing) return 1;
+  if (b === missing && a !== missing) return -1;
+  return a.localeCompare(b);
+}
+function formatPositionTitle(value?: string | null) {
+  const clean = String(value ?? '').replace(/\s+/g, ' ').trim();
+  return clean ? capitalize(clean) : 'Poste non renseigné';
+}
 function shortName(collaborator?: HrCollaborator) { return collaborator ? `${collaborator.firstName}`.trim() || collaborator.lastName : 'RH'; }
 function ruleStatusLabel(value?: unknown) { return value === 'active' ? 'Actif' : value === 'partial' ? 'Partiel' : value === 'to_configure' ? 'À configurer' : value === 'future' ? 'Futur' : 'Préparé'; }
 function impactLabel(value?: unknown) { return value === 'blocking' ? 'Bloquant' : value === 'warning' ? 'Avertissement' : 'Info'; }
@@ -2862,6 +3037,119 @@ function attendanceEmployeeSummaries(rows: Array<Record<string, any>>, collabora
       status: validatedRows.length === employeeRows.length && employeeRows.length ? 'VALIDATED' : declaredRows.length ? 'TO_VALIDATE' : 'NOT_SIGNED',
     };
   }).sort((a, b) => a.employeeName.localeCompare(b.employeeName));
+}
+function rightsBalanceRows(employees: PlanningCounterEmployeeSummary[], collaborators: HrCollaborator[], employeeFilter: string): RightBalanceRow[] {
+  return (employees ?? [])
+    .filter((employee) => !employeeFilter || employee.employeeId === employeeFilter)
+    .flatMap((employee) => {
+      const collaborator = findCollaborator(collaborators, employee.employeeId);
+      const employeeName = employee.employeeName || collaboratorName(collaborator);
+      const jobTitle = collaboratorPositionTitle(collaborator);
+      return (employee.accounts ?? []).map((account) => ({
+        employeeId: employee.employeeId,
+        employeeName,
+        jobTitle,
+        accountType: String(account.accountType ?? ''),
+        code: String(account.code ?? ''),
+        label: String(account.label ?? account.code ?? 'Droit'),
+        family: '',
+        status: 'OK' as const,
+        unit: String(account.unit ?? ''),
+        openingBalance: Number(account.openingBalance ?? 0),
+        accrued: Number(account.accrued ?? 0),
+        consumed: Number(account.consumed ?? 0),
+        adjusted: Number(account.adjusted ?? 0),
+        closingBalance: Number(account.closingBalance ?? 0),
+      })).map((row) => ({ ...row, family: rightBalanceFamily(row), status: rightBalanceStatus(row) })).filter((row) => rightBalanceShouldDisplay(row));
+    })
+    .sort((a, b) => a.employeeName.localeCompare(b.employeeName) || a.label.localeCompare(b.label));
+}
+function filterRightBalanceRows(rows: RightBalanceRow[], search: string, familyFilter: string, statusFilter: string) {
+  const query = normalizeSearchText(search);
+  return rows.filter((row) => {
+    if (familyFilter && row.family !== familyFilter) return false;
+    if (statusFilter) {
+      if (row.status !== statusFilter) return false;
+    } else if (row.status === 'NOT_INITIALIZED') {
+      return false;
+    }
+    if (!query) return true;
+    return normalizeSearchText(`${row.employeeName} ${row.jobTitle} ${row.label} ${row.code} ${row.accountType}`).includes(query);
+  });
+}
+function groupRightBalanceRows(rows: RightBalanceRow[]): RightBalanceGroup[] {
+  const groups = new Map<string, RightBalanceGroup>();
+  rows.forEach((row) => {
+    const current = groups.get(row.employeeId) ?? { employeeId: row.employeeId, employeeName: row.employeeName, jobTitle: row.jobTitle, rows: [] };
+    current.rows.push(row);
+    groups.set(row.employeeId, current);
+  });
+  return [...groups.values()]
+    .map((group) => ({ ...group, rows: group.rows.sort((a, b) => a.label.localeCompare(b.label)) }))
+    .sort((a, b) => a.employeeName.localeCompare(b.employeeName));
+}
+function groupRightBalanceGroupsByPosition(groups: RightBalanceGroup[]): RightBalancePositionSection[] {
+  const sections = new Map<string, RightBalanceGroup[]>();
+  groups.forEach((group) => {
+    const positionName = group.jobTitle || 'Poste non renseigné';
+    sections.set(positionName, [...(sections.get(positionName) ?? []), group]);
+  });
+  return [...sections.entries()]
+    .map(([positionName, items]) => ({ positionName, groups: items.sort((a, b) => a.employeeName.localeCompare(b.employeeName)) }))
+    .sort((a, b) => comparePositionTitles(a.positionName, b.positionName));
+}
+function rightsBalanceTotals(rows: RightBalanceRow[]) {
+  const totals = new Map<string, { key: string; label: string; unit: string; closingBalance: number; employeeIds: Set<string> }>();
+  rows.forEach((row) => {
+    const key = `${row.accountType}:${row.code}:${row.unit}`;
+    const current = totals.get(key) ?? { key, label: row.label, unit: row.unit, closingBalance: 0, employeeIds: new Set<string>() };
+    current.closingBalance += row.closingBalance;
+    current.employeeIds.add(row.employeeId);
+    totals.set(key, current);
+  });
+  return [...totals.values()].map((item) => ({ key: item.key, label: item.label, unit: item.unit, closingBalance: item.closingBalance, employeeCount: item.employeeIds.size })).sort((a, b) => a.label.localeCompare(b.label));
+}
+function rightBalanceFamily(row: Pick<RightBalanceRow, 'label' | 'code' | 'accountType'>) {
+  const source = normalizeSearchText(`${row.label} ${row.code} ${row.accountType}`);
+  if (source.includes('rtt')) return 'rtt';
+  if (source.includes('recuperation') || source.includes('recup') || source.includes('heures dues')) return 'recovery';
+  if (source.includes('maladie') || source.includes('arret') || source.includes('sick')) return 'sickness';
+  if (source.includes('conge') || source.includes('anciennete') || source.includes('fractionnement') || source.includes('statutaire') || source.includes('cp')) return 'leave';
+  if (source.includes('heure') || source.includes('hour') || source.includes('overtime') || source.includes('admin')) return 'hours';
+  return 'other';
+}
+function rightBalanceStatus(row: Pick<RightBalanceRow, 'label' | 'code' | 'accountType' | 'openingBalance' | 'accrued' | 'consumed' | 'adjusted' | 'closingBalance'>): RightBalanceRow['status'] {
+  if (row.closingBalance < 0) return 'ALERT';
+  if (!rightBalanceHasValue(row)) return 'NOT_INITIALIZED';
+  const source = normalizeSearchText(`${row.label} ${row.code} ${row.accountType}`);
+  if (source.includes('a valider') || source.includes('pending')) return 'TO_VALIDATE';
+  return 'OK';
+}
+function rightBalanceHasValue(row: Pick<RightBalanceRow, 'openingBalance' | 'accrued' | 'consumed' | 'adjusted' | 'closingBalance'>) {
+  return [row.openingBalance, row.accrued, row.consumed, row.adjusted, row.closingBalance].some((value) => Number(value) !== 0);
+}
+function rightBalanceShouldDisplay(row: RightBalanceRow) {
+  if (!rightBalanceIsPlanningControl(row)) return true;
+  return rightBalanceHasValue(row);
+}
+function rightBalanceIsPlanningControl(row: Pick<RightBalanceRow, 'label' | 'code' | 'accountType'>) {
+  const source = normalizeSearchText(`${row.label} ${row.code} ${row.accountType}`);
+  return source.includes('pause') || source.includes('break') || source.includes('repos') || source.includes('rest') || source.includes('quotidien') || source.includes('hebdomadaire');
+}
+function rightBalanceTone(row: Pick<RightBalanceRow, 'closingBalance' | 'status'>) {
+  if (row.closingBalance < 0 || row.status === 'ALERT') return 'danger';
+  if (row.closingBalance === 0 || row.status === 'NOT_INITIALIZED') return 'warning';
+  return 'success';
+}
+function normalizeSearchText(value: string) {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+function formatRightBalanceValue(value: number, unit?: string) {
+  const normalizedUnit = String(unit ?? '').toUpperCase();
+  if (normalizedUnit === 'MINUTES') return formatMinutesValue(value);
+  if (normalizedUnit === 'DAYS') return formatDaysValue(value);
+  const rounded = Math.round((Number(value) || 0) * 100) / 100;
+  return String(rounded);
 }
 function formatSignedMinutes(value: number) {
   if (!Number.isFinite(value) || value === 0) return '0h00';

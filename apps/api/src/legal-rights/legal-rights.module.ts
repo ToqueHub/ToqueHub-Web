@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
-import { LegalRightsController, PlanningComplianceController } from './legal-rights.controller';
+import { LegalRightsController, LegalRightsOnboardingController, PlanningComplianceController } from './legal-rights.controller';
 import { LegalRightsService } from './legal-rights.service';
 
 @Module({
   imports: [PrismaModule],
-  controllers: [LegalRightsController, PlanningComplianceController],
+  controllers: [LegalRightsOnboardingController, LegalRightsController, PlanningComplianceController],
   providers: [LegalRightsService],
   exports: [LegalRightsService],
 })
