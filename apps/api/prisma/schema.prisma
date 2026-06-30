@@ -610,6 +610,7 @@ model Organization {
   planningDayStatuses            PlanningDayStatus[]
   planningCodeDictionary         PlanningCodeDictionary[]
   planningPolicyProfiles         PlanningPolicyProfile[]
+  workTimeRegulation             EstablishmentWorkTimeRegulation?
   hrTimeAccounts                 HrTimeAccount[]
   hrTimeAccountTransactions      HrTimeAccountTransaction[]
   planningAttendanceEntries      PlanningAttendanceEntry[]
@@ -2218,6 +2219,45 @@ model PlanningPolicyProfile {
   @@index([sector])
   @@index([isDefault])
   @@map("planning_policy_profiles")
+}
+
+model EstablishmentWorkTimeRegulation {
+  id                               String   @id @default(uuid()) @db.Uuid
+  organizationId                   String   @unique @db.Uuid
+  nightWorkEnabled                 Boolean  @default(false)
+  nightWorkStartTime               String?
+  nightWorkEndTime                 String?
+  publicHolidayWorkEnabled         Boolean  @default(false)
+  publicHolidayDates               Json?
+  weekendWorkEnabled               Boolean  @default(false)
+  saturdayWorkAllowed              Boolean  @default(false)
+  sundayWorkAllowed                Boolean  @default(false)
+  compensationsEnabled             Boolean  @default(false)
+  teleworkEnabled                  Boolean  @default(false)
+  teleworkStartTime                String?
+  teleworkEndTime                  String?
+  teleworkMinBreakMinutes          Int?
+  teleworkDailyQuotaMinutes        Int?
+  teleworkMaxDaysPerWeek           Int?
+  teleworkMaxDaysPerYearFullTime   Int?
+  teleworkMaxDaysPerYearPartTime   Int?
+  internalRulesSourceDocumentId    String?  @db.Uuid
+  sourceDocumentName               String?
+  sourceDocumentMetadata           Json?
+  extractedRules                   Json?
+  rulesToConfirm                   Json?
+  positionMapping                  Json?
+  validationStatus                 String   @default("requires_review")
+  createdById                      String?  @db.Uuid
+  updatedById                      String?  @db.Uuid
+  createdAt                        DateTime @default(now())
+  updatedAt                        DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([validationStatus])
+  @@map("establishment_work_time_regulations")
 }
 
 model HrTimeAccount {

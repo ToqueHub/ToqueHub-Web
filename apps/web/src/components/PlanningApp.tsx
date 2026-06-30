@@ -47,11 +47,13 @@ import type {
   PlanningWeeklyRotationPayload,
   Site,
   UserSession,
+  EstablishmentWorkTimeRegulation,
+  WorkTimeTrackingSummary,
 } from '../types';
 
 type PlanningTab = 'dashboard' | 'planning' | 'settings' | 'attendance';
 type PlanningView = 'day' | 'week' | 'month' | 'year';
-type SettingKey = 'needs' | 'presets' | 'availability' | 'rules' | 'costs' | 'notifications' | 'exports' | 'imports';
+type SettingKey = 'needs' | 'presets' | 'availability' | 'work-time' | 'rules' | 'costs' | 'notifications' | 'exports' | 'imports';
 type InitialPlanningStep = 'profile' | 'mode' | 'services' | 'needs' | 'presets' | 'done';
 type DashboardPeriod = 'week' | 'month' | 'year';
 type PlanningDashboardBlockKey = 'periodStatus' | 'planningSetup' | 'plannedHours' | 'estimatedCost' | 'overtimeHours' | 'activeAlerts' | 'alertsToReview' | 'planning' | 'departmentHours' | 'actions' | 'history';
@@ -101,6 +103,7 @@ type RightBalanceRow = {
   consumed: number;
   adjusted: number;
   closingBalance: number;
+  trackingOnly?: boolean;
 };
 type RightBalanceGroup = {
   employeeId: string;
@@ -119,6 +122,7 @@ const rightFamilyFilters = [
   { value: 'recovery', label: 'Récupération' },
   { value: 'sickness', label: 'Maladie' },
   { value: 'hours', label: 'Heures' },
+  { value: 'tracking', label: 'Suivi interne' },
 ];
 const rightStatusFilters = [
   { value: '', label: 'Tous' },
@@ -255,7 +259,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
   }, [planningSetupStorageKey]);
 
   useEffect(() => {
-    void loadContext();
+    void loadContext({ showLoading: !data });
   }, [token, selectedDate, siteFilter, serviceFilter, employeeFilter, seasonalTemplateId]);
 
   useEffect(() => {
@@ -294,9 +298,10 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
     localStorage.setItem(PLANNING_DASHBOARD_CONFIG_KEY, JSON.stringify(dashboardConfig));
   }, [dashboardConfig]);
 
-  async function loadContext() {
+  async function loadContext(options: { showLoading?: boolean } = {}) {
     let mounted = true;
-    setLoading(true);
+    const showLoading = options.showLoading ?? !data;
+    if (showLoading) setLoading(true);
     setError(undefined);
     const selected = new Date(selectedDate);
     try {
@@ -312,7 +317,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
     } catch (err) {
       if (mounted && !(err instanceof ApiError && err.status === 404)) setError(err instanceof Error ? err.message : 'Planning indisponible');
     } finally {
-      if (mounted) setLoading(false);
+      if (mounted && showLoading) setLoading(false);
     }
     return () => { mounted = false; };
   }
@@ -421,7 +426,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
         comment: serializeAssignmentMeta({ businessStatus }),
       });
       setNotice(`Affectation ajoutée le ${formatShort(date)} pour ${collaboratorName(collaborator)}.`);
-      await loadContext();
+      await loadContext({ showLoading: false });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Création impossible');
     }
@@ -473,7 +478,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
       });
       setEditingAssignment(null);
       setNotice(patch.status === 'CANCELLED' ? 'Affectation supprimée du planning.' : 'Affectation modifiée.');
-      await loadContext();
+      await loadContext({ showLoading: false });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Modification impossible');
     }
@@ -489,7 +494,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
       if (id) await api.updatePlanningDayPreset(token, id, payload);
       else await api.createPlanningDayPreset(token, payload);
       setNotice(id ? 'Preset jour modifié.' : 'Preset jour créé.');
-      await loadContext();
+      await loadContext({ showLoading: false });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Enregistrement du preset impossible');
     }
@@ -500,7 +505,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
     try {
       await api.deletePlanningDayPreset(token, id);
       setNotice('Preset jour archivé.');
-      await loadContext();
+      await loadContext({ showLoading: false });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Archivage du preset impossible');
     }
@@ -512,7 +517,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
       if (id) await api.updatePlanningWeeklyRotation(token, id, payload);
       else await api.createPlanningWeeklyRotation(token, payload);
       setNotice(id ? 'Roulement Planning modifié.' : 'Roulement Planning créé.');
-      await loadContext();
+      await loadContext({ showLoading: false });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Enregistrement du roulement impossible');
     }
@@ -523,7 +528,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
     try {
       await api.deletePlanningWeeklyRotation(token, id);
       setNotice('Roulement Planning archivé.');
-      await loadContext();
+      await loadContext({ showLoading: false });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Archivage du roulement impossible');
     }
@@ -534,7 +539,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
     try {
       await api.setPlanningEmployeeTemplates(token, payload);
       setNotice('Attribution collaborateur enregistrée.');
-      await loadContext();
+      await loadContext({ showLoading: false });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Attribution impossible');
     }
@@ -555,7 +560,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
         replaceExisting: true,
       });
       setNotice(`${result.appliedAssignments?.length ?? 0} affectation(s) appliquée(s) sur la semaine du ${formatShort(weekStart(targetDate))}.`);
-      await loadContext();
+      await loadContext({ showLoading: false });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Application du roulement impossible');
     }
@@ -567,7 +572,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
       if (id) await api.updatePlanningRequirement(token, id, payload);
       else await api.createPlanningRequirement(token, payload);
       setNotice(id ? 'Besoin par service modifié.' : 'Besoin par service créé.');
-      await loadContext();
+      await loadContext({ showLoading: false });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Enregistrement du besoin impossible');
     }
@@ -580,7 +585,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
     try {
       await api.deletePlanningRequirement(token, id);
       setNotice('Besoin par service supprimé.');
-      await loadContext();
+      await loadContext({ showLoading: false });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Suppression du besoin impossible');
     }
@@ -591,7 +596,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
     try {
       const result = await api.controlPlanningPeriod(token, periodPayload);
       setNotice(result.publishable ? 'Planning contrôlé : aucune alerte bloquante.' : `Planning contrôlé : ${result.control?.blockingAlerts ?? 0} alerte(s) bloquante(s).`);
-      await loadContext();
+      await loadContext({ showLoading: false });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Contrôle du planning impossible');
     }
@@ -604,7 +609,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
     try {
       await api.publishPlanningPeriod(token, { ...periodPayload, force });
       setNotice('Planning publié. Les notifications salariés sont préparées pour un canal futur.');
-      await loadContext();
+      await loadContext({ showLoading: false });
     } catch (err) {
       if (err instanceof ApiError && err.status === 400 && !force) {
         const confirmed = window.confirm(`${err.message}. Forcer la publication ?`);
@@ -621,7 +626,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
     try {
       await api.lockPlanningPeriod(token, periodPayload);
       setNotice('Période verrouillée pour paie/export futur.');
-      await loadContext();
+      await loadContext({ showLoading: false });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Verrouillage impossible');
     }
@@ -754,7 +759,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
       ) : null}
 
       {tab === 'attendance' ? (
-        <AttendanceView token={token} rows={attendanceRows} assignments={filteredAssignments} collaborators={effectiveCollaborators} selectedMonth={selectedDate.slice(0, 7)} employeeFilter={employeeFilter} />
+        <AttendanceView token={token} rows={attendanceRows} assignments={filteredAssignments} collaborators={effectiveCollaborators} selectedMonth={selectedDate.slice(0, 7)} employeeFilter={employeeFilter} workTimeTracking={data?.settings?.workTimeTracking as WorkTimeTrackingSummary | undefined} />
       ) : null}
 
       {showInitialSetup ? (
@@ -1202,14 +1207,10 @@ function PlanningSchedulePreview({ assignments, selectedDate, mode, size, period
   const weekAssignments = activeAssignments.filter((assignment) => selectedWeek.some((day) => sameDay(assignment.date, day)));
   const monthAssignments = activeAssignments.filter((assignment) => normalizePlanningDate(assignment.date).startsWith(selectedMonth));
   const dayGroups = groupAssignmentsForDay(dayAssignments);
-  const weekRows = buildWeekScheduleRows(weekAssignments, selectedWeek);
   const compactSlots = summarizeShiftSlots(dayAssignments);
   const monthDays = normalizeMonthDays(selectedDate);
+  const weekCollaborators = collaboratorsFromAssignments(weekAssignments);
   const monthCollaborators = collaboratorsFromAssignments(monthAssignments);
-  const weekDaySummaries = selectedWeek.map((day) => {
-    const items = weekAssignments.filter((assignment) => sameDay(assignment.date, day));
-    return { day, assignments: items, people: uniqueEmployeeCount(items), names: uniqueEmployeeNames(items) };
-  });
   const currentView: PlanningView = mode === 'day' ? 'day' : mode === 'week' ? 'week' : 'month';
   const showCompact = size === 'small';
   const showMedium = size === 'medium';
@@ -1245,31 +1246,18 @@ function PlanningSchedulePreview({ assignments, selectedDate, mode, size, period
           )) : <span>Aucun shift prévu</span>}
         </div>
       ) : null}
-      {mode === 'week' && (showCompact || showMedium) ? (
-        <div className="planning-widget-body planning-schedule-week compact">
-          <strong>Semaine du {formatShort(selectedWeek[0])} au {formatShort(selectedWeek[6])}</strong>
-          {weekDaySummaries.map((day) => (
-            <div key={day.day} className="planning-schedule-line">
-              <span>{dayShortLabel(day.day)} · {day.people} pers.</span>
-              <small>{day.names.slice(0, showCompact ? 3 : 6).join(', ') || 'Aucun shift'}{day.names.length > (showCompact ? 3 : 6) ? '...' : ''}</small>
-            </div>
-          ))}
-        </div>
-      ) : null}
-      {mode === 'week' && size === 'large' ? (
-        <div className="planning-widget-body planning-schedule-week">
-          <strong>Semaine du {formatShort(selectedWeek[0])} au {formatShort(selectedWeek[6])}</strong>
-          {weekRows.length ? (
-            <div className="table-wrapper compact">
-              <table className="table-modern planning-mini-table">
-                <thead><tr><th>Collaborateur</th>{selectedWeek.map((day) => <th key={day}>{dayShortLabel(day)}</th>)}</tr></thead>
-                <tbody>
-                  {weekRows.map((row) => <tr key={row.employeeId}><td>{row.employeeName}</td>{selectedWeek.map((day) => <td key={day}>{row.days[day]?.join(', ') || '-'}</td>)}</tr>)}
-                </tbody>
-              </table>
-            </div>
-          ) : <span>Aucun collaborateur planifié cette semaine.</span>}
-        </div>
+      {mode === 'week' ? (
+        <PlanningWeekCalendar
+          selectedDate={selectedDate}
+          assignments={weekAssignments}
+          requirements={[]}
+          collaborators={weekCollaborators}
+          selectedEmployeeId=""
+          onDayClick={() => onOpenPlanning('week')}
+          readOnly
+          embedded
+          compact={showCompact || showMedium}
+        />
       ) : null}
       {mode === 'month' && showCompact ? (
         <div className="planning-widget-body planning-schedule-month compact">
@@ -1491,7 +1479,7 @@ function PlanningWorkspace(props: {
               <button key={view} type="button" className={props.planningView === view ? 'active' : ''} onClick={() => props.setPlanningView(view)}>{viewLabels[view]}</button>
             ))}
           </div>
-          <span className="muted tiny">{props.planningView === 'day' ? 'Toutes les personnes prévues sur la journée.' : props.planningView === 'week' ? 'Grille collaborateurs x jours, sans personnes masquées.' : props.planningView === 'year' ? 'Synthèse charge, absences et zones à vérifier.' : 'Vue calendrier avec détail complet par jour.'}</span>
+          <span className="muted tiny">{props.planningView === 'day' ? 'Toutes les personnes prévues sur la journée.' : props.planningView === 'week' ? 'Vue semaine par jour, avec les affectations en pastilles.' : props.planningView === 'year' ? 'Synthèse charge, absences et zones à vérifier.' : 'Vue calendrier avec détail complet par jour.'}</span>
         </div>
         {activeQuickMode || !props.quickPanelOpen ? (
           <div className={`quick-mode-banner ${activeQuickMode ? 'active' : ''}`}>
@@ -1505,7 +1493,7 @@ function PlanningWorkspace(props: {
         {props.planningView === 'day' ? (
           <DailyPlanningView selectedDate={props.selectedDate} assignments={props.assignments} collaborators={props.collaborators} departments={props.departments} onDayClick={handleDayClick} activeQuickMode={Boolean(props.quickAssignmentSelection)} onEditAssignment={props.onEditAssignment} />
         ) : props.planningView === 'week' ? (
-          <WeeklyPlanningView selectedDate={props.selectedDate} assignments={props.assignments} collaborators={props.collaborators} onDayClick={handleDayClick} onEditAssignment={props.onEditAssignment} />
+          <WeeklyPlanningView selectedDate={props.selectedDate} assignments={props.assignments} requirements={props.requirements} collaborators={props.collaborators} selectedEmployeeId={props.employeeFilter} activeQuickMode={Boolean(props.quickAssignmentSelection)} onDayClick={handleDayClick} onEditAssignment={props.onEditAssignment} />
         ) : props.planningView === 'year' ? (
           <YearPlanningView selectedDate={props.selectedDate} assignments={props.assignments} absences={[]} onOpenMonth={(date) => { props.setSelectedDate(date); props.setPlanningView('month'); }} />
         ) : (
@@ -1602,29 +1590,72 @@ function DailyPlanningView({ selectedDate, assignments, collaborators, departmen
   );
 }
 
-function WeeklyPlanningView({ selectedDate, assignments, collaborators, onDayClick, onEditAssignment }: { selectedDate: string; assignments: PlanningAssignment[]; collaborators: HrCollaborator[]; onDayClick: (day: string) => void | Promise<void>; onEditAssignment: (assignment: PlanningAssignment) => void }) {
+function WeeklyPlanningView({ selectedDate, assignments, requirements, collaborators, selectedEmployeeId, activeQuickMode, onDayClick, onEditAssignment }: { selectedDate: string; assignments: PlanningAssignment[]; requirements: PlanningRequirement[]; collaborators: HrCollaborator[]; selectedEmployeeId: string; activeQuickMode: boolean; onDayClick: (day: string) => void | Promise<void>; onEditAssignment: (assignment: PlanningAssignment) => void }) {
   const days = weekDates(selectedDate);
-  const activeCollaborators = collaborators.filter((collaborator) => assignments.some((assignment) => (assignment.employeeId ?? assignment.collaboratorId) === collaborator.id && days.some((day) => sameDay(assignment.date, day)) && assignment.status !== 'CANCELLED'));
+  const weekAssignments = assignments.filter((assignment) => days.some((day) => sameDay(assignment.date, day)) && assignment.status !== 'CANCELLED');
+  const activeCollaborators = collaborators.filter((collaborator) => weekAssignments.some((assignment) => (assignment.employeeId ?? assignment.collaboratorId) === collaborator.id));
+  const plannedMinutes = weekAssignments.reduce((sum, assignment) => sum + Math.round(assignmentHours(assignment) * 60), 0);
   return (
-    <div className="card-modern planning-week-view">
+    <div className="card-modern planning-week-view planning-calendar-card">
       <div className="section-header-modern">
         <div><span className="section-tagline">Planning semaine</span><h2>{formatShort(days[0])} au {formatShort(days[6])}</h2></div>
-        <span className="status-pill">{activeCollaborators.length} collaborateur(s)</span>
+        <div className="setup-actions">
+          <span className="status-pill">{activeCollaborators.length} collaborateur(s)</span>
+          <span className="status-pill">{formatMinutesValue(plannedMinutes)} planifiées</span>
+        </div>
       </div>
-      <div className="planning-week-table">
-        <strong>Collaborateur</strong>
-        {days.map((day) => <button key={day} type="button" className="planning-week-day-head" onClick={() => void onDayClick(day)}>{dayNameShort(isoDayOfWeek(day))}<small>{formatShort(day)}</small></button>)}
-        {activeCollaborators.map((collaborator) => (
-          <div className="planning-week-row-full" key={collaborator.id}>
-            <strong>{collaboratorName(collaborator)}</strong>
-            {days.map((day) => {
-              const dayAssignments = assignments.filter((assignment) => (assignment.employeeId ?? assignment.collaboratorId) === collaborator.id && sameDay(assignment.date, day) && assignment.status !== 'CANCELLED');
-              return <div key={`${collaborator.id}-${day}`} className="planning-week-cell">{dayAssignments.length ? dayAssignments.map((assignment) => <button key={assignment.id} type="button" onClick={() => onEditAssignment(assignment)}><span>{assignmentDisplayRange(assignment)}</span><small>{businessStatusLabel(assignmentBusinessStatus(assignment))}</small></button>) : <em>Repos</em>}</div>;
-            })}
-          </div>
-        ))}
-      </div>
+      <PlanningWeekCalendar
+        selectedDate={selectedDate}
+        assignments={weekAssignments}
+        requirements={requirements}
+        collaborators={collaborators}
+        selectedEmployeeId={selectedEmployeeId}
+        activeQuickMode={activeQuickMode}
+        onDayClick={onDayClick}
+        onEditAssignment={onEditAssignment}
+      />
       {!activeCollaborators.length ? <GuidedEmptyState title="Aucun collaborateur planifié" description="La semaine sélectionnée ne contient pas encore d’affectations." /> : null}
+    </div>
+  );
+}
+
+function PlanningWeekCalendar({ selectedDate, assignments, requirements, collaborators, selectedEmployeeId, onDayClick, activeQuickMode = false, onEditAssignment, readOnly = false, embedded = false, compact = false }: { selectedDate: string; assignments: PlanningAssignment[]; requirements: PlanningRequirement[]; collaborators: HrCollaborator[]; selectedEmployeeId: string; onDayClick: (day: string) => void | Promise<void>; activeQuickMode?: boolean; onEditAssignment?: (assignment: PlanningAssignment) => void; readOnly?: boolean; embedded?: boolean; compact?: boolean }) {
+  const days = weekDates(selectedDate);
+  const visibleLimit = compact ? 2 : 6;
+  return (
+    <div className={`${embedded ? 'planning-calendar-card planning-calendar-card-embedded' : 'planning-week-calendar-inner'} planning-week-calendar-card ${compact ? 'compact' : ''}`}>
+      <div className={`planning-week-card-grid ${embedded ? 'embedded' : ''}`}>
+        {days.map((day) => {
+          const dayAssignments = assignments.filter((assignment) => sameDay(assignment.date, day) && assignment.status !== 'CANCELLED');
+          const assignmentGroups = consolidateAssignmentsByEmployee(dayAssignments, collaborators);
+          const dayRequirements = requirements.filter((requirement) => requirementMatchesDay(requirement, day));
+          const tone = dayTone(dayAssignments, dayRequirements);
+          return (
+            <div key={day} role="button" tabIndex={0} className={`month-cell planning-month-cell planning-week-day-card ${tone} ${sameDay(day, selectedDate) ? 'selected' : ''} ${activeQuickMode ? 'assignment-target' : ''} ${readOnly ? 'read-only' : ''}`} onClick={() => void onDayClick(day)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void onDayClick(day); } }}>
+              <div className="planning-week-day-title">
+                <span>{dayNameShort(isoDayOfWeek(day))}</span>
+                <b>{formatShort(day)}</b>
+              </div>
+              <div className="month-shift-list">
+                {assignmentGroups.slice(0, visibleLimit).map((group) => {
+                  const dimmed = Boolean(selectedEmployeeId && group.employeeId !== selectedEmployeeId);
+                  const status = businessStatusConfig(group.businessStatus);
+                  const interactive = Boolean(onEditAssignment && !readOnly);
+                  return <span key={group.employeeId} role={interactive ? 'button' : undefined} tabIndex={interactive ? 0 : undefined} className={`assignment-pill status-${status.className} ${group.hasConflict ? 'conflict' : ''} ${dimmed ? 'dimmed' : ''} ${!interactive ? 'read-only' : ''}`} onClick={(event) => { event.stopPropagation(); if (interactive) onEditAssignment?.(group.assignments[0]); }} onKeyDown={(event) => { if (interactive && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); event.stopPropagation(); onEditAssignment?.(group.assignments[0]); } }}><strong>{shortName(group.collaborator)}</strong>{group.assignments.map((assignment) => <small key={assignment.id}>{assignmentDisplayRange(assignment)}</small>)}<em>{businessStatusLabel(group.businessStatus)}</em></span>;
+                })}
+                {assignmentGroups.length > visibleLimit ? <button type="button" className="month-more-button" onClick={(event) => { event.stopPropagation(); void onDayClick(day); }}>{`+ ${assignmentGroups.length - visibleLimit} autre(s)`}</button> : null}
+                {!assignmentGroups.length ? <em className={dayRequirements.length ? 'need-open' : 'day-closed'}>{dayRequirements.length ? 'Besoin ouvert' : 'Fermé'}</em> : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="planning-legend">
+        <span><i className="legend-green" /> Correct</span>
+        <span><i className="legend-orange" /> Alerte quota</span>
+        <span><i className="legend-red" /> Conflit / sous-effectif</span>
+        <span><i className="legend-grey" /> Fermé / repos</span>
+      </div>
     </div>
   );
 }
@@ -1853,10 +1884,12 @@ function AssignmentEditModal({ assignment, collaborators, departments, positions
 }
 
 function PlanningSettings({ selected, setSelected, requirements, templates, rotations, dayPresets, employeeTemplateAssignments, absences, departments, positions, sites, collaborators, settings, setup, onOpenInitialSetup, selectedDate, canWrite, onSaveRequirement, onDeleteRequirement, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { selected: SettingKey; setSelected: (value: SettingKey) => void; requirements: PlanningRequirement[]; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; dayPresets: PlanningTemplate[]; employeeTemplateAssignments: PlanningEmployeeTemplateAssignment[]; absences: Array<Record<string, any>>; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; settings?: Record<string, any>; setup: ReturnType<typeof buildPlanningSetup>; onOpenInitialSetup: () => void; selectedDate: string; canWrite: boolean; onSaveRequirement: (payload: RequirementPayload, id?: string) => Promise<void>; onDeleteRequirement: (id: string) => Promise<void>; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
+  const workTimeRegulation = settings?.workTimeRegulation as EstablishmentWorkTimeRegulation | undefined;
   const cards: Array<{ key: SettingKey; title: string; description: string; count: string; status: PlanningSetupStatus; Icon: typeof ClipboardList }> = [
     { key: 'needs', title: 'Besoins par service', description: 'Saison, jour, créneau, service et besoin opérationnel.', count: `${requirements.length} besoin(s)`, status: requirements.length ? 'done' : 'todo', Icon: ClipboardList },
     { key: 'presets', title: 'Presets & roulements', description: 'Presets journaliers et roulements semaine propriétaires Planning.', count: `${dayPresets.length + rotations.length} élément(s)`, status: dayPresets.length && rotations.length ? 'done' : dayPresets.length || rotations.length ? 'partial' : 'todo', Icon: Repeat2 },
     { key: 'availability', title: 'Indisponibilités & absences', description: 'Absences RH en lecture seule et futures indisponibilités Planning.', count: `${absences.length} absence(s)`, status: 'partial', Icon: ShieldAlert },
+    { key: 'work-time', title: 'Règlement du temps de travail', description: 'Paramètres internes établissement, séparés du socle légal.', count: workTimeRegulation?.validationStatus === 'validated' ? 'Validé' : 'À valider', status: workTimeRegulation?.validationStatus === 'validated' ? 'done' : 'partial', Icon: Clock },
     { key: 'rules', title: 'Règles planning', description: 'Couverture, repos, quota, pauses et conflits configurables.', count: 'Préparé', status: 'done', Icon: SlidersHorizontal },
     { key: 'costs', title: 'Coûts', description: 'Salaire brut RH et estimation employeur.', count: 'Non configuré', status: 'partial', Icon: Coins },
     { key: 'notifications', title: 'Notifications', description: 'Publication et rappels salariés futurs.', count: 'Préparé', status: 'partial', Icon: Bell },
@@ -1882,11 +1915,92 @@ function SettingsDetail({ selected, requirements, rotations, dayPresets, employe
   if (selected === 'needs') return <NeedsSettingsDetail requirements={requirements} departments={departments} positions={positions} sites={sites} selectedDate={selectedDate} canWrite={canWrite} onSaveRequirement={onSaveRequirement} onDeleteRequirement={onDeleteRequirement} />;
   if (selected === 'presets') return <PresetsRotationsSettings dayPresets={dayPresets} weeklyRotations={rotations} assignments={employeeTemplateAssignments} departments={departments} positions={positions} sites={sites} collaborators={collaborators} canWrite={canWrite} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} onSaveWeeklyRotation={onSaveWeeklyRotation} onDeleteWeeklyRotation={onDeleteWeeklyRotation} onSaveEmployeeTemplateAssignment={onSaveEmployeeTemplateAssignment} />;
   if (selected === 'availability') return <><span className="card-title">Indisponibilités & absences</span><div className="settings-list">{absences.map((absence) => <div key={absence.id}><strong>{collaboratorName(findCollaborator(collaborators, absence.employeeId ?? absence.collaboratorId))}</strong><span>{absence.type ?? absence.reason ?? 'Absence'} - {formatShort(absence.startDate)} à {formatShort(absence.endDate)} - lecture seule RH</span></div>)}{!absences.length ? <p className="muted">Aucune absence RH sur la période. Les indisponibilités Planning auront leur propre stockage plus tard.</p> : null}</div></>;
+  if (selected === 'work-time') return <WorkTimeRegulationSettings regulation={settings?.workTimeRegulation as EstablishmentWorkTimeRegulation | undefined} tracking={settings?.workTimeTracking as WorkTimeTrackingSummary | undefined} />;
   if (selected === 'rules') return <PlanningRulesSettings rules={settings?.rules as Array<Record<string, any>> | undefined} />;
   if (selected === 'costs') return <EmployerCostsSettings />;
   if (selected === 'notifications') return <PlaceholderList title="Notifications" items={['Publication Planning', 'Rappels émargement', 'Alertes manager']} />;
   if (selected === 'exports') return <PlaceholderList title="Exports" items={['Export planning', 'Export paie', 'Export compteurs']} />;
   return <PlaceholderList title="Imports" items={['Import ODS/XLSX', 'Dictionnaire de codes', 'Rapport de contrôle']} />;
+}
+
+function WorkTimeRegulationSettings({ regulation, tracking }: { regulation?: EstablishmentWorkTimeRegulation; tracking?: WorkTimeTrackingSummary }) {
+  const extractedRules = regulation?.extractedRules ?? [];
+  const rulesToConfirm = regulation?.rulesToConfirm ?? [];
+  const trackingRows = tracking?.rows ?? [];
+  const trackingMinutes = trackingRows.reduce((sum, row) => sum + Number(row.quantity ?? 0), 0);
+  return (
+    <>
+      <div className="section-header-modern">
+        <div>
+          <span className="card-title"><Clock size={18} /> Règlement du temps de travail</span>
+          <span className="section-tagline">Paramétrage interne établissement, séparé du droit commun et des conventions.</span>
+        </div>
+        <span className={`status-pill ${regulation?.validationStatus === 'validated' ? 'success' : 'warning'}`}>{workTimeValidationLabel(regulation?.validationStatus)}</span>
+      </div>
+      <div className="work-time-regulation-grid">
+        <div className="work-time-regulation-card">
+          <strong>Heures de nuit</strong>
+          <span>{regulation?.nightWorkStartTime && regulation?.nightWorkEndTime ? `${regulation.nightWorkStartTime} - ${regulation.nightWorkEndTime}` : 'Non configurées'}</span>
+          <small>{regulation?.nightWorkEnabled ? 'Détection active' : 'À confirmer avant calcul'}</small>
+        </div>
+        <div className="work-time-regulation-card">
+          <strong>Jours fériés</strong>
+          <span>{regulation?.publicHolidayWorkEnabled ? 'Travaillables' : 'Non configurés'}</span>
+          <small>{regulation?.publicHolidayDates?.length ? `${regulation.publicHolidayDates.length} date(s) suivie(s)` : 'Aucune date interne validée'}</small>
+        </div>
+        <div className="work-time-regulation-card">
+          <strong>Week-end</strong>
+          <span>{regulation?.weekendWorkEnabled ? 'Travaillable' : 'À confirmer'}</span>
+          <small>{weekendWorkLabel(regulation)}</small>
+        </div>
+        <div className="work-time-regulation-card">
+          <strong>Récupération</strong>
+          <span>{regulation?.compensationsEnabled ? 'Configurée' : 'Non configurée'}</span>
+          <small>Aucun solde dû n’est inventé</small>
+        </div>
+      </div>
+      <div className="work-time-regulation-grid">
+        <div className="work-time-regulation-card wide">
+          <strong>Télétravail extrait du document</strong>
+          <span>{regulation?.teleworkEnabled ? `${regulation.teleworkStartTime ?? '--:--'} - ${regulation.teleworkEndTime ?? '--:--'} · pause ${regulation.teleworkMinBreakMinutes ?? 0} min` : 'Non activé'}</span>
+          <small>{regulation?.teleworkDailyQuotaMinutes ? `Quota journalier ${formatMinutesValue(regulation.teleworkDailyQuotaMinutes)} · ${regulation.teleworkMaxDaysPerWeek ?? 0} jour/semaine` : 'Données non chargées'}</small>
+        </div>
+        <div className="work-time-regulation-card wide">
+          <strong>Source</strong>
+          <span>{regulation?.sourceDocumentName ?? 'Source non renseignée'}</span>
+          <small>Règlement interne établissement · {workTimeValidationLabel(regulation?.validationStatus)}</small>
+        </div>
+      </div>
+      <div className="planning-settings-controls planning-settings-split">
+        <div className="settings-list planning-settings-list">
+          <strong>Règles extraites</strong>
+          {extractedRules.slice(0, 5).map((rule) => (
+            <div key={rule.key} className="planning-settings-item">
+              <div><strong>{rule.label}</strong><span>{workTimeRuleValue(rule.value, rule.unit)} · page {rule.sourcePage ?? 'n.c.'}</span></div>
+              <span className="status-pill success">Validé</span>
+            </div>
+          ))}
+          {!extractedRules.length ? <p className="muted">Aucune règle interne chargée depuis le backend.</p> : null}
+        </div>
+        <div className="settings-list planning-settings-list">
+          <strong>À confirmer</strong>
+          {rulesToConfirm.slice(0, 6).map((rule) => (
+            <div key={rule.key} className="planning-settings-item">
+              <div><strong>{rule.label}</strong><span>{rule.sourceSection ?? 'Non trouvé dans le PDF fourni'}</span></div>
+              <span className="status-pill warning">À valider</span>
+            </div>
+          ))}
+          {!rulesToConfirm.length ? <p className="muted">Aucune règle en attente.</p> : null}
+        </div>
+      </div>
+      <div className="settings-list">
+        <div className="planning-settings-item">
+          <div><strong>Suivi Planning</strong><span>{trackingRows.length ? `${trackingRows.length} ligne(s) de suivi · ${formatMinutesValue(trackingMinutes)}` : 'Aucune heure interne détectée sur la période affichée'}</span></div>
+          <span className="status-pill">Suivi uniquement</span>
+        </div>
+      </div>
+    </>
+  );
 }
 
 function PresetsRotationsSettings({ dayPresets, weeklyRotations, assignments, departments, positions, sites, collaborators, canWrite, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { dayPresets: PlanningTemplate[]; weeklyRotations: PlanningTemplate[]; assignments: PlanningEmployeeTemplateAssignment[]; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; canWrite: boolean; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
@@ -2328,7 +2442,7 @@ function GuidedEmptyState({ title, description, actionLabel, onAction }: { title
   return <div className="planning-empty-state guided"><strong>{title}</strong><span>{description}</span>{actionLabel && onAction ? <button type="button" className="btn btn-secondary btn-compact" onClick={onAction}>{actionLabel}</button> : null}</div>;
 }
 
-function AttendanceView({ token, rows, assignments, collaborators, selectedMonth, employeeFilter }: { token: string; rows: Array<Record<string, any>>; assignments: PlanningAssignment[]; collaborators: HrCollaborator[]; selectedMonth: string; employeeFilter: string }) {
+function AttendanceView({ token, rows, assignments, collaborators, selectedMonth, employeeFilter, workTimeTracking }: { token: string; rows: Array<Record<string, any>>; assignments: PlanningAssignment[]; collaborators: HrCollaborator[]; selectedMonth: string; employeeFilter: string; workTimeTracking?: WorkTimeTrackingSummary }) {
   const [statusFilter, setStatusFilter] = useState('');
   const [attendanceView, setAttendanceView] = useState<'sheets' | 'validation' | 'rights'>('sheets');
   const [selectedEmployee, setSelectedEmployee] = useState<string>('');
@@ -2345,7 +2459,10 @@ function AttendanceView({ token, rows, assignments, collaborators, selectedMonth
   const activeEmployeeId = selectedEmployee || employeeFilter;
   const detailRows = activeEmployeeId ? filteredRows.filter((row) => row.employeeId === activeEmployeeId) : [];
   const detailCollaborator = findCollaborator(collaborators, activeEmployeeId);
-  const rightsAllRows = useMemo(() => rightsBalanceRows(rightsEmployees, collaborators, employeeFilter), [rightsEmployees, collaborators, employeeFilter]);
+  const rightsAllRows = useMemo(() => [
+    ...rightsBalanceRows(rightsEmployees, collaborators, employeeFilter),
+    ...workTimeTrackingRows(workTimeTracking, employeeFilter),
+  ], [rightsEmployees, collaborators, employeeFilter, workTimeTracking]);
   const rightsRows = useMemo(() => filterRightBalanceRows(rightsAllRows, rightsSearch, rightsFamilyFilter, rightsStatusFilter), [rightsAllRows, rightsSearch, rightsFamilyFilter, rightsStatusFilter]);
   const rightsGroups = useMemo(() => groupRightBalanceRows(rightsRows), [rightsRows]);
   const rightsPositionSections = useMemo(() => groupRightBalanceGroupsByPosition(rightsGroups), [rightsGroups]);
@@ -2427,7 +2544,7 @@ function AttendanceView({ token, rows, assignments, collaborators, selectedMonth
                 <div key={item.key} className="attendance-rights-total">
                   <span>{item.label}</span>
                   <strong>{formatRightBalanceValue(item.closingBalance, item.unit)}</strong>
-                  <small>{item.employeeCount} collaborateur(s)</small>
+                  <small>{item.employeeCount} collaborateur(s){item.trackingOnly ? ' · suivi' : ''}</small>
                 </div>
               ))}
             </div>
@@ -2457,7 +2574,7 @@ function AttendanceView({ token, rows, assignments, collaborators, selectedMonth
                               <strong>{group.employeeName}</strong>
                             </th>
                           ) : null}
-                          <td className="attendance-rights-label">{row.label}</td>
+                          <td className="attendance-rights-label">{row.label}{row.trackingOnly ? <small>Suivi uniquement</small> : null}</td>
                           <td className="attendance-rights-number">{formatRightBalanceValue(row.openingBalance, row.unit)}</td>
                           <td className="attendance-rights-number">{formatRightBalanceValue(row.accrued, row.unit)}</td>
                           <td className="attendance-rights-number">{formatRightBalanceValue(row.consumed, row.unit)}</td>
@@ -2831,7 +2948,6 @@ function formatPeriod(start?: string | null, end?: string | null) { return end &
 function todayIso() { return localDateIso(new Date()); }
 function sameDay(a?: string | null, b?: string | null) { const dayA = normalizePlanningDate(a); const dayB = normalizePlanningDate(b); return Boolean(dayA && dayB && dayA === dayB); }
 function formatShort(value?: string | null) { if (!value) return '--'; return parseLocalDate(value).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }); }
-function dayShortLabel(value: string) { return parseLocalDate(value).toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit' }); }
 function formatAttendanceDate(value?: string | null) { if (!value) return '--'; return parseLocalDate(value).toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long' }); }
 function monthLabel(value: string) { return parseLocalDate(value).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }); }
 function addDays(value: string, days: number) { const date = parseLocalDate(value); date.setDate(date.getDate() + days); return localDateIso(date); }
@@ -2896,18 +3012,6 @@ function groupAssignmentsForDay(assignments: PlanningAssignment[]) {
     ...group,
     assignments: group.assignments.sort((a, b) => collaboratorName(a.collaborator ?? a.employee).localeCompare(collaboratorName(b.collaborator ?? b.employee))),
   })).sort((a, b) => a.department.localeCompare(b.department) || a.range.localeCompare(b.range));
-}
-function buildWeekScheduleRows(assignments: PlanningAssignment[], days: string[]) {
-  const rows = new Map<string, { employeeId: string; employeeName: string; days: Record<string, string[]> }>();
-  assignments.forEach((assignment) => {
-    const employeeId = assignment.employeeId ?? assignment.collaboratorId ?? assignment.id;
-    const employeeName = collaboratorName(assignment.collaborator ?? assignment.employee);
-    const row = rows.get(employeeId) ?? { employeeId, employeeName, days: Object.fromEntries(days.map((day) => [day, []])) as Record<string, string[]> };
-    const day = days.find((item) => sameDay(assignment.date, item));
-    if (day) row.days[day].push(assignmentDisplayRange(assignment));
-    rows.set(employeeId, row);
-  });
-  return [...rows.values()].sort((a, b) => a.employeeName.localeCompare(b.employeeName));
 }
 function buildMonthScheduleRows(assignments: PlanningAssignment[]) {
   const rows = new Map<string, PlanningAssignment[]>();
@@ -2987,9 +3091,6 @@ function summarizeShiftSlots(assignments: PlanningAssignment[]) {
   return [...slots.entries()].map(([range, count]) => ({ range, count })).sort((a, b) => a.range.localeCompare(b.range));
 }
 function uniqueEmployeeCount(assignments: PlanningAssignment[]) { return new Set(assignments.map((assignment) => assignment.employeeId ?? assignment.collaboratorId).filter(Boolean)).size; }
-function uniqueEmployeeNames(assignments: PlanningAssignment[]) {
-  return [...new Map(assignments.map((assignment) => [assignment.employeeId ?? assignment.collaboratorId ?? assignment.id, collaboratorName(assignment.collaborator ?? assignment.employee)])).values()].sort((a, b) => a.localeCompare(b));
-}
 function collaboratorsFromAssignments(assignments: PlanningAssignment[]) {
   const rows = new Map<string, HrCollaborator>();
   assignments.forEach((assignment) => {
@@ -3064,6 +3165,28 @@ function rightsBalanceRows(employees: PlanningCounterEmployeeSummary[], collabor
     })
     .sort((a, b) => a.employeeName.localeCompare(b.employeeName) || a.label.localeCompare(b.label));
 }
+function workTimeTrackingRows(tracking: WorkTimeTrackingSummary | undefined, employeeFilter: string): RightBalanceRow[] {
+  return (tracking?.rows ?? [])
+    .filter((row) => !employeeFilter || row.employeeId === employeeFilter)
+    .map((row) => ({
+      employeeId: row.employeeId,
+      employeeName: row.employeeName,
+      jobTitle: row.jobTitle ?? 'Poste non renseigné',
+      accountType: row.accountType,
+      code: row.code,
+      label: row.label,
+      family: 'tracking',
+      status: row.status === 'OK' ? 'OK' as const : 'TO_VALIDATE' as const,
+      unit: row.unit,
+      openingBalance: 0,
+      accrued: Number(row.quantity ?? 0),
+      consumed: 0,
+      adjusted: 0,
+      closingBalance: Number(row.quantity ?? 0),
+      trackingOnly: true,
+    }))
+    .sort((a, b) => a.employeeName.localeCompare(b.employeeName) || a.label.localeCompare(b.label));
+}
 function filterRightBalanceRows(rows: RightBalanceRow[], search: string, familyFilter: string, statusFilter: string) {
   const query = normalizeSearchText(search);
   return rows.filter((row) => {
@@ -3099,18 +3222,20 @@ function groupRightBalanceGroupsByPosition(groups: RightBalanceGroup[]): RightBa
     .sort((a, b) => comparePositionTitles(a.positionName, b.positionName));
 }
 function rightsBalanceTotals(rows: RightBalanceRow[]) {
-  const totals = new Map<string, { key: string; label: string; unit: string; closingBalance: number; employeeIds: Set<string> }>();
+  const totals = new Map<string, { key: string; label: string; unit: string; closingBalance: number; employeeIds: Set<string>; trackingOnly: boolean }>();
   rows.forEach((row) => {
     const key = `${row.accountType}:${row.code}:${row.unit}`;
-    const current = totals.get(key) ?? { key, label: row.label, unit: row.unit, closingBalance: 0, employeeIds: new Set<string>() };
+    const current = totals.get(key) ?? { key, label: row.label, unit: row.unit, closingBalance: 0, employeeIds: new Set<string>(), trackingOnly: !!row.trackingOnly };
     current.closingBalance += row.closingBalance;
     current.employeeIds.add(row.employeeId);
+    current.trackingOnly = current.trackingOnly && !!row.trackingOnly;
     totals.set(key, current);
   });
-  return [...totals.values()].map((item) => ({ key: item.key, label: item.label, unit: item.unit, closingBalance: item.closingBalance, employeeCount: item.employeeIds.size })).sort((a, b) => a.label.localeCompare(b.label));
+  return [...totals.values()].map((item) => ({ key: item.key, label: item.label, unit: item.unit, closingBalance: item.closingBalance, employeeCount: item.employeeIds.size, trackingOnly: item.trackingOnly })).sort((a, b) => a.label.localeCompare(b.label));
 }
 function rightBalanceFamily(row: Pick<RightBalanceRow, 'label' | 'code' | 'accountType'>) {
   const source = normalizeSearchText(`${row.label} ${row.code} ${row.accountType}`);
+  if (source.includes('internal_tracking') || source.includes('interne') || source.includes('detectee')) return 'tracking';
   if (source.includes('rtt')) return 'rtt';
   if (source.includes('recuperation') || source.includes('recup') || source.includes('heures dues')) return 'recovery';
   if (source.includes('maladie') || source.includes('arret') || source.includes('sick')) return 'sickness';
@@ -3140,6 +3265,23 @@ function rightBalanceTone(row: Pick<RightBalanceRow, 'closingBalance' | 'status'
   if (row.closingBalance < 0 || row.status === 'ALERT') return 'danger';
   if (row.closingBalance === 0 || row.status === 'NOT_INITIALIZED') return 'warning';
   return 'success';
+}
+function workTimeValidationLabel(status?: string | null) {
+  if (status === 'validated') return 'Validé';
+  if (status === 'draft') return 'Brouillon';
+  return 'À valider';
+}
+function weekendWorkLabel(regulation?: EstablishmentWorkTimeRegulation) {
+  if (!regulation) return 'Paramétrage non chargé';
+  if (regulation.weekendWorkEnabled) return 'Samedi et dimanche possibles selon validation interne';
+  const days = [regulation.saturdayWorkAllowed ? 'samedi' : '', regulation.sundayWorkAllowed ? 'dimanche' : ''].filter(Boolean);
+  return days.length ? `${days.join(' et ')} autorisé(s)` : 'Week-end non autorisé ou à confirmer';
+}
+function workTimeRuleValue(value: string | number | boolean | null | undefined, unit?: string | null) {
+  if (value === true) return 'Oui';
+  if (value === false) return 'Non';
+  if (value == null || value === '') return 'À confirmer';
+  return unit ? `${value} ${unit}` : String(value);
 }
 function normalizeSearchText(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();

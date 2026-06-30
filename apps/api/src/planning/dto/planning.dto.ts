@@ -229,6 +229,33 @@ export class UpsertPlanningPolicyProfileDto {
   @IsOptional() customRules?: unknown;
 }
 
+export class UpsertWorkTimeRegulationDto {
+  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() nightWorkEnabled?: boolean;
+  @IsOptional() @IsString() @MaxLength(5) nightWorkStartTime?: string;
+  @IsOptional() @IsString() @MaxLength(5) nightWorkEndTime?: string;
+  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() publicHolidayWorkEnabled?: boolean;
+  @IsOptional() @IsArray() @IsString({ each: true }) publicHolidayDates?: string[];
+  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() weekendWorkEnabled?: boolean;
+  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() saturdayWorkAllowed?: boolean;
+  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() sundayWorkAllowed?: boolean;
+  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() compensationsEnabled?: boolean;
+  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() teleworkEnabled?: boolean;
+  @IsOptional() @IsString() @MaxLength(5) teleworkStartTime?: string;
+  @IsOptional() @IsString() @MaxLength(5) teleworkEndTime?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) teleworkMinBreakMinutes?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) teleworkDailyQuotaMinutes?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) teleworkMaxDaysPerWeek?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) teleworkMaxDaysPerYearFullTime?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) teleworkMaxDaysPerYearPartTime?: number;
+  @IsOptional() @IsString() @MaxLength(120) internalRulesSourceDocumentId?: string;
+  @IsOptional() @IsString() @MaxLength(240) sourceDocumentName?: string;
+  @IsOptional() sourceDocumentMetadata?: unknown;
+  @IsOptional() extractedRules?: unknown;
+  @IsOptional() rulesToConfirm?: unknown;
+  @IsOptional() positionMapping?: unknown;
+  @IsOptional() @IsString() @MaxLength(80) validationStatus?: string;
+}
+
 export class UpsertPlanningAssignmentDto {
   @IsUUID() employeeId!: string;
   @IsUUID() departmentId!: string;

@@ -70,6 +70,7 @@ import type {
   PlanningRequirement,
   PlanningTemplate,
   PlanningWeeklyRotationPayload,
+  EstablishmentWorkTimeRegulation,
   TechnicalSheetAllergen,
   TechnicalSheetCategory,
   TechnicalSheetDashboard,
@@ -737,6 +738,15 @@ export const api = {
   },
   updatePlanningPolicyProfile(token: string, id: string, payload: Partial<PlanningPolicyProfile>) {
     return request<PlanningPolicyProfile>(`/planning/policy-profiles/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
+  },
+  planningWorkTimeRegulation(token: string) {
+    return request<EstablishmentWorkTimeRegulation>('/planning/work-time-regulation', {}, token);
+  },
+  updatePlanningWorkTimeRegulation(token: string, payload: Partial<EstablishmentWorkTimeRegulation>) {
+    return request<EstablishmentWorkTimeRegulation>('/planning/work-time-regulation', { method: 'PATCH', body: JSON.stringify(payload) }, token);
+  },
+  previewPlanningWorkTimePositionMapping(token: string) {
+    return request<Record<string, any>>('/planning/work-time-regulation/position-mapping/preview', {}, token);
   },
   createPlanningAssignment(token: string, payload: Partial<PlanningAssignment>) {
     return request<PlanningAssignment>('/planning/assignments', { method: 'POST', body: JSON.stringify(payload) }, token);

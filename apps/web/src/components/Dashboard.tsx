@@ -1686,6 +1686,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     'hr-departments': 'Services RH',
     'hr-positions': 'Postes RH',
     'hr-rights': 'Droits',
+    'hr-rotations': 'Roulements RH',
     'hr-orgchart': 'Organigramme',
     'planning-dashboard': 'Planning',
     'planning-planning': 'Planning mensuel',
