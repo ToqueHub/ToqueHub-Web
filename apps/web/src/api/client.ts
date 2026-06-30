@@ -58,6 +58,8 @@ import type {
   PlanningEmployeeTemplateAssignment,
   PlanningEntitlementRule,
   EmployeeApplicableRightsResponse,
+  EmployeeRightsOverviewResponse,
+  EstablishmentRightsRecommendationsResponse,
   LegalRightDetail,
   LegalRightsDiagnosticsResponse,
   LegalRightsSearchResponse,
@@ -658,6 +660,20 @@ export const api = {
       if (value !== undefined && value !== null && value !== '') search.set(key, String(value));
     });
     return request<EmployeeApplicableRightsResponse>(`/rights/employees/${employeeId}/applicable${search.size ? `?${search.toString()}` : ''}`, {}, token);
+  },
+  employeeRightsOverview(token: string, employeeId: string, params: { periodStart?: string; periodEnd?: string; effectiveDate?: string } = {}) {
+    const search = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') search.set(key, String(value));
+    });
+    return request<EmployeeRightsOverviewResponse>(`/rights/employees/${employeeId}/overview${search.size ? `?${search.toString()}` : ''}`, {}, token);
+  },
+  establishmentRightsRecommendations(params: { country?: string; regulatoryCountryCode?: string; sector?: string; regulatorySector?: string; establishmentType?: string; idcc?: string; publicRegime?: string; query?: string } = {}, token?: string) {
+    const search = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') search.set(key, String(value));
+    });
+    return request<EstablishmentRightsRecommendationsResponse>(`/rights/onboarding/recommendations${search.size ? `?${search.toString()}` : ''}`, {}, token);
   },
   legalRightDetail(token: string, id: string) {
     return request<LegalRightDetail>(`/rights/${id}`, {}, token);

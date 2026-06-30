@@ -2,7 +2,7 @@
 import type React from 'react';
 import { AlertCircle, BriefcaseBusiness, CalendarDays, FileText, GraduationCap, History, NotebookText, Search, ShieldCheck, UserRound, UsersRound, X } from 'lucide-react';
 import { api } from '../../../api/client';
-import type { CoreUser, EmployeeApplicableRight, EmployeeApplicableRightsResponse, HrCollaborator, HrCollaboratorPayload, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, PlanningEmployeeEntitlementsResponse, PlanningEntitlementCatalogItem, Site } from '../../../types';
+import type { CoreUser, EmployeeApplicableRight, EmployeeApplicableRightsResponse, EmployeeRightsOverviewResponse, HrCollaborator, HrCollaboratorPayload, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, PlanningEmployeeEntitlementsResponse, PlanningEntitlementCatalogItem, Site } from '../../../types';
 import { HR_CATALOG } from '../../../hr-catalog';
 
 type TabId = 'profile' | 'professional' | 'contracts' | 'rights' | 'documents' | 'trainings' | 'organization' | 'history';
@@ -42,6 +42,7 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
   const [customTraining, setCustomTraining] = useState('');
   const [entitlements, setEntitlements] = useState<PlanningEmployeeEntitlementsResponse | null>(null);
   const [applicableRights, setApplicableRights] = useState<EmployeeApplicableRightsResponse | null>(null);
+  const [rightsOverview, setRightsOverview] = useState<EmployeeRightsOverviewResponse | null>(null);
   const [entitlementsLoading, setEntitlementsLoading] = useState(false);
   const [entitlementsError, setEntitlementsError] = useState('');
   const [openingBalanceForm, setOpeningBalanceForm] = useState<OpeningBalanceForm>({ entitlementRuleId: '', code: 'paid_leave', label: 'Congés payés', accountType: 'leave', unit: 'DAYS', openingBalance: '', effectiveFrom: new Date().toISOString().slice(0, 10) });
@@ -90,18 +91,21 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
     if (!collaborator?.id) {
       setEntitlements(null);
       setApplicableRights(null);
+      setRightsOverview(null);
       return;
     }
     setEntitlementsLoading(true);
     setEntitlementsError('');
     try {
       const year = new Date().getFullYear();
-      const [nextEntitlements, nextApplicableRights] = await Promise.all([
+      const [nextEntitlements, nextApplicableRights, nextRightsOverview] = await Promise.all([
         api.employeeHrEntitlements(token, collaborator.id, { year }),
         api.employeeApplicableRights(token, collaborator.id, { periodStart: `${year}-01-01`, periodEnd: `${year}-12-31` }),
+        api.employeeRightsOverview(token, collaborator.id, { periodStart: `${year}-01-01`, periodEnd: `${year}-12-31` }),
       ]);
       setEntitlements(nextEntitlements);
       setApplicableRights(nextApplicableRights);
+      setRightsOverview(nextRightsOverview);
     } catch (error) {
       setEntitlementsError(error instanceof Error ? error.message : 'Droits indisponibles pour ce collaborateur.');
     } finally {
@@ -217,7 +221,7 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
           {activeTab === 'profile' ? <ProfileTab form={form} set={set} requiredErrors={requiredErrors} /> : null}
           {activeTab === 'professional' ? <ProfessionalTab form={form} set={set} requiredErrors={requiredErrors} departments={activeDepartments} positions={primaryPositions} allPositions={activePositions} selectedDepartment={selectedDepartment} sites={sites} managers={availableManagers} users={availableUsers} positionResetMessage={positionResetMessage} clearPositionResetMessage={() => setPositionResetMessage('')} /> : null}
           {activeTab === 'contracts' ? <ContractsTab form={form} set={set} collaborator={collaborator} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /> : null}
-          {activeTab === 'rights' ? <RightsCountersPanel collaborator={collaborator} entitlements={entitlements} applicableRights={applicableRights} loading={entitlementsLoading} error={entitlementsError} form={openingBalanceForm} onForm={setOpeningBalanceForm} onSave={saveOpeningBalance} onAddCatalogRight={addCatalogRight} /> : null}
+          {activeTab === 'rights' ? <RightsCountersPanel collaborator={collaborator} entitlements={entitlements} applicableRights={applicableRights} rightsOverview={rightsOverview} loading={entitlementsLoading} error={entitlementsError} form={openingBalanceForm} onForm={setOpeningBalanceForm} onSave={saveOpeningBalance} onAddCatalogRight={addCatalogRight} /> : null}
           {activeTab === 'documents' ? <DocumentsTab collaborator={collaborator} pendingDocuments={pendingDocuments} onDocumentsChange={(documents) => { setPendingDocuments(documents); setDirty(true); }} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /> : null}
           {activeTab === 'trainings' ? <TrainingsTab selectedTrainings={selectedTrainings} onSelectedTrainings={(trainings) => { setSelectedTrainings(trainings); setDirty(true); }} customTraining={customTraining} onCustomTraining={setCustomTraining} /> : null}
           {activeTab === 'organization' ? <OrganizationTab collaborator={collaborator} /> : null}
@@ -301,7 +305,11 @@ function ContractsTab({ form, set, collaborator, onViewDocument, onDownloadDocum
   </TabPanel>;
 }
 
-function RightsCountersPanel({ collaborator, entitlements, applicableRights, loading, error, form, onForm, onSave, onAddCatalogRight }: { collaborator?: HrCollaborator; entitlements: PlanningEmployeeEntitlementsResponse | null; applicableRights: EmployeeApplicableRightsResponse | null; loading: boolean; error: string; form: OpeningBalanceForm; onForm: React.Dispatch<React.SetStateAction<OpeningBalanceForm>>; onSave: () => Promise<void>; onAddCatalogRight: (item: PlanningEntitlementCatalogItem, openingBalance?: number) => Promise<void> }) {
+type OverviewMandatoryRight = EmployeeRightsOverviewResponse['mandatoryRights'][number];
+type OverviewConfiguredRight = EmployeeRightsOverviewResponse['applicableRights'][number];
+type OverviewBalance = EmployeeRightsOverviewResponse['activeBalances'][number];
+
+function RightsCountersPanel({ collaborator, entitlements, applicableRights, rightsOverview, loading, error, form, onForm, onSave, onAddCatalogRight }: { collaborator?: HrCollaborator; entitlements: PlanningEmployeeEntitlementsResponse | null; applicableRights: EmployeeApplicableRightsResponse | null; rightsOverview: EmployeeRightsOverviewResponse | null; loading: boolean; error: string; form: OpeningBalanceForm; onForm: React.Dispatch<React.SetStateAction<OpeningBalanceForm>>; onSave: () => Promise<void>; onAddCatalogRight: (item: PlanningEntitlementCatalogItem, openingBalance?: number) => Promise<void> }) {
   const [search, setSearch] = useState('');
   const rules = entitlements?.rules ?? [];
   const activeEntitlements = entitlements?.entitlements?.filter((item) => item.enabled) ?? [];
@@ -317,6 +325,10 @@ function RightsCountersPanel({ collaborator, entitlements, applicableRights, loa
       return a.label.localeCompare(b.label, 'fr');
     });
   }, [applicableRights?.applicableRights]);
+  const mandatoryRights = rightsOverview?.mandatoryRights?.length ? rightsOverview.mandatoryRights : employeeApplicableRights;
+  const mandatoryGroups = useMemo(() => groupMandatoryRights(mandatoryRights), [mandatoryRights]);
+  const configuredRights = rightsOverview?.applicableRights ?? [];
+  const balanceRows = rightsOverview?.activeBalances ?? [];
   const missingRegulatoryCountry = applicableRights?.warnings?.some((warning) => warning.code === 'missing_regulatory_country');
   const missingActiveContract = applicableRights?.warnings?.some((warning) => warning.code === 'missing_active_contract');
   const availableRights = search.trim()
@@ -340,46 +352,75 @@ function RightsCountersPanel({ collaborator, entitlements, applicableRights, loa
       {error ? <small className="hr-inline-error">{error}</small> : null}
       <div className="hr-salary-preview">
         <strong>Cadre RH</strong>
-        <span>{countryLabel(entitlements?.setup?.hrCountryCode)} · Profil {entitlements?.setup?.organizationType ?? 'à choisir'}</span>
-        <small>Les modèles sont proposés par pays et restent ajustables selon vos règles internes.</small>
+        <span>{countryLabel(rightsOverview?.regulatoryCountryCode ?? entitlements?.setup?.hrCountryCode)} · {rightsOverview?.sector === 'PUBLIC' ? 'secteur public' : rightsOverview?.sector === 'PRIVATE' ? 'secteur privé' : 'secteur à choisir'} · Profil {rightsOverview?.establishmentType ?? entitlements?.setup?.organizationType ?? 'à choisir'}</span>
+        <small>Les droits obligatoires restent inclus automatiquement. Les soldes ci-dessous reflètent uniquement les compteurs existants.</small>
       </div>
       <div className="hr-salary-preview">
-        <strong>Droits applicables</strong>
+        <strong>Obligatoires</strong>
         {missingRegulatoryCountry ? <small>Pays de réglementation non configuré.</small> : null}
         {missingActiveContract ? <small>Contrat actif nécessaire pour calculer les compteurs.</small> : null}
-        {employeeApplicableRights.length ? (
+        {mandatoryGroups.length ? (
           <div className="hr-applicable-rights-list">
-            {employeeApplicableRights.map((right) => (
-              <div className="hr-contract-history-row hr-applicable-right-row" key={right.id}>
-                <div>
-                  <span>{right.label}</span>
-                  <small>{applicableRightOrigin(right)} · {applicableRightCounterLabel(right)}</small>
-                  {right.warnings?.some((warning) => warning.code === 'requires_review') ? <small>Règle à valider juridiquement.</small> : null}
-                </div>
-                <div className="hr-right-badge-row">
-                  <span className="hr-right-badge included">Inclus automatiquement</span>
-                  {right.validationStatus === 'requires_review' ? <span className="hr-right-badge review">À valider</span> : null}
-                </div>
+            {mandatoryGroups.map((group) => (
+              <div className="hr-contract-history" key={group.key}>
+                <strong>{group.label}</strong>
+                {group.rights.map((right) => (
+                  <div className="hr-contract-history-row hr-applicable-right-row" key={right.id}>
+                    <div>
+                      <span>{right.label}</span>
+                      <small>{overviewRightOrigin(right)} · {overviewRightStatusLabel(right)}</small>
+                      {right.warnings?.some((warning) => warning.code === 'requires_review') || right.validationStatus === 'requires_review' ? <small>À valider juridiquement.</small> : null}
+                    </div>
+                    <div className="hr-right-badge-row">
+                      <span className="hr-right-badge included">Inclus automatiquement</span>
+                      {right.validationStatus === 'requires_review' ? <span className="hr-right-badge review">À valider</span> : null}
+                    </div>
+                  </div>
+                ))}
               </div>
             ))}
           </div>
         ) : collaborator && !loading && !missingRegulatoryCountry ? (
-          <span>Aucun droit applicable retourné pour ce collaborateur.</span>
+          <span>Aucun droit obligatoire retourné pour ce collaborateur.</span>
         ) : null}
       </div>
       <div className="hr-salary-preview">
-        <strong>Droits actifs</strong>
-      {activeEntitlements.length ? activeEntitlements.map((item) => (
-        <div className="hr-contract-history-row" key={item.id}>
-          <div>
-            <span>{item.label}</span>
-            <small>{item.rule?.label ? `Règle : ${item.rule.label}` : 'Règle : manuelle'} · Solde d’ouverture : {formatRightValue(item.openingBalance, item.unit)}</small>
-            {rightNeedsVerification(item) ? <small>Consommé détecté : {formatRightValue(item.account?.consumed ?? 0, item.unit)} · Droits d’ouverture ou mapping incomplets</small> : null}
+        <strong>Droits applicables</strong>
+        {configuredRights.length ? configuredRights.map((right) => (
+          <div className="hr-contract-history-row hr-applicable-right-row" key={`${right.sourceLayer ?? 'right'}-${right.id}`}>
+            <div>
+              <span>{right.label}</span>
+              <small>{overviewRightOrigin(right)} · {overviewRightStatusLabel(right)}</small>
+            </div>
+            <div className="hr-right-badge-row">
+              <span className={`hr-right-badge ${right.sourceLayer === 'establishment_manual' || right.sourceLayer === 'manual_template' ? 'manual' : 'included'}`}>{right.applicability === 'manual' ? 'Manuel' : right.applicability === 'configured' ? 'Activé' : 'Applicable'}</span>
+              {right.validationStatus === 'requires_review' ? <span className="hr-right-badge review">À valider</span> : null}
+            </div>
           </div>
-          <strong>{rightBalanceLabel(item)}</strong>
-        </div>
-      )) : collaborator && !loading ? <span>Aucun droit encore rattaché à ce collaborateur.</span> : null}
-      {entitlements?.alerts?.some((alert) => alert.type === 'OPENING_BALANCE_MISSING') ? <small>Des congés ou récupérations sont consommés, mais le solde d’ouverture n’est pas encore renseigné.</small> : null}
+        )) : collaborator && !loading ? <span>Aucun droit conventionnel, interne ou salarié spécifique n’est actif pour ce collaborateur.</span> : null}
+      </div>
+      <div className="hr-salary-preview">
+        <strong>Droits actifs / Soldes</strong>
+        {balanceRows.length ? balanceRows.map((item) => (
+          <div className="hr-contract-history-row" key={`${item.source}-${item.id ?? item.code}`}>
+            <div>
+              <span>{item.label}</span>
+              <small>{overviewBalanceSummary(item)}</small>
+              {item.counterStatus === 'not_initialized' ? <small>Compteur non initialisé.</small> : null}
+            </div>
+            <strong>{overviewBalanceLabel(item)}</strong>
+          </div>
+        )) : activeEntitlements.length ? activeEntitlements.map((item) => (
+          <div className="hr-contract-history-row" key={item.id}>
+            <div>
+              <span>{item.label}</span>
+              <small>{item.rule?.label ? `Règle : ${item.rule.label}` : 'Règle : manuelle'} · Solde d’ouverture : {formatRightValue(item.openingBalance, item.unit)}</small>
+              {rightNeedsVerification(item) ? <small>Consommé détecté : {formatRightValue(item.account?.consumed ?? 0, item.unit)} · Droits d’ouverture ou mapping incomplets</small> : null}
+            </div>
+            <strong>{rightBalanceLabel(item)}</strong>
+          </div>
+        )) : collaborator && !loading ? <span>Aucun compteur initialisé pour ce collaborateur.</span> : null}
+        {entitlements?.alerts?.some((alert) => alert.type === 'OPENING_BALANCE_MISSING') ? <small>Des congés ou récupérations sont consommés, mais le solde d’ouverture n’est pas encore renseigné.</small> : null}
       </div>
       {collaborator ? (
         <div className="hr-salary-preview">
@@ -600,7 +641,12 @@ function toInputDate(value?: string | null) { return value ? new Date(value).toI
 function formatDate(value?: string | null) { return value ? new Intl.DateTimeFormat('fr-FR').format(new Date(value)) : '-'; }
 function formatMinutes(value?: number | null) { if (value == null) return '-'; const hours = Math.floor(value / 60); const minutes = Math.round(value % 60); return `${hours}h${minutes.toString().padStart(2, '0')}`; }
 function formatRightValue(value?: number | null, unit?: string | null) { if (value == null) return '-'; if (unit === 'MINUTES') return formatMinutes(value); return `${Math.round(Number(value) * 10) / 10} j`; }
-function rightsUnitLabel(unit?: string | null) { if (unit === 'MINUTES') return 'Heures'; if (unit === 'DAYS') return 'Jours'; return 'Unité personnalisée'; }
+function rightsUnitLabel(unit?: string | null) {
+  const normalized = String(unit ?? '').toLowerCase();
+  if (unit === 'MINUTES' || normalized.includes('heure') || normalized.includes('hour')) return 'Heures';
+  if (unit === 'DAYS' || normalized.includes('jour') || normalized.includes('day')) return 'Jours';
+  return 'Unité personnalisée';
+}
 function countryLabel(code?: string | null) { if (code === 'FR') return 'France'; if (code === 'FI') return 'Finlande'; return 'Cadre RH à choisir'; }
 function applicableRightOrigin(right: EmployeeApplicableRight) { return right.sourceLayer === 'common_law' ? 'Socle commun France' : right.sourceLabel ?? 'Droit RH'; }
 function applicableRightCounterLabel(right: EmployeeApplicableRight) {
@@ -618,6 +664,76 @@ function applicableRightCounterLabel(right: EmployeeApplicableRight) {
   if (code === 'JF' || code === 'JF_1MAI' || code === 'RECUP_PONT') return counter ? `Suivi : ${formatApplicableQuantity(counter.remaining ?? counter.acquired, counter.unit)}` : 'Suivi planning';
   if (right.calculationStatus === 'not_initialized' || !counter) return 'Compteur non initialisé';
   return counter.remaining != null ? `Solde : ${formatApplicableQuantity(counter.remaining, counter.unit)}` : right.calculationStatus ?? 'Suivi RH';
+}
+function groupMandatoryRights(rights: OverviewMandatoryRight[]) {
+  const groups = new Map<string, { key: string; label: string; rights: OverviewMandatoryRight[] }>();
+  rights.forEach((right) => {
+    const key = mandatoryRightFamilyKey(right);
+    const current = groups.get(key) ?? { key, label: mandatoryRightFamilyLabel(key), rights: [] };
+    current.rights.push(right);
+    groups.set(key, current);
+  });
+  const order = ['leave', 'working_time', 'rest', 'holiday', 'absence', 'parenthood', 'recovery', 'other'];
+  return Array.from(groups.values()).sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+}
+function mandatoryRightFamilyKey(right: Pick<OverviewMandatoryRight, 'uiGroup' | 'category' | 'code' | 'label'>) {
+  const haystack = normalizeLabel(`${right.uiGroup ?? ''} ${right.category ?? ''} ${right.code ?? ''} ${right.label ?? ''}`);
+  if (/parent|maternite|paternite/.test(haystack)) return 'parenthood';
+  if (/ferie|1er mai|jf/.test(haystack)) return 'holiday';
+  if (/pause|repos/.test(haystack)) return 'rest';
+  if (/heure|travail|hs|overtime/.test(haystack)) return 'working_time';
+  if (/absence|maladie|deces|mariage|naissance|enfant/.test(haystack)) return 'absence';
+  if (/recup|compens/.test(haystack)) return 'recovery';
+  if (/conge|cp|leave/.test(haystack)) return 'leave';
+  return 'other';
+}
+function mandatoryRightFamilyLabel(key: string) {
+  const labels: Record<string, string> = {
+    leave: 'Congés',
+    working_time: 'Temps de travail',
+    rest: 'Repos et pauses',
+    holiday: 'Jours fériés',
+    absence: 'Absences',
+    parenthood: 'Parentalité',
+    recovery: 'Récupérations',
+    other: 'Autres droits',
+  };
+  return labels[key] ?? 'Autres droits';
+}
+function overviewRightOrigin(right: Pick<OverviewMandatoryRight | OverviewConfiguredRight, 'sourceLayer' | 'sourceLabel'>) {
+  if (right.sourceLayer === 'common_law') return 'Socle commun France';
+  if (right.sourceLayer === 'collective_agreement') return right.sourceLabel ?? 'Convention collective';
+  if (right.sourceLayer === 'public_regime' || right.sourceLayer === 'public_status') return right.sourceLabel ?? 'Statut public';
+  if (right.sourceLayer === 'establishment_manual' || right.sourceLayer === 'manual_template') return right.sourceLabel ?? 'Droit interne';
+  if (right.sourceLayer === 'employee_assignment') return right.sourceLabel ?? 'Affecté au salarié';
+  return right.sourceLabel ?? 'Droit RH';
+}
+function overviewRightStatusLabel(right: Pick<OverviewMandatoryRight | OverviewConfiguredRight, 'code' | 'label' | 'category' | 'hasBalance' | 'balanceUnit' | 'counterStatus' | 'canBeUsedInPlanningStatus'> & { counter?: EmployeeApplicableRight['counter']; calculationStatus?: string }) {
+  if (right.counterStatus === 'not_initialized' || right.calculationStatus === 'not_initialized') return 'Compteur non initialisé';
+  if (right.hasBalance) return `Compteur ${rightsUnitLabel(right.balanceUnit)}`;
+  const haystack = normalizeLabel(`${right.code ?? ''} ${right.label ?? ''} ${right.category ?? ''}`);
+  if (/pause|repos quotidien|repos hebdo/.test(haystack)) return 'Contrôle planning';
+  if (/deces|mariage|naissance|evenement|absence/.test(haystack)) return 'Droit événementiel';
+  if (right.canBeUsedInPlanningStatus) return 'Consommable planning';
+  if (right.counter) return applicableRightCounterLabel(right as EmployeeApplicableRight);
+  return 'Sans solde permanent';
+}
+function overviewBalanceSummary(item: OverviewBalance) {
+  if (!item.hasBalance) return 'Droit sans compteur permanent';
+  if (item.counterStatus === 'not_initialized') return 'Compteur non initialisé';
+  const parts = [
+    item.initial != null ? `Initial : ${formatApplicableQuantity(item.initial, item.balanceUnit)}` : null,
+    item.acquired != null ? `Acquis : ${formatApplicableQuantity(item.acquired, item.balanceUnit)}` : null,
+    item.used != null ? `Utilisé : ${formatApplicableQuantity(item.used, item.balanceUnit)}` : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join(' · ') : 'Compteur existant';
+}
+function overviewBalanceLabel(item: OverviewBalance) {
+  if (!item.hasBalance) return 'Pas de solde';
+  if (item.counterStatus === 'not_initialized') return 'Non initialisé';
+  if (item.remaining != null) return formatApplicableQuantity(item.remaining, item.balanceUnit);
+  if (item.acquired != null || item.used != null) return formatApplicableQuantity(Number(item.acquired ?? 0) - Number(item.used ?? 0), item.balanceUnit);
+  return 'À jour';
 }
 function formatApplicableQuantity(value?: number | null, unit?: string | null) {
   if (value == null) return '-';

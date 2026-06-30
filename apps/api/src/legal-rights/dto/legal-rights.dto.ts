@@ -16,6 +16,17 @@ export class LegalRightsSearchQueryDto {
   @IsOptional() @IsString() effectiveDate?: string;
 }
 
+export class EstablishmentRightsRecommendationsQueryDto {
+  @IsOptional() @IsString() @MaxLength(2) country?: string;
+  @IsOptional() @IsString() @MaxLength(2) regulatoryCountryCode?: string;
+  @IsOptional() @IsIn(['PRIVATE', 'PUBLIC', 'private', 'public']) sector?: 'PRIVATE' | 'PUBLIC' | 'private' | 'public';
+  @IsOptional() @IsIn(['PRIVATE', 'PUBLIC', 'private', 'public']) regulatorySector?: 'PRIVATE' | 'PUBLIC' | 'private' | 'public';
+  @IsOptional() @IsString() @MaxLength(120) establishmentType?: string;
+  @IsOptional() @IsString() @MaxLength(40) idcc?: string;
+  @IsOptional() @IsString() @MaxLength(40) publicRegime?: string;
+  @IsOptional() @IsString() @MaxLength(160) query?: string;
+}
+
 export class ActivateLegalRightDto {
   @IsOptional() @IsUUID() ruleVersionId?: string;
   @IsOptional() localSettingsJson?: unknown;

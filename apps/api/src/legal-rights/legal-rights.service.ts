@@ -3,7 +3,8 @@ import { HrAbsenceStatus, HrAbsenceType, HrEntitlementAccrualFrequency, Planning
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { calculatePlanningAssignmentMinutes } from '../planning/planning-time';
-import { ActivateLegalRightDto, ApplicableEmployeeRightsQueryDto, CalculateLegalRightsDto, LegalProfileDto, LegalRightsSearchQueryDto, PlanningComplianceCheckDto, PlanningComplianceShiftDto } from './dto/legal-rights.dto';
+import { HR_ENTITLEMENT_CATALOG } from '../hr/entitlements/hr-entitlement-catalog';
+import { ActivateLegalRightDto, ApplicableEmployeeRightsQueryDto, CalculateLegalRightsDto, EstablishmentRightsRecommendationsQueryDto, LegalProfileDto, LegalRightsSearchQueryDto, PlanningComplianceCheckDto, PlanningComplianceShiftDto } from './dto/legal-rights.dto';
 import legalSeed from './data/fr-v1.json';
 import { seedFrenchLegalRights } from './legal-rights.seed';
 
@@ -59,8 +60,17 @@ const CALCULABLE_FORMULAS = new Set([
 
 const WRITE_ROLES = ['SUPER_ADMIN', 'Administrateur', 'ADMIN', 'Manager', 'MANAGER', 'Chef', 'Responsable'];
 const PRIORITY_FR_PRIVATE_COMMON_CODES = new Set(['CP', 'CP_MALADIE', 'HS', 'PAUSE_6H', 'REPOS_QUOTIDIEN', 'REPOS_HEBDOMADAIRE', 'JF', 'JF_1MAI', 'RECUP_PONT']);
+const ONBOARDING_DUPLICATE_MANUAL_CODES = new Set(['paid_leave', 'overtime']);
 type LegalSourceLayer = 'common_law' | 'collective_agreement' | 'public_regime' | 'legal_reference';
 type LegalUiStatus = 'included' | 'included_requires_review' | 'activated' | 'requires_review' | 'available';
+type EstablishmentRightsContext = {
+  country: 'FR' | 'FI' | null;
+  sector: 'PRIVATE' | 'PUBLIC' | null;
+  establishmentType: string | null;
+  idcc: string | null;
+  publicRegime: string | null;
+  query: string | null;
+};
 
 @Injectable()
 export class LegalRightsService {
@@ -152,6 +162,108 @@ export class LegalRightsService {
       }
       throw error;
     }
+  }
+
+  async establishmentRightsRecommendations(q: EstablishmentRightsRecommendationsQueryDto = {}, organizationId?: string) {
+    const context = await this.establishmentRightsContext(q, organizationId);
+    const warnings: Array<{ code: string; message: string }> = [];
+    if (!context.country) {
+      return {
+        context,
+        hiddenAutoIncludedCount: 0,
+        recommendedRights: [],
+        manualTemplates: [],
+        warnings: [{ code: 'missing_regulatory_country', message: 'Choisissez le pays de réglementation pour proposer les droits établissement.' }],
+      };
+    }
+    if (context.country === 'FI') {
+      return {
+        context,
+        hiddenAutoIncludedCount: 0,
+        recommendedRights: [],
+        manualTemplates: [],
+        warnings: [{ code: 'finland_pending', message: 'Base Finlande en préparation. Aucun droit France n’est proposé.' }],
+      };
+    }
+
+    const route = this.establishmentRecommendationRoute(context);
+    warnings.push(...route.warnings);
+    const sectorFilter = context.sector === 'PUBLIC' ? ['public', 'common'] : ['private', 'common'];
+    const rights = await this.prisma.legalRight.findMany({
+      where: { active: true },
+      include: {
+        ruleVersions: {
+          where: {
+            active: true,
+            countryCode: context.country,
+            sector: { in: sectorFilter },
+          },
+          include: { regime: true, agreement: true, publicRegime: true },
+          orderBy: [{ priority: 'asc' }, { validationStatus: 'asc' }],
+        },
+      },
+      orderBy: [{ category: 'asc' }, { name: 'asc' }],
+      take: 500,
+    });
+    const activated = await this.activatedLegalRights(organizationId);
+    const terms = this.searchTerms(context.query ?? undefined);
+    let hiddenAutoIncludedCount = 0;
+    const recommendedRights = [];
+
+    for (const right of rights) {
+      if (!right.ruleVersions.length) continue;
+      const metadata = this.rightCatalogueMetadata(right, right.ruleVersions, activated.get(right.id) ?? null);
+      if (metadata.autoApplicable || metadata.applicableByDefault || metadata.uiStatus === 'included' || metadata.uiStatus === 'included_requires_review') {
+        hiddenAutoIncludedCount += 1;
+        continue;
+      }
+      const relevantRules = right.ruleVersions.filter((rule: any) => this.ruleMatchesEstablishmentRecommendation(rule, context, route));
+      if (!relevantRules.length) continue;
+      const haystack = this.normalizeText([
+        right.code,
+        right.name,
+        right.category,
+        right.description,
+        relevantRules.map((rule: any) => `${rule.agreement?.name ?? ''} ${rule.agreement?.idcc ?? ''} ${rule.publicRegime?.name ?? ''} ${rule.publicRegime?.code ?? ''}`).join(' '),
+      ].join(' '));
+      if (terms.length && !terms.every((term) => haystack.includes(term))) continue;
+      const bestRule = relevantRules[0];
+      const recommendation = this.recommendationLabel(bestRule, context);
+      recommendedRights.push({
+        id: right.id,
+        code: right.code,
+        name: right.name,
+        category: right.category,
+        description: right.description,
+        tags: right.tags,
+        activated: activated.has(right.id),
+        organizationRuleId: activated.get(right.id) ?? null,
+        sourceLayer: this.sourceLayerForRules(relevantRules),
+        autoApplicable: false,
+        applicableByDefault: false,
+        requiresConfiguration: !activated.has(right.id),
+        employeeCounterSupported: this.employeeCounterSupported(relevantRules),
+        establishmentConfigurationId: activated.get(right.id) ?? null,
+        validationStatus: this.validationStatusForRules(relevantRules),
+        uiStatus: activated.has(right.id) ? 'activated' : this.validationStatusForRules(relevantRules) === 'requires_review' ? 'requires_review' : 'available',
+        recommendation,
+        recommendationRank: this.recommendationRank(bestRule, context, route),
+        canBeUsedInPlanningStatus: this.rightCanBeUsedInPlanningStatus(right.code, relevantRules),
+        planningStatusCode: this.planningStatusCodeForRight(right.code, relevantRules),
+        hasBalance: this.employeeCounterSupported(relevantRules),
+        balanceUnit: this.balanceUnitForRules(relevantRules),
+        rules: relevantRules.map((rule: any) => this.ruleSummary(rule)),
+      });
+    }
+
+    recommendedRights.sort((a, b) => a.recommendationRank - b.recommendationRank || a.name.localeCompare(b.name, 'fr'));
+    return {
+      context,
+      hiddenAutoIncludedCount,
+      recommendedRights,
+      manualTemplates: this.onboardingManualTemplates(context, terms),
+      warnings,
+    };
   }
 
   async search(q: LegalRightsSearchQueryDto, organizationId?: string) {
@@ -437,6 +549,91 @@ export class LegalRightsService {
       applicableRights,
       counters: applicableRights.map((right) => right.counter).filter(Boolean),
       warnings,
+    };
+  }
+
+  async employeeRightsOverview(organizationId: string, employeeId: string, q: ApplicableEmployeeRightsQueryDto = {}) {
+    const employee = await this.ensureEmployee(organizationId, employeeId);
+    const applicable = await this.employeeApplicableRights(organizationId, employeeId, q);
+    if (applicable.calculationStatus === 'blocked') {
+      return {
+        employee: { id: employee.id, name: this.employeeName(employee) },
+        organizationContext: this.organizationContextSummary(employee.organization),
+        regulatoryCountryCode: applicable.regulatoryCountryCode,
+        mandatoryRights: [],
+        applicableRights: [],
+        activeBalances: [],
+        warnings: applicable.warnings,
+        calculationStatus: applicable.calculationStatus,
+      };
+    }
+    const periodStart = q.periodStart ?? q.period_start;
+    const year = periodStart ? this.day(periodStart).getUTCFullYear() : new Date().getUTCFullYear();
+    const [establishmentConfigurations, employeeEntitlements, legalCounters, timeAccounts] = await Promise.all([
+      this.prisma.hrEntitlementRule.findMany({
+        where: { organizationId, enabled: true },
+        include: { sourceRight: true, sourceRuleVersion: true },
+        orderBy: [{ label: 'asc' }],
+        take: 1000,
+      }),
+      this.prisma.hrEmployeeEntitlement.findMany({
+        where: { organizationId, employeeId, enabled: true },
+        include: { entitlementRule: true, counterAccount: true },
+        orderBy: [{ label: 'asc' }],
+        take: 1000,
+      }),
+      this.prisma.legalRightCounter.findMany({
+        where: { organizationId, employeeId },
+        include: { right: true },
+        orderBy: [{ periodStart: 'desc' }],
+        take: 1000,
+      }),
+      this.prisma.hrTimeAccount.findMany({
+        where: { organizationId, employeeId, periodYear: year },
+        orderBy: [{ code: 'asc' }],
+        take: 1000,
+      }),
+    ]);
+    const timeAccountsByCode = new Map(timeAccounts.map((account: any) => [account.code, account]));
+    const activeBalances: any[] = [
+      ...legalCounters.map((counter: any) => this.legalCounterOverview(counter)),
+      ...timeAccounts.map((account: any) => this.hrTimeAccountOverview(account)),
+    ];
+    const balanceKeys = new Set(activeBalances.map((balance: any) => `${balance.source}:${balance.code}`));
+    for (const entitlement of employeeEntitlements) {
+      const account = entitlement.counterAccount ?? timeAccountsByCode.get(entitlement.code);
+      const key = `hr_time_account:${entitlement.code}`;
+      if (!account && !balanceKeys.has(key)) {
+        activeBalances.push({
+          source: 'hr_time_account',
+          code: entitlement.code,
+          label: entitlement.label,
+          hasBalance: true,
+          balanceUnit: entitlement.unit,
+          acquired: null,
+          used: null,
+          remaining: null,
+          counterStatus: 'not_initialized',
+          validationStatus: null,
+          lastUpdatedAt: null,
+        });
+      }
+    }
+    return {
+      employee: { id: employee.id, name: this.employeeName(employee), position: employee.position?.name ?? null, department: employee.department?.name ?? null },
+      organizationContext: this.organizationContextSummary(employee.organization),
+      regulatoryCountryCode: applicable.regulatoryCountryCode,
+      sector: employee.organization?.regulatorySector ?? null,
+      establishmentType: employee.organization?.establishmentType ?? null,
+      activeContract: this.activeContractSummary(employee),
+      mandatoryRights: (applicable.applicableRights ?? []).filter((right: any) => right.autoApplicable).map((right: any) => this.overviewRightFromApplicable(right, 'mandatory')),
+      applicableRights: [
+        ...establishmentConfigurations.map((configuration: any) => this.overviewRightFromConfiguration(configuration)),
+        ...employeeEntitlements.map((entitlement: any) => this.overviewRightFromEmployeeEntitlement(entitlement)),
+      ],
+      activeBalances,
+      warnings: applicable.warnings,
+      calculationStatus: applicable.calculationStatus,
     };
   }
 
@@ -1090,6 +1287,162 @@ export class LegalRightsService {
     };
   }
 
+  private employeeName(employee?: { firstName?: string | null; lastName?: string | null } | null) {
+    return [employee?.firstName, employee?.lastName].filter(Boolean).join(' ') || 'Collaborateur';
+  }
+
+  private organizationContextSummary(organization: any) {
+    return {
+      id: organization?.id ?? null,
+      regulatoryCountryCode: this.countryCode(organization?.regulatoryCountryCode),
+      regulatorySector: organization?.regulatorySector ?? null,
+      establishmentType: organization?.establishmentType ?? null,
+    };
+  }
+
+  private activeContractSummary(employee: any) {
+    const activeContract = employee.contracts?.find((contract: any) => contract.status === 'ACTIVE');
+    return activeContract ? {
+      id: activeContract.id ?? null,
+      contractType: activeContract.contractType ?? employee.contractType ?? null,
+      weeklyHours: activeContract.weeklyHours == null ? null : Number(activeContract.weeklyHours),
+      startDate: activeContract.startDate ? this.iso(activeContract.startDate) : null,
+      endDate: activeContract.endDate ? this.iso(activeContract.endDate) : null,
+    } : {
+      id: null,
+      contractType: employee.contractType ?? null,
+      weeklyHours: employee.contractWeeklyMinutes ? Number(employee.contractWeeklyMinutes) / 60 : null,
+      startDate: employee.hireDate ? this.iso(employee.hireDate) : null,
+      endDate: employee.contractEndDate ? this.iso(employee.contractEndDate) : null,
+    };
+  }
+
+  private overviewRightFromApplicable(right: any, applicability: 'mandatory' | 'conditional') {
+    return {
+      id: right.id,
+      code: right.code,
+      label: right.label,
+      category: right.category,
+      sourceLayer: right.sourceLayer,
+      sourceLabel: right.sourceLabel,
+      applicability,
+      uiGroup: this.uiGroupForRight(right.code, right.category),
+      hasBalance: Boolean(right.employeeCounterSupported),
+      balanceUnit: right.counter?.unit ?? null,
+      counterStatus: right.calculationStatus ?? right.counter?.counterStatus ?? 'not_initialized',
+      validationStatus: right.validationStatus,
+      canBeUsedInPlanningStatus: this.rightCanBeUsedInPlanningStatus(right.code, right.rules ?? []),
+      planningStatusCode: this.planningStatusCodeForRight(right.code, right.rules ?? []),
+      uiStatus: right.uiStatus,
+      warnings: right.warnings ?? [],
+    };
+  }
+
+  private overviewRightFromConfiguration(configuration: any) {
+    const sourceLayer = this.sourceLayerForConfiguration(configuration);
+    const rules = configuration.sourceRuleVersion ? [configuration.sourceRuleVersion] : [];
+    return {
+      id: configuration.id,
+      code: configuration.code,
+      label: configuration.label,
+      category: configuration.sourceRight?.category ?? configuration.accountType,
+      sourceLayer,
+      sourceLabel: configuration.sourceRuleVersion?.sourceLabel ?? this.object(configuration.metadata).sourceLabel ?? (sourceLayer === 'establishment_manual' ? 'Droit établissement' : 'Configuration établissement'),
+      applicability: sourceLayer === 'establishment_manual' ? 'manual' : 'configured',
+      uiGroup: this.uiGroupForRight(configuration.sourceRight?.code ?? configuration.code, configuration.sourceRight?.category ?? configuration.accountType),
+      hasBalance: true,
+      balanceUnit: configuration.unit,
+      counterStatus: 'not_initialized',
+      validationStatus: configuration.sourceRuleVersion?.validationStatus ?? this.object(configuration.metadata).validationStatus ?? null,
+      canBeUsedInPlanningStatus: this.rightCanBeUsedInPlanningStatus(configuration.sourceRight?.code ?? configuration.code, rules),
+      planningStatusCode: this.planningStatusCodeForRight(configuration.sourceRight?.code ?? configuration.code, rules),
+      establishmentConfigurationId: configuration.id,
+      sourceRightId: configuration.sourceRightId ?? this.object(configuration.metadata).sourceLegalRightId ?? null,
+      sourceRuleVersionId: configuration.sourceRuleVersionId ?? this.object(configuration.metadata).sourceRuleVersionId ?? null,
+    };
+  }
+
+  private overviewRightFromEmployeeEntitlement(entitlement: any) {
+    const account = entitlement.counterAccount;
+    return {
+      id: entitlement.id,
+      code: entitlement.code,
+      label: entitlement.label,
+      category: entitlement.accountType,
+      sourceLayer: 'employee_assignment',
+      sourceLabel: entitlement.entitlementRule?.label ?? 'Droit collaborateur',
+      applicability: 'employee',
+      uiGroup: this.uiGroupForRight(entitlement.code, entitlement.accountType),
+      hasBalance: true,
+      balanceUnit: entitlement.unit,
+      counterStatus: account ? 'active' : 'not_initialized',
+      validationStatus: null,
+      canBeUsedInPlanningStatus: this.rightCanBeUsedInPlanningStatus(entitlement.code, []),
+      planningStatusCode: this.planningStatusCodeForRight(entitlement.code, []),
+      entitlementRuleId: entitlement.entitlementRuleId ?? null,
+      counterAccountId: entitlement.counterAccountId ?? null,
+    };
+  }
+
+  private sourceLayerForConfiguration(configuration: any) {
+    const metadata = this.object(configuration.metadata);
+    if (metadata.sourceKind === 'manual_template' || metadata.sourceCatalogItemId) return 'establishment_manual';
+    const rule = configuration.sourceRuleVersion;
+    if (rule?.agreementId || rule?.agreement) return 'collective_agreement';
+    if (rule?.publicRegimeId || rule?.publicRegime) return 'public_status';
+    if (configuration.sourceRightId || metadata.sourceLegalRightId) return 'legal_reference';
+    return 'establishment_manual';
+  }
+
+  private legalCounterOverview(counter: any) {
+    return {
+      source: 'legal_counter',
+      id: counter.id,
+      code: counter.right?.code ?? counter.rightId,
+      label: counter.right?.name ?? 'Droit légal',
+      hasBalance: true,
+      balanceUnit: counter.unit,
+      acquired: this.number(counter.acquired),
+      used: this.number(counter.used),
+      remaining: this.number(counter.remaining),
+      counterStatus: counter.status ?? 'ACTIVE',
+      validationStatus: null,
+      lastUpdatedAt: counter.updatedAt ? this.iso(counter.updatedAt) : null,
+      period: { startDate: this.iso(counter.periodStart), endDate: this.iso(counter.periodEnd) },
+    };
+  }
+
+  private hrTimeAccountOverview(account: any) {
+    return {
+      source: 'hr_time_account',
+      id: account.id,
+      code: account.code,
+      label: account.label,
+      hasBalance: true,
+      balanceUnit: account.unit,
+      initial: account.openingBalance ?? 0,
+      acquired: account.accrued ?? 0,
+      used: account.consumed ?? 0,
+      adjusted: account.adjusted ?? 0,
+      remaining: account.closingBalance ?? 0,
+      counterStatus: account.updatedAt ? 'active' : 'not_initialized',
+      validationStatus: null,
+      lastUpdatedAt: account.updatedAt ? this.iso(account.updatedAt) : null,
+      periodYear: account.periodYear,
+    };
+  }
+
+  private uiGroupForRight(code?: string | null, category?: string | null) {
+    const normalized = this.normalizeText(`${code ?? ''} ${category ?? ''}`);
+    if (normalized.includes('parent') || normalized.includes('maternite') || normalized.includes('paternite') || normalized.includes('adoption')) return 'Parentalité';
+    if (normalized.includes('ferie') || normalized.includes('jf') || normalized.includes('1mai') || normalized.includes('pont')) return 'Jours fériés';
+    if (normalized.includes('pause') || normalized.includes('repos')) return 'Repos et pauses';
+    if (normalized.includes('recup') || normalized.includes('rtt') || normalized.includes('rcr') || normalized.includes('cet')) return 'Récupérations';
+    if (normalized.includes('absence') || normalized.includes('maladie') || normalized.includes('enfant') || normalized.includes('deces')) return 'Absences';
+    if (normalized.includes('heure') || normalized.includes('travail') || normalized.includes('astreinte')) return 'Temps de travail';
+    return 'Congés';
+  }
+
   private searchTerms(query?: string) {
     return this.normalizeText(query ?? '').split(' ').filter((term) => term.length > 1);
   }
@@ -1112,6 +1465,135 @@ export class LegalRightsService {
     if (q.publicRegime && haystack.includes(this.normalizeText(q.publicRegime))) score += 5;
     if (q.regime && q.regime !== 'all' && right.ruleVersions.some((rule: any) => rule.sector === q.regime)) score += 3;
     return score;
+  }
+
+  private async establishmentRightsContext(q: EstablishmentRightsRecommendationsQueryDto, organizationId?: string): Promise<EstablishmentRightsContext> {
+    const organization = organizationId ? await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { regulatoryCountryCode: true, regulatorySector: true, establishmentType: true },
+    }) : null;
+    return {
+      country: this.countryCode(q.country ?? q.regulatoryCountryCode ?? organization?.regulatoryCountryCode),
+      sector: this.regulatorySector(q.sector ?? q.regulatorySector ?? organization?.regulatorySector),
+      establishmentType: this.cleanText(q.establishmentType ?? organization?.establishmentType),
+      idcc: this.cleanText(q.idcc),
+      publicRegime: this.cleanText(q.publicRegime)?.toUpperCase() ?? null,
+      query: this.cleanText(q.query),
+    };
+  }
+
+  private establishmentRecommendationRoute(context: EstablishmentRightsContext) {
+    const type = this.normalizeText(context.establishmentType ?? '');
+    const idccs = new Set<string>();
+    const publicRegimes = new Set<string>();
+    const warnings: Array<{ code: string; message: string }> = [];
+
+    if (context.idcc) idccs.add(context.idcc);
+    if (context.publicRegime) publicRegimes.add(context.publicRegime);
+
+    if (context.sector === 'PRIVATE') {
+      if (type.includes('rapide') || type.includes('fast')) idccs.add('1501');
+      else if (type.includes('camping') || type.includes('plein air') || type.includes('hpa')) idccs.add('1631');
+      else if (type.includes('collectivite') || type.includes('collective') || type.includes('cuisine centrale') || type.includes('cantine')) idccs.add('1266');
+      else if (type.includes('ehpad') || type.includes('clinique') || type.includes('hospitalisation')) {
+        idccs.add('2264');
+        idccs.add('0029');
+        warnings.push({ code: 'private_health_context_to_confirm', message: 'EHPAD privé: convention sanitaire/médico-sociale à confirmer avant activation.' });
+      } else if (type.includes('hotel') || type.includes('hôtel') || type.includes('restaurant') || type.includes('cafe') || type.includes('café') || type.includes('traiteur')) {
+        idccs.add('1979');
+      }
+    }
+
+    if (context.sector === 'PUBLIC') {
+      if (type.includes('ehpad') || type.includes('hospitalier') || type.includes('hopital') || type.includes('hôpital')) publicRegimes.add('FPH');
+      else if (type.includes('collectivite') || type.includes('collectivité') || type.includes('cuisine centrale') || type.includes('cantine') || type.includes('municipal')) publicRegimes.add('FPT');
+      else publicRegimes.add('FPE');
+      warnings.push({ code: 'public_base_partial', message: 'Base publique partielle: les règles importées couvrent surtout FPH à ce stade.' });
+    }
+
+    if (!context.establishmentType) warnings.push({ code: 'missing_establishment_type', message: 'Type d’établissement manquant: les recommandations restent générales.' });
+    return { idccs: [...idccs], publicRegimes: [...publicRegimes], warnings };
+  }
+
+  private ruleMatchesEstablishmentRecommendation(rule: any, context: EstablishmentRightsContext, route: { idccs: string[]; publicRegimes: string[] }) {
+    if (context.sector === 'PUBLIC') {
+      if (rule.agreementId || rule.agreement) return false;
+      if (!(rule.publicRegimeId || rule.publicRegime)) return false;
+      return !route.publicRegimes.length || route.publicRegimes.includes(String(rule.publicRegime?.code ?? '').toUpperCase());
+    }
+    if (rule.publicRegimeId || rule.publicRegime) return false;
+    if (!(rule.agreementId || rule.agreement)) return false;
+    return !route.idccs.length || route.idccs.includes(String(rule.agreement?.idcc ?? '').trim());
+  }
+
+  private recommendationLabel(rule: any, context: EstablishmentRightsContext) {
+    if (rule.agreement) return `${rule.agreement.name}${rule.agreement.idcc ? ` · IDCC ${rule.agreement.idcc}` : ''}`;
+    if (rule.publicRegime) return `${rule.publicRegime.name} · base publique partielle`;
+    return context.sector === 'PUBLIC' ? 'Cadre public à valider' : 'Droit établissement à valider';
+  }
+
+  private recommendationRank(rule: any, context: EstablishmentRightsContext, route: { idccs: string[]; publicRegimes: string[] }) {
+    if (context.sector === 'PRIVATE' && route.idccs.includes(String(rule.agreement?.idcc ?? ''))) return 10;
+    if (context.sector === 'PUBLIC' && route.publicRegimes.includes(String(rule.publicRegime?.code ?? '').toUpperCase())) return 10;
+    if (rule.validationStatus === 'active') return 30;
+    return 60;
+  }
+
+  private onboardingManualTemplates(context: EstablishmentRightsContext, terms: string[]) {
+    if (context.country !== 'FR') return [];
+    const framework = context.sector === 'PUBLIC' ? 'PUBLIC' : 'PRIVATE';
+    return HR_ENTITLEMENT_CATALOG
+      .filter((template) => template.countryCode === context.country)
+      .filter((template) => [framework, 'MIXED', 'LOCAL'].includes(template.employmentFramework))
+      .filter((template) => !ONBOARDING_DUPLICATE_MANUAL_CODES.has(template.code))
+      .filter((template) => this.manualTemplateRelevantForOnboarding(template, context, terms))
+      .map((template) => ({
+        templateCode: template.code,
+        code: template.code,
+        label: template.label,
+        category: template.category,
+        shortDescription: template.shortDescription,
+        longDescription: template.longDescription,
+        accountType: template.accountType,
+        unit: template.unit,
+        sourceLayer: 'establishment_manual',
+        sourceKind: 'manual_template',
+        requiresAdminValidation: template.requiresAdminValidation ?? true,
+        isRecommended: true,
+        isAdvanced: template.isAdvanced ?? false,
+        hasBalance: ['LEAVE', 'RECOVERY', 'WORKING_TIME', 'SAVINGS', 'LOCAL'].includes(template.category),
+        balanceUnit: template.unit,
+        canBeUsedInPlanningStatus: ['LEAVE', 'RECOVERY', 'ABSENCE', 'WORKING_TIME'].includes(template.category),
+        planningStatusCode: this.normalizeCode(template.code),
+      }))
+      .sort((a, b) => Number(a.isAdvanced) - Number(b.isAdvanced) || a.label.localeCompare(b.label, 'fr'));
+  }
+
+  private manualTemplateRelevantForOnboarding(template: (typeof HR_ENTITLEMENT_CATALOG)[number], context: EstablishmentRightsContext, terms: string[]) {
+    const haystack = this.normalizeText([template.code, template.label, template.category, template.shortDescription, template.longDescription, template.examples.join(' ')].join(' '));
+    if (terms.length) return terms.every((term) => haystack.includes(term));
+    const type = this.normalizeText(context.establishmentType ?? '');
+    if (template.code === 'recovery') return true;
+    if (template.code === 'rtt') return context.sector === 'PUBLIC' || type.includes('collectivite') || type.includes('cuisine centrale');
+    if (template.code === 'time_savings_account') return context.sector === 'PUBLIC';
+    if (template.isAdvanced) return false;
+    if (!template.recommendedFor?.length) return template.employmentFramework === 'LOCAL';
+    return template.recommendedFor.some((value) => type.includes(this.normalizeText(value)));
+  }
+
+  private rightCanBeUsedInPlanningStatus(code: string, rules: any[]) {
+    const normalized = this.normalizeCode(code);
+    if (['pause_6h', 'repos_quotidien', 'repos_hebdomadaire', 'validation_repos_fph', 'validation_pause_fph'].includes(normalized)) return false;
+    return this.employeeCounterSupported(rules) || normalized.includes('rtt') || normalized.includes('recup') || normalized.includes('absence') || normalized.includes('maladie');
+  }
+
+  private planningStatusCodeForRight(code: string, rules: any[]) {
+    return this.rightCanBeUsedInPlanningStatus(code, rules) ? this.normalizeCode(code) : null;
+  }
+
+  private balanceUnitForRules(rules: any[]) {
+    const unit = rules.find((rule) => rule.unit)?.unit;
+    return unit ? this.planningUnit(unit) : null;
   }
 
   private searchSectorFilter(regime?: LegalRightsSearchQueryDto['regime']) {
@@ -1176,6 +1658,18 @@ export class LegalRightsService {
   private countryCode(value?: string | null): 'FR' | 'FI' | null {
     const normalized = String(value ?? '').trim().toUpperCase();
     return normalized === 'FR' || normalized === 'FI' ? normalized : null;
+  }
+
+  private regulatorySector(value?: string | null): 'PRIVATE' | 'PUBLIC' | null {
+    const normalized = String(value ?? '').trim().toUpperCase();
+    if (normalized === 'PRIVATE' || normalized === 'PRIVE' || normalized === 'PRIVÉ') return 'PRIVATE';
+    if (normalized === 'PUBLIC') return 'PUBLIC';
+    return null;
+  }
+
+  private cleanText(value?: string | null): string | null {
+    const cleaned = String(value ?? '').trim();
+    return cleaned ? cleaned : null;
   }
 
   private assertWrite(actor: { role: string }) {
@@ -1294,6 +1788,12 @@ export class LegalRightsService {
 
   private round(value: number) {
     return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+  }
+
+  private number(value: unknown) {
+    if (value === null || value === undefined) return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
   }
 
   private hash(value: unknown) {

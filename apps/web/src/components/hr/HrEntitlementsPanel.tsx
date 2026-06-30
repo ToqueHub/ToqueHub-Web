@@ -15,18 +15,14 @@ import type {
 } from '../../types';
 
 type RightsPrimaryFilter =
+  | 'recommended'
   | 'all'
   | 'included'
   | 'activated'
-  | 'available'
+  | 'conventional'
+  | 'public'
   | 'review'
   | 'manual';
-
-type RightsCategoryFilter =
-  | 'working-time'
-  | 'leave'
-  | 'absence'
-  | 'recovery';
 
 type UnifiedRightStatus = 'included' | 'included_requires_review' | 'activated' | 'available' | 'review' | 'manual';
 
@@ -83,19 +79,14 @@ const PRIMARY_FILTERS: Array<{
   tone: 'emerald' | 'blue' | 'purple' | 'amber' | 'slate';
   Icon: typeof Layers3;
 }> = [
-  { key: 'all', label: 'Tous', hint: 'Catalogue complet', tone: 'emerald', Icon: Layers3 },
-  { key: 'included', label: 'Inclus', hint: 'Socle automatique', tone: 'blue', Icon: ShieldCheck },
-  { key: 'activated', label: 'Activés', hint: 'Droits configurés', tone: 'blue', Icon: CheckCircle2 },
-  { key: 'available', label: 'Disponibles', hint: 'À activer', tone: 'purple', Icon: Sparkles },
-  { key: 'review', label: 'À valider', hint: 'Validation juridique', tone: 'amber', Icon: AlertTriangle },
+  { key: 'recommended', label: 'Recommandés', hint: 'Pour mon établissement', tone: 'emerald', Icon: Sparkles },
+  { key: 'included', label: 'Inclus obligatoires', hint: 'Socle automatique', tone: 'blue', Icon: ShieldCheck },
+  { key: 'activated', label: 'Activés établissement', hint: 'Droits configurés', tone: 'blue', Icon: CheckCircle2 },
+  { key: 'conventional', label: 'Conventionnels', hint: 'Conventions privées', tone: 'purple', Icon: Layers3 },
+  { key: 'public', label: 'Public', hint: 'Statuts publics', tone: 'purple', Icon: ShieldCheck },
   { key: 'manual', label: 'Manuels', hint: 'Templates internes', tone: 'slate', Icon: Wrench },
-];
-
-const AVAILABLE_CATEGORY_FILTERS: Array<{ key: RightsCategoryFilter; label: string }> = [
-  { key: 'working-time', label: 'Temps de travail' },
-  { key: 'leave', label: 'Congés' },
-  { key: 'absence', label: 'Absences' },
-  { key: 'recovery', label: 'Récupération' },
+  { key: 'review', label: 'À valider', hint: 'Validation juridique', tone: 'amber', Icon: AlertTriangle },
+  { key: 'all', label: 'Tous', hint: 'Catalogue complet', tone: 'slate', Icon: Layers3 },
 ];
 
 const COUNTRY_LABELS: Record<RegulatoryCountryCode, string> = {
@@ -315,23 +306,60 @@ function buildInternalCard(item: PlanningEntitlementCatalogItem): UnifiedRightCa
   };
 }
 
-function primaryFilterMatches(card: UnifiedRightCard, filter: RightsPrimaryFilter) {
+function isManualLegalDuplicate(card: UnifiedRightCard) {
+  if (card.sourceLayer !== 'manual_template') return false;
+  const haystack = `${compactText(card.title)} ${compactText(card.category)} ${compactText(card.catalog?.code)} ${compactText(card.catalog?.accountType)}`;
+  return /conges? payes?|paid leave|annual leave|heures? supplementaires?|overtime/.test(haystack);
+}
+
+function isConventionalRight(card: UnifiedRightCard) {
+  return card.sourceLayer === 'collective_agreement'
+    || Boolean(card.legal?.rules?.some((rule) => rule.agreement))
+    || /idcc|hcr|restauration|hpa|fehap|hospitalisation|cafeteria|casino/i.test(`${card.contextLabel} ${card.sourceLabel}`);
+}
+
+function isPublicRight(card: UnifiedRightCard) {
+  return card.sourceLayer === 'public_regime'
+    || card.sourceLayer === 'public_status'
+    || card.sectors.includes('public')
+    || Boolean(card.legal?.rules?.some((rule) => rule.publicRegime))
+    || /fonction publique|fph|fpt|fpe|public/i.test(`${card.contextLabel} ${card.sourceLabel}`);
+}
+
+function isRecommendedForOrganization(card: UnifiedRightCard, sector?: RegulatorySector | null, organizationType?: string | null) {
+  if (card.autoApplicable || card.activated) return true;
+  if (isManualLegalDuplicate(card)) return false;
+
+  const establishment = normalizeText(organizationType ?? '');
+  const haystack = `${card.searchText} ${normalizeText(card.contextLabel)} ${normalizeText(card.sourceLabel)}`;
+
+  if (sector === 'PUBLIC') {
+    return isPublicRight(card) || (card.sourceLayer === 'manual_template' && Boolean(card.catalog?.isRecommended));
+  }
+
+  if (sector === 'PRIVATE') {
+    if (isPublicRight(card)) return false;
+    if (/restaurant|cafe|hotel|traiteur/.test(establishment)) return /hcr|1979|hotel cafe restaurant/.test(haystack) || card.activated;
+    if (/collectivite|cuisine centrale|cantine/.test(establishment)) return /restauration collective|1266/.test(haystack) || card.activated;
+    if (/rapide|fast/.test(establishment)) return /restauration rapide|1501/.test(haystack) || card.activated;
+    if (/camping|plein air|hpa/.test(establishment)) return /hpa|plein air|1631/.test(haystack) || card.activated;
+    if (/ehpad|clinique|hospitalisation/.test(establishment)) return /fehap|hospitalisation privee|2264|29|0029/.test(haystack) || card.activated;
+    return isConventionalRight(card) || (card.sourceLayer === 'manual_template' && Boolean(card.catalog?.isRecommended));
+  }
+
+  return card.autoApplicable || card.activated || card.sourceLayer === 'manual_template';
+}
+
+function primaryFilterMatches(card: UnifiedRightCard, filter: RightsPrimaryFilter, sector?: RegulatorySector | null, organizationType?: string | null) {
+  if (filter !== 'all' && isManualLegalDuplicate(card)) return false;
+  if (filter === 'recommended') return isRecommendedForOrganization(card, sector, organizationType);
   if (filter === 'all') return true;
   if (filter === 'included') return card.autoApplicable;
   if (filter === 'activated') return card.activated;
-  if (filter === 'available') return !card.activated && !card.autoApplicable && card.status !== 'manual' && card.status !== 'review';
+  if (filter === 'conventional') return isConventionalRight(card) && !isPublicRight(card);
+  if (filter === 'public') return isPublicRight(card);
   if (filter === 'review') return card.requiresReview;
   if (filter === 'manual') return card.sourceLayer === 'manual_template' || card.status === 'manual';
-  return true;
-}
-
-function categoryFilterMatches(card: UnifiedRightCard, filter: RightsCategoryFilter | null) {
-  if (!filter) return true;
-  const haystack = `${normalizeText(card.category)} ${card.searchText}`;
-  if (filter === 'working-time') return /temps|travail|heure|pause|repos|nuit|dimanche|ferie/.test(haystack);
-  if (filter === 'leave') return /conge|cp|rtt|cet/.test(haystack);
-  if (filter === 'absence') return /absence|maladie|enfant|deces|mariage|naissance|maternite|paternite/.test(haystack);
-  if (filter === 'recovery') return /recuperation|recup|compensateur|rcr|cor|heure verte|annualisation/.test(haystack);
   return true;
 }
 
@@ -352,8 +380,7 @@ export function HrEntitlementsPanel({
   const [diagnostics, setDiagnostics] = useState<LegalRightsDiagnosticsResponse | null>(null);
   const [legalResults, setLegalResults] = useState<LegalRightSearchItem[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeFilter, setActiveFilter] = useState<RightsPrimaryFilter | null>(null);
-  const [availableCategoryFilter, setAvailableCategoryFilter] = useState<RightsCategoryFilter | null>(null);
+  const [activeFilter, setActiveFilter] = useState<RightsPrimaryFilter>('recommended');
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -387,12 +414,12 @@ export function HrEntitlementsPanel({
   }
 
   useEffect(() => {
-    if (!activeFilter || !regulatoryCountryCode || !regulatorySector) return;
+    if (!regulatoryCountryCode || !regulatorySector) return;
     const timer = window.setTimeout(() => {
       void loadData(searchTerm);
     }, 220);
     return () => window.clearTimeout(timer);
-  }, [searchTerm, token, regulatoryCountryCode, regulatorySector, activeFilter]);
+  }, [searchTerm, token, regulatoryCountryCode, regulatorySector]);
 
   const allCards = useMemo(() => {
     const catalogItems = catalog?.items ?? [];
@@ -432,27 +459,25 @@ export function HrEntitlementsPanel({
       });
   }, [catalog?.items, legalResults, searchTerm]);
 
+  const organizationType = catalog?.setup.organizationType ? String(catalog.setup.organizationType) : 'Restaurant / Café';
+
   const cards = useMemo(() => {
-    return allCards
-      .filter((card) => activeFilter ? primaryFilterMatches(card, activeFilter) : false)
-      .filter((card) => activeFilter === 'available' ? categoryFilterMatches(card, availableCategoryFilter) : true);
-  }, [allCards, activeFilter, availableCategoryFilter]);
+    return allCards.filter((card) => primaryFilterMatches(card, activeFilter, regulatorySector, organizationType));
+  }, [allCards, activeFilter, regulatorySector, organizationType]);
 
   const filterCounts = useMemo<Record<RightsPrimaryFilter, number>>(() => {
     return PRIMARY_FILTERS.reduce((acc, filter) => {
-      acc[filter.key] = allCards.filter((card) => primaryFilterMatches(card, filter.key)).length;
+      acc[filter.key] = allCards.filter((card) => primaryFilterMatches(card, filter.key, regulatorySector, organizationType)).length;
       return acc;
     }, {} as Record<RightsPrimaryFilter, number>);
-  }, [allCards]);
+  }, [allCards, regulatorySector, organizationType]);
 
   const country = countryLabel(regulatoryCountryCode);
-  const hasSelectedFilter = Boolean(activeFilter);
-  const rightsCount = hasSelectedFilter ? cards.length : null;
+  const rightsCount = cards.length;
   const configuredCount = diagnostics?.establishmentConfigurations?.enabled ?? catalog?.counts.active ?? 0;
-  const organizationType = catalog?.setup.organizationType ? String(catalog.setup.organizationType) : 'Restaurant / Café';
   const emptyCountry = !regulatoryCountryCode;
   const emptySector = !regulatorySector;
-  const finlandPending = hasSelectedFilter && regulatoryCountryCode === 'FI' && rightsCount === 0;
+  const finlandPending = regulatoryCountryCode === 'FI' && rightsCount === 0;
 
   async function activateCard(card: UnifiedRightCard) {
     if (!canWrite) return;
@@ -499,7 +524,7 @@ export function HrEntitlementsPanel({
             <h2>Droits salariés</h2>
             <p>
               {country} · {sectorLabel(regulatorySector)} · {organizationType}
-            {hasSelectedFilter && rightsCount !== null ? ` · ${rightsCount} droits · ${configuredCount} configurés` : ' · choisissez un sous-onglet'}
+            {` · ${rightsCount} droits · ${configuredCount} configurés`}
             </p>
           </div>
         </div>
@@ -530,9 +555,7 @@ export function HrEntitlementsPanel({
               type="button"
               className={`rights-kpi-filter ${filter.tone}${isActive ? ' active' : ''}`}
               onClick={() => {
-                const nextFilter = activeFilter === filter.key ? null : filter.key;
-                setActiveFilter(nextFilter);
-                if (nextFilter !== 'available') setAvailableCategoryFilter(null);
+                setActiveFilter(filter.key);
               }}
               aria-pressed={isActive}
             >
@@ -549,27 +572,6 @@ export function HrEntitlementsPanel({
             );
           })}
         </div>
-        {activeFilter === 'available' ? (
-          <div className="rights-filter-row rights-subfilter-row" aria-label="Catégories de droits disponibles">
-            <button
-              type="button"
-              className={!availableCategoryFilter ? 'active' : ''}
-              onClick={() => setAvailableCategoryFilter(null)}
-            >
-              Toutes catégories
-            </button>
-            {AVAILABLE_CATEGORY_FILTERS.map((filter) => (
-              <button
-                key={filter.key}
-                type="button"
-                className={availableCategoryFilter === filter.key ? 'active' : ''}
-                onClick={() => setAvailableCategoryFilter(filter.key)}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
-        ) : null}
       </div>
 
       {error ? <div className="alert compact-alert">{error}</div> : null}
@@ -597,7 +599,7 @@ export function HrEntitlementsPanel({
         </div>
       ) : null}
 
-      {!emptyCountry && !emptySector && !finlandPending && hasSelectedFilter ? (
+      {!emptyCountry && !emptySector && !finlandPending ? (
         <>
           <div className="rights-catalog-meta">
             <span>{loading ? 'Chargement…' : `${cards.length} résultat(s)`}</span>
@@ -633,11 +635,9 @@ export function HrEntitlementsPanel({
                     <FileText size={15} /> Détail
                   </button>
                   {card.autoApplicable ? (
-                    canWrite ? (
-                      <button type="button" className="btn compact ghost" onClick={() => void activateCard(card)} disabled={actionLoading === card.id}>
-                        <Settings2 size={15} /> {actionLoading === card.id ? 'Configuration…' : 'Configurer'}
-                      </button>
-                    ) : null
+                    <button type="button" className="btn compact muted" disabled>
+                      <ShieldCheck size={15} /> Inclus
+                    </button>
                   ) : card.activated ? (
                     <button type="button" className="btn compact muted" disabled>
                       <CheckCircle2 size={15} /> Configuré

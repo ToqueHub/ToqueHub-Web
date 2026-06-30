@@ -1,5 +1,5 @@
-import type { ChangeEvent, DragEvent } from 'react';
-import { useMemo, useRef, useState } from 'react';
+import type { ChangeEvent, CSSProperties, DragEvent } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft,
@@ -19,6 +19,7 @@ import {
   LockKeyhole,
   LockKeyholeOpen,
   RefreshCcw,
+  Search,
   Server,
   ShieldCheck,
   Sparkles,
@@ -28,7 +29,7 @@ import {
   X,
 } from 'lucide-react';
 import { api } from '../api/client';
-import type { BackupInspection, EstablishmentType, RegulatoryCountryCode, RegulatorySector, SystemStatus, TeamSize, UserSession } from '../types';
+import type { BackupInspection, EstablishmentRightsRecommendationsResponse, EstablishmentType, RegulatoryCountryCode, RegulatorySector, SystemStatus, TeamSize, UserSession } from '../types';
 
 interface FirstStartLandingProps {
   status?: SystemStatus;
@@ -39,7 +40,7 @@ interface FirstStartLandingProps {
   onBootstrapComplete: (session: UserSession) => void;
 }
 
-type OnboardingStep = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+type OnboardingStep = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 type AdminForm = { username: string; firstName: string; lastName: string; email: string; password: string; confirm: string };
 type OrganizationForm = { name: string; type: string; regulatoryCountryCode: RegulatoryCountryCode | ''; regulatorySector: RegulatorySector | ''; teamSize: TeamSize; logo?: string };
 
@@ -58,7 +59,8 @@ const teamSizes: Array<{ label: string; value: TeamSize }> = [
   { label: '11 à 20 personnes', value: '11-20' },
   { label: 'Plus de 20 personnes', value: '20+' },
 ];
-const creationSteps = ['Création de l’organisation', 'Création du site principal', 'Configuration de l’administrateur', 'Préparation OCR IA', 'Finalisation'];
+const creationSteps = ['Création de l’organisation', 'Activation des droits établissement', 'Création du site principal', 'Configuration de l’administrateur', 'Préparation OCR IA', 'Finalisation'];
+const onboardingHiddenLegalCodes = new Set(['CP', 'CP_MALADIE', 'HS', 'PAUSE_6H', 'REPOS_QUOTIDIEN', 'REPOS_HEBDOMADAIRE', 'JF', 'JF_1MAI', 'RECUP_PONT']);
 const volunteerAppointmentUrl = '';
 
 function passwordScore(password: string) {
@@ -96,12 +98,45 @@ export function FirstStartLanding({
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [restoreDone, setRestoreDone] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [rightsQuery, setRightsQuery] = useState('');
+  const [rightsRecommendations, setRightsRecommendations] = useState<EstablishmentRightsRecommendationsResponse | null>(null);
+  const [rightsLoading, setRightsLoading] = useState(false);
+  const [rightsError, setRightsError] = useState<string>();
+  const [selectedLegalRightIds, setSelectedLegalRightIds] = useState<Set<string>>(new Set());
+  const [selectedManualTemplateCodes, setSelectedManualTemplateCodes] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   
   const score = useMemo(() => passwordScore(admin.password), [admin.password]);
   const allowLogin = Boolean(status?.hasOrganization || status?.hasAdmin);
   const allowCreate = !status?.hasAdmin && !status?.hasOrganization;
-  const progress = (step / 5) * 100;
+  const progress = (Math.min(step, 6) / 6) * 100;
+
+  useEffect(() => {
+    if (step !== 3 || !organization.regulatoryCountryCode || !organization.regulatorySector) return;
+    let cancelled = false;
+    async function loadRights() {
+      setRightsLoading(true);
+      setRightsError(undefined);
+      try {
+        const response = await api.establishmentRightsRecommendations({
+          country: organization.regulatoryCountryCode || undefined,
+          sector: organization.regulatorySector || undefined,
+          establishmentType: organization.type || undefined,
+          query: rightsQuery.trim() || undefined,
+        });
+        if (cancelled) return;
+        setRightsRecommendations(response);
+      } catch (err) {
+        if (!cancelled) setRightsError(err instanceof Error ? err.message : 'Droits établissement indisponibles.');
+      } finally {
+        if (!cancelled) setRightsLoading(false);
+      }
+    }
+    void loadRights();
+    return () => {
+      cancelled = true;
+    };
+  }, [step, organization.regulatoryCountryCode, organization.regulatorySector, organization.type, rightsQuery]);
 
   function goNext() {
     setFormError(undefined);
@@ -118,7 +153,7 @@ export function FirstStartLanding({
       setFormError('Le secteur est requis.');
       return;
     }
-    if (step < 5) setStep((step + 1) as OnboardingStep);
+    if (step < 6) setStep((step + 1) as OnboardingStep);
   }
 
   document.title = "Bienvenue sur ToqueHub - Onboarding";
@@ -179,6 +214,40 @@ export function FirstStartLanding({
     }
   }
 
+  function toggleLegalRight(id: string) {
+    setSelectedLegalRightIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleManualTemplate(code: string) {
+    setSelectedManualTemplateCodes((current) => {
+      const next = new Set(current);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  }
+
+  async function activateSelectedEstablishmentRights(session: UserSession) {
+    const token = session.accessToken;
+    const legalIds = Array.from(selectedLegalRightIds);
+    const manualCodes = Array.from(selectedManualTemplateCodes);
+    for (const legalId of legalIds) await api.activateLegalRight(token, legalId);
+    if (manualCodes.length && organization.regulatoryCountryCode) {
+      const catalog = await api.prepareHrEntitlementCatalog(token, {
+        countryCode: organization.regulatoryCountryCode,
+        employmentFramework: organization.regulatorySector || undefined,
+        organizationType: organization.type || undefined,
+      });
+      const catalogItemIds = (catalog.items ?? []).filter((item) => manualCodes.includes(item.code)).map((item) => item.id);
+      if (catalogItemIds.length) await api.activateHrEntitlementCatalogSelection(token, { catalogItemIds, targetMode: 'NONE' });
+    }
+  }
+
   async function createEnvironment() {
     setFormError(undefined);
     if (!validateAdmin()) {
@@ -197,7 +266,7 @@ export function FirstStartLanding({
     }
 
     setSubmitting(true);
-    setStep(6);
+    setStep(7);
     setCompletedCreationSteps(0);
     try {
       await pause(350);
@@ -216,22 +285,28 @@ export function FirstStartLanding({
         mistralApiKey: mistralApiKey.trim() || undefined,
       });
       setCompletedCreationSteps(1);
-      await pause(300);
+      try {
+        await activateSelectedEstablishmentRights(finalSession);
+      } catch (err) {
+        console.warn('Activation des droits établissement incomplète', err);
+      }
       setCompletedCreationSteps(2);
       await pause(300);
       setCompletedCreationSteps(3);
+      await pause(300);
+      setCompletedCreationSteps(4);
       await onRefreshStatus();
       await pause(450);
-      setCompletedCreationSteps(4);
-      await pause(250);
       setCompletedCreationSteps(5);
+      await pause(250);
+      setCompletedCreationSteps(6);
       await pause(250);
       onBootstrapComplete(finalSession);
     } catch (err) {
       setSubmitting(false);
       setFormError('Nous n’avons pas pu créer l’environnement. Vérifiez les informations puis réessayez.');
       if (err instanceof Error && err.message) setFormError(err.message);
-      setStep(4);
+      setStep(6);
     }
   }
 
@@ -269,7 +344,7 @@ export function FirstStartLanding({
     }
   }
 
-  const isFullWidth = step === 0 || step === 6;
+  const isFullWidth = step === 0 || step === 7;
 
   return (
     <div
@@ -392,7 +467,7 @@ export function FirstStartLanding({
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span className="badge badge-reception" style={{ background: 'var(--primary-bg-light)', color: 'var(--primary)' }}>
-                        Étape {step} / 5
+                        Étape {step} / 6
                       </span>
                       <span style={{ fontWeight: 800, fontSize: '0.85rem', color: 'var(--text-muted)' }}>{Math.round(progress)}%</span>
                     </div>
@@ -442,27 +517,41 @@ export function FirstStartLanding({
                       />
                     )}
                     {step === 3 && (
+                      <EstablishmentRightsStep
+                        organization={organization}
+                        recommendations={rightsRecommendations}
+                        query={rightsQuery}
+                        loading={rightsLoading}
+                        error={rightsError}
+                        selectedLegalRightIds={selectedLegalRightIds}
+                        selectedManualTemplateCodes={selectedManualTemplateCodes}
+                        onQuery={setRightsQuery}
+                        onToggleLegal={toggleLegalRight}
+                        onToggleManual={toggleManualTemplate}
+                      />
+                    )}
+                    {step === 4 && (
                       <TeamStep
                         teamSize={organization.teamSize}
                         onSelect={(teamSize) => setOrganization((prev) => ({ ...prev, teamSize }))}
                       />
                     )}
-                    {step === 4 && (
+                    {step === 5 && (
                       <LogoStep
                         organization={organization}
                         fileInputRef={fileInputRef}
                         onFile={handleLogo}
-                        onSkip={() => setStep(5)}
+                        onSkip={() => setStep(6)}
                       />
                     )}
-                    {step === 5 && (
+                    {step === 6 && (
                       <MistralKeyStep
                         value={mistralApiKey}
                         onChange={setMistralApiKey}
                         onSkip={createEnvironment}
                       />
                     )}
-                    {step === 6 && <CreationStep completed={completedCreationSteps} />}
+                    {step === 7 && <CreationStep completed={completedCreationSteps} />}
                   </motion.div>
                 </AnimatePresence>
               </div>
@@ -473,9 +562,9 @@ export function FirstStartLanding({
                   <button className="btn btn-secondary" onClick={goBack} disabled={submitting}>
                     <ArrowLeft size={16} /> Retour
                   </button>
-                  {step < 5 ? (
+                  {step < 6 ? (
                     <button className="btn btn-primary" onClick={goNext} style={{ marginLeft: 'auto' }}>
-                      Continuer <ArrowRight size={16} />
+                      {step === 3 ? 'Valider les droits' : 'Continuer'} <ArrowRight size={16} />
                     </button>
                   ) : (
                     <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.65rem' }}>
@@ -1139,6 +1228,160 @@ function OrganizationStep({ organization, updateOrganization }: OrganizationStep
   );
 }
 
+interface EstablishmentRightsStepProps {
+  organization: OrganizationForm;
+  recommendations: EstablishmentRightsRecommendationsResponse | null;
+  query: string;
+  loading: boolean;
+  error?: string;
+  selectedLegalRightIds: Set<string>;
+  selectedManualTemplateCodes: Set<string>;
+  onQuery: (value: string) => void;
+  onToggleLegal: (id: string) => void;
+  onToggleManual: (code: string) => void;
+}
+
+function EstablishmentRightsStep({
+  organization,
+  recommendations,
+  query,
+  loading,
+  error,
+  selectedLegalRightIds,
+  selectedManualTemplateCodes,
+  onQuery,
+  onToggleLegal,
+  onToggleManual,
+}: EstablishmentRightsStepProps) {
+  const legalRights = (recommendations?.recommendedRights ?? []).filter((right) => !onboardingHiddenLegalCodes.has(right.code));
+  const manualTemplates = recommendations?.manualTemplates ?? [];
+  const selectedCount = legalRights.filter((right) => selectedLegalRightIds.has(right.id)).length + manualTemplates.filter((template) => selectedManualTemplateCodes.has(template.code)).length;
+  const context = `${countryLabel(organization.regulatoryCountryCode)} · ${sectorLabel(organization.regulatorySector)} · ${organization.type || 'Type à préciser'}`;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <div>
+        <span className="badge badge-reception" style={{ marginBottom: '0.5rem', display: 'inline-flex', gap: '0.35rem' }}>
+          <ShieldCheck size={14} /> Droits
+        </span>
+        <h2 style={{ fontSize: '1.75rem', fontWeight: 800, letterSpacing: 0 }}>Droits de l’établissement</h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginTop: '0.25rem' }}>
+          Les droits obligatoires sont déjà inclus automatiquement. Sélectionnez ici uniquement les droits spécifiques à votre établissement.
+        </p>
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', alignItems: 'center' }}>
+        <span className="badge badge-reception" style={{ textTransform: 'none' }}>{context}</span>
+        <span className="badge" style={{ textTransform: 'none', background: '#f1f5f9', color: '#475569' }}>
+          {selectedCount} droit{selectedCount > 1 ? 's' : ''} sélectionné{selectedCount > 1 ? 's' : ''}
+        </span>
+        {recommendations?.hiddenAutoIncludedCount ? (
+          <span className="badge" style={{ textTransform: 'none', background: '#ecfdf5', color: '#047857' }}>
+            {recommendations.hiddenAutoIncludedCount} inclus automatiquement masqué{recommendations.hiddenAutoIncludedCount > 1 ? 's' : ''}
+          </span>
+        ) : null}
+      </div>
+
+      <label style={{ position: 'relative' }}>
+        <Search size={16} style={{ position: 'absolute', left: '0.85rem', top: '2.55rem', color: '#94a3b8' }} />
+        Rechercher
+        <input value={query} onChange={(event) => onQuery(event.target.value)} placeholder="HCR, restauration collective, RTT, récupération..." style={{ paddingLeft: '2.4rem' }} />
+      </label>
+
+      {error ? <div className="alert-modern error" style={{ margin: 0 }}><AlertCircleIcon /><span>{error}</span></div> : null}
+      {recommendations?.warnings?.length ? (
+        <div style={{ display: 'grid', gap: '0.45rem' }}>
+          {recommendations.warnings.map((warning) => <small key={warning.code} style={{ color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '0.55rem 0.7rem' }}>{warning.message}</small>)}
+        </div>
+      ) : null}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem', maxHeight: '320px', overflow: 'auto', paddingRight: '0.15rem' }}>
+        {loading ? <div className="card-modern" style={{ padding: '1rem' }}>Chargement des droits...</div> : null}
+        {!loading && legalRights.map((right) => {
+          const selected = selectedLegalRightIds.has(right.id);
+          return (
+            <button key={right.id} type="button" className={`hr-catalog-card ${selected ? 'selected' : ''}`} onClick={() => onToggleLegal(right.id)} style={rightsCardStyle(selected)}>
+              <span className="hr-catalog-check" style={rightsCheckStyle(selected)}>{selected ? <CheckCircle2 size={14} /> : null}</span>
+              <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', textAlign: 'left', minWidth: 0 }}>
+                <small style={{ color: '#64748b', fontWeight: 800 }}>{right.recommendation ?? sourceLabel(right.sourceLayer)}</small>
+                <strong style={{ color: '#1e293b' }}>{right.name}</strong>
+                <small style={{ color: '#64748b', lineHeight: 1.35 }}>{right.description ?? right.category}</small>
+                {right.validationStatus === 'requires_review' ? <small style={{ color: '#b45309' }}>À valider juridiquement</small> : null}
+              </span>
+            </button>
+          );
+        })}
+        {!loading && manualTemplates.map((template) => {
+          const selected = selectedManualTemplateCodes.has(template.code);
+          return (
+            <button key={template.code} type="button" className={`hr-catalog-card ${selected ? 'selected' : ''}`} onClick={() => onToggleManual(template.code)} style={rightsCardStyle(selected)}>
+              <span className="hr-catalog-check" style={rightsCheckStyle(selected)}>{selected ? <CheckCircle2 size={14} /> : null}</span>
+              <span style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', textAlign: 'left', minWidth: 0 }}>
+                <small style={{ color: '#64748b', fontWeight: 800 }}>Droit interne configurable</small>
+                <strong style={{ color: '#1e293b' }}>{template.label}</strong>
+                <small style={{ color: '#64748b', lineHeight: 1.35 }}>{template.shortDescription}</small>
+              </span>
+            </button>
+          );
+        })}
+        {!loading && !legalRights.length && !manualTemplates.length ? (
+          <div className="rights-empty-state" style={{ gridColumn: '1 / -1' }}>
+            <strong>{organization.regulatoryCountryCode === 'FI' ? 'Base Finlande en préparation' : 'Aucun droit spécifique proposé'}</strong>
+            <span>Les droits obligatoires restent inclus automatiquement et ne sont pas proposés à la sélection.</span>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function rightsCardStyle(selected: boolean): CSSProperties {
+  return {
+    border: selected ? '2px solid #10b981' : '1px solid #e2e8f0',
+    borderRadius: '8px',
+    padding: '0.9rem',
+    background: selected ? 'rgba(16, 185, 129, 0.04)' : 'white',
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '0.75rem',
+    minHeight: '132px',
+  };
+}
+
+function rightsCheckStyle(selected: boolean): CSSProperties {
+  return {
+    background: selected ? '#10b981' : '#f1f5f9',
+    color: selected ? 'white' : 'transparent',
+    borderRadius: '8px',
+    width: '24px',
+    height: '24px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: selected ? 'none' : '2px solid #cbd5e1',
+    flexShrink: 0,
+    marginTop: '2px',
+  };
+}
+
+function countryLabel(value?: string | null) {
+  if (value === 'FR') return 'France';
+  if (value === 'FI') return 'Finlande';
+  return 'Pays à choisir';
+}
+
+function sectorLabel(value?: string | null) {
+  if (value === 'PRIVATE') return 'secteur privé';
+  if (value === 'PUBLIC') return 'secteur public';
+  return 'secteur à choisir';
+}
+
+function sourceLabel(value?: string | null) {
+  if (value === 'collective_agreement') return 'Convention probable';
+  if (value === 'public_regime' || value === 'public_status') return 'Statut public';
+  if (value === 'establishment_manual' || value === 'manual_template') return 'Droit interne';
+  return 'Droit spécifique';
+}
+
 // 3. Team Size Step
 interface TeamStepProps {
   teamSize: TeamSize;
@@ -1535,7 +1778,7 @@ function CreationStep({ completed }: { completed: number }) {
 
 // Sidebar workflow stepper
 function OnboardingAside({ step, organization }: { step: OnboardingStep; organization: OrganizationForm }) {
-  const steps = ['Bienvenue', 'Administrateur', 'Établissement', 'Équipe', 'Personnalisation', 'IA Mistral'];
+  const steps = ['Bienvenue', 'Administrateur', 'Établissement', 'Droits', 'Équipe', 'Personnalisation', 'IA Mistral'];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem', height: '100%', justifyContent: 'space-between' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
