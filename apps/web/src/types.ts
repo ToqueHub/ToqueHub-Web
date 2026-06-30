@@ -858,6 +858,73 @@ export interface PlanningCountersSummary {
   storage?: string;
 }
 
+export interface EstablishmentWorkTimeRule {
+  key: string;
+  label: string;
+  value: string | number | boolean | null;
+  unit?: string | null;
+  sourcePage?: number | null;
+  sourceSection?: string | null;
+  confidence?: 'high' | 'medium' | 'low' | string;
+  status?: 'validated' | 'to_confirm' | string;
+}
+
+export interface EstablishmentWorkTimeRegulation {
+  id?: string | null;
+  organizationId?: string | null;
+  sourceLayer: 'establishment_internal' | string;
+  sourceKind?: string;
+  nightWorkEnabled: boolean;
+  nightWorkStartTime?: string | null;
+  nightWorkEndTime?: string | null;
+  publicHolidayWorkEnabled: boolean;
+  publicHolidayDates?: string[];
+  weekendWorkEnabled: boolean;
+  saturdayWorkAllowed: boolean;
+  sundayWorkAllowed: boolean;
+  compensationsEnabled: boolean;
+  teleworkEnabled: boolean;
+  teleworkStartTime?: string | null;
+  teleworkEndTime?: string | null;
+  teleworkMinBreakMinutes?: number | null;
+  teleworkDailyQuotaMinutes?: number | null;
+  teleworkMaxDaysPerWeek?: number | null;
+  teleworkMaxDaysPerYearFullTime?: number | null;
+  teleworkMaxDaysPerYearPartTime?: number | null;
+  internalRulesSourceDocumentId?: string | null;
+  sourceDocumentName?: string | null;
+  sourceDocumentMetadata?: Record<string, any>;
+  extractedRules?: EstablishmentWorkTimeRule[];
+  rulesToConfirm?: EstablishmentWorkTimeRule[];
+  positionMapping?: Record<string, any>;
+  validationStatus: 'draft' | 'requires_review' | 'validated' | string;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface WorkTimeTrackingRow {
+  employeeId: string;
+  employeeName: string;
+  jobTitle?: string | null;
+  accountType: string;
+  code: string;
+  label: string;
+  unit: 'MINUTES' | 'DAYS' | string;
+  quantity: number;
+  status?: 'OK' | 'TO_VALIDATE' | string;
+  validationStatus?: string;
+  sourceLayer?: string;
+  balanceImpact?: string;
+  compensationGenerated?: boolean;
+}
+
+export interface WorkTimeTrackingSummary {
+  sourceLayer: 'establishment_internal' | string;
+  balanceImpact: 'tracking_only' | string;
+  compensationGenerated: boolean;
+  rows: WorkTimeTrackingRow[];
+}
+
 export interface PlanningAttendanceRow {
   id?: string | null;
   assignmentId?: string | null;

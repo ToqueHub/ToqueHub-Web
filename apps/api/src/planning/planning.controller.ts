@@ -3,12 +3,13 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { AcceptReplacementDto, ApplyPlanningRotationDto, ApplyPlanningTemplateDto, GeneratePlanningDto, MovePlanningAssignmentDto, PlanningAttendanceQueryDto, PlanningContextQueryDto, PlanningDayStatusQueryDto, PlanningPeriodActionDto, PlanningQueryDto, PlanningRotationPreviewDto, PrepareExportDto, SetEmployeePlanningTemplatesDto, SetEmployeeSkillsDto, UpsertDayPlanningAssignmentDto, UpsertDayPresetDto, UpsertHrAbsenceDto, UpsertHrSkillDto, UpsertPlanningAssignmentDto, UpsertPlanningAttendanceDto, UpsertPlanningCodeDictionaryDto, UpsertPlanningDayStatusDto, UpsertPlanningNeedDto, UpsertPlanningPolicyProfileDto, UpsertPlanningTemplateDto, UpsertWeeklyRotationDto, ValidatePlanningAttendanceDto } from './dto/planning.dto';
+import { AcceptReplacementDto, ApplyPlanningRotationDto, ApplyPlanningTemplateDto, GeneratePlanningDto, MovePlanningAssignmentDto, PlanningAttendanceQueryDto, PlanningContextQueryDto, PlanningDayStatusQueryDto, PlanningPeriodActionDto, PlanningQueryDto, PlanningRotationPreviewDto, PrepareExportDto, SetEmployeePlanningTemplatesDto, SetEmployeeSkillsDto, UpsertDayPlanningAssignmentDto, UpsertDayPresetDto, UpsertHrAbsenceDto, UpsertHrSkillDto, UpsertPlanningAssignmentDto, UpsertPlanningAttendanceDto, UpsertPlanningCodeDictionaryDto, UpsertPlanningDayStatusDto, UpsertPlanningNeedDto, UpsertPlanningPolicyProfileDto, UpsertPlanningTemplateDto, UpsertWeeklyRotationDto, UpsertWorkTimeRegulationDto, ValidatePlanningAttendanceDto } from './dto/planning.dto';
 import { PlanningAttendanceService } from './planning-attendance.service';
 import { PlanningCodeDictionaryService } from './planning-code-dictionary.service';
 import { PlanningDayStatusService } from './planning-day-status.service';
 import { PlanningPolicyService } from './planning-policy.service';
 import { PlanningService } from './planning.service';
+import { WorkTimeRegulationService } from './work-time-regulation.service';
 
 @ApiTags('planning')
 @ApiBearerAuth()
@@ -21,6 +22,7 @@ export class PlanningController {
     private readonly codeDictionaryService: PlanningCodeDictionaryService,
     private readonly policyService: PlanningPolicyService,
     private readonly attendanceService: PlanningAttendanceService,
+    private readonly workTimeRegulationService: WorkTimeRegulationService,
   ) {}
   private org(user: AuthenticatedUser) { if (!user.organizationId) throw new BadRequestException('Organization setup is required before using Planning endpoints'); return user.organizationId; }
   private actor(user: AuthenticatedUser) { return { id: user.id, role: user.role }; }
@@ -49,6 +51,10 @@ export class PlanningController {
   @Get('policy-profiles') policyProfiles(@CurrentUser() user: AuthenticatedUser) { return this.policyService.list(this.org(user)); }
   @Post('policy-profiles') createPolicyProfile(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertPlanningPolicyProfileDto) { return this.policyService.create(this.org(user), this.actor(user), dto); }
   @Patch('policy-profiles/:id') updatePolicyProfile(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpsertPlanningPolicyProfileDto) { return this.policyService.update(this.org(user), this.actor(user), id, dto); }
+
+  @Get('work-time-regulation') workTimeRegulation(@CurrentUser() user: AuthenticatedUser) { return this.workTimeRegulationService.get(this.org(user)); }
+  @Patch('work-time-regulation') updateWorkTimeRegulation(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertWorkTimeRegulationDto) { return this.workTimeRegulationService.upsert(this.org(user), this.actor(user), dto); }
+  @Get('work-time-regulation/position-mapping/preview') workTimePositionMappingPreview(@CurrentUser() user: AuthenticatedUser) { return this.workTimeRegulationService.positionMappingPreview(this.org(user)); }
 
   @Get('assignments') assignments(@CurrentUser() user: AuthenticatedUser, @Query() q: PlanningQueryDto) { return this.planningService.listAssignments(this.org(user), q); }
   @Post('assignments') createAssignment(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertPlanningAssignmentDto) { return this.planningService.createAssignment(this.org(user), this.actor(user), dto); }

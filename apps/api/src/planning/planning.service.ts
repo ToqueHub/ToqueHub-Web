@@ -8,6 +8,7 @@ import { PlanningDayStatusService } from './planning-day-status.service';
 import { PlanningAttendanceService } from './planning-attendance.service';
 import { PlanningPolicyService } from './planning-policy.service';
 import { plannedMinutes } from './planning-time';
+import { INTERNAL_WORK_TIME_CONFLICT_CODES, WorkTimeRegulationService } from './work-time-regulation.service';
 
 type Actor = { id: string; role: string };
 type Period = { start: Date; end: Date; month: number; year: number; days: string[] };
@@ -40,6 +41,7 @@ export class PlanningService {
     @Optional() private readonly codeDictionaryService?: PlanningCodeDictionaryService,
     @Optional() private readonly policyService?: PlanningPolicyService,
     @Optional() private readonly attendanceService?: PlanningAttendanceService,
+    @Optional() private readonly workTimeRegulationService?: WorkTimeRegulationService,
   ) {}
 
   private assertWrite(actor: Actor) { if (!WRITE_ROLES.includes(actor.role)) throw new ForbiddenException('Planning write access is restricted to managers and administrators'); }
@@ -94,12 +96,14 @@ export class PlanningService {
     const attendance = this.attendanceService ? await this.attendanceService.list(organizationId, { month: q.month, year: q.year, startDate: q.startDate, endDate: q.endDate, employeeId: q.employeeId, departmentId: q.departmentId, siteId: q.siteId, pageSize: q.pageSize }) : this.attendancePlaceholder(assignments);
     const periodStatus = await this.periodStatus(organizationId, period.start, period.end, q.siteId);
     const historyHuman = history.map(item => this.humanHistoryItem(item));
-    const [dayStatusSummary, countersSummary, codeDictionarySummary, policySummary] = await Promise.all([
+    const [dayStatusSummary, countersSummary, codeDictionarySummary, policySummary, workTimeRegulation] = await Promise.all([
       this.dayStatusService?.periodSummary(organizationId, q) ?? Promise.resolve(null),
       this.timeAccountService?.contextSummary(organizationId, q) ?? Promise.resolve(null),
       this.codeDictionaryService?.summary(organizationId) ?? Promise.resolve(null),
       this.policyService?.summary(organizationId) ?? Promise.resolve(null),
+      this.workTimeRegulationService?.get(organizationId) ?? Promise.resolve(null),
     ]);
+    const workTimeTracking = workTimeRegulation && this.workTimeRegulationService ? this.workTimeRegulationService.trackingSummary(assignments, workTimeRegulation) : null;
     (dashboard as any).periodStatus = periodStatus;
     (dashboard as any).actions = [...(dashboard.actions ?? []), ...this.periodActions(periodStatus)];
 
@@ -131,7 +135,7 @@ export class PlanningService {
       dashboard,
       summary: dashboard.summary,
       planning: { month, assignmentsByDate: month.days.reduce((acc, day) => ({ ...acc, [day.date]: day.assignments }), {}), periodStatus },
-      settings: { needs: normalizedNeeds, templates: normalizedTemplates, dayPresets, weeklyRotations, employeeTemplateAssignments, templateApplications, rotations: weeklyRotations, rules: this.planningRulesCatalog(), payrollRuleProfiles: this.payrollRuleProfilesPlaceholder(), codeDictionary: codeDictionarySummary, policyProfiles: policySummary, notes: ['Les roulements Planning vivent uniquement dans planning_templates.', 'Les attributions collaborateur sont stockées provisoirement dans planning_templates.content faute de table dédiée existante.', 'Les règles pays/paie sont maintenant préparées via planning_policy_profiles sans règle légale codée en dur.'] },
+      settings: { needs: normalizedNeeds, templates: normalizedTemplates, dayPresets, weeklyRotations, employeeTemplateAssignments, templateApplications, rotations: weeklyRotations, rules: this.planningRulesCatalog(workTimeRegulation), payrollRuleProfiles: this.payrollRuleProfilesPlaceholder(), codeDictionary: codeDictionarySummary, policyProfiles: policySummary, workTimeRegulation, workTimeTracking, notes: ['Les roulements Planning vivent uniquement dans planning_templates.', 'Les attributions collaborateur sont stockées provisoirement dans planning_templates.content faute de table dédiée existante.', 'Les règles pays/paie sont maintenant préparées via planning_policy_profiles sans règle légale codée en dur.', 'Le règlement du temps de travail est stocké comme paramétrage interne établissement, séparé des droits légaux et conventionnels.'] },
       attendance,
       periodStatus,
       dayStatusSummary,
@@ -832,10 +836,14 @@ export class PlanningService {
   private async recalculateBaseAlerts(organizationId: string, start: Date, end: Date) {
     const managedCodes = ['UNDERSTAFFED_NEED', 'UNCOVERED_NEED', 'CLOSING_UNCOVERED', 'REQUIRED_POSITION_MISSING', 'WEEKLY_QUOTA_EXCEEDED'];
     await this.prisma.planningConflict.deleteMany({ where: { organizationId, assignmentId: null, resolvedAt: null, code: { in: managedCodes } } });
-    const [coverage, employees, assignments] = await Promise.all([
+    if (this.workTimeRegulationService) {
+      await this.prisma.planningConflict.deleteMany({ where: { organizationId, resolvedAt: null, code: { in: INTERNAL_WORK_TIME_CONFLICT_CODES }, assignment: { date: { gte: this.day(start), lte: this.endDay(end) } } } });
+    }
+    const [coverage, employees, assignments, workTimeRegulation] = await Promise.all([
       this.coverage(organizationId, start, end),
       this.prisma.hrEmployee.findMany({ where: { organizationId, isArchived: false, status: HrEmployeeStatus.ACTIVE }, include: { contracts: { orderBy: { startDate: 'desc' }, take: 1 } } }),
-      this.prisma.planningAssignment.findMany({ where: { organizationId, date: { gte: this.day(start), lte: this.endDay(end) }, status: { not: PlanningAssignmentStatus.CANCELLED } }, include: { employee: true, department: true } }),
+      this.prisma.planningAssignment.findMany({ where: { organizationId, date: { gte: this.day(start), lte: this.endDay(end) }, status: { not: PlanningAssignmentStatus.CANCELLED } }, include: { employee: true, department: true, position: true } }),
+      this.workTimeRegulationService?.get(organizationId) ?? Promise.resolve(null),
     ]);
     const conflictData: Prisma.PlanningConflictCreateManyInput[] = [];
     for (const item of coverage.filter(row => ['UNDERSTAFFED', 'UNPLANNED'].includes(row.status))) {
@@ -855,6 +863,13 @@ export class PlanningService {
       const plannedMinutes = plannedByEmployee.get(employee.id) ?? 0;
       if (contractMinutes && plannedMinutes > contractMinutes * periodWeekFactor) {
         conflictData.push({ organizationId, severity: PlanningConflictSeverity.STRONG_WARNING, code: 'WEEKLY_QUOTA_EXCEEDED', label: `${employee.firstName} ${employee.lastName}: quota hebdomadaire dépassé`, details: { employeeId: employee.id, plannedMinutes, contractMinutes, periodWeekFactor } as Prisma.InputJsonValue });
+      }
+    }
+    if (this.workTimeRegulationService && workTimeRegulation) {
+      for (const assignment of assignments) {
+        for (const conflict of this.workTimeRegulationService.analyzeAssignment(workTimeRegulation, assignment)) {
+          conflictData.push({ organizationId, assignmentId: assignment.id, severity: conflict.severity, code: conflict.code, label: conflict.label, details: conflict.details as Prisma.InputJsonValue });
+        }
       }
     }
     if (conflictData.length) await this.prisma.planningConflict.createMany({ data: conflictData, skipDuplicates: false });
@@ -912,8 +927,8 @@ export class PlanningService {
     if (metadata.recurrence) planningNeedMeta.recurrence = metadata.recurrence;
     return JSON.stringify({ planningNeedMeta });
   }
-  private planningRulesCatalog() {
-    return [
+  private planningRulesCatalog(workTimeRegulation?: Record<string, any> | null) {
+    const rules = [
       { key: 'closing-covered', name: 'Fermeture obligatoire couverte', description: 'Déclenche une alerte bloquante si un besoin fermeture n’a aucune affectation couvrante.', status: 'active', impact: 'blocking', requiredData: ['planning_operational_needs.timeSlot=fermeture', 'planning_assignments'] },
       { key: 'minimum-by-service', name: 'Minimum par service', description: 'Compare les besoins par service aux affectations qui couvrent le jour et le créneau.', status: 'active', impact: 'warning', requiredData: ['planning_operational_needs', 'planning_assignments'] },
       { key: 'required-position-present', name: 'Poste obligatoire présent', description: 'Déclenche une alerte si un besoin avec poste défini n’est pas couvert par ce poste.', status: 'active', impact: 'warning', requiredData: ['planning_operational_needs.positionId', 'planning_assignments.positionId'] },
@@ -923,6 +938,14 @@ export class PlanningService {
       { key: 'availability-respected', name: 'Indisponibilité respectée', description: 'Les absences RH approuvées sont déjà bloquantes; les indisponibilités Planning dédiées viendront plus tard.', status: 'partial', impact: 'blocking', requiredData: ['hr_absences', 'planning_unavailabilities future'] },
       { key: 'overlap-forbidden', name: 'Chevauchement interdit', description: 'Détecte les chevauchements d’affectations pour un même salarié.', status: 'active', impact: 'blocking', requiredData: ['planning_assignments'] },
     ];
+    if (workTimeRegulation) {
+      rules.push(
+        { key: 'internal-night-work-detected', name: 'Heures de nuit internes', description: 'Suit les shifts chevauchant une plage de nuit configurée par l’établissement, sans majoration automatique.', status: workTimeRegulation.nightWorkStartTime && workTimeRegulation.nightWorkEndTime ? 'partial' : 'to_configure', impact: 'warning', requiredData: ['establishment_work_time_regulations', 'planning_assignments'] },
+        { key: 'internal-public-holiday-work-detected', name: 'Jours fériés travaillés internes', description: 'Suit les shifts posés sur des dates fériées configurées par l’établissement, sans solde dû inventé.', status: workTimeRegulation.publicHolidayDates?.length ? 'partial' : 'to_configure', impact: 'warning', requiredData: ['establishment_work_time_regulations.publicHolidayDates', 'planning_assignments'] },
+        { key: 'internal-weekend-work-detected', name: 'Travail week-end interne', description: 'Signale le travail samedi/dimanche selon l’autorisation interne établissement.', status: workTimeRegulation.weekendWorkEnabled ? 'partial' : 'to_configure', impact: 'warning', requiredData: ['establishment_work_time_regulations', 'planning_assignments'] },
+      );
+    }
+    return rules;
   }
   private payrollRuleProfilesPlaceholder() {
     return { currentProfile: 'custom', availableProfiles: ['france', 'finland', 'custom'], configurableByCompany: true, families: ['heures supplémentaires', 'dimanche', 'jours fériés', 'nuit', 'pauses', 'arrondis', 'primes'], persistence: false, note: 'Préparé pour calcul paie/coût futur sans règle légale codée en dur.' };
@@ -951,6 +974,10 @@ export class PlanningService {
     const week = await this.prisma.planningAssignment.findMany({ where: { organizationId, employeeId: data.employeeId, date: { gte: ws, lte: we }, status: { not: PlanningAssignmentStatus.CANCELLED }, id: excludeId ? { not: excludeId } : undefined } });
     const weeklyMinutes = week.reduce((sum, assignment) => sum + this.assignmentMinutes(assignment), 0) + this.assignmentMinutes(data);
     if (weeklyMinutes > 48 * 60) conflicts.push({ severity: 'STRONG_WARNING', code: 'WEEKLY_LOAD', label: 'Charge hebdomadaire supérieure à 48h' });
+    if (this.workTimeRegulationService) {
+      const workTimeRegulation = await this.workTimeRegulationService.get(organizationId);
+      conflicts.push(...this.workTimeRegulationService.analyzeAssignment(workTimeRegulation, data));
+    }
     return conflicts;
   }
   private async persistConflicts(tx: Prisma.TransactionClient, organizationId: string, assignmentId: string, conflicts: any[]) { for (const c of conflicts) await tx.planningConflict.create({ data: { organizationId, assignmentId, severity: c.severity as PlanningConflictSeverity, code: c.code, label: c.label, details: c as Prisma.InputJsonValue } }); }

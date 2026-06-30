@@ -128,6 +128,61 @@ Les droits RH utilisent quatre niveaux distincts.
 
 Dans le code, le nom Prisma `HrEntitlementRule` reste conservé pour éviter une migration destructive, mais les services l’appellent désormais “configuration établissement”. Les anciens champs de réponse `rule`/`rules` peuvent rester pour compatibilité d’API, mais les nouveaux traitements doivent préférer `establishmentConfiguration` et `establishmentConfigurations`.
 
+## Règlement Interne Temps De Travail
+
+Le règlement du temps de travail d’un client ou établissement est une source interne établissement. Il ne doit pas être importé comme `LegalRight`, ni mélangé au droit commun ou à une convention collective.
+
+La table dédiée est `establishment_work_time_regulations`. Elle porte notamment :
+
+- `nightWorkEnabled`, `nightWorkStartTime`, `nightWorkEndTime` ;
+- `publicHolidayWorkEnabled`, `publicHolidayDates` ;
+- `weekendWorkEnabled`, `saturdayWorkAllowed`, `sundayWorkAllowed` ;
+- `compensationsEnabled` ;
+- les champs télétravail extraits si le document fourni concerne le télétravail ;
+- `sourceDocumentName`, `sourceDocumentMetadata`, `extractedRules`, `rulesToConfirm` ;
+- `validationStatus`.
+
+La source est toujours exposée avec `sourceLayer = "establishment_internal"` et `sourceKind = "work_time_regulation"`.
+
+Endpoints Planning :
+
+- `GET /planning/work-time-regulation` : retourne le paramétrage interne courant ou les valeurs extraites par défaut si aucun enregistrement n’existe encore ;
+- `PATCH /planning/work-time-regulation` : met à jour le paramétrage interne sans créer de droit légal ;
+- `GET /planning/work-time-regulation/position-mapping/preview` : prépare les correspondances de postes reçues métier sans modifier les collaborateurs.
+
+Le document `2026 06 Règlement du temps de travail.pdf` fourni pour la passe du 30 juin 2026 a été rendu visuellement car l’extraction texte PDF renvoyait des glyphes `cid`. Le contenu lisible correspond à un règlement du télétravail, pas à un règlement complet nuit / jours fériés / week-end.
+
+Règles extraites avec confiance élevée :
+
+- télétravail volontaire et réversible ;
+- agents éligibles à partir de 80 % du temps complet ;
+- maximum 1 jour de télétravail par semaine ;
+- maximum 47 jours par an à temps complet ;
+- maximum 37 jours par an à 80 % ou 90 % ;
+- plage de travail télétravail 08:00-17:00 ;
+- pause méridienne minimale 45 minutes ;
+- quota journalier 7h16 ;
+- le télétravail ne génère pas d’heures complémentaires ou supplémentaires.
+
+Règles à confirmer manuellement car non trouvées dans le PDF fourni :
+
+- heures de nuit ;
+- jours fériés travaillés ;
+- travail week-end ;
+- astreintes ;
+- récupération ou compensation interne ;
+- RTT interne.
+
+Le Planning peut détecter des événements internes si les paramètres sont configurés :
+
+- `INTERNAL_NIGHT_WORK_DETECTED` ;
+- `INTERNAL_PUBLIC_HOLIDAY_WORK_DETECTED` ;
+- `INTERNAL_WEEKEND_WORK_DETECTED`.
+
+Ces alertes sont stockées dans `planning_conflicts` avec `sourceLayer = "establishment_internal"`. Elles restent des alertes ou compteurs de suivi tant que la règle interne n’est pas validée. Aucune majoration, compensation ou solde dû n’est inventé par le moteur : les détails portent `balanceImpact = "tracking_only"` et `compensationGenerated = false`.
+
+Dans `Planning > Paramétrage`, la section “Règlement du temps de travail” affiche l’état de configuration nuit / jours fériés / week-end, la source interne et le statut de validation. Dans `Émargement > Droits & soldes`, les heures nuit / jour férié / week-end peuvent apparaître comme lignes de suivi uniquement, distinctes des soldes `hr_time_accounts`.
+
 ## Heures Vertes
 
 `HEURE_VERTE` est un tag interne Toquehub, pas un droit légal autonome.

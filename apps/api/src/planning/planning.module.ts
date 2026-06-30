@@ -6,11 +6,12 @@ import { PlanningAttendanceService } from './planning-attendance.service';
 import { PlanningDayStatusService } from './planning-day-status.service';
 import { PlanningPolicyService } from './planning-policy.service';
 import { PlanningService } from './planning.service';
+import { WorkTimeRegulationService } from './work-time-regulation.service';
 
 @Module({
   imports: [HrModule],
   controllers: [PlanningController],
-  providers: [PlanningService, PlanningDayStatusService, PlanningCodeDictionaryService, PlanningPolicyService, PlanningAttendanceService],
-  exports: [PlanningService, PlanningDayStatusService, PlanningCodeDictionaryService, PlanningPolicyService, PlanningAttendanceService],
+  providers: [PlanningService, PlanningDayStatusService, PlanningCodeDictionaryService, PlanningPolicyService, PlanningAttendanceService, WorkTimeRegulationService],
+  exports: [PlanningService, PlanningDayStatusService, PlanningCodeDictionaryService, PlanningPolicyService, PlanningAttendanceService, WorkTimeRegulationService],
 })
 export class PlanningModule {}
