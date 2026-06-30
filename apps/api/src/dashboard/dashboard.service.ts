@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 
 type Zone = 'kpi' | 'activity' | 'analytics' | 'alerts';
 type WidgetSize = 'sm' | 'md' | 'lg' | 'xl';
-type AppId = 'core' | 'stocks' | 'rnm-prices' | 'hr' | 'planning' | 'technical-sheets' | 'production' | 'menus' | 'purchases' | 'quality' | 'finance';
+type AppId = 'core' | 'stocks' | 'rnm-prices' | 'hr' | 'planning' | 'technical-sheets' | 'production' | 'menus' | 'haccp' | 'purchases' | 'quality' | 'finance';
 
 type RegistryWidget = {
   id: string;
@@ -43,6 +43,7 @@ type OrganizationInstallState = {
   technicalSheetsInstalledAt: Date | null;
   productionInstalledAt: Date | null;
   menusInstalledAt: Date | null;
+  haccpInstalledAt: Date | null;
 };
 
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
@@ -57,6 +58,7 @@ const APP_PERMISSIONS: Partial<Record<AppId, string>> = {
   'technical-sheets': 'technical-sheets.read',
   production: 'production.read',
   menus: 'menus.read',
+  haccp: 'haccp.read',
 };
 
 const INSTALL_FIELDS: Partial<Record<AppId, keyof OrganizationInstallState>> = {
@@ -67,6 +69,7 @@ const INSTALL_FIELDS: Partial<Record<AppId, keyof OrganizationInstallState>> = {
   'technical-sheets': 'technicalSheetsInstalledAt',
   production: 'productionInstalledAt',
   menus: 'menusInstalledAt',
+  haccp: 'haccpInstalledAt',
 };
 
 const REGISTRY: RegistryWidget[] = [

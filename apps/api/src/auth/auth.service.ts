@@ -517,6 +517,7 @@ export class AuthService {
       ...(currentUser.organization.technicalSheetsInstalledAt ? ['technical-sheets'] : []),
       ...(currentUser.organization.productionInstalledAt ? ['production'] : []),
       ...(currentUser.organization.menusInstalledAt ? ['menus'] : []),
+      ...(currentUser.organization.haccpInstalledAt ? ['haccp'] : []),
     ];
     const checklist = {
       applicationInstalled: installedApplications.length > 0,
@@ -657,6 +658,7 @@ export class AuthService {
       technicalSheetsInstalledAt?: Date | null;
       productionInstalledAt?: Date | null;
       menusInstalledAt?: Date | null;
+      haccpInstalledAt?: Date | null;
       mistralApiKey?: string | null;
       mistralApiKeyUpdatedAt?: Date | null;
     } | null;
@@ -688,6 +690,7 @@ export class AuthService {
         ...(user.organization?.technicalSheetsInstalledAt ? ['technical-sheets'] : []),
         ...(user.organization?.productionInstalledAt ? ['production'] : []),
         ...(user.organization?.menusInstalledAt ? ['menus'] : []),
+        ...(user.organization?.haccpInstalledAt ? ['haccp'] : []),
       ],
       role: user.role.name,
       status: 'status' in user ? user.status : undefined,

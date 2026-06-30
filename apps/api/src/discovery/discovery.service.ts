@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
+import { hostname } from 'os';
 import { PrismaService } from '../prisma/prisma.service';
 import { MdnsPublisher } from './mdns-publisher';
 import type { DiscoveryInfo, DiscoveryTxtRecords } from './discovery.types';
@@ -79,24 +80,37 @@ export class DiscoveryService implements OnApplicationBootstrap, OnApplicationSh
     const configured = this.config.get<string>('TOQUEHUB_INSTANCE_ID')?.trim();
     if (configured) return configured;
 
-    const existing = await this.prisma.systemSetting.findUnique({
-      where: { key: INSTANCE_ID_SETTING_KEY },
-    });
-    if (existing?.value) return existing.value;
-
-    const value = randomUUID();
     try {
+      const existing = await this.prisma.systemSetting.findUnique({
+        where: { key: INSTANCE_ID_SETTING_KEY },
+      });
+      if (existing?.value) return existing.value;
+
+      const value = randomUUID();
       const created = await this.prisma.systemSetting.create({
         data: { key: INSTANCE_ID_SETTING_KEY, value },
       });
       return created.value;
-    } catch {
+    } catch (error) {
       const raced = await this.prisma.systemSetting.findUnique({
         where: { key: INSTANCE_ID_SETTING_KEY },
-      });
+      }).catch(() => null);
       if (raced?.value) return raced.value;
-      throw new Error('Impossible de persister l’identifiant de l’instance ToqueHub.');
+
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`InstanceId non persiste, fallback local utilise: ${message}`);
+      return this.fallbackInstanceId();
     }
+  }
+
+  private fallbackInstanceId() {
+    const basis = [
+      hostname(),
+      this.config.get<string>('DATABASE_URL') ?? '',
+      this.config.get<string>('PORT') ?? '3000',
+    ].join('|');
+    const hash = createHash('sha256').update(basis).digest('hex');
+    return `local-${hash.slice(0, 32)}`;
   }
 
   private async resolveOrganizationName() {
