@@ -214,6 +214,8 @@ function normalizeOcrCorrectionPayload(payload: StocksOcrExtraction['data']) {
       suggestedCategoryName: line.suggestedCategoryName || undefined,
       ocrLabel: line.ocrLabel || line.label || undefined,
       reference: line.reference || undefined,
+      nameOriginal: line.nameOriginal || undefined,
+      descriptionOriginal: line.descriptionOriginal || undefined,
       quantity: line.quantity ?? undefined,
       unit: line.unit || undefined,
       unitPrice: line.unitPrice ?? undefined,
@@ -225,6 +227,7 @@ function normalizeOcrCorrectionPayload(payload: StocksOcrExtraction['data']) {
       lineConfidence: line.lineConfidence ?? undefined,
       warnings: line.warnings ?? undefined,
       sourceText: line.sourceText || undefined,
+      packageDescription: line.packageDescription || undefined,
     })),
   };
 }

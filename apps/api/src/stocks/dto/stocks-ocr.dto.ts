@@ -53,6 +53,16 @@ export class CorrectedReceptionLineDto {
   reference?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(240)
+  nameOriginal?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  descriptionOriginal?: string;
+
+  @IsOptional()
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0)
@@ -112,6 +122,11 @@ export class CorrectedReceptionLineDto {
   @IsString()
   @MaxLength(1000)
   sourceText?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  packageDescription?: string;
 }
 
 export class SaveOcrCorrectionDto {

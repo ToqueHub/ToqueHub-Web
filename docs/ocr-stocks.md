@@ -10,6 +10,7 @@ Variables backend :
 - `OCR_MAX_FILE_MB` : `20` par défaut.
 - `OCR_MAX_FILES` : `8` par défaut.
 - `OCR_TIMEOUT_MS` : `60000` par défaut.
+- `OCR_MISTRAL_DOCUMENT_ANNOTATION` : `true` par défaut. Mettre `false` pour désactiver l’annotation structurée Mistral OCR et revenir au flux OCR + analyse IA séparée.
 - `STOCKS_OCR_UPLOAD_DIR` ou `UPLOAD_DIR` : stockage local des originaux.
 
 La clé peut aussi être ajoutée depuis `Organisation > Général > Clés API`. Si aucune clé Mistral n’est disponible, l’interface Stocks bloque l’import OCR avant l’upload et redirige vers la configuration. La clé n’est jamais renvoyée en clair au frontend.
@@ -40,7 +41,11 @@ Le stock est impacté uniquement à la validation finale. Avant cela, aucun mouv
 
 ## Workflow technique
 
-L’upload crée un `Document` générique isolé par organisation. L’analyse crée ou réutilise un `OcrDocument`, appelle `mistral-ocr-latest` côté backend, stocke le markdown et le JSON brut, puis génère une `OcrBusinessExtraction`.
+L’upload crée un `Document` générique isolé par organisation. L’analyse crée ou réutilise un `OcrDocument`, appelle `mistral-ocr-latest` côté backend avec tables markdown et annotation structurée JSON quand l’API l’accepte, stocke le markdown et le JSON brut, puis génère une `OcrBusinessExtraction`.
+
+Si l’annotation structurée est présente et exploitable, elle est utilisée comme première compréhension métier. Sinon, le backend conserve le repli existant : analyse IA Mistral du markdown OCR, puis parsing heuristique si nécessaire. Si Mistral refuse les options enrichies de l’OCR, le backend retente automatiquement l’OCR de base.
+
+Les exports Kespro sont traités comme des commandes/confirmations fournisseur et le fournisseur est normalisé à `Kespro`, même si l’OCR ne conserve pas l’URL `kespro.fi`. Les libellés produits Kespro sont aussi inspectés pour récupérer le conditionnement produit (`500 g par unité`, `250 g par unité`, `1 L par unité`, etc.). Ce conditionnement est conservé comme aide à la création produit, sans convertir automatiquement les quantités de réception tant qu’aucune conversion produit-spécifique n’a été validée.
 
 La validation utilisateur crée ensuite une `StockReception`, ses `StockReceptionLine`, les lots si un numéro de lot ou une DLC existe, puis les mouvements `RECEPTION`. L’opération est transactionnelle.
 

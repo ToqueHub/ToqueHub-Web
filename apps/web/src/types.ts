@@ -2130,6 +2130,8 @@ export interface StocksOcrLine {
   ocrLabel?: string | null;
   label?: string | null;
   reference?: string | null;
+  nameOriginal?: string | null;
+  descriptionOriginal?: string | null;
   quantity?: number | string | null;
   unit?: string | null;
   unitId?: string | null;
@@ -2152,6 +2154,7 @@ export interface StocksOcrLine {
   lineConfidence?: number | string | null;
   warnings?: string[];
   sourceText?: string | null;
+  packageDescription?: string | null;
   productCandidates?: Array<{ id: string; name: string; sku?: string | null; categoryId?: string | null; categoryName?: string | null; unitId?: string | null; unitSymbol?: string | null; supplierId?: string | null; supplierName?: string | null; score: number | string }>;
 }
 

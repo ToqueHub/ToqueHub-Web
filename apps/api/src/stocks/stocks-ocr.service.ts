@@ -21,6 +21,7 @@ const MAX_FILE_BYTES = Number(process.env.OCR_MAX_FILE_MB ?? 20) * 1024 * 1024;
 const OCR_MODEL = process.env.OCR_MISTRAL_MODEL || 'mistral-ocr-latest';
 const OCR_AI_MODEL = process.env.OCR_MISTRAL_AI_MODEL || 'mistral-large-latest';
 const OCR_PROVIDER = process.env.OCR_PROVIDER || 'mistral';
+const OCR_DOCUMENT_ANNOTATION_ENABLED = process.env.OCR_MISTRAL_DOCUMENT_ANNOTATION !== 'false';
 const STOCKS_OCR_UPLOAD_ROOT = resolve(process.env.STOCKS_OCR_UPLOAD_DIR || process.env.UPLOAD_DIR || 'uploads', 'stocks-ocr');
 const ACCEPTED_MIME = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif', 'image/avif']);
 const ACCEPTED_EXT = new Set(['.pdf', '.png', '.jpg', '.jpeg', '.webp', '.heic', '.heif', '.avif']);
@@ -531,21 +532,27 @@ export class StocksOcrService {
     const mimeType = this.mimeForDocument(document.mimeType, document.storagePath);
     const isPdf = mimeType === 'application/pdf';
     const dataUrl = `data:${mimeType};base64,${buffer.toString('base64')}`;
-    const body = {
-      model: OCR_MODEL,
-      document: isPdf ? { type: 'document_url', document_url: dataUrl } : { type: 'image_url', image_url: dataUrl },
-      include_image_base64: false,
-    };
+    const body = this.mistralOcrRequestBody(isPdf, dataUrl, true);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), Number(process.env.OCR_TIMEOUT_MS ?? 60_000));
     try {
-      const response = await fetch('https://api.mistral.ai/v1/ocr', {
+      let response = await fetch('https://api.mistral.ai/v1/ocr', {
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
         signal: controller.signal,
       });
-      const json: any = await response.json().catch(() => ({}));
+      let json: any = await response.json().catch(() => ({}));
+      if (!response.ok && this.canRetryBaseOcr(response.status)) {
+        this.logger.warn(`OCR Mistral enrichi refusé document=${document.id} status=${response.status}, nouvel essai sans annotation.`);
+        response = await fetch('https://api.mistral.ai/v1/ocr', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.mistralOcrRequestBody(isPdf, dataUrl, false)),
+          signal: controller.signal,
+        });
+        json = await response.json().catch(() => ({}));
+      }
       if (!response.ok) throw new BadRequestException('Le document n’a pas pu être analysé. Vérifiez qu’il est lisible et réessayez.');
       const pages = Array.isArray((json as any).pages) ? (json as any).pages : [];
       return {
@@ -557,6 +564,27 @@ export class StocksOcrService {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  private mistralOcrRequestBody(isPdf: boolean, dataUrl: string, withAnnotation: boolean) {
+    const body: any = {
+      model: OCR_MODEL,
+      document: isPdf ? { type: 'document_url', document_url: dataUrl } : { type: 'image_url', image_url: dataUrl },
+      include_image_base64: false,
+    };
+    if (withAnnotation) {
+      body.table_format = 'markdown';
+      body.confidence_scores_granularity = 'page';
+    }
+    if (withAnnotation && OCR_DOCUMENT_ANNOTATION_ENABLED) {
+      body.document_annotation_prompt = this.invoiceUnderstandingInstructions();
+      body.document_annotation_format = this.aiResponseFormat('toquehub_stock_ocr_annotation');
+    }
+    return body;
+  }
+
+  private canRetryBaseOcr(status: number) {
+    return status === 400 || status === 422;
   }
 
   private async extractBusinessData(organizationId: string, markdown: string, rawJson?: any): Promise<BusinessExtraction> {
@@ -600,6 +628,12 @@ export class StocksOcrService {
       const matched = await this.matchLines(organizationId, matchedSupplierExtraction.lines, matchedSupplierExtraction.supplierId);
       return { ...matchedSupplierExtraction, lines: matched, items: matched };
     }
+    const ocrAnnotation = this.extractMistralOcrDocumentAnnotation(rawJson, matchedSupplierExtraction);
+    if (ocrAnnotation?.lines?.length) {
+      const merged = this.mergeAiAnalysis(matchedSupplierExtraction, ocrAnnotation);
+      const matched = await this.matchLines(organizationId, merged.lines, merged.supplierId);
+      return { ...merged, lines: matched };
+    }
     const aiExtraction = await this.analyzeOcrWithMistralAi(organizationId, markdown, rawJson, matchedSupplierExtraction).catch((error) => {
       this.logger.warn(`Analyse IA OCR indisponible org=${organizationId}: ${error?.message || error}`);
       return this.aiFallback(matchedSupplierExtraction, error?.message || 'Analyse IA indisponible');
@@ -613,26 +647,7 @@ export class StocksOcrService {
     const apiKey = await this.resolveMistralApiKey(organizationId);
     if (!apiKey) return this.aiFallback(fallback, 'Clé Mistral absente');
     const references = await this.ocrReferenceContext(organizationId);
-    const prompt = [
-      'Tu analyses un bon de livraison ou une facture fournisseur pour un module de stock restauration.',
-      'Retourne uniquement le JSON conforme au schema.',
-      'Objectifs: extraire le fournisseur, les numéros documentaires, dates, totaux et les lignes utiles pour réception fournisseur.',
-      'Types possibles: invoice, delivery_note, supplier_order, order_confirmation, unknown.',
-      'Tu dois reconnaître les factures finlandaises: Lasku=facture, Lasku päiväys=date facture, Eräpäivä=échéance, Asiakasnumero=numero client, Toimitusasiakas=adresse de livraison, Nimike=code article, Nimi=nom, Määrä=quantité, Yksikkö=unité, á hinta=prix unitaire, Yhteensä=total ligne, Alkuperämaa=pays origine, Nettopaino=poids net, Loppusumma=total final.',
-      'Tu dois reconnaître les historiques/confirmations de commande Kespro: Order information, Order date, Selected delivery date, Order number, Delivery address, Confirmed quantity / ME.',
-      'Ignore les lignes adresse, SIRET, téléphone, fax, RCS, conditions, totaux, mentions légales, pieds de page et en-têtes.',
-      'Regroupe les lignes produit éclatées. Conserve les lots et DLC/DDM si présents.',
-      'Conserve le texte original du produit dans nameOriginal ou label. Ne traduis pas les noms produits.',
-      'Les quantités collées aux unités comme 1,00ltk doivent devenir quantity=1.00 et unit=ltk.',
-      'Les lignes RAHTI/transport doivent être conservées mais classées non_product_line, isFreight=true, isStockItem=false, ignored=true.',
-      'Classe chaque ligne avec lineStatus parmi ready, needs_review, missing_product, price_mismatch, quantity_suspicious, non_product_line, duplicate_line.',
-      'Utilise les référentiels ToqueHub pour proposer supplierId, productId, unitId, categoryId quand fiable.',
-      'Si aucun produit fiable, propose un libellé propre, une unité, une catégorie et un SKU/référence si présent.',
-      'La catégorie est obligatoire en sortie: choisis categoryId parmi les catégories existantes dès qu’une catégorie est plausible.',
-      'Si aucune catégorie existante ne convient, renseigne categoryName avec une catégorie métier française précise, jamais "Non classé", "À classer" ou "Divers".',
-      'Les nombres doivent être des nombres JSON, pas des chaînes. Les dates doivent être YYYY-MM-DD.',
-      'Tous les messages humains dans warnings, suggestedActions et line.warnings doivent être rédigés en français, jamais en anglais.',
-    ].join('\n');
+    const prompt = this.invoiceUnderstandingInstructions();
     const payload = {
       model: OCR_AI_MODEL,
       messages: [
@@ -648,14 +663,7 @@ export class StocksOcrService {
         },
       ],
       temperature: 0,
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: 'toquehub_stock_ocr_analysis',
-          strict: true,
-          schema: this.aiAnalysisSchema(),
-        },
-      },
+      response_format: this.aiResponseFormat('toquehub_stock_ocr_analysis'),
     };
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), Number(process.env.OCR_AI_TIMEOUT_MS ?? 60_000));
@@ -674,6 +682,62 @@ export class StocksOcrService {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  private extractMistralOcrDocumentAnnotation(rawJson: any, fallback: BusinessExtraction): Partial<BusinessExtraction> | null {
+    const annotation = rawJson?.document_annotation;
+    if (annotation == null) return null;
+    try {
+      const parsed = typeof annotation === 'string' ? this.parseAiJsonContent(annotation) : annotation;
+      const normalized = this.normalizeAiExtraction(parsed, fallback);
+      return {
+        ...normalized,
+        aiAnalysis: {
+          ...(normalized.aiAnalysis || this.aiFallback(fallback, 'Annotation Mistral OCR vide.').aiAnalysis!),
+          provider: 'mistral-ocr',
+          model: OCR_MODEL,
+          status: normalized.lines?.length ? 'applied' : 'fallback',
+        },
+      };
+    } catch (error: any) {
+      this.logger.warn(`Annotation document OCR Mistral ignorée: ${error?.message || error}`);
+      return null;
+    }
+  }
+
+  private invoiceUnderstandingInstructions() {
+    return [
+      'Tu analyses un bon de livraison ou une facture fournisseur pour un module de stock restauration.',
+      'Retourne uniquement le JSON conforme au schema.',
+      'Objectifs: extraire le fournisseur, les numéros documentaires, dates, totaux et les lignes utiles pour réception fournisseur.',
+      'Types possibles: invoice, delivery_note, supplier_order, order_confirmation, unknown.',
+      'Tu dois reconnaître les factures finlandaises: Lasku=facture, Lasku päiväys=date facture, Eräpäivä=échéance, Asiakasnumero=numero client, Toimitusasiakas=adresse de livraison, Nimike=code article, Nimi=nom, Määrä=quantité, Yksikkö=unité, á hinta=prix unitaire, Yhteensä=total ligne, Alkuperämaa=pays origine, Nettopaino=poids net, Loppusumma=total final.',
+      'Tu dois reconnaître les historiques/confirmations de commande Kespro: Order information, Order date, Selected delivery date, Order number, Delivery address, Confirmed quantity / ME.',
+      'Pour Kespro, Order number est toujours le numéro de commande fournisseur et doit être renseigné dans document.purchaseOrderNumber.',
+      'Ignore les lignes adresse, SIRET, téléphone, fax, RCS, conditions, totaux, mentions légales, pieds de page et en-têtes.',
+      'Regroupe les lignes produit éclatées. Conserve les lots et DLC/DDM si présents.',
+      'Conserve le texte original du produit dans nameOriginal ou label. Ne traduis pas les noms produits.',
+      'Les quantités collées aux unités comme 1,00ltk doivent devenir quantity=1.00 et unit=ltk.',
+      'Les lignes RAHTI/transport doivent être conservées mais classées non_product_line, isFreight=true, isStockItem=false, ignored=true.',
+      'Classe chaque ligne avec lineStatus parmi ready, needs_review, missing_product, price_mismatch, quantity_suspicious, non_product_line, duplicate_line.',
+      'Utilise les référentiels ToqueHub pour proposer supplierId, productId, unitId, categoryId quand fiable.',
+      'Si aucun produit fiable, propose un libellé propre, une unité, une catégorie et un SKU/référence si présent.',
+      'La catégorie est obligatoire en sortie: choisis categoryId parmi les catégories existantes dès qu’une catégorie est plausible.',
+      'Si aucune catégorie existante ne convient, renseigne categoryName avec une catégorie métier française précise, jamais "Non classé", "À classer" ou "Divers".',
+      'Les nombres doivent être des nombres JSON, pas des chaînes. Les dates doivent être YYYY-MM-DD.',
+      'Tous les messages humains dans warnings, suggestedActions et line.warnings doivent être rédigés en français, jamais en anglais.',
+    ].join('\n');
+  }
+
+  private aiResponseFormat(name: string) {
+    return {
+      type: 'json_schema',
+      json_schema: {
+        name,
+        strict: true,
+        schema: this.aiAnalysisSchema(),
+      },
+    };
   }
 
   private aiAnalysisSchema() {
@@ -767,7 +831,7 @@ export class StocksOcrService {
   }
 
   private normalizeAiExtraction(ai: any, fallback: BusinessExtraction): Partial<BusinessExtraction> {
-    const warnings = Array.isArray(ai?.warnings) ? ai.warnings.map(String).slice(0, 12) : [];
+    const warnings = this.cleanOcrMessages(ai?.warnings, 12);
     const lines = Array.isArray(ai?.lines) ? ai.lines
       .filter((line: any) => line?.lineStatus !== 'duplicate_line')
       .map((line: any) => ({
@@ -789,7 +853,7 @@ export class StocksOcrService {
         netWeight: this.numberOrNull(line.netWeight),
         isFreight: typeof line.isFreight === 'boolean' ? line.isFreight : /\bRAHTI\b/i.test(String(line.label || '')),
         isStockItem: typeof line.isStockItem === 'boolean' ? line.isStockItem : line.lineStatus !== 'non_product_line',
-        packageDescription: this.cleanString(line.packageDescription) || null,
+        packageDescription: this.cleanString(line.packageDescription) || this.packageDescriptionFromName(this.cleanString(line.nameOriginal) || this.cleanString(line.label) || '') || null,
         ignored: Boolean(line.ignored) || line.lineStatus === 'non_product_line',
         productId: this.uuidOrNull(line.productId),
         unitId: this.uuidOrNull(line.unitId),
@@ -797,7 +861,7 @@ export class StocksOcrService {
         categoryName: this.cleanString(line.categoryName) || null,
         lineStatus: this.cleanString(line.lineStatus) || 'needs_review',
         lineConfidence: this.numberOrNull(line.confidence),
-        warnings: Array.isArray(line.warnings) ? line.warnings.map(String).slice(0, 6) : [],
+        warnings: this.cleanOcrMessages(line.warnings, 6),
         sourceText: this.cleanString(line.sourceText) || null,
       }))
       .filter((line: ExtractedLine) => line.label && line.quantity != null)
@@ -823,14 +887,14 @@ export class StocksOcrService {
       lines: lines.length ? lines : fallback.lines,
       documentConfidence,
       warnings,
-      suggestedActions: Array.isArray(ai?.suggestedActions) ? ai.suggestedActions.map(String).slice(0, 10) : [],
+      suggestedActions: this.cleanOcrMessages(ai?.suggestedActions, 10),
       aiAnalysis: {
         provider: OCR_PROVIDER,
         model: OCR_AI_MODEL,
         status: lines.length ? 'applied' : 'fallback',
         confidence: documentConfidence,
         warnings,
-        suggestedActions: Array.isArray(ai?.suggestedActions) ? ai.suggestedActions.map(String).slice(0, 10) : [],
+        suggestedActions: this.cleanOcrMessages(ai?.suggestedActions, 10),
         totalsCheck: {
           computedTotal: this.numberOrNull(ai?.totalsCheck?.computedTotal),
           documentTotal: this.numberOrNull(ai?.totalsCheck?.documentTotal),
@@ -900,6 +964,31 @@ export class StocksOcrService {
     return str || null;
   }
 
+  private cleanOcrMessages(value: any, limit: number) {
+    const messages = Array.isArray(value) ? value : value ? [value] : [];
+    const seen = new Set<string>();
+    return messages
+      .map((message) => this.cleanOcrMessage(message))
+      .filter((message): message is string => {
+        if (!message) return false;
+        const key = this.normalize(message);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, limit);
+  }
+
+  private cleanOcrMessage(value: any) {
+    const str = this.cleanString(value);
+    if (!str) return null;
+    return str
+      .replace(/\bConfirmeration\b/gi, 'confirmation')
+      .replace(/\bConfirmer(ée|ées|é|és)\b/gi, 'confirm$1')
+      .replace(/(^|[^A-Za-zÀ-ÿ])Confirm(?![A-Za-zÀ-ÿ])/gi, '$1Confirmer')
+      .trim();
+  }
+
   private uuidOrNull(value: any) {
     const str = this.cleanString(value);
     return str && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str) ? str : null;
@@ -938,7 +1027,9 @@ export class StocksOcrService {
   }
 
   private isKesproOrder(text: string) {
-    return /Order information/i.test(text) && /Order number/i.test(text) && /(kespro\.fi|Tilauksen tiedot|Tilaushistoria)/i.test(text);
+    return /Order information/i.test(text)
+      && /Order number/i.test(text)
+      && /(kespro\.fi|Tilauksen tiedot|Tilaushistoria|Selected delivery date|Confirmed quantity\s*\/\s*ME)/i.test(text);
   }
 
   private extractTingstadFinnishInvoice(text: string, lines: string[]): BusinessExtraction {
@@ -1165,8 +1256,8 @@ export class StocksOcrService {
 
     return {
       documentType: /confirmed quantity/i.test(text) ? 'order_confirmation' : 'supplier_order',
-      supplier: { name: /kespro\.fi/i.test(text) ? 'Kespro' : null },
-      supplierName: /kespro\.fi/i.test(text) ? 'Kespro' : null,
+      supplier: { name: 'Kespro' },
+      supplierName: 'Kespro',
       customer: {
         name: company || null,
         customerNumber,
@@ -1315,6 +1406,10 @@ export class StocksOcrService {
   }
 
   private kesproLine(input: { nameOriginal: string; categoryName: string | null; quantity: number | null; unit: string; unitPrice: number | null; total: number | null; packageDescription: string | null; sourceText: string }) {
+    const packageDescription = this.combinePackageDescriptions(
+      this.packageDescriptionFromName(input.nameOriginal),
+      input.packageDescription ? `Colis fournisseur: ${input.packageDescription}` : null,
+    );
     return {
       ignored: false,
       label: input.nameOriginal,
@@ -1322,7 +1417,7 @@ export class StocksOcrService {
       supplierProductCode: null,
       nameOriginal: input.nameOriginal,
       nameNormalized: this.normalizeProductText(input.nameOriginal),
-      descriptionOriginal: input.packageDescription,
+      descriptionOriginal: packageDescription,
       quantity: input.quantity,
       unit: input.unit,
       unitPrice: input.unitPrice,
@@ -1335,7 +1430,7 @@ export class StocksOcrService {
       netWeight: null,
       isFreight: false,
       isStockItem: true,
-      packageDescription: input.packageDescription,
+      packageDescription,
       categoryName: input.categoryName,
       lineConfidence: 0.98,
       warnings: [],
@@ -1354,6 +1449,33 @@ export class StocksOcrService {
       .replace(/\bunits\b.*$/i, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  private packageDescriptionFromName(value: string) {
+    const clean = this.cleanKesproText(value);
+    const matches = [...clean.matchAll(/(?:^|[\s/(-])([0-9]+(?:[,.][0-9]+)?)\s*(kg|g|l|ml|cl|dl)\b/ig)]
+      .map((match) => {
+        const quantity = this.parseFrenchNumber(match[1]);
+        const unit = match[2];
+        return quantity && quantity > 0 ? `${this.formatCompactNumber(quantity)} ${this.normalizePackageUnit(unit)}` : null;
+      })
+      .filter((match): match is string => Boolean(match));
+    const first = matches.find((match) => !/^1\s*(g|ml)$/i.test(match));
+    return first ? `Conditionnement produit: ${first} par unité` : null;
+  }
+
+  private combinePackageDescriptions(...parts: Array<string | null | undefined>) {
+    return parts.filter(Boolean).join('; ') || null;
+  }
+
+  private formatCompactNumber(value: number) {
+    return Number.isInteger(value) ? String(value) : String(value).replace('.', ',');
+  }
+
+  private normalizePackageUnit(unit: string) {
+    const normalized = unit.toLowerCase();
+    if (normalized === 'l') return 'L';
+    return normalized;
   }
 
   private kesproCategoryName(cleanLine: string) {
@@ -1760,12 +1882,17 @@ export class StocksOcrService {
 
   private extractPurchaseOrderNumber(text: string) {
     const values = [
+      ...this.extractAll(text, /\border\s*(?:number|no\.?|#)\s*[:#-]?\s*([0-9][0-9\s-]{4,}[0-9])/ig, 1),
+      ...this.extractAll(text, /\b([0-9]{6,})\s*-\s*(?:tilauksen tiedot|tilaushistoria)\b/ig, 1),
       ...this.extractAll(text, /ref\.?\s*cde\.?\s*(?:cii)?\s*[:#-]?\s*[0-9]*\s*commande\s*n[°.]?\s*([A-Z0-9-_/]+)/ig, 1),
       ...this.extractAll(text, /(?:bon de commande|commande|purchase order)\s*n[°.]?\s*[:#-]?\s*([A-Z0-9-_/]+)/ig, 1),
       ...this.extractAll(text, /n[°.]?\s*commande(?:\(s\))?\s*(?:[A-Za-z]+)?\s*([0-9][0-9\s-]+)/ig, 1),
       ...this.extractAll(text, /r[eé]f[eé]rence client\s*[:#-]?\s*(?:France\s*)?([A-Z0-9-_/]+)/ig, 1),
     ]
-      .map((value) => value.replace(/\s+/g, ' ').replace(/\s+-\s+/g, ' - ').trim())
+      .map((value) => {
+        const cleaned = value.replace(/\s+/g, ' ').replace(/\s+-\s+/g, ' - ').trim();
+        return /^[0-9][0-9\s-]+[0-9]$/.test(cleaned) ? cleaned.replace(/[\s-]+/g, '') : cleaned;
+      })
       .filter((value) => /[0-9]/.test(value) || /^[A-Z]{2,}[A-Z0-9-_/]*$/.test(value));
     return [...new Set(values)].slice(0, 4).join(' / ') || null;
   }

@@ -622,6 +622,134 @@ describe('StocksOcrService Finnish supplier extraction', () => {
     expectItems(extraction.lines, testCase.items);
   });
 
+  it('handles Kespro exported PDF glyphs without losing categories or product names', async () => {
+    const extraction = await extract(kesproFixture({
+      orderNumber: '23529809',
+      orderDate: 'Friday 26.06.2026',
+      deliveryDate: 'Wednesday 01.07.2026',
+      productCount: 1,
+      withoutTax: '8,33',
+      vat: '0,00',
+      total: '8,33',
+      rows: [
+        ' Fruits & vegetables',
+        'Tomaatti NL/BE 1lk  8,33 € / LTK 1 Confirmed quantity / ME 8,33 €',
+        'VAT 0 % units VAT 0 %',
+        '1 LTK (6 KG)',
+      ],
+    }));
+
+    expect(extraction.lines).toHaveLength(1);
+    expect(extraction.lines[0].label).toBe('Tomaatti NL/BE 1lk');
+    expect(extraction.lines[0].categoryName).toBe('Fruits & vegetables');
+    expect(extraction.lines[0].unit).toBe('LTK');
+    expect(extraction.lines[0].total).toBeCloseTo(8.33, 2);
+  });
+
+  it('recognizes Kespro and product packaging even when the URL/header is missing', async () => {
+    const extraction = await extract(`
+Order information
+Order date: Tuesday 23.06.2026
+Selected delivery date Wednesday 24.06.2026
+Delivery information
+Order number 23510274 Delivery address Kitkantie 2 , 93600 Kuusamo
+Company The French Café, The French Café Oy Order type / delivery Standard order
+Customer number 1853681 Email
+Orderer kahvila@the-french-cafe.com Your reference
+
+Quantity / ME
+Product Unit price / ME Total price
+units
+Dairy products & eggs
+Arla butter 500g lactosefree less salt 74,89 € / LTK 1 Confirmed quantity / ME 74,89 €
+VAT 0 % units VAT 0 %
+1 LTK (20 PKT)
+Cessibon blend of cream 250g natural 14,18 € / LTK 2 Confirmed quantity / ME 28,36 €
+VAT 0 % units VAT 0 %
+2 LTK (24 TLK)
+Without tax 103,25 €
+Total VAT 0,00 €
+Total 103,25 €
+`);
+
+    expect(extraction.documentType).toBe('order_confirmation');
+    expect(extraction.supplier.name).toBe('Kespro');
+    expect(extraction.supplierName).toBe('Kespro');
+    expect(extraction.lines).toHaveLength(2);
+    expect(extraction.lines[0].packageDescription).toContain('500 g par unité');
+    expect(extraction.lines[0].packageDescription).toContain('1 LTK (20 PKT)');
+    expect(extraction.lines[1].packageDescription).toContain('250 g par unité');
+    expect(extraction.lines[1].packageDescription).toContain('2 LTK (24 TLK)');
+  });
+
+  it('extracts the Kespro order number from the English order header', () => {
+    const service = new StocksOcrService(mockPrisma());
+    expect((service as any).extractPurchaseOrderNumber('Order number 23371013 Delivery address Kitkantie 2')).toBe('23371013');
+    expect((service as any).extractPurchaseOrderNumber('23371013 - Tilauksen tiedot - Tilaushistoria')).toBe('23371013');
+  });
+
+  it('uses Mistral OCR document annotation before the chat fallback', async () => {
+    const service = new StocksOcrService(mockPrisma());
+    const chatFallback = jest.spyOn(service as any, 'analyzeOcrWithMistralAi').mockRejectedValue(new Error('chat fallback should not run'));
+    const extraction = await (service as any).extractBusinessData('org-1', 'Facture fournisseur\nTotal TTC: 12,00', {
+      document_annotation: JSON.stringify({
+        documentType: 'invoice',
+        documentConfidence: 0.91,
+        warnings: [],
+        suggestedActions: ['Vérifier les produits avant réception.'],
+        supplier: { name: 'Fournisseur Test', supplierId: null, confidence: 0.88 },
+        document: {
+          invoiceNumber: 'FAC-123',
+          deliveryNoteNumber: null,
+          purchaseOrderNumber: null,
+          documentDate: '2026-06-30',
+          deliveryDate: null,
+        },
+        totals: { totalExcludingTax: 10, totalTax: 2, totalIncludingTax: 12 },
+        totalsCheck: { computedTotal: 10, documentTotal: 12, delta: 0, status: 'ok' },
+        lines: [
+          {
+            label: 'Farine T45',
+            reference: 'FAR45',
+            supplierProductCode: 'FAR45',
+            nameOriginal: 'Farine T45',
+            descriptionOriginal: null,
+            quantity: 2,
+            unit: 'kg',
+            unitPrice: 5,
+            total: 10,
+            vatRate: 20,
+            lotNumber: null,
+            bestBeforeDate: null,
+            originCountry: null,
+            statisticalCode: null,
+            netWeight: null,
+            isFreight: false,
+            isStockItem: true,
+            packageDescription: null,
+            ignored: false,
+            productId: null,
+            unitId: null,
+            categoryId: null,
+            categoryName: 'Épicerie',
+            lineStatus: 'missing_product',
+            confidence: 0.91,
+            warnings: [],
+            sourceText: 'Farine T45 2 kg 5,00 10,00',
+          },
+        ],
+      }),
+    });
+
+    expect(chatFallback).not.toHaveBeenCalled();
+    expect(extraction.supplierName).toBe('Fournisseur Test');
+    expect(extraction.document.invoiceNumber).toBe('FAC-123');
+    expect(extraction.aiAnalysis.provider).toBe('mistral-ocr');
+    expect(extraction.aiAnalysis.model).toBe('mistral-ocr-latest');
+    expect(extraction.lines).toHaveLength(1);
+    expect(extraction.lines[0].label).toBe('Farine T45');
+  });
+
   it('keeps the existing French invoice extraction path available', async () => {
     const extraction = await extract(`
 Facture numéro FAC-2026-001

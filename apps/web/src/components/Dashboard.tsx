@@ -1533,22 +1533,26 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     const name = ocrProductName(line);
     if (!name) throw new Error('Nom produit OCR manquant.');
     const reference = ocrProductReference(line);
-    const unitId = resolveOcrUnitId(units, line.unitId, line.unit);
-    if (!unitId) throw new Error(`Unité OCR "${line.unit || 'non renseignée'}" introuvable. Sélectionnez une unité sur la ligne ou ajoutez-la au référentiel.`);
+    const unitLabel = ocrLineUnitLabel(line);
+    const unitId = resolveOcrUnitId(units, line.unitId, unitLabel);
+    if (!unitId) throw new Error(`Unité OCR "${unitLabel || 'non renseignée'}" introuvable. Sélectionnez une unité sur la ligne ou ajoutez-la au référentiel.`);
     const quantity = numeric(line.quantity);
     const lineTotal = numeric(line.lineTotal ?? line.total);
     const unitPrice = roundOcrPrice(lineTotal > 0 && quantity > 0 ? lineTotal / quantity : numeric(line.unitPrice));
     const categoryId = await resolveOcrCategoryIdForCreate(token, line, categories, products, supplierId);
+    const description = ocrProductDescription(line);
     const existing = products.find((product) => (reference && product.sku === reference) || normalizeLookup(product.name) === normalizeLookup(name));
     if (existing) {
       const shouldUpdatePrice = Boolean(unitPrice && numeric(existing.averagePrice ?? existing.averagePurchasePrice ?? existing.weightedAveragePrice) <= 0);
       const shouldUpdateCategory = Boolean(categoryId && !(existing.categoryId ?? existing.category?.id));
       const shouldUpdateSupplier = Boolean(supplierId && !(existing.primarySupplierId ?? existing.supplierId ?? existing.primarySupplier?.id ?? existing.supplier?.id));
-      if (shouldUpdatePrice || shouldUpdateCategory || shouldUpdateSupplier) {
+      const shouldUpdateDescription = Boolean(description && !existing.description);
+      if (shouldUpdatePrice || shouldUpdateCategory || shouldUpdateSupplier || shouldUpdateDescription) {
         return await submit(
           () => api.updateProduct(token, existing.id, {
             name: existing.name,
             sku: existing.sku ?? undefined,
+            description: shouldUpdateDescription ? description : existing.description ?? undefined,
             unitId: existing.unitId || unitId,
             categoryId: existing.categoryId ?? existing.category?.id ?? categoryId,
             primarySupplierId: existing.primarySupplierId ?? existing.supplierId ?? supplierId ?? undefined,
@@ -1560,7 +1564,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       return existing;
     }
     return await submit(
-      () => api.createProduct(token, { name, sku: reference || undefined, unitId, categoryId, primarySupplierId: supplierId || undefined, averagePrice: unitPrice }),
+      () => api.createProduct(token, { name, sku: reference || undefined, description: description || undefined, unitId, categoryId, primarySupplierId: supplierId || undefined, averagePrice: unitPrice }),
       'Produit créé depuis l’OCR.',
     ) as Product;
   }
@@ -3620,6 +3624,9 @@ function resolveOcrUnitId(units: Unit[], unitId?: string | null, unitLabel?: str
     g: ['g', 'gramme'],
     l: ['l', 'litre'],
     ml: ['ml', 'millilitre'],
+    kpl: ['piece', 'pieces', 'u', 'unite', 'unites', 'pc', 'pcs'],
+    pc: ['piece', 'pieces', 'u', 'unite', 'unites'],
+    pcs: ['piece', 'pieces', 'u', 'unite', 'unites'],
     pu: ['piece', 'pieces', 'u', 'unite', 'unites'],
     u: ['piece', 'pieces', 'u', 'unite', 'unites'],
     po: ['piece', 'pieces', 'u', 'unite', 'unites'],
@@ -3627,21 +3634,53 @@ function resolveOcrUnitId(units: Unit[], unitId?: string | null, unitLabel?: str
     col: ['carton', 'colis', 'caisse'],
     colis: ['carton', 'colis', 'caisse'],
     carton: ['carton', 'colis', 'caisse'],
+    ltk: ['carton', 'caisse', 'colis'],
     paq: ['paquet', 'carton', 'piece', 'pieces'],
+    pak: ['paquet', 'piece', 'pieces', 'u', 'unite', 'unites'],
+    pkt: ['paquet', 'piece', 'pieces', 'u', 'unite', 'unites'],
     plq: ['plaquette', 'piece', 'pieces'],
+    prk: ['pot', 'bocal', 'piece', 'pieces', 'u', 'unite', 'unites'],
+    pss: ['sachet', 'sac', 'piece', 'pieces', 'u', 'unite', 'unites'],
+    rs: ['barquette', 'piece', 'pieces', 'u', 'unite', 'unites'],
+    tlk: ['boite', 'piece', 'pieces', 'u', 'unite', 'unites'],
   };
-  const wanted = new Set([key, ...(aliases[key] ?? [])]);
-  return units.find((unit) => wanted.has(normalizeLookup(unit.symbol)) || wanted.has(normalizeLookup(unit.name)))?.id || '';
+  for (const wanted of [key, ...(aliases[key] ?? [])]) {
+    const found = units.find((unit) => normalizeLookup(unit.symbol) === wanted || normalizeLookup(unit.name) === wanted);
+    if (found) return found.id;
+  }
+  return '';
 }
 
 function resolveOcrReceptionUnits(data: StocksOcrExtraction['data'], units: Unit[]): StocksOcrExtraction['data'] {
   return {
     ...data,
-    lines: (data.lines || []).map((line) => ({
-      ...line,
-      unitId: line.unitId || resolveOcrUnitId(units, line.unitId, line.matchedUnitSymbol || line.unit) || null,
-    })),
+    lines: (data.lines || []).map((line) => {
+      const unitLabel = ocrLineUnitLabel(line);
+      return {
+        ...line,
+        unit: line.unit ?? unitLabel ?? null,
+        unitId: line.unitId || resolveOcrUnitId(units, line.unitId, unitLabel) || null,
+      };
+    }),
   };
+}
+
+function ocrLineUnitLabel(line: StocksOcrLine) {
+  return line.matchedUnitSymbol || line.unit || inferOcrUnitLabel(line);
+}
+
+function inferOcrUnitLabel(line: StocksOcrLine) {
+  const text = [line.sourceText, line.ocrLabel, line.label, line.packageDescription, line.descriptionOriginal].filter(Boolean).join(' ');
+  const patterns = [
+    /€\s*\/\s*([A-Za-z]{1,4})\b/i,
+    /\b[0-9]+(?:[,.][0-9]+)?\s*(LTK|PKT|KPL|RS|PSS|TLK|PRK|PAK|KG|G|L|ML|PC|PCS)\b/i,
+    /\b(LTK|PKT|KPL|RS|PSS|TLK|PRK|PAK|KG|G|L|ML|PC|PCS)\s*\(/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) return match[1].toUpperCase();
+  }
+  return null;
 }
 
 function roundOcrPrice(value: number) {
@@ -7851,7 +7890,7 @@ function StocksOcrImportPanel({ statuses, onUpload, onOpenExtraction, onDownload
 }
 
 function StocksOcrReviewPanel({ extraction, products, categories, suppliers, units, sites, locations, token, onSaveDraft, onCreateReception, onCreateProductFromLine, onCreateSupplierFromOcr, onReanalyzeAi, onClose }: { extraction: StocksOcrExtraction; products: Product[]; categories: Category[]; suppliers: Supplier[]; units: Unit[]; sites: Site[]; locations: Location[]; token: string; onSaveDraft: (payload: StocksOcrExtraction['data']) => Promise<void>; onCreateReception: (payload: StocksOcrExtraction['data']) => Promise<void>; onCreateProductFromLine: (line: StocksOcrLine, supplierId?: string | null) => Promise<Product>; onCreateSupplierFromOcr: (name: string) => Promise<Supplier>; onReanalyzeAi: () => Promise<void>; onClose: () => void }) {
-  const [draft, setDraft] = useState(() => normalizeOcrReceptionData(extraction.data));
+  const [draft, setDraft] = useState(() => normalizeOcrReceptionData(extraction.data, suppliers));
   const [previewUrl, setPreviewUrl] = useState<string>();
   const [showPreview, setShowPreview] = useState(false);
   const [showViewerModal, setShowViewerModal] = useState(false);
@@ -7897,7 +7936,7 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
   }
 
   useEffect(() => {
-    setDraft(enrichOcrProductMatches(resolveOcrReceptionUnits(normalizeOcrReceptionData(extraction.data), units), products));
+    setDraft(enrichOcrProductMatches(resolveOcrReceptionUnits(normalizeOcrReceptionData(extraction.data, suppliers), units), products));
   }, [extraction.id]);
 
   useEffect(() => {
@@ -7935,8 +7974,8 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
   const supplierCandidates = draft.supplierCandidates ?? draft.supplier?.candidates ?? [];
   const supplierMatchStatus = draft.supplierId ? (draft.supplierMatchingStatus ?? draft.supplier?.matchingStatus ?? 'RECOGNIZED') : 'NOT_FOUND';
   const supplierOcrName = draft.supplier?.name || draft.supplierName || '';
-  const aiWarnings = [...(draft.warnings ?? []), ...(draft.aiAnalysis?.warnings ?? [])].filter(Boolean);
-  const aiActions = [...(draft.suggestedActions ?? []), ...(draft.aiAnalysis?.suggestedActions ?? [])].filter(Boolean);
+  const aiWarnings = uniqueOcrMessages([...(draft.warnings ?? []), ...(draft.aiAnalysis?.warnings ?? [])]);
+  const aiActions = uniqueOcrMessages([...(draft.suggestedActions ?? []), ...(draft.aiAnalysis?.suggestedActions ?? [])]);
   const totalsCheck = draft.aiAnalysis?.totalsCheck;
   const totalLinesAmount = activeLines.reduce((sum, line) => sum + numeric(line.lineTotal ?? line.total), 0);
 
@@ -8061,7 +8100,8 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
           matchingScore: 1,
         });
       } catch (err) {
-        failures.push(label || `ligne ${index + 1}`);
+        const reason = err instanceof Error ? err.message : '';
+        failures.push(reason ? `${label || `ligne ${index + 1}`}: ${reason}` : label || `ligne ${index + 1}`);
       }
     }
     setCreatingProductLineId(null);
@@ -8187,8 +8227,8 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
 
           {(aiWarnings.length || aiActions.length) ? (
             <div className="ocr-dossier-alerts">
-              {aiWarnings.slice(0, 4).map((warning, index) => <span key={`w-${index}`}><AlertCircle size={13} /> {translateOcrMessage(warning)}</span>)}
-              {aiActions.slice(0, 3).map((action, index) => <span key={`a-${index}`}><Info size={13} /> {translateOcrMessage(action)}</span>)}
+              {aiWarnings.slice(0, 4).map((warning, index) => <span key={`w-${index}`}><AlertCircle size={13} /> {warning}</span>)}
+              {aiActions.slice(0, 3).map((action, index) => <span key={`a-${index}`}><Info size={13} /> {action}</span>)}
             </div>
           ) : null}
 
@@ -8347,6 +8387,7 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
                       title={line.sourceText || line.ocrLabel || line.label || ''}
                     />
                     {line.warnings?.length ? <small className="ocr-line-warning">{translateOcrMessage(line.warnings[0])}</small> : null}
+                    {ocrLinePackageDescription(line) ? <small className="ocr-line-warning">{ocrLinePackageDescription(line)}</small> : null}
                   </td>
                   <td>
                     <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
@@ -8701,8 +8742,9 @@ function ProductAssignmentModal({
   );
 }
 
-function normalizeOcrReceptionData(data: StocksOcrExtraction['data']): StocksOcrExtraction['data'] {
-  return {
+function normalizeOcrReceptionData(data: StocksOcrExtraction['data'], suppliers: Supplier[] = []): StocksOcrExtraction['data'] {
+  const purchaseOrderNumber = data.purchaseOrderNumber ?? data.document?.purchaseOrderNumber ?? inferOcrPurchaseOrderNumber(data) ?? null;
+  const normalized: StocksOcrExtraction['data'] = {
     supplier: data.supplier ?? null,
     supplierId: data.supplierId ?? data.supplier?.supplierId ?? null,
     supplierName: data.supplierName ?? data.supplier?.supplierName ?? data.supplier?.name ?? null,
@@ -8711,7 +8753,7 @@ function normalizeOcrReceptionData(data: StocksOcrExtraction['data']): StocksOcr
     supplierCandidates: data.supplierCandidates ?? data.supplier?.candidates ?? [],
     invoiceNumber: data.invoiceNumber ?? data.document?.invoiceNumber ?? null,
     deliveryNoteNumber: data.deliveryNoteNumber ?? data.document?.deliveryNoteNumber ?? null,
-    purchaseOrderNumber: data.purchaseOrderNumber ?? data.document?.purchaseOrderNumber ?? null,
+    purchaseOrderNumber,
     documentDate: data.documentDate ?? data.document?.documentDate ?? null,
     deliveryDate: data.deliveryDate ?? data.document?.deliveryDate ?? null,
     totalExcludingTax: data.totalExcludingTax ?? data.totals?.totalExcludingTax ?? null,
@@ -8723,22 +8765,89 @@ function normalizeOcrReceptionData(data: StocksOcrExtraction['data']): StocksOcr
     warnings: data.warnings ?? data.aiAnalysis?.warnings ?? [],
     suggestedActions: data.suggestedActions ?? data.aiAnalysis?.suggestedActions ?? [],
     aiAnalysis: data.aiAnalysis ?? null,
-    lines: (data.lines || []).map((line, index) => ({
-      ...line,
-      id: line.id ?? `ocr-${index}`,
-      ocrLabel: line.ocrLabel ?? line.label ?? '',
-      lineTotal: line.lineTotal ?? line.total ?? null,
-      ignored: line.ignored ?? false,
-      lineStatus: line.lineStatus ?? null,
-      lineConfidence: line.lineConfidence ?? line.matchingScore ?? null,
-      categoryId: line.categoryId ?? line.suggestedCategoryId ?? null,
-      categoryName: line.categoryName ?? line.suggestedCategoryName ?? null,
-      suggestedCategoryId: line.suggestedCategoryId ?? line.categoryId ?? null,
-      suggestedCategoryName: line.suggestedCategoryName ?? line.categoryName ?? null,
-      warnings: line.warnings ?? [],
-      sourceText: line.sourceText ?? null,
-    })),
+    document: data.document ? { ...data.document, purchaseOrderNumber } : data.document,
+    lines: (data.lines || []).map((line, index) => {
+      const unit = line.unit ?? inferOcrUnitLabel(line) ?? null;
+      return {
+        ...line,
+        id: line.id ?? `ocr-${index}`,
+        ocrLabel: line.ocrLabel ?? line.label ?? '',
+        nameOriginal: line.nameOriginal ?? line.label ?? line.ocrLabel ?? null,
+        descriptionOriginal: line.descriptionOriginal ?? line.packageDescription ?? null,
+        unit,
+        lineTotal: line.lineTotal ?? line.total ?? null,
+        ignored: line.ignored ?? false,
+        lineStatus: line.lineStatus ?? null,
+        lineConfidence: line.lineConfidence ?? line.matchingScore ?? null,
+        categoryId: line.categoryId ?? line.suggestedCategoryId ?? null,
+        categoryName: line.categoryName ?? line.suggestedCategoryName ?? null,
+        suggestedCategoryId: line.suggestedCategoryId ?? line.categoryId ?? null,
+        suggestedCategoryName: line.suggestedCategoryName ?? line.categoryName ?? null,
+        warnings: line.warnings ?? [],
+        sourceText: line.sourceText ?? null,
+        packageDescription: line.packageDescription ?? line.descriptionOriginal ?? ocrPackageDescriptionFromName(line.nameOriginal ?? line.label ?? line.ocrLabel ?? '') ?? null,
+      };
+    }),
   };
+  return normalizeKnownOcrSupplier(normalized, suppliers);
+}
+
+function inferOcrPurchaseOrderNumber(data: StocksOcrExtraction['data']) {
+  const text = [
+    data.supplierName,
+    data.supplier?.name,
+    data.suggestedActions?.join(' '),
+    data.aiAnalysis?.suggestedActions?.join(' '),
+    ...(data.lines ?? []).flatMap((line) => [line.sourceText, line.ocrLabel, line.label, line.packageDescription, line.descriptionOriginal]),
+  ].filter(Boolean).join(' ');
+  const matches = [
+    text.match(/\border\s*(?:number|no\.?|#)\s*[:#-]?\s*([0-9][0-9\s-]{4,}[0-9])/i)?.[1],
+    text.match(/\b([0-9]{6,})\s*-\s*(?:tilauksen tiedot|tilaushistoria)\b/i)?.[1],
+  ].filter(Boolean);
+  const value = matches[0]?.replace(/[\s-]+/g, '').trim();
+  return value || null;
+}
+
+function normalizeKnownOcrSupplier(data: StocksOcrExtraction['data'], suppliers: Supplier[]) {
+  if (!isKesproOcrReception(data)) return data;
+  const kespro = suppliers.find((supplier) => normalizeLookup(supplier.name) === 'kespro' || normalizeLookup(supplier.name).includes('kespro'));
+  const supplier = {
+    ...(data.supplier ?? {}),
+    name: 'Kespro',
+    supplierName: kespro?.name ?? 'Kespro',
+    supplierId: kespro?.id ?? null,
+    matchingStatus: kespro ? 'RECOGNIZED' : 'NOT_FOUND',
+    matchingScore: kespro ? 1 : 0,
+  };
+  return {
+    ...data,
+    supplier,
+    supplierId: kespro?.id ?? null,
+    supplierName: kespro?.name ?? 'Kespro',
+    supplierMatchingStatus: kespro ? 'RECOGNIZED' : 'NOT_FOUND',
+    supplierMatchingScore: kespro ? 1 : 0,
+    supplierCandidates: kespro ? [{ id: kespro.id, name: kespro.name, score: 1 }] : data.supplierCandidates,
+  };
+}
+
+function isKesproOcrReception(data: StocksOcrExtraction['data']) {
+  const type = String((data as any).documentType ?? data.aiAnalysis?.model ?? '').toLowerCase();
+  const purchaseOrderNumber = data.purchaseOrderNumber ?? data.document?.purchaseOrderNumber;
+  const supplierName = data.supplierName ?? data.supplier?.supplierName ?? data.supplier?.name ?? '';
+  const lineUnits = (data.lines ?? []).map((line) => line.unit).filter(Boolean).join(' ');
+  const documentText = [
+    type,
+    data.purchaseOrderNumber,
+    data.document?.purchaseOrderNumber,
+    data.suggestedActions?.join(' '),
+    data.aiAnalysis?.suggestedActions?.join(' '),
+    ...(data.lines ?? []).flatMap((line) => [line.sourceText, line.ocrLabel, line.label, line.packageDescription]),
+  ].filter(Boolean).join(' ');
+  const explicitKespro = /kespro|order_confirmation|supplier_order|confirmed quantity\s*\/\s*me|tilauksen tiedot|tilaushistoria/i.test(documentText);
+  const customerMisreadAsSupplier = /the french caf/i.test(supplierName)
+    && /\b(LTK|PKT|KPL|RS|PSS|TLK|PRK|PAK)\b/i.test(lineUnits)
+    && (data.lines ?? []).length >= 3;
+  return Boolean(purchaseOrderNumber) && (explicitKespro || customerMisreadAsSupplier);
 }
 
 function ocrStateClass(state: string) {
@@ -8819,6 +8928,38 @@ function formatOcrPercent(value?: string | number | null) {
   return percent > 0 ? `${Math.round(percent * 100)}%` : '—';
 }
 
+function uniqueOcrMessages(messages: Array<string | null | undefined>) {
+  const seen = new Set<string>();
+  return messages
+    .map((message) => translateOcrMessage(message))
+    .filter((message) => {
+      if (!message) return false;
+      const key = normalizeSearchText(message);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function ocrLinePackageDescription(line: StocksOcrLine) {
+  return line.packageDescription || line.descriptionOriginal || ocrPackageDescriptionFromName(line.nameOriginal || line.ocrLabel || line.label || '');
+}
+
+function ocrProductDescription(line: StocksOcrLine) {
+  return ocrLinePackageDescription(line) || undefined;
+}
+
+function ocrPackageDescriptionFromName(value?: string | null) {
+  const clean = String(value || '').replace(/\s+/g, ' ').trim();
+  const match = clean.match(/(?:^|[\s/(-])([0-9]+(?:[,.][0-9]+)?)\s*(kg|g|l|ml|cl|dl)\b/i);
+  if (!match) return null;
+  const quantity = Number(match[1].replace(',', '.'));
+  if (!Number.isFinite(quantity) || quantity <= 0) return null;
+  const unit = match[2].toLowerCase() === 'l' ? 'L' : match[2].toLowerCase();
+  const displayQuantity = Number.isInteger(quantity) ? String(quantity) : String(quantity).replace('.', ',');
+  return `Conditionnement produit: ${displayQuantity} ${unit} par unité`;
+}
+
 function ocrStatusTitle(status: StocksOcrStatus) {
   const data = status.extraction?.correctedJson ?? status.extraction?.extractedJson ?? status.ocr?.extractions?.[0]?.correctedJson ?? status.ocr?.extractions?.[0]?.extractedJson;
   const supplierName = data?.supplierName ?? data?.supplier?.supplierName ?? data?.supplier?.name;
@@ -8838,10 +8979,12 @@ function translateOcrMessage(message?: string | null) {
     [/Confirm the unit '([^']+)' \(assumed to be '([^']+)' or '([^']+)'\) matches your internal unit of measure\.?/gi, "Confirmer que l’unité « $1 » correspond à votre unité interne."],
     [/Unit '([^']+)' mapped to '([^']+)'\s*\(([^)]+)\)\. Verify if this matches your internal unit of measure\.?/gi, "L’unité « $1 » a été associée à « $2 » ($3). Vérifier que cela correspond à votre unité interne."],
     [/Verify if this matches your internal unit of measure\.?/gi, 'Vérifier que cela correspond à votre unité interne.'],
+    [/Confirmeration/gi, 'confirmation'],
+    [/Confirmer(ée|ées|é|és)/gi, 'confirm$1'],
     [/missing/gi, 'manquant'],
     [/Verify/gi, 'Vérifier'],
     [/Check/gi, 'Vérifier'],
-    [/Confirm/gi, 'Confirmer'],
+    [/(^|[^A-Za-zÀ-ÿ])Confirm(?![A-Za-zÀ-ÿ])/g, '$1Confirmer'],
   ];
   for (const [pattern, replacement] of replacements) translated = translated.replace(pattern, replacement);
   return translated;
