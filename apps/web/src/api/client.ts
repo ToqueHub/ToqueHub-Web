@@ -17,6 +17,12 @@ import type {
   Stock,
   StockReception,
   StocksDashboard,
+  MarginsDashboard,
+  MarginProductDetail,
+  MarginSupplierDetail,
+  MarginAlert,
+  MarginReport,
+  MarginSettings,
   StockMovement,
   StockMovementType,
   StocksOcrConfig,
@@ -957,6 +963,48 @@ export const api = {
   },
   stocksDashboard(token: string) {
     return request<StocksDashboard>('/stocks/dashboard', {}, token);
+  },
+  marginsDashboard(token: string, params: { period?: string; productId?: string; supplierId?: string; categoryId?: string; search?: string; dateFrom?: string; dateTo?: string } = {}) {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => { if (value !== undefined && value !== '') qs.set(key, String(value)); });
+    return request<MarginsDashboard>(`/stocks/margins/dashboard${qs.toString() ? `?${qs.toString()}` : ''}`, {}, token);
+  },
+  marginProduct(token: string, id: string) {
+    return request<MarginProductDetail>(`/stocks/margins/products/${id}`, {}, token);
+  },
+  marginSupplier(token: string, id: string) {
+    return request<MarginSupplierDetail>(`/stocks/margins/suppliers/${id}`, {}, token);
+  },
+  marginAlerts(token: string) {
+    return request<MarginAlert[]>('/stocks/margins/alerts', {}, token);
+  },
+  marginSettings(token: string) {
+    return request<MarginSettings>('/stocks/margins/settings', {}, token);
+  },
+  updateMarginSettings(token: string, payload: Partial<MarginSettings>) {
+    return request<MarginSettings>('/stocks/margins/settings', { method: 'PATCH', body: JSON.stringify(payload) }, token);
+  },
+  marginSearch(token: string, search: string) {
+    const qs = new URLSearchParams();
+    if (search) qs.set('search', search);
+    return request<{ products: Product[]; suppliers: Supplier[]; invoices: unknown[]; lots: unknown[]; lines: unknown[] }>(`/stocks/margins/search?${qs.toString()}`, {}, token);
+  },
+  marginReports(token: string) {
+    return request<MarginReport[]>('/stocks/margins/reports', {}, token);
+  },
+  generateMarginReport(token: string, payload: { period?: string; dateFrom?: string; dateTo?: string } = {}) {
+    return request<MarginReport>('/stocks/margins/reports', { method: 'POST', body: JSON.stringify(payload) }, token);
+  },
+  async downloadMarginReportCsv(token: string, reportId: string, filename = 'rapport-marges.csv') {
+    const response = await fetch(`${API_URL}/api/stocks/margins/reports/${reportId}.csv`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) throw new ApiError(await response.text(), response.status);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = globalThis.document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
   },
   documents(token: string, params: { search?: string; supplier?: string; type?: string; dateFrom?: string; dateTo?: string } = {}) {
     const qs = new URLSearchParams();

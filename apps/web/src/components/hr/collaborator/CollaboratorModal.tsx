@@ -1,6 +1,6 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
-import { AlertCircle, BriefcaseBusiness, CalendarDays, FileText, GraduationCap, History, NotebookText, Search, ShieldCheck, UserRound, UsersRound, X } from 'lucide-react';
+import { AlertCircle, BriefcaseBusiness, CalendarDays, FileText, GraduationCap, History, NotebookText, Search, ShieldCheck, UserRound, UsersRound, X, ChevronDown, Mail, Phone, MapPin, Globe, Languages, Hash } from 'lucide-react';
 import { api } from '../../../api/client';
 import type { CoreUser, EmployeeApplicableRight, EmployeeApplicableRightsResponse, EmployeeRightsOverviewResponse, HrCollaborator, HrCollaboratorPayload, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, PlanningEmployeeEntitlementsResponse, PlanningEntitlementCatalogItem, Site } from '../../../types';
 import { HR_CATALOG } from '../../../hr-catalog';
@@ -28,6 +28,34 @@ const statusOptions = [
   { value: 'SUSPENDED', label: 'Suspendu' },
   { value: 'DEPARTED', label: 'Départ' },
 ];
+
+function FormField({
+  label,
+  icon,
+  className = '',
+  error,
+  isSelect = false,
+  children
+}: {
+  label: string;
+  icon?: React.ReactNode;
+  className?: string;
+  error?: string;
+  isSelect?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`hr-field-container ${className} ${error ? 'has-error' : ''}`}>
+      <label className="hr-field-label">{label}</label>
+      <div className={`hr-field-wrapper ${icon ? 'has-icon' : ''} ${isSelect ? 'is-select' : ''}`}>
+        {icon && <span className="hr-field-icon">{icon}</span>}
+        {children}
+        {isSelect && <span className="hr-select-chevron"><ChevronDown size={16} /></span>}
+      </div>
+      {error && <span className="hr-field-error-text">{error}</span>}
+    </div>
+  );
+}
 
 export function CollaboratorModal({ collaborator, collaborators, departments, positions, users, sites, token, onClose, onSubmit, onViewDocument, onDownloadDocument, onReplaceDocument, onDeleteDocument }: { collaborator?: HrCollaborator; collaborators: HrCollaborator[]; departments: HrDepartment[]; positions: HrPosition[]; users: CoreUser[]; sites: Site[]; token: string; onClose: () => void; onSubmit: (payload: HrCollaboratorPayload, documents: PendingHrDocumentUpload[]) => Promise<void>; onViewDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onDownloadDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument?: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument?: (employeeId: string, documentId: string) => Promise<void> }) {
   const [activeTab, setActiveTab] = useState<TabId>('profile');
@@ -200,6 +228,17 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
     }
   }
 
+  const tabIcons: Record<TabId, React.ReactNode> = {
+    profile: <UserRound size={16} />,
+    professional: <BriefcaseBusiness size={16} />,
+    contracts: <ShieldCheck size={16} />,
+    rights: <NotebookText size={16} />,
+    documents: <FileText size={16} />,
+    trainings: <GraduationCap size={16} />,
+    organization: <UsersRound size={16} />,
+    history: <History size={16} />,
+  };
+
   return (
     <div className="modal-overlay">
       <form className="modal-card hr-modal hr-collaborator-modal" onSubmit={submit} noValidate>
@@ -213,7 +252,9 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
         <div className="hr-collaborator-tabs">
           {tabs.map((tab) => (
             <button key={tab.id} type="button" className={activeTab === tab.id ? 'active' : ''} onClick={() => setActiveTab(tab.id)}>
-              {tab.label}{errors[tab.id] ? <span className="hr-tab-error" /> : null}
+              {tabIcons[tab.id]}
+              <span>{tab.label}</span>
+              {errors[tab.id] ? <span className="hr-tab-error" /> : null}
             </button>
           ))}
         </div>
@@ -242,23 +283,45 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
 function ProfileTab({ form, set, requiredErrors }: TabProps & { requiredErrors: RequiredFieldErrors }) {
   return <TabPanel icon={<UserRound size={18} />} title="Profil">
     <div className="hr-form-grid">
-      <input className="span-2" placeholder="URL photo optionnelle" value={form.photoUrl ?? ''} onChange={(e) => set('photoUrl', e.target.value)} />
-      <RequiredFieldError message={requiredErrors.firstName}>
-        <input className={requiredErrors.firstName ? 'hr-field-missing' : undefined} placeholder="Prénom *" value={form.firstName} onChange={(e) => set('firstName', e.target.value)} required aria-invalid={Boolean(requiredErrors.firstName)} />
-      </RequiredFieldError>
-      <RequiredFieldError message={requiredErrors.lastName}>
-        <input className={requiredErrors.lastName ? 'hr-field-missing' : undefined} placeholder="Nom *" value={form.lastName} onChange={(e) => set('lastName', e.target.value)} required aria-invalid={Boolean(requiredErrors.lastName)} />
-      </RequiredFieldError>
-      <input type="email" placeholder="Email" value={form.email ?? ''} onChange={(e) => set('email', e.target.value)} />
-      <input placeholder="Téléphone" value={form.phone ?? ''} onChange={(e) => set('phone', e.target.value)} />
-      <input className="span-2" placeholder="Adresse" value={form.address ?? ''} onChange={(e) => set('address', e.target.value)} />
-      <input placeholder="Code postal" value={form.postalCode ?? ''} onChange={(e) => set('postalCode', e.target.value)} />
-      <input placeholder="Ville" value={form.city ?? ''} onChange={(e) => set('city', e.target.value)} />
-      <input placeholder="Pays" value={form.country ?? ''} onChange={(e) => set('country', e.target.value)} />
-      <label>Date de naissance<input type="date" value={form.birthDate ?? ''} onChange={(e) => set('birthDate', e.target.value)} /></label>
-      <input placeholder="Langue principale" value={form.primaryLanguage ?? ''} onChange={(e) => set('primaryLanguage', e.target.value)} />
-      <input placeholder="Langue secondaire" value={form.secondaryLanguage ?? ''} onChange={(e) => set('secondaryLanguage', e.target.value)} />
-      <input className="span-2" placeholder="Contact d'urgence" value={form.emergencyContact ?? ''} onChange={(e) => set('emergencyContact', e.target.value)} />
+      <FormField label="URL de la photo" icon={<UserRound size={16} />} className="span-2">
+        <input placeholder="https://example.com/photo.jpg" value={form.photoUrl ?? ''} onChange={(e) => set('photoUrl', e.target.value)} />
+      </FormField>
+      <FormField label="Prénom *" icon={<UserRound size={16} />} error={requiredErrors.firstName}>
+        <input className={requiredErrors.firstName ? 'hr-field-missing' : undefined} placeholder="Jean" value={form.firstName} onChange={(e) => set('firstName', e.target.value)} required aria-invalid={Boolean(requiredErrors.firstName)} />
+      </FormField>
+      <FormField label="Nom *" icon={<UserRound size={16} />} error={requiredErrors.lastName}>
+        <input className={requiredErrors.lastName ? 'hr-field-missing' : undefined} placeholder="Dupont" value={form.lastName} onChange={(e) => set('lastName', e.target.value)} required aria-invalid={Boolean(requiredErrors.lastName)} />
+      </FormField>
+      <FormField label="Email" icon={<Mail size={16} />}>
+        <input type="email" placeholder="jean.dupont@toquehub.fr" value={form.email ?? ''} onChange={(e) => set('email', e.target.value)} />
+      </FormField>
+      <FormField label="Téléphone" icon={<Phone size={16} />}>
+        <input placeholder="+33 6 12 34 56 78" value={form.phone ?? ''} onChange={(e) => set('phone', e.target.value)} />
+      </FormField>
+      <FormField label="Adresse" icon={<MapPin size={16} />} className="span-2">
+        <input placeholder="12 rue de la Paix" value={form.address ?? ''} onChange={(e) => set('address', e.target.value)} />
+      </FormField>
+      <FormField label="Code postal" icon={<MapPin size={16} />}>
+        <input placeholder="75002" value={form.postalCode ?? ''} onChange={(e) => set('postalCode', e.target.value)} />
+      </FormField>
+      <FormField label="Ville" icon={<MapPin size={16} />}>
+        <input placeholder="Paris" value={form.city ?? ''} onChange={(e) => set('city', e.target.value)} />
+      </FormField>
+      <FormField label="Pays" icon={<Globe size={16} />}>
+        <input placeholder="France" value={form.country ?? ''} onChange={(e) => set('country', e.target.value)} />
+      </FormField>
+      <FormField label="Date de naissance" icon={<CalendarDays size={16} />}>
+        <input type="date" value={form.birthDate ?? ''} onChange={(e) => set('birthDate', e.target.value)} />
+      </FormField>
+      <FormField label="Langue principale" icon={<Languages size={16} />}>
+        <input placeholder="Français" value={form.primaryLanguage ?? ''} onChange={(e) => set('primaryLanguage', e.target.value)} />
+      </FormField>
+      <FormField label="Langue secondaire" icon={<Languages size={16} />}>
+        <input placeholder="Anglais" value={form.secondaryLanguage ?? ''} onChange={(e) => set('secondaryLanguage', e.target.value)} />
+      </FormField>
+      <FormField label="Contact d'urgence" icon={<Phone size={16} />} className="span-2">
+        <input placeholder="Nom, relation et téléphone" value={form.emergencyContact ?? ''} onChange={(e) => set('emergencyContact', e.target.value)} />
+      </FormField>
     </div>
   </TabPanel>;
 }
@@ -266,17 +329,52 @@ function ProfileTab({ form, set, requiredErrors }: TabProps & { requiredErrors: 
 function ProfessionalTab({ form, set, requiredErrors, departments, positions, allPositions, selectedDepartment, sites, managers, users, positionResetMessage, clearPositionResetMessage }: TabProps & { requiredErrors: RequiredFieldErrors; departments: HrDepartment[]; positions: HrPosition[]; allPositions: HrPosition[]; selectedDepartment?: HrDepartment; sites: Site[]; managers: HrCollaborator[]; users: CoreUser[]; positionResetMessage: string; clearPositionResetMessage: () => void }) {
   return <TabPanel icon={<BriefcaseBusiness size={18} />} title="Professionnel">
     <div className="hr-form-grid">
-      <label>Date d'embauche *<input type="date" value={form.hireDate} onChange={(e) => set('hireDate', e.target.value)} required /></label>
-      <label>Établissement<select value={form.siteId ?? ''} onChange={(e) => set('siteId', e.target.value)} disabled={!sites.length}><option value="">{sites.length ? '-' : 'Aucun établissement configuré'}</option>{sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}</select></label>
-      <label className={requiredErrors.departmentId ? 'hr-required-label' : undefined}>Service principal *<select className={requiredErrors.departmentId ? 'hr-field-missing' : undefined} value={form.departmentId} onChange={(e) => { set('departmentId', e.target.value); clearPositionResetMessage(); }} required aria-invalid={Boolean(requiredErrors.departmentId)}><option value="">-</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select>{requiredErrors.departmentId ? <small className="hr-field-error-message">{requiredErrors.departmentId}</small> : null}</label>
-      <label className={requiredErrors.positionId ? 'hr-required-label' : undefined}>Poste principal *<select className={requiredErrors.positionId ? 'hr-field-missing' : undefined} value={form.positionId} onChange={(e) => set('positionId', e.target.value)} required disabled={!form.departmentId} aria-invalid={Boolean(requiredErrors.positionId)}><option value="">{form.departmentId ? 'Choisir un poste' : "Choisir d'abord un service"}</option>{positions.map((position) => <option key={position.id} value={position.id}>{position.name}</option>)}</select>{requiredErrors.positionId ? <small className="hr-field-error-message">{requiredErrors.positionId}</small> : null}</label>
+      <FormField label="Date d'embauche *" icon={<CalendarDays size={16} />}>
+        <input type="date" value={form.hireDate} onChange={(e) => set('hireDate', e.target.value)} required />
+      </FormField>
+      <FormField label="Établissement" icon={<UsersRound size={16} />} isSelect={true}>
+        <select value={form.siteId ?? ''} onChange={(e) => set('siteId', e.target.value)} disabled={!sites.length}>
+          <option value="">{sites.length ? '-' : 'Aucun établissement configuré'}</option>
+          {sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
+        </select>
+      </FormField>
+      <FormField label="Service principal *" icon={<UsersRound size={16} />} error={requiredErrors.departmentId} isSelect={true}>
+        <select className={requiredErrors.departmentId ? 'hr-field-missing' : undefined} value={form.departmentId} onChange={(e) => { set('departmentId', e.target.value); clearPositionResetMessage(); }} required aria-invalid={Boolean(requiredErrors.departmentId)}>
+          <option value="">-</option>
+          {departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}
+        </select>
+      </FormField>
+      <FormField label="Poste principal *" icon={<BriefcaseBusiness size={16} />} error={requiredErrors.positionId} isSelect={true}>
+        <select className={requiredErrors.positionId ? 'hr-field-missing' : undefined} value={form.positionId} onChange={(e) => set('positionId', e.target.value)} required disabled={!form.departmentId} aria-invalid={Boolean(requiredErrors.positionId)}>
+          <option value="">{form.departmentId ? 'Choisir un poste' : "Choisir d'abord un service"}</option>
+          {positions.map((position) => <option key={position.id} value={position.id}>{position.name}</option>)}
+        </select>
+      </FormField>
       {positionResetMessage ? <div className="hr-inline-warning span-2"><AlertCircle size={14} /> {positionResetMessage}</div> : null}
-      <label>Responsable direct<select value={form.managerId ?? ''} onChange={(e) => set('managerId', e.target.value)}><option value="">-</option>{managers.map((manager) => <option key={manager.id} value={manager.id}>{fullName(manager)}</option>)}</select></label>
-      <input placeholder="Numéro de matricule" value={form.employeeNumber ?? ''} onChange={(e) => set('employeeNumber', e.target.value)} />
+      <FormField label="Responsable direct" icon={<UserRound size={16} />} isSelect={true}>
+        <select value={form.managerId ?? ''} onChange={(e) => set('managerId', e.target.value)}>
+          <option value="">-</option>
+          {managers.map((manager) => <option key={manager.id} value={manager.id}>{fullName(manager)}</option>)}
+        </select>
+      </FormField>
+      <FormField label="Numéro de matricule" icon={<Hash size={16} />}>
+        <input placeholder="Ex: EMP-1002" value={form.employeeNumber ?? ''} onChange={(e) => set('employeeNumber', e.target.value)} />
+      </FormField>
       <SecondaryPositionSelector positions={allPositions} selectedIds={form.secondaryPositionIds ?? []} mainPositionId={form.positionId} selectedDepartment={selectedDepartment} onChange={(ids) => set('secondaryPositionIds', ids)} />
-      <label>Statut du collaborateur<select value={form.status} onChange={(e) => set('status', e.target.value)}>{statusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></label>
-      <textarea className="span-2" placeholder="Notes professionnelles" value={form.notes ?? ''} onChange={(e) => set('notes', e.target.value)} />
-      <label className="span-2">Compte ToqueHub associé<select value={form.userId ?? ''} onChange={(e) => set('userId', e.target.value)}><option value="">Aucun compte associé</option>{users.map((user) => <option key={user.id} value={user.id}>{displayUser(user)}</option>)}</select></label>
+      <FormField label="Statut du collaborateur" icon={<BriefcaseBusiness size={16} />} isSelect={true}>
+        <select value={form.status} onChange={(e) => set('status', e.target.value)}>
+          {statusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+        </select>
+      </FormField>
+      <FormField label="Notes professionnelles" className="span-2">
+        <textarea placeholder="Ajouter des notes professionnelles..." value={form.notes ?? ''} onChange={(e) => set('notes', e.target.value)} />
+      </FormField>
+      <FormField label="Compte ToqueHub associé" icon={<UserRound size={16} />} className="span-2" isSelect={true}>
+        <select value={form.userId ?? ''} onChange={(e) => set('userId', e.target.value)}>
+          <option value="">Aucun compte associé</option>
+          {users.map((user) => <option key={user.id} value={user.id}>{displayUser(user)}</option>)}
+        </select>
+      </FormField>
     </div>
   </TabPanel>;
 }
@@ -288,15 +386,52 @@ function ContractsTab({ form, set, collaborator, onViewDocument, onDownloadDocum
   const weeklyGross = rate != null && weeklyHours != null ? rate * weeklyHours : null;
   return <TabPanel icon={<ShieldCheck size={18} />} title="Contrats & rémunération">
     <div className="hr-form-grid">
-      <label>Type de contrat<select value={form.contractType ?? ''} onChange={(e) => set('contractType', e.target.value)}><option value="">-</option><option value="CDI">CDI</option><option value="CDD">CDD</option><option value="INTERIM">Intérim</option><option value="APPRENTICESHIP">Apprentissage</option><option value="INTERNSHIP">Stage</option><option value="OTHER">Autre</option></select></label>
-      <label>Date de fin<input type="date" value={form.contractEndDate ?? ''} onChange={(e) => set('contractEndDate', e.target.value)} /></label>
-      <label>Fin de période d'essai<input type="date" value={form.trialEndDate ?? ''} onChange={(e) => set('trialEndDate', e.target.value)} /></label>
-      <label>Durée hebdo contractuelle (h)<input type="number" min={0} step={0.5} value={form.contractWeeklyMinutes != null ? (form.contractWeeklyMinutes / 60).toFixed(2) : ''} onChange={(e) => { const hours = parseFloat(e.target.value); set('contractWeeklyMinutes', Number.isFinite(hours) && hours >= 0 ? Math.round(hours * 60) : null); }} /></label>
-      <label>Taux horaire<input type="number" min={0} step={0.01} value={form.hourlyRate ?? ''} onChange={(e) => set('hourlyRate', e.target.value ? parseFloat(e.target.value) : null)} /></label>
-      <label>Devise<select value={form.currency ?? 'EUR'} onChange={(e) => set('currency', e.target.value)}><option value="EUR">EUR</option><option value="USD">USD</option><option value="GBP">GBP</option><option value="CHF">CHF</option></select></label>
-      <label>Date d'effet<input type="date" value={form.rateEffectiveDate ?? ''} onChange={(e) => set('rateEffectiveDate', e.target.value)} /></label>
-      <label>Prochaine revalorisation<input type="date" value={form.nextReviewDate ?? ''} onChange={(e) => set('nextReviewDate', e.target.value)} /></label>
-      <label>Fréquence<select value={form.reviewFrequency ?? ''} onChange={(e) => set('reviewFrequency', e.target.value)}><option value="">-</option><option value="MONTHLY">Mensuelle</option><option value="QUARTERLY">Trimestrielle</option><option value="YEARLY">Annuelle</option><option value="CUSTOM">Personnalisée</option></select></label>
+      <FormField label="Type de contrat" icon={<ShieldCheck size={16} />} isSelect={true}>
+        <select value={form.contractType ?? ''} onChange={(e) => set('contractType', e.target.value)}>
+          <option value="">-</option>
+          <option value="CDI">CDI</option>
+          <option value="CDD">CDD</option>
+          <option value="INTERIM">Intérim</option>
+          <option value="APPRENTICESHIP">Apprentissage</option>
+          <option value="INTERNSHIP">Stage</option>
+          <option value="OTHER">Autre</option>
+        </select>
+      </FormField>
+      <FormField label="Date de fin" icon={<CalendarDays size={16} />}>
+        <input type="date" value={form.contractEndDate ?? ''} onChange={(e) => set('contractEndDate', e.target.value)} />
+      </FormField>
+      <FormField label="Fin de période d'essai" icon={<CalendarDays size={16} />}>
+        <input type="date" value={form.trialEndDate ?? ''} onChange={(e) => set('trialEndDate', e.target.value)} />
+      </FormField>
+      <FormField label="Durée hebdo contractuelle (h)" icon={<Hash size={16} />}>
+        <input type="number" min={0} step={0.5} value={form.contractWeeklyMinutes != null ? (form.contractWeeklyMinutes / 60).toFixed(2) : ''} onChange={(e) => { const hours = parseFloat(e.target.value); set('contractWeeklyMinutes', Number.isFinite(hours) && hours >= 0 ? Math.round(hours * 60) : null); }} />
+      </FormField>
+      <FormField label="Taux horaire" icon={<Hash size={16} />}>
+        <input type="number" min={0} step={0.01} value={form.hourlyRate ?? ''} onChange={(e) => set('hourlyRate', e.target.value ? parseFloat(e.target.value) : null)} />
+      </FormField>
+      <FormField label="Devise" icon={<Globe size={16} />} isSelect={true}>
+        <select value={form.currency ?? 'EUR'} onChange={(e) => set('currency', e.target.value)}>
+          <option value="EUR">EUR</option>
+          <option value="USD">USD</option>
+          <option value="GBP">GBP</option>
+          <option value="CHF">CHF</option>
+        </select>
+      </FormField>
+      <FormField label="Date d'effet" icon={<CalendarDays size={16} />}>
+        <input type="date" value={form.rateEffectiveDate ?? ''} onChange={(e) => set('rateEffectiveDate', e.target.value)} />
+      </FormField>
+      <FormField label="Prochaine revalorisation" icon={<CalendarDays size={16} />}>
+        <input type="date" value={form.nextReviewDate ?? ''} onChange={(e) => set('nextReviewDate', e.target.value)} />
+      </FormField>
+      <FormField label="Fréquence de revalorisation" icon={<CalendarDays size={16} />} isSelect={true}>
+        <select value={form.reviewFrequency ?? ''} onChange={(e) => set('reviewFrequency', e.target.value)}>
+          <option value="">-</option>
+          <option value="MONTHLY">Mensuelle</option>
+          <option value="QUARTERLY">Trimestrielle</option>
+          <option value="YEARLY">Annuelle</option>
+          <option value="CUSTOM">Personnalisée</option>
+        </select>
+      </FormField>
     </div>
     {weeklyGross != null ? <div className="hr-salary-preview"><strong>Estimation brute salarié</strong><span>Salaire hebdomadaire brut : <strong>{weeklyGross.toFixed(2)} {form.currency}</strong></span><span>Salaire mensuel brut estimé : <strong>{((weeklyGross * 52) / 12).toFixed(2)} {form.currency}</strong></span><span>Salaire annuel brut estimé : <strong>{(weeklyGross * 52).toFixed(2)} {form.currency}</strong></span><small>Estimation basée uniquement sur la durée hebdomadaire contractuelle et le taux horaire. Hors congés payés, primes, majorations, absences et charges patronales.</small><small>Coût employeur estimé : non disponible pour l'instant.</small></div> : null}
     <ContractHistory collaborator={collaborator} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} />
@@ -425,7 +560,9 @@ function RightsCountersPanel({ collaborator, entitlements, applicableRights, rig
       {collaborator ? (
         <div className="hr-salary-preview">
           <strong>Droits activés dans l'établissement</strong>
-          <input placeholder="Rechercher un droit..." value={search} onChange={(event) => setSearch(event.target.value)} />
+          <FormField label="Rechercher un droit" icon={<Search size={16} />} className="span-2">
+            <input placeholder="Rechercher un droit par libellé..." value={search} onChange={(event) => setSearch(event.target.value)} />
+          </FormField>
           {availableRights.length ? availableRights.map((item) => (
             <div className="hr-contract-history-row" key={item.id}>
               <div>
@@ -443,13 +580,37 @@ function RightsCountersPanel({ collaborator, entitlements, applicableRights, rig
           <strong>Solde d’ouverture ou ajustement manuel</strong>
           <small>Pour un collaborateur déjà ancien, saisissez le solde connu et la date d’effet. ToqueHub ne recalcule pas tout l’historique sans demande explicite.</small>
           <div className="hr-form-grid">
-          <label>Règle applicable<select value={form.entitlementRuleId} onChange={(event) => selectRule(event.target.value)}><option value="">Droit simple</option>{rules.map((rule) => <option key={rule.id} value={rule.id}>{rule.label}</option>)}</select></label>
-          {!form.entitlementRuleId ? <label>Libellé<input value={form.label} onChange={(event) => onForm((current) => ({ ...current, label: event.target.value }))} /></label> : null}
-          {!form.entitlementRuleId ? <label>Code<input value={form.code} onChange={(event) => onForm((current) => ({ ...current, code: event.target.value }))} /></label> : null}
-          {!form.entitlementRuleId ? <label>Unité<select value={form.unit} onChange={(event) => onForm((current) => ({ ...current, unit: event.target.value as 'DAYS' | 'MINUTES' }))}><option value="DAYS">Jours</option><option value="MINUTES">Heures</option></select></label> : null}
-          <label>Solde d’ouverture<input type="number" value={form.openingBalance} onChange={(event) => onForm((current) => ({ ...current, openingBalance: event.target.value }))} /></label>
-          <label>Date d’effet<input type="date" value={form.effectiveFrom} onChange={(event) => onForm((current) => ({ ...current, effectiveFrom: event.target.value }))} /></label>
-          <button type="button" className="btn btn-secondary" disabled={!form.openingBalance} onClick={() => void onSave()}>Enregistrer le droit</button>
+            <FormField label="Règle applicable" icon={<ShieldCheck size={16} />} isSelect={true}>
+              <select value={form.entitlementRuleId} onChange={(event) => selectRule(event.target.value)}>
+                <option value="">Droit simple</option>
+                {rules.map((rule) => <option key={rule.id} value={rule.id}>{rule.label}</option>)}
+              </select>
+            </FormField>
+            {!form.entitlementRuleId ? (
+              <FormField label="Libellé" icon={<FileText size={16} />}>
+                <input value={form.label} onChange={(event) => onForm((current) => ({ ...current, label: event.target.value }))} />
+              </FormField>
+            ) : null}
+            {!form.entitlementRuleId ? (
+              <FormField label="Code" icon={<Hash size={16} />}>
+                <input value={form.code} onChange={(event) => onForm((current) => ({ ...current, code: event.target.value }))} />
+              </FormField>
+            ) : null}
+            {!form.entitlementRuleId ? (
+              <FormField label="Unité" icon={<Hash size={16} />} isSelect={true}>
+                <select value={form.unit} onChange={(event) => onForm((current) => ({ ...current, unit: event.target.value as 'DAYS' | 'MINUTES' }))}>
+                  <option value="DAYS">Jours</option>
+                  <option value="MINUTES">Heures</option>
+                </select>
+              </FormField>
+            ) : null}
+            <FormField label="Solde d’ouverture" icon={<Hash size={16} />}>
+              <input type="number" value={form.openingBalance} onChange={(event) => onForm((current) => ({ ...current, openingBalance: event.target.value }))} />
+            </FormField>
+            <FormField label="Date d’effet" icon={<CalendarDays size={16} />}>
+              <input type="date" value={form.effectiveFrom} onChange={(event) => onForm((current) => ({ ...current, effectiveFrom: event.target.value }))} />
+            </FormField>
+            <button type="button" className="btn btn-secondary" style={{ gridColumn: 'span 2' }} disabled={!form.openingBalance} onClick={() => void onSave()}>Enregistrer le droit</button>
           </div>
         </div>
       ) : null}
@@ -479,16 +640,21 @@ function DocumentsTab({ collaborator, pendingDocuments, onDocumentsChange, onVie
     {pendingDocuments.length ? <div className="hr-pending-documents">{pendingDocuments.map((doc, index) => (
       <div key={`${doc.file.name}-${index}`} className="hr-pending-document">
         <div><strong>{doc.file.name}</strong><span>{formatBytes(doc.file.size)}</span></div>
-        <select value={doc.category} onChange={(event) => updateDocument(index, { category: event.target.value })}>
-          <option value="CONTRACT">Contrat</option>
-          <option value="AMENDMENT">Avenant</option>
-          <option value="CERTIFICATION">Formation / certification</option>
-          <option value="DIPLOMA">Diplôme</option>
-          <option value="IDENTITY">Identité</option>
-          <option value="ADMINISTRATIVE">Administratif</option>
-          <option value="OTHER">Autre</option>
-        </select>
-        <input placeholder="Note optionnelle" value={doc.notes ?? ''} onChange={(event) => updateDocument(index, { notes: event.target.value })} />
+        <div className="hr-field-wrapper is-select">
+          <select value={doc.category} onChange={(event) => updateDocument(index, { category: event.target.value })}>
+            <option value="CONTRACT">Contrat</option>
+            <option value="AMENDMENT">Avenant</option>
+            <option value="CERTIFICATION">Formation / certification</option>
+            <option value="DIPLOMA">Diplôme</option>
+            <option value="IDENTITY">Identité</option>
+            <option value="ADMINISTRATIVE">Administratif</option>
+            <option value="OTHER">Autre</option>
+          </select>
+          <span className="hr-select-chevron"><ChevronDown size={16} /></span>
+        </div>
+        <div className="hr-field-wrapper">
+          <input placeholder="Note optionnelle" value={doc.notes ?? ''} onChange={(event) => updateDocument(index, { notes: event.target.value })} />
+        </div>
         <button type="button" className="icon-btn danger" onClick={() => onDocumentsChange(pendingDocuments.filter((_, i) => i !== index))}><X size={14} /></button>
       </div>
     ))}</div> : null}
@@ -532,8 +698,10 @@ function TrainingsTab({ selectedTrainings, onSelectedTrainings, customTraining, 
     <div className="hr-checkbox-group compact">
       {suggestedTrainings.map((training) => <label key={training} className="hr-checkbox-label"><input type="checkbox" checked={selectedTrainings.includes(training)} onChange={() => toggle(training)} />{training}</label>)}
     </div>
-    <div className="hr-position-custom">
-      <input placeholder="Ajouter une formation personnalisée..." value={customTraining} onChange={(event) => onCustomTraining(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addCustom(); } }} />
+    <div className="hr-position-custom" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+      <div className="hr-field-wrapper" style={{ flex: 1 }}>
+        <input placeholder="Ajouter une formation personnalisée..." value={customTraining} onChange={(event) => onCustomTraining(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addCustom(); } }} />
+      </div>
       <button type="button" className="btn btn-secondary" onClick={addCustom}>Ajouter</button>
     </div>
     {selectedTrainings.length ? <div className="hr-position-tags">{selectedTrainings.map((training) => <span key={training} className="badge badge-reception">{training}<button type="button" className="icon-btn" onClick={() => toggle(training)}><X size={12} /></button></span>)}</div> : <p className="muted">Aucune formation sélectionnée.</p>}
@@ -577,7 +745,25 @@ function SecondaryPositionSelector({ positions, selectedIds, mainPositionId, sel
     <button type="button" className="hr-secondary-trigger" onClick={() => setOpen((value) => !value)}>
       {selected.length ? <div className="hr-secondary-badges">{selected.map((position) => <span key={position.id} className="badge">{position.name}<span onClick={(e) => { e.stopPropagation(); toggle(position.id); }}><X size={10} /></span></span>)}</div> : <span className="muted">+ Ajouter un poste secondaire</span>}
     </button>
-    {open ? <div className="hr-secondary-popover"><div className="hr-secondary-search"><Search size={14} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher un poste..." autoFocus /></div><div className="hr-secondary-list">{available.map((position) => <label key={position.id} className="hr-secondary-item"><input type="checkbox" checked={selectedIds.includes(position.id)} onChange={() => toggle(position.id)} />{position.name}{positionBelongsToDepartment(position, selectedDepartment) ? <small>Service principal</small> : null}</label>)}</div></div> : null}
+    {open ? (
+      <div className="hr-secondary-popover">
+        <div className="hr-secondary-search">
+          <div className="hr-field-wrapper has-icon" style={{ flex: 1 }}>
+            <span className="hr-field-icon"><Search size={14} /></span>
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher un poste..." autoFocus />
+          </div>
+        </div>
+        <div className="hr-secondary-list">
+          {available.map((position) => (
+            <label key={position.id} className="hr-secondary-item">
+              <input type="checkbox" checked={selectedIds.includes(position.id)} onChange={() => toggle(position.id)} />
+              {position.name}
+              {positionBelongsToDepartment(position, selectedDepartment) ? <small>Service principal</small> : null}
+            </label>
+          ))}
+        </div>
+      </div>
+    ) : null}
   </div>;
 }
 

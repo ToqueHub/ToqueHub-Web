@@ -263,6 +263,36 @@ enum StockReceptionLineMatchingStatus {
   NOT_FOUND
 }
 
+enum MarginAlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum MarginAlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum MarginAlertType {
+  PRICE_INCREASE
+  PRICE_ANOMALY
+  QUANTITY_ANOMALY
+  VAT_ANOMALY
+  UNIT_CHANGE
+  MISSING_LOT
+  UNKNOWN_PRODUCT
+  UNUSUAL_SUPPLIER
+  RNM_GAP
+  TECHNICAL_SHEET_IMPACT
+}
+
+enum MarginReportType {
+  AUTOMATIC_SUMMARY
+  AI_MANAGEMENT
+}
+
 enum HrEmployeeStatus {
   ACTIVE
   ABSENT
@@ -568,7 +598,7 @@ model Organization {
   updatedAt                     DateTime  @updatedAt
 
   users                          User[]
-  regulatoryCountrySelectedBy    User?                           @relation("OrganizationRegulatoryCountrySelectedBy", fields: [regulatoryCountrySelectedById], references: [id], onDelete: SetNull)
+  regulatoryCountrySelectedBy    User?                            @relation("OrganizationRegulatoryCountrySelectedBy", fields: [regulatoryCountrySelectedById], references: [id], onDelete: SetNull)
   categories                     Category[]
   units                          Unit[]
   products                       Product[]
@@ -582,6 +612,9 @@ model Organization {
   ocrDocuments                   OcrDocument[]
   ocrBusinessExtractions         OcrBusinessExtraction[]
   stockReceptions                StockReception[]
+  marginSettings                 MarginSettings?
+  marginAlerts                   MarginAlert[]
+  marginReports                  MarginReport[]
   inventories                    Inventory[]
   auditLogs                      AuditLog[]
   rnmFavorites                   RnmProductFavorite[]
@@ -755,8 +788,8 @@ model User {
   menuExports                        MenuExport[]                   @relation("MenuExportRequestedBy")
   confirmedDestockingProposals       ProductionDestockingProposal[] @relation("ProductionDestockingConfirmedBy")
   createdHaccpProducts               HaccpProduct[]                 @relation("HaccpProductCreatedBy")
-  createdHaccpTemperatureEquipment   HaccpTemperatureEquipment[]     @relation("HaccpTemperatureEquipmentCreatedBy")
-  createdHaccpTemperatureReadings    HaccpTemperatureReading[]       @relation("HaccpTemperatureReadingCreatedBy")
+  createdHaccpTemperatureEquipment   HaccpTemperatureEquipment[]    @relation("HaccpTemperatureEquipmentCreatedBy")
+  createdHaccpTemperatureReadings    HaccpTemperatureReading[]      @relation("HaccpTemperatureReadingCreatedBy")
   createdHaccpReceptions             HaccpReception[]               @relation("HaccpReceptionCreatedBy")
   createdHaccpTraceabilityItems      HaccpTraceability[]            @relation("HaccpTraceabilityCreatedBy")
   createdHaccpProcessEquipment       HaccpProcessEquipment[]        @relation("HaccpProcessEquipmentCreatedBy")
@@ -769,8 +802,9 @@ model User {
   createdHaccpCleanedSurfaces        HaccpCleanedSurface[]          @relation("HaccpCleanedSurfaceCreatedBy")
   createdHaccpProductionSessions     HaccpProductionSession[]       @relation("HaccpProductionSessionCreatedBy")
   createdHaccpDailyReports           HaccpDailyReport[]             @relation("HaccpDailyReportCreatedBy")
+  createdMarginReports               MarginReport[]                 @relation("MarginReportCreatedBy")
   dashboardPreferences               DashboardPreference[]
-  backupCloudOAuthStates         BackupCloudOAuthState[]        @relation("BackupCloudOAuthStateUser")
+  backupCloudOAuthStates             BackupCloudOAuthState[]        @relation("BackupCloudOAuthStateUser")
 
   @@index([organizationId])
   @@index([roleId])
@@ -921,6 +955,7 @@ model Product {
   inventoryLines            InventoryLine[]
   productionRequirements    ProductionMaterialRequirement[]
   productionDestockingLines ProductionDestockingLine[]
+  marginAlerts              MarginAlert[]
 
   @@unique([organizationId, name])
   @@unique([organizationId, sku])
@@ -950,6 +985,7 @@ model Supplier {
   lots                   Lot[]
   movements              StockMovement[]
   stockReceptions        StockReception[]
+  marginAlerts           MarginAlert[]
   productionRequirements ProductionMaterialRequirement[]
   primaryProducts        Product[]                       @relation("ProductPrimarySupplier")
 
@@ -1144,10 +1180,10 @@ model Document {
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
-  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  uploadedBy      User?            @relation("DocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
-  ocrDocuments    OcrDocument[]
-  stockReceptions StockReception[]
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  uploadedBy       User?             @relation("DocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+  ocrDocuments     OcrDocument[]
+  stockReceptions  StockReception[]
   haccpOilSessions HaccpOilSession[]
 
   @@index([organizationId])
@@ -1267,17 +1303,95 @@ model StockReceptionLine {
   createdAt      DateTime                         @default(now())
   updatedAt      DateTime                         @updatedAt
 
-  reception StockReception  @relation(fields: [receptionId], references: [id], onDelete: Cascade)
-  product   Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
-  unitModel Unit?           @relation(fields: [unitId], references: [id], onDelete: SetNull)
-  lot       Lot?            @relation(fields: [lotId], references: [id], onDelete: SetNull)
-  movements StockMovement[]
+  reception    StockReception  @relation(fields: [receptionId], references: [id], onDelete: Cascade)
+  product      Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+  unitModel    Unit?           @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  lot          Lot?            @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  movements    StockMovement[]
+  marginAlerts MarginAlert[]
 
   @@index([receptionId])
   @@index([productId])
   @@index([unitId])
   @@index([lotId])
   @@map("stock_reception_lines")
+}
+
+model MarginSettings {
+  id                          String   @id @default(uuid()) @db.Uuid
+  organizationId              String   @unique @db.Uuid
+  priceIncreaseThresholdPct   Decimal  @default(10) @db.Decimal(6, 2)
+  anomalyThresholdPct         Decimal  @default(35) @db.Decimal(6, 2)
+  quantityAnomalyThresholdPct Decimal  @default(60) @db.Decimal(6, 2)
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("margin_settings")
+}
+
+model MarginAlert {
+  id                   String              @id @default(uuid()) @db.Uuid
+  organizationId       String              @db.Uuid
+  type                 MarginAlertType
+  severity             MarginAlertSeverity @default(WARNING)
+  status               MarginAlertStatus   @default(OPEN)
+  priority             Int                 @default(2)
+  title                String
+  explanation          String              @db.Text
+  productId            String?             @db.Uuid
+  supplierId           String?             @db.Uuid
+  stockReceptionLineId String?             @db.Uuid
+  currentValue         Decimal?            @db.Decimal(12, 4)
+  referenceValue       Decimal?            @db.Decimal(12, 4)
+  variationPct         Decimal?            @db.Decimal(8, 2)
+  metadata             Json?
+  detectedAt           DateTime            @default(now())
+  acknowledgedAt       DateTime?
+  resolvedAt           DateTime?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product            Product?            @relation(fields: [productId], references: [id], onDelete: SetNull)
+  supplier           Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  stockReceptionLine StockReceptionLine? @relation(fields: [stockReceptionLineId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([type])
+  @@index([status])
+  @@index([severity])
+  @@index([productId])
+  @@index([supplierId])
+  @@index([stockReceptionLineId])
+  @@index([detectedAt])
+  @@map("margin_alerts")
+}
+
+model MarginReport {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  type           MarginReportType @default(AUTOMATIC_SUMMARY)
+  title          String
+  periodStart    DateTime?
+  periodEnd      DateTime?
+  summary        String           @db.Text
+  insights       Json
+  metrics        Json?
+  exportedAt     DateTime?
+  createdById    String?          @db.Uuid
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("MarginReportCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("margin_reports")
 }
 
 model Inventory {
@@ -2222,36 +2336,36 @@ model PlanningPolicyProfile {
 }
 
 model EstablishmentWorkTimeRegulation {
-  id                               String   @id @default(uuid()) @db.Uuid
-  organizationId                   String   @unique @db.Uuid
-  nightWorkEnabled                 Boolean  @default(false)
-  nightWorkStartTime               String?
-  nightWorkEndTime                 String?
-  publicHolidayWorkEnabled         Boolean  @default(false)
-  publicHolidayDates               Json?
-  weekendWorkEnabled               Boolean  @default(false)
-  saturdayWorkAllowed              Boolean  @default(false)
-  sundayWorkAllowed                Boolean  @default(false)
-  compensationsEnabled             Boolean  @default(false)
-  teleworkEnabled                  Boolean  @default(false)
-  teleworkStartTime                String?
-  teleworkEndTime                  String?
-  teleworkMinBreakMinutes          Int?
-  teleworkDailyQuotaMinutes        Int?
-  teleworkMaxDaysPerWeek           Int?
-  teleworkMaxDaysPerYearFullTime   Int?
-  teleworkMaxDaysPerYearPartTime   Int?
-  internalRulesSourceDocumentId    String?  @db.Uuid
-  sourceDocumentName               String?
-  sourceDocumentMetadata           Json?
-  extractedRules                   Json?
-  rulesToConfirm                   Json?
-  positionMapping                  Json?
-  validationStatus                 String   @default("requires_review")
-  createdById                      String?  @db.Uuid
-  updatedById                      String?  @db.Uuid
-  createdAt                        DateTime @default(now())
-  updatedAt                        DateTime @updatedAt
+  id                             String   @id @default(uuid()) @db.Uuid
+  organizationId                 String   @unique @db.Uuid
+  nightWorkEnabled               Boolean  @default(false)
+  nightWorkStartTime             String?
+  nightWorkEndTime               String?
+  publicHolidayWorkEnabled       Boolean  @default(false)
+  publicHolidayDates             Json?
+  weekendWorkEnabled             Boolean  @default(false)
+  saturdayWorkAllowed            Boolean  @default(false)
+  sundayWorkAllowed              Boolean  @default(false)
+  compensationsEnabled           Boolean  @default(false)
+  teleworkEnabled                Boolean  @default(false)
+  teleworkStartTime              String?
+  teleworkEndTime                String?
+  teleworkMinBreakMinutes        Int?
+  teleworkDailyQuotaMinutes      Int?
+  teleworkMaxDaysPerWeek         Int?
+  teleworkMaxDaysPerYearFullTime Int?
+  teleworkMaxDaysPerYearPartTime Int?
+  internalRulesSourceDocumentId  String?  @db.Uuid
+  sourceDocumentName             String?
+  sourceDocumentMetadata         Json?
+  extractedRules                 Json?
+  rulesToConfirm                 Json?
+  positionMapping                Json?
+  validationStatus               String   @default("requires_review")
+  createdById                    String?  @db.Uuid
+  updatedById                    String?  @db.Uuid
+  createdAt                      DateTime @default(now())
+  updatedAt                      DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -3787,186 +3901,186 @@ model BackupCloudOAuthState {
 }
 
 model HaccpProduct {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String    @db.Uuid
-  createdById    String?   @db.Uuid
-  clientId       String?
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @db.Uuid
+  createdById     String?   @db.Uuid
+  clientId        String?
   clientUpdatedAt DateTime?
-  name           String
-  type           String
-  dlc            DateTime?
-  dlcDays        Int?
-  description    String?   @db.Text
-  price          Decimal?  @db.Decimal(12, 4)
-  quantity       Decimal?  @db.Decimal(12, 3)
-  unit           String?
-  isActive       Boolean   @default(true)
-  archivedAt     DateTime?
-  deletedAt      DateTime?
-  syncVersion    Int       @default(1)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  name            String
+  type            String
+  dlc             DateTime?
+  dlcDays         Int?
+  description     String?   @db.Text
+  price           Decimal?  @db.Decimal(12, 4)
+  quantity        Decimal?  @db.Decimal(12, 3)
+  unit            String?
+  isActive        Boolean   @default(true)
+  archivedAt      DateTime?
+  deletedAt       DateTime?
+  syncVersion     Int       @default(1)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  organization      Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy         User?                    @relation("HaccpProductCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  processSessions   HaccpProcessSession[]
+  organization       Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy          User?                    @relation("HaccpProductCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  processSessions    HaccpProcessSession[]
   productionSessions HaccpProductionSession[]
 
+  @@unique([organizationId, clientId])
   @@index([organizationId])
   @@index([createdById])
   @@index([type])
   @@index([isActive])
-  @@unique([organizationId, clientId])
   @@map("haccp_products")
 }
 
 model HaccpTemperatureEquipment {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String    @db.Uuid
-  createdById    String?   @db.Uuid
-  clientId       String?
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @db.Uuid
+  createdById     String?   @db.Uuid
+  clientId        String?
   clientUpdatedAt DateTime?
-  name           String
-  type           String
-  isActive       Boolean   @default(true)
-  archivedAt     DateTime?
-  deletedAt      DateTime?
-  syncVersion    Int       @default(1)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  name            String
+  type            String
+  isActive        Boolean   @default(true)
+  archivedAt      DateTime?
+  deletedAt       DateTime?
+  syncVersion     Int       @default(1)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy    User?                      @relation("HaccpTemperatureEquipmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  organization Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?                     @relation("HaccpTemperatureEquipmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   readings     HaccpTemperatureReading[]
 
+  @@unique([organizationId, clientId])
   @@index([organizationId])
   @@index([createdById])
   @@index([type])
   @@index([isActive])
-  @@unique([organizationId, clientId])
   @@map("haccp_temperature_equipment")
 }
 
 model HaccpTemperatureReading {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @db.Uuid
-  createdById    String?  @db.Uuid
-  clientId       String?
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @db.Uuid
+  createdById     String?   @db.Uuid
+  clientId        String?
   clientUpdatedAt DateTime?
-  equipmentId    String   @db.Uuid
-  temperature    Decimal  @db.Decimal(7, 2)
-  date           DateTime
-  notes          String?  @db.Text
-  deletedAt      DateTime?
-  syncVersion    Int      @default(1)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  equipmentId     String    @db.Uuid
+  temperature     Decimal   @db.Decimal(7, 2)
+  date            DateTime
+  notes           String?   @db.Text
+  deletedAt       DateTime?
+  syncVersion     Int       @default(1)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy    User?                      @relation("HaccpTemperatureReadingCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  equipment    HaccpTemperatureEquipment  @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  organization Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?                     @relation("HaccpTemperatureReadingCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  equipment    HaccpTemperatureEquipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
 
+  @@unique([organizationId, clientId])
   @@index([organizationId])
   @@index([createdById])
   @@index([equipmentId])
   @@index([date])
-  @@unique([organizationId, clientId])
   @@map("haccp_temperature_readings")
 }
 
 model HaccpReception {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @db.Uuid
-  createdById    String?  @db.Uuid
-  clientId       String?
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @db.Uuid
+  createdById     String?   @db.Uuid
+  clientId        String?
   clientUpdatedAt DateTime?
-  supplier       String
-  productName    String
-  productType    String?
-  temperature    String
-  lotNumber      String?
-  quantity       Decimal  @db.Decimal(12, 3)
-  unit           String
-  unitPrice      Decimal  @default(0) @db.Decimal(12, 4)
-  photo          String?  @db.Text
-  date           DateTime
-  deletedAt      DateTime?
-  syncVersion    Int      @default(1)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  supplier        String
+  productName     String
+  productType     String?
+  temperature     String
+  lotNumber       String?
+  quantity        Decimal   @db.Decimal(12, 3)
+  unit            String
+  unitPrice       Decimal   @default(0) @db.Decimal(12, 4)
+  photo           String?   @db.Text
+  date            DateTime
+  deletedAt       DateTime?
+  syncVersion     Int       @default(1)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdBy    User?        @relation("HaccpReceptionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
+  @@unique([organizationId, clientId])
   @@index([organizationId])
   @@index([createdById])
   @@index([date])
   @@index([supplier])
   @@index([lotNumber])
-  @@unique([organizationId, clientId])
   @@map("haccp_receptions")
 }
 
 model HaccpTraceability {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @db.Uuid
-  createdById    String?  @db.Uuid
-  clientId       String?
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @db.Uuid
+  createdById     String?   @db.Uuid
+  clientId        String?
   clientUpdatedAt DateTime?
-  date           DateTime
-  photo          String   @db.Text
-  productName    String
-  lotNumber      String
-  barcode        String?
-  deletedAt      DateTime?
-  syncVersion    Int      @default(1)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  date            DateTime
+  photo           String    @db.Text
+  productName     String
+  lotNumber       String
+  barcode         String?
+  deletedAt       DateTime?
+  syncVersion     Int       @default(1)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdBy    User?        @relation("HaccpTraceabilityCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
+  @@unique([organizationId, clientId])
   @@index([organizationId])
   @@index([createdById])
   @@index([date])
   @@index([lotNumber])
   @@index([barcode])
-  @@unique([organizationId, clientId])
   @@map("haccp_traceability")
 }
 
 model HaccpProcessEquipment {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String    @db.Uuid
-  createdById    String?   @db.Uuid
-  clientId       String?
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @db.Uuid
+  createdById     String?   @db.Uuid
+  clientId        String?
   clientUpdatedAt DateTime?
-  name           String
-  type           String
-  brand          String?
-  model          String?
-  serialNumber   String?
-  location       String?
-  capacity       String?
-  temperatureMin Decimal?  @db.Decimal(7, 2)
-  temperatureMax Decimal?  @db.Decimal(7, 2)
-  notes          String?   @db.Text
-  isActive       Boolean   @default(true)
-  archivedAt     DateTime?
-  deletedAt      DateTime?
-  syncVersion    Int       @default(1)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  name            String
+  type            String
+  brand           String?
+  model           String?
+  serialNumber    String?
+  location        String?
+  capacity        String?
+  temperatureMin  Decimal?  @db.Decimal(7, 2)
+  temperatureMax  Decimal?  @db.Decimal(7, 2)
+  notes           String?   @db.Text
+  isActive        Boolean   @default(true)
+  archivedAt      DateTime?
+  deletedAt       DateTime?
+  syncVersion     Int       @default(1)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdBy    User?                 @relation("HaccpProcessEquipmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   sessions     HaccpProcessSession[]
 
+  @@unique([organizationId, clientId])
   @@index([organizationId])
   @@index([createdById])
   @@index([type])
   @@index([isActive])
-  @@unique([organizationId, clientId])
   @@map("haccp_process_equipment")
 }
 
@@ -3997,6 +4111,7 @@ model HaccpProcessSession {
   product      HaccpProduct          @relation(fields: [productId], references: [id], onDelete: Restrict)
   equipment    HaccpProcessEquipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
 
+  @@unique([organizationId, clientId])
   @@index([organizationId])
   @@index([createdById])
   @@index([type])
@@ -4004,130 +4119,129 @@ model HaccpProcessSession {
   @@index([status])
   @@index([productId])
   @@index([equipmentId])
-  @@unique([organizationId, clientId])
   @@map("haccp_process_sessions")
 }
 
 model HaccpOilEquipment {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String    @db.Uuid
-  createdById    String?   @db.Uuid
-  clientId       String?
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @db.Uuid
+  createdById     String?   @db.Uuid
+  clientId        String?
   clientUpdatedAt DateTime?
-  name           String
-  type           String
-  brand          String?
-  model          String?
-  serialNumber   String?
-  location       String?
-  capacity       String?
-  notes          String?   @db.Text
-  isActive       Boolean   @default(true)
-  archivedAt     DateTime?
-  deletedAt      DateTime?
-  syncVersion    Int       @default(1)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  name            String
+  type            String
+  brand           String?
+  model           String?
+  serialNumber    String?
+  location        String?
+  capacity        String?
+  notes           String?   @db.Text
+  isActive        Boolean   @default(true)
+  archivedAt      DateTime?
+  deletedAt       DateTime?
+  syncVersion     Int       @default(1)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy    User?              @relation("HaccpOilEquipmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?             @relation("HaccpOilEquipmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   sessions     HaccpOilSession[]
 
+  @@unique([organizationId, clientId])
   @@index([organizationId])
   @@index([createdById])
   @@index([type])
   @@index([isActive])
-  @@unique([organizationId, clientId])
   @@map("haccp_oil_equipment")
 }
 
 model HaccpOilSession {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @db.Uuid
-  createdById    String?  @db.Uuid
-  clientId       String?
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @db.Uuid
+  createdById     String?   @db.Uuid
+  clientId        String?
   clientUpdatedAt DateTime?
-  equipmentId    String   @db.Uuid
-  testMethod     String
-  action         String
-  sessionDate    DateTime
-  photo          String?  @db.Text
-  photoDocumentId String? @db.Uuid
-  notes          String?  @db.Text
-  deletedAt      DateTime?
-  syncVersion    Int      @default(1)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  equipmentId     String    @db.Uuid
+  testMethod      String
+  action          String
+  sessionDate     DateTime
+  photo           String?   @db.Text
+  photoDocumentId String?   @db.Uuid
+  notes           String?   @db.Text
+  deletedAt       DateTime?
+  syncVersion     Int       @default(1)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy    User?             @relation("HaccpOilSessionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  equipment    HaccpOilEquipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy     User?             @relation("HaccpOilSessionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  equipment     HaccpOilEquipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
   photoDocument Document?         @relation(fields: [photoDocumentId], references: [id], onDelete: SetNull)
 
+  @@unique([organizationId, clientId])
   @@index([organizationId])
   @@index([createdById])
   @@index([equipmentId])
   @@index([sessionDate])
   @@index([action])
-  @@unique([organizationId, clientId])
   @@map("haccp_oil_sessions")
 }
 
 model HaccpCleaningZone {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String    @db.Uuid
-  createdById    String?   @db.Uuid
-  clientId       String?
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @db.Uuid
+  createdById     String?   @db.Uuid
+  clientId        String?
   clientUpdatedAt DateTime?
-  name           String
-  description    String?   @db.Text
-  isActive       Boolean   @default(true)
-  archivedAt     DateTime?
-  deletedAt      DateTime?
-  syncVersion    Int       @default(1)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  name            String
+  description     String?   @db.Text
+  isActive        Boolean   @default(true)
+  archivedAt      DateTime?
+  deletedAt       DateTime?
+  syncVersion     Int       @default(1)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy    User?                    @relation("HaccpCleaningZoneCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  surfaces     HaccpCleaningSurface[]
+  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy       User?                  @relation("HaccpCleaningZoneCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  surfaces        HaccpCleaningSurface[]
   cleanedSurfaces HaccpCleanedSurface[]
 
+  @@unique([organizationId, clientId])
   @@index([organizationId])
   @@index([createdById])
   @@index([isActive])
-  @@unique([organizationId, clientId])
   @@map("haccp_cleaning_zones")
 }
 
 model HaccpCleaningSurface {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String    @db.Uuid
-  createdById    String?   @db.Uuid
-  clientId       String?
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @db.Uuid
+  createdById     String?   @db.Uuid
+  clientId        String?
   clientUpdatedAt DateTime?
-  zoneId         String    @db.Uuid
-  name           String
-  frequency      String
-  lastCleaned    DateTime?
-  isActive       Boolean   @default(true)
-  archivedAt     DateTime?
-  deletedAt      DateTime?
-  syncVersion    Int       @default(1)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  zoneId          String    @db.Uuid
+  name            String
+  frequency       String
+  lastCleaned     DateTime?
+  isActive        Boolean   @default(true)
+  archivedAt      DateTime?
+  deletedAt       DateTime?
+  syncVersion     Int       @default(1)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy    User?                  @relation("HaccpCleaningSurfaceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  zone         HaccpCleaningZone       @relation(fields: [zoneId], references: [id], onDelete: Cascade)
-  cleanedIn   HaccpCleanedSurface[]
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?                 @relation("HaccpCleaningSurfaceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  zone         HaccpCleaningZone     @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  cleanedIn    HaccpCleanedSurface[]
 
+  @@unique([organizationId, clientId])
   @@index([organizationId])
   @@index([createdById])
   @@index([zoneId])
   @@index([frequency])
   @@index([isActive])
-  @@unique([organizationId, clientId])
   @@map("haccp_cleaning_surfaces")
 }
 
@@ -4149,49 +4263,49 @@ model HaccpCleaningSession {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy       User?                  @relation("HaccpCleaningSessionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  organization    Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy       User?                 @relation("HaccpCleaningSessionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   cleanedSurfaces HaccpCleanedSurface[]
 
+  @@unique([organizationId, clientId])
   @@index([organizationId])
   @@index([createdById])
   @@index([sessionDate])
   @@index([status])
-  @@unique([organizationId, clientId])
   @@map("haccp_cleaning_sessions")
 }
 
 model HaccpCleanedSurface {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @db.Uuid
-  createdById    String?  @db.Uuid
-  clientId       String?
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @db.Uuid
+  createdById     String?   @db.Uuid
+  clientId        String?
   clientUpdatedAt DateTime?
-  sessionId      String   @db.Uuid
-  surfaceId      String   @db.Uuid
-  surfaceName    String
-  zoneId         String   @db.Uuid
-  zoneName       String
-  cleanedAt      DateTime
-  notes          String?  @db.Text
-  deletedAt      DateTime?
-  syncVersion    Int      @default(1)
-  createdAt      DateTime @default(now())
+  sessionId       String    @db.Uuid
+  surfaceId       String    @db.Uuid
+  surfaceName     String
+  zoneId          String    @db.Uuid
+  zoneName        String
+  cleanedAt       DateTime
+  notes           String?   @db.Text
+  deletedAt       DateTime?
+  syncVersion     Int       @default(1)
+  createdAt       DateTime  @default(now())
 
-  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy    User?                 @relation("HaccpCleanedSurfaceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  session      HaccpCleaningSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  surface      HaccpCleaningSurface  @relation(fields: [surfaceId], references: [id], onDelete: Restrict)
-  zone         HaccpCleaningZone      @relation(fields: [zoneId], references: [id], onDelete: Restrict)
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?                @relation("HaccpCleanedSurfaceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  session      HaccpCleaningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  surface      HaccpCleaningSurface @relation(fields: [surfaceId], references: [id], onDelete: Restrict)
+  zone         HaccpCleaningZone    @relation(fields: [zoneId], references: [id], onDelete: Restrict)
 
   @@unique([sessionId, surfaceId])
+  @@unique([organizationId, clientId])
   @@index([organizationId])
   @@index([createdById])
   @@index([sessionId])
   @@index([surfaceId])
   @@index([zoneId])
   @@index([cleanedAt])
-  @@unique([organizationId, clientId])
   @@map("haccp_cleaned_surfaces")
 }
 
@@ -4221,41 +4335,41 @@ model HaccpProductionSession {
   createdBy       User?        @relation("HaccpProductionSessionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   finishedProduct HaccpProduct @relation(fields: [finishedProductId], references: [id], onDelete: Restrict)
 
+  @@unique([organizationId, clientId])
   @@index([organizationId])
   @@index([createdById])
   @@index([finishedProductId])
   @@index([productionDate])
   @@index([status])
-  @@unique([organizationId, clientId])
   @@map("haccp_production_sessions")
 }
 
 model HaccpDailyReport {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @db.Uuid
-  createdById    String?  @db.Uuid
-  clientId       String?
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @db.Uuid
+  createdById     String?   @db.Uuid
+  clientId        String?
   clientUpdatedAt DateTime?
-  reportDate     DateTime
-  modules        Json
-  summary        Json
-  generatedAt    DateTime @default(now())
-  pdfPath        String?
-  fileSize       Int?
-  status         String   @default("completed")
-  errorMessage   String?  @db.Text
-  deletedAt      DateTime?
-  syncVersion    Int      @default(1)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  reportDate      DateTime
+  modules         Json
+  summary         Json
+  generatedAt     DateTime  @default(now())
+  pdfPath         String?
+  fileSize        Int?
+  status          String    @default("completed")
+  errorMessage    String?   @db.Text
+  deletedAt       DateTime?
+  syncVersion     Int       @default(1)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdBy    User?        @relation("HaccpDailyReportCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, reportDate])
+  @@unique([organizationId, clientId])
   @@index([organizationId])
   @@index([createdById])
   @@index([status])
-  @@unique([organizationId, clientId])
   @@map("haccp_daily_reports")
 }

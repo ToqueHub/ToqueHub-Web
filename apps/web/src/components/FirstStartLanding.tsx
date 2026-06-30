@@ -26,6 +26,16 @@ import {
   UsersRound,
   AlertCircle,
   X,
+  Utensils,
+  Heart,
+  School,
+  Hotel,
+  ConciergeBell,
+  CookingPot,
+  MoreHorizontal,
+  Briefcase,
+  Landmark,
+  Check,
 } from 'lucide-react';
 import { api } from '../api/client';
 import type { BackupInspection, EstablishmentType, RegulatoryCountryCode, RegulatorySector, SystemStatus, TeamSize, UserSession } from '../types';
@@ -101,7 +111,7 @@ export function FirstStartLanding({
   const score = useMemo(() => passwordScore(admin.password), [admin.password]);
   const allowLogin = Boolean(status?.hasOrganization || status?.hasAdmin);
   const allowCreate = !status?.hasAdmin && !status?.hasOrganization;
-  const progress = (Math.min(step, 5) / 5) * 100;
+  const progress = ((Math.min(step, 5) + 1) / 6) * 100;
 
   function goNext() {
     setFormError(undefined);
@@ -392,7 +402,7 @@ export function FirstStartLanding({
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span className="badge badge-reception" style={{ background: 'var(--primary-bg-light)', color: 'var(--primary)' }}>
-                        Étape {step} / 5
+                        Étape {step + 1} / 6
                       </span>
                       <span style={{ fontWeight: 800, fontSize: '0.85rem', color: 'var(--text-muted)' }}>{Math.round(progress)}%</span>
                     </div>
@@ -439,6 +449,7 @@ export function FirstStartLanding({
                       <OrganizationStep
                         organization={organization}
                         updateOrganization={updateOrganization}
+                        setOrganization={setOrganization}
                       />
                     )}
                     {step === 3 && (
@@ -1075,12 +1086,29 @@ function AdminStep({ admin, updateAdmin, showPassword, setShowPassword, score }:
 }
 
 // 2. Organization Info Step
+const establishmentTypeIcons: Record<string, React.ComponentType<any>> = {
+  'Restaurant': Utensils,
+  'EHPAD': Heart,
+  'Collectivité': School,
+  'Hôtel': Hotel,
+  'Traiteur': ConciergeBell,
+  'Cuisine centrale': CookingPot,
+  'Autre': MoreHorizontal,
+};
+
+const regulatoryCountryFlags: Record<RegulatoryCountryCode, string> = {
+  'FR': '🇫🇷',
+  'FI': '🇫🇮',
+};
+
+// 2. Organization Info Step
 interface OrganizationStepProps {
   organization: OrganizationForm;
   updateOrganization: (field: keyof Omit<OrganizationForm, 'logo'>) => (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
+  setOrganization: React.Dispatch<React.SetStateAction<OrganizationForm>>;
 }
 
-function OrganizationStep({ organization, updateOrganization }: OrganizationStepProps) {
+function OrganizationStep({ organization, updateOrganization, setOrganization }: OrganizationStepProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       <div>
@@ -1093,7 +1121,7 @@ function OrganizationStep({ organization, updateOrganization }: OrganizationStep
         </p>
       </div>
 
-      <label>
+      <label style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
         Nom de l'établissement *
         <input
           placeholder="ex: Bistrot des Cocottes, Resto Scolaire..."
@@ -1101,40 +1129,269 @@ function OrganizationStep({ organization, updateOrganization }: OrganizationStep
           onChange={updateOrganization('name')}
           required
           autoFocus
+          style={{
+            padding: '0.75rem 1rem',
+            borderRadius: '12px',
+            border: '1px solid var(--light-border)',
+            fontSize: '0.95rem',
+            outline: 'none',
+            transition: 'border-color 0.2s',
+          }}
         />
       </label>
 
-      <label>
-        Type d'établissement
-        <select value={organization.type} onChange={updateOrganization('type')}>
-          <option value="">Sélectionner un type...</option>
-          {establishmentTypes.map((type) => (
-            <option key={type} value={type}>{type}</option>
-          ))}
-        </select>
-      </label>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#475569' }}>
+          Type d'établissement
+        </span>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
+          gap: '0.65rem',
+          marginTop: '0.25rem'
+        }}>
+          {establishmentTypes.map((type) => {
+            const Icon = establishmentTypeIcons[type] || HelpCircle;
+            const isSelected = organization.type === type;
+            return (
+              <motion.div
+                key={type}
+                whileHover={{ y: -2, scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => {
+                  setOrganization(prev => ({ ...prev, type }));
+                }}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '0.75rem',
+                  borderRadius: '12px',
+                  border: isSelected ? '2px solid var(--primary)' : '1px solid var(--light-border)',
+                  background: isSelected ? 'rgba(16, 185, 129, 0.04)' : '#ffffff',
+                  cursor: 'pointer',
+                  position: 'relative',
+                  transition: 'border-color 0.2s, background-color 0.2s',
+                  minHeight: '80px',
+                  textAlign: 'center',
+                  boxShadow: isSelected ? '0 4px 12px rgba(16, 185, 129, 0.08)' : 'none'
+                }}
+              >
+                <div style={{
+                  color: isSelected ? 'var(--primary)' : '#64748b',
+                  marginBottom: '0.35rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <Icon size={20} strokeWidth={isSelected ? 2.5 : 2} />
+                </div>
+                <span style={{
+                  fontSize: '0.76rem',
+                  fontWeight: isSelected ? 700 : 500,
+                  color: isSelected ? '#0f172a' : '#475569',
+                  lineHeight: 1.2
+                }}>
+                  {type}
+                </span>
+                {isSelected && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '6px',
+                    right: '6px',
+                    background: 'var(--primary)',
+                    color: 'white',
+                    borderRadius: '50%',
+                    width: '16px',
+                    height: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <Check size={10} strokeWidth={3} />
+                  </div>
+                )}
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
 
-      <label>
-        Pays de réglementation *
-        <select value={organization.regulatoryCountryCode} onChange={updateOrganization('regulatoryCountryCode')} required>
-          <option value="">Choisir le pays de réglementation...</option>
-          {regulatoryCountries.map((country) => (
-            <option key={country.value} value={country.value}>{country.label}</option>
-          ))}
-        </select>
-      </label>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginTop: '0.25rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#475569' }}>
+            Pays de réglementation *
+          </span>
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.5rem',
+            marginTop: '0.25rem'
+          }}>
+            {regulatoryCountries.map((country) => {
+              const isSelected = organization.regulatoryCountryCode === country.value;
+              const flag = regulatoryCountryFlags[country.value];
+              return (
+                <motion.div
+                  key={country.value}
+                  whileHover={{ y: -1, scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
+                  onClick={() => {
+                    setOrganization(prev => ({
+                      ...prev,
+                      regulatoryCountryCode: country.value,
+                      ...(prev.regulatoryCountryCode !== country.value ? { regulatorySector: '' } : {})
+                    }));
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    padding: '0.65rem 0.85rem',
+                    borderRadius: '12px',
+                    border: isSelected ? '2px solid var(--primary)' : '1px solid var(--light-border)',
+                    background: isSelected ? 'rgba(16, 185, 129, 0.04)' : '#ffffff',
+                    cursor: 'pointer',
+                    position: 'relative',
+                    transition: 'border-color 0.2s, background-color 0.2s',
+                    boxShadow: isSelected ? '0 4px 12px rgba(16, 185, 129, 0.08)' : 'none'
+                  }}
+                >
+                  <span style={{ fontSize: '1.6rem', lineHeight: 1 }}>
+                    {flag}
+                  </span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
+                    <span style={{
+                      fontSize: '0.8rem',
+                      fontWeight: isSelected ? 700 : 500,
+                      color: isSelected ? '#0f172a' : '#475569'
+                    }}>
+                      {country.label}
+                    </span>
+                    <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                      Réglementation {country.value}
+                    </span>
+                  </div>
+                  {isSelected && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '6px',
+                      right: '6px',
+                      background: 'var(--primary)',
+                      color: 'white',
+                      borderRadius: '50%',
+                      width: '16px',
+                      height: '16px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      <Check size={10} strokeWidth={3} />
+                    </div>
+                  )}
+                </motion.div>
+              );
+            })}
+          </div>
+        </div>
 
-      {organization.regulatoryCountryCode ? (
-        <label>
-          Secteur *
-          <select value={organization.regulatorySector} onChange={updateOrganization('regulatorySector')} required>
-            <option value="">Choisir le secteur...</option>
-            {regulatorySectors.map((sector) => (
-              <option key={sector.value} value={sector.value}>{sector.label}</option>
-            ))}
-          </select>
-        </label>
-      ) : null}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#475569' }}>
+            Secteur *
+          </span>
+          {organization.regulatoryCountryCode ? (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem',
+              marginTop: '0.25rem'
+            }}>
+              {regulatorySectors.map((sector) => {
+                const isSelected = organization.regulatorySector === sector.value;
+                const Icon = sector.value === 'PRIVATE' ? Briefcase : Landmark;
+                return (
+                  <motion.div
+                    key={sector.value}
+                    whileHover={{ y: -1, scale: 1.01 }}
+                    whileTap={{ scale: 0.99 }}
+                    onClick={() => {
+                      setOrganization(prev => ({ ...prev, regulatorySector: sector.value }));
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.75rem',
+                      padding: '0.65rem 0.85rem',
+                      borderRadius: '12px',
+                      border: isSelected ? '2px solid var(--primary)' : '1px solid var(--light-border)',
+                      background: isSelected ? 'rgba(16, 185, 129, 0.04)' : '#ffffff',
+                      cursor: 'pointer',
+                      position: 'relative',
+                      transition: 'border-color 0.2s, background-color 0.2s',
+                      boxShadow: isSelected ? '0 4px 12px rgba(16, 185, 129, 0.08)' : 'none'
+                    }}
+                  >
+                    <div style={{
+                      color: isSelected ? 'var(--primary)' : '#64748b',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      <Icon size={18} strokeWidth={isSelected ? 2.5 : 2} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
+                      <span style={{
+                        fontSize: '0.8rem',
+                        fontWeight: isSelected ? 700 : 500,
+                        color: isSelected ? '#0f172a' : '#475569'
+                      }}>
+                        {sector.label}
+                      </span>
+                      <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                        {sector.value === 'PRIVATE' ? 'Privé' : 'Public'}
+                      </span>
+                    </div>
+                    {isSelected && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '6px',
+                        right: '6px',
+                        background: 'var(--primary)',
+                        color: 'white',
+                        borderRadius: '50%',
+                        width: '16px',
+                        height: '16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>
+                        <Check size={10} strokeWidth={3} />
+                      </div>
+                    )}
+                  </motion.div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '1.25rem',
+              borderRadius: '12px',
+              border: '1px dashed var(--light-border)',
+              background: '#f8fafc',
+              height: '78px',
+              marginTop: '0.25rem'
+            }}>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'center' }}>
+                Sélectionnez d'abord un pays
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

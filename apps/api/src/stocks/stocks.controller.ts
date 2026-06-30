@@ -7,8 +7,10 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
 import { CreateInventoryDto, UpdateInventoryCountsDto } from './dto/inventory.dto';
+import { GenerateMarginReportDto, MarginsQueryDto, UpdateMarginSettingsDto } from './dto/stocks-margins.dto';
 import { AnalyzeBatchDto, SaveOcrCorrectionDto } from './dto/stocks-ocr.dto';
 import { ListQueryDto, UpsertCategoryDto, UpsertLocationDto, UpsertLotDto, UpsertProductDto, UpsertSiteDto, UpsertSupplierDto, UpsertUnitConversionDto, UpsertUnitDto } from './dto/stocks-reference.dto';
+import { StocksMarginsService } from './stocks-margins.service';
 import { StocksOcrService } from './stocks-ocr.service';
 import { StocksService } from './stocks.service';
 
@@ -17,7 +19,7 @@ import { StocksService } from './stocks.service';
 @UseGuards(JwtAuthGuard)
 @Controller()
 export class StocksController {
-  constructor(private readonly stocksService: StocksService, private readonly stocksOcrService: StocksOcrService) {}
+  constructor(private readonly stocksService: StocksService, private readonly stocksOcrService: StocksOcrService, private readonly stocksMarginsService: StocksMarginsService) {}
 
   private org(user: AuthenticatedUser) {
     if (!user.organizationId) throw new BadRequestException('Organization setup is required before using stock endpoints');
@@ -124,6 +126,17 @@ export class StocksController {
   @Get('stocks') @ApiOkResponse({ description: 'Read-only projected stock levels.' }) listStocks(@CurrentUser() u: AuthenticatedUser, @Query() q: ListQueryDto) { return this.stocksService.listStocks(this.org(u), q); }
   @Get('stock-movements') listMovements(@CurrentUser() u: AuthenticatedUser, @Query() q: ListQueryDto) { return this.stocksService.listMovements(this.org(u), q); }
   @Post('stock-movements') @ApiCreatedResponse({ description: 'Create a movement and update projection.' }) createMovement(@CurrentUser() u: AuthenticatedUser, @Body() d: CreateStockMovementDto) { return this.stocksService.createMovement(this.org(u), this.actor(u), d); }
+
+  @Get('stocks/margins/settings') marginSettings(@CurrentUser() u: AuthenticatedUser) { return this.stocksMarginsService.settings(this.org(u)); }
+  @Patch('stocks/margins/settings') updateMarginSettings(@CurrentUser() u: AuthenticatedUser, @Body() d: UpdateMarginSettingsDto) { return this.stocksMarginsService.updateSettings(this.org(u), d); }
+  @Get('stocks/margins/dashboard') marginsDashboard(@CurrentUser() u: AuthenticatedUser, @Query() q: MarginsQueryDto) { return this.stocksMarginsService.dashboard(this.org(u), q); }
+  @Get('stocks/margins/products/:id') marginProduct(@CurrentUser() u: AuthenticatedUser, @Param('id') id: string) { return this.stocksMarginsService.product(this.org(u), id); }
+  @Get('stocks/margins/suppliers/:id') marginSupplier(@CurrentUser() u: AuthenticatedUser, @Param('id') id: string) { return this.stocksMarginsService.supplier(this.org(u), id); }
+  @Get('stocks/margins/alerts') marginAlerts(@CurrentUser() u: AuthenticatedUser) { return this.stocksMarginsService.alerts(this.org(u)); }
+  @Get('stocks/margins/search') marginSearch(@CurrentUser() u: AuthenticatedUser, @Query() q: MarginsQueryDto) { return this.stocksMarginsService.search(this.org(u), q); }
+  @Get('stocks/margins/reports') marginReports(@CurrentUser() u: AuthenticatedUser) { return this.stocksMarginsService.reports(this.org(u)); }
+  @Post('stocks/margins/reports') generateMarginReport(@CurrentUser() u: AuthenticatedUser, @Body() d: GenerateMarginReportDto) { return this.stocksMarginsService.generateReport(this.org(u), this.actor(u), d); }
+  @Get('stocks/margins/reports/:id.csv') @Header('Content-Type', 'text/csv; charset=utf-8') marginReportCsv(@CurrentUser() u: AuthenticatedUser, @Param('id') id: string) { return this.stocksMarginsService.reportCsv(this.org(u), id); }
 
   @Get('inventories') listInventories(@CurrentUser() u: AuthenticatedUser, @Query() q: ListQueryDto) { return this.stocksService.listInventories(this.org(u), q); }
   @Post('inventories') createInventory(@CurrentUser() u: AuthenticatedUser, @Body() d: CreateInventoryDto) { return this.stocksService.createInventory(this.org(u), this.actor(u), d); }

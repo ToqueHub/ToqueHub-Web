@@ -14,6 +14,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SaveOcrCorrectionDto } from './dto/stocks-ocr.dto';
+import { StocksMarginsService } from './stocks-margins.service';
 
 const OCR_ROLES = ['SUPER_ADMIN', 'Administrateur', 'ADMIN', 'Manager', 'MANAGER', 'Chef', 'Second', 'Magasinier'];
 const MAX_FILES = Number(process.env.OCR_MAX_FILES ?? 8);
@@ -186,7 +187,7 @@ interface BusinessExtraction {
 export class StocksOcrService {
   private readonly logger = new Logger(StocksOcrService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly marginsService: StocksMarginsService) {}
 
   private assertOcr(actor: Actor) {
     if (!OCR_ROLES.includes(actor.role)) throw new ForbiddenException('Droits OCR Stocks insuffisants');
@@ -475,6 +476,7 @@ export class StocksOcrService {
         where: { id: extraction.id },
         data: { correctedJson: corrected as Prisma.InputJsonValue, status: OcrBusinessExtractionStatus.VALIDATED },
       });
+      await this.marginsService.analyzeReceptionForAlertsTx(tx, organizationId, created.id);
       return tx.stockReception.findUnique({
         where: { id: created.id },
         include: { lines: { include: { product: { include: { unit: true } }, movements: true, lot: true } }, supplier: true, document: true, extraction: true },

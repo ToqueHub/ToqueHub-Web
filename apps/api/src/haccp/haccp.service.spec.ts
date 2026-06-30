@@ -31,6 +31,7 @@ function createPrismaMock() {
     haccpCleanedSurface: { count: jest.fn() },
     haccpDailyReport: {
       upsert: jest.fn(),
+      update: jest.fn(),
     },
   } as any;
 }
@@ -43,7 +44,7 @@ describe('HaccpService', () => {
 
     const response = await service.listProducts(orgId, 'Viandes');
 
-    expect(prisma.haccpProduct.findMany).toHaveBeenCalledWith({ where: { organizationId: orgId, isActive: true, type: 'Viandes' }, orderBy: { name: 'asc' } });
+    expect(prisma.haccpProduct.findMany).toHaveBeenCalledWith({ where: { organizationId: orgId, isActive: true, deletedAt: null, type: 'Viandes' }, orderBy: { name: 'asc' } });
     expect(response.data[0]).toMatchObject({ _id: 'p1', name: 'Poulet', quantity: 2.5 });
     expect(response.data[0].id).toBeUndefined();
   });
@@ -97,13 +98,14 @@ describe('HaccpService', () => {
     prisma.haccpOilSession.findMany.mockResolvedValue([]);
     prisma.haccpCleaningSession.findMany.mockResolvedValue([]);
     prisma.haccpDailyReport.upsert.mockImplementation(async ({ create, update }: any) => ({ id: 'report1', ...(create ?? update), createdAt: new Date(), updatedAt: new Date() }));
+    prisma.haccpDailyReport.update.mockImplementation(async ({ data }: any) => ({ id: 'report1', organizationId: orgId, reportDate: new Date('2026-06-29T00:00:00.000Z'), modules: {}, summary: { totalActivities: 2 }, ...data, createdAt: new Date(), updatedAt: new Date() }));
     const service = new HaccpService(prisma);
 
     const response = await service.generateDailyReport(orgId, actor, new Date('2026-06-29T10:00:00.000Z'));
 
     expect(prisma.haccpDailyReport.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId_reportDate: expect.objectContaining({ organizationId: orgId }) } }));
+    expect(prisma.haccpDailyReport.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'report1' }, data: expect.objectContaining({ status: 'completed', pdfPath: expect.stringContaining('rapport-haccp-2026-06-29') }) }));
     expect(response.data.summary.totalActivities).toBe(2);
-    expect(response.data.modules.temperature.count).toBe(1);
-    expect(response.data.modules.reception.count).toBe(1);
+    expect(response.data.fileSize).toBeGreaterThan(0);
   });
 });

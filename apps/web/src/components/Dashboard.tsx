@@ -141,6 +141,11 @@ import type {
   BackupRestoreResult,
   BackupSchedule,
   BackupSummary,
+  MarginsDashboard,
+  MarginChartPoint,
+  MarginProductDetail,
+  MarginSupplierDetail,
+  MarginSettings,
 } from '../types';
 
 const movementLabels: Record<StockMovementType, string> = {
@@ -339,7 +344,7 @@ const apps = [
   },
 ];
 
-type ActiveTab = 'overview' | 'applications' | 'settings' | 'organization-general' | 'organization-documents' | 'users' | 'architecture' | 'stocks-dashboard' | 'inventory' | 'movements' | 'products' | 'categories' | 'units' | 'suppliers' | 'inventories' | 'locations' | 'audit' | 'rnm-dashboard' | 'rnm-history' | 'rnm-favorites' | 'rnm-about' | 'hr-dashboard' | 'hr-collaborators' | 'hr-departments' | 'hr-positions' | 'hr-rights' | 'hr-rotations' | 'hr-orgchart' | 'planning-dashboard' | 'planning-planning' | 'planning-settings' | 'planning-attendance' | 'planning-day' | 'planning-week' | 'planning-month' | 'planning-assignments' | 'planning-absences' | 'planning-replacements' | 'planning-templates' | 'planning-requirements' | 'technical-sheets-dashboard' | 'technical-sheets-recipes' | 'technical-sheets-categories' | 'technical-sheets-costs' | 'technical-sheets-allergens' | 'technical-sheets-production' | 'production-dashboard' | 'production-orders' | 'production-calendar' | 'production-today' | 'production-assignments' | 'production-materials' | 'production-exports' | 'production-history' | 'menus-dashboard' | 'menus-list' | 'menus-calendar' | 'menus-cycles' | 'menus-diets' | 'menus-guests' | 'menus-exports' | 'menus-history' | 'haccp-dashboard' | 'haccp-temperatures' | 'haccp-cleaning' | 'haccp-traceability' | 'haccp-receptions' | 'haccp-process' | 'haccp-oil' | 'haccp-production' | 'haccp-products' | 'haccp-labels' | 'haccp-reports';
+type ActiveTab = 'overview' | 'applications' | 'settings' | 'organization-general' | 'organization-documents' | 'users' | 'architecture' | 'stocks-dashboard' | 'stocks-margins' | 'inventory' | 'movements' | 'products' | 'categories' | 'units' | 'suppliers' | 'inventories' | 'locations' | 'audit' | 'rnm-dashboard' | 'rnm-history' | 'rnm-favorites' | 'rnm-about' | 'hr-dashboard' | 'hr-collaborators' | 'hr-departments' | 'hr-positions' | 'hr-rights' | 'hr-rotations' | 'hr-orgchart' | 'planning-dashboard' | 'planning-planning' | 'planning-settings' | 'planning-attendance' | 'planning-day' | 'planning-week' | 'planning-month' | 'planning-assignments' | 'planning-absences' | 'planning-replacements' | 'planning-templates' | 'planning-requirements' | 'technical-sheets-dashboard' | 'technical-sheets-recipes' | 'technical-sheets-categories' | 'technical-sheets-costs' | 'technical-sheets-allergens' | 'technical-sheets-production' | 'production-dashboard' | 'production-orders' | 'production-calendar' | 'production-today' | 'production-assignments' | 'production-materials' | 'production-exports' | 'production-history' | 'menus-dashboard' | 'menus-list' | 'menus-calendar' | 'menus-cycles' | 'menus-diets' | 'menus-guests' | 'menus-exports' | 'menus-history' | 'haccp-dashboard' | 'haccp-setup' | 'haccp-temperatures' | 'haccp-cleaning' | 'haccp-traceability' | 'haccp-receptions' | 'haccp-process' | 'haccp-oil' | 'haccp-production' | 'haccp-products' | 'haccp-labels' | 'haccp-reports';
 
 type Confirmation = 'install-stocks' | 'uninstall-stocks' | 'uninstall-rnm-prices' | 'uninstall-planning' | 'uninstall-technical-sheets' | 'uninstall-production' | 'uninstall-menus' | null;
 type AppNotification = {
@@ -399,7 +404,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
   const [stocksMenuExpanded, setStocksMenuExpanded] = useState(() => {
     const stocksTabs = [
-      'stocks-dashboard', 'inventory', 'movements', 'products', 'categories',
+      'stocks-dashboard', 'stocks-margins', 'inventory', 'movements', 'products', 'categories',
       'units', 'suppliers', 'inventories', 'locations', 'audit'
     ];
     return stocksTabs.includes('overview'); // initially 'overview', but let's default to false unless configured differently
@@ -679,7 +684,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
   const isStocksTab = useMemo(() => {
     const stocksTabs = [
-      'stocks-dashboard', 'inventory', 'movements', 'products', 'categories',
+      'stocks-dashboard', 'stocks-margins', 'inventory', 'movements', 'products', 'categories',
       'units', 'suppliers', 'inventories', 'locations', 'audit'
     ];
     return stocksTabs.includes(activeTab);
@@ -691,7 +696,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const isTechnicalSheetsTab = useMemo(() => ['technical-sheets-dashboard', 'technical-sheets-recipes', 'technical-sheets-categories', 'technical-sheets-costs', 'technical-sheets-allergens', 'technical-sheets-production'].includes(activeTab), [activeTab]);
   const isProductionTab = useMemo(() => ['production-dashboard', 'production-orders', 'production-calendar', 'production-today', 'production-assignments', 'production-materials', 'production-exports', 'production-history'].includes(activeTab), [activeTab]);
   const isMenusTab = useMemo(() => ['menus-dashboard', 'menus-list', 'menus-calendar', 'menus-cycles', 'menus-diets', 'menus-guests', 'menus-exports', 'menus-history'].includes(activeTab), [activeTab]);
-  const isHaccpTab = useMemo(() => ['haccp-dashboard', 'haccp-temperatures', 'haccp-cleaning', 'haccp-traceability', 'haccp-receptions', 'haccp-process', 'haccp-oil', 'haccp-production', 'haccp-products', 'haccp-labels', 'haccp-reports'].includes(activeTab), [activeTab]);
+  const isHaccpTab = useMemo(() => ['haccp-dashboard', 'haccp-setup', 'haccp-temperatures', 'haccp-cleaning', 'haccp-traceability', 'haccp-receptions', 'haccp-process', 'haccp-oil', 'haccp-production', 'haccp-products', 'haccp-labels', 'haccp-reports'].includes(activeTab), [activeTab]);
 
   useEffect(() => {
     if (isMenusTab) {
@@ -802,6 +807,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       defaultTab: 'stocks-dashboard',
       submenu: [
         { tab: 'stocks-dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
+        { tab: 'stocks-margins', label: 'Marges', icon: TrendingUp },
         { tab: 'products', label: 'Produits', icon: ChefHat },
         { tab: 'categories', label: 'Catégories', icon: Layers },
         { tab: 'units', label: 'Unités', icon: Scale },
@@ -918,6 +924,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       defaultTab: 'haccp-dashboard',
       submenu: [
         { tab: 'haccp-dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { tab: 'haccp-setup', label: 'Zones & matériels', icon: Boxes },
         { tab: 'haccp-temperatures', label: 'Températures', icon: Thermometer },
         { tab: 'haccp-cleaning', label: 'Nettoyage', icon: ShieldCheck },
         { tab: 'haccp-traceability', label: 'Traçabilité', icon: ClipboardList },
@@ -1120,7 +1127,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       const summary = await api.uninstallStocks(token);
       setDashboardSummary(summary);
       setInstalledApps(summary.installedApplications ?? []);
-      if (['stocks-dashboard', 'inventory', 'movements', 'products', 'categories', 'units', 'suppliers', 'inventories', 'locations', 'audit'].includes(activeTab)) {
+      if (['stocks-dashboard', 'stocks-margins', 'inventory', 'movements', 'products', 'categories', 'units', 'suppliers', 'inventories', 'locations', 'audit'].includes(activeTab)) {
         setActiveTab('applications');
       }
       setSuccess('L’application Stocks a été supprimée de l’interface. Les données métier existantes sont conservées.');
@@ -1672,6 +1679,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     users: 'Utilisateurs',
     architecture: 'Architecture',
     'stocks-dashboard': 'Stocks',
+    'stocks-margins': 'Marges',
     inventory: 'Stocks',
     movements: 'Mouvements',
     products: 'Produits',
@@ -1727,6 +1735,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     'menus-exports': 'Exports Menus',
     'menus-history': 'Historique Menus',
     'haccp-dashboard': 'HACCP',
+    'haccp-setup': 'Zones & matériels HACCP',
     'haccp-temperatures': 'Températures HACCP',
     'haccp-cleaning': 'Nettoyage HACCP',
     'haccp-traceability': 'Traçabilité HACCP',
@@ -2420,7 +2429,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               {isHaccpTab && haccpInstalled && (
                 <HaccpApp
                   token={token}
-                  tab={activeTab === 'haccp-temperatures' ? 'temperatures' : activeTab === 'haccp-cleaning' ? 'cleaning' : activeTab === 'haccp-traceability' ? 'traceability' : activeTab === 'haccp-receptions' ? 'receptions' : activeTab === 'haccp-process' ? 'process' : activeTab === 'haccp-oil' ? 'oil' : activeTab === 'haccp-production' ? 'production' : activeTab === 'haccp-products' ? 'products' : activeTab === 'haccp-labels' ? 'labels' : activeTab === 'haccp-reports' ? 'reports' : 'dashboard'}
+                  tab={activeTab === 'haccp-setup' ? 'setup' : activeTab === 'haccp-temperatures' ? 'temperatures' : activeTab === 'haccp-cleaning' ? 'cleaning' : activeTab === 'haccp-traceability' ? 'traceability' : activeTab === 'haccp-receptions' ? 'receptions' : activeTab === 'haccp-process' ? 'process' : activeTab === 'haccp-oil' ? 'oil' : activeTab === 'haccp-production' ? 'production' : activeTab === 'haccp-products' ? 'products' : activeTab === 'haccp-labels' ? 'labels' : activeTab === 'haccp-reports' ? 'reports' : 'dashboard'}
                 />
               )}
 
@@ -2494,6 +2503,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   onStartOnboarding={() => setShowStocksOnboarding(true)}
                   onCreateProduct={() => setShowProductModal(true)}
                 />
+              )}
+
+              {activeTab === 'stocks-margins' && (
+                <StocksMarginsPage token={token} products={products} suppliers={suppliers} categories={categories} />
               )}
 
               {/* TAB CATEGORIES */}
@@ -5371,6 +5384,610 @@ function StocksOcrDashboardStatusBar({ statuses, onOpenExtraction, onImportOcr, 
       </div>
     </motion.section>
   );
+}
+
+function StocksMarginsPage({ token, products, suppliers, categories }: { token: string; products: Product[]; suppliers: Supplier[]; categories: Category[] }) {
+  const [dashboard, setDashboard] = useState<MarginsDashboard | null>(null);
+  const [productDetail, setProductDetail] = useState<MarginProductDetail | null>(null);
+  const [supplierDetail, setSupplierDetail] = useState<MarginSupplierDetail | null>(null);
+  const [settings, setSettings] = useState<MarginSettings | null>(null);
+  const [searchResults, setSearchResults] = useState<{ products: Product[]; suppliers: Supplier[]; invoices: unknown[]; lots: unknown[]; lines: unknown[] } | null>(null);
+  const [period, setPeriod] = useState<'week' | 'month' | 'year'>('month');
+  const [productId, setProductId] = useState('');
+  const [supplierId, setSupplierId] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [generatingReport, setGeneratingReport] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+
+  // Nouvel onglet interne pour aérer l'interface
+  const [subTab, setSubTab] = useState<'dashboard' | 'analytics' | 'optimization' | 'alerts' | 'reports'>('dashboard');
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const [data, productData, supplierData, settingsData, searchData] = await Promise.all([
+        api.marginsDashboard(token, { period, productId, supplierId, categoryId, search }),
+        productId ? api.marginProduct(token, productId) : Promise.resolve(null),
+        supplierId ? api.marginSupplier(token, supplierId) : Promise.resolve(null),
+        api.marginSettings(token),
+        search.trim() ? api.marginSearch(token, search.trim()) : Promise.resolve(null),
+      ]);
+      setDashboard(data);
+      setProductDetail(productData);
+      setSupplierDetail(supplierData);
+      setSettings(settingsData);
+      setSearchResults(searchData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Chargement du module Marges impossible.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { void load(); }, [token, period, productId, supplierId, categoryId, search]);
+
+  async function generateReport() {
+    setGeneratingReport(true);
+    try {
+      await api.generateMarginReport(token, { period });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Synthèse Marges impossible à générer.');
+    } finally {
+      setGeneratingReport(false);
+    }
+  }
+
+  async function saveSettings() {
+    if (!settings) return;
+    setSavingSettings(true);
+    try {
+      const next = await api.updateMarginSettings(token, {
+        priceIncreaseThresholdPct: Number(settings.priceIncreaseThresholdPct),
+        anomalyThresholdPct: Number(settings.anomalyThresholdPct),
+        quantityAnomalyThresholdPct: Number(settings.quantityAnomalyThresholdPct),
+      });
+      setSettings(next);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Enregistrement des seuils impossible.');
+    } finally {
+      setSavingSettings(false);
+    }
+  }
+
+  const kpis = dashboard?.kpis;
+  const topProducts = dashboard?.charts.topProducts ?? [];
+  const topSuppliers = dashboard?.charts.topSuppliers ?? [];
+  const purchases = dashboard?.charts.purchases ?? [];
+  const categoriesChart = dashboard?.charts.categories ?? [];
+  const forecasts = dashboard?.forecasts ?? [];
+  const rnmComparisons = dashboard?.rnmComparisons ?? [];
+  const sheetImpact = dashboard?.technicalSheetImpact;
+
+  return (
+    <div className="stocks-dashboard-grid margins-dashboard">
+      <motion.section className="welcome-hero stocks-hero" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
+        <span className="welcome-tag"><TrendingUp size={14} /> Stocks</span>
+        <h1 className="welcome-title">Marges</h1>
+        <p className="welcome-desc">
+          Centre de pilotage des achats, fournisseurs, coûts matières et variations de prix, consolidé uniquement depuis les réceptions validées.
+        </p>
+        <div className="stocks-reception-actions">
+          {subTab === 'reports' && (
+            <button className="btn btn-primary" onClick={generateReport} disabled={generatingReport}>
+              <Sparkles size={16} /> {generatingReport ? 'Synthèse...' : 'Générer synthèse'}
+            </button>
+          )}
+          <button className="btn btn-secondary" onClick={() => void load()}>
+            <RefreshCw size={16} /> Actualiser
+          </button>
+        </div>
+      </motion.section>
+
+      {/* Barre de navigation interne moderne */}
+      <div className="margins-subtabs-nav">
+        <button className={`subtab-btn ${subTab === 'dashboard' ? 'active' : ''}`} onClick={() => setSubTab('dashboard')}>
+          <TrendingUp size={16} /> Vue d'ensemble
+        </button>
+        <button className={`subtab-btn ${subTab === 'analytics' ? 'active' : ''}`} onClick={() => setSubTab('analytics')}>
+          <Search size={16} /> Fiches Achat
+        </button>
+        <button className={`subtab-btn ${subTab === 'optimization' ? 'active' : ''}`} onClick={() => setSubTab('optimization')}>
+          <Scale size={16} /> Optimisations & Marché
+        </button>
+        <button className={`subtab-btn ${subTab === 'alerts' ? 'active' : ''}`} onClick={() => setSubTab('alerts')}>
+          <AlertCircle size={16} /> Alertes et Seuils {kpis?.openAlerts ? <span className="badge badge-correction" style={{ marginLeft: '4px', background: 'var(--danger-bg)', color: 'var(--danger)', border: 'none' }}>{kpis.openAlerts}</span> : null}
+        </button>
+        <button className={`subtab-btn ${subTab === 'reports' ? 'active' : ''}`} onClick={() => setSubTab('reports')}>
+          <FileText size={16} /> Rapports & Synthèses
+        </button>
+      </div>
+
+      {/* Barre de filtres contextuelle */}
+      {subTab !== 'alerts' && subTab !== 'reports' && (
+        <div className="filter-bar">
+          {subTab === 'analytics' && (
+            <div className="search-input-wrapper">
+              <Search />
+              <input className="search-input" placeholder="Rechercher produit, facture, lot, fournisseur..." value={search} onChange={(event) => setSearch(event.target.value)} />
+            </div>
+          )}
+          {subTab === 'dashboard' && (
+            <div className="filter-select-wrapper">
+              <select value={period} onChange={(event) => setPeriod(event.target.value as typeof period)}>
+                <option value="week">Hebdomadaire</option>
+                <option value="month">Mensuel</option>
+                <option value="year">Annuel</option>
+              </select>
+              <ChevronDown size={14} className="filter-select-chevron" />
+            </div>
+          )}
+          {subTab !== 'analytics' && (
+            <div className="filter-select-wrapper">
+              <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
+                <option value="">Toutes familles</option>
+                {categories.filter((category) => !isArchived(category)).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+              </select>
+              <ChevronDown size={14} className="filter-select-chevron" />
+            </div>
+          )}
+          <div className="filter-select-wrapper">
+            <select value={supplierId} onChange={(event) => setSupplierId(event.target.value)}>
+              <option value="">Tous fournisseurs</option>
+              {suppliers.filter((supplier) => !isArchived(supplier)).map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+            </select>
+            <ChevronDown size={14} className="filter-select-chevron" />
+          </div>
+          <div className="filter-select-wrapper">
+            <select value={productId} onChange={(event) => setProductId(event.target.value)}>
+              <option value="">Tous produits</option>
+              {products.filter((product) => !isArchived(product)).map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
+            </select>
+            <ChevronDown size={14} className="filter-select-chevron" />
+          </div>
+        </div>
+      )}
+
+      {error && <div className="error-banner"><AlertCircle size={16} /> {error}</div>}
+
+      {/* CONTENU ONGLET VUE D'ENSEMBLE */}
+      {subTab === 'dashboard' && (
+        <div className="margins-dashboard-container">
+          <div className="metrics-grid">
+            <Metric icon={<ShoppingCart size={20} />} value={loading ? '...' : formatCurrency(kpis?.monthlyPurchases)} label="Achats du mois" tone="blue" />
+            <Metric icon={<Calculator size={20} />} value={loading ? '...' : formatCurrency(kpis?.materialCost)} label="Coût matière théorique" tone="emerald" />
+            <Metric icon={<FileText size={20} />} value={loading ? '...' : kpis?.invoiceCount ?? 0} label="Factures reçues" tone="purple" />
+            <Metric icon={<UsersRound size={20} />} value={loading ? '...' : kpis?.supplierCount ?? 0} label="Fournisseurs actifs" tone="orange" />
+          </div>
+          <div className="metrics-grid">
+            <Metric icon={<TrendingUp size={20} />} value={loading ? '...' : formatPct(kpis?.averageIncreasePct)} label="Hausse moyenne" tone="orange" />
+            <Metric icon={<Scale size={20} />} value={loading ? '...' : formatCurrency(kpis?.potentialSavings)} label="Économies potentielles" tone="emerald" />
+            <Metric icon={<LineChart size={20} />} value={loading ? '...' : formatPct(kpis?.monthlyEvolutionPct)} label="Évolution mensuelle" tone="blue" />
+            <Metric icon={<AlertCircle size={20} />} value={loading ? '...' : kpis?.openAlerts ?? 0} label="Alertes ouvertes" tone="purple" />
+          </div>
+
+          <div className="double-panel">
+            <section className="card-modern widget-card-modern">
+              <span className="card-title"><LineChart size={18} /> Évolution des achats</span>
+              <MarginsLineChart data={purchases} />
+            </section>
+            <section className="card-modern widget-card-modern">
+              <span className="card-title"><Layers size={18} /> Répartition familles produits</span>
+              <MarginsBarList data={categoriesChart} />
+            </section>
+          </div>
+
+          <div className="double-panel">
+            <section className="card-modern widget-card-modern">
+              <span className="card-title"><ShoppingBag size={18} /> Top produits achetés</span>
+              <MarginsBarList data={topProducts} />
+            </section>
+            <section className="card-modern widget-card-modern">
+              <span className="card-title"><UsersRound size={18} /> Top fournisseurs</span>
+              <MarginsBarList data={topSuppliers} />
+            </section>
+          </div>
+
+          <section className="card-modern widget-card-modern">
+            <span className="card-title"><Sparkles size={18} /> Suggestions d'optimisation IA</span>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
+              {dashboard?.suggestions?.length ? dashboard.suggestions.map((suggestion, index) => (
+                <div key={`${suggestion.type}-${index}`} className="suggestion-card-premium">
+                  <div style={{ color: 'var(--primary)', marginTop: '2px' }}><Sparkles size={18} /></div>
+                  <div>
+                    <strong style={{ display: 'block', fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>{suggestion.type.replaceAll('_', ' ')}</strong>
+                    <span style={{ fontSize: '0.95rem', color: 'var(--text-main)', lineHeight: '1.4' }}>{suggestion.message}</span>
+                  </div>
+                </div>
+              )) : <EmptyMini title="Aucune suggestion" text="Les recommandations apparaîtront avec davantage d'historique d'achats." icon="✨" />}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {/* CONTENU ONGLET FICHES ACHAT / DETAIL */}
+      {subTab === 'analytics' && (
+        <div className="margins-dashboard-container">
+          {search.trim() && searchResults ? (
+            <section className="card-modern widget-card-modern">
+              <span className="card-title"><Search size={18} /> Résultats de recherche globale</span>
+              <div className="metrics-grid" style={{ marginTop: '1.25rem' }}>
+                <div className="metric-card-modern tone-blue" style={{ cursor: 'default' }}>
+                  <div className="metric-header">
+                    <span className="metric-label-modern">Produits correspondants</span>
+                    <div className="metric-icon-wrapper-modern"><Package size={18} /></div>
+                  </div>
+                  <div className="metric-value-modern">{searchResults.products.length}</div>
+                </div>
+                <div className="metric-card-modern tone-emerald" style={{ cursor: 'default' }}>
+                  <div className="metric-header">
+                    <span className="metric-label-modern">Fournisseurs</span>
+                    <div className="metric-icon-wrapper-modern"><UsersRound size={18} /></div>
+                  </div>
+                  <div className="metric-value-modern">{searchResults.suppliers.length}</div>
+                </div>
+                <div className="metric-card-modern tone-purple" style={{ cursor: 'default' }}>
+                  <div className="metric-header">
+                    <span className="metric-label-modern">Factures</span>
+                    <div className="metric-icon-wrapper-modern"><FileText size={18} /></div>
+                  </div>
+                  <div className="metric-value-modern">{searchResults.invoices.length}</div>
+                </div>
+                <div className="metric-card-modern tone-orange" style={{ cursor: 'default' }}>
+                  <div className="metric-header">
+                    <span className="metric-label-modern">Lots</span>
+                    <div className="metric-icon-wrapper-modern"><Archive size={18} /></div>
+                  </div>
+                  <div className="metric-value-modern">{searchResults.lots.length}</div>
+                </div>
+              </div>
+
+              <div className="double-panel" style={{ marginTop: '2rem' }}>
+                <div>
+                  <h4 style={{ marginBottom: '1rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Package size={16} /> Produits ({searchResults.products.length})</h4>
+                  <div className="table-wrapper">
+                    <table className="table-modern">
+                      <thead><tr><th>Nom</th><th>Catégorie</th><th>Action</th></tr></thead>
+                      <tbody>
+                        {searchResults.products.slice(0, 6).map((item) => (
+                          <tr key={item.id}>
+                            <td style={{ fontWeight: 600 }}>{item.name}</td>
+                            <td>{item.category?.name ?? 'Non classé'}</td>
+                            <td><button className="btn btn-secondary btn-sm" onClick={() => { setProductId(item.id); setSearch(''); }}>Sélectionner</button></td>
+                          </tr>
+                        ))}
+                        {!searchResults.products.length && <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Aucun produit trouvé</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                <div>
+                  <h4 style={{ marginBottom: '1rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}><UsersRound size={16} /> Fournisseurs ({searchResults.suppliers.length})</h4>
+                  <div className="table-wrapper">
+                    <table className="table-modern">
+                      <thead><tr><th>Nom</th><th>Contact</th><th>Action</th></tr></thead>
+                      <tbody>
+                        {searchResults.suppliers.slice(0, 6).map((item) => (
+                          <tr key={item.id}>
+                            <td style={{ fontWeight: 600 }}>{item.name}</td>
+                            <td>{item.email ?? item.phone ?? '—'}</td>
+                            <td><button className="btn btn-secondary btn-sm" onClick={() => { setSupplierId(item.id); setSearch(''); }}>Sélectionner</button></td>
+                          </tr>
+                        ))}
+                        {!searchResults.suppliers.length && <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Aucun fournisseur trouvé</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </section>
+          ) : (
+            !productId && !supplierId && (
+              <div className="margins-search-placeholder">
+                <div className="margins-search-icon-circle"><Search size={32} /></div>
+                <h2>Analyses & Fiches Achat</h2>
+                <p>Sélectionnez un produit ou un fournisseur dans les listes déroulantes ci-dessus, ou tapez une recherche globale pour analyser l'historique de vos achats.</p>
+              </div>
+            )
+          )}
+
+          {(productDetail || supplierDetail) && (
+            <div className="double-panel">
+              {productDetail && (
+                <section className="card-modern widget-card-modern">
+                  <span className="card-title"><Package size={18} /> Fiche achat produit : {productDetail.product.name}</span>
+                  <div className="metrics-grid" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', marginTop: '1rem' }}>
+                    <Metric icon={<Calculator size={18} />} value={formatCurrency(Number(productDetail.stats.averagePrice ?? 0))} label="Prix moyen" tone="blue" />
+                    <Metric icon={<Clock size={18} />} value={formatCurrency(Number(productDetail.stats.lastPrice ?? 0))} label="Dernier prix" tone="emerald" />
+                    <Metric icon={<TrendingUp size={18} />} value={formatCurrency(Number(productDetail.stats.maxPrice ?? 0))} label="Prix max" tone="orange" />
+                    <Metric icon={<Scale size={18} />} value={formatCurrency(Number(productDetail.stats.minPrice ?? 0))} label="Prix min" tone="purple" />
+                  </div>
+                  <div style={{ marginTop: '1.5rem' }}>
+                    <MarginsLineChart data={productDetail.chart} />
+                  </div>
+                  {productDetail.rnmComparison && (
+                    <div className="settings-list" style={{ marginTop: '1rem' }}>
+                      <div className="suggestion-card-premium" style={{ gap: '0.75rem', alignItems: 'center' }}>
+                        <div style={{ color: 'var(--primary)' }}><Scale size={18} /></div>
+                        <div>
+                          <strong>Comparaison RNM : {productDetail.rnmComparison.rnmProductName}</strong>
+                          <span style={{ display: 'block', fontSize: '0.9rem', color: 'var(--text-main)', marginTop: '0.25rem' }}>{productDetail.rnmComparison.message}</span>
+                          <small>Payé {formatCurrency(productDetail.rnmComparison.paidPrice)} · Cours RNM {formatCurrency(productDetail.rnmComparison.rnmPrice)} · écart {formatPct(productDetail.rnmComparison.gapPct)}</small>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <div className="table-wrapper" style={{ marginTop: '1.5rem' }}>
+                    <table className="table-modern">
+                      <thead><tr><th>Fournisseur</th><th>Prix moyen</th><th>Volume</th><th>Score qualité</th></tr></thead>
+                      <tbody>
+                        {productDetail.suppliers.slice(0, 6).map((supplier, index) => (
+                          <tr key={`${supplier.supplierId ?? index}`}>
+                            <td style={{ fontWeight: 600 }}>{String(supplier.supplierName ?? 'Fournisseur')}</td>
+                            <td>{formatCurrency(Number(supplier.averagePrice ?? 0))}</td>
+                            <td>{Number(supplier.volume ?? 0).toLocaleString('fr-FR')}</td>
+                            <td><span className="badge badge-stock">{Number(supplier.score ?? 0)}/100</span></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
+              {supplierDetail && (
+                <section className="card-modern widget-card-modern">
+                  <span className="card-title"><UsersRound size={18} /> Fiche fournisseur : {supplierDetail.supplier.name}</span>
+                  <div className="metrics-grid" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', marginTop: '1rem' }}>
+                    <Metric icon={<ShieldCheck size={18} />} value={`${supplierDetail.score}/100`} label="Score global" tone="emerald" />
+                    <Metric icon={<FileText size={18} />} value={Number(supplierDetail.stats.orderCount ?? 0)} label="Factures reçues" tone="blue" />
+                    <Metric icon={<ShoppingCart size={18} />} value={formatCurrency(Number(supplierDetail.stats.monthlyAmount ?? 0))} label="Volume mensuel" tone="purple" />
+                    <Metric icon={<Package size={18} />} value={Number(supplierDetail.stats.productsCount ?? 0)} label="Produits suivis" tone="orange" />
+                  </div>
+                  <div style={{ marginTop: '1.5rem' }}>
+                    <MarginsLineChart data={supplierDetail.evolution} />
+                  </div>
+                  <div style={{ marginTop: '1.5rem' }}>
+                    <h4 style={{ marginBottom: '1rem', fontWeight: 600 }}>Top produits achetés</h4>
+                    <MarginsBarList data={supplierDetail.products} />
+                  </div>
+                </section>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* CONTENU ONGLET OPTIMISATIONS & MARCHE */}
+      {subTab === 'optimization' && (
+        <div className="margins-dashboard-container">
+          <div className="double-panel">
+            <section className="card-modern widget-card-modern">
+              <span className="card-title"><CalendarDays size={18} /> Prévision des achats & Risques de rupture</span>
+              <div className="table-wrapper" style={{ marginTop: '1rem' }}>
+                <table className="table-modern">
+                  <thead><tr><th>Produit</th><th>Rupture estimée</th><th>Qté recommandée</th><th>Budget estimé</th></tr></thead>
+                  <tbody>
+                    {forecasts.map((forecast) => (
+                      <tr key={forecast.productId}>
+                        <td>
+                          <strong>{forecast.productName}</strong>
+                          <br /><small style={{ color: 'var(--text-muted)' }}>{forecast.supplierName ?? 'Fournisseur à désigner'}</small>
+                        </td>
+                        <td>
+                          {forecast.daysUntilRupture == null ? (
+                            <span className="badge badge-stock">Inconnu</span>
+                          ) : forecast.daysUntilRupture <= 3 ? (
+                            <span className="badge badge-correction" style={{ background: 'var(--danger-bg)', color: 'var(--danger)', border: 'none' }}>Imminente ({Math.ceil(forecast.daysUntilRupture)} j)</span>
+                          ) : (
+                            <span className="badge badge-production" style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1' }}>{Math.ceil(forecast.daysUntilRupture)} jours</span>
+                          )}
+                        </td>
+                        <td style={{ fontWeight: 600 }}>{forecast.recommendedQuantity.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} {forecast.unitSymbol}</td>
+                        <td style={{ fontWeight: 700 }}>{formatCurrency(forecast.estimatedBudget)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {!forecasts.length && <EmptyMini title="Aucune rupture estimée" text="Les mouvements récents n'indiquent aucun risque de rupture imminent." icon="📅" />}
+            </section>
+
+            <section className="card-modern widget-card-modern">
+              <span className="card-title"><Scale size={18} /> Croisement des Prix de Marché (RNM)</span>
+              <div className="settings-list" style={{ marginTop: '1rem' }}>
+                {rnmComparisons.length ? rnmComparisons.map((item) => (
+                  <div key={item.productId} className="suggestion-card-premium" style={{ marginBottom: '0.75rem', gap: '0.75rem', alignItems: 'center' }}>
+                    <div style={{ color: item.gapPct > 0 ? 'var(--danger)' : 'var(--success)' }}><TrendingUp size={20} /></div>
+                    <div style={{ flexGrow: 1 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                        <strong style={{ fontSize: '0.95rem' }}>{item.productName}</strong>
+                        <span className={`badge ${item.gapPct > 0 ? 'badge-correction' : 'badge-production'}`} style={item.gapPct > 0 ? { background: 'var(--danger-bg)', color: 'var(--danger)', border: 'none' } : { background: 'var(--success-bg)', color: 'var(--success)', border: 'none' }}>
+                          {item.gapPct > 0 ? '+' : ''}{item.gapPct.toFixed(0)} %
+                        </span>
+                      </div>
+                      <p style={{ margin: '0.25rem 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                        Payé : <strong>{formatCurrency(item.paidPrice)}</strong> · Cours RNM : <strong>{formatCurrency(item.rnmPrice)}</strong>
+                      </p>
+                      <small style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{item.message}</small>
+                    </div>
+                  </div>
+                )) : <EmptyMini title="Aucun cours de comparaison" text="Installez le module Cours des Produits pour analyser vos écarts par rapport au marché." icon="≋" />}
+              </div>
+            </section>
+          </div>
+
+          <section className="card-modern widget-card-modern">
+            <span className="card-title"><Calculator size={18} /> Impact sur le coût matière des Recettes (Fiches Techniques)</span>
+            <div className="metrics-grid" style={{ marginTop: '1.25rem' }}>
+              <Metric icon={<Utensils size={18} />} value={sheetImpact?.impactedRecipesCount ?? 0} label="Recettes concernées" tone="blue" />
+              <Metric icon={<Calculator size={18} />} value={formatCurrency(sheetImpact?.totalMaterialCost)} label="Coût matière global" tone="emerald" />
+              <Metric icon={<TrendingUp size={18} />} value={formatCurrency(sheetImpact?.totalDelta)} label="Variation totale" tone="orange" />
+              <Metric icon={<Calendar size={18} />} value={formatCurrency((sheetImpact?.totalDelta ?? 0) * 52)} label="Impact annuel estimé" tone="purple" />
+            </div>
+            <div className="table-wrapper" style={{ marginTop: '1.5rem' }}>
+              <table className="table-modern">
+                <thead><tr><th>Recette</th><th>Ingrédient concerné</th><th>Ancien coût portion</th><th>Nouveau coût portion</th><th>Impact annuel</th></tr></thead>
+                <tbody>
+                  {(sheetImpact?.impacts ?? []).map((impact) => (
+                    <tr key={`${impact.technicalSheetId}-${impact.productId}`}>
+                      <td style={{ fontWeight: 600 }}>{impact.technicalSheetName}</td>
+                      <td>{impact.productName}</td>
+                      <td>{formatCurrency(impact.oldCost)}</td>
+                      <td>{formatCurrency(impact.newCost)}</td>
+                      <td style={{ fontWeight: 700, color: impact.annualImpact > 0 ? 'var(--danger)' : 'var(--success)' }}>
+                        {impact.annualImpact > 0 ? '+' : ''}{formatCurrency(impact.annualImpact)}
+                      </td>
+                    </tr>
+                  ))}
+                  {!(sheetImpact?.impacts ?? []).length && (
+                    <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Aucune variation de coût détectée sur les fiches techniques.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {/* CONTENU ONGLET ALERTES & SEUILS */}
+      {subTab === 'alerts' && (
+        <div className="margins-dashboard-container">
+          <div className="double-panel">
+            <section className="card-modern widget-card-modern">
+              <div className="card-title-container">
+                <span className="card-title"><SlidersHorizontal size={18} /> Configuration des seuils de sensibilité</span>
+                <button className="btn btn-primary btn-sm" onClick={saveSettings} disabled={!settings || savingSettings}>{savingSettings ? 'Sauvegarde...' : 'Sauvegarder les seuils'}</button>
+              </div>
+              <div className="thresholds-config-grid">
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontWeight: 600 }}>
+                  Alerte hausse de prix (%)
+                  <input type="number" min="1" max="1000" style={{ padding: '0.6rem 0.8rem', borderRadius: '10px' }} value={settings?.priceIncreaseThresholdPct ?? 10} onChange={(event) => setSettings((current) => current ? { ...current, priceIncreaseThresholdPct: Number(event.target.value) } : current)} />
+                  <small style={{ fontWeight: 400, color: 'var(--text-muted)' }}>Signale les hausses modérées sous forme de Warning.</small>
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontWeight: 600 }}>
+                  Alerte anomalie de prix (%)
+                  <input type="number" min="1" max="1000" style={{ padding: '0.6rem 0.8rem', borderRadius: '10px' }} value={settings?.anomalyThresholdPct ?? 35} onChange={(event) => setSettings((current) => current ? { ...current, anomalyThresholdPct: Number(event.target.value) } : current)} />
+                  <small style={{ fontWeight: 400, color: 'var(--text-muted)' }}>Déclenche une alerte Critique pour les écarts extrêmes.</small>
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontWeight: 600 }}>
+                  Alerte volume de commande (%)
+                  <input type="number" min="1" max="1000" style={{ padding: '0.6rem 0.8rem', borderRadius: '10px' }} value={settings?.quantityAnomalyThresholdPct ?? 60} onChange={(event) => setSettings((current) => current ? { ...current, quantityAnomalyThresholdPct: Number(event.target.value) } : current)} />
+                  <small style={{ fontWeight: 400, color: 'var(--text-muted)' }}>Détecte les écarts importants de quantités livrées par rapport aux moyennes.</small>
+                </label>
+              </div>
+            </section>
+
+            <section className="card-modern widget-card-modern">
+              <span className="card-title"><AlertCircle size={18} /> Journal des alertes et anomalies ouvertes</span>
+              <div className="settings-list" style={{ marginTop: '1.25rem', maxHeight: '480px', overflowY: 'auto' }}>
+                {(dashboard?.alerts ?? []).length ? dashboard!.alerts.map((alert) => (
+                  <div key={alert.id} className="suggestion-card-premium" style={{ marginBottom: '0.75rem', borderLeft: alert.severity === 'CRITICAL' ? '4px solid var(--danger)' : '4px solid var(--warning)' }}>
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                        <strong style={{ fontSize: '0.95rem' }}>{alert.title}</strong>
+                        <span className={`badge ${alert.severity === 'CRITICAL' ? 'badge-correction' : 'badge-production'}`} style={alert.severity === 'CRITICAL' ? { background: 'var(--danger-bg)', color: 'var(--danger)', border: 'none' } : { background: 'var(--warning-bg)', color: 'var(--warning)', border: 'none' }}>
+                          {alert.severity === 'CRITICAL' ? 'Critique' : 'Warning'}
+                        </span>
+                      </div>
+                      <p style={{ margin: '0.35rem 0', fontSize: '0.9rem', color: 'var(--text-main)' }}>{alert.explanation}</p>
+                      <small style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        {alert.product?.name ?? 'Produit'} · {alert.supplier?.name ?? 'Fournisseur'} {alert.variationPct != null ? `· Écart : ${formatPct(alert.variationPct)}` : ''}
+                      </small>
+                    </div>
+                  </div>
+                )) : <EmptyMini title="Aucune anomalie active" text="Toutes les factures et réceptions récentes respectent vos seuils de tolérance." icon="⚑" />}
+              </div>
+            </section>
+          </div>
+        </div>
+      )}
+
+      {/* CONTENU ONGLET RAPPORTS & SYNTHESES */}
+      {subTab === 'reports' && (
+        <div className="margins-dashboard-container">
+          <section className="card-modern widget-card-modern">
+            <div className="card-title-container">
+              <span className="card-title"><FileText size={18} /> Synthèses financières historisées</span>
+              <button className="btn btn-primary" onClick={generateReport} disabled={generatingReport}>
+                <Sparkles size={16} /> {generatingReport ? 'Génération...' : 'Générer une synthèse périodique'}
+              </button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem', marginTop: '1.5rem' }}>
+              {(dashboard?.reports ?? []).length ? dashboard!.reports.map((report) => (
+                <div key={report.id} className="suggestion-card-premium" style={{ flexDirection: 'column', gap: '0.75rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                    <strong style={{ fontSize: '1rem', color: 'var(--text-main)' }}>{report.title}</strong>
+                    <small style={{ color: 'var(--text-muted)' }}>{report.createdAt ? new Date(report.createdAt).toLocaleDateString('fr-FR') : ''}</small>
+                  </div>
+                  <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', flexGrow: 1, lineHeight: '1.4' }}>{report.summary}</p>
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', borderTop: '1px solid var(--light-border)', paddingTop: '0.75rem' }}>
+                    <button className="btn btn-secondary btn-sm" onClick={() => void api.downloadMarginReportCsv(token, report.id, `${report.title.replace(/[^a-z0-9-]+/gi, '-').toLowerCase()}.csv`)}>
+                      <Download size={14} /> Exporter au format CSV
+                    </button>
+                  </div>
+                </div>
+              )) : <EmptyMini title="Aucune synthèse disponible" text="Générez un rapport pour figer l'analyse et l'exporter en CSV." icon="📄" />}
+            </div>
+          </section>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MarginsLineChart({ data }: { data: MarginChartPoint[] }) {
+  const values = data.map((point) => Number(point.value || 0));
+  const max = Math.max(...values, 1);
+  const points = values.map((value, index) => {
+    const x = values.length <= 1 ? 0 : (index / (values.length - 1)) * 100;
+    const y = 100 - (value / max) * 88 - 6;
+    return `${x},${y}`;
+  }).join(' ');
+  return (
+    <div className="rnm-svg-chart-container" style={{ height: 220 }}>
+      {data.length ? (
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ width: '100%', height: '100%' }}>
+          <polyline points={points} fill="none" stroke="var(--primary)" strokeWidth="3" vectorEffect="non-scaling-stroke" />
+          {values.map((value, index) => {
+            const x = values.length <= 1 ? 0 : (index / (values.length - 1)) * 100;
+            const y = 100 - (value / max) * 88 - 6;
+            return <circle key={`${value}-${index}`} cx={x} cy={y} r="1.8" fill="var(--primary)" />;
+          })}
+        </svg>
+      ) : <EmptyMini title="Aucune donnée" text="Les réceptions validées alimenteront ce graphique." icon="📈" />}
+    </div>
+  );
+}
+
+function MarginsBarList({ data }: { data: MarginChartPoint[] }) {
+  const max = Math.max(...data.map((item) => Number(item.value || 0)), 1);
+  if (!data.length) return <EmptyMini title="Aucune donnée" text="Aucun achat validé pour les filtres sélectionnés." icon="📊" />;
+  return (
+    <div className="progress-list" style={{ marginTop: '1rem' }}>
+      {data.slice(0, 8).map((item, index) => (
+        <div className="progress-item-modern" key={`${item.name ?? item.productName ?? item.date}-${index}`}>
+          <span className="progress-text-modern">{item.name ?? item.productName ?? item.date ?? 'Element'}</span>
+          <span className="progress-val-modern">{formatCurrency(item.value)}</span>
+          <div style={{ gridColumn: '1 / -1', height: 6, background: 'var(--light-bg)', borderRadius: 999, overflow: 'hidden' }}>
+            <div style={{ width: `${Math.max(4, (Number(item.value || 0) / max) * 100)}%`, height: '100%', background: 'var(--primary)' }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function formatCurrency(value?: number | null) {
+  return `${Number(value ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €`;
+}
+
+function formatPct(value?: number | null) {
+  return `${Number(value ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`;
 }
 
 function Metric({ icon, value, label, tone, delay = 0 }: { icon: ReactNode; value: ReactNode; label: string; tone: string; delay?: number }) {

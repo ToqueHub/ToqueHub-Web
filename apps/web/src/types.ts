@@ -2293,6 +2293,150 @@ export interface StocksDashboard {
   stockValue?: number;
 }
 
+export interface MarginChartPoint {
+  date?: string;
+  name?: string;
+  value: number;
+  productId?: string | null;
+  productName?: string | null;
+  supplierName?: string | null;
+}
+
+export interface MarginAlert {
+  id: string;
+  type: string;
+  severity: 'INFO' | 'WARNING' | 'CRITICAL' | string;
+  status: 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED' | string;
+  priority?: number;
+  title: string;
+  explanation: string;
+  currentValue?: number | null;
+  referenceValue?: number | null;
+  variationPct?: number | null;
+  detectedAt?: string;
+  product?: Product | null;
+  supplier?: Supplier | null;
+}
+
+export interface MarginReport {
+  id: string;
+  title: string;
+  summary: string;
+  insights?: string[];
+  metrics?: Record<string, unknown>;
+  createdAt?: string;
+}
+
+export interface MarginForecast {
+  productId: string;
+  productName: string;
+  supplierName?: string | null;
+  currentStock: number;
+  dailyConsumption: number;
+  daysUntilRupture?: number | null;
+  estimatedRuptureDate?: string | null;
+  recommendedQuantity: number;
+  unitSymbol?: string | null;
+  estimatedBudget: number;
+}
+
+export interface MarginRnmComparison {
+  productId: string;
+  productName: string;
+  paidPrice: number;
+  rnmProductId: string;
+  rnmProductName: string;
+  rnmPrice: number;
+  rnmUnit?: string | null;
+  latestQuotationDate?: string | null;
+  gapValue: number;
+  gapPct: number;
+  message: string;
+}
+
+export interface MarginTechnicalSheetImpact {
+  totalMaterialCost: number;
+  totalDelta?: number;
+  impactedRecipesCount?: number;
+  impacts?: Array<{
+    technicalSheetId: string;
+    technicalSheetName: string;
+    productId: string;
+    productName: string;
+    oldCost: number;
+    newCost: number;
+    delta: number;
+    monthlyImpact: number;
+    annualImpact: number;
+  }>;
+  timeseries?: MarginChartPoint[];
+}
+
+export interface MarginSettings {
+  id?: string;
+  priceIncreaseThresholdPct: number | string;
+  anomalyThresholdPct: number | string;
+  quantityAnomalyThresholdPct: number | string;
+  updatedAt?: string;
+}
+
+export interface MarginsDashboard {
+  range?: { start: string; end: string };
+  kpis: {
+    monthlyPurchases: number;
+    materialCost: number;
+    invoiceCount: number;
+    supplierCount: number;
+    averageIncreasePct: number;
+    potentialSavings: number;
+    averagePrice: number;
+    yearlyEvolutionPct: number;
+    monthlyEvolutionPct: number;
+    weeklyEvolutionPct: number;
+    openAlerts: number;
+  };
+  charts: {
+    purchases: MarginChartPoint[];
+    materialCost: MarginChartPoint[];
+    prices: MarginChartPoint[];
+    categories: MarginChartPoint[];
+    suppliers: MarginChartPoint[];
+    expenseDistribution: MarginChartPoint[];
+    productFamilies: MarginChartPoint[];
+    topProducts: MarginChartPoint[];
+    topSuppliers: MarginChartPoint[];
+  };
+  alerts: MarginAlert[];
+  suggestions: Array<{ type: string; message: string; priority: number }>;
+  reports: MarginReport[];
+  forecasts?: MarginForecast[];
+  rnmComparisons?: MarginRnmComparison[];
+  technicalSheetImpact?: MarginTechnicalSheetImpact;
+}
+
+export interface MarginProductDetail {
+  product: Product;
+  stats: Record<string, number | null>;
+  chart: MarginChartPoint[];
+  history: Array<Record<string, unknown>>;
+  suppliers: Array<Record<string, unknown>>;
+  latestInvoices: Array<Record<string, unknown>>;
+  lots: Array<Record<string, unknown>>;
+  technicalSheetImpact: Array<Record<string, unknown>>;
+  rnmComparison?: MarginRnmComparison | null;
+}
+
+export interface MarginSupplierDetail {
+  supplier: Supplier;
+  score: number;
+  stats: Record<string, number | null>;
+  evolution: MarginChartPoint[];
+  products: MarginChartPoint[];
+  priceEvolution: MarginChartPoint[];
+  history: Array<Record<string, unknown>>;
+  documents: Array<Record<string, unknown>>;
+}
+
 export type ProductionOrderStatus = 'PLANNED' | 'VALIDATED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 export type ProductionPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
 export type ProductionMaterialStatus = 'OK' | 'POTENTIAL_SHORTAGE' | 'INSUFFICIENT_STOCK' | 'PRODUCT_ARCHIVED' | 'UNIT_NOT_CONVERTIBLE' | 'STOCK_UNKNOWN';

@@ -7,5 +7,6 @@ import { RnmPricesService } from './rnm-prices.service';
   imports: [PrismaModule],
   controllers: [RnmPricesController],
   providers: [RnmPricesService],
+  exports: [RnmPricesService],
 })
 export class RnmPricesModule {}

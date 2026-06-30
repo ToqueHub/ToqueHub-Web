@@ -26,8 +26,12 @@ function mockPrisma(): any {
   };
 }
 
+function mockMarginsService(): any {
+  return { analyzeReceptionForAlertsTx: jest.fn().mockResolvedValue(undefined) };
+}
+
 async function extract(text: string) {
-  const service = new StocksOcrService(mockPrisma());
+  const service = new StocksOcrService(mockPrisma(), mockMarginsService());
   jest.spyOn(service as any, 'analyzeOcrWithMistralAi').mockImplementation((_organizationId, _markdown, _rawJson, fallback) => {
     return Promise.resolve((service as any).aiFallback(fallback, 'Analyse IA désactivée en test.'));
   });
@@ -683,13 +687,13 @@ Total 103,25 €
   });
 
   it('extracts the Kespro order number from the English order header', () => {
-    const service = new StocksOcrService(mockPrisma());
+    const service = new StocksOcrService(mockPrisma(), mockMarginsService());
     expect((service as any).extractPurchaseOrderNumber('Order number 23371013 Delivery address Kitkantie 2')).toBe('23371013');
     expect((service as any).extractPurchaseOrderNumber('23371013 - Tilauksen tiedot - Tilaushistoria')).toBe('23371013');
   });
 
   it('uses Mistral OCR document annotation before the chat fallback', async () => {
-    const service = new StocksOcrService(mockPrisma());
+    const service = new StocksOcrService(mockPrisma(), mockMarginsService());
     const chatFallback = jest.spyOn(service as any, 'analyzeOcrWithMistralAi').mockRejectedValue(new Error('chat fallback should not run'));
     const extraction = await (service as any).extractBusinessData('org-1', 'Facture fournisseur\nTotal TTC: 12,00', {
       document_annotation: JSON.stringify({

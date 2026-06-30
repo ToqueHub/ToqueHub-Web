@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { BadRequestException, Injectable, NotFoundException, StreamableFile } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit, StreamableFile } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createReadStream, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, extname, join, resolve } from 'node:path';
@@ -11,10 +11,25 @@ type Actor = { id: string; role: string };
 
 const HACCP_UPLOAD_ROOT = resolve(process.env.HACCP_UPLOAD_DIR || process.env.UPLOAD_DIR || 'uploads', 'haccp');
 const PROCESS_TYPES = new Set(['refroidissement', 'congelation', 'rechauffement']);
+const REPORTS_ROOT = join(HACCP_UPLOAD_ROOT, 'daily-reports');
 
 @Injectable()
-export class HaccpService {
+export class HaccpService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(HaccpService.name);
+  private dailyCloseTimer?: NodeJS.Timeout;
+  private dailyCloseInProgress = false;
+
   constructor(private readonly prisma: PrismaService, private readonly configService?: ConfigService) {}
+
+  onModuleInit() {
+    this.dailyCloseTimer = setInterval(() => void this.runAutomaticDailyClosure(), 60_000);
+    this.dailyCloseTimer.unref?.();
+    void this.runAutomaticDailyClosure();
+  }
+
+  onModuleDestroy() {
+    if (this.dailyCloseTimer) clearInterval(this.dailyCloseTimer);
+  }
 
   private page(q: any = {}) {
     const take = Math.min(Number(q.limit ?? q.pageSize ?? 20), 200);
@@ -956,7 +971,7 @@ export class HaccpService {
     return this.ok(this.serializeProductionSession(item));
   }
 
-  async generateDailyReport(organizationId: string, actor: Actor, date = new Date()) {
+  async generateDailyReport(organizationId: string, actor: Partial<Actor> | null, date = new Date()) {
     const { start, end } = this.dayRange(date);
     const [temperature, traceability, reception, production, refroidissement, congelation, rechauffement, oil, cleaning] = await Promise.all([
       this.prisma.haccpTemperatureReading.findMany({ where: { organizationId, deletedAt: null, date: { gte: start, lt: end } }, include: { equipment: true } }),
@@ -985,8 +1000,11 @@ export class HaccpService {
     const flatCounts = [modules.temperature, modules.traceability, modules.reception, modules.production, modules.cooling.refroidissement, modules.cooling.congelation, modules.cooling.rechauffement, modules.oil, modules.cleaning];
     const totalActivities = flatCounts.reduce((sum, item) => sum + item.count, 0);
     const summary = { totalActivities, modulesCovered: Object.entries({ temperature: modules.temperature.count, traceability: modules.traceability.count, reception: modules.reception.count, production: modules.production.count, refroidissement: modules.cooling.refroidissement.count, congelation: modules.cooling.congelation.count, rechauffement: modules.cooling.rechauffement.count, oil: modules.oil.count, cleaning: modules.cleaning.count }).filter(([, count]) => count > 0).map(([name]) => name), criticalAlerts: [] };
-    const report = await this.prisma.haccpDailyReport.upsert({ where: { organizationId_reportDate: { organizationId, reportDate: start } }, update: { createdById: actor.id, modules, summary, generatedAt: new Date(), status: 'completed', errorMessage: null, syncVersion: { increment: 1 } }, create: { organizationId, createdById: actor.id, reportDate: start, modules, summary, status: 'completed' } });
-    return this.ok(this.serializeReport(report));
+    const createdById = actor?.id ?? null;
+    const report = await this.prisma.haccpDailyReport.upsert({ where: { organizationId_reportDate: { organizationId, reportDate: start } }, update: { createdById, modules, summary, generatedAt: new Date(), status: 'completed', errorMessage: null, syncVersion: { increment: 1 } }, create: { organizationId, createdById, reportDate: start, modules, summary, status: 'completed' } });
+    const pdf = this.writeDailyReportPdf(organizationId, report.id, start, modules, summary);
+    const updated = await this.prisma.haccpDailyReport.update({ where: { id: report.id }, data: { pdfPath: pdf.path, fileSize: pdf.size, status: 'completed', errorMessage: null } });
+    return this.ok(this.serializeReport(updated));
   }
 
   async todayReport(organizationId: string) {
@@ -1042,9 +1060,158 @@ export class HaccpService {
   async downloadReport(organizationId: string, id: string) {
     const report = await this.prisma.haccpDailyReport.findFirst({ where: { id, organizationId } });
     if (!report) throw new NotFoundException('Rapport introuvable');
-    if (report.pdfPath && existsSync(report.pdfPath)) return { stream: new StreamableFile(createReadStream(report.pdfPath)), filename: `rapport_haccp_${report.reportDate.toISOString().slice(0, 10)}.pdf`, contentType: 'application/pdf' };
+    if (report.pdfPath && existsSync(report.pdfPath)) return { stream: new StreamableFile(createReadStream(report.pdfPath)), filename: `rapport_haccp_${this.formatReportDate(report.reportDate)}.pdf`, contentType: 'application/pdf' };
     const payload = Buffer.from(JSON.stringify(this.serializeReport(report), null, 2), 'utf8');
-    return { stream: new StreamableFile(payload), filename: `rapport_haccp_${report.reportDate.toISOString().slice(0, 10)}.json`, contentType: 'application/json; charset=utf-8' };
+    return { stream: new StreamableFile(payload), filename: `rapport_haccp_${this.formatReportDate(report.reportDate)}.json`, contentType: 'application/json; charset=utf-8' };
+  }
+
+  private async runAutomaticDailyClosure() {
+    if (this.dailyCloseInProgress) return;
+    const now = new Date();
+    if (now.getHours() !== 0) return;
+    this.dailyCloseInProgress = true;
+    try {
+      const reportDate = new Date(now);
+      reportDate.setDate(reportDate.getDate() - 1);
+      const { start } = this.dayRange(reportDate);
+      const organizations = await this.prisma.organization.findMany({
+        where: { haccpInstalledAt: { not: null } },
+        select: { id: true, name: true },
+      });
+      for (const organization of organizations) {
+        try {
+          const existing = await this.prisma.haccpDailyReport.findUnique({ where: { organizationId_reportDate: { organizationId: organization.id, reportDate: start } } });
+          if (existing?.generatedAt && existing.generatedAt >= this.dayRange(now).start) continue;
+          await this.generateDailyReport(organization.id, null, start);
+          this.logger.log(`Rapport HACCP journalier clôturé pour ${organization.name} (${this.formatReportDate(start)})`);
+        } catch (error: any) {
+          this.logger.error(`Clôture HACCP impossible pour ${organization.name}: ${error?.message || error}`);
+        }
+      }
+    } finally {
+      this.dailyCloseInProgress = false;
+    }
+  }
+
+  private writeDailyReportPdf(organizationId: string, reportId: string, reportDate: Date, modules: any, summary: any) {
+    const dir = join(REPORTS_ROOT, organizationId);
+    mkdirSync(dir, { recursive: true });
+    const filename = `rapport-haccp-${this.formatReportDate(reportDate)}-${reportId}.pdf`;
+    const path = join(dir, filename);
+    const pdf = this.buildSimplePdf(this.dailyReportPdfLines(reportDate, modules, summary));
+    writeFileSync(path, pdf);
+    return { path, size: pdf.byteLength };
+  }
+
+  private dailyReportPdfLines(reportDate: Date, modules: any, summary: any) {
+    const lines = [
+      `Rapport HACCP quotidien - ${this.formatReportDate(reportDate)}`,
+      `Genere le ${this.formatReportDateTime(new Date())}`,
+      '',
+      `Total activites tracabilite: ${summary.totalActivities ?? 0}`,
+      `Modules couverts: ${(summary.modulesCovered ?? []).join(', ') || 'Aucun'}`,
+      '',
+      'Synthese par module',
+      `- Temperatures: ${modules.temperature.count}`,
+      `- Tracabilite: ${modules.traceability.count}`,
+      `- Receptions: ${modules.reception.count}`,
+      `- Production: ${modules.production.count}`,
+      `- Refroidissement: ${modules.cooling.refroidissement.count}`,
+      `- Congelation: ${modules.cooling.congelation.count}`,
+      `- Rechauffement: ${modules.cooling.rechauffement.count}`,
+      `- Huiles: ${modules.oil.count}`,
+      `- Nettoyage: ${modules.cleaning.count}`,
+      '',
+    ];
+
+    this.appendPdfSection(lines, 'Temperatures', modules.temperature.data, (item) => `${this.formatReportDateTime(item.date)} | ${item.equipment?.name ?? 'Equipement'} | ${item.temperature} C | ${item.notes ?? ''}`);
+    this.appendPdfSection(lines, 'Tracabilite', modules.traceability.data, (item) => `${this.formatReportDateTime(item.date)} | ${item.productName} | lot ${item.lotNumber} | ${item.barcode ?? ''}`);
+    this.appendPdfSection(lines, 'Receptions', modules.reception.data, (item) => `${this.formatReportDateTime(item.date)} | ${item.supplier} | ${item.productName} | lot ${item.lotNumber ?? '-'} | ${item.quantity} ${item.unit} | temp. ${item.temperature}`);
+    this.appendPdfSection(lines, 'Production', modules.production.data, (item) => `${this.formatReportDateTime(item.productionDate)} | ${item.finishedProduct?.name ?? 'Produit'} | lot ${item.lotNumber} | ${item.quantity} ${item.unit} | ${item.status}`);
+    this.appendPdfSection(lines, 'Refroidissement', modules.cooling.refroidissement.data, (item) => `${this.formatReportDateTime(item.sessionDate)} | ${item.product?.name ?? 'Produit'} | ${item.equipment?.name ?? 'Equipement'} | ${item.startTemperature} -> ${item.endTemperature ?? '-'} C | ${item.status}`);
+    this.appendPdfSection(lines, 'Congelation', modules.cooling.congelation.data, (item) => `${this.formatReportDateTime(item.sessionDate)} | ${item.product?.name ?? 'Produit'} | ${item.equipment?.name ?? 'Equipement'} | ${item.startTemperature} -> ${item.endTemperature ?? '-'} C | ${item.status}`);
+    this.appendPdfSection(lines, 'Rechauffement', modules.cooling.rechauffement.data, (item) => `${this.formatReportDateTime(item.sessionDate)} | ${item.product?.name ?? 'Produit'} | ${item.equipment?.name ?? 'Equipement'} | ${item.startTemperature} -> ${item.endTemperature ?? '-'} C | ${item.status}`);
+    this.appendPdfSection(lines, 'Huiles', modules.oil.data, (item) => `${this.formatReportDateTime(item.sessionDate)} | ${item.equipment?.name ?? 'Equipement'} | ${item.testMethod} | action: ${item.action} | ${item.notes ?? ''}`);
+    this.appendPdfSection(lines, 'Nettoyage', modules.cleaning.data, (item) => `${this.formatReportDateTime(item.sessionDate)} | ${item.status} | ${item.completedSurfaces}/${item.totalSurfaces} surfaces | ${item.notes ?? ''}`);
+    return lines;
+  }
+
+  private appendPdfSection(lines: string[], title: string, items: any[] = [], format: (item: any) => string) {
+    lines.push(title);
+    if (!items.length) {
+      lines.push('- Aucune entree');
+      lines.push('');
+      return;
+    }
+    for (const item of items) lines.push(`- ${format(item)}`);
+    lines.push('');
+  }
+
+  private buildSimplePdf(lines: string[]) {
+    const pages = [];
+    const normalizedLines = lines.flatMap((line) => this.wrapPdfLine(this.pdfText(line), 96));
+    for (let index = 0; index < normalizedLines.length; index += 48) pages.push(normalizedLines.slice(index, index + 48));
+    if (!pages.length) pages.push(['Rapport HACCP']);
+    const objects: string[] = [];
+    objects.push('<< /Type /Catalog /Pages 2 0 R >>');
+    objects.push(`<< /Type /Pages /Kids [${pages.map((_, index) => `${3 + index * 2} 0 R`).join(' ')}] /Count ${pages.length} >>`);
+    pages.forEach((pageLines, index) => {
+      const pageObjectId = 3 + index * 2;
+      const contentObjectId = pageObjectId + 1;
+      objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /Contents ${contentObjectId} 0 R >>`);
+      const content = `BT\n/F1 10 Tf\n12 TL\n40 800 Td\n${pageLines.map((line) => `(${this.escapePdfString(line)}) Tj\nT*`).join('\n')}\nET`;
+      objects.push(`<< /Length ${Buffer.byteLength(content, 'latin1')} >>\nstream\n${content}\nendstream`);
+    });
+    let pdf = '%PDF-1.4\n';
+    const offsets = [0];
+    objects.forEach((object, index) => {
+      offsets.push(Buffer.byteLength(pdf, 'latin1'));
+      pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+    });
+    const xrefOffset = Buffer.byteLength(pdf, 'latin1');
+    pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+    for (let index = 1; index < offsets.length; index += 1) pdf += `${String(offsets[index]).padStart(10, '0')} 00000 n \n`;
+    pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+    return Buffer.from(pdf, 'latin1');
+  }
+
+  private wrapPdfLine(line: string, maxLength: number) {
+    if (line.length <= maxLength) return [line];
+    const chunks = [];
+    let remaining = line;
+    while (remaining.length > maxLength) {
+      const at = remaining.lastIndexOf(' ', maxLength);
+      const splitAt = at > 20 ? at : maxLength;
+      chunks.push(remaining.slice(0, splitAt));
+      remaining = `  ${remaining.slice(splitAt).trim()}`;
+    }
+    chunks.push(remaining);
+    return chunks;
+  }
+
+  private escapePdfString(value: string) {
+    return value.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+  }
+
+  private pdfText(value: any) {
+    return String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\x20-\x7E]/g, '?');
+  }
+
+  private formatReportDate(value: any) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '-';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  private formatReportDateTime(value: any) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '-';
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${this.formatReportDate(date)} ${hours}:${minutes}`;
   }
 
   private async ensure(model: string, organizationId: string, id: string, message: string) {
