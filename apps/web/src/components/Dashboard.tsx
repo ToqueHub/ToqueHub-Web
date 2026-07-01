@@ -345,6 +345,24 @@ const apps = [
 ];
 
 type ActiveTab = 'overview' | 'applications' | 'settings' | 'organization-general' | 'organization-documents' | 'users' | 'architecture' | 'stocks-dashboard' | 'stocks-margins' | 'inventory' | 'movements' | 'products' | 'categories' | 'units' | 'suppliers' | 'inventories' | 'locations' | 'audit' | 'rnm-dashboard' | 'rnm-history' | 'rnm-favorites' | 'rnm-about' | 'hr-dashboard' | 'hr-collaborators' | 'hr-departments' | 'hr-positions' | 'hr-rights' | 'hr-rotations' | 'hr-orgchart' | 'planning-dashboard' | 'planning-planning' | 'planning-settings' | 'planning-attendance' | 'planning-day' | 'planning-week' | 'planning-month' | 'planning-assignments' | 'planning-absences' | 'planning-replacements' | 'planning-templates' | 'planning-requirements' | 'technical-sheets-dashboard' | 'technical-sheets-recipes' | 'technical-sheets-categories' | 'technical-sheets-costs' | 'technical-sheets-allergens' | 'technical-sheets-production' | 'production-dashboard' | 'production-orders' | 'production-calendar' | 'production-today' | 'production-assignments' | 'production-materials' | 'production-exports' | 'production-history' | 'menus-dashboard' | 'menus-list' | 'menus-calendar' | 'menus-cycles' | 'menus-diets' | 'menus-guests' | 'menus-exports' | 'menus-history' | 'haccp-dashboard' | 'haccp-setup' | 'haccp-temperatures' | 'haccp-cleaning' | 'haccp-traceability' | 'haccp-receptions' | 'haccp-process' | 'haccp-oil' | 'haccp-production' | 'haccp-products' | 'haccp-labels' | 'haccp-reports';
+type StocksSettingsTab = 'categories' | 'units' | 'movements' | 'locations' | 'audit';
+
+const STOCKS_ALL_TABS: ActiveTab[] = [
+  'stocks-dashboard',
+  'stocks-margins',
+  'inventory',
+  'movements',
+  'products',
+  'categories',
+  'units',
+  'suppliers',
+  'inventories',
+  'locations',
+  'audit',
+];
+
+const STOCKS_SETTINGS_TABS: StocksSettingsTab[] = ['categories', 'units', 'movements', 'locations', 'audit'];
+const isStocksSettingsRoute = (tab: ActiveTab): tab is StocksSettingsTab => STOCKS_SETTINGS_TABS.includes(tab as StocksSettingsTab);
 
 type Confirmation = 'install-stocks' | 'uninstall-stocks' | 'uninstall-rnm-prices' | 'uninstall-planning' | 'uninstall-technical-sheets' | 'uninstall-production' | 'uninstall-menus' | null;
 type AppNotification = {
@@ -402,13 +420,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [isLoading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
-  const [stocksMenuExpanded, setStocksMenuExpanded] = useState(() => {
-    const stocksTabs = [
-      'stocks-dashboard', 'stocks-margins', 'inventory', 'movements', 'products', 'categories',
-      'units', 'suppliers', 'inventories', 'locations', 'audit'
-    ];
-    return stocksTabs.includes('overview'); // initially 'overview', but let's default to false unless configured differently
-  });
+  const [stocksMenuExpanded, setStocksMenuExpanded] = useState(false);
   const [rnmMenuExpanded, setRnmMenuExpanded] = useState(() => false);
   const [hrMenuExpanded, setHrMenuExpanded] = useState(() => false);
   const [planningMenuExpanded, setPlanningMenuExpanded] = useState(() => false);
@@ -683,11 +695,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const planningPrerequisiteMessage = rhPlanningReadiness.ready ? undefined : rhPlanningReadiness.message;
 
   const isStocksTab = useMemo(() => {
-    const stocksTabs = [
-      'stocks-dashboard', 'stocks-margins', 'inventory', 'movements', 'products', 'categories',
-      'units', 'suppliers', 'inventories', 'locations', 'audit'
-    ];
-    return stocksTabs.includes(activeTab);
+    return STOCKS_ALL_TABS.includes(activeTab);
   }, [activeTab]);
 
   const isRnmTab = useMemo(() => ['rnm-dashboard', 'rnm-history', 'rnm-favorites', 'rnm-about'].includes(activeTab), [activeTab]);
@@ -807,16 +815,11 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       defaultTab: 'stocks-dashboard',
       submenu: [
         { tab: 'stocks-dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
-        { tab: 'stocks-margins', label: 'Marges', icon: TrendingUp },
+        { tab: 'suppliers', label: 'Fournisseur', icon: UsersRound },
         { tab: 'products', label: 'Produits', icon: ChefHat },
-        { tab: 'categories', label: 'Catégories', icon: Layers },
-        { tab: 'units', label: 'Unités', icon: Scale },
-        { tab: 'suppliers', label: 'Fournisseurs', icon: UsersRound },
         { tab: 'inventory', label: 'Stocks', icon: Package },
-        { tab: 'inventories', label: 'Inventaires', icon: ClipboardList },
-        { tab: 'movements', label: 'Mouvements', icon: ArrowRight },
-        { tab: 'locations', label: 'Sites & emplacements', icon: MapPin },
-        { tab: 'audit', label: 'Audit', icon: ShieldCheck },
+        { tab: 'inventories', label: 'Inventaire', icon: ClipboardList },
+        { tab: 'categories', label: 'Réglage', icon: Settings, matches: STOCKS_SETTINGS_TABS },
       ]
     },
     {
@@ -1127,7 +1130,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       const summary = await api.uninstallStocks(token);
       setDashboardSummary(summary);
       setInstalledApps(summary.installedApplications ?? []);
-      if (['stocks-dashboard', 'stocks-margins', 'inventory', 'movements', 'products', 'categories', 'units', 'suppliers', 'inventories', 'locations', 'audit'].includes(activeTab)) {
+      if (STOCKS_ALL_TABS.includes(activeTab)) {
         setActiveTab('applications');
       }
       setSuccess('L’application Stocks a été supprimée de l’interface. Les données métier existantes sont conservées.');
@@ -1628,7 +1631,14 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     });
   }, [stocks, inventorySearch, inventoryCategoryFilter]);
 
-  const filteredUnits = useMemo(() => activeUnits.filter(u => u.name.toLowerCase().includes(unitSearch.toLowerCase()) || u.symbol.toLowerCase().includes(unitSearch.toLowerCase())), [activeUnits, unitSearch]);
+  const filteredUnits = useMemo(() => {
+    const search = unitSearch.toLowerCase();
+    return activeUnits.filter((unit) =>
+      unit.name.toLowerCase().includes(search) ||
+      (unit.symbol ?? '').toLowerCase().includes(search) ||
+      (unit.type ?? unit.unitType ?? '').toLowerCase().includes(search)
+    );
+  }, [activeUnits, unitSearch]);
   const filteredLocations = useMemo(() => activeLocations.filter(l => l.name.toLowerCase().includes(locationSearch.toLowerCase()) || l.site?.name?.toLowerCase().includes(locationSearch.toLowerCase())), [activeLocations, locationSearch]);
   const filteredInventories = useMemo(() => inventories.filter(i => i.name.toLowerCase().includes(inventorySessionSearch.toLowerCase()) || (i.status ?? '').toLowerCase().includes(inventorySessionSearch.toLowerCase())), [inventories, inventorySessionSearch]);
   const filteredAudit = useMemo(() => auditEntries.filter(a => `${a.action} ${a.entityType ?? ''} ${a.user?.email ?? ''}`.toLowerCase().includes(auditSearch.toLowerCase())), [auditEntries, auditSearch]);
@@ -1650,6 +1660,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       const matchesSearch = p.name.toLowerCase().includes(search) ||
              (p.sku && p.sku.toLowerCase().includes(search)) ||
              (p.reference && p.reference.toLowerCase().includes(search)) ||
+             (p.gtin && p.gtin.toLowerCase().includes(search)) ||
+             (p.originCountry && p.originCountry.toLowerCase().includes(search)) ||
              (p.category?.name && p.category.name.toLowerCase().includes(search)) ||
              (p.primarySupplier?.name && p.primarySupplier.name.toLowerCase().includes(search)) ||
              (p.supplier?.name && p.supplier.name.toLowerCase().includes(search));
@@ -1670,7 +1682,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     });
   }, [activeSuppliers, supplierSearch]);
 
-  const tabTitle = {
+  const activeTabTitle = {
     overview: 'Dashboard',
     applications: 'Toque Store',
     settings: 'Paramètres',
@@ -1747,6 +1759,44 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     'haccp-labels': 'Étiquettes HACCP',
     'haccp-reports': 'Rapports HACCP',
   }[activeTab];
+  const tabTitle = isStocksSettingsRoute(activeTab) ? 'Réglage' : activeTabTitle;
+
+  const stocksSettingsNav = [
+    { tab: 'categories', label: 'Catégories', icon: Layers },
+    { tab: 'units', label: 'Unités', icon: Scale },
+    { tab: 'movements', label: 'Mouvements', icon: ArrowRight },
+    { tab: 'locations', label: 'Sites et emplacements', icon: MapPin },
+    { tab: 'audit', label: 'Audit', icon: ShieldCheck },
+  ] as const;
+
+  const renderStocksSettingsHeader = () => (
+    <div className="card-modern stocks-settings-header">
+      <div className="section-header-modern">
+        <div className="section-info">
+          <span className="card-title">Réglage</span>
+          <span className="section-tagline">Paramètres du module Stocks.</span>
+        </div>
+      </div>
+      <div className="stocks-settings-tabs" role="tablist" aria-label="Réglages Stocks">
+        {stocksSettingsNav.map((item) => {
+          const ItemIcon = item.icon;
+          return (
+            <button
+              key={item.tab}
+              type="button"
+              className={activeTab === item.tab ? 'active' : ''}
+              onClick={() => goToTab(item.tab)}
+              role="tab"
+              aria-selected={activeTab === item.tab}
+            >
+              <ItemIcon size={15} />
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   return (
     <div className={`app-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
@@ -1940,10 +1990,12 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                       <div className="sidebar-submenu">
                         {app.submenu.map((sub) => {
                           const SubIcon = sub.icon;
+                          const matchingTabs = (sub as { matches?: ActiveTab[] }).matches ?? [];
+                          const isSubActive = activeTab === sub.tab || matchingTabs.includes(activeTab);
                           return (
                             <div
                               key={`sub-${app.id}-${sub.tab}`}
-                              className={`sidebar-item ${activeTab === sub.tab ? 'active' : ''}`}
+                              className={`sidebar-item ${isSubActive ? 'active' : ''}`}
                               onClick={() => goToTab(sub.tab as ActiveTab)}
                             >
                               <SubIcon />
@@ -2511,45 +2563,48 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
               {/* TAB CATEGORIES */}
               {activeTab === 'categories' && (
-                <div className="card-modern">
-                  <div className="section-header-modern">
-                    <div className="section-info">
-                      <span className="card-title">Catégories</span>
-                      <span className="section-tagline">Familles de produits conservées dans votre organisation ToqueHub. Les éléments archivés restent dans les historiques.</span>
-                    </div>
-                    <button className="btn btn-primary" onClick={() => setShowCategoryModal(true)}>
-                      <Plus size={16} /> Ajouter une catégorie
-                    </button>
-                  </div>
-                  <div className="apps-grid compact-grid">
-                    {categories.length === 0 ? (
-                      <div className="empty-state app-empty">
-                        <div className="empty-state-icon">🏷️</div>
-                        <span className="empty-state-title">Aucune catégorie</span>
-                        <span className="empty-state-desc">Créez vos familles de produits dès que Stocks est installé.</span>
+                <>
+                  {renderStocksSettingsHeader()}
+                  <div className="card-modern">
+                    <div className="section-header-modern">
+                      <div className="section-info">
+                        <span className="card-title">Catégories</span>
+                        <span className="section-tagline">Familles de produits conservées dans votre organisation ToqueHub. Les éléments archivés restent dans les historiques.</span>
                       </div>
-                    ) : categories.map((category) => (
-                      <motion.div
-                        key={category.id}
-                        className="app-card compact-card"
-                        role="button"
-                        tabIndex={0}
-                        whileHover={{ y: -3 }}
-                        onClick={() => openProductsForCategory(category.id)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            openProductsForCategory(category.id);
-                          }
-                        }}
-                      >
-                        <div className="app-card-icon"><Layers size={20} /></div>
-                        <h3>{category.name}</h3>
-                        <p>{category.description || 'Catégorie de produits'}</p>
-                      </motion.div>
-                    ))}
+                      <button className="btn btn-primary" onClick={() => setShowCategoryModal(true)}>
+                        <Plus size={16} /> Ajouter une catégorie
+                      </button>
+                    </div>
+                    <div className="apps-grid compact-grid">
+                      {categories.length === 0 ? (
+                        <div className="empty-state app-empty">
+                          <div className="empty-state-icon">🏷️</div>
+                          <span className="empty-state-title">Aucune catégorie</span>
+                          <span className="empty-state-desc">Créez vos familles de produits dès que Stocks est installé.</span>
+                        </div>
+                      ) : categories.map((category) => (
+                        <motion.div
+                          key={category.id}
+                          className="app-card compact-card"
+                          role="button"
+                          tabIndex={0}
+                          whileHover={{ y: -3 }}
+                          onClick={() => openProductsForCategory(category.id)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              openProductsForCategory(category.id);
+                            }
+                          }}
+                        >
+                          <div className="app-card-icon"><Layers size={20} /></div>
+                          <h3>{category.name}</h3>
+                          <p>{category.description || 'Catégorie de produits'}</p>
+                        </motion.div>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                </>
               )}
 
               {/* TAB INVENTORY */}
@@ -2648,107 +2703,110 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
               {/* TAB MOVEMENTS */}
               {activeTab === 'movements' && (
-                <div className="card-modern">
-                  <div className="section-header-modern">
-                    <div className="section-info">
-                      <span className="card-title">Historique des Mouvements</span>
-                      <span className="section-tagline">Traçabilité des flux d'entrées, sorties, pertes et corrections.</span>
+                <>
+                  {renderStocksSettingsHeader()}
+                  <div className="card-modern">
+                    <div className="section-header-modern">
+                      <div className="section-info">
+                        <span className="card-title">Historique des Mouvements</span>
+                        <span className="section-tagline">Traçabilité des flux d'entrées, sorties, pertes et corrections.</span>
+                      </div>
+                      <button className="btn btn-primary" onClick={() => setShowMovementModal(true)}>
+                        <Plus size={16} /> Enregistrer un mouvement
+                      </button>
                     </div>
-                    <button className="btn btn-primary" onClick={() => setShowMovementModal(true)}>
-                      <Plus size={16} /> Enregistrer un mouvement
-                    </button>
-                  </div>
 
-                  <div className="filter-bar">
-                    <div className="search-input-wrapper">
-                      <Search />
-                      <input
-                        type="text"
-                        placeholder="Rechercher par produit ou motif..."
-                        className="search-input"
-                        value={movementSearch}
-                        onChange={(e) => setMovementSearch(e.target.value)}
-                      />
+                    <div className="filter-bar">
+                      <div className="search-input-wrapper">
+                        <Search />
+                        <input
+                          type="text"
+                          placeholder="Rechercher par produit ou motif..."
+                          className="search-input"
+                          value={movementSearch}
+                          onChange={(e) => setMovementSearch(e.target.value)}
+                        />
+                      </div>
+                      <select
+                        value={movementTypeFilter}
+                        onChange={(e) => setMovementTypeFilter(e.target.value)}
+                        style={{ maxWidth: '200px' }}
+                      >
+                        <option value="">Tous les types</option>
+                        {Object.entries(movementLabels).map(([value, label]) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
                     </div>
-                    <select
-                      value={movementTypeFilter}
-                      onChange={(e) => setMovementTypeFilter(e.target.value)}
-                      style={{ maxWidth: '200px' }}
-                    >
-                      <option value="">Tous les types</option>
-                      {Object.entries(movementLabels).map(([value, label]) => (
-                        <option key={value} value={value}>{label}</option>
-                      ))}
-                    </select>
-                  </div>
 
-                  <div className="table-wrapper">
-                    <table className="table-modern">
-                      <thead>
-                        <tr>
-                          <th>Date</th>
-                          <th>Type</th>
-                          <th>Produit</th>
-                          <th style={{ textAlign: 'right' }}>Quantité</th>
-                          <th>Fournisseur</th>
-                          <th>Motif / Note</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredMovements.length === 0 ? (
+                    <div className="table-wrapper">
+                      <table className="table-modern">
+                        <thead>
                           <tr>
-                            <td colSpan={6}>
-                              <div className="empty-state">
-                                <div className="empty-state-icon">📋</div>
-                                <span className="empty-state-title">Aucun mouvement enregistré</span>
-                                <span className="empty-state-desc">Aucun mouvement de stock n'a été effectué ou aucun ne correspond à vos filtres.</span>
-                              </div>
-                            </td>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th>Produit</th>
+                            <th style={{ textAlign: 'right' }}>Quantité</th>
+                            <th>Fournisseur</th>
+                            <th>Motif / Note</th>
                           </tr>
-                        ) : (
-                          filteredMovements.map((m) => {
-                            const badgeClass = {
-                              RECEPTION: 'badge-reception',
-                              IN: 'badge-reception',
-                              ENTRY: 'badge-reception',
-                              OUT: 'badge-loss',
-                              EXIT: 'badge-loss',
-                              PRODUCTION: 'badge-production',
-                              LOSS: 'badge-loss',
-                              CORRECTION: 'badge-correction',
-                              INVENTORY: 'badge-inventory',
-                              TRANSFER: 'badge-production',
-                            }[m.type];
-                            return (
-                              <tr key={m.id}>
-                                <td style={{ color: 'var(--text-muted)' }}>
-                                  {movementEffectiveDate(m).toLocaleDateString('fr-FR', {
-                                    day: '2-digit',
-                                    month: '2-digit',
-                                    year: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                  })}
-                                </td>
-                                <td>
-                                  <span className={`badge ${badgeClass}`}>
-                                    {movementLabels[m.type]}
-                                  </span>
-                                </td>
-                                <td style={{ fontWeight: 600 }}>{m.product.name}</td>
-                                <td style={{ textAlign: 'right', fontWeight: 700, color: m.type === 'LOSS' ? 'var(--danger)' : 'var(--text-main)' }}>
-                                  {movementSign(m.type)}{m.quantity} {m.product.unit?.symbol ?? ''}
-                                </td>
-                                <td>{m.supplier?.name || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
-                                <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>{m.reason || '—'}</td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {filteredMovements.length === 0 ? (
+                            <tr>
+                              <td colSpan={6}>
+                                <div className="empty-state">
+                                  <div className="empty-state-icon">📋</div>
+                                  <span className="empty-state-title">Aucun mouvement enregistré</span>
+                                  <span className="empty-state-desc">Aucun mouvement de stock n'a été effectué ou aucun ne correspond à vos filtres.</span>
+                                </div>
+                              </td>
+                            </tr>
+                          ) : (
+                            filteredMovements.map((m) => {
+                              const badgeClass = {
+                                RECEPTION: 'badge-reception',
+                                IN: 'badge-reception',
+                                ENTRY: 'badge-reception',
+                                OUT: 'badge-loss',
+                                EXIT: 'badge-loss',
+                                PRODUCTION: 'badge-production',
+                                LOSS: 'badge-loss',
+                                CORRECTION: 'badge-correction',
+                                INVENTORY: 'badge-inventory',
+                                TRANSFER: 'badge-production',
+                              }[m.type];
+                              return (
+                                <tr key={m.id}>
+                                  <td style={{ color: 'var(--text-muted)' }}>
+                                    {movementEffectiveDate(m).toLocaleDateString('fr-FR', {
+                                      day: '2-digit',
+                                      month: '2-digit',
+                                      year: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                    })}
+                                  </td>
+                                  <td>
+                                    <span className={`badge ${badgeClass}`}>
+                                      {movementLabels[m.type]}
+                                    </span>
+                                  </td>
+                                  <td style={{ fontWeight: 600 }}>{m.product.name}</td>
+                                  <td style={{ textAlign: 'right', fontWeight: 700, color: m.type === 'LOSS' ? 'var(--danger)' : 'var(--text-main)' }}>
+                                    {movementSign(m.type)}{m.quantity} {m.product.unit?.symbol ?? ''}
+                                  </td>
+                                  <td>{m.supplier?.name || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                                  <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>{m.reason || '—'}</td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                </div>
+                </>
               )}
 
               {/* TAB PRODUCTS */}
@@ -2760,17 +2818,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                         <span className="card-title">Catalogue des Produits</span>
                         <span className="section-tagline">Liste globale des produits référencés dans votre cuisine.</span>
                       </div>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button className="btn btn-secondary" onClick={() => setShowCategoryModal(true)}>
-                          + Catégorie
-                        </button>
-                        <button className="btn btn-secondary" onClick={() => setShowUnitModal(true)}>
-                          + Unité
-                        </button>
-                        <button className="btn btn-primary" onClick={() => setShowProductModal(true)}>
-                          <Plus size={16} /> Nouveau Produit
-                        </button>
-                      </div>
+                      <button className="btn btn-primary" onClick={() => setShowProductModal(true)}>
+                        <Plus size={16} /> Nouveau Produit
+                      </button>
                     </div>
 
                     <div className="filter-bar">
@@ -2809,7 +2859,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                             <th>Unité par défaut</th>
                             <th>Catégorie</th>
                             <th style={{ textAlign: 'right' }}>P.M.P.</th>
-                            <th style={{ textAlign: 'right' }}>Stock mini</th>
+                            <th style={{ textAlign: 'right' }}>Seuil minimum</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -2852,90 +2902,15 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                     </div>
                   </div>
 
-                  {/* Categories & Units Side-By-Side Grid */}
-                  <div className="double-panel">
-                    {/* Categories Card */}
-                    <div className="card-modern">
-                      <div className="card-title-container">
-                        <span className="card-title"><Layers size={16} /> Catégories ({categories.length})</span>
-                        <button className="btn btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }} onClick={() => setShowCategoryModal(true)}>
-                          Ajouter
-                        </button>
-                      </div>
-                      <div className="table-wrapper">
-                        <table className="table-modern">
-                          <thead>
-                            <tr>
-                              <th>Nom</th>
-                              <th>Description</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {categories.length === 0 ? (
-                              <tr>
-                                <td colSpan={2} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem 1rem' }}>
-                                  Aucune catégorie créée.
-                                </td>
-                              </tr>
-                            ) : (
-                              categories.map((cat) => (
-                                <tr key={cat.id} className="clickable-row" onClick={() => openProductsForCategory(cat.id)}>
-                                  <td style={{ fontWeight: 600 }}>{cat.name}</td>
-                                  <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>{cat.description || '—'}</td>
-                                </tr>
-                              ))
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-
-                    {/* Units Card */}
-                    <div className="card-modern">
-                      <div className="card-title-container">
-                        <span className="card-title"><Scale size={16} /> Unités de mesure ({units.length})</span>
-                        <button className="btn btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }} onClick={() => setShowUnitModal(true)}>
-                          Ajouter
-                        </button>
-                      </div>
-                      <div className="table-wrapper">
-                        <table className="table-modern">
-                          <thead>
-                            <tr>
-                              <th>Nom complet</th>
-                              <th>Symbole</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {units.length === 0 ? (
-                              <tr>
-                                <td colSpan={2} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem 1rem' }}>
-                                  Aucune unité configurée.
-                                </td>
-                              </tr>
-                            ) : (
-                              units.map((u) => (
-                                <tr key={u.id}>
-                                  <td style={{ fontWeight: 600 }}>{u.name}</td>
-                                  <td>
-                                    <span className="badge badge-reception" style={{ textTransform: 'none' }}>
-                                      {u.symbol}
-                                    </span>
-                                  </td>
-                                </tr>
-                              ))
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
                 </>
               )}
 
               {/* TAB UNITS */}
               {activeTab === 'units' && (
-                <UnitsPage units={filteredUnits} search={unitSearch} setSearch={setUnitSearch} showArchived={showArchived} setShowArchived={setShowArchived} onCreate={() => setShowUnitModal(true)} />
+                <>
+                  {renderStocksSettingsHeader()}
+                  <UnitsPage units={filteredUnits} search={unitSearch} setSearch={setUnitSearch} showArchived={showArchived} setShowArchived={setShowArchived} onCreate={() => setShowUnitModal(true)} />
+                </>
               )}
 
               {/* TAB INVENTORIES */}
@@ -2945,12 +2920,18 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
               {/* TAB LOCATIONS */}
               {activeTab === 'locations' && (
-                <LocationsPage sites={activeSites} locations={filteredLocations} search={locationSearch} setSearch={setLocationSearch} showArchived={showArchived} setShowArchived={setShowArchived} onCreateSite={() => setShowSiteModal(true)} onCreateLocation={() => setShowLocationModal(true)} />
+                <>
+                  {renderStocksSettingsHeader()}
+                  <LocationsPage sites={activeSites} locations={filteredLocations} search={locationSearch} setSearch={setLocationSearch} showArchived={showArchived} setShowArchived={setShowArchived} onCreateSite={() => setShowSiteModal(true)} onCreateLocation={() => setShowLocationModal(true)} />
+                </>
               )}
 
               {/* TAB AUDIT */}
               {activeTab === 'audit' && (
-                <AuditPage entries={filteredAudit} search={auditSearch} setSearch={setAuditSearch} onExport={() => exportAuditCsv(token)} />
+                <>
+                  {renderStocksSettingsHeader()}
+                  <AuditPage entries={filteredAudit} search={auditSearch} setSearch={setAuditSearch} onExport={() => exportAuditCsv(token)} />
+                </>
               )}
 
               {/* TAB SUPPLIERS */}
@@ -3047,7 +3028,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       </Modal>
 
       {/* Product Modal */}
-      <Modal isOpen={showProductModal} onClose={() => setShowProductModal(false)} title="Créer un produit">
+      <Modal isOpen={showProductModal} onClose={() => setShowProductModal(false)} title="Créer un produit" size="product">
         <ProductForm
           categories={categories}
           units={units}
@@ -3071,7 +3052,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       />
 
       {/* Supplier Modal */}
-      <Modal isOpen={showSupplierModal} onClose={() => { setSupplierPrefillName(''); setShowSupplierModal(false); }} title="Créer un fournisseur">
+      <Modal isOpen={showSupplierModal} onClose={() => { setSupplierPrefillName(''); setShowSupplierModal(false); }} title="Créer un fournisseur" size="product">
         <SupplierForm initialName={supplierPrefillName} onSubmit={handleCreateSupplier} onClose={() => { setSupplierPrefillName(''); setShowSupplierModal(false); }} />
       </Modal>
 
@@ -3083,7 +3064,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       />
 
       {/* Movement Modal */}
-      <Modal isOpen={showMovementModal} onClose={() => setShowMovementModal(false)} title="Enregistrer un mouvement de stock">
+      <Modal isOpen={showMovementModal} onClose={() => setShowMovementModal(false)} title="Enregistrer un mouvement de stock" size="product">
         <MovementForm
           products={products}
           suppliers={suppliers}
@@ -3133,7 +3114,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         <LocationForm sites={sites} onSubmit={handleCreateLocation} onClose={() => setShowLocationModal(false)} />
       </Modal>
 
-      <Modal isOpen={showInventoryModal} onClose={() => setShowInventoryModal(false)} title="Créer un inventaire complet">
+      <Modal isOpen={showInventoryModal} onClose={() => setShowInventoryModal(false)} title="Créer un inventaire complet" size="product">
         <InventoryForm sites={sites} locations={locations} onSubmit={handleCreateInventory} onClose={() => setShowInventoryModal(false)} />
       </Modal>
 
@@ -3204,6 +3185,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             onOpen={() => {
               if (selectedStoreApp.id === 'stocks') setActiveTab('stocks-dashboard');
               if (selectedStoreApp.id === 'rnm-prices') setActiveTab('rnm-dashboard');
+              if (selectedStoreApp.id === 'hr') setActiveTab('hr-dashboard');
               if (selectedStoreApp.id === 'technical-sheets') setActiveTab('technical-sheets-dashboard');
               if (selectedStoreApp.id === 'production') setActiveTab('production-dashboard');
               if (selectedStoreApp.id === 'menus') setActiveTab('menus-dashboard');
@@ -6066,7 +6048,37 @@ function MiniMovements({ movements }: { movements: StockMovement[] }) {
   );
 }
 
-function UnitsPage({ units, search, setSearch, showArchived, setShowArchived, onCreate }: { units: Unit[]; search: string; setSearch: (v: string) => void; showArchived: boolean; setShowArchived: (v: boolean) => void; onCreate: () => void }) { return <ReferencePage title="Unités" subtitle="Unités principales et conversions simples compatibles (kg/g, L/mL)." search={search} setSearch={setSearch} showArchived={showArchived} setShowArchived={setShowArchived} onCreate={onCreate} createLabel="Ajouter une unité"><div className="table-wrapper"><table className="table-modern"><thead><tr><th>Nom</th><th>Symbole</th><th>Type</th><th>Conversion</th><th>Statut</th></tr></thead><tbody>{units.map(u => <tr key={u.id}><td>{u.name}</td><td><span className="badge badge-reception">{u.symbol}</span></td><td>{u.type ?? u.unitType ?? 'Compatible'}</td><td>{u.baseFactor ? `× ${u.baseFactor}` : 'Standard'}</td><td>{isArchived(u) ? 'Archivé' : 'Actif'}</td></tr>)}</tbody></table></div>{!units.length && <EmptyMini title="Aucune unité" text="Préremplissez kg, g, L, mL, pièce, carton…" />}</ReferencePage>; }
+function UnitsPage({ units, search, setSearch, showArchived, setShowArchived, onCreate }: { units: Unit[]; search: string; setSearch: (v: string) => void; showArchived: boolean; setShowArchived: (v: boolean) => void; onCreate: () => void }) {
+  return (
+    <ReferencePage title="Unités" subtitle="Unités principales et conversions simples compatibles (kg/g, L/mL)." search={search} setSearch={setSearch} showArchived={showArchived} setShowArchived={setShowArchived} onCreate={onCreate} createLabel="Ajouter une unité">
+      <div className="table-wrapper">
+        <table className="table-modern">
+          <thead>
+            <tr>
+              <th>Nom</th>
+              <th>Symbole</th>
+              <th>Type</th>
+              <th>Conversion</th>
+              <th>Statut</th>
+            </tr>
+          </thead>
+          <tbody>
+            {units.map((unit) => (
+              <tr key={unit.id}>
+                <td>{unit.name}</td>
+                <td><span className="badge badge-reception">{unit.symbol || '—'}</span></td>
+                <td>{unit.type ?? unit.unitType ?? 'Compatible'}</td>
+                <td>{unit.baseFactor ? `× ${unit.baseFactor}` : 'Standard'}</td>
+                <td>{isArchived(unit) ? 'Archivé' : 'Actif'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {!units.length && <EmptyMini title="Aucune unité" text="Préremplissez kg, g, L, mL, pièce, carton…" />}
+    </ReferencePage>
+  );
+}
 
 function InventoriesPage({ inventories, products, search, setSearch, onCreate }: { inventories: Inventory[]; products: Product[]; search: string; setSearch: (v: string) => void; onCreate: () => void }) { return <ReferencePage title="Inventaires" subtitle="Inventaires complets: comptage réel, écarts, corrections automatiques et verrouillage après validation." search={search} setSearch={setSearch} onCreate={onCreate} createLabel="Créer un inventaire"><div className="table-wrapper"><table className="table-modern"><thead><tr><th>Nom</th><th>Date</th><th>Statut</th><th>Périmètre</th><th>Lignes</th></tr></thead><tbody>{inventories.map(i => <tr key={i.id}><td>{i.name}</td><td>{i.date ? new Date(i.date).toLocaleDateString('fr-FR') : '—'}</td><td><span className="badge badge-inventory">{i.status ?? 'Brouillon'}</span></td><td>{i.site?.name ?? 'Tous sites'} / {i.location?.name ?? 'Tous emplacements'}</td><td>{i.lines?.length ?? products.length}</td></tr>)}</tbody></table></div>{!inventories.length && <EmptyMini title="Aucun inventaire" text="Créez un inventaire complet pour charger les produits actifs et saisir les quantités comptées." />}</ReferencePage>; }
 
@@ -7547,7 +7559,7 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full' | 'product';
 }
 
 function Modal({ isOpen, onClose, title, children, size }: ModalProps) {
@@ -7725,15 +7737,98 @@ function UnitForm({ onSubmit, onClose }: UnitFormProps) {
 }
 
 // Product Form
+type ProductSheetTab = 'identity' | 'supplier' | 'stock' | 'packaging' | 'allergens' | 'nutrition' | 'storage';
+
+const PRODUCT_SHEET_TABS: Array<{ id: ProductSheetTab; label: string }> = [
+  { id: 'identity', label: 'Identité' },
+  { id: 'supplier', label: 'Fournisseur' },
+  { id: 'stock', label: 'Stock' },
+  { id: 'packaging', label: 'Conditionnement' },
+  { id: 'allergens', label: 'Allergènes' },
+  { id: 'nutrition', label: 'Nutrition' },
+  { id: 'storage', label: 'Conservation' },
+];
+
+const PRODUCT_ALLERGEN_OPTIONS = [
+  'Gluten',
+  'Blé',
+  'Seigle',
+  'Orge',
+  'Avoine',
+  'Épeautre',
+  'Kamut',
+  'Lait',
+  'Œuf',
+  'Poisson',
+  'Crustacés',
+  'Mollusques',
+  'Fruits à coque',
+  'Amande',
+  'Noisette',
+  'Noix',
+  'Noix de cajou',
+  'Noix de pécan',
+  'Noix du Brésil',
+  'Pistache',
+  'Macadamia',
+  'Arachide',
+  'Soja',
+  'Sésame',
+  'Céleri',
+  'Moutarde',
+  'Lupin',
+  'Sulfites',
+];
+
+const PRODUCT_DIETARY_TAG_OPTIONS = ['Sans gluten', 'Sans lactose', 'Sans lait', 'Sans œuf', 'Sans fruits à coque', 'Vegan', 'Végétarien', 'Surgelé', 'Bio'];
+const PRODUCT_STORAGE_OPTIONS = ['Température ambiante', 'Réfrigéré', 'Surgelé', 'Sec', 'Autre'];
+
+type ProductNutritionField = 'energyKj' | 'energyKcal' | 'fatGrams' | 'saturatedFatGrams' | 'carbohydratesGrams' | 'sugarsGrams' | 'fiberGrams' | 'proteinGrams' | 'saltGrams';
+
+const PRODUCT_NUTRITION_FIELDS: Array<{ key: ProductNutritionField; label: string; unit: string }> = [
+  { key: 'energyKj', label: 'Énergie kJ', unit: 'kJ' },
+  { key: 'energyKcal', label: 'Énergie kcal', unit: 'kcal' },
+  { key: 'fatGrams', label: 'Matières grasses', unit: 'g' },
+  { key: 'saturatedFatGrams', label: 'Dont saturées', unit: 'g' },
+  { key: 'carbohydratesGrams', label: 'Glucides', unit: 'g' },
+  { key: 'sugarsGrams', label: 'Dont sucres', unit: 'g' },
+  { key: 'fiberGrams', label: 'Fibres', unit: 'g' },
+  { key: 'proteinGrams', label: 'Protéines', unit: 'g' },
+  { key: 'saltGrams', label: 'Sel', unit: 'g' },
+];
+
 type ProductFormPayload = {
   name: string;
-  sku?: string;
-  description?: string;
+  sku?: string | null;
+  description?: string | null;
   unitId: string;
   categoryId?: string | null;
   primarySupplierId?: string | null;
   averagePrice?: number;
   minimumStock?: number;
+  gtin?: string | null;
+  originCountry?: string | null;
+  packageLabel?: string | null;
+  unitsPerPackage?: number | null;
+  unitWeightGrams?: number | null;
+  netWeightGrams?: number | null;
+  ingredients?: string | null;
+  allergensPresent?: string[];
+  possibleTraces?: string[];
+  dietaryTags?: string[];
+  energyKj?: number | null;
+  energyKcal?: number | null;
+  fatGrams?: number | null;
+  saturatedFatGrams?: number | null;
+  carbohydratesGrams?: number | null;
+  sugarsGrams?: number | null;
+  fiberGrams?: number | null;
+  proteinGrams?: number | null;
+  saltGrams?: number | null;
+  storageType?: string | null;
+  shelfLifeAfterOpening?: string | null;
+  storageInstructions?: string | null;
+  preparationInstructions?: string | null;
 };
 
 interface ProductFormProps {
@@ -7742,12 +7837,48 @@ interface ProductFormProps {
   suppliers: Supplier[];
   initialName?: string;
   initialProduct?: Product | null;
+  currentQuantity?: number | null;
   submitLabel?: string;
   onSubmit: (payload: ProductFormPayload) => Promise<void>;
   onClose: () => void;
 }
 
-function ProductForm({ categories, units, suppliers, initialName = '', initialProduct = null, submitLabel, onSubmit, onClose }: ProductFormProps) {
+function productFieldString(value: string | number | null | undefined) {
+  if (value === null || value === undefined) return '';
+  return String(value);
+}
+
+function productNullableText(value: string, clearWhenEmpty: boolean) {
+  const trimmed = value.trim();
+  if (trimmed) return trimmed;
+  return clearWhenEmpty ? null : undefined;
+}
+
+function productOptionalNumber(value: string) {
+  if (value.trim() === '') return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function productNullableNumber(value: string, clearWhenEmpty: boolean) {
+  if (value.trim() === '') return clearWhenEmpty ? null : undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function initialNutritionState(product?: Product | null) {
+  return PRODUCT_NUTRITION_FIELDS.reduce((acc, field) => {
+    acc[field.key] = productFieldString(product?.[field.key]);
+    return acc;
+  }, {} as Record<ProductNutritionField, string>);
+}
+
+function toggleProductValue(values: string[], value: string) {
+  return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
+}
+
+function ProductForm({ categories, units, suppliers, initialName = '', initialProduct = null, currentQuantity = null, submitLabel, onSubmit, onClose }: ProductFormProps) {
+  const [activeFormTab, setActiveFormTab] = useState<ProductSheetTab>('identity');
   const [name, setName] = useState(initialProduct?.name ?? initialName);
   const [sku, setSku] = useState(initialProduct?.sku ?? initialProduct?.reference ?? '');
   const [description, setDescription] = useState(initialProduct?.description ?? '');
@@ -7756,10 +7887,26 @@ function ProductForm({ categories, units, suppliers, initialName = '', initialPr
   const [supplierId, setSupplierId] = useState(initialProduct?.primarySupplierId ?? initialProduct?.supplierId ?? initialProduct?.primarySupplier?.id ?? initialProduct?.supplier?.id ?? '');
   const [averagePrice, setAveragePrice] = useState(String(initialProduct ? numeric(initialProduct.averagePrice ?? initialProduct.averagePurchasePrice ?? initialProduct.weightedAveragePrice) || '' : ''));
   const [minimumStock, setMinimumStock] = useState(String(initialProduct ? numeric(initialProduct.minimumStock ?? initialProduct.minStock) || '' : ''));
+  const [gtin, setGtin] = useState(initialProduct?.gtin ?? '');
+  const [originCountry, setOriginCountry] = useState(initialProduct?.originCountry ?? '');
+  const [packageLabel, setPackageLabel] = useState(initialProduct?.packageLabel ?? '');
+  const [unitsPerPackage, setUnitsPerPackage] = useState(productFieldString(initialProduct?.unitsPerPackage));
+  const [unitWeightGrams, setUnitWeightGrams] = useState(productFieldString(initialProduct?.unitWeightGrams));
+  const [netWeightGrams, setNetWeightGrams] = useState(productFieldString(initialProduct?.netWeightGrams));
+  const [ingredients, setIngredients] = useState(initialProduct?.ingredients ?? '');
+  const [allergensPresent, setAllergensPresent] = useState<string[]>(initialProduct?.allergensPresent ?? []);
+  const [possibleTraces, setPossibleTraces] = useState<string[]>(initialProduct?.possibleTraces ?? []);
+  const [dietaryTags, setDietaryTags] = useState<string[]>(initialProduct?.dietaryTags ?? []);
+  const [nutrition, setNutrition] = useState<Record<ProductNutritionField, string>>(() => initialNutritionState(initialProduct));
+  const [storageType, setStorageType] = useState(initialProduct?.storageType ?? '');
+  const [shelfLifeAfterOpening, setShelfLifeAfterOpening] = useState(initialProduct?.shelfLifeAfterOpening ?? '');
+  const [storageInstructions, setStorageInstructions] = useState(initialProduct?.storageInstructions ?? '');
+  const [preparationInstructions, setPreparationInstructions] = useState(initialProduct?.preparationInstructions ?? '');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
 
   useEffect(() => {
+    setActiveFormTab('identity');
     setName(initialProduct?.name ?? initialName);
     setSku(initialProduct?.sku ?? initialProduct?.reference ?? '');
     setDescription(initialProduct?.description ?? '');
@@ -7768,6 +7915,21 @@ function ProductForm({ categories, units, suppliers, initialName = '', initialPr
     setSupplierId(initialProduct?.primarySupplierId ?? initialProduct?.supplierId ?? initialProduct?.primarySupplier?.id ?? initialProduct?.supplier?.id ?? '');
     setAveragePrice(String(initialProduct ? numeric(initialProduct.averagePrice ?? initialProduct.averagePurchasePrice ?? initialProduct.weightedAveragePrice) || '' : ''));
     setMinimumStock(String(initialProduct ? numeric(initialProduct.minimumStock ?? initialProduct.minStock) || '' : ''));
+    setGtin(initialProduct?.gtin ?? '');
+    setOriginCountry(initialProduct?.originCountry ?? '');
+    setPackageLabel(initialProduct?.packageLabel ?? '');
+    setUnitsPerPackage(productFieldString(initialProduct?.unitsPerPackage));
+    setUnitWeightGrams(productFieldString(initialProduct?.unitWeightGrams));
+    setNetWeightGrams(productFieldString(initialProduct?.netWeightGrams));
+    setIngredients(initialProduct?.ingredients ?? '');
+    setAllergensPresent(initialProduct?.allergensPresent ?? []);
+    setPossibleTraces(initialProduct?.possibleTraces ?? []);
+    setDietaryTags(initialProduct?.dietaryTags ?? []);
+    setNutrition(initialNutritionState(initialProduct));
+    setStorageType(initialProduct?.storageType ?? '');
+    setShelfLifeAfterOpening(initialProduct?.shelfLifeAfterOpening ?? '');
+    setStorageInstructions(initialProduct?.storageInstructions ?? '');
+    setPreparationInstructions(initialProduct?.preparationInstructions ?? '');
   }, [initialName, initialProduct, units]);
 
   async function handleSubmit(e: FormEvent) {
@@ -7776,15 +7938,37 @@ function ProductForm({ categories, units, suppliers, initialName = '', initialPr
     setSubmitting(true);
     setError(undefined);
     try {
+      const clearWhenEmpty = Boolean(initialProduct);
+      const nutritionPayload = {} as Record<ProductNutritionField, number | null | undefined>;
+      PRODUCT_NUTRITION_FIELDS.forEach((field) => {
+        const value = productNullableNumber(nutrition[field.key], clearWhenEmpty);
+        if (value !== undefined) nutritionPayload[field.key] = value;
+      });
+
       await onSubmit({
         name: name.trim(),
-        sku: sku.trim() || undefined,
-        description: description.trim() || undefined,
+        sku: productNullableText(sku, clearWhenEmpty),
+        description: productNullableText(description, clearWhenEmpty),
         unitId,
         categoryId: categoryId || (initialProduct ? null : undefined),
         primarySupplierId: supplierId || (initialProduct ? null : undefined),
-        averagePrice: averagePrice ? Number(averagePrice) : undefined,
-        minimumStock: minimumStock ? Number(minimumStock) : undefined,
+        averagePrice: productOptionalNumber(averagePrice),
+        minimumStock: productOptionalNumber(minimumStock),
+        gtin: productNullableText(gtin, clearWhenEmpty),
+        originCountry: productNullableText(originCountry, clearWhenEmpty),
+        packageLabel: productNullableText(packageLabel, clearWhenEmpty),
+        unitsPerPackage: productNullableNumber(unitsPerPackage, clearWhenEmpty),
+        unitWeightGrams: productNullableNumber(unitWeightGrams, clearWhenEmpty),
+        netWeightGrams: productNullableNumber(netWeightGrams, clearWhenEmpty),
+        ingredients: productNullableText(ingredients, clearWhenEmpty),
+        allergensPresent,
+        possibleTraces,
+        dietaryTags,
+        ...nutritionPayload,
+        storageType: productNullableText(storageType, clearWhenEmpty),
+        shelfLifeAfterOpening: productNullableText(shelfLifeAfterOpening, clearWhenEmpty),
+        storageInstructions: productNullableText(storageInstructions, clearWhenEmpty),
+        preparationInstructions: productNullableText(preparationInstructions, clearWhenEmpty),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur lors de la création.');
@@ -7793,85 +7977,217 @@ function ProductForm({ categories, units, suppliers, initialName = '', initialPr
     }
   }
 
+  const selectedUnit = units.find((unit) => unit.id === unitId);
+  const computedNetWeight = productOptionalNumber(unitsPerPackage) != null && productOptionalNumber(unitWeightGrams) != null
+    ? (productOptionalNumber(unitsPerPackage) ?? 0) * (productOptionalNumber(unitWeightGrams) ?? 0)
+    : null;
+
   return (
-    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+    <form onSubmit={handleSubmit} className="product-sheet-form">
       {error && (
         <div className="alert-modern error" style={{ padding: '0.75rem 1rem' }}>
           <AlertCircle size={16} />
           <span>{error}</span>
         </div>
       )}
-      <label>
-        Nom du produit *
-        <input
-          placeholder="ex: Beurre doux, Oeuf plein air..."
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          required
-          autoFocus
-        />
-      </label>
-      <label>
-        Code SKU / Référence catalogue
-        <input
-          placeholder="ex: BEU-DOUX-250G..."
-          value={sku}
-          onChange={(e) => setSku(e.target.value)}
-        />
-      </label>
+      <div className="product-sheet-form-body">
+        <div className="product-sheet-tabs" role="tablist" aria-label="Sections fiche produit">
+          {PRODUCT_SHEET_TABS.map((tab) => (
+            <button key={tab.id} type="button" role="tab" aria-selected={activeFormTab === tab.id} className={activeFormTab === tab.id ? 'active' : ''} onClick={() => setActiveFormTab(tab.id)}>
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
-      <label>
-        Description
-        <textarea
-          rows={3}
-          placeholder="Notes produit, conditionnement, marque, informations utiles..."
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-      </label>
+        <div className="product-sheet-form-panel">
+        {activeFormTab === 'identity' ? (
+          <div className="product-sheet-form-grid">
+            <label>
+              Nom du produit *
+              <input placeholder="ex: Beurre doux, œufs plein air..." value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
+            </label>
+            <label>
+              GTIN / EAN
+              <input placeholder="ex: 6410401234567" value={gtin} onChange={(e) => setGtin(e.target.value)} />
+            </label>
+            <label>
+              Pays d'origine / origine
+              <input placeholder="ex: Finlande, France, UE..." value={originCountry} onChange={(e) => setOriginCountry(e.target.value)} />
+            </label>
+            <label className="product-sheet-wide">
+              Description interne
+              <textarea rows={3} placeholder="Notes produit, marque, informations utiles..." value={description} onChange={(e) => setDescription(e.target.value)} />
+            </label>
+          </div>
+        ) : null}
 
-      <div className="form-row">
-        <label>
-          Unité de mesure *
-          <select value={unitId} onChange={(e) => setUnitId(e.target.value)} required>
-            <option value="">Choisir l'unité...</option>
-            {units.map((u) => (
-              <option key={u.id} value={u.id}>{u.name} ({u.symbol})</option>
+        {activeFormTab === 'supplier' ? (
+          <div className="product-sheet-form-grid">
+            <label>
+              Fournisseur
+              <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+                <option value="">Non renseigné</option>
+                {suppliers.map((supplier) => (
+                  <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Référence fournisseur / SKU
+              <input placeholder="ex: KESPRO-12345, FARINE-T55..." value={sku} onChange={(e) => setSku(e.target.value)} />
+            </label>
+          </div>
+        ) : null}
+
+        {activeFormTab === 'stock' ? (
+          <div className="product-sheet-form-grid">
+            <label>
+              Catégorie
+              <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+                <option value="">Non catégorisé</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Unité de stock *
+              <select value={unitId} onChange={(e) => setUnitId(e.target.value)} required>
+                <option value="">Choisir l'unité...</option>
+                {units.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name} ({u.symbol})</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Seuil minimum
+              <input type="number" min="0" step="0.001" value={minimumStock} onChange={(e) => setMinimumStock(e.target.value)} />
+            </label>
+            <label>
+              Prix d'achat HT
+              <input type="number" min="0" step="0.0001" value={averagePrice} onChange={(e) => setAveragePrice(e.target.value)} />
+            </label>
+            <div className="product-readonly-field product-sheet-wide">
+              <span>Quantité actuelle</span>
+              <strong>{currentQuantity == null ? 'Calculée depuis les mouvements' : `${currentQuantity.toFixed(3).replace(/\.?0+$/, '')} ${selectedUnit?.symbol ?? ''}`}</strong>
+              <small>La quantité se modifie via réceptions, sorties, corrections ou inventaires.</small>
+            </div>
+          </div>
+        ) : null}
+
+        {activeFormTab === 'packaging' ? (
+          <div className="product-sheet-form-grid">
+            <label>
+              Format fournisseur
+              <input placeholder="ex: Carton 12 x 1 L, caisse 6 pièces..." value={packageLabel} onChange={(e) => setPackageLabel(e.target.value)} />
+            </label>
+            <label>
+              Quantité contenue par format
+              <input type="number" min="0" step="0.001" value={unitsPerPackage} onChange={(e) => setUnitsPerPackage(e.target.value)} />
+            </label>
+            <label>
+              Unité contenue
+              <select value={unitId} onChange={(e) => setUnitId(e.target.value)} required>
+                <option value="">Choisir l'unité...</option>
+                {units.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name} ({u.symbol})</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Poids / volume d'une unité
+              <input type="number" min="0" step="0.001" placeholder="En grammes ou millilitres selon l'unité" value={unitWeightGrams} onChange={(e) => setUnitWeightGrams(e.target.value)} />
+            </label>
+            <label>
+              Poids net du format
+              <input type="number" min="0" step="0.001" placeholder={computedNetWeight ? `Calculé: ${computedNetWeight.toFixed(3).replace(/\.?0+$/, '')}` : 'Optionnel'} value={netWeightGrams} onChange={(e) => setNetWeightGrams(e.target.value)} />
+            </label>
+            <div className="product-readonly-field">
+              <span>Conversion réception</span>
+              <strong>{unitsPerPackage || '0'} x {unitWeightGrams || '0'} = {(computedNetWeight ?? 0).toFixed(3).replace(/\.?0+$/, '')}</strong>
+              <small>Quantité reçue fournisseur x unités par format x contenu d'une unité.</small>
+            </div>
+          </div>
+        ) : null}
+
+        {activeFormTab === 'allergens' ? (
+          <div className="product-sheet-form-grid">
+            <label className="product-sheet-wide">
+              Ingrédients
+              <textarea rows={4} placeholder="Liste d'ingrédients telle qu'indiquée par le fournisseur..." value={ingredients} onChange={(e) => setIngredients(e.target.value)} />
+            </label>
+            <div className="product-choice-group product-sheet-wide">
+              <span>Allergènes présents</span>
+              <div className="product-choice-grid">
+                {PRODUCT_ALLERGEN_OPTIONS.map((allergen) => (
+                  <button key={allergen} type="button" className={allergensPresent.includes(allergen) ? 'selected' : ''} onClick={() => {
+                    setAllergensPresent((current) => toggleProductValue(current, allergen));
+                    setPossibleTraces((current) => current.filter((item) => item !== allergen));
+                  }}>{allergen}</button>
+                ))}
+              </div>
+            </div>
+            <div className="product-choice-group product-sheet-wide">
+              <span>Traces possibles</span>
+              <div className="product-choice-grid">
+                {PRODUCT_ALLERGEN_OPTIONS.map((allergen) => (
+                  <button key={allergen} type="button" className={possibleTraces.includes(allergen) ? 'selected' : ''} onClick={() => {
+                    setPossibleTraces((current) => toggleProductValue(current, allergen));
+                    setAllergensPresent((current) => current.filter((item) => item !== allergen));
+                  }}>{allergen}</button>
+                ))}
+              </div>
+            </div>
+            <div className="product-choice-group product-sheet-wide">
+              <span>Tags alimentaires</span>
+              <div className="product-choice-grid compact">
+                {PRODUCT_DIETARY_TAG_OPTIONS.map((tag) => (
+                  <button key={tag} type="button" className={dietaryTags.includes(tag) ? 'selected' : ''} onClick={() => setDietaryTags((current) => toggleProductValue(current, tag))}>{tag}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {activeFormTab === 'nutrition' ? (
+          <div className="product-sheet-form-grid">
+            <div className="product-sheet-note product-sheet-wide">Valeurs pour 100 g.</div>
+            {PRODUCT_NUTRITION_FIELDS.map((field) => (
+              <label key={field.key}>
+                {field.label} ({field.unit})
+                <input type="number" min="0" step="0.001" value={nutrition[field.key]} onChange={(e) => setNutrition((current) => ({ ...current, [field.key]: e.target.value }))} />
+              </label>
             ))}
-          </select>
-        </label>
-        <label>
-          Catégorie
-          <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-            <option value="">Non catégorisé</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-        </label>
+          </div>
+        ) : null}
+
+        {activeFormTab === 'storage' ? (
+          <div className="product-sheet-form-grid">
+            <label>
+              Type de conservation
+              <select value={storageType} onChange={(e) => setStorageType(e.target.value)}>
+                <option value="">Non renseigné</option>
+                {PRODUCT_STORAGE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+              </select>
+            </label>
+            <label>
+              Durée après ouverture
+              <input placeholder="ex: 3 jours, 48 h, à consommer immédiatement..." value={shelfLifeAfterOpening} onChange={(e) => setShelfLifeAfterOpening(e.target.value)} />
+            </label>
+            <label className="product-sheet-wide">
+              Instructions de conservation
+              <textarea rows={4} placeholder="Température, zone de stockage, précautions après ouverture..." value={storageInstructions} onChange={(e) => setStorageInstructions(e.target.value)} />
+            </label>
+            <label className="product-sheet-wide">
+              Préparation / utilisation
+              <textarea rows={4} placeholder="Conseils de préparation, décongélation, utilisation en production..." value={preparationInstructions} onChange={(e) => setPreparationInstructions(e.target.value)} />
+            </label>
+          </div>
+        ) : null}
+        </div>
       </div>
 
-      <div className="form-row">
-        <label>
-          Fournisseur principal
-          <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-            <option value="">Non renseigné</option>
-            {suppliers.map((supplier) => (
-              <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Prix moyen pondéré (€)
-          <input type="number" min="0" step="0.0001" value={averagePrice} onChange={(e) => setAveragePrice(e.target.value)} />
-        </label>
-        <label>
-          Stock minimum
-          <input type="number" min="0" step="0.001" value={minimumStock} onChange={(e) => setMinimumStock(e.target.value)} />
-        </label>
-      </div>
-
-      <div className="modal-footer" style={{ margin: '1.5rem -1.75rem -1.75rem', padding: '1rem 1.75rem' }}>
+      <div className="modal-footer product-sheet-footer">
         <button type="button" className="btn btn-secondary" onClick={onClose} disabled={submitting}>
           Annuler
         </button>
@@ -7880,6 +8196,62 @@ function ProductForm({ categories, units, suppliers, initialName = '', initialPr
         </button>
       </div>
     </form>
+  );
+}
+
+function productHasValue(value: unknown) {
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value === 'string') return value.trim().length > 0;
+  return value !== null && value !== undefined;
+}
+
+function productNumberDisplay(value: string | number | null | undefined, unit = '', maxFractionDigits = 3) {
+  if (value === null || value === undefined || value === '') return '—';
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return '—';
+  const formatted = parsed.toLocaleString('fr-FR', { maximumFractionDigits: maxFractionDigits });
+  return unit ? `${formatted} ${unit}` : formatted;
+}
+
+function productTextDisplay(value?: string | null) {
+  return value?.trim() || '—';
+}
+
+function productCalculatedNetWeight(product: Product) {
+  if (productHasValue(product.netWeightGrams)) return numeric(product.netWeightGrams);
+  if (productHasValue(product.unitsPerPackage) && productHasValue(product.unitWeightGrams)) {
+    return numeric(product.unitsPerPackage) * numeric(product.unitWeightGrams);
+  }
+  return null;
+}
+
+function computeProductCompletion(product: Product) {
+  const supplierId = productSupplierId(product);
+  const sectionInputs = [
+    { label: 'Identification', values: [product.name, product.gtin, product.originCountry] },
+    { label: 'Fournisseur', values: [supplierId, product.sku ?? product.reference] },
+    { label: 'Conditionnement', values: [product.packageLabel, product.unitsPerPackage, product.unitWeightGrams ?? product.netWeightGrams] },
+    { label: 'Allergènes', values: [product.ingredients, product.allergensPresent, product.possibleTraces, product.dietaryTags] },
+    { label: 'Nutrition', values: PRODUCT_NUTRITION_FIELDS.map((field) => product[field.key]) },
+    { label: 'Conservation', values: [product.storageType, product.shelfLifeAfterOpening, product.storageInstructions, product.preparationInstructions] },
+  ];
+  const sections = sectionInputs.map((section) => {
+    const completed = section.values.filter(productHasValue).length;
+    return { ...section, completed, total: section.values.length, done: completed === section.values.length };
+  });
+  const completed = sections.reduce((sum, section) => sum + section.completed, 0);
+  const total = sections.reduce((sum, section) => sum + section.total, 0);
+  return { score: total ? Math.round((completed / total) * 100) : 0, completed, total, sections };
+}
+
+function ProductTagBadges({ items, emptyText = 'Non renseigné' }: { items?: string[]; emptyText?: string }) {
+  const values = items?.filter(Boolean) ?? [];
+  if (!values.length) return <span style={{ color: 'var(--text-muted)' }}>{emptyText}</span>;
+  return (
+    <div className="product-tag-row">
+      {values.map((item) => <span key={item} className="badge badge-reception">{item}</span>)}
+    </div>
   );
 }
 
@@ -7905,9 +8277,11 @@ function ProductDetailModal({
   onDelete: (productId: string) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
+  const [detailTab, setDetailTab] = useState<ProductSheetTab>('identity');
 
   useEffect(() => {
     setEditing(false);
+    setDetailTab('identity');
   }, [product?.id]);
 
   if (!product) return null;
@@ -7919,15 +8293,18 @@ function ProductDetailModal({
   const stockValue = productStocks.reduce((sum, stock) => sum + numeric(stock.stockValue ?? stock.value ?? numeric(stock.currentQuantity ?? stock.quantity) * averagePrice), 0);
   const minimumStock = numeric(product.minimumStock ?? product.minStock);
   const supplierName = product.primarySupplier?.name ?? product.supplier?.name ?? 'Non renseigné';
+  const completion = computeProductCompletion(product);
+  const netWeight = productCalculatedNetWeight(product);
 
   return (
-    <Modal isOpen={Boolean(product)} onClose={onClose} title={product.name} size="lg">
+    <Modal isOpen={Boolean(product)} onClose={onClose} title={product.name} size="xl">
       {editing ? (
         <ProductForm
           categories={categories}
           units={units}
           suppliers={suppliers}
           initialProduct={product}
+          currentQuantity={totalQuantity}
           submitLabel="Enregistrer les modifications"
           onSubmit={async (payload) => {
             await onUpdate(product.id, payload);
@@ -7942,9 +8319,10 @@ function ProductDetailModal({
               <span className="product-detail-kicker">Fiche produit</span>
               <h3>{product.name}</h3>
               <div className="product-detail-badges">
-                <span className="badge badge-inventory">{product.sku || 'Sans SKU'}</span>
+                <span className="badge badge-inventory">{product.sku || 'Sans référence'}</span>
                 <span className="badge badge-production">{product.category?.name ?? 'Sans catégorie'}</span>
                 <span className="badge badge-reception">{product.unit?.name ?? 'Unité'} ({product.unit?.symbol ?? '—'})</span>
+                {product.gtin ? <span className="badge badge-correction">GTIN {product.gtin}</span> : null}
               </div>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -7968,55 +8346,169 @@ function ProductDetailModal({
           </div>
 
           <div className="product-detail-metrics">
-            <Metric icon={<Boxes size={18} />} value={totalQuantity.toFixed(2).replace(/\.?0+$/, '')} label="Quantité en stock" tone="blue" />
+            <Metric icon={<Boxes size={18} />} value={`${totalQuantity.toFixed(2).replace(/\.?0+$/, '')} ${product.unit?.symbol ?? ''}`} label="Quantité en stock" tone="blue" />
             <Metric icon={<TrendingUp size={18} />} value={`${stockValue.toFixed(2)} €`} label="Valeur stock" tone="emerald" />
-            <Metric icon={<Scale size={18} />} value={`${averagePrice.toFixed(2)} €`} label="Prix moyen" tone="amber" />
-            <Metric icon={<AlertCircle size={18} />} value={minimumStock ? parseFloat(minimumStock.toFixed(2)).toString() : '—'} label="Stock mini" tone="orange" />
+            <Metric icon={<Scale size={18} />} value={`${averagePrice.toFixed(2)} €`} label="Prix d'achat HT" tone="amber" />
+            <Metric icon={<AlertCircle size={18} />} value={minimumStock ? parseFloat(minimumStock.toFixed(2)).toString() : '—'} label="Seuil minimum" tone="orange" />
           </div>
 
-          <div className="product-detail-grid">
-            <div className="product-detail-panel">
-              <span className="product-detail-section-title">Informations</span>
-              <dl className="product-detail-list">
-                <div><dt>Fournisseur</dt><dd>{supplierName}</dd></div>
-                <div><dt>Catégorie</dt><dd>{product.category?.name ?? 'Non catégorisé'}</dd></div>
-                <div><dt>Unité</dt><dd>{product.unit?.name ?? '—'} ({product.unit?.symbol ?? '—'})</dd></div>
-                <div><dt>Prix moyen</dt><dd>{averagePrice.toFixed(2)} €</dd></div>
-              </dl>
-              {product.description ? <p className="product-detail-description">{product.description}</p> : null}
+          <div className="product-detail-completion">
+            <div className="progress-bar-header">
+              <span>Complétion de la fiche</span>
+              <strong>{completion.score}%</strong>
             </div>
+            <div className="progress-bar-bg"><div className="progress-bar-fill" style={{ width: `${completion.score}%` }} /></div>
+            <div className="product-completion-sections">
+              {completion.sections.map((section) => (
+                <span key={section.label} className={section.done ? 'done' : ''}>{section.label} {section.completed}/{section.total}</span>
+              ))}
+            </div>
+          </div>
 
-            <div className="product-detail-panel">
-              <span className="product-detail-section-title">Stock par emplacement</span>
-              {productStocks.length ? (
-                <div className="product-detail-mini-table">
-                  {productStocks.map((stock) => (
-                    <div key={stock.id}>
-                      <span>{stock.site?.name ?? 'Site'} / {stock.location?.name ?? 'Emplacement'}</span>
-                      <strong>{numeric(stock.currentQuantity ?? stock.quantity).toFixed(2).replace(/\.?0+$/, '')}</strong>
+          <div className="product-sheet-tabs" role="tablist" aria-label="Sections fiche produit">
+            {PRODUCT_SHEET_TABS.map((tab) => (
+              <button key={tab.id} type="button" role="tab" aria-selected={detailTab === tab.id} className={detailTab === tab.id ? 'active' : ''} onClick={() => setDetailTab(tab.id)}>
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="product-detail-panel product-sheet-read-panel">
+            {detailTab === 'identity' ? (
+              <>
+                <span className="product-detail-section-title">Identification</span>
+                <dl className="product-detail-list">
+                  <div><dt>Nom du produit</dt><dd>{product.name}</dd></div>
+                  <div><dt>GTIN / EAN</dt><dd>{productTextDisplay(product.gtin)}</dd></div>
+                  <div><dt>Pays d'origine / origine</dt><dd>{productTextDisplay(product.originCountry)}</dd></div>
+                </dl>
+                {product.description ? <p className="product-detail-description">{product.description}</p> : <EmptyMini title="Aucune description" text="Ajoutez une note interne si nécessaire." />}
+              </>
+            ) : null}
+
+            {detailTab === 'supplier' ? (
+              <>
+                <span className="product-detail-section-title">Fournisseur</span>
+                <dl className="product-detail-list">
+                  <div><dt>Fournisseur</dt><dd>{supplierName}</dd></div>
+                  <div><dt>Référence fournisseur</dt><dd>{productTextDisplay(product.sku ?? product.reference)}</dd></div>
+                </dl>
+              </>
+            ) : null}
+
+            {detailTab === 'stock' ? (
+              <div className="product-detail-grid">
+                <div>
+                  <span className="product-detail-section-title">Stock</span>
+                  <dl className="product-detail-list">
+                    <div><dt>Catégorie</dt><dd>{product.category?.name ?? 'Non catégorisé'}</dd></div>
+                    <div><dt>Unité de stock</dt><dd>{product.unit?.name ?? '—'} ({product.unit?.symbol ?? '—'})</dd></div>
+                    <div><dt>Quantité actuelle</dt><dd>{productNumberDisplay(totalQuantity, product.unit?.symbol ?? '')}</dd></div>
+                    <div><dt>Seuil minimum</dt><dd>{minimumStock ? productNumberDisplay(minimumStock, product.unit?.symbol ?? '') : '—'}</dd></div>
+                    <div><dt>Prix d'achat HT</dt><dd>{averagePrice.toFixed(2)} €</dd></div>
+                  </dl>
+                </div>
+                <div>
+                  <span className="product-detail-section-title">Stock par emplacement</span>
+                  {productStocks.length ? (
+                    <div className="product-detail-mini-table">
+                      {productStocks.map((stock) => (
+                        <div key={stock.id}>
+                          <span>{stock.site?.name ?? 'Site'} / {stock.location?.name ?? 'Emplacement'}</span>
+                          <strong>{productNumberDisplay(stock.currentQuantity ?? stock.quantity, product.unit?.symbol ?? '')}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyMini title="Aucun stock" text="Ce produit n'a pas encore de quantité projetée." />
+                  )}
+                </div>
+                <div className="product-sheet-wide">
+                  <span className="product-detail-section-title">Derniers mouvements</span>
+                  {productMovements.length ? (
+                    <div className="product-detail-mini-table">
+                      {productMovements.map((movement) => (
+                        <div key={movement.id}>
+                          <span>{movementLabels[movement.type] ?? movement.type} · {movementEffectiveDate(movement).toLocaleDateString('fr-FR')}</span>
+                          <strong>{movementSign(movement.type)}{productNumberDisplay(movement.quantity, product.unit?.symbol ?? '')}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyMini title="Aucun mouvement" text="Les réceptions et sorties apparaîtront ici." />
+                  )}
+                </div>
+              </div>
+            ) : null}
+
+            {detailTab === 'packaging' ? (
+              <>
+                <span className="product-detail-section-title">Conditionnement</span>
+                <dl className="product-detail-list">
+                  <div><dt>Format fournisseur</dt><dd>{productTextDisplay(product.packageLabel)}</dd></div>
+                  <div><dt>Quantité contenue par format</dt><dd>{productNumberDisplay(product.unitsPerPackage)}</dd></div>
+                  <div><dt>Unité contenue</dt><dd>{product.unit?.name ?? '—'} ({product.unit?.symbol ?? '—'})</dd></div>
+                  <div><dt>Poids / volume d'une unité</dt><dd>{productNumberDisplay(product.unitWeightGrams, 'g/ml')}</dd></div>
+                  <div><dt>Poids net du format</dt><dd>{netWeight == null ? '—' : `${productNumberDisplay(netWeight, 'g/ml')}${productHasValue(product.netWeightGrams) ? '' : ' calculé'}`}</dd></div>
+                </dl>
+                <p className="product-detail-description">Quantité reçue fournisseur x unités par format x contenu d'une unité = quantité ajoutée au stock.</p>
+              </>
+            ) : null}
+
+            {detailTab === 'allergens' ? (
+              <div className="product-allergen-read">
+                <div>
+                  <span className="product-detail-section-title">Ingrédients</span>
+                  <p className="product-detail-description">{product.ingredients || 'Non renseigné'}</p>
+                </div>
+                <div>
+                  <span className="product-detail-section-title">Allergènes présents</span>
+                  <ProductTagBadges items={product.allergensPresent} />
+                </div>
+                <div>
+                  <span className="product-detail-section-title">Traces possibles</span>
+                  <ProductTagBadges items={product.possibleTraces} emptyText="Aucune trace renseignée" />
+                </div>
+                <div>
+                  <span className="product-detail-section-title">Tags alimentaires</span>
+                  <ProductTagBadges items={product.dietaryTags} emptyText="Aucun tag renseigné" />
+                </div>
+              </div>
+            ) : null}
+
+            {detailTab === 'nutrition' ? (
+              <>
+                <span className="product-detail-section-title">Valeurs pour 100 g</span>
+                <dl className="product-detail-list product-nutrition-list">
+                  {PRODUCT_NUTRITION_FIELDS.map((field) => (
+                    <div key={field.key}>
+                      <dt>{field.label}</dt>
+                      <dd>{productNumberDisplay(product[field.key], field.unit)}</dd>
                     </div>
                   ))}
-                </div>
-              ) : (
-                <EmptyMini title="Aucun stock" text="Ce produit n’a pas encore de quantité enregistrée." />
-              )}
-            </div>
-          </div>
+                </dl>
+              </>
+            ) : null}
 
-          <div className="product-detail-panel">
-            <span className="product-detail-section-title">Derniers mouvements</span>
-            {productMovements.length ? (
-              <div className="product-detail-mini-table">
-                {productMovements.map((movement) => (
-                  <div key={movement.id}>
-                    <span>{movementLabels[movement.type] ?? movement.type} · {movement.date ? new Date(movement.date).toLocaleDateString('fr-FR') : '—'}</span>
-                    <strong>{movementSign(movement.type)}{numeric(movement.quantity).toFixed(2).replace(/\.?0+$/, '')}</strong>
+            {detailTab === 'storage' ? (
+              <>
+                <span className="product-detail-section-title">Stockage et utilisation</span>
+                <dl className="product-detail-list">
+                  <div><dt>Type de conservation</dt><dd>{productTextDisplay(product.storageType)}</dd></div>
+                  <div><dt>Durée après ouverture</dt><dd>{productTextDisplay(product.shelfLifeAfterOpening)}</dd></div>
+                </dl>
+                <div className="product-storage-copy">
+                  <div>
+                    <span className="product-detail-section-title">Instructions de conservation</span>
+                    <p>{product.storageInstructions || 'Non renseigné'}</p>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <EmptyMini title="Aucun mouvement" text="Les réceptions et sorties apparaîtront ici." />
-            )}
+                  <div>
+                    <span className="product-detail-section-title">Préparation / utilisation</span>
+                    <p>{product.preparationInstructions || 'Non renseigné'}</p>
+                  </div>
+                </div>
+              </>
+            ) : null}
           </div>
         </div>
       )}
@@ -8165,43 +8657,56 @@ function SupplierForm({ initialName = '', initialSupplier = null, submitLabel = 
   }
 
   return (
-    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+    <form onSubmit={handleSubmit} className="product-sheet-form">
       {error && (
         <div className="alert-modern error" style={{ padding: '0.75rem 1rem' }}>
           <AlertCircle size={16} />
           <span>{error}</span>
         </div>
       )}
-      <label>
-        Nom du fournisseur *
-        <input
-          placeholder="ex: Metro, Transgourmet..."
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          required
-          autoFocus
-        />
-      </label>
-      <label>
-        Contact
-        <input placeholder="ex: Marie Dupont" value={contactName} onChange={(e) => setContactName(e.target.value)} />
-      </label>
-      <label>
-        Email de contact
-        <input
-          placeholder="ex: commercial@metro.fr..."
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-      </label>
-      <div className="form-row">
-        <label>Téléphone<input placeholder="01 23 45 67 89" value={phone} onChange={(e) => setPhone(e.target.value)} /></label>
-        <label>Adresse<input placeholder="Adresse fournisseur" value={address} onChange={(e) => setAddress(e.target.value)} /></label>
+      <div className="product-sheet-form-body product-sheet-form-body-single">
+        <div className="product-sheet-form-panel">
+          <div className="product-sheet-form-grid">
+            <label>
+              Nom du fournisseur *
+              <input
+                placeholder="ex: Metro, Transgourmet..."
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                autoFocus
+              />
+            </label>
+            <label>
+              Contact
+              <input placeholder="ex: Marie Dupont" value={contactName} onChange={(e) => setContactName(e.target.value)} />
+            </label>
+            <label>
+              Email de contact
+              <input
+                placeholder="ex: commercial@metro.fr..."
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </label>
+            <label>
+              Téléphone
+              <input placeholder="01 23 45 67 89" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            </label>
+            <label className="product-sheet-wide">
+              Adresse
+              <input placeholder="Adresse fournisseur" value={address} onChange={(e) => setAddress(e.target.value)} />
+            </label>
+            <label className="product-sheet-wide">
+              Notes
+              <textarea rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Conditions, jours de livraison…" />
+            </label>
+          </div>
+        </div>
       </div>
-      <label>Notes<textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Conditions, jours de livraison…" /></label>
 
-      <div className="modal-footer" style={{ margin: '1.5rem -1.75rem -1.75rem', padding: '1rem 1.75rem' }}>
+      <div className="modal-footer product-sheet-footer">
         <button type="button" className="btn btn-secondary" onClick={onClose} disabled={submitting}>
           Annuler
         </button>
@@ -8238,7 +8743,53 @@ function InventoryForm({ sites, locations, onSubmit, onClose }: { sites: Site[];
   const [locationId, setLocationId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   async function submitForm(e: FormEvent) { e.preventDefault(); setSubmitting(true); try { await onSubmit({ name: name.trim(), date, comment: comment.trim() || undefined, siteId: siteId || undefined, locationId: locationId || undefined }); } finally { setSubmitting(false); } }
-  return <form onSubmit={submitForm} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}><label>Nom *<input value={name} onChange={e => setName(e.target.value)} required autoFocus /></label><label>Date<input type="date" value={date} onChange={e => setDate(e.target.value)} /></label><div className="form-row"><label>Site<select value={siteId} onChange={e => setSiteId(e.target.value)}><option value="">Tous</option>{sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label><label>Emplacement<select value={locationId} onChange={e => setLocationId(e.target.value)}><option value="">Tous</option>{locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></label></div><label>Commentaire<textarea rows={3} value={comment} onChange={e => setComment(e.target.value)} placeholder="Motif et périmètre du comptage" /></label><p className="section-tagline">À la validation, les écarts entre stock théorique et compté généreront des corrections “Correction inventaire”.</p><div className="modal-footer" style={{ margin: '1rem -1.75rem -1.75rem' }}><button type="button" className="btn btn-secondary" onClick={onClose}>Annuler</button><button className="btn btn-primary" disabled={!name.trim() || submitting}>{submitting ? 'Création…' : 'Créer l’inventaire'}</button></div></form>;
+  return (
+    <form onSubmit={submitForm} className="product-sheet-form">
+      <div className="product-sheet-form-body product-sheet-form-body-single">
+        <div className="product-sheet-form-panel">
+          <div className="product-sheet-form-grid">
+            <label>
+              Nom *
+              <input value={name} onChange={e => setName(e.target.value)} required autoFocus />
+            </label>
+            <label>
+              Date
+              <input type="date" value={date} onChange={e => setDate(e.target.value)} />
+            </label>
+            <label>
+              Site
+              <select value={siteId} onChange={e => setSiteId(e.target.value)}>
+                <option value="">Tous</option>
+                {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </label>
+            <label>
+              Emplacement
+              <select value={locationId} onChange={e => setLocationId(e.target.value)}>
+                <option value="">Tous</option>
+                {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+            </label>
+            <label className="product-sheet-wide">
+              Commentaire
+              <textarea rows={4} value={comment} onChange={e => setComment(e.target.value)} placeholder="Motif et périmètre du comptage" />
+            </label>
+            <div className="product-sheet-note product-sheet-wide">
+              À la validation, les écarts entre stock théorique et compté généreront des corrections “Correction inventaire”.
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="modal-footer product-sheet-footer">
+        <button type="button" className="btn btn-secondary" onClick={onClose}>
+          Annuler
+        </button>
+        <button className="btn btn-primary" disabled={!name.trim() || submitting}>
+          {submitting ? 'Création…' : 'Créer l’inventaire'}
+        </button>
+      </div>
+    </form>
+  );
 }
 
 function PrefillWizard({ onSubmit, onClose }: { onSubmit: (payload: { categories?: boolean; units?: boolean; sites?: boolean; locations?: boolean; examples?: boolean }) => Promise<void>; onClose: () => void }) {
@@ -9727,7 +10278,7 @@ function MovementForm({ products, suppliers, units, sites, locations, onSubmit, 
   }, [products, productId]);
 
   return (
-    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+    <form onSubmit={handleSubmit} className="product-sheet-form">
       {error && (
         <div className="alert-modern error" style={{ padding: '0.75rem 1rem' }}>
           <AlertCircle size={16} />
@@ -9735,104 +10286,131 @@ function MovementForm({ products, suppliers, units, sites, locations, onSubmit, 
         </div>
       )}
 
-      {products.length === 0 ? (
-        <div className="alert-modern error">
-          <Info size={16} />
-          <span>Vous devez d'abord créer au moins un produit dans le catalogue.</span>
+      <div className="product-sheet-form-body product-sheet-form-body-single">
+        <div className="product-sheet-form-panel">
+          {products.length === 0 ? (
+            <div className="alert-modern error">
+              <Info size={16} />
+              <span>Vous devez d'abord créer au moins un produit dans le catalogue.</span>
+            </div>
+          ) : (
+            <div className="product-sheet-form-grid">
+              <label className="product-sheet-wide">
+                Sélectionner le produit *
+                <select value={productId} onChange={(e) => setProductId(e.target.value)} required autoFocus>
+                  <option value="">Choisir un produit...</option>
+                  {products.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name} {p.sku ? `(SKU: ${p.sku})` : ''}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Type de mouvement *
+                <select value={type} onChange={(e) => setType(e.target.value as StockMovementType)} required>
+                  {Object.entries(movementLabels).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Quantité {selectedProduct?.unit?.symbol ? `(${selectedProduct.unit.symbol})` : ''} *
+                <input
+                  type="number"
+                  step="0.001"
+                  min="0.001"
+                  placeholder="0.000"
+                  value={quantity}
+                  onChange={(e) => setQuantity(e.target.value)}
+                  required
+                />
+              </label>
+
+              <label>
+                Unité de saisie compatible
+                <select value={unitId} onChange={(e) => setUnitId(e.target.value)}>
+                  <option value="">Unité principale du produit</option>
+                  {units.map((u) => <option key={u.id} value={u.id}>{u.name} ({u.symbol})</option>)}
+                </select>
+              </label>
+              <label>
+                Date du mouvement
+                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              </label>
+
+              {(type === 'OUT' || type === 'EXIT' || type === 'LOSS' || type === 'TRANSFER') && (
+                <>
+                  <label>
+                    Site source
+                    <select value={sourceSiteId} onChange={(e) => setSourceSiteId(e.target.value)}>
+                      <option value="">Non précisé</option>
+                      {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    Emplacement source
+                    <select value={sourceLocationId} onChange={(e) => setSourceLocationId(e.target.value)}>
+                      <option value="">Non précisé</option>
+                      {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                    </select>
+                  </label>
+                </>
+              )}
+
+              {(type === 'RECEPTION' || type === 'ENTRY' || type === 'TRANSFER') && (
+                <>
+                  <label>
+                    Site destination
+                    <select value={destinationSiteId} onChange={(e) => setDestinationSiteId(e.target.value)}>
+                      <option value="">Non précisé</option>
+                      {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    Emplacement destination
+                    <select value={destinationLocationId} onChange={(e) => setDestinationLocationId(e.target.value)}>
+                      <option value="">Non précisé</option>
+                      {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                    </select>
+                  </label>
+                </>
+              )}
+
+              {type === 'RECEPTION' && (
+                <label>
+                  Fournisseur concerné
+                  <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+                    <option value="">Aucun fournisseur</option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              <label className="product-sheet-wide">
+                Motif / Note explicative
+                <input
+                  placeholder="ex: Commande de la semaine, Ajustement inventaire..."
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                />
+              </label>
+            </div>
+          )}
         </div>
-      ) : (
-        <>
-          <label>
-            Sélectionner le produit *
-            <select value={productId} onChange={(e) => setProductId(e.target.value)} required autoFocus>
-              <option value="">Choisir un produit...</option>
-              {products.map((p) => (
-                <option key={p.id} value={p.id}>{p.name} {p.sku ? `(SKU: ${p.sku})` : ''}</option>
-              ))}
-            </select>
-          </label>
+      </div>
 
-          <div className="form-row">
-            <label>
-              Type de mouvement *
-              <select value={type} onChange={(e) => setType(e.target.value as StockMovementType)} required>
-                {Object.entries(movementLabels).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Quantité {selectedProduct?.unit?.symbol ? `(${selectedProduct.unit.symbol})` : ''} *
-              <input
-                type="number"
-                step="0.001"
-                min="0.001"
-                placeholder="0.000"
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                required
-              />
-            </label>
-          </div>
-
-          <label>
-            Unité de saisie compatible
-            <select value={unitId} onChange={(e) => setUnitId(e.target.value)}>
-              <option value="">Unité principale du produit</option>
-              {units.map((u) => <option key={u.id} value={u.id}>{u.name} ({u.symbol})</option>)}
-            </select>
-          </label>
-
-          {(type === 'OUT' || type === 'EXIT' || type === 'LOSS' || type === 'TRANSFER') && (
-            <div className="form-row">
-              <label>Site source<select value={sourceSiteId} onChange={(e) => setSourceSiteId(e.target.value)}><option value="">Non précisé</option>{sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
-              <label>Emplacement source<select value={sourceLocationId} onChange={(e) => setSourceLocationId(e.target.value)}><option value="">Non précisé</option>{locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></label>
-            </div>
-          )}
-
-          {(type === 'RECEPTION' || type === 'ENTRY' || type === 'TRANSFER') && (
-            <div className="form-row">
-              <label>Site destination<select value={destinationSiteId} onChange={(e) => setDestinationSiteId(e.target.value)}><option value="">Non précisé</option>{sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
-              <label>Emplacement destination<select value={destinationLocationId} onChange={(e) => setDestinationLocationId(e.target.value)}><option value="">Non précisé</option>{locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></label>
-            </div>
-          )}
-
-          <label>
-            Date du mouvement
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </label>
-
-          {type === 'RECEPTION' && (
-            <label>
-              Fournisseur concerné
-              <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-                <option value="">Aucun fournisseur</option>
-                {suppliers.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-            </label>
-          )}
-
-          <label>
-            Motif / Note explicative
-            <input
-              placeholder="ex: Commande de la semaine, Ajustement inventaire..."
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-            />
-          </label>
-
-          <div className="modal-footer" style={{ margin: '1.5rem -1.75rem -1.75rem', padding: '1rem 1.75rem' }}>
-            <button type="button" className="btn btn-secondary" onClick={onClose} disabled={submitting}>
-              Annuler
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={submitting || !productId || !quantity}>
-              {submitting ? 'Enregistrement...' : 'Enregistrer le mouvement'}
-            </button>
-          </div>
-        </>
-      )}
+      <div className="modal-footer product-sheet-footer">
+        <button type="button" className="btn btn-secondary" onClick={onClose} disabled={submitting}>
+          Annuler
+        </button>
+        {products.length > 0 ? (
+          <button type="submit" className="btn btn-primary" disabled={submitting || !productId || !quantity}>
+            {submitting ? 'Enregistrement...' : 'Enregistrer le mouvement'}
+          </button>
+        ) : null}
+      </div>
     </form>
   );
 }

@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsEnum, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsEnum, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
 import { UnitType } from '@prisma/client';
 
 export class ListQueryDto {
@@ -94,12 +94,12 @@ export class UpsertProductDto {
   @IsOptional()
   @IsString()
   @MaxLength(80)
-  sku?: string;
+  sku?: string | null;
 
   @IsOptional()
   @IsString()
   @MaxLength(500)
-  description?: string;
+  description?: string | null;
 
   @IsUUID()
   unitId!: string;
@@ -123,6 +123,136 @@ export class UpsertProductDto {
   @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0)
   minimumStock?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  gtin?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  originCountry?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  packageLabel?: string | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  unitsPerPackage?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  unitWeightGrams?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  netWeightGrams?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  ingredients?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(80, { each: true })
+  allergensPresent?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(80, { each: true })
+  possibleTraces?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(80, { each: true })
+  dietaryTags?: string[];
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  energyKj?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  energyKcal?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  fatGrams?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  saturatedFatGrams?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  carbohydratesGrams?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  sugarsGrams?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  fiberGrams?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  proteinGrams?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  saltGrams?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  storageType?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  shelfLifeAfterOpening?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  storageInstructions?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  preparationInstructions?: string | null;
 }
 
 export class UpsertSiteDto {

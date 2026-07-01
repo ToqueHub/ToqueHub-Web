@@ -140,6 +140,42 @@ type PlanningRangeParams = {
 
 const API_URL = import.meta.env.VITE_API_URL?.replace(/\/$/, '') ?? '';
 
+type ProductMutationPayload = {
+  name?: string;
+  sku?: string | null;
+  description?: string | null;
+  unitId?: string;
+  categoryId?: string | null;
+  supplierId?: string | null;
+  primarySupplierId?: string | null;
+  averagePrice?: number;
+  averagePurchasePrice?: number;
+  minimumStock?: number;
+  gtin?: string | null;
+  originCountry?: string | null;
+  packageLabel?: string | null;
+  unitsPerPackage?: number | null;
+  unitWeightGrams?: number | null;
+  netWeightGrams?: number | null;
+  ingredients?: string | null;
+  allergensPresent?: string[];
+  possibleTraces?: string[];
+  dietaryTags?: string[];
+  energyKj?: number | null;
+  energyKcal?: number | null;
+  fatGrams?: number | null;
+  saturatedFatGrams?: number | null;
+  carbohydratesGrams?: number | null;
+  sugarsGrams?: number | null;
+  fiberGrams?: number | null;
+  proteinGrams?: number | null;
+  saltGrams?: number | null;
+  storageType?: string | null;
+  shelfLifeAfterOpening?: string | null;
+  storageInstructions?: string | null;
+  preparationInstructions?: string | null;
+};
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -899,18 +935,20 @@ export const api = {
   },
   createProduct(
     token: string,
-    payload: { name: string; sku?: string; description?: string; unitId: string; categoryId?: string | null; supplierId?: string | null; primarySupplierId?: string | null; averagePrice?: number; averagePurchasePrice?: number; minimumStock?: number },
+    payload: ProductMutationPayload & { name: string; unitId: string },
   ) {
     const { supplierId, averagePurchasePrice, ...rest } = payload;
-    return request<Product>('/products', { method: 'POST', body: JSON.stringify({ ...rest, averagePrice: payload.averagePrice ?? averagePurchasePrice, primarySupplierId: uuidOrNullOrUndefined(payload.primarySupplierId ?? supplierId) }) }, token);
+    const primarySupplierId = payload.primarySupplierId !== undefined ? payload.primarySupplierId : supplierId;
+    return request<Product>('/products', { method: 'POST', body: JSON.stringify({ ...rest, averagePrice: payload.averagePrice ?? averagePurchasePrice, primarySupplierId: uuidOrNullOrUndefined(primarySupplierId) }) }, token);
   },
   updateProduct(
     token: string,
     id: string,
-    payload: { name?: string; sku?: string; description?: string; unitId?: string; categoryId?: string | null; supplierId?: string | null; primarySupplierId?: string | null; averagePrice?: number; averagePurchasePrice?: number; minimumStock?: number },
+    payload: ProductMutationPayload,
   ) {
     const { supplierId, averagePurchasePrice, ...rest } = payload;
-    return request<Product>(`/products/${id}`, { method: 'PATCH', body: JSON.stringify({ ...rest, averagePrice: payload.averagePrice ?? averagePurchasePrice, primarySupplierId: uuidOrNullOrUndefined(payload.primarySupplierId ?? supplierId) }) }, token);
+    const primarySupplierId = payload.primarySupplierId !== undefined ? payload.primarySupplierId : supplierId;
+    return request<Product>(`/products/${id}`, { method: 'PATCH', body: JSON.stringify({ ...rest, averagePrice: payload.averagePrice ?? averagePurchasePrice, primarySupplierId: uuidOrNullOrUndefined(primarySupplierId) }) }, token);
   },
   archiveProduct(token: string, id: string) {
     return request<Product>(`/products/${id}/archive`, { method: 'POST' }, token);

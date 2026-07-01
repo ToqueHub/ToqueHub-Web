@@ -928,20 +928,43 @@ model UnitConversion {
 }
 
 model Product {
-  id                String    @id @default(uuid()) @db.Uuid
-  name              String
-  sku               String?
-  description       String?
-  averagePrice      Decimal   @default(0) @db.Decimal(12, 4)
-  minimumStock      Decimal   @default(0) @db.Decimal(12, 3)
-  isArchived        Boolean   @default(false)
-  archivedAt        DateTime?
-  organizationId    String    @db.Uuid
-  categoryId        String?   @db.Uuid
-  unitId            String    @db.Uuid
-  primarySupplierId String?   @db.Uuid
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id                      String    @id @default(uuid()) @db.Uuid
+  name                    String
+  sku                     String?
+  description             String?
+  averagePrice            Decimal   @default(0) @db.Decimal(12, 4)
+  minimumStock            Decimal   @default(0) @db.Decimal(12, 3)
+  gtin                    String?
+  originCountry           String?
+  packageLabel            String?
+  unitsPerPackage         Decimal?  @db.Decimal(12, 3)
+  unitWeightGrams         Decimal?  @db.Decimal(12, 3)
+  netWeightGrams          Decimal?  @db.Decimal(12, 3)
+  ingredients             String?   @db.Text
+  allergensPresent        String[]  @default([])
+  possibleTraces          String[]  @default([])
+  dietaryTags             String[]  @default([])
+  energyKj                Decimal?  @db.Decimal(12, 3)
+  energyKcal              Decimal?  @db.Decimal(12, 3)
+  fatGrams                Decimal?  @db.Decimal(12, 3)
+  saturatedFatGrams       Decimal?  @db.Decimal(12, 3)
+  carbohydratesGrams      Decimal?  @db.Decimal(12, 3)
+  sugarsGrams             Decimal?  @db.Decimal(12, 3)
+  fiberGrams              Decimal?  @db.Decimal(12, 3)
+  proteinGrams            Decimal?  @db.Decimal(12, 3)
+  saltGrams               Decimal?  @db.Decimal(12, 3)
+  storageType             String?
+  shelfLifeAfterOpening   String?
+  storageInstructions     String?   @db.Text
+  preparationInstructions String?   @db.Text
+  isArchived              Boolean   @default(false)
+  archivedAt              DateTime?
+  organizationId          String    @db.Uuid
+  categoryId              String?   @db.Uuid
+  unitId                  String    @db.Uuid
+  primarySupplierId       String?   @db.Uuid
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
   organization              Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   category                  Category?                       @relation(fields: [categoryId], references: [id], onDelete: SetNull)

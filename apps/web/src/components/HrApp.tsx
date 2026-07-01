@@ -50,7 +50,6 @@ const statusOptions = [
 ];
 
 const HR_WIZARD_SERVICES_KEY = 'toquehub.hrWizard.selectedServices';
-const HR_WIZARD_RIGHTS_KEY = 'toquehub.hrWizard.rightsCompleted';
 
 type HrTab = 'dashboard' | 'collaborators' | 'departments' | 'positions' | 'rights' | 'orgchart';
 
@@ -663,12 +662,11 @@ function WelcomeStep({ onStart, onClose }: { onStart: () => void; onClose?: () =
   );
 }
 
-function HrOnboardingAside({ step }: { step: 'services' | 'positions' | 'rights' | 'review' }) {
+function HrOnboardingAside({ step }: { step: 'services' | 'positions' | 'review' }) {
   const steps = [
     { key: 'welcome', label: 'Bienvenue' },
     { key: 'services', label: 'Sélection des services' },
     { key: 'positions', label: 'Création des postes' },
-    { key: 'rights', label: 'Gestion des droits' },
     { key: 'review', label: 'Premier collaborateur' },
   ];
   const currentIdx = steps.findIndex((s) => s.key === step);
@@ -786,7 +784,6 @@ function HrOnboardingWizard({
 }) {
   const hasServices = Boolean(onboarding?.servicesCompletedAt);
   const hasPositions = Boolean(onboarding?.positionsCompletedAt);
-  const rightsStorageKey = `${HR_WIZARD_RIGHTS_KEY}.${onboarding?.organizationId ?? 'current'}`;
   const [selectedServiceNames, setSelectedServiceNames] = useState<string[]>(() => {
     try {
       return JSON.parse(sessionStorage.getItem(HR_WIZARD_SERVICES_KEY) ?? '[]');
@@ -797,12 +794,9 @@ function HrOnboardingWizard({
   const [selectedPositionsByDept, setSelectedPositionsByDept] = useState<Record<string, Set<string>>>({});
   const [creatingCollaborator, setCreatingCollaborator] = useState(false);
   const [employeesUnlockedInWizard, setEmployeesUnlockedInWizard] = useState(Boolean(onboarding?.employeesUnlockedAt));
-  const [rightsCompletedInWizard, setRightsCompletedInWizard] = useState(() => sessionStorage.getItem(rightsStorageKey) === 'done');
-  const [step, setStep] = useState<'welcome' | 'services' | 'positions' | 'rights' | 'review'>(() => {
+  const [step, setStep] = useState<'welcome' | 'services' | 'positions' | 'review'>(() => {
     if (!hasServices) return 'welcome';
     if (!hasPositions) return 'positions';
-    if (rightsCompletedInWizard) return 'review';
-    if (!onboarding?.employeesUnlockedAt) return 'rights';
     return 'review';
   });
 
@@ -824,8 +818,8 @@ function HrOnboardingWizard({
     ? positions.filter((position) => wizardDepartmentIds.has(position.departmentId ?? '') || (position.department?.id ? wizardDepartmentIds.has(position.department.id) : false))
     : positions;
   const activeWizardCollaborators = collaborators.filter((collaborator) => !isArchived(collaborator));
-  const stepIndex = step === 'welcome' ? 1 : step === 'services' ? 2 : step === 'positions' ? 3 : step === 'rights' ? 4 : 5;
-  const progress = (stepIndex / 5) * 100;
+  const stepIndex = step === 'welcome' ? 1 : step === 'services' ? 2 : step === 'positions' ? 3 : 4;
+  const progress = (stepIndex / 4) * 100;
 
   return (
     <div
@@ -886,7 +880,7 @@ function HrOnboardingWizard({
                 <div style={{ display: 'flex', gap: '0.5rem', flexDirection: 'column', flexGrow: 1 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span className="badge badge-reception" style={{ background: 'rgba(16, 185, 129, 0.08)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.15)', textTransform: 'none', fontSize: '0.8rem' }}>
-                      Étape {stepIndex} / 5
+                      Étape {stepIndex} / 4
                     </span>
                     <span style={{ fontWeight: 800, fontSize: '0.85rem', color: 'var(--text-muted)', marginRight: onClose ? '2.5rem' : '0' }}>{Math.round(progress)}%</span>
                   </div>
@@ -957,20 +951,6 @@ function HrOnboardingWizard({
                         onSubmit={async (items) => {
                           await onCreatePositionsBulk(items);
                           if (onCompletePositions) await onCompletePositions();
-                          setStep('rights');
-                        }}
-                      />
-                    )}
-                    {step === 'rights' && (
-                      <OnboardingRightsStep
-                        token={token}
-                        regulatoryCountryCode={regulatoryCountryCode}
-                        regulatorySector={regulatorySector}
-                        onConfigureRegulatoryCountry={onConfigureRegulatoryCountry}
-                        onBack={() => setStep('positions')}
-                        onSubmit={() => {
-                          sessionStorage.setItem(rightsStorageKey, 'done');
-                          setRightsCompletedInWizard(true);
                           setStep('review');
                         }}
                       />
@@ -981,7 +961,7 @@ function HrOnboardingWizard({
                         positions={wizardPositions}
                         collaborators={activeWizardCollaborators}
                         employeesUnlocked={employeesUnlockedInWizard}
-                        onBack={() => setStep('rights')}
+                        onBack={() => setStep('positions')}
                         onCreate={() => setCreatingCollaborator(true)}
                         onUnlockEmployees={async () => {
                           if (onUnlockEmployees) await onUnlockEmployees();

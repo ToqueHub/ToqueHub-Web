@@ -16,7 +16,6 @@ import {
   Info,
   Layers,
   ListChecks,
-  MapPin,
   RefreshCw,
   Repeat2,
   Search,
@@ -54,7 +53,7 @@ import type {
 type PlanningTab = 'dashboard' | 'planning' | 'settings' | 'attendance';
 type PlanningView = 'day' | 'week' | 'month' | 'year';
 type SettingKey = 'needs' | 'presets' | 'availability' | 'work-time' | 'rules' | 'costs' | 'notifications' | 'exports' | 'imports';
-type InitialPlanningStep = 'profile' | 'mode' | 'services' | 'needs' | 'presets' | 'done';
+type InitialPlanningStep = 'services' | 'needs' | 'presets' | 'done';
 type DashboardPeriod = 'week' | 'month' | 'year';
 type PlanningDashboardBlockKey = 'periodStatus' | 'planningSetup' | 'plannedHours' | 'estimatedCost' | 'overtimeHours' | 'activeAlerts' | 'alertsToReview' | 'planning' | 'departmentHours' | 'actions' | 'history';
 type PlanningBlockMode = 'day' | 'week' | 'month';
@@ -188,7 +187,6 @@ const statusLabel: Record<string, string> = {
   ANOMALIE: 'Anomalie',
 };
 
-const PLANNING_PROFILE_KEY = 'toquehub.planning.profile.placeholder';
 const PLANNING_INITIAL_SETUP_PREFIX = 'toquehub.planning.initialSetup.completed';
 const PLANNING_DASHBOARD_CONFIG_KEY = 'toquehub.planning.dashboard.config';
 const defaultPlanningDashboardConfig: PlanningDashboardConfig = {
@@ -209,7 +207,7 @@ const defaultPlanningDashboardConfig: PlanningDashboardConfig = {
     history: true,
   },
 };
-const initialPlanningSteps: InitialPlanningStep[] = ['profile', 'mode', 'services', 'needs', 'presets', 'done'];
+const initialPlanningSteps: InitialPlanningStep[] = ['services', 'needs', 'presets', 'done'];
 const planningBusinessStatuses = [
   { value: 'work', label: 'Travail', className: 'work', countsHours: true },
   { value: 'rest', label: 'Repos', className: 'rest', countsHours: false },
@@ -246,11 +244,10 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
   const [dashboardConfig, setDashboardConfig] = useState<PlanningDashboardConfig>(() => loadPlanningDashboardConfig());
   const [dashboardPeriodData, setDashboardPeriodData] = useState<DashboardPeriodData | null>(null);
   const [showDashboardCustomizer, setShowDashboardCustomizer] = useState(false);
-  const [planningProfile, setPlanningProfileState] = useState(() => sessionStorage.getItem(PLANNING_PROFILE_KEY) ?? '');
   const planningSetupStorageKey = `${PLANNING_INITIAL_SETUP_PREFIX}.${session.user.organizationId ?? session.user.id}`;
   const [initialSetupCompleted, setInitialSetupCompleted] = useState(() => localStorage.getItem(planningSetupStorageKey) === 'true');
   const [showInitialSetup, setShowInitialSetup] = useState(() => localStorage.getItem(planningSetupStorageKey) !== 'true');
-  const [initialSetupStep, setInitialSetupStep] = useState<InitialPlanningStep>('profile');
+  const [initialSetupStep, setInitialSetupStep] = useState<InitialPlanningStep>('services');
 
   useEffect(() => {
     const completed = localStorage.getItem(planningSetupStorageKey) === 'true';
@@ -358,22 +355,16 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
     departments: effectiveDepartments,
     requirements,
     templates,
-    planningProfile,
     onNavigate,
     openSetting,
   });
-
-  function setPlanningProfile(value: string) {
-    setPlanningProfileState(value);
-    sessionStorage.setItem(PLANNING_PROFILE_KEY, value);
-  }
 
   function openSetting(setting: SettingKey) {
     setSelectedSetting(setting);
     onNavigate('settings');
   }
 
-  function openInitialSetup(step: InitialPlanningStep = 'profile') {
+  function openInitialSetup(step: InitialPlanningStep = 'services') {
     setInitialSetupStep(step);
     setShowInitialSetup(true);
   }
@@ -745,7 +736,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
           collaborators={effectiveCollaborators}
           settings={data?.settings}
           setup={setup}
-          onOpenInitialSetup={() => openInitialSetup('profile')}
+          onOpenInitialSetup={() => openInitialSetup('services')}
           selectedDate={selectedDate}
           canWrite={canWrite}
           onSaveRequirement={saveRequirement}
@@ -767,8 +758,6 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
           step={initialSetupStep}
           setStep={setInitialSetupStep}
           setup={setup}
-          profile={planningProfile}
-          setProfile={setPlanningProfile}
           departments={effectiveDepartments}
           positions={effectivePositions}
           sites={effectiveSites}
@@ -781,7 +770,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
           onDeleteRequirement={deleteRequirement}
           onSaveDayPreset={saveDayPreset}
           onDeleteDayPreset={deleteDayPreset}
-          onClose={() => initialSetupCompleted ? setShowInitialSetup(false) : openInitialSetup('profile')}
+          onClose={() => initialSetupCompleted ? setShowInitialSetup(false) : openInitialSetup('services')}
           onComplete={completeInitialSetup}
         />
       ) : null}
@@ -813,8 +802,6 @@ function PlanningInitialSetupModal({
   step,
   setStep,
   setup,
-  profile,
-  setProfile,
   departments,
   positions,
   sites,
@@ -833,8 +820,6 @@ function PlanningInitialSetupModal({
   step: InitialPlanningStep;
   setStep: (step: InitialPlanningStep) => void;
   setup: ReturnType<typeof buildPlanningSetup>;
-  profile: string;
-  setProfile: (value: string) => void;
   departments: HrDepartment[];
   positions: HrPosition[];
   sites: Site[];
@@ -882,8 +867,6 @@ function PlanningInitialSetupModal({
             {setup.steps.slice(0, 4).map((item) => <span key={item.key} className={item.status}>{item.title}</span>)}
           </div>
 
-          {step === 'profile' ? <InitialProfileStep profile={profile} setProfile={setProfile} /> : null}
-          {step === 'mode' ? <InitialModeStep /> : null}
           {step === 'services' ? <InitialServicesStep departments={departments} collaborators={collaborators} /> : null}
           {step === 'needs' ? <InitialNeedsStep requirements={requirements} departments={departments} positions={positions} sites={sites} selectedDate={selectedDate} canWrite={canWrite} onSaveRequirement={onSaveRequirement} onDeleteRequirement={onDeleteRequirement} /> : null}
           {step === 'presets' ? <InitialPresetsStep dayPresets={dayPresets} departments={departments} positions={positions} sites={sites} canWrite={canWrite} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} /> : null}
@@ -902,36 +885,6 @@ function PlanningInitialSetupModal({
           </div>
         </div>
       </motion.div>
-    </div>
-  );
-}
-
-function InitialProfileStep({ profile, setProfile }: { profile: string; setProfile: (value: string) => void }) {
-  const profiles = [
-    { id: 'finland', title: 'Finlande', text: 'Prépare les paramètres de base pour un établissement finlandais.' },
-    { id: 'france', title: 'France', text: 'Prépare les paramètres de base pour un établissement français.' },
-  ];
-  return (
-    <div className="planning-initial-step">
-      <div className="hr-wizard-hero-card">
-        <div className="hr-wizard-icon"><MapPin size={30} /></div>
-        <div><h3>Pays et profil</h3><p>Ce profil adapte les règles, les jours et les paramètres de base selon votre pays.</p></div>
-      </div>
-      <div className="planning-choice-grid">
-        {profiles.map((item) => <button key={item.id} type="button" className={`planning-choice-card ${profile === item.id ? 'selected' : ''}`} onClick={() => setProfile(item.id)}>{profile === item.id ? <CheckCircle2 size={18} /> : null}<strong>{item.title}</strong><span>{item.text}</span></button>)}
-      </div>
-    </div>
-  );
-}
-
-function InitialModeStep() {
-  return (
-    <div className="planning-initial-step">
-      <div className="hr-wizard-hero-card">
-        <div className="hr-wizard-icon"><SlidersHorizontal size={30} /></div>
-        <div><h3>Mode hybride</h3><p>Le mode hybride permet de créer un planning avec des besoins par service, tout en gardant la possibilité d’ajuster manuellement les horaires et les affectations.</p></div>
-      </div>
-      <div className="planning-confirmed-mode"><CheckCircle2 size={22} /><strong>Mode hybride</strong><span>Le mode hybride permet de créer un planning à partir de besoins par service, tout en gardant la liberté d’ajuster manuellement les horaires, les statuts et les affectations.</span></div>
     </div>
   );
 }
@@ -1686,7 +1639,7 @@ function PlanningMonthlyCalendar({ selectedDate, onDayClick, assignments, requir
   return (
     <div className={`${embedded ? 'planning-calendar-card planning-calendar-card-embedded' : 'card-modern planning-calendar-card'} ${compact ? 'compact' : ''}`}>
       <div className={`planning-month-grid planning-month-grid-final ${embedded ? 'embedded' : ''}`}>
-        {dayNames.map((day) => <strong key={day}>{day}</strong>)}
+        {dayNames.map((day) => <strong key={day} className="planning-month-weekday">{day}</strong>)}
         {weeks.map((week) => {
           const weekKey = `${week[0]}_${week[week.length - 1]}`;
           const expandedWeek = expandedWeekKeys.includes(weekKey);
@@ -1738,11 +1691,16 @@ function PlanningMonthlyCalendar({ selectedDate, onDayClick, assignments, requir
 
 function QuickAssignmentPanel(props: { selectedDate: string; collaborators: HrCollaborator[]; selectedEmployeeId: string; setSelectedEmployeeId: (value: string) => void; selectedEmployee?: HrCollaborator; templates: PlanningTemplate[]; rotations: PlanningRotationOption[]; assignments: PlanningAssignment[]; replacements: PlanningReplacementProposal[]; onOpenSettings: () => void; customStart: string; setCustomStart: (value: string) => void; customEnd: string; setCustomEnd: (value: string) => void; quickBusinessStatus: string; setQuickBusinessStatus: (value: string) => void; saveCustomShift: () => void; createQuickAssignment: (startTime: string, endTime: string, origin?: string, templateId?: string, preset?: Partial<PlanningAssignment>, dateOverride?: string, businessStatusOverride?: string) => Promise<void>; quickAssignmentSelection: QuickAssignmentSelection | null; setQuickAssignmentSelection: (value: QuickAssignmentSelection | null) => void; setQuickPanelOpen: (value: boolean) => void; applyRotation: (rotation: PlanningRotationOption, dateOverride?: string) => Promise<void> }) {
   const presets = dayPresets(props.templates);
-  const week = weekDates(props.selectedDate);
-  const employeeAssignments = props.selectedEmployee ? props.assignments.filter((assignment) => (assignment.collaboratorId ?? assignment.employeeId) === props.selectedEmployee?.id) : [];
-  const planned = Math.round(employeeAssignments.reduce((sum, assignment) => sum + assignmentHours(assignment), 0) * 10) / 10;
+  const selectedDay = normalizePlanningDate(props.selectedDate);
+  const week = weekDates(selectedDay);
+  const monthPeriod = currentMonthPeriod(selectedDay);
+  const employeeAssignments = props.selectedEmployee ? props.assignments.filter((assignment) => (assignment.collaboratorId ?? assignment.employeeId) === props.selectedEmployee?.id && assignment.status !== 'CANCELLED') : [];
   const contractMinutes = contractWeeklyMinutes(props.selectedEmployee);
-  const contract = contractMinutes ? Math.round(contractMinutes / 60 * 10) / 10 : null;
+  const quotaColumns = [
+    { key: 'day', label: 'Jour', planned: plannedAssignmentMinutes(employeeAssignments, selectedDay, selectedDay), quota: contractMinutes ? Math.round(contractMinutes / 5) : null },
+    { key: 'week', label: 'Semaine', planned: plannedAssignmentMinutes(employeeAssignments, week[0], week[6]), quota: contractMinutes || null },
+    { key: 'month', label: 'Mois', planned: plannedAssignmentMinutes(employeeAssignments, monthPeriod.startDate, monthPeriod.endDate), quota: contractMinutes ? Math.round((contractMinutes * businessDaysBetween(monthPeriod.startDate, monthPeriod.endDate)) / 5) : null },
+  ];
   const secondary = secondaryPositions(props.selectedEmployee);
   const replacementRows = props.replacements.slice(0, 3);
   function selectPreset(preset: ReturnType<typeof dayPresets>[number]) {
@@ -1820,11 +1778,21 @@ function QuickAssignmentPanel(props: { selectedDate: string; collaborators: HrCo
             <button className="btn btn-secondary btn-compact" type="button" onClick={props.saveCustomShift}>Utiliser cet horaire</button>
           </div>
           <div className="quota-box">
-            <span>Quota semaine</span>
-            <strong>{formatHours(planned)} / {contract == null ? 'quota non défini' : formatHours(contract)}</strong>
-            <small>{contract == null ? 'Quota non renseigné' : `Solde semaine ${formatHours(Math.round((contract - planned) * 10) / 10)}`}</small>
+            <div className="quota-box-head">
+              <span>Quotas</span>
+              <small>{formatShort(week[0])} - {formatShort(week[6])}</small>
+            </div>
+            <div className="quota-box-grid">
+              {quotaColumns.map((item) => (
+                <div key={item.key} className="quota-box-column">
+                  <span>{item.label}</span>
+                  <strong>{formatMinutesValue(item.planned)}</strong>
+                  <small>{item.quota == null ? 'Quota non défini' : `/ ${formatMinutesValue(item.quota)}`}</small>
+                  <small>{item.quota == null ? 'Solde --' : `Solde ${formatMinutesValue(item.quota - item.planned)}`}</small>
+                </div>
+              ))}
+            </div>
             <small>Postes secondaires : {secondary.length ? secondary.join(', ') : 'aucun'}</small>
-            <small>Semaine : {formatShort(week[0])} - {formatShort(week[6])}</small>
           </div>
           <div className="quick-section">
             <strong>Remplacements suggérés</strong>
@@ -2337,7 +2305,7 @@ const fallbackPlanningRules = [
   { key: 'required-position-present', name: 'Poste obligatoire présent', description: 'Alerte si un besoin avec poste défini n’est pas couvert par ce poste.', status: 'active', impact: 'warning', requiredData: ['Postes RH', 'Besoins avec poste'] },
   { key: 'weekly-quota', name: 'Quota hebdomadaire', description: 'Compare planifié et durée contractuelle RH.', status: 'active', impact: 'warning', requiredData: ['Contrats RH', 'Affectations'] },
   { key: 'mandatory-break', name: 'Pause obligatoire', description: 'Préparé pour profils configurables entreprise.', status: 'to_configure', impact: 'warning', requiredData: ['Règles configurables'] },
-  { key: 'minimum-rest-between-shifts', name: 'Repos minimum entre shifts', description: 'Préparé pour règles France/Finlande/personnalisées.', status: 'to_configure', impact: 'warning', requiredData: ['Règles configurables'] },
+  { key: 'minimum-rest-between-shifts', name: 'Repos minimum entre shifts', description: 'Préparé pour les règles configurables de l’établissement.', status: 'to_configure', impact: 'warning', requiredData: ['Règles configurables'] },
   { key: 'availability-respected', name: 'Indisponibilité respectée', description: 'Absences RH approuvées déjà bloquantes; indisponibilités Planning futures.', status: 'partial', impact: 'blocking', requiredData: ['Absences RH', 'Indisponibilités futures'] },
   { key: 'overlap-forbidden', name: 'Chevauchement interdit', description: 'Détecte les shifts qui se chevauchent pour un même salarié.', status: 'active', impact: 'blocking', requiredData: ['Affectations'] },
 ];
@@ -2361,13 +2329,11 @@ function PayrollRulesSettings({ profile }: { profile?: Record<string, any> }) {
       <div className="section-header-modern"><span className="card-title">Règles paie & majorations</span><span className="section-tagline">Configuration entreprise, sans règles légales codées en dur</span></div>
       <div className="payroll-profile-box">
         <label className="planning-field">Profil actuel
-          <select value={String(profile?.currentProfile ?? 'custom')} disabled>
-            <option value="france">France</option>
-            <option value="finland">Finlande</option>
-            <option value="custom">Personnalisé</option>
+          <select value="custom" disabled>
+            <option value="custom">Règles internes</option>
           </select>
         </label>
-        <p className="muted">Les profils France/Finlande sont préparés comme modèles configurables par entreprise. Le calcul paie réel sera branché dans un lot dédié.</p>
+        <p className="muted">Les règles Planning restent configurables par entreprise. Le calcul paie réel sera branché dans un lot dédié.</p>
       </div>
       <div className="settings-list">
         {families.map((family) => <div key={family}><strong>{family}</strong><span>Famille de règle préparée pour majorations, arrondis, exports paie et coût futur.</span></div>)}
@@ -2431,7 +2397,7 @@ function PlanningSetupPanel({ setup, compact, onOpenInitialSetup }: { setup: Ret
               </div>
             ))}
           </div>
-          <p className="muted">Pays/profil, besoins, presets, statuts et roulements restent modifiables depuis les sections ci-dessous.</p>
+          <p className="muted">Besoins, presets, statuts et roulements restent modifiables depuis les sections ci-dessous.</p>
         </>
       ) : null}
     </div>
@@ -2628,7 +2594,7 @@ function PlaceholderList({ title, items }: { title: string; items: string[] }) {
 }
 
 function OnboardingCard() {
-  return <div className="card-modern planning-prerequisite"><span className="card-title"><Info size={18} /> Structure de démarrage</span><p>Complétez RH avant de planifier. Le futur onboarding guidera pays France / Finlande, type d’activité, mode hybride, besoins, presets, roulements et règles.</p><div className="planning-sample-row"><span>France / Finlande</span><span>Mode planning hybride</span><span>Règles configurables</span></div></div>;
+  return <div className="card-modern planning-prerequisite"><span className="card-title"><Info size={18} /> Structure de démarrage</span><p>Complétez RH avant de planifier. Le futur onboarding guidera besoins, presets, roulements et règles internes.</p><div className="planning-sample-row"><span>Socle RH</span><span>Besoins récurrents</span><span>Règles configurables</span></div></div>;
 }
 
 function buildDashboard(data: PlanningBootstrap | undefined, assignments: PlanningAssignment[], alerts: PlanningAlert[], replacements: PlanningReplacementProposal[], requirements: PlanningRequirement[], period?: DashboardPeriodRange) {
@@ -2726,11 +2692,10 @@ function periodStatusLabel(status: string) {
   return status === 'CONTROLLED' ? 'Contrôlé' : status === 'PUBLISHED' ? 'Publié' : status === 'MODIFIED_AFTER_PUBLICATION' ? 'Modifié après publication' : status === 'LOCKED' ? 'Verrouillé' : 'Brouillon';
 }
 
-function buildPlanningSetup({ collaborators, departments, requirements, templates, planningProfile, onNavigate, openSetting }: { collaborators: HrCollaborator[]; departments: HrDepartment[]; requirements: PlanningRequirement[]; templates: PlanningTemplate[]; planningProfile: string; onNavigate: (tab: PlanningTab) => void; openSetting: (setting: SettingKey) => void }) {
+function buildPlanningSetup({ collaborators, departments, requirements, templates, onNavigate, openSetting }: { collaborators: HrCollaborator[]; departments: HrDepartment[]; requirements: PlanningRequirement[]; templates: PlanningTemplate[]; onNavigate: (tab: PlanningTab) => void; openSetting: (setting: SettingKey) => void }) {
   const activeCollaborators = collaborators.filter((collaborator) => collaborator.status !== 'DEPARTED');
   const presets = dayPresets(templates);
   const steps: PlanningSetupStep[] = [
-    { key: 'profile', title: 'Profil pays', description: planningProfile ? profileLabel(planningProfile) : 'France, Finlande ou personnalisé.', status: planningProfile ? 'done' : 'todo', actionLabel: 'Choisir', action: () => openSetting('rules') },
     { key: 'services', title: 'Socle RH', description: `${departments.length} service(s) RH, ${activeCollaborators.length} collaborateur(s) actif(s).`, status: departments.length && activeCollaborators.length ? 'done' : departments.length || activeCollaborators.length ? 'partial' : 'todo', actionLabel: 'Voir RH', action: () => onNavigate('settings') },
     { key: 'needs', title: 'Besoins récurrents', description: requirements.length ? `${requirements.length} règle(s) créée(s).` : 'Créez quelques règles de base.', status: requirements.length ? 'done' : 'partial', actionLabel: 'Configurer', action: () => openSetting('needs') },
     { key: 'presets', title: 'Presets horaires', description: presets.length ? `${presets.length} preset(s) disponible(s).` : 'Ajoutez les horaires types.', status: presets.length ? 'done' : 'partial', actionLabel: 'Configurer', action: () => openSetting('presets') },
@@ -2893,8 +2858,15 @@ function groupCollaboratorsByPosition(collaborators: HrCollaborator[]) {
     groups.set(title, [...(groups.get(title) ?? []), collaborator]);
   });
   return [...groups.entries()]
-    .map(([positionName, items]) => ({ positionName, collaborators: items.sort((a, b) => collaboratorName(a).localeCompare(collaboratorName(b))) }))
+    .map(([positionName, items]) => ({ positionName, collaborators: items.sort(compareCollaboratorsByLastName) }))
     .sort((a, b) => comparePositionTitles(a.positionName, b.positionName));
+}
+function compareCollaboratorsByLastName(a: HrCollaborator, b: HrCollaborator) {
+  const lastName = String(a.lastName ?? '').localeCompare(String(b.lastName ?? ''), 'fr-FR', { sensitivity: 'base' });
+  if (lastName !== 0) return lastName;
+  const firstName = String(a.firstName ?? '').localeCompare(String(b.firstName ?? ''), 'fr-FR', { sensitivity: 'base' });
+  if (firstName !== 0) return firstName;
+  return collaboratorName(a).localeCompare(collaboratorName(b), 'fr-FR', { sensitivity: 'base' });
 }
 function comparePositionTitles(a: string, b: string) {
   const missing = 'Poste non renseigné';
@@ -2910,7 +2882,6 @@ function shortName(collaborator?: HrCollaborator) { return collaborator ? `${col
 function ruleStatusLabel(value?: unknown) { return value === 'active' ? 'Actif' : value === 'partial' ? 'Partiel' : value === 'to_configure' ? 'À configurer' : value === 'future' ? 'Futur' : 'Préparé'; }
 function impactLabel(value?: unknown) { return value === 'blocking' ? 'Bloquant' : value === 'warning' ? 'Avertissement' : 'Info'; }
 function setupStatusLabel(value: PlanningSetupStatus) { return value === 'done' ? 'Terminé' : value === 'partial' ? 'Partiel' : 'À faire'; }
-function profileLabel(value: string) { return value === 'france' ? 'Profil France sélectionné.' : value === 'finland' ? 'Profil Finlande sélectionné.' : value === 'custom' ? 'Profil personnalisé sélectionné.' : 'Profil à choisir.'; }
 function loadPlanningDashboardConfig(): PlanningDashboardConfig {
   try {
     const stored = localStorage.getItem(PLANNING_DASHBOARD_CONFIG_KEY);
@@ -3322,6 +3293,20 @@ function formatDaysValue(value: number) {
 function formatHours(value: number) { return formatMinutesValue(Math.round((Number.isFinite(value) ? value : 0) * 60)); }
 function contractWeeklyMinutes(collaborator?: HrCollaborator) { return Number(collaborator?.activeContract?.weeklyHours ?? collaborator?.contracts?.[0]?.weeklyHours ?? collaborator?.contractWeeklyMinutes ?? 0) || 0; }
 function secondaryPositions(collaborator?: HrCollaborator) { return (collaborator?.secondaryPositions ?? []).map((position) => position.name).filter(Boolean); }
+function plannedAssignmentMinutes(assignments: PlanningAssignment[], startDate: string, endDate: string) {
+  return assignments.reduce((sum, assignment) => {
+    const date = normalizePlanningDate(assignment.date);
+    if (!date || date < startDate || date > endDate || assignment.status === 'CANCELLED') return sum;
+    return sum + Math.round(assignmentHours(assignment) * 60);
+  }, 0);
+}
+function businessDaysBetween(startDate: string, endDate: string) {
+  let days = 0;
+  for (let date = startDate; date <= endDate; date = addDays(date, 1)) {
+    if (isoDayOfWeek(date) <= 5) days += 1;
+  }
+  return days;
+}
 function minutesToHours(minutes?: number | null) { return Math.round(Number(minutes ?? 0) / 60 * 10) / 10; }
 function weeklyRotationSummary(rotation: PlanningTemplate) {
   const days = Array.isArray(rotation.days) ? rotation.days : [];
