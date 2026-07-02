@@ -11,6 +11,7 @@ function createPrismaMock() {
       create: jest.fn(),
       update: jest.fn(),
     },
+    haccpTemperatureEquipment: { findMany: jest.fn() },
     haccpTemperatureReading: { findMany: jest.fn() },
     haccpTraceability: { findMany: jest.fn() },
     haccpReception: { findMany: jest.fn() },
@@ -20,7 +21,9 @@ function createPrismaMock() {
       findFirst: jest.fn(),
       update: jest.fn(),
     },
+    haccpOilEquipment: { findMany: jest.fn() },
     haccpOilSession: { findMany: jest.fn() },
+    haccpCleaningZone: { findMany: jest.fn() },
     haccpCleaningSession: {
       findMany: jest.fn(),
       findFirst: jest.fn(),
@@ -30,6 +33,7 @@ function createPrismaMock() {
     haccpCleaningSurface: { count: jest.fn() },
     haccpCleanedSurface: { count: jest.fn() },
     haccpDailyReport: {
+      findMany: jest.fn(),
       upsert: jest.fn(),
       update: jest.fn(),
     },
@@ -83,6 +87,41 @@ describe('HaccpService', () => {
     expect(prisma.haccpProcessSession.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'c1' }, data: expect.objectContaining({ endTemperature: 4, status: 'termine' }) }));
     expect(response.data).toMatchObject({ _id: 'c1', status: 'termine', endTemperature: 4 });
     expect(response.data.duration).toBeGreaterThanOrEqual(0);
+  });
+
+  it('computes dashboard cards from real daily HACCP controls', async () => {
+    const prisma = createPrismaMock();
+    const now = new Date();
+    prisma.haccpTemperatureEquipment.findMany.mockResolvedValue([{ id: 'fridge-1' }, { id: 'fridge-2' }]);
+    prisma.haccpTemperatureReading.findMany.mockResolvedValue([{ id: 'temp-1', equipmentId: 'fridge-1', temperature: '3.5', date: now, equipment: { name: 'Frigo 1' } }]);
+    prisma.haccpCleaningZone.findMany.mockResolvedValue([
+      { id: 'zone-1', name: 'Cuisine', surfaces: [{ id: 'surface-1', name: 'Plan', frequency: 'daily' }, { id: 'surface-2', name: 'Sols', frequency: 'daily' }] },
+    ]);
+    prisma.haccpCleaningSession.findMany.mockResolvedValue([{ id: 'clean-1', sessionDate: now, status: 'active', completedSurfaces: 1, totalSurfaces: 2, cleanedSurfaces: [{ surfaceId: 'surface-1' }] }]);
+    prisma.haccpTraceability.findMany.mockResolvedValue([]);
+    prisma.haccpReception.findMany.mockResolvedValue([]);
+    prisma.haccpProductionSession.findMany.mockResolvedValue([{ id: 'prod-1', status: 'en_cours', productionDate: now, finishedProduct: { name: 'Soupe' } }]);
+    prisma.haccpProcessSession.findMany
+      .mockResolvedValueOnce([{ id: 'process-1', type: 'refroidissement', status: 'en_cours', sessionDate: now, product: { name: 'Crème' }, equipment: { name: 'Cellule' } }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    prisma.haccpOilEquipment.findMany.mockResolvedValue([{ id: 'oil-1' }]);
+    prisma.haccpOilSession.findMany.mockResolvedValue([]);
+    prisma.haccpProduct.findMany.mockResolvedValue([]);
+    prisma.haccpDailyReport.findMany.mockResolvedValue([]);
+    const service = new HaccpService(prisma);
+
+    const response = await service.dashboard(orgId);
+    const modules = Object.fromEntries(response.data.modules.map((module: any) => [module.id, module]));
+
+    expect(modules.temperature).toMatchObject({ completed: 1, expected: 2, issues: 1 });
+    expect(modules.cleaning).toMatchObject({ completed: 1, expected: 2, issues: 1 });
+    expect(modules.traceability).toMatchObject({ completed: 0, expected: 0, issues: 0, score: 100 });
+    expect(modules.receptions).toMatchObject({ completed: 0, expected: 0, issues: 0, score: 100 });
+    expect(modules.process).toMatchObject({ completed: 0, expected: 1, issues: 1 });
+    expect(modules.oil).toMatchObject({ completed: 0, expected: 1, issues: 1 });
+    expect(modules.production).toMatchObject({ completed: 0, expected: 1, issues: 1 });
+    expect(response.data.alerts).toEqual(expect.arrayContaining([expect.objectContaining({ module: 'production', severity: 'warning' })]));
   });
 
   it('generates a daily report from all HACCP modules', async () => {

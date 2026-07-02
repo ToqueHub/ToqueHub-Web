@@ -139,6 +139,7 @@ type PlanningRangeParams = {
 };
 
 const API_URL = import.meta.env.VITE_API_URL?.replace(/\/$/, '') ?? '';
+const API_SOCKET_URL = API_URL || (import.meta.env.DEV ? 'http://localhost:3000' : window.location.origin);
 
 type ProductMutationPayload = {
   name?: string;
@@ -402,6 +403,48 @@ export const api = {
   },
   haccpDownloadDailyReportUrl(reportId: string) {
     return `${API_URL}/api/daily-reports/${reportId}/download`;
+  },
+  haccpSensorsSummary(token: string) {
+    return request<any>('/haccp/sensors/summary', {}, token);
+  },
+  haccpSensors(token: string) {
+    return request<any[]>('/haccp/sensors', {}, token);
+  },
+  haccpSensor(token: string, id: string) {
+    return request<any>(`/haccp/sensors/${id}`, {}, token);
+  },
+  haccpSensorReadings(token: string, id: string) {
+    return request<any[]>(`/haccp/sensors/${id}/readings?limit=200`, {}, token);
+  },
+  haccpSensorEvents(token: string, id: string) {
+    return request<any[]>(`/haccp/sensors/${id}/events`, {}, token);
+  },
+  haccpUpdateSensor(token: string, id: string, payload: Record<string, unknown>) {
+    return request<any>(`/haccp/sensors/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
+  },
+  haccpRenameSensor(token: string, id: string, name: string) {
+    return request<any>(`/haccp/sensors/${id}/rename`, { method: 'POST', body: JSON.stringify({ name }) }, token);
+  },
+  haccpAssignSensor(token: string, id: string, haccpTemperatureEquipmentId: string) {
+    return request<any>(`/haccp/sensors/${id}/assign`, { method: 'POST', body: JSON.stringify({ haccpTemperatureEquipmentId }) }, token);
+  },
+  haccpUnassignSensor(token: string, id: string) {
+    return request<any>(`/haccp/sensors/${id}/unassign`, { method: 'POST' }, token);
+  },
+  haccpDeleteSensor(token: string, id: string, removeFromNetwork = false) {
+    return request<any>(`/haccp/sensors/${id}?removeFromNetwork=${removeFromNetwork ? 'true' : 'false'}`, { method: 'DELETE' }, token);
+  },
+  haccpStartSensorPairing(token: string, durationSeconds?: number) {
+    return request<any>('/haccp/sensors/pairing/start', { method: 'POST', body: JSON.stringify({ durationSeconds }) }, token);
+  },
+  haccpStopSensorPairing(token: string) {
+    return request<any>('/haccp/sensors/pairing/stop', { method: 'POST' }, token);
+  },
+  haccpCurrentSensorPairing(token: string) {
+    return request<any | null>('/haccp/sensors/pairing/current', {}, token);
+  },
+  haccpSensorSocketUrl() {
+    return `${API_SOCKET_URL}/haccp-sensors`;
   },
   menusDashboard(token: string) {
     return request<MenuModuleDashboard>('/menus/dashboard', {}, token);

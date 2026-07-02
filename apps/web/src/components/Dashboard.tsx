@@ -84,6 +84,7 @@ import {
   Utensils,
   KeyRound,
   Server,
+  Smartphone,
   RotateCw,
   ZoomIn,
   ZoomOut,
@@ -344,7 +345,7 @@ const apps = [
   },
 ];
 
-type ActiveTab = 'overview' | 'applications' | 'settings' | 'organization-general' | 'organization-documents' | 'users' | 'architecture' | 'stocks-dashboard' | 'stocks-margins' | 'inventory' | 'movements' | 'products' | 'categories' | 'units' | 'suppliers' | 'inventories' | 'locations' | 'audit' | 'rnm-dashboard' | 'rnm-history' | 'rnm-favorites' | 'rnm-about' | 'hr-dashboard' | 'hr-collaborators' | 'hr-departments' | 'hr-positions' | 'hr-rights' | 'hr-rotations' | 'hr-orgchart' | 'planning-dashboard' | 'planning-planning' | 'planning-settings' | 'planning-attendance' | 'planning-day' | 'planning-week' | 'planning-month' | 'planning-assignments' | 'planning-absences' | 'planning-replacements' | 'planning-templates' | 'planning-requirements' | 'technical-sheets-dashboard' | 'technical-sheets-recipes' | 'technical-sheets-categories' | 'technical-sheets-costs' | 'technical-sheets-allergens' | 'technical-sheets-production' | 'production-dashboard' | 'production-orders' | 'production-calendar' | 'production-today' | 'production-assignments' | 'production-materials' | 'production-exports' | 'production-history' | 'menus-dashboard' | 'menus-list' | 'menus-calendar' | 'menus-cycles' | 'menus-diets' | 'menus-guests' | 'menus-exports' | 'menus-history' | 'haccp-dashboard' | 'haccp-setup' | 'haccp-temperatures' | 'haccp-cleaning' | 'haccp-traceability' | 'haccp-receptions' | 'haccp-process' | 'haccp-oil' | 'haccp-production' | 'haccp-products' | 'haccp-labels' | 'haccp-reports';
+type ActiveTab = 'overview' | 'applications' | 'settings' | 'organization-general' | 'organization-documents' | 'users' | 'architecture' | 'stocks-dashboard' | 'stocks-margins' | 'inventory' | 'movements' | 'products' | 'categories' | 'units' | 'suppliers' | 'inventories' | 'locations' | 'audit' | 'rnm-dashboard' | 'rnm-history' | 'rnm-favorites' | 'rnm-about' | 'hr-dashboard' | 'hr-collaborators' | 'hr-departments' | 'hr-positions' | 'hr-rights' | 'hr-rotations' | 'hr-orgchart' | 'planning-dashboard' | 'planning-planning' | 'planning-settings' | 'planning-attendance' | 'planning-day' | 'planning-week' | 'planning-month' | 'planning-assignments' | 'planning-absences' | 'planning-replacements' | 'planning-templates' | 'planning-requirements' | 'technical-sheets-dashboard' | 'technical-sheets-recipes' | 'technical-sheets-categories' | 'technical-sheets-costs' | 'technical-sheets-allergens' | 'technical-sheets-production' | 'production-dashboard' | 'production-orders' | 'production-calendar' | 'production-today' | 'production-assignments' | 'production-materials' | 'production-exports' | 'production-history' | 'menus-dashboard' | 'menus-list' | 'menus-calendar' | 'menus-cycles' | 'menus-diets' | 'menus-guests' | 'menus-exports' | 'menus-history' | 'haccp-dashboard' | 'haccp-setup' | 'haccp-sensors' | 'haccp-temperatures' | 'haccp-cleaning' | 'haccp-traceability' | 'haccp-receptions' | 'haccp-process' | 'haccp-oil' | 'haccp-production' | 'haccp-products' | 'haccp-labels' | 'haccp-reports';
 type StocksSettingsTab = 'categories' | 'units' | 'movements' | 'locations' | 'audit';
 
 const STOCKS_ALL_TABS: ActiveTab[] = [
@@ -704,7 +705,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const isTechnicalSheetsTab = useMemo(() => ['technical-sheets-dashboard', 'technical-sheets-recipes', 'technical-sheets-categories', 'technical-sheets-costs', 'technical-sheets-allergens', 'technical-sheets-production'].includes(activeTab), [activeTab]);
   const isProductionTab = useMemo(() => ['production-dashboard', 'production-orders', 'production-calendar', 'production-today', 'production-assignments', 'production-materials', 'production-exports', 'production-history'].includes(activeTab), [activeTab]);
   const isMenusTab = useMemo(() => ['menus-dashboard', 'menus-list', 'menus-calendar', 'menus-cycles', 'menus-diets', 'menus-guests', 'menus-exports', 'menus-history'].includes(activeTab), [activeTab]);
-  const isHaccpTab = useMemo(() => ['haccp-dashboard', 'haccp-setup', 'haccp-temperatures', 'haccp-cleaning', 'haccp-traceability', 'haccp-receptions', 'haccp-process', 'haccp-oil', 'haccp-production', 'haccp-products', 'haccp-labels', 'haccp-reports'].includes(activeTab), [activeTab]);
+  const isHaccpTab = useMemo(() => ['haccp-dashboard', 'haccp-setup', 'haccp-sensors', 'haccp-temperatures', 'haccp-cleaning', 'haccp-traceability', 'haccp-receptions', 'haccp-process', 'haccp-oil', 'haccp-production', 'haccp-products', 'haccp-labels', 'haccp-reports'].includes(activeTab), [activeTab]);
 
   useEffect(() => {
     if (isMenusTab) {
@@ -926,18 +927,22 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       isActive: isHaccpTab,
       defaultTab: 'haccp-dashboard',
       submenu: [
-        { tab: 'haccp-dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { 
+          tab: 'haccp-dashboard', 
+          label: 'Dashboard', 
+          icon: LayoutDashboard,
+          matches: [
+            'haccp-temperatures',
+            'haccp-cleaning',
+            'haccp-traceability',
+            'haccp-receptions',
+            'haccp-process',
+            'haccp-oil',
+            'haccp-production'
+          ]
+        },
         { tab: 'haccp-setup', label: 'Zones & matériels', icon: Boxes },
-        { tab: 'haccp-temperatures', label: 'Températures', icon: Thermometer },
-        { tab: 'haccp-cleaning', label: 'Nettoyage', icon: ShieldCheck },
-        { tab: 'haccp-traceability', label: 'Traçabilité', icon: ClipboardList },
-        { tab: 'haccp-receptions', label: 'Réceptions', icon: ShoppingCart },
-        { tab: 'haccp-process', label: 'Processus', icon: Snowflake },
-        { tab: 'haccp-oil', label: 'Huiles', icon: Droplets },
-        { tab: 'haccp-production', label: 'Production', icon: Factory },
-        { tab: 'haccp-products', label: 'Produits', icon: Package },
-        { tab: 'haccp-labels', label: 'Étiquettes', icon: FileText },
-        { tab: 'haccp-reports', label: 'Rapports', icon: History },
+        { tab: 'haccp-reports', label: 'Rapports', icon: FileText }
       ]
     },
     {
@@ -1748,6 +1753,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     'menus-history': 'Historique Menus',
     'haccp-dashboard': 'HACCP',
     'haccp-setup': 'Zones & matériels HACCP',
+    'haccp-sensors': 'Capteurs HACCP',
     'haccp-temperatures': 'Températures HACCP',
     'haccp-cleaning': 'Nettoyage HACCP',
     'haccp-traceability': 'Traçabilité HACCP',
@@ -2481,7 +2487,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               {isHaccpTab && haccpInstalled && (
                 <HaccpApp
                   token={token}
-                  tab={activeTab === 'haccp-setup' ? 'setup' : activeTab === 'haccp-temperatures' ? 'temperatures' : activeTab === 'haccp-cleaning' ? 'cleaning' : activeTab === 'haccp-traceability' ? 'traceability' : activeTab === 'haccp-receptions' ? 'receptions' : activeTab === 'haccp-process' ? 'process' : activeTab === 'haccp-oil' ? 'oil' : activeTab === 'haccp-production' ? 'production' : activeTab === 'haccp-products' ? 'products' : activeTab === 'haccp-labels' ? 'labels' : activeTab === 'haccp-reports' ? 'reports' : 'dashboard'}
+                  tab={activeTab === 'haccp-setup' ? 'setup' : activeTab === 'haccp-sensors' ? 'sensors' : activeTab === 'haccp-temperatures' ? 'temperatures' : activeTab === 'haccp-cleaning' ? 'cleaning' : activeTab === 'haccp-traceability' ? 'traceability' : activeTab === 'haccp-receptions' ? 'receptions' : activeTab === 'haccp-process' ? 'process' : activeTab === 'haccp-oil' ? 'oil' : activeTab === 'haccp-production' ? 'production' : activeTab === 'haccp-products' ? 'products' : activeTab === 'haccp-labels' ? 'labels' : activeTab === 'haccp-reports' ? 'reports' : 'dashboard'}
+                  onNavigate={(next) => setActiveTab(next as any)}
                 />
               )}
 
@@ -4455,7 +4462,7 @@ function StocksOnboardingWizard({
 
   return (
     <div
-      className="modal-overlay stocks-wizard-overlay"
+      className="modal-overlay hr-wizard-overlay stocks-wizard-overlay"
       style={{
         background: 'radial-gradient(circle at 10% 20%, rgba(16, 185, 129, 0.15) 0%, transparent 55%), radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.1) 0%, transparent 50%), rgba(15, 23, 42, 0.55)',
         position: 'fixed',
@@ -4477,7 +4484,7 @@ function StocksOnboardingWizard({
       <div style={{ position: 'absolute', width: '420px', height: '420px', borderRadius: '50%', background: 'rgba(59, 130, 246, 0.05)', filter: 'blur(80px)', left: '-160px', bottom: '20px', pointerEvents: 'none' }} />
 
       <motion.div
-        className="modal-card stocks-wizard-modal"
+        className="modal-card hr-wizard-modal stocks-wizard-modal"
         initial={{ opacity: 0, y: 18, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ type: 'spring', damping: 24, stiffness: 220 }}
@@ -8786,128 +8793,6 @@ function InventoryForm({ sites, locations, onSubmit, onClose }: { sites: Site[];
         </button>
         <button className="btn btn-primary" disabled={!name.trim() || submitting}>
           {submitting ? 'Création…' : 'Créer l’inventaire'}
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function PrefillWizard({ onSubmit, onClose }: { onSubmit: (payload: { categories?: boolean; units?: boolean; sites?: boolean; locations?: boolean; examples?: boolean }) => Promise<void>; onClose: () => void }) {
-  const [payload, setPayload] = useState({ categories: true, units: true, sites: true, locations: true, examples: false });
-  const [submitting, setSubmitting] = useState(false);
-
-  async function submitForm(e: FormEvent) {
-    e.preventDefault();
-    setSubmitting(true);
-    try {
-      await onSubmit(payload);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  const items: Array<{
-    key: keyof typeof payload;
-    title: string;
-    desc: string;
-    icon: ReactNode;
-    colorClass: string;
-  }> = [
-    {
-      key: 'categories',
-      title: 'Catégories courantes',
-      desc: 'Épicerie, frais, surgelés, boissons…',
-      icon: <Layers size={20} />,
-      colorClass: 'tone-emerald'
-    },
-    {
-      key: 'units',
-      title: 'Unités courantes',
-      desc: 'kg, g, L, mL, pièce, carton…',
-      icon: <Scale size={20} />,
-      colorClass: 'tone-purple'
-    },
-    {
-      key: 'sites',
-      title: 'Sites de stockage',
-      desc: 'Restaurant principal, cuisine centrale…',
-      icon: <Warehouse size={20} />,
-      colorClass: 'tone-blue'
-    },
-    {
-      key: 'locations',
-      title: 'Emplacements internes',
-      desc: 'Réserve sèche, chambres froides, quai…',
-      icon: <MapPin size={20} />,
-      colorClass: 'tone-orange'
-    },
-    {
-      key: 'examples',
-      title: 'Exemples métier',
-      desc: 'Quelques produits et mouvements de démonstration pour démarrer',
-      icon: <Sparkles size={20} />,
-      colorClass: 'tone-warning'
-    }
-  ];
-
-  return (
-    <form onSubmit={submitForm} className="prefill-wizard-form">
-      <div className="prefill-wizard-header">
-        <Info size={18} />
-        <p>Préremplissez votre établissement en sélectionnant les données de base à initialiser. Vos données existantes ne seront pas supprimées.</p>
-      </div>
-
-      <motion.div
-        className="prefill-options-list"
-        initial="hidden"
-        animate="show"
-        variants={{
-          hidden: { opacity: 0 },
-          show: {
-            opacity: 1,
-            transition: {
-              staggerChildren: 0.05
-            }
-          }
-        }}
-      >
-        {items.map(({ key, title, desc, icon, colorClass }) => {
-          const isChecked = payload[key];
-          return (
-            <motion.div
-              key={key}
-              variants={{
-                hidden: { opacity: 0, y: 8 },
-                show: { opacity: 1, y: 0 }
-              }}
-              transition={{ type: 'spring', stiffness: 300, damping: 24 }}
-              className={`prefill-option-card ${isChecked ? 'checked' : ''}`}
-              onClick={() => setPayload(p => ({ ...p, [key]: !p[key] }))}
-            >
-              <div className="prefill-shine-effect" />
-              <div className={`prefill-option-icon-wrapper ${colorClass}`}>
-                {icon}
-              </div>
-              <div className="prefill-info">
-                <span className="prefill-title">{title}</span>
-                <span className="prefill-desc">{desc}</span>
-              </div>
-              <div className="prefill-checkbox-custom">
-                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
-              </div>
-            </motion.div>
-          );
-        })}
-      </motion.div>
-
-      <div className="modal-footer" style={{ margin: '1.5rem -1.75rem -1.75rem', background: '#f8fafc', borderTop: '1px solid #f1f5f9' }}>
-        <button type="button" className="btn btn-secondary" onClick={onClose}>
-          Plus tard
-        </button>
-        <button className="btn btn-primary" disabled={submitting} style={{ minWidth: '180px' }}>
-          {submitting ? 'Préremplissage…' : 'Lancer le préremplissage'}
         </button>
       </div>
     </form>

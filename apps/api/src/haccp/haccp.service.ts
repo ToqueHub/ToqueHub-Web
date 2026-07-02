@@ -404,9 +404,11 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
     const processSessions = [...refroidissement, ...congelation, ...rechauffement];
     const cleanedSurfaceIds = new Set(cleaningToday.flatMap((session) => (session.cleanedSurfaces ?? []).map((surface) => surface.surfaceId)));
     const completedProcess = processSessions.filter((session) => session.status === 'termine' && session.endTime && session.endTemperature != null).length;
+    const completedProduction = production.filter((item) => item.status === 'termine').length;
     const missingTemperatureEquipment = Math.max(temperatureEquipment.length - new Set(temperature.map((item) => item.equipmentId)).size, 0);
     const missingCleaning = cleaningDue.filter((surface) => !cleanedSurfaceIds.has(surface.surfaceId)).length;
     const incompleteProcess = processSessions.length - completedProcess;
+    const incompleteProduction = production.length - completedProduction;
     const receptionIssues = receptions.filter((item) => !item.temperature || !item.supplier || !item.productName).length;
     const traceabilityIssues = traceability.filter((item) => !item.photo || !item.lotNumber || !item.productName).length;
     const oilMissing = Math.max(oilEquipment.length - new Set(oil.map((item) => item.equipmentId)).size, 0);
@@ -415,11 +417,11 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
     const modules = [
       this.scoreModule('temperature', 'Températures', 20, temperature.length, temperatureEquipment.length, missingTemperatureEquipment, 'Relevés attendus sur les enceintes actives'),
       this.scoreModule('cleaning', 'Nettoyage', 20, cleanedSurfaceIds.size, cleaningDue.length, missingCleaning, 'Surfaces prévues au plan de nettoyage'),
-      this.scoreModule('traceability', 'Traçabilité', 15, traceability.length - traceabilityIssues, Math.max(traceability.length, 1), traceabilityIssues, 'Photos, lots et produits renseignés'),
-      this.scoreModule('receptions', 'Réceptions', 10, receptions.length - receptionIssues, Math.max(receptions.length, 1), receptionIssues, 'Températures et fournisseurs des entrées marchandises'),
-      this.scoreModule('process', 'Processus froid/chaud', 15, completedProcess, Math.max(processSessions.length, 1), incompleteProcess, 'Refroidissement, congélation et remise en température terminés'),
+      this.scoreModule('traceability', 'Traçabilité', 15, traceability.length - traceabilityIssues, traceability.length, traceabilityIssues, 'Photos, lots et produits renseignés'),
+      this.scoreModule('receptions', 'Réceptions', 10, receptions.length - receptionIssues, receptions.length, receptionIssues, 'Températures et fournisseurs des entrées marchandises'),
+      this.scoreModule('process', 'Processus froid/chaud', 15, completedProcess, processSessions.length, incompleteProcess, 'Refroidissement, congélation et remise en température terminés'),
       this.scoreModule('oil', 'Huiles', 10, oil.length, oilEquipment.length, oilMissing, 'Contrôle des friteuses actives'),
-      this.scoreModule('production', 'Production', 5, production.filter((item) => item.status === 'termine').length, Math.max(production.length, 1), production.filter((item) => item.status !== 'termine').length, 'Productions terminées'),
+      this.scoreModule('production', 'Production', 5, completedProduction, production.length, incompleteProduction, 'Productions terminées'),
       this.scoreModule('reports', 'Rapports', 5, reportToday ? 1 : 0, 1, reportToday ? 0 : 1, 'Rapport quotidien généré'),
     ];
 
@@ -428,6 +430,7 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
       ...this.alertIf(missingTemperatureEquipment > 0, 'temperature', 'critical', `${missingTemperatureEquipment} enceinte(s) sans relevé aujourd’hui.`),
       ...this.alertIf(missingCleaning > 0, 'cleaning', 'critical', `${missingCleaning} surface(s) prévues restent à nettoyer.`),
       ...this.alertIf(incompleteProcess > 0, 'process', 'warning', `${incompleteProcess} session(s) froid/chaud non terminée(s).`),
+      ...this.alertIf(incompleteProduction > 0, 'production', 'warning', `${incompleteProduction} production(s) non terminée(s).`),
       ...this.alertIf(receptionIssues > 0, 'receptions', 'warning', `${receptionIssues} réception(s) incomplète(s).`),
       ...this.alertIf(traceabilityIssues > 0, 'traceability', 'warning', `${traceabilityIssues} traçabilité(s) sans photo, lot ou produit.`),
       ...this.alertIf(oilMissing > 0, 'oil', 'warning', `${oilMissing} équipement(s) huile sans contrôle aujourd’hui.`),
@@ -466,6 +469,7 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   private scoreModule(id: string, label: string, weight: number, completed: number, expected: number, issues: number, description: string) {
+    if (expected <= 0) return { id, label, weight, completed: 0, expected: 0, issues: 0, description, score: 100, scoreContribution: weight };
     const denominator = Math.max(expected, 1);
     const completion = Math.max(0, Math.min(1, completed / denominator));
     const issuePenalty = Math.min(0.7, issues * 0.18);

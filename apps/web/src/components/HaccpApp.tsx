@@ -1,7 +1,9 @@
 import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { io, Socket } from 'socket.io-client';
 import {
   AlertCircle,
+  ArrowLeft,
   ArrowRight,
   BarChart3,
   CheckCircle2,
@@ -29,11 +31,12 @@ import {
 } from 'lucide-react';
 import { api } from '../api/client';
 
-export type HaccpTab = 'dashboard' | 'setup' | 'temperatures' | 'cleaning' | 'traceability' | 'receptions' | 'process' | 'oil' | 'production' | 'products' | 'labels' | 'reports';
+export type HaccpTab = 'dashboard' | 'setup' | 'sensors' | 'temperatures' | 'cleaning' | 'traceability' | 'receptions' | 'process' | 'oil' | 'production' | 'products' | 'labels' | 'reports';
 
 type Props = {
   token: string;
   tab: HaccpTab;
+  onNavigate?: (tab: string) => void;
 };
 
 type HaccpDashboard = {
@@ -49,7 +52,7 @@ type HaccpDashboard = {
 
 type HaccpItem = Record<string, any> & { _id?: string; id?: string; name?: string };
 
-type SectionId = Exclude<HaccpTab, 'dashboard' | 'setup' | 'labels'>;
+type SectionId = Exclude<HaccpTab, 'dashboard' | 'setup' | 'sensors' | 'labels'>;
 type HaccpConfigKind = 'temperature' | 'process' | 'cleaning';
 type HaccpOnboardingStep = 'welcome' | 'temperatures' | 'process' | 'cleaning' | 'review';
 type TemperatureTemplate = { key: string; name: string; type: string; description: string; recommendedTemp: number; selected: boolean };
@@ -71,6 +74,27 @@ type HaccpReadiness = {
   progress: number;
   nextStep: HaccpOnboardingStep;
 };
+type HaccpSensorSummary = { total: number; online: number; offline: number; unknown: number; averageBattery: number | null; globalStatus: 'ok' | 'warning' | 'unknown' | string };
+type HaccpSensor = HaccpItem & {
+  id: string;
+  provider: string;
+  externalId: string;
+  manufacturer?: string | null;
+  model?: string | null;
+  friendlyName?: string | null;
+  userName?: string | null;
+  type: string;
+  status: 'ONLINE' | 'OFFLINE' | 'UNKNOWN' | string;
+  battery?: number | null;
+  linkQuality?: number | null;
+  lastSeenAt?: string | null;
+  currentTemperature?: number | null;
+  currentHumidity?: number | null;
+  assignedEquipment?: { id: string; name: string; type: string } | null;
+  readings?: HaccpItem[];
+  events?: HaccpItem[];
+};
+type HaccpPairingSession = HaccpItem & { id: string; status: string; startedAt: string; expiresAt: string; discoveredIds?: string[]; sensors?: HaccpSensor[] };
 
 const PROCESS_TYPES = [
   { id: 'refroidissement', label: 'Refroidissement', icon: Snowflake },
@@ -178,7 +202,8 @@ const DEFAULT_CLEANING_TEMPLATES: CleaningTemplate[] = [
   },
 ];
 
-const SECTIONS: Array<{ id: SectionId; label: string; icon: typeof Thermometer }> = [
+const SECTIONS: Array<{ id: HaccpTab; label: string; icon: typeof Thermometer }> = [
+  { id: 'sensors', label: 'Capteurs', icon: Smartphone },
   { id: 'temperatures', label: 'Températures', icon: Thermometer },
   { id: 'cleaning', label: 'Nettoyage', icon: ShieldCheck },
   { id: 'traceability', label: 'Traçabilité', icon: ScanLine },
@@ -229,7 +254,7 @@ const emptyConfigForm = {
 
 const emptySurfaceRows = [{ name: '', frequency: 'daily' }];
 
-export function HaccpApp({ token, tab }: Props) {
+export function HaccpApp({ token, tab, onNavigate }: Props) {
   const [dashboard, setDashboard] = useState<HaccpDashboard | null>(null);
   const [activeTab, setActiveTab] = useState<HaccpTab>(tab);
   const [items, setItems] = useState<Record<string, HaccpItem[]>>({});
@@ -244,22 +269,57 @@ export function HaccpApp({ token, tab }: Props) {
   const [configForm, setConfigForm] = useState<Record<string, string>>(emptyConfigForm);
   const [surfaceRows, setSurfaceRows] = useState<Array<{ name: string; frequency: string }>>(emptySurfaceRows);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sensorSummary, setSensorSummary] = useState<HaccpSensorSummary>({ total: 0, online: 0, offline: 0, unknown: 0, averageBattery: null, globalStatus: 'unknown' });
+  const [sensors, setSensors] = useState<HaccpSensor[]>([]);
+  const [pairing, setPairing] = useState<HaccpPairingSession | null>(null);
+  const [selectedSensorId, setSelectedSensorId] = useState<string | null>(null);
 
   useEffect(() => setActiveTab(tab), [tab]);
   useEffect(() => { void refreshAll(); }, [token, processType]);
+  useEffect(() => {
+    if (activeTab !== 'sensors') return;
+    let socket: Socket | undefined;
+    let connectTimer: number | undefined;
+    try {
+      socket = io(api.haccpSensorSocketUrl(), { auth: { token }, autoConnect: false });
+      const upsert = (sensor: HaccpSensor) => {
+        setSensors((current) => upsertSensor(current, sensor));
+        void refreshSensorSummary();
+      };
+      socket.on('sensor.discovered', upsert);
+      socket.on('sensor.updated', upsert);
+      socket.on('sensor.reading', upsert);
+      socket.on('sensor.status_changed', upsert);
+      socket.on('pairing.updated', (nextPairing) => {
+        setPairing(nextPairing ?? null);
+        void refreshSensorsOnly();
+      });
+      socket.on('connect_error', () => {
+        // REST remains the source of truth if realtime is temporarily unavailable.
+      });
+      connectTimer = window.setTimeout(() => socket?.connect(), 0);
+    } catch {
+      // REST remains available if the socket cannot be opened.
+    }
+    return () => {
+      if (connectTimer) window.clearTimeout(connectTimer);
+      socket?.disconnect();
+    };
+  }, [activeTab, token]);
 
   const products = items.products ?? [];
   const temperatureEquipment = items.temperatureEquipment ?? [];
   const processEquipment = items.processEquipment ?? [];
   const oilEquipment = items.oilEquipment ?? [];
   const cleaningZones = items.cleaningZones ?? [];
+  const selectedSensor = selectedSensorId ? sensors.find((sensor) => sensor.id === selectedSensorId) ?? null : sensors[0] ?? null;
   const readiness = useMemo(
     () => computeHaccpReadiness(temperatureEquipment, processEquipment, cleaningZones),
     [temperatureEquipment, processEquipment, cleaningZones],
   );
 
   const currentRows = useMemo(() => {
-    if (activeTab === 'dashboard' || activeTab === 'setup' || activeTab === 'labels') return [];
+    if (activeTab === 'dashboard' || activeTab === 'setup' || activeTab === 'sensors' || activeTab === 'labels') return [];
     if (activeTab === 'temperatures') return items.temperatureReadings ?? [];
     if (activeTab === 'cleaning') return items.cleaningZones ?? [];
     if (activeTab === 'process') return items.processSessions ?? [];
@@ -271,7 +331,7 @@ export function HaccpApp({ token, tab }: Props) {
 
   const visibleRows = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    if (!query || activeTab === 'dashboard' || activeTab === 'setup' || activeTab === 'labels') return currentRows;
+    if (!query || activeTab === 'dashboard' || activeTab === 'setup' || activeTab === 'sensors' || activeTab === 'labels') return currentRows;
     return currentRows.filter((row) => JSON.stringify(row).toLowerCase().includes(query));
   }, [activeTab, currentRows, searchQuery]);
 
@@ -279,6 +339,22 @@ export function HaccpApp({ token, tab }: Props) {
     setLoading(true);
     setError(null);
     try {
+      const safeList = async (endpoint: string) => {
+        try {
+          return await api.haccpList(token, endpoint);
+        } catch (err) {
+          console.warn(`[HACCP] Chargement partiel impossible pour ${endpoint}`, err);
+          return { data: [] };
+        }
+      };
+      const safeValue = async <T,>(label: string, loader: () => Promise<T>, fallback: T) => {
+        try {
+          return await loader();
+        } catch (err) {
+          console.warn(`[HACCP] Chargement partiel impossible pour ${label}`, err);
+          return fallback;
+        }
+      };
       const [
         dashboardData,
         equipment,
@@ -293,22 +369,31 @@ export function HaccpApp({ token, tab }: Props) {
         productionSessions,
         productList,
         reports,
+        sensorSummaryData,
+        sensorList,
+        pairingData,
       ] = await Promise.all([
-        api.haccpDashboard(token),
-        api.haccpList(token, '/temperature/equipment'),
-        api.haccpList(token, '/temperature/readings'),
-        api.haccpList(token, '/cleaning/zones'),
-        api.haccpList(token, '/traceability'),
-        api.haccpList(token, '/receptions'),
-        api.haccpList(token, '/cooling-equipment'),
-        api.haccpList(token, `/cooling/${processType}/sessions`),
-        api.haccpList(token, '/oil-equipment'),
-        api.haccpList(token, '/oil/sessions?limit=50'),
-        api.haccpList(token, '/production/sessions'),
-        api.haccpList(token, '/haccp-products'),
-        api.haccpList(token, '/daily-reports?limit=50'),
+        safeValue('dashboard', () => api.haccpDashboard(token), null),
+        safeList('/temperature/equipment'),
+        safeList('/temperature/readings'),
+        safeList('/cleaning/zones'),
+        safeList('/traceability'),
+        safeList('/receptions'),
+        safeList('/cooling-equipment'),
+        safeList(`/cooling/${processType}/sessions`),
+        safeList('/oil-equipment'),
+        safeList('/oil/sessions?limit=50'),
+        safeList('/production/sessions'),
+        safeList('/haccp-products'),
+        safeList('/daily-reports?limit=50'),
+        safeValue('sensors summary', () => api.haccpSensorsSummary(token), { total: 0, online: 0, offline: 0, unknown: 0, averageBattery: null, globalStatus: 'unknown' }),
+        safeValue('sensors list', () => api.haccpSensors(token), []),
+        safeValue('pairing current', () => api.haccpCurrentSensorPairing(token), null),
       ]);
-      setDashboard(dashboardData);
+      if (dashboardData) setDashboard(dashboardData);
+      setSensorSummary(sensorSummaryData);
+      setSensors(sensorList);
+      setPairing(pairingData);
       setItems({
         temperatureEquipment: equipment.data ?? [],
         temperatureReadings: readings.data ?? [],
@@ -327,6 +412,98 @@ export function HaccpApp({ token, tab }: Props) {
       setError(err instanceof Error ? err.message : 'Chargement HACCP impossible.');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function refreshSensorSummary() {
+    try {
+      setSensorSummary(await api.haccpSensorsSummary(token));
+    } catch {
+      // Keep the last summary; the full refresh surface will show errors.
+    }
+  }
+
+  async function refreshSensorsOnly() {
+    try {
+      const [summary, list, currentPairing] = await Promise.all([
+        api.haccpSensorsSummary(token),
+        api.haccpSensors(token),
+        api.haccpCurrentSensorPairing(token),
+      ]);
+      setSensorSummary(summary);
+      setSensors(list);
+      setPairing(currentPairing);
+    } catch {
+      // Keep existing sensor state.
+    }
+  }
+
+  async function startSensorPairing() {
+    setSaving(true);
+    setError(null);
+    try {
+      setPairing(await api.haccpStartSensorPairing(token, 180));
+      await refreshSensorsOnly();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Appairage impossible.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function stopSensorPairing() {
+    setSaving(true);
+    setError(null);
+    try {
+      setPairing(await api.haccpStopSensorPairing(token));
+      await refreshSensorsOnly();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Arrêt de l’appairage impossible.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function renameSensor(sensor: HaccpSensor, name: string) {
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await api.haccpRenameSensor(token, sensor.id, name);
+      setSensors((current) => upsertSensor(current, updated));
+      await refreshSensorsOnly();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Renommage impossible.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function assignSensor(sensor: HaccpSensor, equipmentId: string) {
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = equipmentId ? await api.haccpAssignSensor(token, sensor.id, equipmentId) : await api.haccpUnassignSensor(token, sensor.id);
+      setSensors((current) => upsertSensor(current, updated));
+      await refreshSensorsOnly();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Affectation impossible.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeSensor(sensor: HaccpSensor, removeFromNetwork: boolean) {
+    setSaving(true);
+    setError(null);
+    try {
+      await api.haccpDeleteSensor(token, sensor.id, removeFromNetwork);
+      setSensors((current) => current.filter((item) => item.id !== sensor.id));
+      if (selectedSensorId === sensor.id) setSelectedSensorId(null);
+      await refreshSensorsOnly();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Suppression impossible.');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -575,50 +752,92 @@ export function HaccpApp({ token, tab }: Props) {
   }
 
   return (
-    <div className="module-page haccp-module">
-      <div className="haccp-topbar">
-        <div>
-          <p className="eyebrow">Qualité & Hygiène</p>
-          <h1>Tableau de bord HACCP</h1>
-          <p className="muted">Contrôles sanitaires, traçabilité, productions et rapports quotidiens.</p>
+    <>
+      <div className="module-page haccp-module">
+        <div className="haccp-topbar">
+          <div>
+            <p className="eyebrow">Qualité & Hygiène</p>
+            <h1>Tableau de bord HACCP</h1>
+            <p className="muted">Contrôles sanitaires, traçabilité, productions et rapports quotidiens.</p>
+          </div>
+          <div className="haccp-header-actions">
+            <button className="btn secondary" onClick={generateReport} disabled={saving}><FileText size={16} /> Générer rapport</button>
+            <button className="btn secondary" onClick={() => void refreshAll()} disabled={loading}><RefreshCw size={16} /> Actualiser</button>
+          </div>
         </div>
-        <div className="haccp-header-actions">
-          <button className="btn secondary" onClick={generateReport} disabled={saving}><FileText size={16} /> Générer rapport</button>
-          <button className="btn secondary" onClick={() => void refreshAll()} disabled={loading}><RefreshCw size={16} /> Actualiser</button>
-        </div>
-      </div>
 
-      {error && <div className="alert error"><AlertCircle size={16} /> {error}</div>}
+        {error && <div className="alert error"><AlertCircle size={16} /> {error}</div>}
 
-      {activeTab === 'dashboard' ? <DashboardView dashboard={dashboard} readiness={readiness} loading={loading} searchQuery={searchQuery} setSearchQuery={setSearchQuery} onGenerateReport={generateReport} onStartOnboarding={() => setShowOnboarding(true)} /> : null}
-      {activeTab === 'setup' ? (
-        <HaccpSetupManager
-          temperatureEquipment={temperatureEquipment}
-          processEquipment={processEquipment}
-          cleaningZones={cleaningZones}
+        {activeTab === 'dashboard' ? (
+        <DashboardView
+          dashboard={dashboard}
+          readiness={readiness}
+          loading={loading}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
-          onCreate={openConfigCreate}
-          onDelete={(kind, item) => void removeConfig(kind, item)}
-        />
-      ) : null}
-      {activeTab === 'labels' ? <LabelsView products={products} onCreate={() => openCreate('products')} /> : null}
-      {activeTab !== 'dashboard' && activeTab !== 'setup' && activeTab !== 'labels' ? (
-        <SectionView
-          section={activeTab}
-          rows={visibleRows}
-          products={products}
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          processType={processType}
-          onProcessType={setProcessType}
-          onCreate={() => openCreate(activeTab)}
-          onDelete={(item) => void remove(activeTab, item)}
-          onAnalyzeImage={analyzeImage}
           onGenerateReport={generateReport}
-          saving={saving}
+          onStartOnboarding={() => setShowOnboarding(true)}
+          onSelectTab={(nextTab) => {
+            const target = nextTab === 'temperature' ? 'temperatures' : nextTab;
+            onNavigate?.(target === 'dashboard' ? 'haccp-dashboard' : `haccp-${target}`);
+          }}
         />
       ) : null}
+        {activeTab === 'setup' ? (
+          <HaccpSetupManager
+            temperatureEquipment={temperatureEquipment}
+            processEquipment={processEquipment}
+            cleaningZones={cleaningZones}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            onCreate={openConfigCreate}
+            onDelete={(kind, item) => void removeConfig(kind, item)}
+          />
+        ) : null}
+        {activeTab === 'sensors' ? (
+          <SensorsView
+            sensors={sensors}
+            summary={sensorSummary}
+            pairing={pairing}
+            selectedSensor={selectedSensor}
+            temperatureEquipment={temperatureEquipment}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            saving={saving}
+            onStartPairing={startSensorPairing}
+            onStopPairing={stopSensorPairing}
+            onRefresh={refreshSensorsOnly}
+            onSelect={(sensor) => setSelectedSensorId(sensor.id)}
+            onRename={(sensor, name) => void renameSensor(sensor, name)}
+            onAssign={(sensor, equipmentId) => void assignSensor(sensor, equipmentId)}
+            onRemove={(sensor, removeFromNetwork) => void removeSensor(sensor, removeFromNetwork)}
+            onBack={() => {
+              setActiveTab('dashboard');
+              onNavigate?.('haccp-dashboard');
+            }}
+          />
+        ) : null}
+        {activeTab !== 'dashboard' && activeTab !== 'setup' && activeTab !== 'sensors' && activeTab !== 'labels' ? (
+          <SectionView
+            section={activeTab}
+            rows={visibleRows}
+            products={products}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            processType={processType}
+            onProcessType={setProcessType}
+            onCreate={() => openCreate(activeTab)}
+            onDelete={(item) => void remove(activeTab, item)}
+            onAnalyzeImage={analyzeImage}
+            onGenerateReport={generateReport}
+            saving={saving}
+            onBack={() => {
+              setActiveTab('dashboard');
+              onNavigate?.('haccp-dashboard');
+            }}
+          />
+        ) : null}
+      </div>
 
       {configModal ? (
         <div className="modal-overlay haccp-modal-overlay">
@@ -668,6 +887,7 @@ export function HaccpApp({ token, tab }: Props) {
           </form>
         </div>
       ) : null}
+
       {showOnboarding ? (
         <HaccpOnboardingWizard
           readiness={readiness}
@@ -679,14 +899,116 @@ export function HaccpApp({ token, tab }: Props) {
           onClose={() => setShowOnboarding(false)}
         />
       ) : null}
+    </>
+  );
+}
+
+function getModuleIcon(id: string, color: string = 'currentColor') {
+  switch (id) {
+    case 'sensors': return <Smartphone size={20} color={color} />;
+    case 'temperatures': return <Thermometer size={20} color={color} />;
+    case 'cleaning': return <Droplets size={20} color={color} />;
+    case 'traceability': return <ClipboardList size={20} color={color} />;
+    case 'receptions': return <Truck size={20} color={color} />;
+    case 'process': return <Flame size={20} color={color} />;
+    case 'oil': return <ScanLine size={20} color={color} />;
+    case 'production': return <Factory size={20} color={color} />;
+    case 'reports': return <FileText size={20} color={color} />;
+    default: return <ClipboardList size={20} color={color} />;
+  }
+}
+
+function ModuleCard({ module, onClick }: { module: HaccpDashboard['modules'][number]; onClick: () => void }) {
+  const hasExpectedControls = module.expected > 0;
+  const status = !hasExpectedControls ? 'Aucun prévu' : module.issues > 0 ? module.score < 60 ? 'Critique' : 'À vérifier' : 'Conforme';
+  const badgeClass = !hasExpectedControls ? 'neutral' : status === 'Conforme' ? 'ok' : status === 'À vérifier' ? 'warning' : 'danger';
+  
+  const iconColor = !hasExpectedControls ? '#64748b' : status === 'Conforme' ? '#10b981' : status === 'À vérifier' ? '#f59e0b' : '#ef4444';
+  const cardBorderColor = !hasExpectedControls ? 'rgba(100, 116, 139, 0.14)' : status === 'Conforme' ? 'rgba(16, 185, 129, 0.12)' : status === 'À vérifier' ? 'rgba(245, 158, 11, 0.12)' : 'rgba(239, 68, 68, 0.12)';
+  const cardBgGlow = !hasExpectedControls ? 'rgba(100, 116, 139, 0.01)' : status === 'Conforme' ? 'rgba(16, 185, 129, 0.01)' : status === 'À vérifier' ? 'rgba(245, 158, 11, 0.01)' : 'rgba(239, 68, 68, 0.01)';
+  const displayScore = hasExpectedControls ? module.score : 0;
+
+  return (
+    <div 
+      className={`haccp-module-card card-hover-effect status-${badgeClass}`} 
+      onClick={onClick}
+      style={{
+        background: `linear-gradient(135deg, white 0%, ${cardBgGlow} 100%)`,
+        border: `1px solid ${cardBorderColor}`,
+        borderRadius: '20px',
+        padding: '1.5rem',
+        cursor: 'pointer',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        height: '210px',
+        position: 'relative',
+        overflow: 'hidden',
+        boxShadow: '0 10px 30px rgba(9, 13, 22, 0.02)',
+        transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = 'translateY(-6px)';
+        e.currentTarget.style.boxShadow = '0 20px 40px rgba(9, 13, 22, 0.06)';
+        e.currentTarget.style.borderColor = iconColor;
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = 'none';
+        e.currentTarget.style.boxShadow = '0 10px 30px rgba(9, 13, 22, 0.02)';
+        e.currentTarget.style.borderColor = cardBorderColor;
+      }}
+    >
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <div style={{ 
+            background: `${iconColor}15`, 
+            padding: '0.6rem', 
+            borderRadius: '12px', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            color: iconColor 
+          }}>
+            {getModuleIcon(module.id, iconColor)}
+          </div>
+        </div>
+
+        <h3 style={{ fontSize: '1.05rem', fontWeight: 800, margin: '0 0 0.25rem 0', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          {module.label}
+        </h3>
+        <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.35, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+          {module.description}
+        </p>
+      </div>
+
+      <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '0.85rem', marginTop: '0.85rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+            Relevés : <strong>{module.completed}/{module.expected}</strong>
+          </span>
+          <span style={{ fontSize: '0.85rem', fontWeight: 800, color: iconColor }}>
+            {hasExpectedControls ? `${module.score}%` : '-'}
+          </span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="progress-bar-bg" style={{ height: '5px', background: '#f1f5f9', borderRadius: '3px', flexGrow: 1, marginRight: '0.75rem', overflow: 'hidden' }}>
+            <div className="progress-bar-fill" style={{ width: `${displayScore}%`, height: '100%', background: iconColor, borderRadius: '3px' }}></div>
+          </div>
+          <span className={`haccp-status-pill ${badgeClass}`} style={{ fontSize: '0.7rem', padding: '0.15rem 0.45rem', flexShrink: 0 }}>
+            <span className="status-dot" />
+            {status}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
 
-function DashboardView({ dashboard, readiness, loading, searchQuery, setSearchQuery, onGenerateReport, onStartOnboarding }: { dashboard: HaccpDashboard | null; readiness: HaccpReadiness; loading: boolean; searchQuery: string; setSearchQuery: (value: string) => void; onGenerateReport: () => void; onStartOnboarding: () => void }) {
+function DashboardView({ dashboard, readiness, loading, searchQuery, setSearchQuery, onGenerateReport, onStartOnboarding, onSelectTab }: { dashboard: HaccpDashboard | null; readiness: HaccpReadiness; loading: boolean; searchQuery: string; setSearchQuery: (value: string) => void; onGenerateReport: () => void; onStartOnboarding: () => void; onSelectTab?: (tabName: string) => void }) {
   if (loading && !dashboard) return <div className="empty-state">Chargement HACCP...</div>;
   if (!dashboard) return <div className="empty-state">Aucune donnée HACCP disponible.</div>;
   const filteredModules = dashboard.modules.filter((module) => {
+    if (module.id === 'reports') return false;
     const query = searchQuery.trim().toLowerCase();
     return !query || `${module.label} ${module.description} ${module.score}`.toLowerCase().includes(query);
   });
@@ -710,79 +1032,59 @@ function DashboardView({ dashboard, readiness, loading, searchQuery, setSearchQu
       {readiness.progress < 100 ? (
         <HaccpSetupCard readiness={readiness} onStart={onStartOnboarding} />
       ) : null}
-      <div className="haccp-summary-grid">
-        <MetricCard 
-          icon={
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
-              <path d="m3.3 7 8.7 5 8.7-5" />
-              <path d="M12 22V12" />
-            </svg>
-          } 
-          label="Modules actifs" 
-          value={dashboard.modules.length} 
-          detail={`${coveredModules} couverts aujourd'hui`} 
-          tone="success" 
-        />
-        <MetricCard 
-          icon={
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={criticalCount ? '#ef4444' : warningCount ? '#f59e0b' : '#10b981'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <div className="haccp-summary-row" style={{ display: 'flex', gap: '2.5rem', marginBottom: '2rem', padding: '0.5rem 0', flexWrap: 'wrap' }}>
+        {/* Contrôles manquants */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+          <div style={{ 
+            background: criticalCount ? 'rgba(239, 68, 68, 0.1)' : warningCount ? 'rgba(245, 158, 11, 0.1)' : 'rgba(16, 185, 129, 0.1)', 
+            padding: '0.75rem', 
+            borderRadius: '12px', 
+            display: 'flex', 
+            color: criticalCount ? '#ef4444' : warningCount ? '#f59e0b' : '#10b981' 
+          }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10" />
               <polyline points="12 6 12 12 16 14" />
             </svg>
-          } 
-          label="Contrôles manquants" 
-          value={criticalCount + warningCount} 
-          detail={`${criticalCount} critiques, ${warningCount} à surveiller`} 
-          tone={criticalCount ? 'danger' : warningCount ? 'warning' : 'success'} 
-        />
-        <div className="haccp-sync-card">
-          <div className="haccp-card-header">
-            <span className="haccp-card-label">Couverture conformité</span>
-            <span className="haccp-card-icon tone-info">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                <path d="M3 3v5h5" />
-                <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
-                <path d="M16 16h5v5" />
-              </svg>
-            </span>
           </div>
-          <div className="haccp-card-body haccp-sync-body">
-            <div className="haccp-card-value-row">
-              <strong className="haccp-card-value">
-                {Math.round((coveredModules / Math.max(dashboard.modules.length, 1)) * 100)}%
-              </strong>
-              <span className="haccp-card-detail">{coveredModules} / {dashboard.modules.length} modules</span>
-            </div>
-            <div className="haccp-progress-track">
-              <span style={{ width: `${Math.round((coveredModules / Math.max(dashboard.modules.length, 1)) * 100)}%` }} />
+          <div>
+            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Contrôles manquants</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
+              <span style={{ fontSize: '1.75rem', fontWeight: 900, color: 'var(--text-main)', lineHeight: 1 }}>{criticalCount + warningCount}</span>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 550 }}>({criticalCount} critiques, {warningCount} à surveiller)</span>
             </div>
           </div>
         </div>
-        <div className="haccp-score-card">
-          <div className="haccp-card-header">
-            <span className="haccp-card-label">Score HACCP</span>
-            <span className="haccp-card-icon tone-success">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 13c0 5-3.5 7.5-7.66 9.7a1 1 0 0 1-.68 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 .76-.97l8-2a1 1 0 0 1 .48 0l8 2A1 1 0 0 1 20 6Z" />
-                <path d="m9 12 2 2 4-4" />
-              </svg>
-            </span>
+
+        {/* Vertical divider */}
+        <div style={{ width: '1px', background: '#e2e8f0', alignSelf: 'stretch' }} className="haccp-summary-divider" />
+
+        {/* Score HACCP */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+          <div style={{ 
+            background: 'rgba(16, 185, 129, 0.1)', 
+            padding: '0.75rem', 
+            borderRadius: '12px', 
+            display: 'flex', 
+            color: '#10b981' 
+          }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 13c0 5-3.5 7.5-7.66 9.7a1 1 0 0 1-.68 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 .76-.97l8-2a1 1 0 0 1 .48 0l8 2A1 1 0 0 1 20 6Z" />
+              <path d="m9 12 2 2 4-4" />
+            </svg>
           </div>
-          <div className="haccp-card-body haccp-score-body">
-            <div className="haccp-score-content-row">
-              <ScoreGauge score={dashboard.score} />
-              <div className="haccp-score-badge-col">
-                <span className="haccp-score-desc">score de conformité aujourd'hui</span>
-              </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Score HACCP</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
+              <span style={{ fontSize: '1.75rem', fontWeight: 900, color: 'var(--text-main)', lineHeight: 1 }}>{dashboard.score}%</span>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 550 }}>de conformité aujourd'hui</span>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="haccp-main-grid">
-        <div className="haccp-list-panel">
+      <div style={{ marginTop: '1.5rem' }}>
+        <div className="haccp-list-panel" style={{ padding: 0 }}>
           <div className="haccp-list-header">
             <div>
               <h2>Liste des contrôles HACCP</h2>
@@ -793,56 +1095,11 @@ function DashboardView({ dashboard, readiness, loading, searchQuery, setSearchQu
               <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Rechercher" />
             </div>
           </div>
-          <div className="table-wrapper haccp-table-wrapper">
-            <table className="table-modern haccp-control-table">
-              <thead>
-                <tr><th>Module</th><th>Catégorie</th><th>Score</th><th>Statut</th><th>Contrôles</th><th>Poids</th></tr>
-              </thead>
-              <tbody>
-                {filteredModules.map((module) => <ControlRow key={module.id} module={module} />)}
-              </tbody>
-            </table>
+          <div className="haccp-dashboard-grid">
+            {filteredModules.map((module) => (
+              <ModuleCard key={module.id} module={module} onClick={() => onSelectTab?.(module.id)} />
+            ))}
           </div>
-        </div>
-
-        <div className="haccp-side-stack">
-          <div className="haccp-side-card">
-            <div className="haccp-side-title"><AlertCircle size={17} /> Alertes</div>
-            <div className="haccp-alert-list">
-              {dashboard.alerts.slice(0, 5).map((alert, index) => (
-                <div className={`haccp-alert-item ${alert.severity}`} key={`${alert.module}-${index}`}>
-                  <div className="haccp-alert-icon-wrapper">
-                    <AlertCircle size={14} />
-                  </div>
-                  <div className="haccp-alert-content">
-                    <span className="haccp-alert-module">{alert.module}</span>
-                    <p className="haccp-alert-message">{alert.message}</p>
-                  </div>
-                </div>
-              ))}
-              {!dashboard.alerts.length && <div className="haccp-ok-state"><CheckCircle2 size={18} /> Aucune alerte active.</div>}
-            </div>
-          </div>
-          <div className="haccp-side-card">
-            <div className="haccp-side-title"><Clock size={17} /> Activité récente</div>
-            <div className="haccp-activity-timeline">
-              {dashboard.activities.slice(0, 6).map((activity) => (
-                <div key={activity.id} className="haccp-timeline-item">
-                  <div className="haccp-timeline-badge" />
-                  <div className="haccp-timeline-content">
-                    <div className="haccp-timeline-header">
-                      <strong>{activity.module}</strong>
-                      <small className="haccp-timeline-time">{formatActivityTime(activity.at)}</small>
-                    </div>
-                    <span className="haccp-timeline-label">{activity.label}</span>
-                    <p className="haccp-timeline-detail">{activity.detail}</p>
-                  </div>
-                </div>
-              ))}
-              {!dashboard.activities.length && <div className="empty-mini">Aucune activité aujourd'hui.</div>}
-            </div>
-          </div>
-          <button className="btn primary haccp-report-button" onClick={onGenerateReport}><FileText size={16} /> Générer le rapport</button>
         </div>
       </div>
     </div>
@@ -1816,7 +2073,7 @@ function ConfigItemCard({ kind, item, onDelete }: { kind: HaccpConfigKind; item:
   );
 }
 
-function SectionView({ section, rows, products, searchQuery, setSearchQuery, processType, onProcessType, onCreate, onDelete, onAnalyzeImage, onGenerateReport, saving }: {
+function SectionView({ section, rows, products, searchQuery, setSearchQuery, processType, onProcessType, onCreate, onDelete, onAnalyzeImage, onGenerateReport, saving, onBack }: {
   section: SectionId;
   rows: HaccpItem[];
   products: HaccpItem[];
@@ -1829,12 +2086,47 @@ function SectionView({ section, rows, products, searchQuery, setSearchQuery, pro
   onAnalyzeImage: (event: ChangeEvent<HTMLInputElement>) => void;
   onGenerateReport: () => void;
   saving: boolean;
+  onBack: () => void;
 }) {
   return (
     <div className="card-modern">
       <div className="section-header-modern">
         <div className="section-info">
-          <span className="card-title">{labelFor(section)}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
+            <button 
+              type="button" 
+              className="btn btn-secondary btn-sm" 
+              onClick={onBack}
+              style={{
+                padding: '0.3rem 0.6rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.25rem',
+                fontSize: '0.8rem',
+                fontWeight: 650,
+                borderRadius: '8px',
+                border: '1px solid #e2e8f0',
+                background: 'white',
+                cursor: 'pointer',
+                color: 'var(--text-muted)',
+                transition: 'all 0.2s',
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = '#f8fafc';
+                e.currentTarget.style.color = 'var(--text-main)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = 'white';
+                e.currentTarget.style.color = 'var(--text-muted)';
+              }}
+            >
+              <ArrowLeft size={14} /> Retour
+            </button>
+            <span className="card-title" style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
+              {labelFor(section)}
+            </span>
+          </div>
           <span className="section-tagline">{rows.length} entrée(s) enregistrée(s)</span>
         </div>
         <div className="haccp-filter-right">
@@ -1882,6 +2174,182 @@ function SectionView({ section, rows, products, searchQuery, setSearchQuery, pro
         </div>
       </div>
       <SimpleTable rows={rows} columns={columnsFor(section)} onDelete={onDelete} section={section} />
+    </div>
+  );
+}
+
+function SensorsView({
+  sensors,
+  summary,
+  pairing,
+  selectedSensor,
+  temperatureEquipment,
+  searchQuery,
+  setSearchQuery,
+  saving,
+  onStartPairing,
+  onStopPairing,
+  onRefresh,
+  onSelect,
+  onRename,
+  onAssign,
+  onRemove,
+  onBack,
+}: {
+  sensors: HaccpSensor[];
+  summary: HaccpSensorSummary;
+  pairing: HaccpPairingSession | null;
+  selectedSensor: HaccpSensor | null;
+  temperatureEquipment: HaccpItem[];
+  searchQuery: string;
+  setSearchQuery: (value: string) => void;
+  saving: boolean;
+  onStartPairing: () => void;
+  onStopPairing: () => void;
+  onRefresh: () => void;
+  onSelect: (sensor: HaccpSensor) => void;
+  onRename: (sensor: HaccpSensor, name: string) => void;
+  onAssign: (sensor: HaccpSensor, equipmentId: string) => void;
+  onRemove: (sensor: HaccpSensor, removeFromNetwork: boolean) => void;
+  onBack: () => void;
+}) {
+  const [draftName, setDraftName] = useState('');
+  const [draftEquipmentId, setDraftEquipmentId] = useState('');
+  const filteredSensors = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return sensors;
+    return sensors.filter((sensor) => JSON.stringify(sensor).toLowerCase().includes(query));
+  }, [searchQuery, sensors]);
+  const activePairing = pairing?.status === 'ACTIVE';
+  const selectedName = selectedSensor ? sensorDisplayName(selectedSensor) : '';
+
+  useEffect(() => {
+    setDraftName(selectedName);
+    setDraftEquipmentId(selectedSensor?.assignedEquipment?.id ?? '');
+  }, [selectedSensor?.id, selectedName, selectedSensor?.assignedEquipment?.id]);
+
+  return (
+    <div className="haccp-sensors-page">
+      <div className="haccp-sensors-toolbar">
+        <button type="button" className="btn btn-secondary btn-sm" onClick={onBack}><ArrowLeft size={14} /> Retour</button>
+        <div className="haccp-search">
+          <Search size={14} />
+          <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Rechercher un capteur..." />
+        </div>
+        <button type="button" className="btn secondary" onClick={onRefresh} disabled={saving}><RefreshCw size={16} /> Actualiser</button>
+        {activePairing ? (
+          <button type="button" className="btn secondary" onClick={onStopPairing} disabled={saving}><X size={16} /> Stop</button>
+        ) : (
+          <button type="button" className="btn btn-primary" onClick={onStartPairing} disabled={saving}><Plus size={16} /> Ajouter un capteur</button>
+        )}
+      </div>
+
+      <div className="haccp-sensors-kpis">
+        <SensorMetric label="Total" value={summary.total} detail="Capteurs connus" />
+        <SensorMetric label="Connectés" value={summary.online} detail="En ligne" tone="ok" />
+        <SensorMetric label="Hors ligne" value={summary.offline} detail="À vérifier" tone={summary.offline > 0 ? 'danger' : 'neutral'} />
+        <SensorMetric label="Batterie" value={summary.averageBattery == null ? '-' : `${summary.averageBattery}%`} detail={sensorGlobalStatus(summary.globalStatus)} />
+      </div>
+
+      {activePairing ? (
+        <div className="haccp-pairing-banner">
+          <div>
+            <strong>Mode appairage actif</strong>
+            <span>Fin prévue {pairing?.expiresAt ? new Date(pairing.expiresAt).toLocaleTimeString('fr-FR') : '-'}</span>
+          </div>
+          <span className="haccp-status-pill ok"><span className="status-dot" />{pairing?.sensors?.length ?? pairing?.discoveredIds?.length ?? 0} détecté(s)</span>
+        </div>
+      ) : null}
+
+      <div className="haccp-sensors-layout">
+        <div className="haccp-list-panel">
+          <div className="haccp-table-wrapper">
+            <table className="haccp-control-table">
+              <thead>
+                <tr>
+                  <th>Nom</th>
+                  <th>Modèle</th>
+                  <th>Équipement</th>
+                  <th>Température</th>
+                  <th>Batterie</th>
+                  <th>Signal</th>
+                  <th>Statut</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredSensors.map((sensor) => (
+                  <tr key={sensor.id} onClick={() => onSelect(sensor)} className={selectedSensor?.id === sensor.id ? 'selected' : ''}>
+                    <td><strong>{sensorDisplayName(sensor)}</strong><small>{sensor.manufacturer ?? 'Fabricant inconnu'}</small></td>
+                    <td>{sensor.model ?? '-'}</td>
+                    <td>{sensor.assignedEquipment?.name ?? <span className="muted">Non affecté</span>}</td>
+                    <td>{sensor.currentTemperature == null ? '-' : `${Number(sensor.currentTemperature).toFixed(1)}°C`}</td>
+                    <td>{sensor.battery == null ? '-' : `${Math.round(Number(sensor.battery))}%`}</td>
+                    <td>{sensor.linkQuality ?? '-'}</td>
+                    <td><span className={`haccp-status-pill ${sensorStatusClass(sensor.status)}`}><span className="status-dot" />{sensorStatusLabel(sensor.status)}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!filteredSensors.length ? <div className="haccp-empty-state"><Smartphone size={36} /><p>Aucun capteur détecté.</p></div> : null}
+          </div>
+        </div>
+
+        <aside className="haccp-sensor-detail">
+          {selectedSensor ? (
+            <>
+              <div className="haccp-sensor-detail-head">
+                <span className={`haccp-status-pill ${sensorStatusClass(selectedSensor.status)}`}><span className="status-dot" />{sensorStatusLabel(selectedSensor.status)}</span>
+                <strong>{sensorDisplayName(selectedSensor)}</strong>
+                <small>{selectedSensor.model ?? 'Modèle inconnu'} · {selectedSensor.provider}</small>
+              </div>
+              <div className="haccp-sensor-current-grid">
+                <SensorMetric label="Température" value={selectedSensor.currentTemperature == null ? '-' : `${Number(selectedSensor.currentTemperature).toFixed(1)}°C`} detail="Dernier relevé" />
+                <SensorMetric label="Humidité" value={selectedSensor.currentHumidity == null ? '-' : `${Number(selectedSensor.currentHumidity).toFixed(0)}%`} detail="Dernier relevé" />
+                <SensorMetric label="Batterie" value={selectedSensor.battery == null ? '-' : `${Math.round(Number(selectedSensor.battery))}%`} detail="Niveau" />
+                <SensorMetric label="Signal" value={selectedSensor.linkQuality ?? '-'} detail="LQI" />
+              </div>
+              <label className="form-field">
+                <span>Nom ToqueHub</span>
+                <input value={draftName} onChange={(event) => setDraftName(event.target.value)} />
+              </label>
+              <label className="form-field">
+                <span>Équipement HACCP associé</span>
+                <select value={draftEquipmentId} onChange={(event) => setDraftEquipmentId(event.target.value)}>
+                  <option value="">Non affecté</option>
+                  {temperatureEquipment.map((equipment) => (
+                    <option key={equipment._id ?? equipment.id} value={equipment._id ?? equipment.id}>{equipment.name}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="haccp-sensor-actions">
+                <button type="button" className="btn btn-primary" disabled={saving || !draftName.trim()} onClick={() => onRename(selectedSensor, draftName.trim())}>Renommer</button>
+                <button type="button" className="btn secondary" disabled={saving} onClick={() => onAssign(selectedSensor, draftEquipmentId)}>Affecter</button>
+              </div>
+              <div className="haccp-sensor-history">
+                <strong>Dernières communications</strong>
+                <span>{selectedSensor.lastSeenAt ? new Date(selectedSensor.lastSeenAt).toLocaleString('fr-FR') : 'Aucune communication'}</span>
+                <span>{selectedSensor.externalId}</span>
+              </div>
+              <div className="haccp-sensor-danger">
+                <button type="button" className="btn secondary" disabled={saving} onClick={() => onRemove(selectedSensor, false)}><Trash2 size={15} /> Supprimer ToqueHub</button>
+                <button type="button" className="btn secondary" disabled={saving} onClick={() => onRemove(selectedSensor, true)}><Trash2 size={15} /> Supprimer réseau</button>
+              </div>
+            </>
+          ) : (
+            <div className="haccp-empty-state"><Settings2 size={34} /><p>Sélectionnez un capteur pour voir sa fiche.</p></div>
+          )}
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function SensorMetric({ label, value, detail, tone = 'neutral' }: { label: string; value: ReactNode; detail: string; tone?: 'ok' | 'danger' | 'neutral' }) {
+  return (
+    <div className={`haccp-sensor-metric tone-${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{detail}</small>
     </div>
   );
 }
@@ -2125,13 +2593,14 @@ function ScoreGauge({ score }: { score: number }) {
 }
 
 function ControlRow({ module }: { module: HaccpDashboard['modules'][number] }) {
-  const status = module.issues > 0 ? module.score < 60 ? 'Critique' : 'À vérifier' : 'Conforme';
-  const badgeClass = status === 'Conforme' ? 'ok' : status === 'À vérifier' ? 'warning' : 'danger';
+  const hasExpectedControls = module.expected > 0;
+  const status = !hasExpectedControls ? 'Aucun prévu' : module.issues > 0 ? module.score < 60 ? 'Critique' : 'À vérifier' : 'Conforme';
+  const badgeClass = !hasExpectedControls ? 'neutral' : status === 'Conforme' ? 'ok' : status === 'À vérifier' ? 'warning' : 'danger';
   return (
     <tr>
       <td><strong>{module.label}</strong><small>{module.description}</small></td>
       <td>Contrôle HACCP</td>
-      <td><span className={`haccp-score-pill ${badgeClass}`}>{module.score}%</span></td>
+      <td><span className={`haccp-score-pill ${badgeClass}`}>{hasExpectedControls ? `${module.score}%` : '-'}</span></td>
       <td>
         <span className={`haccp-status-pill ${badgeClass}`}>
           <span className="status-dot" />
@@ -2475,7 +2944,7 @@ function configModalTitle(kind: HaccpConfigKind) {
 }
 
 function labelFor(section: HaccpTab) {
-  return ({ temperatures: 'Températures', setup: 'Zones & matériels', cleaning: 'Nettoyage', traceability: 'Traçabilité', receptions: 'Réceptions', process: 'Processus', oil: 'Huiles', production: 'Production', products: 'Produits', labels: 'Étiquettes', reports: 'Rapports', dashboard: 'Dashboard' } as Record<HaccpTab, string>)[section];
+  return ({ sensors: 'Capteurs', temperatures: 'Températures', setup: 'Zones & matériels', cleaning: 'Nettoyage', traceability: 'Traçabilité', receptions: 'Réceptions', process: 'Processus', oil: 'Huiles', production: 'Production', products: 'Produits', labels: 'Étiquettes', reports: 'Rapports', dashboard: 'Dashboard' } as Record<HaccpTab, string>)[section];
 }
 
 function columnsFor(section: HaccpTab) {
@@ -2508,4 +2977,33 @@ function formatCell(row: HaccpItem, column: string, section?: HaccpTab) {
   if (section === 'reports' && column === 'status') return value === 'completed' ? 'Terminé' : value ?? '-';
   if (typeof value === 'number') return value.toLocaleString('fr-FR');
   return value ?? '-';
+}
+
+function upsertSensor(items: HaccpSensor[], sensor: HaccpSensor) {
+  const next = items.some((item) => item.id === sensor.id)
+    ? items.map((item) => item.id === sensor.id ? { ...item, ...sensor } : item)
+    : [sensor, ...items];
+  return next.filter((item) => !item.isRemoved);
+}
+
+function sensorDisplayName(sensor: HaccpSensor) {
+  return sensor.userName || sensor.friendlyName || sensor.externalId || 'Capteur';
+}
+
+function sensorStatusLabel(status: string) {
+  if (status === 'ONLINE') return 'En ligne';
+  if (status === 'OFFLINE') return 'Hors ligne';
+  return 'Inconnu';
+}
+
+function sensorStatusClass(status: string) {
+  if (status === 'ONLINE') return 'ok';
+  if (status === 'OFFLINE') return 'danger';
+  return 'neutral';
+}
+
+function sensorGlobalStatus(status: string) {
+  if (status === 'ok') return 'Parc nominal';
+  if (status === 'warning') return 'Attention requise';
+  return 'À initialiser';
 }

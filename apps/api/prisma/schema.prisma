@@ -558,6 +558,13 @@ enum AuditAction {
   MODULE_PRODUCTION_UNINSTALLED
   MODULE_MENUS_INSTALLED
   MODULE_MENUS_UNINSTALLED
+  HACCP_SENSOR_DISCOVERED
+  HACCP_SENSOR_RENAMED
+  HACCP_SENSOR_ASSIGNED
+  HACCP_SENSOR_UNASSIGNED
+  HACCP_SENSOR_REMOVED
+  HACCP_SENSOR_PAIRING_STARTED
+  HACCP_SENSOR_PAIRING_STOPPED
 }
 
 enum BackupCloudProvider {
@@ -569,6 +576,41 @@ enum BackupCloudConnectionStatus {
   CONFIGURED
   CONNECTED
   ERROR
+}
+
+enum IotSensorProvider {
+  ZIGBEE2MQTT
+}
+
+enum IotSensorStatus {
+  ONLINE
+  OFFLINE
+  UNKNOWN
+}
+
+enum IotSensorType {
+  TEMPERATURE
+  TEMPERATURE_HUMIDITY
+  HUMIDITY
+  GENERIC
+}
+
+enum IotSensorEventType {
+  DISCOVERED
+  PAIRED
+  RENAMED
+  ASSIGNED
+  UNASSIGNED
+  REMOVED
+  OFFLINE
+  PROVIDER_ERROR
+  READING_UPDATED
+}
+
+enum IotPairingStatus {
+  ACTIVE
+  STOPPED
+  EXPIRED
 }
 
 model Organization {
@@ -706,6 +748,12 @@ model Organization {
   haccpCleanedSurfaces           HaccpCleanedSurface[]
   haccpProductionSessions        HaccpProductionSession[]
   haccpDailyReports              HaccpDailyReport[]
+  iotSensors                     IotSensor[]
+  iotSensorReadings              IotSensorReading[]
+  iotSensorAssignments           IotSensorAssignment[]
+  iotSensorEvents                IotSensorEvent[]
+  iotPairingSessions             IotPairingSession[]
+  iotAlertEvents                 IotAlertEvent[]
 
   @@index([regulatoryCountryCode])
   @@index([regulatoryCountrySelectedById])
@@ -802,6 +850,8 @@ model User {
   createdHaccpCleanedSurfaces        HaccpCleanedSurface[]          @relation("HaccpCleanedSurfaceCreatedBy")
   createdHaccpProductionSessions     HaccpProductionSession[]       @relation("HaccpProductionSessionCreatedBy")
   createdHaccpDailyReports           HaccpDailyReport[]             @relation("HaccpDailyReportCreatedBy")
+  assignedIotSensors                 IotSensorAssignment[]          @relation("IotSensorAssignedBy")
+  actorIotSensorEvents               IotSensorEvent[]               @relation("IotSensorEventActor")
   createdMarginReports               MarginReport[]                 @relation("MarginReportCreatedBy")
   dashboardPreferences               DashboardPreference[]
   backupCloudOAuthStates             BackupCloudOAuthState[]        @relation("BackupCloudOAuthStateUser")
@@ -3972,9 +4022,10 @@ model HaccpTemperatureEquipment {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  organization Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy    User?                     @relation("HaccpTemperatureEquipmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  readings     HaccpTemperatureReading[]
+  organization      Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy         User?                     @relation("HaccpTemperatureEquipmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  readings          HaccpTemperatureReading[]
+  sensorAssignments IotSensorAssignment[]
 
   @@unique([organizationId, clientId])
   @@index([organizationId])
@@ -4395,4 +4446,159 @@ model HaccpDailyReport {
   @@index([createdById])
   @@index([status])
   @@map("haccp_daily_reports")
+}
+
+model IotSensor {
+  id                 String            @id @default(uuid()) @db.Uuid
+  organizationId     String            @db.Uuid
+  provider           IotSensorProvider
+  externalId         String
+  ieeeAddress        String?
+  manufacturer       String?
+  model              String?
+  friendlyName       String?
+  userName           String?
+  type               IotSensorType     @default(TEMPERATURE)
+  status             IotSensorStatus   @default(UNKNOWN)
+  battery            Decimal?          @db.Decimal(5, 2)
+  linkQuality        Int?
+  lastSeenAt         DateTime?
+  currentTemperature Decimal?          @db.Decimal(7, 2)
+  currentHumidity    Decimal?          @db.Decimal(7, 2)
+  metadata           Json              @default("{}")
+  isRemoved          Boolean           @default(false)
+  removedAt          DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  readings     IotSensorReading[]
+  assignments  IotSensorAssignment[]
+  events       IotSensorEvent[]
+  alerts       IotAlertEvent[]
+
+  @@unique([organizationId, provider, externalId])
+  @@unique([organizationId, provider, ieeeAddress])
+  @@index([organizationId])
+  @@index([provider])
+  @@index([status])
+  @@index([type])
+  @@index([lastSeenAt])
+  @@index([isRemoved])
+  @@map("iot_sensors")
+}
+
+model IotSensorReading {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  sensorId       String   @db.Uuid
+  temperature    Decimal? @db.Decimal(7, 2)
+  humidity       Decimal? @db.Decimal(7, 2)
+  battery        Decimal? @db.Decimal(5, 2)
+  linkQuality    Int?
+  payload        Json     @default("{}")
+  measuredAt     DateTime
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sensor       IotSensor    @relation(fields: [sensorId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([sensorId])
+  @@index([measuredAt])
+  @@map("iot_sensor_readings")
+}
+
+model IotSensorAssignment {
+  id                          String    @id @default(uuid()) @db.Uuid
+  organizationId              String    @db.Uuid
+  sensorId                    String    @db.Uuid
+  haccpTemperatureEquipmentId String    @db.Uuid
+  assignedById                String?   @db.Uuid
+  assignedAt                  DateTime  @default(now())
+  unassignedAt                DateTime?
+  notes                       String?   @db.Text
+
+  organization              Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sensor                    IotSensor                 @relation(fields: [sensorId], references: [id], onDelete: Cascade)
+  haccpTemperatureEquipment HaccpTemperatureEquipment @relation(fields: [haccpTemperatureEquipmentId], references: [id], onDelete: Restrict)
+  assignedBy                User?                     @relation("IotSensorAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([sensorId])
+  @@index([haccpTemperatureEquipmentId])
+  @@index([assignedAt])
+  @@index([unassignedAt])
+  @@map("iot_sensor_assignments")
+}
+
+model IotSensorEvent {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @db.Uuid
+  sensorId       String?            @db.Uuid
+  actorUserId    String?            @db.Uuid
+  type           IotSensorEventType
+  message        String?
+  payload        Json               @default("{}")
+  createdAt      DateTime           @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sensor       IotSensor?   @relation(fields: [sensorId], references: [id], onDelete: Cascade)
+  actor        User?        @relation("IotSensorEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([sensorId])
+  @@index([actorUserId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("iot_sensor_events")
+}
+
+model IotPairingSession {
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @db.Uuid
+  provider       IotSensorProvider
+  status         IotPairingStatus  @default(ACTIVE)
+  startedAt      DateTime          @default(now())
+  expiresAt      DateTime
+  stoppedAt      DateTime?
+  discoveredIds  String[]          @default([])
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([provider])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("iot_pairing_sessions")
+}
+
+model IotAlertEvent {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  sensorId       String?   @db.Uuid
+  type           String
+  severity       String    @default("INFO")
+  status         String    @default("OPEN")
+  title          String
+  message        String?   @db.Text
+  payload        Json      @default("{}")
+  detectedAt     DateTime  @default(now())
+  acknowledgedAt DateTime?
+  resolvedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sensor       IotSensor?   @relation(fields: [sensorId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([sensorId])
+  @@index([type])
+  @@index([severity])
+  @@index([status])
+  @@index([detectedAt])
+  @@map("iot_alert_events")
 }

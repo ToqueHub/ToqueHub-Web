@@ -19,11 +19,14 @@
     "web:dev": "npm run dev -w apps/web",
     "landing:dev": "npm run dev -w apps/landing",
     "prisma:generate": "npm run prisma:generate -w apps/api",
+    "prisma:deploy": "npm run prisma:deploy -w apps/api",
     "prisma:migrate": "npm run prisma:migrate -w apps/api",
     "prisma:reset": "npm run prisma:reset -w apps/api --",
     "prisma:seed": "npm run prisma:seed -w apps/api",
     "seed:legal-rights": "npm run seed:legal-rights -w apps/api",
-    "db:setup:local": "./scripts/setup-local-postgres.sh"
+    "db:setup:local": "./scripts/setup-local-postgres.sh",
+    "bienvenue": "./scripts/bootstrap-main.sh",
+    "bootstrap:main": "./scripts/bootstrap-main.sh"
   },
   "devDependencies": {
     "@types/node": "^22.15.29",
