@@ -74,6 +74,55 @@ npm run docker:publish -- --load --platforms linux/arm64
 
 Le workflow GitHub `.github/workflows/docker-publish.yml` publie les images sur GHCR lors d'un tag `v*` ou via lancement manuel.
 
+## Installation Ubuntu Server fraiche
+
+Sur une installation Ubuntu Server neuve, une seule commande peut installer les prerequis, cloner ToqueHub, generer les secrets locaux et lancer Docker Compose:
+
+```bash
+sudo apt-get update && sudo apt-get install -y curl ca-certificates && \
+curl -fsSL https://raw.githubusercontent.com/Powarthy/toquehub/main/scripts/install-toquehub-ubuntu.sh | bash
+```
+
+Le script installe:
+
+- Git, curl, OpenSSL et certificats
+- Node.js 22 + npm
+- Docker Engine + Docker Compose plugin
+- ToqueHub dans `/opt/toquehub`
+- `.env.docker` avec secrets generes
+- les conteneurs web, API, PostgreSQL, Mosquitto et Zigbee2MQTT
+
+Options utiles:
+
+```bash
+sudo apt-get update && sudo apt-get install -y curl ca-certificates && \
+curl -fsSL https://raw.githubusercontent.com/Powarthy/toquehub/main/scripts/install-toquehub-ubuntu.sh | \
+  TOQUEHUB_INSTALL_DIR=/opt/toquehub \
+  TOQUEHUB_HTTP_PORT=8080 \
+  ZIGBEE2MQTT_HTTP_PORT=8081 \
+  bash
+```
+
+Depuis un clone local:
+
+```bash
+npm run ubuntu:install
+```
+
+Apres installation:
+
+```bash
+cd /opt/toquehub
+docker compose --env-file .env.docker ps
+docker compose --env-file .env.docker logs -f api web postgres mosquitto zigbee2mqtt
+```
+
+URL par defaut:
+
+```text
+http://IP_DU_SERVEUR:8080
+```
+
 ## Installation Raspberry Pi par script
 
 Sur un Raspberry Pi OS Lite 64 bits deja flashe:

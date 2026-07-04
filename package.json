@@ -35,6 +35,7 @@
     "docker:down": "docker compose --env-file .env.docker down",
     "docker:logs": "docker compose --env-file .env.docker logs -f api web postgres mosquitto zigbee2mqtt",
     "docker:publish": "./scripts/docker-publish.sh",
+    "ubuntu:install": "./scripts/install-toquehub-ubuntu.sh",
     "pi:image": "./scripts/build-rpi-image.sh",
     "pi:install": "./scripts/install-toquehub-pi.sh",
     "bienvenue": "./scripts/bootstrap-main.sh",
