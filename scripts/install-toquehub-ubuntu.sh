@@ -9,6 +9,28 @@ ZIGBEE2MQTT_PORT="${ZIGBEE2MQTT_HTTP_PORT:-8081}"
 MQTT_PORT="${MQTT_PORT:-1883}"
 ENV_FILE="$INSTALL_DIR/.env.docker"
 
+repo_slug() {
+  local url="$1"
+  url="${url#git@github.com:}"
+  url="${url#https://github.com/}"
+  url="${url#http://github.com/}"
+  url="${url%.git}"
+  printf '%s\n' "$url"
+}
+
+repo_owner() {
+  repo_slug "$1" | cut -d/ -f1
+}
+
+version_from_ref() {
+  local ref="$1"
+  if [[ "$ref" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    printf '%s\n' "${ref#v}"
+    return
+  fi
+  printf 'latest\n'
+}
+
 usage() {
   cat <<'MSG'
 Usage: scripts/install-toquehub-ubuntu.sh
@@ -180,9 +202,18 @@ configure_toquehub() {
 
   TOQUEHUB_HTTP_PORT="$HTTP_PORT" ZIGBEE2MQTT_HTTP_PORT="$ZIGBEE2MQTT_PORT" MQTT_PORT="$MQTT_PORT" ./scripts/setup-toquehub-docker.sh
 
+  local slug owner version
+  slug="$(repo_slug "$REPO_URL")"
+  owner="$(repo_owner "$REPO_URL" | tr '[:upper:]' '[:lower:]')"
+  version="$(version_from_ref "$BRANCH")"
+
   HTTP_PORT="$(get_env TOQUEHUB_HTTP_PORT "$HTTP_PORT")"
   ZIGBEE2MQTT_PORT="$(get_env ZIGBEE2MQTT_HTTP_PORT "$ZIGBEE2MQTT_PORT")"
   MQTT_PORT="$(get_env MQTT_PORT "$MQTT_PORT")"
+  set_env TOQUEHUB_RELEASE_REPO "$slug"
+  set_env TOQUEHUB_IMAGE_REGISTRY "ghcr.io/$owner"
+  set_env TOQUEHUB_IMAGE_TAG "$version"
+  set_env TOQUEHUB_VERSION "$version"
   set_env_if_placeholder POSTGRES_PASSWORD "$(secret)"
   set_env_if_placeholder JWT_SECRET "$(secret)"
   set_env_if_placeholder BACKUP_CLOUD_ENCRYPTION_KEY "$(secret)"
