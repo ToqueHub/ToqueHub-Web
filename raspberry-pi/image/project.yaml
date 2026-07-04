@@ -1,33 +1,20 @@
-# rpi-image-gen project stub for ToqueHub.
-#
-# rpi-image-gen is under active development, so this project intentionally keeps
-# ToqueHub-specific files in a plain overlay. The build wrapper prepares a local
-# rpi-image-gen checkout and copies this project next to it.
-#
-# If rpi-image-gen changes its schema, keep this file as the single integration
-# point and preserve the overlay contract:
-#   - install Docker and Compose
-#   - copy files/rootfs into the target rootfs
-#   - enable toquehub-firstboot.service
-image: bookworm/apt-min64
-device: pi5
-hostname: toquehub
-timezone: Europe/Paris
-locale: fr_FR.UTF-8
-keyboard: fr
-packages:
-  - ca-certificates
-  - curl
-  - docker.io
-  - docker-compose-plugin
-  - jq
-  - avahi-daemon
-  - libnss-mdns
-  - openssl
-  - rsync
-  - udev
-services:
-  enabled:
-    - docker
-    - avahi-daemon
-    - toquehub-firstboot.service
+include:
+  file: bookworm-minbase.yaml
+
+device:
+  hostname: toquehub
+  layer: rpi5
+
+image:
+  name: toquehub-pi64
+  root_part_size: 600%
+
+locale:
+  default: fr_FR.UTF-8
+  keyboard_keymap: fr
+  keyboard_layout: French
+  timezone: Europe/Paris
+
+layer:
+  docker: docker-debian-bookworm
+  app: toquehub-appliance
