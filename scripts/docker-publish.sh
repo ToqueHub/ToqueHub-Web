@@ -105,7 +105,7 @@ build_image() {
     .
 }
 
-build_image toquehub-api docker/api.Dockerfile
+build_image toquehub-api docker/api.Dockerfile --build-arg TOQUEHUB_VERSION="$VERSION"
 build_image toquehub-web docker/web.Dockerfile --build-arg VITE_API_URL=
 build_image toquehub-updater docker/updater.Dockerfile
 

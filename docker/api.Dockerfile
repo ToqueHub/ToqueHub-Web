@@ -31,7 +31,9 @@ RUN npm run build -w apps/api
 
 FROM node:20-bookworm-slim AS runtime
 
+ARG TOQUEHUB_VERSION=0.1.0
 ENV NODE_ENV=production
+ENV TOQUEHUB_VERSION=$TOQUEHUB_VERSION
 WORKDIR /app
 
 RUN apt-get update \
