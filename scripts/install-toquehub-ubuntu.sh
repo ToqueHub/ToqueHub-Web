@@ -220,6 +220,7 @@ configure_toquehub() {
   set_env_if_placeholder JWT_SECRET "$(secret)"
   set_env_if_placeholder BACKUP_CLOUD_ENCRYPTION_KEY "$(secret)"
   set_env_if_placeholder TOQUEHUB_UPDATER_SECRET "$(secret)"
+  set_env TOQUEHUB_DISCOVERY_ENABLED "true"
   set_env TOQUEHUB_DISCOVERY_PORT "$HTTP_PORT"
 
   local ip

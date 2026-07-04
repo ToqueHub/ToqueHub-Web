@@ -230,6 +230,7 @@ set_env_if_placeholder "TOQUEHUB_UPDATER_SECRET" "$(secret)"
 set_env "ZIGBEE_ADAPTER_PATH" "$SERIAL_PORT"
 set_env "ZIGBEE_ADAPTER_TYPE" "$ADAPTER_TYPE"
 set_env "ZIGBEE2MQTT_FRONTEND_URL" "http://localhost:$ZIGBEE_HTTP_PORT"
+set_env "TOQUEHUB_DISCOVERY_ENABLED" "true"
 set_env "TOQUEHUB_DISCOVERY_PORT" "$HTTP_PORT"
 set_env "CORS_ORIGIN" "http://localhost:$HTTP_PORT,http://127.0.0.1:$HTTP_PORT"
 
