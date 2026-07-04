@@ -11,6 +11,12 @@ COPY apps/api/package.json apps/api/package.json
 COPY packages/core/package.json packages/core/package.json
 COPY packages/shared-types/package.json packages/shared-types/package.json
 
+RUN npm config set fetch-retries 5 \
+  && npm config set fetch-retry-factor 2 \
+  && npm config set fetch-retry-mintimeout 20000 \
+  && npm config set fetch-retry-maxtimeout 120000 \
+  && npm config set registry https://registry.npmjs.org/
+
 RUN npm ci \
   --workspace @toquehub/api \
   --workspace @toquehub/core \
