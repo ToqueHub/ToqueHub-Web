@@ -170,9 +170,9 @@ export class SystemService {
     const webPort = env('TOQUEHUB_HTTP_PORT', '8080');
     const zigbeeAdapterPath = env('ZIGBEE_ADAPTER_PATH') || env('ZIGBEE2MQTT_SERIAL_PORT') || null;
     const detectedSerialPorts = detectSerialPorts();
-    const configuredAdapterPresent = Boolean(
-      zigbeeAdapterPath && detectedSerialPorts.some((portPath) => sameDevice(zigbeeAdapterPath, portPath)),
-    );
+    const configuredAdapterPresent = zigbeeAdapterPath
+      ? detectedSerialPorts.some((portPath) => sameDevice(zigbeeAdapterPath, portPath))
+      : detectedSerialPorts.length > 0;
     const corsOrigins = env('CORS_ORIGIN')
       .split(',')
       .map((origin) => origin.trim())

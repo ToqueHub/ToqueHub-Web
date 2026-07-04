@@ -1636,7 +1636,7 @@ a:hover {
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--dark-border);
-  padding: 1.5rem 1.25rem;
+  padding: 1.5rem 0.75rem;
   flex-shrink: 0;
   position: sticky;
   top: 0;
@@ -1666,9 +1666,9 @@ a:hover {
 .sidebar-brand {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
+  gap: 0.4rem;
   margin-bottom: 1.25rem;
-  padding: 0.5rem 0.5rem;
+  padding: 0.5rem 0.2rem;
   position: relative;
 }
 
@@ -1700,8 +1700,8 @@ a:hover {
 }
 
 .sidebar-logo {
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;

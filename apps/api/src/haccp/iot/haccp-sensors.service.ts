@@ -579,6 +579,14 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private detectSerialCandidates() {
+    const candidates = new Set<string>();
+    const byIdDir = '/dev/serial/by-id';
+    try {
+      for (const entry of readdirSync(byIdDir)) candidates.add(`${byIdDir}/${entry}`);
+    } catch {
+      // Device scanning is best-effort; containers may not expose /dev/serial.
+    }
+
     const directories = ['/dev'];
     const patterns = [
       /^ttyUSB\d+$/,
@@ -588,7 +596,6 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
       /^tty\.SLAB_USBtoUART/,
       /^tty\.wchusbserial/,
     ];
-    const candidates = new Set<string>();
     for (const directory of directories) {
       try {
         for (const entry of readdirSync(directory)) {
