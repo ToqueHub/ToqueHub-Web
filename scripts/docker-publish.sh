@@ -107,6 +107,7 @@ build_image() {
 
 build_image toquehub-api docker/api.Dockerfile --build-arg TOQUEHUB_VERSION="$VERSION"
 build_image toquehub-web docker/web.Dockerfile --build-arg VITE_API_URL=
+build_image toquehub-mdns docker/mdns.Dockerfile
 build_image toquehub-updater docker/updater.Dockerfile
 
 cat <<MSG
@@ -116,6 +117,8 @@ Images built:
   $REGISTRY/toquehub-api:$GIT_SHA
   $REGISTRY/toquehub-web:$VERSION
   $REGISTRY/toquehub-web:$GIT_SHA
+  $REGISTRY/toquehub-mdns:$VERSION
+  $REGISTRY/toquehub-mdns:$GIT_SHA
   $REGISTRY/toquehub-updater:$VERSION
   $REGISTRY/toquehub-updater:$GIT_SHA
 MSG
@@ -124,6 +127,7 @@ if [[ "$PUBLISH_LATEST" == "1" ]]; then
   cat <<MSG
   $REGISTRY/toquehub-api:latest
   $REGISTRY/toquehub-web:latest
+  $REGISTRY/toquehub-mdns:latest
   $REGISTRY/toquehub-updater:latest
 MSG
 fi

@@ -58,9 +58,9 @@ export class DiscoveryService implements OnApplicationBootstrap, OnApplicationSh
 
   async publish() {
     const info = await this.getDiscoveryInfo();
+    const host = this.resolveHost();
     const port = this.resolvePort();
-    const host = this.config.get<string>('TOQUEHUB_DISCOVERY_HOST')?.trim() || undefined;
-    const txt = this.toTxtRecords(info);
+    const txt = this.toTxtRecords(info, host, port);
 
     this.publisher.publish({
       name: info.instanceName,
@@ -128,6 +128,10 @@ export class DiscoveryService implements OnApplicationBootstrap, OnApplicationSh
     return this.config.get<string>('npm_package_version') || '0.1.0';
   }
 
+  private resolveHost() {
+    return this.config.get<string>('TOQUEHUB_DISCOVERY_HOST')?.trim() || undefined;
+  }
+
   private resolvePort() {
     const configured =
       this.config.get<string>('TOQUEHUB_DISCOVERY_PORT') ||
@@ -138,7 +142,7 @@ export class DiscoveryService implements OnApplicationBootstrap, OnApplicationSh
     return Number.isFinite(port) && port > 0 ? port : 3000;
   }
 
-  private toTxtRecords(info: DiscoveryInfo): DiscoveryTxtRecords {
+  private toTxtRecords(info: DiscoveryInfo, host: string | undefined, port: number): DiscoveryTxtRecords {
     const https = ['true', '1', 'yes', 'on'].includes(
       String(this.config.get<string>('TOQUEHUB_DISCOVERY_HTTPS') || '').trim().toLowerCase(),
     );
@@ -150,6 +154,8 @@ export class DiscoveryService implements OnApplicationBootstrap, OnApplicationSh
       apiVersion: String(info.apiVersion),
       organization: info.organization,
       https: String(https),
+      ...(host ? { host } : {}),
+      port: String(port),
     };
   }
 }

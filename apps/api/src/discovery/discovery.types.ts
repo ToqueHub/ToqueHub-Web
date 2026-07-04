@@ -15,4 +15,6 @@ export interface DiscoveryTxtRecords {
   apiVersion: string;
   organization: string;
   https: string;
+  host?: string;
+  port?: string;
 }

@@ -220,6 +220,7 @@ configure_toquehub() {
   set_env_if_placeholder JWT_SECRET "$(secret)"
   set_env_if_placeholder BACKUP_CLOUD_ENCRYPTION_KEY "$(secret)"
   set_env_if_placeholder TOQUEHUB_UPDATER_SECRET "$(secret)"
+  set_env TOQUEHUB_DISCOVERY_PORT "$HTTP_PORT"
 
   local ip
   ip="$(server_ip || true)"
@@ -236,6 +237,7 @@ open_firewall_ports() {
     sudo_cmd ufw allow "$HTTP_PORT/tcp"
     sudo_cmd ufw allow "$ZIGBEE2MQTT_PORT/tcp"
     sudo_cmd ufw allow "$MQTT_PORT/tcp"
+    sudo_cmd ufw allow 5353/udp
   fi
 }
 
@@ -267,7 +269,7 @@ Ports:
 Commandes utiles:
   cd $INSTALL_DIR
   docker compose --env-file .env.docker ps
-  docker compose --env-file .env.docker logs -f api web postgres mosquitto zigbee2mqtt
+  docker compose --env-file .env.docker logs -f api web mdns postgres mosquitto zigbee2mqtt
   docker compose --env-file .env.docker down
   docker compose --env-file .env.docker up -d --build
 
