@@ -1,0 +1,13 @@
+[Unit]
+Description=ToqueHub first boot provisioning
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+ConditionPathExists=!/etc/toquehub/.firstboot-complete
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/toquehub-firstboot
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

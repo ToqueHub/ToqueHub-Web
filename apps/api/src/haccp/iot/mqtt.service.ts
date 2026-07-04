@@ -13,6 +13,10 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MqttService.name);
   private readonly messagesSubject = new Subject<MqttJsonMessage>();
   private client?: MqttClient;
+  private configuredUrl?: string;
+  private connected = false;
+  private lastError: string | null = null;
+  private lastConnectedAt: Date | null = null;
 
   readonly messages$: Observable<MqttJsonMessage> = this.messagesSubject.asObservable();
 
@@ -20,6 +24,7 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     const url = this.configService.get<string>('MQTT_URL');
+    this.configuredUrl = url || undefined;
     if (!url) {
       this.logger.warn('MQTT_URL is not configured; HACCP sensor provider will stay in offline mode.');
       return;
@@ -33,10 +38,16 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.client.on('connect', () => {
+      this.connected = true;
+      this.lastError = null;
+      this.lastConnectedAt = new Date();
       const topic = `${this.baseTopic}/#`;
       this.logger.log(`Connected to MQTT broker, subscribing to ${topic}`);
       this.client?.subscribe(topic, (error) => {
-        if (error) this.logger.error(`MQTT subscribe failed: ${error.message}`);
+        if (error) {
+          this.lastError = error.message;
+          this.logger.error(`MQTT subscribe failed: ${error.message}`);
+        }
       });
     });
 
@@ -51,7 +62,16 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
       this.messagesSubject.next({ topic, payload });
     });
 
-    this.client.on('error', (error) => this.logger.error(`MQTT error: ${error.message}`));
+    this.client.on('error', (error) => {
+      this.lastError = error.message;
+      this.logger.error(`MQTT error: ${error.message}`);
+    });
+    this.client.on('close', () => {
+      this.connected = false;
+    });
+    this.client.on('offline', () => {
+      this.connected = false;
+    });
     this.client.on('reconnect', () => this.logger.warn('Reconnecting to MQTT broker...'));
   }
 
@@ -64,6 +84,17 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
     return this.configService.get<string>('ZIGBEE2MQTT_BASE_TOPIC', 'zigbee2mqtt').replace(/^\/|\/$/g, '');
   }
 
+  getStatus() {
+    return {
+      configured: Boolean(this.configuredUrl),
+      url: this.sanitizeUrl(this.configuredUrl),
+      connected: this.connected,
+      baseTopic: this.baseTopic,
+      lastError: this.lastError,
+      lastConnectedAt: this.lastConnectedAt,
+    };
+  }
+
   publish(topic: string, payload: unknown) {
     const body = typeof payload === 'string' ? payload : JSON.stringify(payload);
     return new Promise<void>((resolve, reject) => {
@@ -73,5 +104,17 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
       }
       this.client.publish(topic, body, { qos: 0 }, (error) => (error ? reject(error) : resolve()));
     });
+  }
+
+  private sanitizeUrl(value?: string) {
+    if (!value) return null;
+    try {
+      const url = new URL(value);
+      if (url.username) url.username = '***';
+      if (url.password) url.password = '***';
+      return url.toString();
+    } catch {
+      return value.replace(/\/\/([^:@/]+):([^@/]+)@/, '//***:***@');
+    }
   }
 }

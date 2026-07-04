@@ -27,6 +27,74 @@ export interface SystemStatus {
   hasAdmin: boolean;
 }
 
+export interface SystemInstanceInfo {
+  generatedAt: string;
+  app: {
+    name: string;
+    apiPackage: string;
+    version: string;
+    license: string | null;
+    nodeEnv: string;
+  };
+  frontend: {
+    url: string;
+    configuredOrigins: string[];
+    dockerPort: string;
+  };
+  api: {
+    url: string;
+    port: string;
+    basePath: string;
+    docsPath: string;
+    uptimeSeconds: number;
+    startedAt: string;
+  };
+  docker: {
+    containerized: boolean;
+    composeProject: string;
+    imageRegistry: string | null;
+    imageTag: string | null;
+    architecture: string;
+  };
+  database: {
+    provider: 'postgresql';
+    connected: boolean;
+    error: string | null;
+    host: string | null;
+    port: string | null;
+    database: string | null;
+    url: string | null;
+  };
+  mqtt: {
+    configured: boolean;
+    broker: string | null;
+    host: string | null;
+    port: string | null;
+    usernameConfigured: boolean;
+    baseTopic: string;
+    zigbee2mqttFrontendUrl: string | null;
+    zigbeeAdapterPath: string | null;
+  };
+  storage: {
+    backupDir: string;
+    uploadDir: string;
+    hrUploadDir: string;
+    stocksOcrUploadDir: string;
+    haccpUploadDir: string;
+  };
+  host: {
+    hostname: string;
+    platform: string;
+    release: string;
+    arch: string;
+    node: string;
+    cpuCount: number;
+    totalMemoryBytes: number;
+    freeMemoryBytes: number;
+    uptimeSeconds: number;
+  };
+}
+
 export interface BackupManifest {
   format: 'toquehub-backup';
   version: number;

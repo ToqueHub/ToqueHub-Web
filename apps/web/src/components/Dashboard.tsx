@@ -84,6 +84,11 @@ import {
   Utensils,
   KeyRound,
   Server,
+  Database,
+  HardDrive,
+  Copy,
+  Cpu,
+  Wifi,
   Smartphone,
   RotateCw,
   ZoomIn,
@@ -147,6 +152,7 @@ import type {
   MarginProductDetail,
   MarginSupplierDetail,
   MarginSettings,
+  SystemInstanceInfo,
 } from '../types';
 
 const movementLabels: Record<StockMovementType, string> = {
@@ -495,6 +501,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     return (localStorage.getItem('toquehub_dashboard_layout') as any) || 'split';
   });
   const [showCustomizeModal, setShowCustomizeModal] = useState(false);
+  const [showInstanceModal, setShowInstanceModal] = useState(false);
+  const [instanceInfo, setInstanceInfo] = useState<SystemInstanceInfo | null>(null);
+  const [instanceLoading, setInstanceLoading] = useState(false);
+  const [instanceError, setInstanceError] = useState<string | null>(null);
   const [planningCustomizeSignal, setPlanningCustomizeSignal] = useState(0);
   const [showUserModal, setShowUserModal] = useState(false);
   const [editingUser, setEditingUser] = useState<CoreUser | null>(null);
@@ -632,6 +642,22 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     if (!notificationsOpen || unreadNotifications === 0) return;
     setNotifications((current) => current.map((notification) => ({ ...notification, read: true })));
   }, [notificationsOpen, unreadNotifications]);
+
+  async function openInstanceModal() {
+    setShowInstanceModal(true);
+    setInstanceLoading(true);
+    setInstanceError(null);
+    try {
+      const info = await api.systemInstance(token);
+      setInstanceInfo(info);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Diagnostic instance indisponible';
+      setInstanceError(message);
+      addAppNotification('error', message);
+    } finally {
+      setInstanceLoading(false);
+    }
+  }
 
   async function refreshOcrStatusesFromServer() {
     try {
@@ -941,6 +967,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             'haccp-production'
           ]
         },
+        { tab: 'haccp-sensors', label: 'Capteurs', icon: Smartphone },
         { tab: 'haccp-setup', label: 'Zones & matériels', icon: Boxes },
         { tab: 'haccp-reports', label: 'Rapports', icon: FileText }
       ]
@@ -2168,10 +2195,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               </button>
             )}
 
-            <div className="status-badge">
+            <button type="button" className="status-badge" onClick={() => void openInstanceModal()}>
               <div className="status-dot"></div>
               Instance Locale
-            </div>
+            </button>
           </div>
         </header>
 
@@ -3299,6 +3326,16 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           onClose={() => setShowCustomizeModal(false)}
         />
       </Modal>
+
+      <Modal isOpen={showInstanceModal} onClose={() => setShowInstanceModal(false)} title="Instance locale" size="lg">
+        <InstanceInfoPanel
+          info={instanceInfo}
+          loading={instanceLoading}
+          error={instanceError}
+          onRefresh={() => void openInstanceModal()}
+          onNotify={addAppNotification}
+        />
+      </Modal>
     </div>
   );
 }
@@ -3306,6 +3343,175 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 // =========================================================================
 // REUSABLE SUB-COMPONENTS
 // =========================================================================
+
+function formatInstanceBytes(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '0 o';
+  const units = ['o', 'Ko', 'Mo', 'Go', 'To'];
+  const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+  return `${(value / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
+function formatDuration(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds < 0) return '-';
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days > 0) return `${days}j ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}min`;
+  return `${minutes}min`;
+}
+
+function InstanceStatusPill({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <span className={`instance-status-pill ${ok ? 'ok' : 'warn'}`}>
+      {ok ? <CheckCircle2 size={13} /> : <AlertCircle size={13} />}
+      {label}
+    </span>
+  );
+}
+
+function InstanceInfoRow({ label, value }: { label: string; value?: ReactNode | null }) {
+  return (
+    <div className="instance-info-row">
+      <span>{label}</span>
+      <strong>{value || '-'}</strong>
+    </div>
+  );
+}
+
+function InstanceInfoCard({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
+  return (
+    <section className="instance-info-card">
+      <div className="instance-info-card-header">
+        <span className="instance-info-icon">{icon}</span>
+        <h4>{title}</h4>
+      </div>
+      <div className="instance-info-card-body">{children}</div>
+    </section>
+  );
+}
+
+function InstanceInfoPanel({
+  info,
+  loading,
+  error,
+  onRefresh,
+  onNotify,
+}: {
+  info: SystemInstanceInfo | null;
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+  onNotify: (type: AppNotification['type'], message: string) => void;
+}) {
+  async function copyDiagnostic() {
+    if (!info) return;
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(info, null, 2));
+      onNotify('success', 'Diagnostic instance copié.');
+    } catch {
+      onNotify('error', 'Impossible de copier le diagnostic.');
+    }
+  }
+
+  if (loading && !info) {
+    return (
+      <div className="instance-loading">
+        <RefreshCw size={18} className="spin" />
+        Chargement du diagnostic...
+      </div>
+    );
+  }
+
+  if (error && !info) {
+    return (
+      <div className="instance-empty">
+        <AlertCircle size={22} />
+        <strong>Diagnostic indisponible</strong>
+        <span>{error}</span>
+        <button type="button" className="btn btn-primary" onClick={onRefresh}>
+          <RefreshCw size={15} />
+          Réessayer
+        </button>
+      </div>
+    );
+  }
+
+  if (!info) return null;
+
+  const frontendUrl = typeof window !== 'undefined' ? window.location.origin : info.frontend.url;
+  const apiDocsUrl = `${info.api.url.replace(/\/api$/, '')}${info.api.docsPath}`;
+
+  return (
+    <div className="instance-info-panel">
+      <div className="instance-info-toolbar">
+        <div>
+          <p>Généré le {new Date(info.generatedAt).toLocaleString('fr-FR')}</p>
+          {loading && <span>Actualisation...</span>}
+          {error && <span className="instance-error">{error}</span>}
+        </div>
+        <div className="instance-info-actions">
+          <button type="button" className="btn btn-secondary" onClick={copyDiagnostic}>
+            <Copy size={15} />
+            Copier
+          </button>
+          <button type="button" className="btn btn-secondary" onClick={onRefresh}>
+            <RefreshCw size={15} />
+            Rafraîchir
+          </button>
+        </div>
+      </div>
+
+      <div className="instance-info-grid">
+        <InstanceInfoCard icon={<Server size={18} />} title="Application">
+          <InstanceInfoRow label="Version" value={info.app.version} />
+          <InstanceInfoRow label="Package API" value={info.app.apiPackage} />
+          <InstanceInfoRow label="Environnement" value={info.app.nodeEnv} />
+          <InstanceInfoRow label="Licence" value={info.app.license} />
+        </InstanceInfoCard>
+
+        <InstanceInfoCard icon={<ExternalLink size={18} />} title="Adresses">
+          <InstanceInfoRow label="Frontend" value={<a href={frontendUrl} target="_blank" rel="noreferrer">{frontendUrl}</a>} />
+          <InstanceInfoRow label="Backend" value={<a href={info.api.url} target="_blank" rel="noreferrer">{info.api.url}</a>} />
+          <InstanceInfoRow label="Swagger" value={<a href={apiDocsUrl} target="_blank" rel="noreferrer">{apiDocsUrl}</a>} />
+          <InstanceInfoRow label="Origines CORS" value={info.frontend.configuredOrigins.join(', ') || '-'} />
+        </InstanceInfoCard>
+
+        <InstanceInfoCard icon={<Database size={18} />} title="PostgreSQL">
+          <InstanceInfoRow label="Statut" value={<InstanceStatusPill ok={info.database.connected} label={info.database.connected ? 'Connecté' : 'Erreur'} />} />
+          <InstanceInfoRow label="Hôte" value={info.database.host} />
+          <InstanceInfoRow label="Port" value={info.database.port} />
+          <InstanceInfoRow label="Base" value={info.database.database} />
+          <InstanceInfoRow label="URL" value={info.database.url} />
+        </InstanceInfoCard>
+
+        <InstanceInfoCard icon={<Wifi size={18} />} title="Mosquitto / MQTT">
+          <InstanceInfoRow label="Statut" value={<InstanceStatusPill ok={info.mqtt.configured} label={info.mqtt.configured ? 'Configuré' : 'Non configuré'} />} />
+          <InstanceInfoRow label="Broker" value={info.mqtt.broker} />
+          <InstanceInfoRow label="Topic Zigbee" value={info.mqtt.baseTopic} />
+          <InstanceInfoRow label="Zigbee2MQTT" value={info.mqtt.zigbee2mqttFrontendUrl ? <a href={info.mqtt.zigbee2mqttFrontendUrl} target="_blank" rel="noreferrer">{info.mqtt.zigbee2mqttFrontendUrl}</a> : null} />
+          <InstanceInfoRow label="Adaptateur" value={info.mqtt.zigbeeAdapterPath} />
+        </InstanceInfoCard>
+
+        <InstanceInfoCard icon={<HardDrive size={18} />} title="Docker & stockage">
+          <InstanceInfoRow label="Docker" value={<InstanceStatusPill ok={info.docker.containerized} label={info.docker.containerized ? 'Conteneur' : 'Hors conteneur'} />} />
+          <InstanceInfoRow label="Projet Compose" value={info.docker.composeProject} />
+          <InstanceInfoRow label="Architecture" value={info.docker.architecture} />
+          <InstanceInfoRow label="Uploads" value={info.storage.uploadDir} />
+          <InstanceInfoRow label="Backups" value={info.storage.backupDir} />
+        </InstanceInfoCard>
+
+        <InstanceInfoCard icon={<Cpu size={18} />} title="Machine">
+          <InstanceInfoRow label="Hôte" value={info.host.hostname} />
+          <InstanceInfoRow label="Système" value={`${info.host.platform} ${info.host.release}`} />
+          <InstanceInfoRow label="CPU" value={`${info.host.cpuCount} coeurs (${info.host.arch})`} />
+          <InstanceInfoRow label="Mémoire" value={`${formatInstanceBytes(info.host.freeMemoryBytes)} libres / ${formatInstanceBytes(info.host.totalMemoryBytes)}`} />
+          <InstanceInfoRow label="Uptime API" value={formatDuration(info.api.uptimeSeconds)} />
+        </InstanceInfoCard>
+      </div>
+    </div>
+  );
+}
 
 type AppDefinition = (typeof apps)[number];
 

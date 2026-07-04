@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG_DIR="/etc/toquehub"
+DATA_DIR="/var/lib/toquehub"
+ENV_FILE="$CONFIG_DIR/toquehub.env"
+COMPOSE_FILE="/opt/toquehub/docker-compose.pi.yml"
+ZIGBEE_CONFIG="$DATA_DIR/zigbee2mqtt/configuration.yaml"
+
+secret() {
+  openssl rand -hex 32
+}
+
+detect_zigbee_adapter() {
+  shopt -s nullglob
+  local candidates=(
+    /dev/serial/by-id/*
+    /dev/ttyUSB*
+    /dev/ttyACM*
+  )
+  shopt -u nullglob
+  if [[ ${#candidates[@]} -gt 0 ]]; then
+    printf '%s\n' "${candidates[0]}"
+  fi
+}
+
+set_env() {
+  local key="$1"
+  local value="$2"
+  local tmp
+  tmp="$(mktemp)"
+
+  if grep -q "^${key}=" "$ENV_FILE"; then
+    awk -v key="$key" -v value="$value" '$0 ~ "^" key "=" { print key "=" value; next } { print }' "$ENV_FILE" > "$tmp"
+  else
+    cp "$ENV_FILE" "$tmp"
+    printf '%s=%s\n' "$key" "$value" >> "$tmp"
+  fi
+
+  mv "$tmp" "$ENV_FILE"
+  chmod 0600 "$ENV_FILE"
+}
+
+mkdir -p "$CONFIG_DIR" "$DATA_DIR"/{api,postgres,mosquitto/data,mosquitto/log,zigbee2mqtt}
+chmod 0750 "$CONFIG_DIR" "$DATA_DIR"
+
+if [[ ! -f "$ENV_FILE" ]]; then
+  cp /opt/toquehub/toquehub.env.example "$ENV_FILE"
+  chmod 0600 "$ENV_FILE"
+fi
+
+if grep -q 'replace-with-generated-secret' "$ENV_FILE"; then
+  set_env POSTGRES_PASSWORD "$(secret)"
+  set_env JWT_SECRET "$(secret)"
+  set_env BACKUP_CLOUD_ENCRYPTION_KEY "$(secret)"
+fi
+
+if [[ ! -f "$CONFIG_DIR/mosquitto.conf" ]]; then
+  cp /opt/toquehub/mosquitto.conf "$CONFIG_DIR/mosquitto.conf"
+fi
+
+adapter="$(detect_zigbee_adapter || true)"
+if [[ -n "$adapter" ]]; then
+  set_env ZIGBEE_ADAPTER_PATH "$adapter"
+  mkdir -p "$(dirname "$ZIGBEE_CONFIG")"
+  if [[ ! -f "$ZIGBEE_CONFIG" ]]; then
+    cat > "$ZIGBEE_CONFIG" <<YAML
+homeassistant: false
+permit_join: false
+mqtt:
+  base_topic: zigbee2mqtt
+  server: mqtt://mosquitto:1883
+serial:
+  port: $adapter
+frontend:
+  enabled: true
+  port: 8080
+advanced:
+  log_level: info
+YAML
+  fi
+  systemctl enable toquehub.service >/dev/null
+  systemctl enable toquehub-zigbee.service >/dev/null
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile zigbee up -d zigbee2mqtt
+else
+  systemctl enable toquehub.service >/dev/null
+  systemctl disable toquehub-zigbee.service >/dev/null 2>&1 || true
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
+fi
+
+touch "$CONFIG_DIR/.firstboot-complete"

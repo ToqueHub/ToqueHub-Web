@@ -123,6 +123,7 @@ import type {
   BackupRestoreResult,
   BackupSchedule,
   BackupSummary,
+  SystemInstanceInfo,
 } from '../types';
 
 type PlanningRangeParams = {
@@ -284,6 +285,9 @@ export const api = {
   status() {
     return request<SystemStatus>('/system/status');
   },
+  systemInstance(token: string) {
+    return request<SystemInstanceInfo>('/system/instance', {}, token);
+  },
   bootstrapAdmin(payload: {
     username: string;
     firstName: string;
@@ -406,6 +410,9 @@ export const api = {
   },
   haccpSensorsSummary(token: string) {
     return request<any>('/haccp/sensors/summary', {}, token);
+  },
+  haccpSensorGatewayStatus(token: string) {
+    return request<any>('/haccp/sensors/gateway/status', {}, token);
   },
   haccpSensors(token: string) {
     return request<any[]>('/haccp/sensors', {}, token);

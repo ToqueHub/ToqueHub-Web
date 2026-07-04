@@ -1,0 +1,28 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    profiles: ["iot"]
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./docker/iot/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./.toquehub-iot/mosquitto-data:/mosquitto/data
+      - ./.toquehub-iot/mosquitto-log:/mosquitto/log
+
+  zigbee2mqtt:
+    image: ghcr.io/koenkk/zigbee2mqtt:latest
+    profiles: ["iot"]
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+    ports:
+      - "8080:8080"
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+    volumes:
+      - ./.toquehub-iot/zigbee2mqtt-data:/app/data
+    devices:
+      - "${ZIGBEE_ADAPTER_PATH:-/dev/ttyUSB0}:/dev/ttyUSB0"
+    group_add:
+      - dialout

@@ -75,6 +75,31 @@ type HaccpReadiness = {
   nextStep: HaccpOnboardingStep;
 };
 type HaccpSensorSummary = { total: number; online: number; offline: number; unknown: number; averageBattery: number | null; globalStatus: 'ok' | 'warning' | 'unknown' | string };
+type HaccpSensorGatewayStatus = {
+  status: 'ready' | 'missing_serial' | 'mqtt_disconnected' | 'not_configured' | string;
+  ready: boolean;
+  mqtt: {
+    configured: boolean;
+    url: string | null;
+    connected: boolean;
+    baseTopic: string;
+    lastError?: string | null;
+    lastConnectedAt?: string | null;
+  };
+  zigbee2mqtt: {
+    baseTopic: string;
+    frontendUrl: string;
+    configuredSerialPort?: string | null;
+    serialPortDetected: boolean;
+    serialCandidates: string[];
+    cachedDeviceCount: number;
+  };
+  install: {
+    dockerCommand: string;
+    localSetupCommand: string;
+    localStartCommand: string;
+  };
+};
 type HaccpSensor = HaccpItem & {
   id: string;
   provider: string;
@@ -270,6 +295,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
   const [surfaceRows, setSurfaceRows] = useState<Array<{ name: string; frequency: string }>>(emptySurfaceRows);
   const [searchQuery, setSearchQuery] = useState('');
   const [sensorSummary, setSensorSummary] = useState<HaccpSensorSummary>({ total: 0, online: 0, offline: 0, unknown: 0, averageBattery: null, globalStatus: 'unknown' });
+  const [sensorGatewayStatus, setSensorGatewayStatus] = useState<HaccpSensorGatewayStatus | null>(null);
   const [sensors, setSensors] = useState<HaccpSensor[]>([]);
   const [pairing, setPairing] = useState<HaccpPairingSession | null>(null);
   const [selectedSensorId, setSelectedSensorId] = useState<string | null>(null);
@@ -369,6 +395,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
         productionSessions,
         productList,
         reports,
+        gatewayStatus,
         sensorSummaryData,
         sensorList,
         pairingData,
@@ -386,11 +413,13 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
         safeList('/production/sessions'),
         safeList('/haccp-products'),
         safeList('/daily-reports?limit=50'),
+        safeValue('sensor gateway status', () => api.haccpSensorGatewayStatus(token), null),
         safeValue('sensors summary', () => api.haccpSensorsSummary(token), { total: 0, online: 0, offline: 0, unknown: 0, averageBattery: null, globalStatus: 'unknown' }),
         safeValue('sensors list', () => api.haccpSensors(token), []),
         safeValue('pairing current', () => api.haccpCurrentSensorPairing(token), null),
       ]);
       if (dashboardData) setDashboard(dashboardData);
+      setSensorGatewayStatus(gatewayStatus);
       setSensorSummary(sensorSummaryData);
       setSensors(sensorList);
       setPairing(pairingData);
@@ -425,11 +454,13 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
 
   async function refreshSensorsOnly() {
     try {
-      const [summary, list, currentPairing] = await Promise.all([
+      const [gateway, summary, list, currentPairing] = await Promise.all([
+        api.haccpSensorGatewayStatus(token),
         api.haccpSensorsSummary(token),
         api.haccpSensors(token),
         api.haccpCurrentSensorPairing(token),
       ]);
+      setSensorGatewayStatus(gateway);
       setSensorSummary(summary);
       setSensors(list);
       setPairing(currentPairing);
@@ -442,6 +473,11 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
     setSaving(true);
     setError(null);
     try {
+      const gateway = await api.haccpSensorGatewayStatus(token);
+      setSensorGatewayStatus(gateway);
+      if (!gateway.ready) {
+        throw new Error(sensorGatewayBlockingMessage(gateway));
+      }
       setPairing(await api.haccpStartSensorPairing(token, 180));
       await refreshSensorsOnly();
     } catch (err) {
@@ -800,6 +836,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
             summary={sensorSummary}
             pairing={pairing}
             selectedSensor={selectedSensor}
+            gatewayStatus={sensorGatewayStatus}
             temperatureEquipment={temperatureEquipment}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
@@ -2183,6 +2220,7 @@ function SensorsView({
   summary,
   pairing,
   selectedSensor,
+  gatewayStatus,
   temperatureEquipment,
   searchQuery,
   setSearchQuery,
@@ -2200,6 +2238,7 @@ function SensorsView({
   summary: HaccpSensorSummary;
   pairing: HaccpPairingSession | null;
   selectedSensor: HaccpSensor | null;
+  gatewayStatus: HaccpSensorGatewayStatus | null;
   temperatureEquipment: HaccpItem[];
   searchQuery: string;
   setSearchQuery: (value: string) => void;
@@ -2222,6 +2261,7 @@ function SensorsView({
   }, [searchQuery, sensors]);
   const activePairing = pairing?.status === 'ACTIVE';
   const selectedName = selectedSensor ? sensorDisplayName(selectedSensor) : '';
+  const gatewayReady = gatewayStatus?.ready ?? false;
 
   useEffect(() => {
     setDraftName(selectedName);
@@ -2240,9 +2280,11 @@ function SensorsView({
         {activePairing ? (
           <button type="button" className="btn secondary" onClick={onStopPairing} disabled={saving}><X size={16} /> Stop</button>
         ) : (
-          <button type="button" className="btn btn-primary" onClick={onStartPairing} disabled={saving}><Plus size={16} /> Ajouter un capteur</button>
+          <button type="button" className="btn btn-primary" onClick={onStartPairing} disabled={saving || !gatewayReady}><Plus size={16} /> Ajouter un capteur</button>
         )}
       </div>
+
+      <SensorGatewayPanel status={gatewayStatus} />
 
       <div className="haccp-sensors-kpis">
         <SensorMetric label="Total" value={summary.total} detail="Capteurs connus" />
@@ -2340,6 +2382,31 @@ function SensorsView({
           )}
         </aside>
       </div>
+    </div>
+  );
+}
+
+function SensorGatewayPanel({ status }: { status: HaccpSensorGatewayStatus | null }) {
+  const tone = sensorGatewayTone(status?.status);
+  return (
+    <div className={`haccp-gateway-panel tone-${tone}`}>
+      <div className="haccp-gateway-main">
+        <span className={`haccp-status-pill ${tone === 'ok' ? 'ok' : tone === 'danger' ? 'danger' : 'warning'}`}><span className="status-dot" />{sensorGatewayLabel(status?.status)}</span>
+        <strong>Passerelle IoT</strong>
+        <small>{sensorGatewayMessage(status)}</small>
+      </div>
+      <div className="haccp-gateway-grid">
+        <SensorMetric label="MQTT" value={status?.mqtt.connected ? 'Connecté' : 'Déconnecté'} detail={status?.mqtt.url ?? 'Non configuré'} tone={status?.mqtt.connected ? 'ok' : 'danger'} />
+        <SensorMetric label="Clé Zigbee" value={status?.zigbee2mqtt.serialPortDetected ? 'Détectée' : 'Absente'} detail={status?.zigbee2mqtt.configuredSerialPort ?? status?.zigbee2mqtt.serialCandidates[0] ?? 'Aucun port'} tone={status?.zigbee2mqtt.serialPortDetected ? 'ok' : 'danger'} />
+        <SensorMetric label="Topic" value={status?.zigbee2mqtt.baseTopic ?? '-'} detail="Zigbee2MQTT" />
+        <SensorMetric label="Périphériques" value={status?.zigbee2mqtt.cachedDeviceCount ?? 0} detail="Cache provider" />
+      </div>
+      {!status?.ready ? (
+        <div className="haccp-gateway-actions">
+          <code>{status?.install.dockerCommand ?? 'docker compose -f docker-compose.iot.yml --profile iot up -d'}</code>
+          <code>{status?.install.localSetupCommand ?? 'npm run iot:setup'}</code>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -3006,4 +3073,32 @@ function sensorGlobalStatus(status: string) {
   if (status === 'ok') return 'Parc nominal';
   if (status === 'warning') return 'Attention requise';
   return 'À initialiser';
+}
+
+function sensorGatewayLabel(status?: string) {
+  if (status === 'ready') return 'Prête';
+  if (status === 'missing_serial') return 'Clé absente';
+  if (status === 'mqtt_disconnected') return 'MQTT indisponible';
+  if (status === 'not_configured') return 'Non configurée';
+  return 'Diagnostic';
+}
+
+function sensorGatewayTone(status?: string) {
+  if (status === 'ready') return 'ok';
+  if (status === 'not_configured' || status === 'mqtt_disconnected') return 'danger';
+  return 'warning';
+}
+
+function sensorGatewayMessage(status: HaccpSensorGatewayStatus | null) {
+  if (!status) return 'Statut passerelle indisponible.';
+  if (status.status === 'ready') return 'MQTT, Zigbee2MQTT et coordinateur Zigbee sont prêts.';
+  if (status.status === 'missing_serial') return 'Le broker MQTT répond, mais aucun coordinateur Zigbee USB n’est visible.';
+  if (status.status === 'mqtt_disconnected') return status.mqtt.lastError ? `Broker MQTT inaccessible: ${status.mqtt.lastError}` : 'Broker MQTT inaccessible.';
+  if (status.status === 'not_configured') return 'MQTT_URL n’est pas configuré côté API.';
+  return 'Diagnostic passerelle à vérifier.';
+}
+
+function sensorGatewayBlockingMessage(status: HaccpSensorGatewayStatus) {
+  if (status.ready) return '';
+  return sensorGatewayMessage(status);
 }

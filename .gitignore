@@ -10,5 +10,9 @@ apps/api/backups/
 .env
 .env.*
 !.env.example
+!.env.docker.example
+!.env.raspberry.example
 .DS_Store
 *.local
+.toquehub-iot/
+raspberry-pi/build/

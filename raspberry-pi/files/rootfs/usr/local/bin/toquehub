@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+COMPOSE_FILE="/opt/toquehub/docker-compose.pi.yml"
+ENV_FILE="/etc/toquehub/toquehub.env"
+
+set -a
+# shellcheck disable=SC1090
+. "$ENV_FILE"
+set +a
+
+compose() {
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+}
+
+case "${1:-status}" in
+  status)
+    compose ps
+    ;;
+  logs)
+    shift || true
+    if [[ $# -gt 0 ]]; then
+      compose logs -f "$@"
+    else
+      compose logs -f api web postgres mosquitto zigbee2mqtt
+    fi
+    ;;
+  update)
+    compose pull
+    compose up -d
+    ;;
+  restart)
+    compose restart
+    ;;
+  stop)
+    compose stop
+    ;;
+  start)
+    compose up -d
+    ;;
+  backup)
+    mkdir -p /var/lib/toquehub/manual-backups
+    compose exec -T postgres pg_dump -U "${POSTGRES_USER:-toquehub}" "${POSTGRES_DB:-toquehub}" \
+      > "/var/lib/toquehub/manual-backups/toquehub-$(date +%Y%m%d-%H%M%S).sql"
+    ;;
+  *)
+    cat <<'MSG'
+Usage: toquehub [status|logs|update|restart|stop|start|backup]
+MSG
+    exit 1
+    ;;
+esac

@@ -18,6 +18,11 @@ export class HaccpSensorsController {
     return this.service.summary(this.org(user));
   }
 
+  @Get('gateway/status')
+  gatewayStatus() {
+    return this.service.gatewayStatus();
+  }
+
   @Get()
   list(@CurrentUser() user: AuthenticatedUser) {
     return this.service.list(this.org(user));

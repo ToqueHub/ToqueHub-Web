@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuditAction, IotPairingStatus, IotSensorEventType, IotSensorProvider, IotSensorStatus, IotSensorType, Prisma } from '@prisma/client';
+import { existsSync, readdirSync } from 'node:fs';
 import { Subscription } from 'rxjs';
 import type { AuthenticatedUser } from '../../auth/authenticated-user';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -53,6 +54,42 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
       unknown: total - online - offline,
       averageBattery,
       globalStatus: total === 0 ? 'unknown' : offline > 0 ? 'warning' : 'ok',
+    };
+  }
+
+  async gatewayStatus() {
+    const mqtt = this.mqttService.getStatus();
+    const configuredSerialPort = this.configService.get<string>('ZIGBEE_ADAPTER_PATH')
+      || this.configService.get<string>('ZIGBEE2MQTT_SERIAL_PORT')
+      || null;
+    const serialCandidates = this.detectSerialCandidates();
+    const serialPortDetected = configuredSerialPort ? existsSync(configuredSerialPort) : serialCandidates.length > 0;
+    const devices = await this.provider.listDevices();
+    const status = !mqtt.configured
+      ? 'not_configured'
+      : !mqtt.connected
+        ? 'mqtt_disconnected'
+        : !serialPortDetected
+          ? 'missing_serial'
+          : 'ready';
+
+    return {
+      status,
+      ready: status === 'ready',
+      mqtt,
+      zigbee2mqtt: {
+        baseTopic: mqtt.baseTopic,
+        frontendUrl: this.configService.get<string>('ZIGBEE2MQTT_FRONTEND_URL', 'http://localhost:8080'),
+        configuredSerialPort,
+        serialPortDetected,
+        serialCandidates,
+        cachedDeviceCount: devices.length,
+      },
+      install: {
+        dockerCommand: 'docker compose -f docker-compose.iot.yml --profile iot up -d',
+        localSetupCommand: 'npm run iot:setup',
+        localStartCommand: 'npm run iot:start',
+      },
     };
   }
 
@@ -539,5 +576,28 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
 
   private json(value: unknown) {
     return value as Prisma.InputJsonValue;
+  }
+
+  private detectSerialCandidates() {
+    const directories = ['/dev'];
+    const patterns = [
+      /^ttyUSB\d+$/,
+      /^ttyACM\d+$/,
+      /^tty\.usbserial/,
+      /^tty\.usbmodem/,
+      /^tty\.SLAB_USBtoUART/,
+      /^tty\.wchusbserial/,
+    ];
+    const candidates = new Set<string>();
+    for (const directory of directories) {
+      try {
+        for (const entry of readdirSync(directory)) {
+          if (patterns.some((pattern) => pattern.test(entry))) candidates.add(`${directory}/${entry}`);
+        }
+      } catch {
+        // Device scanning is best-effort; containers may not expose /dev.
+      }
+    }
+    return [...candidates].sort();
   }
 }
