@@ -1836,7 +1836,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       {/* Mobile Header */}
       <header className="mobile-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <ChefHat size={24} color="#10b981" />
+          <img src="/logo-toque.png" alt="Toque" style={{ height: '56px', width: '56px', objectFit: 'contain' }} />
           <span className="sidebar-title" style={{ fontSize: '1.1rem' }}>TOQUE<span>HUB</span></span>
         </div>
         <button className="mobile-menu-btn" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
@@ -1846,9 +1846,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
       {/* Sidebar Navigation */}
       <aside className={`sidebar ${mobileMenuOpen ? 'mobile-open' : ''} ${sidebarCollapsed ? 'desktop-hidden' : ''}`}>
-        <div className="sidebar-brand">
-          <div className="sidebar-logo">
-            <ChefHat />
+        <div className="sidebar-brand" style={{ gap: '0.8rem' }}>
+          <div className="sidebar-logo" style={{ width: '56px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <img src="/logo-toque.png" alt="Toque" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
           </div>
           <span className="sidebar-title">TOQUE<span>HUB</span></span>
           <div className="sidebar-notifications-container">
