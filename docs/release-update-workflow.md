@@ -67,13 +67,13 @@ Si les images Docker existent mais qu'aucun tag `vX.Y.Z` ou aucune GitHub Releas
 Images publiees:
 
 ```text
-ghcr.io/powarthy/toquehub-api:1.0.0
-ghcr.io/powarthy/toquehub-web:1.0.0
-ghcr.io/powarthy/toquehub-updater:1.0.0
+ghcr.io/toquehub/toquehub-api:1.0.0
+ghcr.io/toquehub/toquehub-web:1.0.0
+ghcr.io/toquehub/toquehub-updater:1.0.0
 
-ghcr.io/powarthy/toquehub-api:latest
-ghcr.io/powarthy/toquehub-web:latest
-ghcr.io/powarthy/toquehub-updater:latest
+ghcr.io/toquehub/toquehub-api:latest
+ghcr.io/toquehub/toquehub-web:latest
+ghcr.io/toquehub/toquehub-updater:latest
 ```
 
 ## Ce que voient les utilisateurs

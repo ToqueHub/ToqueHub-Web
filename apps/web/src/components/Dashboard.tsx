@@ -7199,7 +7199,7 @@ function SystemUpdatePanel({
 
         <div className="settings-list" style={{ marginTop: '1.25rem' }}>
           <div><span>Canal</span><strong>{status?.channel ?? 'stable'}</strong></div>
-          <div><span>Repo GitHub</span><strong>{status?.github.repo ?? 'DrSamourai/Toquehubfree'}</strong></div>
+          <div><span>Repo GitHub</span><strong>{status?.github.repo ?? 'ToqueHub/ToqueHub-Web'}</strong></div>
           <div><span>Image API</span><strong>{status?.current.apiImage ?? '-'}</strong></div>
           <div><span>Image Web</span><strong>{status?.current.webImage ?? '-'}</strong></div>
           <div><span>Dernière vérification</span><strong>{status?.checkedAt ? new Date(status.checkedAt).toLocaleString('fr-FR') : '-'}</strong></div>

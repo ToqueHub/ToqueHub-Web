@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_URL="${TOQUEHUB_REPO_URL:-https://github.com/Powarthy/toquehub.git}"
-BRANCH="${TOQUEHUB_BRANCH:-main}"
+REPO_URL="${TOQUEHUB_REPO_URL:-https://github.com/ToqueHub/ToqueHub-Web.git}"
+BRANCH="${TOQUEHUB_BRANCH:-1.0.0}"
 INSTALL_DIR="${TOQUEHUB_INSTALL_DIR:-/opt/toquehub}"
 HTTP_PORT="${TOQUEHUB_HTTP_PORT:-8080}"
 ZIGBEE2MQTT_PORT="${ZIGBEE2MQTT_HTTP_PORT:-8081}"
@@ -46,15 +46,15 @@ It installs:
   - Docker containers for web, API, PostgreSQL, Mosquitto and Zigbee2MQTT
 
 Useful environment variables:
-  TOQUEHUB_REPO_URL=https://github.com/Powarthy/toquehub.git
-  TOQUEHUB_BRANCH=main
+  TOQUEHUB_REPO_URL=https://github.com/ToqueHub/ToqueHub-Web.git
+  TOQUEHUB_BRANCH=1.0.0
   TOQUEHUB_INSTALL_DIR=/opt/toquehub
   TOQUEHUB_HTTP_PORT=8080
   ZIGBEE2MQTT_HTTP_PORT=8081
   MQTT_PORT=1883
 
 Example:
-  curl -fsSL https://raw.githubusercontent.com/Powarthy/toquehub/main/scripts/install-toquehub-ubuntu.sh | bash
+  curl -fsSL https://raw.githubusercontent.com/ToqueHub/ToqueHub-Web/1.0.0/scripts/install-toquehub-ubuntu.sh | bash
 MSG
 }
 

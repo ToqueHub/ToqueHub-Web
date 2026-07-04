@@ -40,7 +40,7 @@ services:
       - /dev:/dev
 
   api:
-    image: ${TOQUEHUB_IMAGE_REGISTRY:-ghcr.io/powarthy}/toquehub-api:${TOQUEHUB_IMAGE_TAG:-latest}
+    image: ${TOQUEHUB_IMAGE_REGISTRY:-ghcr.io/toquehub}/toquehub-api:${TOQUEHUB_IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -68,9 +68,9 @@ services:
       HACCP_SENSOR_OFFLINE_AFTER_MINUTES: ${HACCP_SENSOR_OFFLINE_AFTER_MINUTES:-30}
       HACCP_PAIRING_DURATION_SECONDS: ${HACCP_PAIRING_DURATION_SECONDS:-180}
       TOQUEHUB_VERSION: ${TOQUEHUB_VERSION:-${TOQUEHUB_IMAGE_TAG:-local}}
-      TOQUEHUB_IMAGE_REGISTRY: ${TOQUEHUB_IMAGE_REGISTRY:-ghcr.io/powarthy}
+      TOQUEHUB_IMAGE_REGISTRY: ${TOQUEHUB_IMAGE_REGISTRY:-ghcr.io/toquehub}
       TOQUEHUB_IMAGE_TAG: ${TOQUEHUB_IMAGE_TAG:-latest}
-      TOQUEHUB_RELEASE_REPO: ${TOQUEHUB_RELEASE_REPO:-Powarthy/toquehub}
+      TOQUEHUB_RELEASE_REPO: ${TOQUEHUB_RELEASE_REPO:-ToqueHub/ToqueHub-Web}
       TOQUEHUB_GITHUB_TOKEN: ${TOQUEHUB_GITHUB_TOKEN:-}
       TOQUEHUB_UPDATER_URL: http://updater:3099
       TOQUEHUB_UPDATER_SECRET: ${TOQUEHUB_UPDATER_SECRET:?TOQUEHUB_UPDATER_SECRET is required}
@@ -85,7 +85,7 @@ services:
       - /dev:/dev:ro
 
   web:
-    image: ${TOQUEHUB_IMAGE_REGISTRY:-ghcr.io/powarthy}/toquehub-web:${TOQUEHUB_IMAGE_TAG:-latest}
+    image: ${TOQUEHUB_IMAGE_REGISTRY:-ghcr.io/toquehub}/toquehub-web:${TOQUEHUB_IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       - api
@@ -93,7 +93,7 @@ services:
       - "${TOQUEHUB_HTTP_PORT:-8080}:80"
 
   updater:
-    image: ${TOQUEHUB_IMAGE_REGISTRY:-ghcr.io/powarthy}/toquehub-updater:${TOQUEHUB_IMAGE_TAG:-latest}
+    image: ${TOQUEHUB_IMAGE_REGISTRY:-ghcr.io/toquehub}/toquehub-updater:${TOQUEHUB_IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       UPDATER_SECRET: ${TOQUEHUB_UPDATER_SECRET:?TOQUEHUB_UPDATER_SECRET is required}

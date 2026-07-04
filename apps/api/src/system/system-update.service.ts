@@ -101,8 +101,8 @@ export class SystemUpdateService {
         version: installedVersion,
         imageTag,
         registry: env('TOQUEHUB_IMAGE_REGISTRY') || null,
-        apiImage: `${env('TOQUEHUB_IMAGE_REGISTRY', 'ghcr.io/powarthy')}/toquehub-api:${imageTag}`,
-        webImage: `${env('TOQUEHUB_IMAGE_REGISTRY', 'ghcr.io/powarthy')}/toquehub-web:${imageTag}`,
+        apiImage: `${env('TOQUEHUB_IMAGE_REGISTRY', 'ghcr.io/toquehub')}/toquehub-api:${imageTag}`,
+        webImage: `${env('TOQUEHUB_IMAGE_REGISTRY', 'ghcr.io/toquehub')}/toquehub-web:${imageTag}`,
       },
       latest: release.release ? {
         version: latestVersion,
@@ -115,7 +115,7 @@ export class SystemUpdateService {
       } : null,
       updateAvailable: Boolean(latestVersion && compareVersions(latestVersion, installedVersion) > 0),
       github: {
-        repo: env('TOQUEHUB_RELEASE_REPO', 'Powarthy/toquehub'),
+        repo: env('TOQUEHUB_RELEASE_REPO', 'ToqueHub/ToqueHub-Web'),
         error: release.error,
       },
       runtime: {
@@ -156,7 +156,7 @@ export class SystemUpdateService {
     if (!force && this.latestReleaseCache) return this.latestReleaseCache;
 
     const checkedAt = new Date().toISOString();
-    const repo = env('TOQUEHUB_RELEASE_REPO', 'Powarthy/toquehub');
+    const repo = env('TOQUEHUB_RELEASE_REPO', 'ToqueHub/ToqueHub-Web');
 
     try {
       const response = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {

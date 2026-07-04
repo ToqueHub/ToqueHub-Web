@@ -75,9 +75,9 @@ Ce prototype cible Raspberry Pi OS 64 bits et Linux PC 64 bits. Le support PC 32
 
 Les images installables pour Raspberry Pi et vieux PC 64 bits sont publiees sur GHCR:
 
-- `ghcr.io/powarthy/toquehub-api`
-- `ghcr.io/powarthy/toquehub-web`
-- `ghcr.io/powarthy/toquehub-updater`
+- `ghcr.io/toquehub/toquehub-api`
+- `ghcr.io/toquehub/toquehub-web`
+- `ghcr.io/toquehub/toquehub-updater`
 
 Publication manuelle:
 
@@ -104,7 +104,7 @@ Sur une installation Ubuntu Server neuve, une seule commande peut installer les 
 
 ```bash
 sudo apt-get update && sudo apt-get install -y curl ca-certificates && \
-curl -fsSL https://raw.githubusercontent.com/Powarthy/toquehub/main/scripts/install-toquehub-ubuntu.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ToqueHub/ToqueHub-Web/1.0.0/scripts/install-toquehub-ubuntu.sh | bash
 ```
 
 Le script installe:
@@ -121,7 +121,7 @@ Options utiles:
 
 ```bash
 sudo apt-get update && sudo apt-get install -y curl ca-certificates && \
-curl -fsSL https://raw.githubusercontent.com/Powarthy/toquehub/main/scripts/install-toquehub-ubuntu.sh | \
+curl -fsSL https://raw.githubusercontent.com/ToqueHub/ToqueHub-Web/1.0.0/scripts/install-toquehub-ubuntu.sh | \
   TOQUEHUB_INSTALL_DIR=/opt/toquehub \
   TOQUEHUB_HTTP_PORT=8080 \
   ZIGBEE2MQTT_HTTP_PORT=8081 \
@@ -154,7 +154,7 @@ http://IP_DU_SERVEUR:8080
 Sur un Raspberry Pi OS Lite 64 bits deja flashe:
 
 ```bash
-git clone https://github.com/Powarthy/toquehub.git
+git clone https://github.com/ToqueHub/ToqueHub-Web.git
 cd toquehub
 npm run pi:install
 ```
