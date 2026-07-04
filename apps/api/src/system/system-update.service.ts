@@ -9,6 +9,14 @@ type GithubRelease = {
   html_url?: string;
   published_at?: string;
   body?: string;
+  source?: 'release' | 'tag';
+};
+
+type GithubTag = {
+  name?: string;
+  zipball_url?: string;
+  tarball_url?: string;
+  commit?: { sha?: string; url?: string };
 };
 
 type UpdaterOperation = {
@@ -94,6 +102,7 @@ export class SystemUpdateService {
         url: release.release.html_url ?? null,
         publishedAt: release.release.published_at ?? null,
         notes: release.release.body ?? null,
+        source: release.release.source ?? 'release',
       } : null,
       updateAvailable: Boolean(latestVersion && compareVersions(latestVersion, installedVersion) > 0),
       github: {
@@ -148,14 +157,24 @@ export class SystemUpdateService {
         },
       });
 
-      if (!response.ok) {
+      if (response.ok) {
+        this.latestReleaseCache = {
+          checkedAt,
+          release: { ...(await response.json() as GithubRelease), source: 'release' },
+          error: null,
+        };
+        return this.latestReleaseCache;
+      }
+
+      if (response.status !== 404) {
         throw new Error(`GitHub releases/latest a répondu ${response.status}`);
       }
 
+      const tagRelease = await this.getLatestStableTag(repo);
       this.latestReleaseCache = {
         checkedAt,
-        release: await response.json() as GithubRelease,
-        error: null,
+        release: tagRelease,
+        error: tagRelease ? null : 'Aucune release GitHub ni tag stable v* disponible.',
       };
     } catch (error) {
       this.latestReleaseCache = {
@@ -166,6 +185,33 @@ export class SystemUpdateService {
     }
 
     return this.latestReleaseCache;
+  }
+
+  private async getLatestStableTag(repo: string): Promise<GithubRelease | null> {
+    const response = await fetch(`https://api.github.com/repos/${repo}/tags?per_page=100`, {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'toquehub-update-checker',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`GitHub tags a répondu ${response.status}`);
+    }
+
+    const tags = (await response.json() as GithubTag[])
+      .filter((tag) => /^v?\d+\.\d+\.\d+/.test(tag.name ?? ''))
+      .sort((left, right) => compareVersions(right.name, left.name));
+    const tag = tags[0];
+    if (!tag?.name) return null;
+
+    return {
+      tag_name: tag.name,
+      name: tag.name,
+      html_url: `https://github.com/${repo}/releases/tag/${tag.name}`,
+      body: 'Version stable détectée depuis les tags GitHub. Créez une GitHub Release pour afficher les notes de version.',
+      source: 'tag',
+    };
   }
 
   private async callUpdater<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {

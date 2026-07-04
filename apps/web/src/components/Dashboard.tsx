@@ -7182,6 +7182,7 @@ function SystemUpdatePanel({
           <div className="info-card-premium">
             <div className="info-card-premium-header"><span className="info-card-premium-label">Dernière release stable</span><span className="info-card-premium-icon"><ExternalLink size={16} /></span></div>
             <div className="info-card-premium-value">{status?.latest?.tag || 'Aucune release'}</div>
+            {status?.latest?.source ? <span className="badge badge-reception" style={{ width: 'fit-content', marginTop: '0.65rem' }}>{status.latest.source === 'release' ? 'GitHub Release' : 'Tag GitHub'}</span> : null}
             {status?.latest?.url ? <a href={status.latest.url} target="_blank" rel="noreferrer" style={{ fontSize: '0.82rem', fontWeight: 700, color: '#047857' }}>Voir GitHub</a> : null}
           </div>
           <div className="info-card-premium">

@@ -232,6 +232,12 @@ Image SD Raspberry Pi:
 npm run pi:image
 ```
 
+Workflow versions et mises a jour:
+
+```text
+docs/release-update-workflow.md
+```
+
 Commandes disponibles sur le Pi:
 
 ```bash

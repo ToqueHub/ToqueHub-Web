@@ -125,6 +125,7 @@ export interface SystemUpdateStatus {
     url: string | null;
     publishedAt: string | null;
     notes: string | null;
+    source?: 'release' | 'tag';
   } | null;
   updateAvailable: boolean;
   github: {
