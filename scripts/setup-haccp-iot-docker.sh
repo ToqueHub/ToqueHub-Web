@@ -6,6 +6,7 @@ DATA_DIR="$ROOT_DIR/.toquehub-iot/zigbee2mqtt-data"
 CONFIG_FILE="$DATA_DIR/configuration.yaml"
 SERIAL_PORT="${ZIGBEE_ADAPTER_PATH:-}"
 BASE_TOPIC="${ZIGBEE2MQTT_BASE_TOPIC:-zigbee2mqtt}"
+ADAPTER_TYPE="${ZIGBEE_ADAPTER_TYPE:-zstack}"
 
 log() {
   printf '\n==> %s\n' "$1"
@@ -68,6 +69,7 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
     printf '  server: mqtt://mosquitto:1883\n'
     printf 'serial:\n'
     printf '  port: /dev/ttyUSB0\n'
+    printf '  adapter: %s\n' "$ADAPTER_TYPE"
     printf 'frontend:\n'
     printf '  enabled: true\n'
     printf '  port: 8080\n'
@@ -82,11 +84,13 @@ set_env "MQTT_URL" "mqtt://localhost:1883"
 set_env "ZIGBEE2MQTT_BASE_TOPIC" "$BASE_TOPIC"
 set_env "ZIGBEE2MQTT_FRONTEND_URL" "http://localhost:8080"
 set_env "ZIGBEE_ADAPTER_PATH" "$SERIAL_PORT"
+set_env "ZIGBEE_ADAPTER_TYPE" "$ADAPTER_TYPE"
 
 cat <<MSG
 
 Profil IoT Docker pret.
   Coordinateur host: $SERIAL_PORT
   Coordinateur conteneur: /dev/ttyUSB0
+  Type adaptateur: $ADAPTER_TYPE
   Config: $CONFIG_FILE
 MSG

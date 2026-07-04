@@ -62,7 +62,10 @@ fi
 
 adapter="$(detect_zigbee_adapter || true)"
 if [[ -n "$adapter" ]]; then
+  adapter_type="$(grep -E '^ZIGBEE_ADAPTER_TYPE=' "$ENV_FILE" | tail -1 | cut -d= -f2- || true)"
+  adapter_type="${adapter_type:-zstack}"
   set_env ZIGBEE_ADAPTER_PATH "$adapter"
+  set_env ZIGBEE_ADAPTER_TYPE "$adapter_type"
   mkdir -p "$(dirname "$ZIGBEE_CONFIG")"
   if [[ ! -f "$ZIGBEE_CONFIG" ]]; then
     cat > "$ZIGBEE_CONFIG" <<YAML
@@ -73,6 +76,7 @@ mqtt:
   server: mqtt://mosquitto:1883
 serial:
   port: $adapter
+  adapter: $adapter_type
 frontend:
   enabled: true
   port: 8080

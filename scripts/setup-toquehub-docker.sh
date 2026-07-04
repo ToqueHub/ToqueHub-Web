@@ -160,17 +160,22 @@ ensure_port() {
 update_zigbee_serial_config() {
   local config_file="$1"
   local serial_port="$2"
+  local adapter_type="$3"
   local tmp
   tmp="$(mktemp)"
 
-  awk -v serial_port="$serial_port" '
+  awk -v serial_port="$serial_port" -v adapter_type="$adapter_type" '
     /^serial:/ { in_serial = 1; print; next }
     in_serial && /^[^[:space:]]/ { in_serial = 0 }
     in_serial && /^[[:space:]]+port:/ { print "  port: " serial_port; updated = 1; next }
+    in_serial && /^[[:space:]]+adapter:/ { print "  adapter: " adapter_type; adapter_updated = 1; next }
     { print }
     END {
       if (in_serial && !updated) {
         print "  port: " serial_port
+      }
+      if (in_serial && !adapter_updated) {
+        print "  adapter: " adapter_type
       }
     }
   ' "$config_file" > "$tmp"
@@ -196,6 +201,8 @@ fi
 
 BASE_TOPIC="$(grep -E '^ZIGBEE2MQTT_BASE_TOPIC=' "$ENV_FILE" | tail -1 | cut -d= -f2- || true)"
 BASE_TOPIC="${BASE_TOPIC:-zigbee2mqtt}"
+ADAPTER_TYPE="$(grep -E '^ZIGBEE_ADAPTER_TYPE=' "$ENV_FILE" | tail -1 | cut -d= -f2- || true)"
+ADAPTER_TYPE="${ZIGBEE_ADAPTER_TYPE:-${ADAPTER_TYPE:-zstack}}"
 
 log "Preparation de la configuration Docker"
 HTTP_PORT="$(ensure_port "TOQUEHUB_HTTP_PORT" "8080")"
@@ -203,6 +210,7 @@ ZIGBEE_HTTP_PORT="$(ensure_port "ZIGBEE2MQTT_HTTP_PORT" "8081" "$HTTP_PORT")"
 MQTT_PORT="$(ensure_port "MQTT_PORT" "1883" "$HTTP_PORT" "$ZIGBEE_HTTP_PORT")"
 set_env_if_placeholder "TOQUEHUB_UPDATER_SECRET" "$(secret)"
 set_env "ZIGBEE_ADAPTER_PATH" "$SERIAL_PORT"
+set_env "ZIGBEE_ADAPTER_TYPE" "$ADAPTER_TYPE"
 set_env "ZIGBEE2MQTT_FRONTEND_URL" "http://localhost:$ZIGBEE_HTTP_PORT"
 set_env "CORS_ORIGIN" "http://localhost:$HTTP_PORT,http://127.0.0.1:$HTTP_PORT"
 
@@ -216,6 +224,7 @@ if [[ ! -f "$IOT_CONFIG_FILE" ]]; then
     printf '  server: mqtt://mosquitto:1883\n'
     printf 'serial:\n'
     printf '  port: %s\n' "$SERIAL_PORT"
+    printf '  adapter: %s\n' "$ADAPTER_TYPE"
     printf 'frontend:\n'
     printf '  enabled: true\n'
     printf '  port: 8080\n'
@@ -224,8 +233,9 @@ if [[ ! -f "$IOT_CONFIG_FILE" ]]; then
   } > "$IOT_CONFIG_FILE"
 else
   printf 'Configuration Zigbee2MQTT existante conservee: %s\n' "$IOT_CONFIG_FILE"
-  update_zigbee_serial_config "$IOT_CONFIG_FILE" "$SERIAL_PORT"
+  update_zigbee_serial_config "$IOT_CONFIG_FILE" "$SERIAL_PORT" "$ADAPTER_TYPE"
   printf 'Port Zigbee2MQTT mis a jour: %s\n' "$SERIAL_PORT"
+  printf 'Adaptateur Zigbee2MQTT mis a jour: %s\n' "$ADAPTER_TYPE"
 fi
 
 cat <<MSG
