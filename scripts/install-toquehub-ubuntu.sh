@@ -12,6 +12,8 @@ ENV_FILE="$INSTALL_DIR/.env.docker"
 repo_slug() {
   local url="$1"
   url="${url#git@github.com:}"
+  url="${url#https://*@github.com/}"
+  url="${url#http://*@github.com/}"
   url="${url#https://github.com/}"
   url="${url#http://github.com/}"
   url="${url%.git}"
