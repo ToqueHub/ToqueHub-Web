@@ -129,7 +129,12 @@ export class DiscoveryService implements OnApplicationBootstrap, OnApplicationSh
   }
 
   private resolvePort() {
-    const port = Number(this.config.get<string>('PORT') || 3000);
+    const configured =
+      this.config.get<string>('TOQUEHUB_DISCOVERY_PORT') ||
+      this.config.get<string>('TOQUEHUB_HTTP_PORT') ||
+      this.config.get<string>('PORT') ||
+      '3000';
+    const port = Number(configured);
     return Number.isFinite(port) && port > 0 ? port : 3000;
   }
 

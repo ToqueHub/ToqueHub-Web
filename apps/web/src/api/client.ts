@@ -212,7 +212,9 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
     throw new ApiError(message, response.status);
   }
 
-  return response.json() as Promise<T>;
+  const text = await response.text();
+  if (!text) return null as T;
+  return JSON.parse(text) as T;
 }
 
 function normalizeMenuPayload(payload: Partial<MenuPlanPayload>) {

@@ -573,6 +573,58 @@ export class AuthService {
     return this.createSession(updatedLoginUser);
   }
 
+  async listMobileUsers() {
+    const users = await this.prisma.user.findMany({
+      where: {
+        isActive: true,
+        status: { not: UserStatus.DISABLED },
+      },
+      include: { role: true, organization: true },
+      orderBy: [
+        { isPrimaryAdmin: 'desc' },
+        { lastLoginAt: 'desc' },
+        { firstName: 'asc' },
+        { lastName: 'asc' },
+        { email: 'asc' },
+      ],
+    });
+
+    return {
+      users: users.map((user) => ({
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        displayName: this.displayName(user),
+        role: user.role.name,
+        organizationName: user.organization?.name ?? null,
+        isPrimaryAdmin: user.isPrimaryAdmin,
+        lastLoginAt: user.lastLoginAt,
+      })),
+    };
+  }
+
+  async createMobileDevSession() {
+    if (this.configService.get<string>('NODE_ENV') === 'production') {
+      throw new ForbiddenException('Mobile development sessions are disabled in production');
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        isActive: true,
+        status: { not: UserStatus.DISABLED },
+      },
+      include: { role: true, organization: true },
+      orderBy: [
+        { isPrimaryAdmin: 'desc' },
+        { createdAt: 'asc' },
+      ],
+    });
+
+    if (!user) throw new UnauthorizedException('No active mobile development user available');
+    return this.createSession(user);
+  }
+
   private async seedConversions(tx: Prisma.TransactionClient, organizationId: string) {
     const units = await tx.unit.findMany({ where: { organizationId } });
     const bySymbol = Object.fromEntries(units.map((unit) => [unit.symbol, unit]));
@@ -699,6 +751,11 @@ export class AuthService {
       lastLoginAt: 'lastLoginAt' in user ? user.lastLoginAt : undefined,
       permissions: user.role.permissions?.map((rp) => rp.permission.key).sort() ?? [],
     };
+  }
+
+  private displayName(user: { firstName: string | null; lastName: string | null; username: string | null; email: string }) {
+    const name = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+    return name || user.username || user.email;
   }
 
   private async createSession(user: {

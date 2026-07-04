@@ -230,6 +230,18 @@ export class AuthController {
     return this.authService.login(dto);
   }
 
+  @Get('mobile-users')
+  @ApiOkResponse({ description: 'Lists active users available from the mobile login screen.' })
+  mobileUsers() {
+    return this.authService.listMobileUsers();
+  }
+
+  @Post('mobile-dev-session')
+  @ApiOkResponse({ description: 'Creates a local development mobile session. Disabled in production.' })
+  mobileDevSession() {
+    return this.authService.createMobileDevSession();
+  }
+
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
