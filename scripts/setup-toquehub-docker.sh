@@ -43,6 +43,20 @@ detect_serial_port() {
   fi
 }
 
+infer_zigbee_adapter_type() {
+  local serial_port
+  serial_port="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+
+  case "$serial_port" in
+    *mg21*|*dongle_lite*|*efr32*|*silabs*|*silicon_labs*)
+      printf 'ember\n'
+      ;;
+    *)
+      printf 'zstack\n'
+      ;;
+  esac
+}
+
 get_env() {
   local key="$1"
   local fallback="${2:-}"
@@ -202,7 +216,11 @@ fi
 BASE_TOPIC="$(grep -E '^ZIGBEE2MQTT_BASE_TOPIC=' "$ENV_FILE" | tail -1 | cut -d= -f2- || true)"
 BASE_TOPIC="${BASE_TOPIC:-zigbee2mqtt}"
 ADAPTER_TYPE="$(grep -E '^ZIGBEE_ADAPTER_TYPE=' "$ENV_FILE" | tail -1 | cut -d= -f2- || true)"
-ADAPTER_TYPE="${ZIGBEE_ADAPTER_TYPE:-${ADAPTER_TYPE:-zstack}}"
+if [[ -n "${ZIGBEE_ADAPTER_TYPE:-}" ]]; then
+  ADAPTER_TYPE="$ZIGBEE_ADAPTER_TYPE"
+elif [[ -z "$ADAPTER_TYPE" || "$ADAPTER_TYPE" == "zstack" ]]; then
+  ADAPTER_TYPE="$(infer_zigbee_adapter_type "$SERIAL_PORT")"
+fi
 
 log "Preparation de la configuration Docker"
 HTTP_PORT="$(ensure_port "TOQUEHUB_HTTP_PORT" "8080")"

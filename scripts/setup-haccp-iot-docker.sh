@@ -6,7 +6,7 @@ DATA_DIR="$ROOT_DIR/.toquehub-iot/zigbee2mqtt-data"
 CONFIG_FILE="$DATA_DIR/configuration.yaml"
 SERIAL_PORT="${ZIGBEE_ADAPTER_PATH:-}"
 BASE_TOPIC="${ZIGBEE2MQTT_BASE_TOPIC:-zigbee2mqtt}"
-ADAPTER_TYPE="${ZIGBEE_ADAPTER_TYPE:-zstack}"
+ADAPTER_TYPE="${ZIGBEE_ADAPTER_TYPE:-}"
 
 log() {
   printf '\n==> %s\n' "$1"
@@ -23,6 +23,20 @@ detect_serial_port() {
   if [[ ${#candidates[@]} -gt 0 ]]; then
     printf '%s\n' "${candidates[0]}"
   fi
+}
+
+infer_zigbee_adapter_type() {
+  local serial_port
+  serial_port="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+
+  case "$serial_port" in
+    *mg21*|*dongle_lite*|*efr32*|*silabs*|*silicon_labs*)
+      printf 'ember\n'
+      ;;
+    *)
+      printf 'zstack\n'
+      ;;
+  esac
 }
 
 set_env() {
@@ -56,6 +70,10 @@ fi
 if [[ -z "$SERIAL_PORT" ]]; then
   SERIAL_PORT="/dev/ttyUSB0"
   printf 'Aucun coordinateur Zigbee detecte. Le profil Docker utilisera %s par defaut.\n' "$SERIAL_PORT"
+fi
+
+if [[ -z "$ADAPTER_TYPE" ]]; then
+  ADAPTER_TYPE="$(infer_zigbee_adapter_type "$SERIAL_PORT")"
 fi
 
 log "Configuration Zigbee2MQTT Docker"
