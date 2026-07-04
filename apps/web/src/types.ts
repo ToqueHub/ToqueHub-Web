@@ -74,6 +74,9 @@ export interface SystemInstanceInfo {
     baseTopic: string;
     zigbee2mqttFrontendUrl: string | null;
     zigbeeAdapterPath: string | null;
+    zigbeeAdapterPresent: boolean;
+    detectedSerialPorts: string[];
+    suggestedZigbeeAdapterPath: string | null;
   };
   storage: {
     backupDir: string;
@@ -93,6 +96,54 @@ export interface SystemInstanceInfo {
     freeMemoryBytes: number;
     uptimeSeconds: number;
   };
+}
+
+export interface SystemUpdateOperation {
+  id: string;
+  status: 'queued' | 'running' | 'success' | 'error' | 'rollback';
+  targetTag?: string;
+  startedAt: string;
+  finishedAt?: string | null;
+  logs: string[];
+  error?: string | null;
+}
+
+export interface SystemUpdateStatus {
+  channel: 'stable';
+  checkedAt: string;
+  current: {
+    version: string;
+    imageTag: string;
+    registry: string | null;
+    apiImage: string;
+    webImage: string;
+  };
+  latest: {
+    version: string;
+    tag: string | null;
+    name: string | null;
+    url: string | null;
+    publishedAt: string | null;
+    notes: string | null;
+  } | null;
+  updateAvailable: boolean;
+  github: {
+    repo: string;
+    error: string | null;
+  };
+  runtime: {
+    platform: string;
+    updaterAvailable: boolean;
+    updaterError: string | null;
+    lastOperation: SystemUpdateOperation | null;
+  };
+}
+
+export interface SystemUpdateApplyResult {
+  skipped: boolean;
+  message?: string;
+  status?: SystemUpdateStatus;
+  operation?: SystemUpdateOperation;
 }
 
 export interface BackupManifest {

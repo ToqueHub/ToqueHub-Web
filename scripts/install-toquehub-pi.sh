@@ -92,6 +92,7 @@ set_env TOQUEHUB_CONFIG_DIR "$CONFIG_DIR"
 set_env POSTGRES_PASSWORD "$(secret)"
 set_env JWT_SECRET "$(secret)"
 set_env BACKUP_CLOUD_ENCRYPTION_KEY "$(secret)"
+set_env TOQUEHUB_UPDATER_SECRET "$(secret)"
 
 sudo cp "$ROOT_DIR/docker/iot/mosquitto.conf" "$CONFIG_DIR/mosquitto.conf"
 sudo systemctl daemon-reload

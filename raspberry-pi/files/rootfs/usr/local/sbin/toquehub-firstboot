@@ -53,6 +53,7 @@ if grep -q 'replace-with-generated-secret' "$ENV_FILE"; then
   set_env POSTGRES_PASSWORD "$(secret)"
   set_env JWT_SECRET "$(secret)"
   set_env BACKUP_CLOUD_ENCRYPTION_KEY "$(secret)"
+  set_env TOQUEHUB_UPDATER_SECRET "$(secret)"
 fi
 
 if [[ ! -f "$CONFIG_DIR/mosquitto.conf" ]]; then

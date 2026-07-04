@@ -66,6 +66,12 @@ services:
       ZIGBEE2MQTT_FRONTEND_URL: ${ZIGBEE2MQTT_FRONTEND_URL:-http://toquehub.local:8081}
       HACCP_SENSOR_OFFLINE_AFTER_MINUTES: ${HACCP_SENSOR_OFFLINE_AFTER_MINUTES:-30}
       HACCP_PAIRING_DURATION_SECONDS: ${HACCP_PAIRING_DURATION_SECONDS:-180}
+      TOQUEHUB_VERSION: ${TOQUEHUB_VERSION:-}
+      TOQUEHUB_IMAGE_REGISTRY: ${TOQUEHUB_IMAGE_REGISTRY:-ghcr.io/drsamourai}
+      TOQUEHUB_IMAGE_TAG: ${TOQUEHUB_IMAGE_TAG:-latest}
+      TOQUEHUB_RELEASE_REPO: ${TOQUEHUB_RELEASE_REPO:-DrSamourai/Toquehubfree}
+      TOQUEHUB_UPDATER_URL: http://updater:3099
+      TOQUEHUB_UPDATER_SECRET: ${TOQUEHUB_UPDATER_SECRET:?TOQUEHUB_UPDATER_SECRET is required}
       TOQUEHUB_DISCOVERY_ENABLED: ${TOQUEHUB_DISCOVERY_ENABLED:-true}
       TOQUEHUB_DISCOVERY_NAME: ${TOQUEHUB_DISCOVERY_NAME:-ToqueHub}
       TOQUEHUB_DISCOVERY_ORGANIZATION: ${TOQUEHUB_DISCOVERY_ORGANIZATION:-ToqueHub}
@@ -74,6 +80,7 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN:-http://toquehub.local:8080,http://localhost:8080,http://127.0.0.1:8080}
     volumes:
       - ${TOQUEHUB_DATA_DIR:-/var/lib/toquehub}/api:/app/data
+      - /dev:/dev:ro
 
   web:
     image: ${TOQUEHUB_IMAGE_REGISTRY:-ghcr.io/powarthy}/toquehub-web:${TOQUEHUB_IMAGE_TAG:-latest}
@@ -82,3 +89,21 @@ services:
       - api
     ports:
       - "${TOQUEHUB_HTTP_PORT:-8080}:80"
+
+  updater:
+    image: ${TOQUEHUB_IMAGE_REGISTRY:-ghcr.io/drsamourai}/toquehub-updater:${TOQUEHUB_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      UPDATER_SECRET: ${TOQUEHUB_UPDATER_SECRET:?TOQUEHUB_UPDATER_SECRET is required}
+      UPDATER_WORKDIR: /workspace
+      UPDATER_COMPOSE_FILE: /workspace/docker-compose.pi.yml
+      UPDATER_ENV_FILE: /config/toquehub.env
+      UPDATER_BACKUP_DIR: ${TOQUEHUB_DATA_DIR:-/var/lib/toquehub}/updates/backups
+      UPDATER_HEALTH_URL: http://web/api/system/status
+      POSTGRES_DB: ${POSTGRES_DB:-toquehub}
+      POSTGRES_USER: ${POSTGRES_USER:-toquehub}
+    volumes:
+      - ${TOQUEHUB_INSTALL_DIR:-/opt/toquehub}:/workspace
+      - ${TOQUEHUB_CONFIG_DIR:-/etc/toquehub}:/config
+      - ${TOQUEHUB_DATA_DIR:-/var/lib/toquehub}:${TOQUEHUB_DATA_DIR:-/var/lib/toquehub}
+      - /var/run/docker.sock:/var/run/docker.sock

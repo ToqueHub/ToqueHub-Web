@@ -33,7 +33,7 @@
     "docker:setup": "./scripts/setup-toquehub-docker.sh",
     "docker:up": "./scripts/setup-toquehub-docker.sh && docker compose --env-file .env.docker up -d --build",
     "docker:down": "docker compose --env-file .env.docker down",
-    "docker:logs": "docker compose --env-file .env.docker logs -f api web postgres mosquitto zigbee2mqtt",
+    "docker:logs": "docker compose --env-file .env.docker logs -f api web postgres mosquitto zigbee2mqtt updater",
     "docker:publish": "./scripts/docker-publish.sh",
     "ubuntu:install": "./scripts/install-toquehub-ubuntu.sh",
     "pi:image": "./scripts/build-rpi-image.sh",

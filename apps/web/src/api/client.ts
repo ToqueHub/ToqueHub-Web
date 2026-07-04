@@ -124,6 +124,9 @@ import type {
   BackupSchedule,
   BackupSummary,
   SystemInstanceInfo,
+  SystemUpdateApplyResult,
+  SystemUpdateOperation,
+  SystemUpdateStatus,
 } from '../types';
 
 type PlanningRangeParams = {
@@ -287,6 +290,18 @@ export const api = {
   },
   systemInstance(token: string) {
     return request<SystemInstanceInfo>('/system/instance', {}, token);
+  },
+  systemUpdateStatus(token: string) {
+    return request<SystemUpdateStatus>('/system/update/status', {}, token);
+  },
+  systemUpdateCheck(token: string) {
+    return request<SystemUpdateStatus>('/system/update/check', { method: 'POST' }, token);
+  },
+  systemUpdateApply(token: string) {
+    return request<SystemUpdateApplyResult>('/system/update/apply', { method: 'POST' }, token);
+  },
+  systemUpdateOperation(token: string, id: string) {
+    return request<SystemUpdateOperation>(`/system/update/operations/${id}`, {}, token);
   },
   bootstrapAdmin(payload: {
     username: string;

@@ -11,6 +11,25 @@ log() {
   printf '\n==> %s\n' "$1"
 }
 
+secret() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex 32
+  else
+    printf '%s-%s\n' "$(date +%s)" "$RANDOM$RANDOM$RANDOM$RANDOM" | sha256sum | awk '{print $1}'
+  fi
+}
+
+set_env_if_placeholder() {
+  local key="$1"
+  local value="$2"
+  local current
+  current="$(get_env "$key")"
+
+  if [[ -z "$current" || "$current" == replace-with-* || "$current" == change-me-* ]]; then
+    set_env "$key" "$value"
+  fi
+}
+
 detect_serial_port() {
   shopt -s nullglob
   local candidates=(
@@ -138,6 +157,27 @@ ensure_port() {
   printf '%s\n' "$next_port"
 }
 
+update_zigbee_serial_config() {
+  local config_file="$1"
+  local serial_port="$2"
+  local tmp
+  tmp="$(mktemp)"
+
+  awk -v serial_port="$serial_port" '
+    /^serial:/ { in_serial = 1; print; next }
+    in_serial && /^[^[:space:]]/ { in_serial = 0 }
+    in_serial && /^[[:space:]]+port:/ { print "  port: " serial_port; updated = 1; next }
+    { print }
+    END {
+      if (in_serial && !updated) {
+        print "  port: " serial_port
+      }
+    }
+  ' "$config_file" > "$tmp"
+
+  mv "$tmp" "$config_file"
+}
+
 cd "$ROOT_DIR"
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -161,6 +201,7 @@ log "Preparation de la configuration Docker"
 HTTP_PORT="$(ensure_port "TOQUEHUB_HTTP_PORT" "8080")"
 ZIGBEE_HTTP_PORT="$(ensure_port "ZIGBEE2MQTT_HTTP_PORT" "8081" "$HTTP_PORT")"
 MQTT_PORT="$(ensure_port "MQTT_PORT" "1883" "$HTTP_PORT" "$ZIGBEE_HTTP_PORT")"
+set_env_if_placeholder "TOQUEHUB_UPDATER_SECRET" "$(secret)"
 set_env "ZIGBEE_ADAPTER_PATH" "$SERIAL_PORT"
 set_env "ZIGBEE2MQTT_FRONTEND_URL" "http://localhost:$ZIGBEE_HTTP_PORT"
 set_env "CORS_ORIGIN" "http://localhost:$HTTP_PORT,http://127.0.0.1:$HTTP_PORT"
@@ -183,6 +224,8 @@ if [[ ! -f "$IOT_CONFIG_FILE" ]]; then
   } > "$IOT_CONFIG_FILE"
 else
   printf 'Configuration Zigbee2MQTT existante conservee: %s\n' "$IOT_CONFIG_FILE"
+  update_zigbee_serial_config "$IOT_CONFIG_FILE" "$SERIAL_PORT"
+  printf 'Port Zigbee2MQTT mis a jour: %s\n' "$SERIAL_PORT"
 fi
 
 cat <<MSG

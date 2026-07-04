@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { arch, cpus, freemem, hostname, platform, release, totalmem, uptime as osUptime } from 'node:os';
 import { resolve } from 'node:path';
 import process from 'node:process';
@@ -91,6 +91,41 @@ function isContainerized() {
   }
 }
 
+function detectSerialPorts() {
+  const ports = new Set<string>();
+  const byIdDir = '/dev/serial/by-id';
+
+  if (existsSync(byIdDir)) {
+    try {
+      for (const entry of readdirSync(byIdDir)) {
+        ports.add(`${byIdDir}/${entry}`);
+      }
+    } catch {
+      // Ignore devices that disappear while scanning.
+    }
+  }
+
+  for (const prefix of ['/dev/ttyUSB', '/dev/ttyACM']) {
+    for (let index = 0; index < 32; index += 1) {
+      const candidate = `${prefix}${index}`;
+      if (existsSync(candidate)) ports.add(candidate);
+    }
+  }
+
+  return [...ports].sort();
+}
+
+function sameDevice(left: string | null, right: string | null) {
+  if (!left || !right) return false;
+  if (left === right) return true;
+
+  try {
+    return realpathSync(left) === realpathSync(right);
+  } catch {
+    return false;
+  }
+}
+
 @Injectable()
 export class SystemService {
   constructor(private readonly prisma: PrismaService) {}
@@ -133,6 +168,11 @@ export class SystemService {
 
     const port = env('PORT', '3000');
     const webPort = env('TOQUEHUB_HTTP_PORT', '8080');
+    const zigbeeAdapterPath = env('ZIGBEE_ADAPTER_PATH') || env('ZIGBEE2MQTT_SERIAL_PORT') || null;
+    const detectedSerialPorts = detectSerialPorts();
+    const configuredAdapterPresent = Boolean(
+      zigbeeAdapterPath && detectedSerialPorts.some((portPath) => sameDevice(zigbeeAdapterPath, portPath)),
+    );
     const corsOrigins = env('CORS_ORIGIN')
       .split(',')
       .map((origin) => origin.trim())
@@ -185,7 +225,10 @@ export class SystemService {
         usernameConfigured: Boolean(env('MQTT_USERNAME')),
         baseTopic: env('ZIGBEE2MQTT_BASE_TOPIC', 'zigbee2mqtt'),
         zigbee2mqttFrontendUrl: env('ZIGBEE2MQTT_FRONTEND_URL') || null,
-        zigbeeAdapterPath: env('ZIGBEE_ADAPTER_PATH') || env('ZIGBEE2MQTT_SERIAL_PORT') || null,
+        zigbeeAdapterPath,
+        zigbeeAdapterPresent: configuredAdapterPresent,
+        detectedSerialPorts,
+        suggestedZigbeeAdapterPath: detectedSerialPorts[0] ?? null,
       },
       storage: {
         backupDir: resolve(env('BACKUP_DIR', 'backups')),

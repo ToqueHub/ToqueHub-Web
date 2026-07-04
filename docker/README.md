@@ -10,6 +10,7 @@ Le prototype Docker lance les briques principales de ToqueHub:
 - PostgreSQL persistant
 - Mosquitto MQTT
 - Zigbee2MQTT sur `http://localhost:8081`
+- updater interne pour les mises a jour admin depuis ToqueHub
 
 Premiere preparation:
 
@@ -47,6 +48,20 @@ Les ports retenus sont ecrits dans `.env.docker` et affiches a la fin du setup.
 
 Les donnees PostgreSQL, fichiers uploades, sauvegardes, Mosquitto et Zigbee2MQTT sont persistants via volumes Docker ou dossier local `.toquehub-iot`.
 
+## Versions et mises a jour
+
+Les mises a jour utilisateur suivent le canal stable: une version devient disponible quand un tag GitHub `v*` publie une release et les images Docker multi-arch.
+
+Dans ToqueHub:
+
+```text
+Organisation > General > Version et mise a jour
+```
+
+L'onglet admin affiche la version installee, la derniere release GitHub, les images Docker courantes et les logs de l'operation. Le bouton de mise a jour appelle le service `updater`, seul conteneur autorise a utiliser le socket Docker. Avant update, il cree un backup PostgreSQL local, tire les nouvelles images, redemarre API/Web et tente un rollback si le healthcheck echoue.
+
+Sur Raspberry Pi, l'image SD sert aux nouvelles installations et aux changements systeme. Les mises a jour applicatives normales tirent seulement les nouvelles images Docker `arm64`.
+
 Si la cle Zigbee n'est pas detectee automatiquement, modifie `ZIGBEE_ADAPTER_PATH` dans `.env.docker`, puis relance:
 
 ```bash
@@ -60,8 +75,9 @@ Ce prototype cible Raspberry Pi OS 64 bits et Linux PC 64 bits. Le support PC 32
 
 Les images installables pour Raspberry Pi et vieux PC 64 bits sont publiees sur GHCR:
 
-- `ghcr.io/powarthy/toquehub-api`
-- `ghcr.io/powarthy/toquehub-web`
+- `ghcr.io/drsamourai/toquehub-api`
+- `ghcr.io/drsamourai/toquehub-web`
+- `ghcr.io/drsamourai/toquehub-updater`
 
 Publication manuelle:
 
@@ -88,7 +104,7 @@ Sur une installation Ubuntu Server neuve, une seule commande peut installer les 
 
 ```bash
 sudo apt-get update && sudo apt-get install -y curl ca-certificates && \
-curl -fsSL https://raw.githubusercontent.com/Powarthy/toquehub/main/scripts/install-toquehub-ubuntu.sh | bash
+curl -fsSL https://raw.githubusercontent.com/DrSamourai/Toquehubfree/main/scripts/install-toquehub-ubuntu.sh | bash
 ```
 
 Le script installe:
@@ -105,7 +121,7 @@ Options utiles:
 
 ```bash
 sudo apt-get update && sudo apt-get install -y curl ca-certificates && \
-curl -fsSL https://raw.githubusercontent.com/Powarthy/toquehub/main/scripts/install-toquehub-ubuntu.sh | \
+curl -fsSL https://raw.githubusercontent.com/DrSamourai/Toquehubfree/main/scripts/install-toquehub-ubuntu.sh | \
   TOQUEHUB_INSTALL_DIR=/opt/toquehub \
   TOQUEHUB_HTTP_PORT=8080 \
   ZIGBEE2MQTT_HTTP_PORT=8081 \
@@ -138,7 +154,7 @@ http://IP_DU_SERVEUR:8080
 Sur un Raspberry Pi OS Lite 64 bits deja flashe:
 
 ```bash
-git clone https://github.com/Powarthy/toquehub.git
+git clone https://github.com/DrSamourai/Toquehubfree.git
 cd toquehub
 npm run pi:install
 ```

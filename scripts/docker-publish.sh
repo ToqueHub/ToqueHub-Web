@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-REGISTRY="${TOQUEHUB_IMAGE_REGISTRY:-ghcr.io/powarthy}"
-VERSION="$(node -p "require('$ROOT_DIR/package.json').version")"
+REGISTRY="${TOQUEHUB_IMAGE_REGISTRY:-ghcr.io/drsamourai}"
+VERSION="${TOQUEHUB_IMAGE_VERSION:-$(node -p "require('$ROOT_DIR/package.json').version")}"
 GIT_SHA="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || printf 'local')"
 PLATFORMS="${TOQUEHUB_IMAGE_PLATFORMS:-linux/arm64,linux/amd64}"
 PUSH="${TOQUEHUB_DOCKER_PUSH:-1}"
@@ -15,7 +15,7 @@ Usage: scripts/docker-publish.sh [options]
 Build ToqueHub Docker images for Raspberry Pi and PC targets.
 
 Options:
-  --registry <name>       Registry/namespace, default ghcr.io/powarthy
+  --registry <name>       Registry/namespace, default ghcr.io/drsamourai
   --platforms <list>      Buildx platforms, default linux/arm64,linux/amd64
   --load                  Load a single-platform image locally instead of pushing
   --push                  Push images to the registry, default
@@ -94,6 +94,7 @@ build_image() {
 
 build_image toquehub-api docker/api.Dockerfile
 build_image toquehub-web docker/web.Dockerfile --build-arg VITE_API_URL=
+build_image toquehub-updater docker/updater.Dockerfile
 
 cat <<MSG
 
@@ -104,4 +105,7 @@ Images built:
   $REGISTRY/toquehub-web:latest
   $REGISTRY/toquehub-web:$VERSION
   $REGISTRY/toquehub-web:$GIT_SHA
+  $REGISTRY/toquehub-updater:latest
+  $REGISTRY/toquehub-updater:$VERSION
+  $REGISTRY/toquehub-updater:$GIT_SHA
 MSG

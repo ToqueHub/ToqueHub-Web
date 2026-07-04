@@ -153,6 +153,8 @@ import type {
   MarginSupplierDetail,
   MarginSettings,
   SystemInstanceInfo,
+  SystemUpdateOperation,
+  SystemUpdateStatus,
 } from '../types';
 
 const movementLabels: Record<StockMovementType, string> = {
@@ -3441,6 +3443,8 @@ function InstanceInfoPanel({
 
   const frontendUrl = typeof window !== 'undefined' ? window.location.origin : info.frontend.url;
   const apiDocsUrl = `${info.api.url.replace(/\/api$/, '')}${info.api.docsPath}`;
+  const detectedSerialPorts = info.mqtt.detectedSerialPorts ?? [];
+  const zigbeeAdapterPresent = Boolean(info.mqtt.zigbeeAdapterPresent);
 
   return (
     <div className="instance-info-panel">
@@ -3490,7 +3494,9 @@ function InstanceInfoPanel({
           <InstanceInfoRow label="Broker" value={info.mqtt.broker} />
           <InstanceInfoRow label="Topic Zigbee" value={info.mqtt.baseTopic} />
           <InstanceInfoRow label="Zigbee2MQTT" value={info.mqtt.zigbee2mqttFrontendUrl ? <a href={info.mqtt.zigbee2mqttFrontendUrl} target="_blank" rel="noreferrer">{info.mqtt.zigbee2mqttFrontendUrl}</a> : null} />
-          <InstanceInfoRow label="Adaptateur" value={info.mqtt.zigbeeAdapterPath} />
+          <InstanceInfoRow label="Clé Zigbee" value={<InstanceStatusPill ok={zigbeeAdapterPresent} label={zigbeeAdapterPresent ? 'Détectée' : 'Introuvable'} />} />
+          <InstanceInfoRow label="Configurée" value={info.mqtt.zigbeeAdapterPath} />
+          <InstanceInfoRow label="Détectée" value={detectedSerialPorts.join(', ') || info.mqtt.suggestedZigbeeAdapterPath} />
         </InstanceInfoCard>
 
         <InstanceInfoCard icon={<HardDrive size={18} />} title="Docker & stockage">
@@ -7079,7 +7085,7 @@ function BackupRestorePage({ token, onRestoreComplete }: { token: string; onRest
   );
 }
 
-type SettingsSubTab = 'general' | 'users' | 'architecture' | 'backups' | 'api-keys' | 'core';
+type SettingsSubTab = 'general' | 'users' | 'architecture' | 'backups' | 'updates' | 'api-keys' | 'core';
 type OrganizationSettingModal = 'name' | 'establishmentType' | 'regulatoryCountry' | 'regulatorySector' | null;
 
 const establishmentTypeOptions: EstablishmentType[] = ['Restaurant', 'EHPAD', 'Collectivité', 'Hôtel', 'Traiteur', 'Cuisine centrale', 'Autre'];
@@ -7103,6 +7109,119 @@ function teamSizeLabel(value?: TeamSize | string | null) {
 
 function collaboratorCountLabel(count: number) {
   return `${count} collaborateur${count > 1 ? 's' : ''}`;
+}
+
+function updateStatusLabel(status?: SystemUpdateOperation['status']) {
+  if (status === 'queued') return 'En attente';
+  if (status === 'running') return 'En cours';
+  if (status === 'success') return 'Terminée';
+  if (status === 'rollback') return 'Rollback';
+  if (status === 'error') return 'Erreur';
+  return 'Prêt';
+}
+
+function SystemUpdatePanel({
+  status,
+  operation,
+  loading,
+  applying,
+  error,
+  onCheck,
+  onApply,
+}: {
+  status: SystemUpdateStatus | null;
+  operation: SystemUpdateOperation | null;
+  loading: boolean;
+  applying: boolean;
+  error: string | null;
+  onCheck: () => void;
+  onApply: () => void;
+}) {
+  const operationRunning = Boolean(operation && ['queued', 'running', 'rollback'].includes(operation.status));
+  const updaterAvailable = Boolean(status?.runtime.updaterAvailable);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      <div className="card-modern" style={{ padding: '1.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
+          <div>
+            <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
+              <Download size={18} /> Version et mise à jour
+            </span>
+            <p className="muted" style={{ fontSize: '0.85rem', margin: 0 }}>
+              Canal stable basé sur les releases GitHub taguées.
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
+            <button type="button" className="btn btn-secondary" onClick={onCheck} disabled={loading || operationRunning}>
+              <RotateCw size={15} className={loading ? 'spin' : undefined} />
+              Vérifier
+            </button>
+            <button type="button" className="btn btn-primary" onClick={onApply} disabled={!status?.updateAvailable || !updaterAvailable || applying || operationRunning}>
+              <Download size={15} />
+              {applying || operationRunning ? 'Mise à jour...' : 'Mettre à jour'}
+            </button>
+          </div>
+        </div>
+
+        {error ? <div className="alert-modern error" style={{ marginBottom: '1rem' }}><AlertCircle size={16} /> {error}</div> : null}
+        {status?.github.error ? <div className="alert-modern error" style={{ marginBottom: '1rem' }}><AlertCircle size={16} /> GitHub : {status.github.error}</div> : null}
+        {!updaterAvailable && status ? (
+          <div className="alert-modern error" style={{ marginBottom: '1rem' }}>
+            <Info size={16} />
+            Updater indisponible. Lancez en SSH : <code>docker compose --env-file .env.docker pull && docker compose --env-file .env.docker up -d</code>
+          </div>
+        ) : null}
+
+        <div className="settings-grid-premium">
+          <div className="info-card-premium">
+            <div className="info-card-premium-header"><span className="info-card-premium-label">Version installée</span><span className="info-card-premium-icon"><Server size={16} /></span></div>
+            <div className="info-card-premium-value">{status?.current.version || 'Chargement...'}</div>
+            <span className="badge badge-reception" style={{ width: 'fit-content', marginTop: '0.65rem' }}>{status?.current.imageTag || 'local'}</span>
+          </div>
+          <div className="info-card-premium">
+            <div className="info-card-premium-header"><span className="info-card-premium-label">Dernière release stable</span><span className="info-card-premium-icon"><ExternalLink size={16} /></span></div>
+            <div className="info-card-premium-value">{status?.latest?.tag || 'Aucune release'}</div>
+            {status?.latest?.url ? <a href={status.latest.url} target="_blank" rel="noreferrer" style={{ fontSize: '0.82rem', fontWeight: 700, color: '#047857' }}>Voir GitHub</a> : null}
+          </div>
+          <div className="info-card-premium">
+            <div className="info-card-premium-header"><span className="info-card-premium-label">Plateforme</span><span className="info-card-premium-icon"><Cpu size={16} /></span></div>
+            <div className="info-card-premium-value" style={{ fontSize: '1rem' }}>{status?.runtime.platform || 'Docker'}</div>
+          </div>
+          <div className="info-card-premium">
+            <div className="info-card-premium-header"><span className="info-card-premium-label">Statut</span><span className="info-card-premium-icon"><ShieldCheck size={16} /></span></div>
+            <div className="info-card-premium-value" style={{ color: status?.updateAvailable ? '#b45309' : '#047857' }}>
+              {status?.updateAvailable ? 'Update disponible' : 'À jour'}
+            </div>
+          </div>
+        </div>
+
+        <div className="settings-list" style={{ marginTop: '1.25rem' }}>
+          <div><span>Canal</span><strong>{status?.channel ?? 'stable'}</strong></div>
+          <div><span>Repo GitHub</span><strong>{status?.github.repo ?? 'DrSamourai/Toquehubfree'}</strong></div>
+          <div><span>Image API</span><strong>{status?.current.apiImage ?? '-'}</strong></div>
+          <div><span>Image Web</span><strong>{status?.current.webImage ?? '-'}</strong></div>
+          <div><span>Dernière vérification</span><strong>{status?.checkedAt ? new Date(status.checkedAt).toLocaleString('fr-FR') : '-'}</strong></div>
+        </div>
+      </div>
+
+      <div className="card-modern" style={{ padding: '1.5rem' }}>
+        <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+          <History size={18} /> Opération de mise à jour
+        </span>
+        <div className="settings-list">
+          <div><span>Statut</span><strong>{updateStatusLabel(operation?.status)}</strong></div>
+          <div><span>Cible</span><strong>{operation?.targetTag ?? status?.latest?.tag ?? '-'}</strong></div>
+          <div><span>Démarrée</span><strong>{operation?.startedAt ? new Date(operation.startedAt).toLocaleString('fr-FR') : '-'}</strong></div>
+          <div><span>Terminée</span><strong>{operation?.finishedAt ? new Date(operation.finishedAt).toLocaleString('fr-FR') : '-'}</strong></div>
+        </div>
+        {operation?.error ? <div className="alert-modern error" style={{ marginTop: '1rem' }}><AlertCircle size={16} /> {operation.error}</div> : null}
+        <pre style={{ marginTop: '1rem', maxHeight: 260, overflow: 'auto', background: '#0f172a', color: '#e2e8f0', padding: '1rem', borderRadius: 12, fontSize: '0.78rem', lineHeight: 1.5 }}>
+          {(operation?.logs?.length ? operation.logs : ['Aucune opération récente.']).join('\n')}
+        </pre>
+      </div>
+    </div>
+  );
 }
 
 function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKeysSaved, onSettingsSaved, onOpenUsers, onRestoreComplete, isAdmin = false }: { session: UserSession; token: string; dashboardSummary?: DashboardSummary; focusApiKeys?: boolean; onApiKeysSaved?: () => void; onSettingsSaved?: () => void; onOpenUsers?: () => void; onRestoreComplete: () => void; isAdmin?: boolean }) {
@@ -7144,6 +7263,11 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
   const [activeSubTab, setActiveSubTab] = useState<SettingsSubTab>(() => {
     return focusApiKeys ? 'api-keys' : 'general';
   });
+  const [updateStatus, setUpdateStatus] = useState<SystemUpdateStatus | null>(null);
+  const [updateOperation, setUpdateOperation] = useState<SystemUpdateOperation | null>(null);
+  const [updateLoading, setUpdateLoading] = useState(false);
+  const [updateApplying, setUpdateApplying] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
 
   useEffect(() => {
     setApiKeyConfigured(initialConfigured);
@@ -7167,6 +7291,58 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
       setActiveSubTab('api-keys');
     }
   }, [focusApiKeys]);
+
+  useEffect(() => {
+    if (activeSubTab === 'updates' && isAdmin && !updateStatus && !updateLoading) {
+      void loadUpdateStatus(false);
+    }
+  }, [activeSubTab, isAdmin, updateStatus, updateLoading]);
+
+  useEffect(() => {
+    if (!updateOperation || !['queued', 'running', 'rollback'].includes(updateOperation.status)) return;
+    const interval = window.setInterval(async () => {
+      try {
+        const next = await api.systemUpdateOperation(token, updateOperation.id);
+        setUpdateOperation(next);
+        if (!['queued', 'running', 'rollback'].includes(next.status)) {
+          const refreshed = await api.systemUpdateStatus(token);
+          setUpdateStatus(refreshed);
+        }
+      } catch (err) {
+        setUpdateError(err instanceof Error ? err.message : 'Impossible de suivre la mise à jour.');
+      }
+    }, 3000);
+    return () => window.clearInterval(interval);
+  }, [token, updateOperation?.id, updateOperation?.status]);
+
+  async function loadUpdateStatus(force: boolean) {
+    setUpdateLoading(true);
+    setUpdateError(null);
+    try {
+      const status = force ? await api.systemUpdateCheck(token) : await api.systemUpdateStatus(token);
+      setUpdateStatus(status);
+      setUpdateOperation(status.runtime.lastOperation);
+    } catch (err) {
+      setUpdateError(err instanceof Error ? err.message : 'Impossible de vérifier les mises à jour.');
+    } finally {
+      setUpdateLoading(false);
+    }
+  }
+
+  async function applySystemUpdate() {
+    setUpdateApplying(true);
+    setUpdateError(null);
+    try {
+      const result = await api.systemUpdateApply(token);
+      if (result.operation) setUpdateOperation(result.operation);
+      if (result.status) setUpdateStatus(result.status);
+      if (result.skipped && result.message) setUpdateError(result.message);
+    } catch (err) {
+      setUpdateError(err instanceof Error ? err.message : 'Impossible de lancer la mise à jour.');
+    } finally {
+      setUpdateApplying(false);
+    }
+  }
 
   async function saveApiKey() {
     setSavingApiKey(true);
@@ -7305,6 +7481,7 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
           {[
             { id: 'general' as const, label: 'Général', desc: 'Identité établissement', icon: Building2 },
             ...(isAdmin ? [{ id: 'backups' as const, label: 'Sauvegarde & Restauration', desc: 'Archives et reprise', icon: Archive }] : []),
+            ...(isAdmin ? [{ id: 'updates' as const, label: 'Version et mise à jour', desc: 'Releases et Docker', icon: Download }] : []),
             { id: 'users' as const, label: 'Utilisateurs & Accès', desc: 'Comptes et permissions', icon: UsersRound },
             ...(isAdmin ? [{ id: 'architecture' as const, label: 'Architecture', desc: 'Modules et dépendances', icon: Workflow }] : []),
             { id: 'api-keys' as const, label: 'Clés API & IA', desc: 'Mistral & Outils OCR', icon: KeyRound },
@@ -7443,6 +7620,18 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
 
           {activeSubTab === 'backups' && isAdmin && (
             <BackupRestorePage token={token} onRestoreComplete={onRestoreComplete} />
+          )}
+
+          {activeSubTab === 'updates' && isAdmin && (
+            <SystemUpdatePanel
+              status={updateStatus}
+              operation={updateOperation}
+              loading={updateLoading}
+              applying={updateApplying}
+              error={updateError}
+              onCheck={() => void loadUpdateStatus(true)}
+              onApply={() => void applySystemUpdate()}
+            />
           )}
 
           {activeSubTab === 'users' && (

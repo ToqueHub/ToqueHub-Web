@@ -22,10 +22,13 @@ case "${1:-status}" in
     if [[ $# -gt 0 ]]; then
       compose logs -f "$@"
     else
-      compose logs -f api web postgres mosquitto zigbee2mqtt
+      compose logs -f api web postgres mosquitto zigbee2mqtt updater
     fi
     ;;
   update)
+    mkdir -p /var/lib/toquehub/manual-backups
+    compose exec -T postgres pg_dump -U "${POSTGRES_USER:-toquehub}" "${POSTGRES_DB:-toquehub}" \
+      > "/var/lib/toquehub/manual-backups/pre-update-$(date +%Y%m%d-%H%M%S).sql"
     compose pull
     compose up -d
     ;;
