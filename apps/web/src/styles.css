@@ -17721,43 +17721,705 @@ input:checked + .slider-round:before {
   gap: 0.85rem;
 }
 
-.haccp-gateway-panel {
+.haccp-gateway-compact {
+  background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: #fff;
-  padding: 1rem;
+  border-radius: 12px;
+  padding: 0.65rem 1rem;
   display: flex;
   flex-direction: column;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+}
+
+.haccp-gateway-compact.tone-ok {
+  border-color: rgba(16, 185, 129, 0.28);
+}
+
+.haccp-gateway-compact.tone-warning {
+  border-color: rgba(245, 158, 11, 0.34);
+}
+
+.haccp-gateway-compact.tone-danger {
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.haccp-gateway-compact-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.haccp-gateway-compact-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.haccp-gateway-compact-status .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.haccp-gateway-compact-status .status-dot.ok {
+  background-color: #10b981;
+  animation: haccp-glow-green 2s infinite alternate;
+}
+
+.haccp-gateway-compact-status .status-dot.warning {
+  background-color: #f59e0b;
+  animation: haccp-glow-orange 2s infinite alternate;
+}
+
+.haccp-gateway-compact-status .status-dot.danger {
+  background-color: #ef4444;
+  animation: haccp-glow-red 2s infinite alternate;
+}
+
+.haccp-gateway-compact-status strong {
+  font-size: 0.85rem;
+  color: var(--text-main);
+}
+
+.haccp-gateway-compact-status span {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.haccp-gateway-compact-indicators {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.haccp-gateway-compact-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: #f1f5f9;
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+.haccp-gateway-compact-badge .badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.haccp-gateway-compact-badge .badge-dot.ok {
+  background-color: #10b981;
+}
+
+.haccp-gateway-compact-badge .badge-dot.danger {
+  background-color: #ef4444;
+}
+
+.haccp-gateway-compact-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem !important;
+  height: auto !important;
+}
+
+.compact-diag {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+/* Sensors View Overhaul & Sonoff Visuals */
+.haccp-view-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: #f1f5f9;
+  padding: 0.2rem;
+  border-radius: 8px;
+}
+
+.haccp-sensors-empty-card {
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  padding: 3rem 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 1.25rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+}
+
+.haccp-sensors-empty-visuals {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.empty-img-dongle {
+  height: 120px;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.08));
+}
+
+.empty-img-sensor {
+  height: 120px;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.08));
+}
+
+.empty-plus-icon {
+  font-size: 1.75rem;
+  font-weight: 300;
+  color: #94a3b8;
+}
+
+.haccp-sensors-empty-card h3 {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.haccp-sensors-empty-card p {
+  margin: 0;
+  max-width: 540px;
+  font-size: 0.92rem;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.haccp-sensors-empty-steps {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  width: 100%;
+  max-width: 600px;
+  margin: 0.5rem 0;
+}
+
+.step-box {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
   gap: 0.85rem;
+  text-align: left;
+}
+
+.step-box span {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  font-weight: 700;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.step-box p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #334155;
+  line-height: 1.35;
+}
+
+/* Sensors Cards Grid */
+.haccp-sensors-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 1.25rem;
+}
+
+.haccp-sensor-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.haccp-sensor-card:hover {
+  border-color: #10b981;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(16, 185, 129, 0.08);
+}
+
+.haccp-sensor-card.selected {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.02);
+}
+
+.haccp-sensor-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.haccp-sensor-card-img {
+  height: 44px;
+  width: 44px;
+  object-fit: contain;
+}
+
+.haccp-sensor-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  flex-grow: 1;
+}
+
+.haccp-sensor-card-info strong {
+  font-size: 0.95rem;
+  color: #0f172a;
+}
+
+.haccp-sensor-card-info small {
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.haccp-sensor-card-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #f8fafc;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+}
+
+.haccp-sensor-temp-display {
+  display: flex;
+  flex-direction: column;
+}
+
+.haccp-sensor-temp-display .temp-value {
+  font-size: 1.6rem;
+  font-weight: 800;
+  line-height: 1.1;
+  color: #0f172a;
+}
+
+.haccp-sensor-temp-display.alert .temp-value {
+  color: #ef4444;
+}
+
+.haccp-sensor-temp-display.ok .temp-value {
+  color: #10b981;
+}
+
+.haccp-sensor-temp-display .temp-label {
+  font-size: 0.72rem;
+  color: #64748b;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.haccp-sensor-card-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.metric-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: #475569;
+  font-weight: 600;
+}
+
+.haccp-sensor-card-foot {
+  border-top: 1px solid #f1f5f9;
+  padding-top: 0.75rem;
+}
+
+.haccp-sensor-assignment {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.82rem;
+}
+
+.haccp-sensor-assignment span {
+  color: #64748b;
+}
+
+.haccp-sensor-assignment strong {
+  color: #0f172a;
+}
+
+.active-pulse {
+  animation: haccp-border-pulse 2s infinite alternate;
+}
+
+@keyframes haccp-border-pulse {
+  from {
+    border-color: rgba(16, 185, 129, 0.4);
+    box-shadow: 0 0 4px rgba(16, 185, 129, 0.1);
+  }
+  to {
+    border-color: rgba(16, 185, 129, 0.9);
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.25);
+  }
+}
+
+/* Sonoff Pairing Scan Radar Modal */
+.sonoff-scan-radar-container {
+  position: relative;
+  width: 150px;
+  height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0.5rem 0;
+}
+
+.sonoff-scan-center-img {
+  height: 90px;
+  width: 90px;
+  object-fit: contain;
+  z-index: 2;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.12));
+}
+
+.radar-circle {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid rgba(16, 185, 129, 0.5);
+  animation: radar-expand 2.4s infinite ease-out;
+  pointer-events: none;
+}
+
+.radar-circle.ring-1 {
+  width: 90px;
+  height: 90px;
+  animation-delay: 0s;
+}
+
+.radar-circle.ring-2 {
+  width: 90px;
+  height: 90px;
+  animation-delay: 1.2s;
+}
+
+@keyframes radar-expand {
+  0% {
+    width: 80px;
+    height: 80px;
+    opacity: 0.9;
+    border-color: rgba(16, 185, 129, 0.8);
+  }
+  100% {
+    width: 160px;
+    height: 160px;
+    opacity: 0;
+    border-color: rgba(16, 185, 129, 0);
+  }
+}
+
+.radar-status-dot {
+  position: absolute;
+  top: 12px;
+  right: 18px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 12px #10b981;
+  animation: haccp-glow-green 1.5s infinite alternate;
+  z-index: 3;
+}
+
+@keyframes haccp-glow-green {
+  from {
+    transform: scale(0.9);
+    box-shadow: 0 0 4px #10b981;
+  }
+  to {
+    transform: scale(1.15);
+    box-shadow: 0 0 14px #10b981;
+  }
+}
+
+.haccp-gateway-panel {
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.025);
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
 }
 
 .haccp-gateway-panel.tone-ok {
   border-color: rgba(16, 185, 129, 0.28);
+  box-shadow: 0 4px 20px -2px rgba(16, 185, 129, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.025);
 }
 
 .haccp-gateway-panel.tone-warning {
   border-color: rgba(245, 158, 11, 0.34);
+  box-shadow: 0 4px 20px -2px rgba(245, 158, 11, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.025);
 }
 
 .haccp-gateway-panel.tone-danger {
   border-color: rgba(239, 68, 68, 0.3);
+  box-shadow: 0 4px 20px -2px rgba(239, 68, 68, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.025);
 }
 
-.haccp-gateway-main {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 0.25rem 0.75rem;
+.haccp-gateway-header {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
-.haccp-gateway-main strong {
+.haccp-gateway-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.haccp-gateway-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: rgba(226, 232, 240, 0.5);
+  color: #64748b;
+  flex-shrink: 0;
+  transition: all 0.3s ease;
+}
+
+.tone-ok .haccp-gateway-icon-wrapper {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+}
+
+.tone-warning .haccp-gateway-icon-wrapper {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+}
+
+.tone-danger .haccp-gateway-icon-wrapper {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+
+.haccp-gateway-title-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.haccp-gateway-title-section strong {
+  font-size: 1.05rem;
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.haccp-gateway-title-section p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.haccp-gateway-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.haccp-gateway-status-badge.ok {
+  background: rgba(16, 185, 129, 0.1);
+  color: #065f46;
+}
+
+.haccp-gateway-status-badge.warning {
+  background: rgba(245, 158, 11, 0.1);
+  color: #92400e;
+}
+
+.haccp-gateway-status-badge.danger {
+  background: rgba(239, 68, 68, 0.1);
+  color: #991b1b;
+}
+
+.haccp-gateway-status-badge .status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.haccp-gateway-status-badge.ok .status-dot {
+  animation: haccp-glow-green 2s infinite alternate;
+}
+
+.haccp-gateway-status-badge.warning .status-dot {
+  animation: haccp-glow-orange 2s infinite alternate;
+}
+
+.haccp-gateway-status-badge.danger .status-dot {
+  animation: haccp-glow-red 2s infinite alternate;
+}
+
+/* Indicators grid */
+.haccp-gateway-indicators {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+@media (max-width: 640px) {
+  .haccp-gateway-indicators {
+    grid-template-columns: 1fr;
+  }
+}
+
+.haccp-gateway-indicator-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  transition: all 0.2s ease;
+}
+
+.haccp-gateway-indicator-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+
+.haccp-gateway-indicator-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: #f1f5f9;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.haccp-gateway-indicator-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex-grow: 1;
+}
+
+.haccp-gateway-indicator-label {
+  font-size: 0.72rem;
+  font-weight: 750;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.haccp-gateway-indicator-value {
+  font-size: 0.95rem;
+  font-weight: 600;
   color: var(--text-main);
 }
 
-.haccp-gateway-main small {
-  grid-column: 2;
+.haccp-gateway-indicator-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.haccp-gateway-indicator-status-dot.ok {
+  background-color: #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+}
+
+.haccp-gateway-indicator-status-dot.danger {
+  background-color: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+}
+
+/* Collapsible diagnostic section */
+.haccp-gateway-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: transparent;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
   color: var(--text-muted);
-  line-height: 1.4;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  align-self: center;
+  transition: all 0.2s ease;
+}
+
+.haccp-gateway-toggle-btn:hover {
+  background: #f8fafc;
+  color: var(--text-main);
+  border-color: #94a3b8;
+}
+
+.haccp-gateway-diagnostic-section {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 1.25rem;
+  margin-top: 0.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.haccp-gateway-diagnostic-section h5 {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-main);
 }
 
 .haccp-gateway-grid {
@@ -17782,6 +18444,33 @@ input:checked + .slider-round:before {
   font-size: 0.82rem;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+@keyframes haccp-glow-green {
+  from {
+    box-shadow: 0 0 2px rgba(16, 185, 129, 0.3);
+  }
+  to {
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.8);
+  }
+}
+
+@keyframes haccp-glow-orange {
+  from {
+    box-shadow: 0 0 2px rgba(245, 158, 11, 0.3);
+  }
+  to {
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.8);
+  }
+}
+
+@keyframes haccp-glow-red {
+  from {
+    box-shadow: 0 0 2px rgba(239, 68, 68, 0.3);
+  }
+  to {
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.8);
+  }
 }
 
 .haccp-sensor-metric {

@@ -2,20 +2,30 @@ import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useState } from 
 import { motion, AnimatePresence } from 'framer-motion';
 import { io, Socket } from 'socket.io-client';
 import {
+  Activity,
   AlertCircle,
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   BarChart3,
+  Battery,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   ClipboardList,
   Clock,
+  Cpu,
   Droplets,
   Factory,
   FileText,
   Flame,
+  Layers,
+  LayoutGrid,
+  List,
   MapPin,
   Package,
   Plus,
+  Radio,
   RefreshCw,
   ScanLine,
   Search,
@@ -24,9 +34,11 @@ import {
   Smartphone,
   Snowflake,
   Sparkles,
+  Terminal,
   Thermometer,
   Trash2,
   Truck,
+  Wifi,
   X,
 } from 'lucide-react';
 import { api } from '../api/client';
@@ -54,7 +66,7 @@ type HaccpItem = Record<string, any> & { _id?: string; id?: string; name?: strin
 
 type SectionId = Exclude<HaccpTab, 'dashboard' | 'setup' | 'sensors' | 'labels'>;
 type HaccpConfigKind = 'temperature' | 'process' | 'cleaning';
-type HaccpOnboardingStep = 'welcome' | 'temperatures' | 'process' | 'cleaning' | 'review';
+type HaccpOnboardingStep = 'welcome' | 'temperatures' | 'process' | 'cleaning' | 'sensors' | 'review';
 type TemperatureTemplate = { key: string; name: string; type: string; description: string; recommendedTemp: number; selected: boolean };
 type ProcessTemplate = { key: string; name: string; type: 'refroidissement' | 'congelation' | 'rechauffement'; temperatureRange: { min: number; max: number }; description: string; selected: boolean };
 type CleaningTemplate = { key: string; name: string; description: string; selected: boolean; surfaces: Array<{ name: string; frequency: string }> };
@@ -797,7 +809,9 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
             <p className="muted">Contrôles sanitaires, traçabilité, productions et rapports quotidiens.</p>
           </div>
           <div className="haccp-header-actions">
-            <button className="btn secondary" onClick={generateReport} disabled={saving}><FileText size={16} /> Générer rapport</button>
+            {activeTab === 'reports' ? (
+              <button className="btn secondary" onClick={generateReport} disabled={saving}><FileText size={16} /> Générer rapport</button>
+            ) : null}
             <button className="btn secondary" onClick={() => void refreshAll()} disabled={loading}><RefreshCw size={16} /> Actualiser</button>
           </div>
         </div>
@@ -1323,6 +1337,7 @@ function HaccpOnboardingAside({
     { key: 'temperatures', label: 'Équipements de température' },
     { key: 'process', label: 'Processus HACCP' },
     { key: 'cleaning', label: 'Plan de nettoyage' },
+    { key: 'sensors', label: 'Capteurs Sonoff (IoT)' },
     { key: 'review', label: 'Résumé & Validation' },
   ] as Array<{ key: HaccpOnboardingStep; label: string }>;
   const currentIdx = steps.findIndex((s) => s.key === step);
@@ -1412,6 +1427,10 @@ function HaccpOnboardingWizard({
   temperatureEquipment,
   processEquipment,
   cleaningZones,
+  gatewayStatus,
+  pairing,
+  onStartPairing,
+  onStopPairing,
   saving,
   onComplete,
   onClose,
@@ -1420,6 +1439,10 @@ function HaccpOnboardingWizard({
   temperatureEquipment: HaccpItem[];
   processEquipment: HaccpItem[];
   cleaningZones: HaccpItem[];
+  gatewayStatus?: HaccpSensorGatewayStatus | null;
+  pairing?: HaccpPairingSession | null;
+  onStartPairing?: () => void;
+  onStopPairing?: () => void;
   saving: boolean;
   onComplete: (payload: HaccpOnboardingPayload) => Promise<HaccpOnboardingSummary>;
   onClose: () => void;
@@ -1430,7 +1453,7 @@ function HaccpOnboardingWizard({
   const [zones, setZones] = useState<CleaningTemplate[]>(DEFAULT_CLEANING_TEMPLATES);
   const [summary, setSummary] = useState<HaccpOnboardingSummary | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
-  const steps: HaccpOnboardingStep[] = ['welcome', 'temperatures', 'process', 'cleaning', 'review'];
+  const steps: HaccpOnboardingStep[] = ['welcome', 'temperatures', 'process', 'cleaning', 'sensors', 'review'];
   const stepIndex = steps.indexOf(step);
 
   const goNext = () => setStep(steps[Math.min(stepIndex + 1, steps.length - 1)]);
@@ -1575,6 +1598,14 @@ function HaccpOnboardingWizard({
                       )}
                       {step === 'cleaning' && (
                         <EditableCleaningStep items={zones} existing={cleaningZones} onChange={setZones} />
+                      )}
+                      {step === 'sensors' && (
+                        <EditableSensorsStep
+                          gatewayStatus={gatewayStatus ?? null}
+                          pairing={pairing ?? null}
+                          onStartPairing={onStartPairing ?? (() => {})}
+                          onStopPairing={onStopPairing ?? (() => {})}
+                        />
                       )}
                       {step === 'review' && (
                         <HaccpOnboardingReview
@@ -2215,6 +2246,268 @@ function SectionView({ section, rows, products, searchQuery, setSearchQuery, pro
   );
 }
 
+function SonoffPairingScanModal({
+  gatewayStatus,
+  pairing,
+  onStartPairing,
+  onStopPairing,
+  onClose,
+}: {
+  gatewayStatus: HaccpSensorGatewayStatus | null;
+  pairing: HaccpPairingSession | null;
+  onStartPairing?: () => void;
+  onStopPairing: () => void;
+  onClose: () => void;
+}) {
+  const activePairing = pairing?.status === 'ACTIVE';
+  const isSerialDetected = gatewayStatus?.zigbee2mqtt?.serialPortDetected ?? false;
+  const isMqttConnected = gatewayStatus?.mqtt?.connected ?? false;
+  const isGatewayReady = Boolean(gatewayStatus?.ready || activePairing);
+
+  const discoveredCount = pairing?.sensors?.length ?? pairing?.discoveredIds?.length ?? 0;
+  const [secondsLeft, setSecondsLeft] = useState(60);
+
+  useEffect(() => {
+    if (!isGatewayReady) return;
+    const timer = setInterval(() => {
+      setSecondsLeft((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isGatewayReady]);
+
+  const progressPercent = Math.max(0, Math.min(100, ((60 - secondsLeft) / 60) * 100));
+
+  return (
+    <div
+      className="modal-overlay sonoff-scan-modal-overlay"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(15, 23, 42, 0.65)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 10005,
+        padding: '1.5rem',
+      }}
+    >
+      <motion.div
+        className="modal-card sonoff-scan-modal-card"
+        initial={{ opacity: 0, scale: 0.92, y: 15 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.92, y: 15 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 260 }}
+        style={{
+          width: '100%',
+          maxWidth: '520px',
+          background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
+          borderRadius: '24px',
+          padding: '2rem',
+          boxShadow: '0 25px 60px rgba(0,0,0,0.18)',
+          border: '1px solid rgba(226, 232, 240, 0.8)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          textAlign: 'center',
+          gap: '1.5rem',
+          position: 'relative',
+        }}
+      >
+        {/* Close Button */}
+        <button
+          type="button"
+          onClick={onClose}
+          style={{
+            position: 'absolute',
+            top: '1.25rem',
+            right: '1.25rem',
+            background: 'transparent',
+            border: 'none',
+            color: '#64748b',
+            cursor: 'pointer',
+            padding: '0.4rem',
+            borderRadius: '50%',
+          }}
+        >
+          <X size={20} />
+        </button>
+
+        {!isGatewayReady ? (
+          /* BLOCKED ERROR VIEW: IoT Hardware / Gateway Not Ready */
+          <>
+            <div
+              style={{
+                width: '72px',
+                height: '72px',
+                borderRadius: '50%',
+                background: '#fef2f2',
+                border: '2px solid #fecaca',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginTop: '0.5rem',
+              }}
+            >
+              <AlertTriangle size={36} color="#ef4444" />
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.3rem', color: '#991b1b', fontWeight: 800 }}>
+                Appairage Impossible (IoT Non Prêt)
+              </h3>
+              <p style={{ margin: 0, fontSize: '0.88rem', color: '#64748b', lineHeight: 1.4 }}>
+                Le scan de capteurs requiert la détection de la clé USB Sonoff 3.0 sur le serveur.
+              </p>
+            </div>
+
+            {/* Checklist */}
+            <div style={{ width: '100%', background: '#ffffff', border: '1px solid #fee2e2', borderRadius: '14px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.65rem', textAlign: 'left' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600, color: '#334155' }}>
+                  <img src="/zigbee.png" alt="Dongle" style={{ height: '24px' }} /> Clé USB Sonoff Dongle 3.0
+                </span>
+                <span className={`haccp-status-pill ${isSerialDetected ? 'ok' : 'danger'}`}>
+                  <span className="status-dot" /> {isSerialDetected ? 'Détectée' : 'Non détectée'}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600, color: '#334155' }}>
+                  <Radio size={16} color="#64748b" /> Service Passerelle (Mosquitto)
+                </span>
+                <span className={`haccp-status-pill ${isMqttConnected ? 'ok' : 'danger'}`}>
+                  <span className="status-dot" /> {isMqttConnected ? 'Actif' : 'Inactif'}
+                </span>
+              </div>
+            </div>
+
+            {/* Advice Box */}
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0.85rem', fontSize: '0.82rem', color: '#475569', textAlign: 'left', lineHeight: 1.45 }}>
+              💡 <strong>Action requise :</strong> Branchez la clé USB Sonoff Zigbee 3.0 sur votre serveur / box ToqueHub. La détection s'effectue automatiquement en quelques secondes.
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem', width: '100%', marginTop: '0.5rem' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={onClose}
+                style={{ flex: 1, borderRadius: '12px' }}
+              >
+                Fermer
+              </button>
+              {onStartPairing ? (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => {
+                    if (isGatewayReady) {
+                      onStartPairing();
+                    }
+                  }}
+                  style={{ flex: 1, borderRadius: '12px' }}
+                >
+                  Réessayer la détection
+                </button>
+              ) : null}
+            </div>
+          </>
+        ) : (
+          /* SCANNING RADAR VIEW: All Conditions Met */
+          <>
+            {/* Visual Scanning Animation Header */}
+            <div className="sonoff-scan-radar-container">
+              <div className="radar-circle ring-1" />
+              <div className="radar-circle ring-2" />
+              <img src="/capteur.png" alt="Capteur Sonoff" className="sonoff-scan-center-img" />
+              <div className="radar-status-dot" />
+            </div>
+
+            {/* Title & Description */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.3rem', color: '#0f172a', fontWeight: 800 }}>
+                Appairage Capteur Sonoff
+              </h3>
+              <p style={{ margin: 0, fontSize: '0.88rem', color: '#64748b', lineHeight: 1.4 }}>
+                Recherche de signal Zigbee en cours. Maintenez le bouton du capteur pendant <strong>5 secondes</strong>.
+              </p>
+            </div>
+
+            {/* Progress Bar & Status */}
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: 700 }}>
+                <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <Radio size={14} className="radio-pulse-icon" /> Scan actif...
+                </span>
+                <span style={{ color: '#64748b' }}>{secondsLeft}s restant</span>
+              </div>
+
+              <div style={{ height: '8px', background: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
+                <div
+                  style={{
+                    height: '100%',
+                    width: `${progressPercent}%`,
+                    background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
+                    borderRadius: '4px',
+                    transition: 'width 1s linear',
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Discovered Sensors List */}
+            <div style={{ width: '100%', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', textAlign: 'left' }}>
+                Capteurs Détectés ({discoveredCount})
+              </span>
+
+              {discoveredCount > 0 ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(16, 185, 129, 0.08)', padding: '0.65rem 0.85rem', borderRadius: '10px', color: '#065f46', fontWeight: 600, fontSize: '0.88rem' }}>
+                  <CheckCircle2 size={18} color="#10b981" />
+                  <span>Capteur Température Sonoff (SNZB-02D) détecté !</span>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#94a3b8', fontSize: '0.85rem', fontStyle: 'italic', padding: '0.25rem 0' }}>
+                  <Clock size={16} />
+                  <span>En attente de détection...</span>
+                </div>
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div style={{ display: 'flex', gap: '0.75rem', width: '100%', marginTop: '0.5rem' }}>
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={() => {
+                  onStopPairing();
+                  onClose();
+                }}
+                style={{ flex: 1, borderRadius: '12px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca' }}
+              >
+                <X size={16} /> Arrêter l'appairage
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={onClose}
+                style={{ flex: 1, borderRadius: '12px' }}
+              >
+                <CheckCircle2 size={16} /> {discoveredCount > 0 ? 'Valider et continuer' : 'Fermer'}
+              </button>
+            </div>
+          </>
+        )}
+      </motion.div>
+    </div>
+  );
+}
+
 function SensorsView({
   sensors,
   summary,
@@ -2254,95 +2547,274 @@ function SensorsView({
 }) {
   const [draftName, setDraftName] = useState('');
   const [draftEquipmentId, setDraftEquipmentId] = useState('');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const [showDiagnosticModal, setShowDiagnosticModal] = useState(false);
+  const [showScanModal, setShowScanModal] = useState(false);
+
   const filteredSensors = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return sensors;
     return sensors.filter((sensor) => JSON.stringify(sensor).toLowerCase().includes(query));
   }, [searchQuery, sensors]);
+
   const activePairing = pairing?.status === 'ACTIVE';
   const selectedName = selectedSensor ? sensorDisplayName(selectedSensor) : '';
-  const gatewayReady = gatewayStatus?.ready ?? false;
 
   useEffect(() => {
     setDraftName(selectedName);
     setDraftEquipmentId(selectedSensor?.assignedEquipment?.id ?? '');
   }, [selectedSensor?.id, selectedName, selectedSensor?.assignedEquipment?.id]);
 
+  useEffect(() => {
+    if (activePairing) {
+      setShowScanModal(true);
+    }
+  }, [activePairing]);
+
+  function handleStartPairing() {
+    setShowScanModal(true);
+    const isReady = Boolean(gatewayStatus?.ready);
+    if (isReady) {
+      onStartPairing();
+    }
+  }
+
   return (
     <div className="haccp-sensors-page">
+      {/* Clean toolbar: NO DUPLICATE REFRESH BUTTON */}
       <div className="haccp-sensors-toolbar">
         <button type="button" className="btn btn-secondary btn-sm" onClick={onBack}><ArrowLeft size={14} /> Retour</button>
+
         <div className="haccp-search">
           <Search size={14} />
           <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Rechercher un capteur..." />
         </div>
-        <button type="button" className="btn secondary" onClick={onRefresh} disabled={saving}><RefreshCw size={16} /> Actualiser</button>
+
+        {/* View mode toggle */}
+        <div className="haccp-view-toggle">
+          <button
+            type="button"
+            className={`btn btn-sm ${viewMode === 'cards' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setViewMode('cards')}
+            title="Vue Cartes"
+          >
+            <LayoutGrid size={14} /> Cartes
+          </button>
+          <button
+            type="button"
+            className={`btn btn-sm ${viewMode === 'table' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setViewMode('table')}
+            title="Vue Tableau"
+          >
+            <List size={14} /> Tableau
+          </button>
+        </div>
+
+        {/* Discrete Diagnostic Button */}
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={() => setShowDiagnosticModal(!showDiagnosticModal)}
+          title="Diagnostic Passerelle IoT"
+        >
+          <Settings2 size={14} /> Diagnostic IoT
+        </button>
+
+        {/* Main Pairing Action */}
         {activePairing ? (
-          <button type="button" className="btn secondary" onClick={onStopPairing} disabled={saving}><X size={16} /> Stop</button>
+          <button type="button" className="btn secondary" onClick={onStopPairing} disabled={saving} style={{ background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca' }}>
+            <X size={16} /> Stopper appairage
+          </button>
         ) : (
-          <button type="button" className="btn btn-primary" onClick={onStartPairing} disabled={saving || !gatewayReady}><Plus size={16} /> Ajouter un capteur</button>
+          <button type="button" className="btn btn-primary" onClick={handleStartPairing} disabled={saving}>
+            <Plus size={16} /> Appairer un capteur Sonoff
+          </button>
         )}
       </div>
 
-      <SensorGatewayPanel status={gatewayStatus} />
+      {/* Pairing Scan Modal */}
+      <AnimatePresence>
+        {(showScanModal || activePairing) && (
+          <SonoffPairingScanModal
+            gatewayStatus={gatewayStatus}
+            pairing={pairing}
+            onStartPairing={onStartPairing}
+            onStopPairing={onStopPairing}
+            onClose={() => setShowScanModal(false)}
+          />
+        )}
+      </AnimatePresence>
 
+      {/* Discrete Diagnostic Modal if toggled */}
+      <AnimatePresence>
+        {showDiagnosticModal && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            style={{ marginBottom: '1.25rem' }}
+          >
+            <SensorGatewayPanel status={gatewayStatus} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* KPIs Summary */}
       <div className="haccp-sensors-kpis">
-        <SensorMetric label="Total" value={summary.total} detail="Capteurs connus" />
-        <SensorMetric label="Connectés" value={summary.online} detail="En ligne" tone="ok" />
-        <SensorMetric label="Hors ligne" value={summary.offline} detail="À vérifier" tone={summary.offline > 0 ? 'danger' : 'neutral'} />
-        <SensorMetric label="Batterie" value={summary.averageBattery == null ? '-' : `${summary.averageBattery}%`} detail={sensorGlobalStatus(summary.globalStatus)} />
+        <SensorMetric label="Total Capteurs" value={summary.total} detail="Enregistrés" />
+        <SensorMetric label="En Ligne" value={summary.online} detail="Relevé automatique" tone="ok" />
+        <SensorMetric label="Hors Ligne" value={summary.offline} detail="À vérifier" tone={summary.offline > 0 ? 'danger' : 'neutral'} />
+        <SensorMetric label="Batterie Moyenne" value={summary.averageBattery == null ? '-' : `${summary.averageBattery}%`} detail={sensorGlobalStatus(summary.globalStatus)} />
       </div>
 
+      {/* Active Pairing Banner */}
       {activePairing ? (
-        <div className="haccp-pairing-banner">
-          <div>
-            <strong>Mode appairage actif</strong>
-            <span>Fin prévue {pairing?.expiresAt ? new Date(pairing.expiresAt).toLocaleTimeString('fr-FR') : '-'}</span>
+        <div className="haccp-pairing-banner active-pulse" style={{ marginTop: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+            <Radio size={24} className="radio-pulse-icon" />
+            <div>
+              <strong style={{ fontSize: '1rem', color: '#065f46' }}>Mode appairage Sonoff actif</strong>
+              <span style={{ fontSize: '0.85rem', color: '#047857', display: 'block' }}>
+                Maintenez le bouton du capteur Sonoff pendant 5 secondes. Détection automatique en cours...
+              </span>
+            </div>
           </div>
-          <span className="haccp-status-pill ok"><span className="status-dot" />{pairing?.sensors?.length ?? pairing?.discoveredIds?.length ?? 0} détecté(s)</span>
+          <span className="haccp-status-pill ok">
+            <span className="status-dot" />
+            {pairing?.sensors?.length ?? pairing?.discoveredIds?.length ?? 0} capteur(s) trouvé(s)
+          </span>
         </div>
       ) : null}
 
-      <div className="haccp-sensors-layout">
-        <div className="haccp-list-panel">
-          <div className="haccp-table-wrapper">
-            <table className="haccp-control-table">
-              <thead>
-                <tr>
-                  <th>Nom</th>
-                  <th>Modèle</th>
-                  <th>Équipement</th>
-                  <th>Température</th>
-                  <th>Batterie</th>
-                  <th>Signal</th>
-                  <th>Statut</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredSensors.map((sensor) => (
-                  <tr key={sensor.id} onClick={() => onSelect(sensor)} className={selectedSensor?.id === sensor.id ? 'selected' : ''}>
-                    <td><strong>{sensorDisplayName(sensor)}</strong><small>{sensor.manufacturer ?? 'Fabricant inconnu'}</small></td>
-                    <td>{sensor.model ?? '-'}</td>
-                    <td>{sensor.assignedEquipment?.name ?? <span className="muted">Non affecté</span>}</td>
-                    <td>{sensor.currentTemperature == null ? '-' : `${Number(sensor.currentTemperature).toFixed(1)}°C`}</td>
-                    <td>{sensor.battery == null ? '-' : `${Math.round(Number(sensor.battery))}%`}</td>
-                    <td>{sensor.linkQuality ?? '-'}</td>
-                    <td><span className={`haccp-status-pill ${sensorStatusClass(sensor.status)}`}><span className="status-dot" />{sensorStatusLabel(sensor.status)}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {!filteredSensors.length ? <div className="haccp-empty-state"><Smartphone size={36} /><p>Aucun capteur détecté.</p></div> : null}
+      {/* Empty State or Content */}
+      {!filteredSensors.length ? (
+        <div className="haccp-sensors-empty-card" style={{ marginTop: '1.5rem' }}>
+          <div className="haccp-sensors-empty-visuals">
+            <img src="/zigbee.png" alt="Dongle Sonoff USB" className="empty-img-dongle" />
+            <div className="empty-plus-icon">+</div>
+            <img src="/capteur.png" alt="Capteur Sonoff" className="empty-img-sensor" />
           </div>
-        </div>
 
-        <aside className="haccp-sensor-detail">
+          <h3>Aucun capteur Sonoff configuré</h3>
+          <p>
+            Suivez automatiquement la température de vos enceintes froides (chambres froides, frigos, congélateurs) 24h/24 et 7j/7 grâce aux capteurs sans fil Sonoff.
+          </p>
+
+          <div className="haccp-sensors-empty-steps">
+            <div className="step-box">
+              <span>1</span>
+              <p>Branchez la <strong>Clé USB Sonoff Zigbee 3.0</strong> sur votre serveur ToqueHub.</p>
+            </div>
+            <div className="step-box">
+              <span>2</span>
+              <p>Cliquez ci-dessous et appuyez <strong>5s sur le bouton</strong> du capteur Sonoff.</p>
+            </div>
+          </div>
+
+          <button type="button" className="btn btn-primary btn-lg" onClick={onStartPairing} disabled={saving}>
+            <Radio size={18} /> Lancer l'appairage d'un capteur Sonoff
+          </button>
+        </div>
+      ) : (
+        <div style={{ marginTop: '1.5rem' }}>
+          {viewMode === 'cards' ? (
+            <div className="haccp-sensors-cards-grid">
+              {filteredSensors.map((sensor) => {
+                const isSelected = selectedSensor?.id === sensor.id;
+                const temp = sensor.currentTemperature != null ? Number(sensor.currentTemperature) : null;
+                const isTempAlert = temp != null && (temp > 8 || temp < -25);
+
+                return (
+                  <div
+                    key={sensor.id}
+                    className={`haccp-sensor-card ${isSelected ? 'selected' : ''}`}
+                    onClick={() => onSelect(sensor)}
+                  >
+                    <div className="haccp-sensor-card-head">
+                      <img src="/capteur.png" alt="Sonoff" className="haccp-sensor-card-img" />
+                      <div className="haccp-sensor-card-info">
+                        <strong>{sensorDisplayName(sensor)}</strong>
+                        <small>{sensor.model ?? 'Capteur Sonoff'}</small>
+                      </div>
+                      <span className={`haccp-status-pill ${sensorStatusClass(sensor.status)}`}>
+                        <span className="status-dot" />
+                        {sensorStatusLabel(sensor.status)}
+                      </span>
+                    </div>
+
+                    <div className="haccp-sensor-card-body">
+                      <div className={`haccp-sensor-temp-display ${isTempAlert ? 'alert' : 'ok'}`}>
+                        <span className="temp-value">
+                          {temp == null ? '--' : `${temp.toFixed(1)}°C`}
+                        </span>
+                        <span className="temp-label">Température</span>
+                      </div>
+
+                      <div className="haccp-sensor-card-metrics">
+                        <div className="metric-badge">
+                          <Battery size={14} />
+                          <span>{sensor.battery == null ? '-' : `${Math.round(Number(sensor.battery))}%`}</span>
+                        </div>
+                        <div className="metric-badge">
+                          <Wifi size={14} />
+                          <span>{sensor.linkQuality ? `${sensor.linkQuality} LQI` : '-'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="haccp-sensor-card-foot">
+                      <div className="haccp-sensor-assignment">
+                        <span>Équipement :</span>
+                        <strong>{sensor.assignedEquipment?.name ?? 'Non affecté'}</strong>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            /* Table View */
+            <div className="haccp-sensors-layout">
+              <div className="haccp-list-panel">
+                <div className="haccp-table-wrapper">
+                  <table className="haccp-control-table">
+                    <thead>
+                      <tr>
+                        <th>Nom</th>
+                        <th>Modèle</th>
+                        <th>Équipement</th>
+                        <th>Température</th>
+                        <th>Batterie</th>
+                        <th>Signal</th>
+                        <th>Statut</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredSensors.map((sensor) => (
+                        <tr key={sensor.id} onClick={() => onSelect(sensor)} className={selectedSensor?.id === sensor.id ? 'selected' : ''}>
+                          <td><strong>{sensorDisplayName(sensor)}</strong><small>{sensor.manufacturer ?? 'Sonoff'}</small></td>
+                          <td>{sensor.model ?? 'SNZB-02D'}</td>
+                          <td>{sensor.assignedEquipment?.name ?? <span className="muted">Non affecté</span>}</td>
+                          <td>{sensor.currentTemperature == null ? '-' : `${Number(sensor.currentTemperature).toFixed(1)}°C`}</td>
+                          <td>{sensor.battery == null ? '-' : `${Math.round(Number(sensor.battery))}%`}</td>
+                          <td>{sensor.linkQuality ?? '-'}</td>
+                          <td><span className={`haccp-status-pill ${sensorStatusClass(sensor.status)}`}><span className="status-dot" />{sensorStatusLabel(sensor.status)}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Selected Sensor Detail Drawer */}
           {selectedSensor ? (
-            <>
+            <aside className="haccp-sensor-detail" style={{ marginTop: '1.5rem' }}>
               <div className="haccp-sensor-detail-head">
                 <span className={`haccp-status-pill ${sensorStatusClass(selectedSensor.status)}`}><span className="status-dot" />{sensorStatusLabel(selectedSensor.status)}</span>
                 <strong>{sensorDisplayName(selectedSensor)}</strong>
-                <small>{selectedSensor.model ?? 'Modèle inconnu'} · {selectedSensor.provider}</small>
+                <small>{selectedSensor.model ?? 'Modèle Sonoff'} · {selectedSensor.provider}</small>
               </div>
               <div className="haccp-sensor-current-grid">
                 <SensorMetric label="Température" value={selectedSensor.currentTemperature == null ? '-' : `${Number(selectedSensor.currentTemperature).toFixed(1)}°C`} detail="Dernier relevé" />
@@ -2367,49 +2839,87 @@ function SensorsView({
                 <button type="button" className="btn btn-primary" disabled={saving || !draftName.trim()} onClick={() => onRename(selectedSensor, draftName.trim())}>Renommer</button>
                 <button type="button" className="btn secondary" disabled={saving} onClick={() => onAssign(selectedSensor, draftEquipmentId)}>Affecter</button>
               </div>
-              <div className="haccp-sensor-history">
-                <strong>Dernières communications</strong>
-                <span>{selectedSensor.lastSeenAt ? new Date(selectedSensor.lastSeenAt).toLocaleString('fr-FR') : 'Aucune communication'}</span>
-                <span>{selectedSensor.externalId}</span>
-              </div>
-              <div className="haccp-sensor-danger">
+              <div className="haccp-sensor-danger" style={{ marginTop: '1rem' }}>
                 <button type="button" className="btn secondary" disabled={saving} onClick={() => onRemove(selectedSensor, false)}><Trash2 size={15} /> Supprimer ToqueHub</button>
                 <button type="button" className="btn secondary" disabled={saving} onClick={() => onRemove(selectedSensor, true)}><Trash2 size={15} /> Supprimer réseau</button>
               </div>
-            </>
-          ) : (
-            <div className="haccp-empty-state"><Settings2 size={34} /><p>Sélectionnez un capteur pour voir sa fiche.</p></div>
-          )}
-        </aside>
-      </div>
+            </aside>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
 
 function SensorGatewayPanel({ status }: { status: HaccpSensorGatewayStatus | null }) {
+  const [showDetails, setShowDetails] = useState(false);
   const tone = sensorGatewayTone(status?.status);
+
+  const isMqttConfigured = status?.mqtt?.configured ?? false;
+  const isMqttConnected = status?.mqtt?.connected ?? false;
+  const isZigbeeKeyDetected = status?.zigbee2mqtt?.serialPortDetected ?? false;
+  const brokerValue = status ? status.mqtt.url ?? (isMqttConfigured ? 'Configuré' : 'Non configuré') : 'Diagnostic en cours';
+  const brokerDetail = status ? (isMqttConnected ? 'Opérationnel' : isMqttConfigured ? 'Configuré, déconnecté' : 'Non configuré') : 'En attente';
+  const brokerTone = isMqttConnected ? 'ok' : status ? 'danger' : 'neutral';
+
   return (
-    <div className={`haccp-gateway-panel tone-${tone}`}>
-      <div className="haccp-gateway-main">
-        <span className={`haccp-status-pill ${tone === 'ok' ? 'ok' : tone === 'danger' ? 'danger' : 'warning'}`}><span className="status-dot" />{sensorGatewayLabel(status?.status)}</span>
-        <strong>Passerelle IoT</strong>
-        <small>{sensorGatewayMessage(status)}</small>
-      </div>
-      <div className="haccp-gateway-grid">
-        <SensorMetric label="MQTT" value={status?.mqtt.connected ? 'Connecté' : 'Déconnecté'} detail={status?.mqtt.url ?? 'Non configuré'} tone={status?.mqtt.connected ? 'ok' : 'danger'} />
-        <SensorMetric label="Clé Zigbee" value={status?.zigbee2mqtt.serialPortDetected ? 'Détectée' : 'Absente'} detail={status?.zigbee2mqtt.configuredSerialPort ?? status?.zigbee2mqtt.serialCandidates[0] ?? 'Aucun port'} tone={status?.zigbee2mqtt.serialPortDetected ? 'ok' : 'danger'} />
-        <SensorMetric label="Topic" value={status?.zigbee2mqtt.baseTopic ?? '-'} detail="Zigbee2MQTT" />
-        <SensorMetric label="Périphériques" value={status?.zigbee2mqtt.cachedDeviceCount ?? 0} detail="Cache provider" />
-      </div>
-      {!status?.ready ? (
-        <div className="haccp-gateway-actions">
-          <code>{status?.install.dockerCommand ?? 'docker compose -f docker-compose.iot.yml --profile iot up -d'}</code>
-          <code>{status?.install.localSetupCommand ?? 'npm run iot:setup'}</code>
+    <div className={`haccp-gateway-compact tone-${tone}`}>
+      <div className="haccp-gateway-compact-main">
+        <div className="haccp-gateway-compact-status">
+          <span className={`status-dot ${tone === 'ok' ? 'ok' : tone === 'danger' ? 'danger' : 'warning'}`} />
+          <strong>Passerelle IoT :</strong>
+          <span>{sensorGatewayLabel(status?.status)}</span>
         </div>
-      ) : null}
+
+        <div className="haccp-gateway-compact-indicators">
+          <span className="haccp-gateway-compact-badge">
+            <span className={`badge-dot ${isMqttConnected ? 'ok' : status ? 'danger' : 'warning'}`} />
+            MQTT (Mosquitto)
+          </span>
+          <span className="haccp-gateway-compact-badge">
+            <span className={`badge-dot ${isZigbeeKeyDetected ? 'ok' : 'danger'}`} />
+            Clé USB (Zigbee)
+          </span>
+        </div>
+
+        <button
+          type="button"
+          className="btn btn-secondary haccp-gateway-compact-btn"
+          onClick={() => setShowDetails(!showDetails)}
+        >
+          <Settings2 size={12} />
+          <span>Configurer</span>
+          {showDetails ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        </button>
+      </div>
+
+      <AnimatePresence>
+        {showDetails && (
+          <motion.div
+            className="haccp-gateway-diagnostic-section compact-diag"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <div className="haccp-gateway-grid">
+              <SensorMetric label="Broker MQTT" value={brokerValue} detail={brokerDetail} tone={brokerTone} />
+              <SensorMetric label="Port Série" value={status?.zigbee2mqtt?.configuredSerialPort ?? status?.zigbee2mqtt?.serialCandidates[0] ?? 'Aucun port'} detail={status?.zigbee2mqtt?.serialPortDetected ? 'Détecté' : 'Non détecté'} tone={status?.zigbee2mqtt?.serialPortDetected ? 'ok' : 'danger'} />
+              <SensorMetric label="Topic" value={status?.zigbee2mqtt?.baseTopic ?? '-'} detail="Zigbee2MQTT" />
+              <SensorMetric label="Périphériques" value={status?.zigbee2mqtt?.cachedDeviceCount ?? 0} detail="En cache" />
+            </div>
+
+            {!status?.ready ? (
+              <div className="haccp-gateway-actions">
+                <code>{status?.install?.dockerCommand ?? 'docker compose -f docker-compose.iot.yml --profile iot up -d'}</code>
+                <code>{status?.install?.localSetupCommand ?? 'npm run iot:setup'}</code>
+              </div>
+            ) : null}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
-  );
-}
+  );}
 
 function SensorMetric({ label, value, detail, tone = 'neutral' }: { label: string; value: ReactNode; detail: string; tone?: 'ok' | 'danger' | 'neutral' }) {
   return (
@@ -2543,6 +3053,91 @@ function EditableCleaningStep({ items, existing, onChange }: { items: CleaningTe
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function EditableSensorsStep({
+  gatewayStatus,
+  pairing,
+  onStartPairing,
+  onStopPairing,
+}: {
+  gatewayStatus: HaccpSensorGatewayStatus | null;
+  pairing: HaccpPairingSession | null;
+  onStartPairing: () => void;
+  onStopPairing: () => void;
+}) {
+  const isZigbeeKeyDetected = gatewayStatus?.zigbee2mqtt?.serialPortDetected ?? false;
+  const activePairing = pairing?.status === 'ACTIVE';
+  const [showScanModal, setShowScanModal] = useState(false);
+
+  useEffect(() => {
+    if (activePairing) {
+      setShowScanModal(true);
+    }
+  }, [activePairing]);
+
+  function handleStartPairing() {
+    setShowScanModal(true);
+    const isReady = Boolean(gatewayStatus?.ready);
+    if (isReady) {
+      onStartPairing();
+    }
+  }
+
+  return (
+    <div className="haccp-onboarding-step">
+      <StepIntro
+        icon={<Smartphone size={20} />}
+        title="Capteurs de Température Sonoff (IoT)"
+        text="Branchez la clé USB Sonoff Zigbee 3.0 et appairez directement vos capteurs de température sans fil."
+      />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '1.25rem', marginTop: '1.25rem' }}>
+        {/* Card 1: Dongle USB Sonoff */}
+        <div style={{ border: '1px solid #e2e8f0', borderRadius: '18px', padding: '1.25rem', background: '#f8fafc', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '0.85rem' }}>
+          <img src="/zigbee.png" alt="Clé USB Sonoff Dongle" style={{ height: '115px', objectFit: 'contain' }} />
+          <div>
+            <strong style={{ display: 'block', fontSize: '1rem', color: '#0f172a' }}>1. Clé USB Sonoff Zigbee</strong>
+            <span style={{ fontSize: '0.82rem', color: '#64748b', lineHeight: 1.4 }}>Branchez la clé USB Sonoff 3.0 sur votre serveur / box ToqueHub.</span>
+          </div>
+          <span className={`haccp-status-pill ${isZigbeeKeyDetected ? 'ok' : 'danger'}`}>
+            <span className="status-dot" />
+            {isZigbeeKeyDetected ? 'Clé USB Détectée' : 'Clé USB Non Détectée'}
+          </span>
+        </div>
+
+        {/* Card 2: Capteur Sonoff */}
+        <div style={{ border: '1px solid #e2e8f0', borderRadius: '18px', padding: '1.25rem', background: '#f8fafc', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '0.85rem' }}>
+          <img src="/capteur.png" alt="Capteur Sonoff Température" style={{ height: '115px', objectFit: 'contain' }} />
+          <div>
+            <strong style={{ display: 'block', fontSize: '1rem', color: '#0f172a' }}>2. Capteur Température Sonoff</strong>
+            <span style={{ fontSize: '0.82rem', color: '#64748b', lineHeight: 1.4 }}>Maintenez le bouton du capteur pendant 5s pour l'appairer.</span>
+          </div>
+          {activePairing ? (
+            <button type="button" className="btn secondary btn-sm" onClick={() => setShowScanModal(true)} style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}>
+              <Radio size={14} className="radio-pulse-icon" /> Voir l'appairage en cours ({pairing?.sensors?.length ?? 0})
+            </button>
+          ) : (
+            <button type="button" className="btn btn-primary btn-sm" onClick={handleStartPairing}>
+              <Plus size={14} /> Commencer l'appairage
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Pairing Scan Modal */}
+      <AnimatePresence>
+        {(showScanModal || activePairing) && (
+          <SonoffPairingScanModal
+            gatewayStatus={gatewayStatus}
+            pairing={pairing}
+            onStartPairing={onStartPairing}
+            onStopPairing={onStopPairing}
+            onClose={() => setShowScanModal(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -3080,7 +3675,7 @@ function sensorGatewayLabel(status?: string) {
   if (status === 'missing_serial') return 'Clé absente';
   if (status === 'mqtt_disconnected') return 'MQTT indisponible';
   if (status === 'not_configured') return 'Non configurée';
-  return 'Diagnostic';
+  return 'Diagnostic en cours';
 }
 
 function sensorGatewayTone(status?: string) {
@@ -3094,7 +3689,7 @@ function sensorGatewayMessage(status: HaccpSensorGatewayStatus | null) {
   if (status.status === 'ready') return 'MQTT, Zigbee2MQTT et coordinateur Zigbee sont prêts.';
   if (status.status === 'missing_serial') return 'Le broker MQTT répond, mais aucun coordinateur Zigbee USB n’est visible.';
   if (status.status === 'mqtt_disconnected') return status.mqtt.lastError ? `Broker MQTT inaccessible: ${status.mqtt.lastError}` : 'Broker MQTT inaccessible.';
-  if (status.status === 'not_configured') return 'MQTT_URL n’est pas configuré côté API.';
+  if (status.status === 'not_configured') return status.mqtt.url ? 'MQTT est configuré, mais la passerelle n’a pas encore établi la connexion.' : 'MQTT_URL n’est pas configuré côté API.';
   return 'Diagnostic passerelle à vérifier.';
 }
 

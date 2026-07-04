@@ -23,13 +23,18 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly configService: ConfigService) {}
 
   onModuleInit() {
-    const url = this.configService.get<string>('MQTT_URL');
-    this.configuredUrl = url || undefined;
+    const url = this.getConfiguredUrl();
     if (!url) {
       this.logger.warn('MQTT_URL is not configured; HACCP sensor provider will stay in offline mode.');
       return;
     }
 
+    this.connect(url);
+  }
+
+  private connect(url: string) {
+    if (this.client) return;
+    this.configuredUrl = url;
     this.client = mqtt.connect(url, {
       username: this.configService.get<string>('MQTT_USERNAME') || undefined,
       password: this.configService.get<string>('MQTT_PASSWORD') || undefined,
@@ -85,9 +90,12 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
   }
 
   getStatus() {
+    const configuredUrl = this.configuredUrl ?? this.getConfiguredUrl();
+    if (configuredUrl && !this.client) this.connect(configuredUrl);
+
     return {
-      configured: Boolean(this.configuredUrl),
-      url: this.sanitizeUrl(this.configuredUrl),
+      configured: Boolean(configuredUrl),
+      url: this.sanitizeUrl(configuredUrl),
       connected: this.connected,
       baseTopic: this.baseTopic,
       lastError: this.lastError,
@@ -116,5 +124,11 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
     } catch {
       return value.replace(/\/\/([^:@/]+):([^@/]+)@/, '//***:***@');
     }
+  }
+
+  private getConfiguredUrl() {
+    const value = this.configService.get<string>('MQTT_URL') ?? process.env.MQTT_URL ?? '';
+    const trimmed = value.trim();
+    return trimmed || undefined;
   }
 }
