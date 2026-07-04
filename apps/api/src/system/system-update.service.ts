@@ -68,7 +68,7 @@ function readPackageVersion() {
     }
   }
 
-  return '0.1.0';
+  return '1.0.0';
 }
 
 function githubHeaders() {
@@ -101,8 +101,8 @@ export class SystemUpdateService {
         version: installedVersion,
         imageTag,
         registry: env('TOQUEHUB_IMAGE_REGISTRY') || null,
-        apiImage: `${env('TOQUEHUB_IMAGE_REGISTRY', 'ghcr.io/drsamourai')}/toquehub-api:${imageTag}`,
-        webImage: `${env('TOQUEHUB_IMAGE_REGISTRY', 'ghcr.io/drsamourai')}/toquehub-web:${imageTag}`,
+        apiImage: `${env('TOQUEHUB_IMAGE_REGISTRY', 'ghcr.io/powarthy')}/toquehub-api:${imageTag}`,
+        webImage: `${env('TOQUEHUB_IMAGE_REGISTRY', 'ghcr.io/powarthy')}/toquehub-web:${imageTag}`,
       },
       latest: release.release ? {
         version: latestVersion,
@@ -115,7 +115,7 @@ export class SystemUpdateService {
       } : null,
       updateAvailable: Boolean(latestVersion && compareVersions(latestVersion, installedVersion) > 0),
       github: {
-        repo: env('TOQUEHUB_RELEASE_REPO', 'DrSamourai/Toquehubfree'),
+        repo: env('TOQUEHUB_RELEASE_REPO', 'Powarthy/toquehub'),
         error: release.error,
       },
       runtime: {
@@ -156,7 +156,7 @@ export class SystemUpdateService {
     if (!force && this.latestReleaseCache) return this.latestReleaseCache;
 
     const checkedAt = new Date().toISOString();
-    const repo = env('TOQUEHUB_RELEASE_REPO', 'DrSamourai/Toquehubfree');
+    const repo = env('TOQUEHUB_RELEASE_REPO', 'Powarthy/toquehub');
 
     try {
       const response = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {

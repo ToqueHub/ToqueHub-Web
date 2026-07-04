@@ -12,7 +12,7 @@ latest = derniere version stable publiee en Docker
 
 `latest` ne recupere pas automatiquement le dernier commit de `main`.
 
-`latest` est mis a jour uniquement quand une release stable est publiee avec un tag Git du type `v0.1.2`.
+`latest` est mis a jour uniquement quand une release stable est publiee avec un tag Git du type `v1.0.0`.
 
 ## Workflow recommande
 
@@ -22,7 +22,7 @@ Quand tu as fini une serie de changements:
 
 ```bash
 git add .
-git commit -m "Prepare version 0.1.2"
+git commit -m "Prepare version 1.0.0"
 git push origin main
 ```
 
@@ -41,8 +41,8 @@ Tu peux pousser plusieurs fois sur `main` sans impacter les utilisateurs.
 Quand tu decides que le code de `main` est pret pour les utilisateurs:
 
 ```bash
-git tag v0.1.2
-git push origin v0.1.2
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
 A ce moment-la:
@@ -50,8 +50,8 @@ A ce moment-la:
 ```text
 GitHub Actions se lance
 les images Docker multi-arch sont construites
-la release GitHub v0.1.2 est publiee
-latest pointe vers v0.1.2
+la release GitHub v1.0.0 est publiee
+latest pointe vers v1.0.0
 les utilisateurs voient la mise a jour dans ToqueHub
 ```
 
@@ -59,7 +59,7 @@ Important:
 
 ```text
 workflow manuel GitHub Actions = peut construire des images de test
-tag v0.1.2 = version stable visible comme mise a jour
+tag v1.0.0 = version stable visible comme mise a jour
 ```
 
 Si les images Docker existent mais qu'aucun tag `vX.Y.Z` ou aucune GitHub Release stable n'existe, l'onglet de mise a jour peut afficher qu'aucune version stable n'est disponible.
@@ -67,13 +67,13 @@ Si les images Docker existent mais qu'aucun tag `vX.Y.Z` ou aucune GitHub Releas
 Images publiees:
 
 ```text
-ghcr.io/drsamourai/toquehub-api:0.1.2
-ghcr.io/drsamourai/toquehub-web:0.1.2
-ghcr.io/drsamourai/toquehub-updater:0.1.2
+ghcr.io/powarthy/toquehub-api:1.0.0
+ghcr.io/powarthy/toquehub-web:1.0.0
+ghcr.io/powarthy/toquehub-updater:1.0.0
 
-ghcr.io/drsamourai/toquehub-api:latest
-ghcr.io/drsamourai/toquehub-web:latest
-ghcr.io/drsamourai/toquehub-updater:latest
+ghcr.io/powarthy/toquehub-api:latest
+ghcr.io/powarthy/toquehub-web:latest
+ghcr.io/powarthy/toquehub-updater:latest
 ```
 
 ## Ce que voient les utilisateurs
@@ -91,7 +91,7 @@ version installee
 derniere release GitHub stable
 ```
 
-Si `v0.1.2` est plus recente que la version installee, le bouton `Mettre a jour` devient disponible pour les administrateurs.
+Si `v1.0.0` est plus recente que la version installee, le bouton `Mettre a jour` devient disponible pour les administrateurs.
 
 ## Branche stable ou pas ?
 
@@ -115,8 +115,8 @@ Mais pour ToqueHub maintenant, le plus simple et solide est:
 
 ```bash
 git push origin main
-git tag v0.1.2
-git push origin v0.1.2
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
 ## Exemple complet
@@ -126,15 +126,15 @@ Preparation:
 ```bash
 git status
 git add .
-git commit -m "Prepare version 0.1.2"
+git commit -m "Prepare version 1.0.0"
 git push origin main
 ```
 
 Publication:
 
 ```bash
-git tag v0.1.2
-git push origin v0.1.2
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
 Verification:
@@ -148,7 +148,7 @@ Puis verifier sur GitHub:
 
 ```text
 Actions > Publish Docker images
-Releases > v0.1.2
+Releases > v1.0.0
 Packages > toquehub-api / toquehub-web / toquehub-updater
 ```
 
@@ -159,9 +159,9 @@ Le Raspberry Pi ne doit pas recevoir une nouvelle image SD a chaque petite mise 
 Les mises a jour normales passent par Docker:
 
 ```text
-toquehub-api:0.1.2
-toquehub-web:0.1.2
-toquehub-updater:0.1.2
+toquehub-api:1.0.0
+toquehub-web:1.0.0
+toquehub-updater:1.0.0
 ```
 
 L'image SD Raspberry sert surtout pour:
