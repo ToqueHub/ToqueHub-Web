@@ -71,6 +71,15 @@ function readPackageVersion() {
   return '0.1.0';
 }
 
+function githubHeaders() {
+  const token = env('TOQUEHUB_GITHUB_TOKEN');
+  return {
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'toquehub-update-checker',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
 @Injectable()
 export class SystemUpdateService {
   private latestReleaseCache: { checkedAt: string; release: GithubRelease | null; error: string | null } | null = null;
@@ -151,10 +160,7 @@ export class SystemUpdateService {
 
     try {
       const response = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
-        headers: {
-          Accept: 'application/vnd.github+json',
-          'User-Agent': 'toquehub-update-checker',
-        },
+        headers: githubHeaders(),
       });
 
       if (response.ok) {
@@ -189,10 +195,7 @@ export class SystemUpdateService {
 
   private async getLatestStableTag(repo: string): Promise<GithubRelease | null> {
     const response = await fetch(`https://api.github.com/repos/${repo}/tags?per_page=100`, {
-      headers: {
-        Accept: 'application/vnd.github+json',
-        'User-Agent': 'toquehub-update-checker',
-      },
+      headers: githubHeaders(),
     });
 
     if (!response.ok) {
