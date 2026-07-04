@@ -43,7 +43,7 @@ ENV TOQUEHUB_VERSION=$TOQUEHUB_VERSION
 WORKDIR /app
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssl \
+  && apt-get install -y --no-install-recommends openssl postgresql-client \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/package.json /app/package-lock.json ./

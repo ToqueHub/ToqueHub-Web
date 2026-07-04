@@ -61,10 +61,8 @@ fi
 
 command -v sudo >/dev/null 2>&1 || { echo "sudo is required." >&2; exit 1; }
 
-if ! command -v curl >/dev/null 2>&1 || ! command -v openssl >/dev/null 2>&1; then
-  sudo apt-get update
-  sudo apt-get install -y ca-certificates curl openssl
-fi
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl openssl postgresql-client
 
 if ! command -v docker >/dev/null 2>&1; then
   curl -fsSL https://get.docker.com | sudo sh

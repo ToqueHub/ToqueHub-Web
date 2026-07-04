@@ -286,7 +286,7 @@ require_ubuntu
 
 log "Installation des prerequis systeme"
 sudo_cmd apt-get update
-sudo_cmd apt-get install -y ca-certificates curl git openssl gnupg lsb-release
+sudo_cmd apt-get install -y ca-certificates curl git openssl gnupg lsb-release postgresql-client
 
 install_node
 install_docker
