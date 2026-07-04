@@ -37,6 +37,14 @@ npm run docker:logs
 
 Le script cree `.env.docker` depuis `.env.docker.example` si besoin et prepare `.toquehub-iot/zigbee2mqtt-data/configuration.yaml`.
 
+Si les ports par defaut sont deja occupes, le script choisit automatiquement les prochains ports libres:
+
+- `TOQUEHUB_HTTP_PORT`, par defaut `8080`
+- `ZIGBEE2MQTT_HTTP_PORT`, par defaut `8081`
+- `MQTT_PORT`, par defaut `1883`
+
+Les ports retenus sont ecrits dans `.env.docker` et affiches a la fin du setup.
+
 Les donnees PostgreSQL, fichiers uploades, sauvegardes, Mosquitto et Zigbee2MQTT sont persistants via volumes Docker ou dossier local `.toquehub-iot`.
 
 Si la cle Zigbee n'est pas detectee automatiquement, modifie `ZIGBEE_ADAPTER_PATH` dans `.env.docker`, puis relance:
@@ -91,6 +99,7 @@ Le script installe:
 - ToqueHub dans `/opt/toquehub`
 - `.env.docker` avec secrets generes
 - les conteneurs web, API, PostgreSQL, Mosquitto et Zigbee2MQTT
+- ports libres selectionnes automatiquement si `8080`, `8081` ou `1883` sont occupes
 
 Options utiles:
 
@@ -100,6 +109,7 @@ curl -fsSL https://raw.githubusercontent.com/Powarthy/toquehub/main/scripts/inst
   TOQUEHUB_INSTALL_DIR=/opt/toquehub \
   TOQUEHUB_HTTP_PORT=8080 \
   ZIGBEE2MQTT_HTTP_PORT=8081 \
+  MQTT_PORT=1883 \
   bash
 ```
 

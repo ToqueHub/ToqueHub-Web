@@ -4,7 +4,7 @@ services:
     profiles: ["iot"]
     restart: unless-stopped
     ports:
-      - "1883:1883"
+      - "${MQTT_PORT:-1883}:1883"
     volumes:
       - ./docker/iot/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - ./.toquehub-iot/mosquitto-data:/mosquitto/data
@@ -17,7 +17,7 @@ services:
     depends_on:
       - mosquitto
     ports:
-      - "8080:8080"
+      - "${ZIGBEE2MQTT_HTTP_PORT:-8080}:8080"
     environment:
       TZ: ${TZ:-Europe/Paris}
     volumes:

@@ -18,7 +18,7 @@ services:
     image: eclipse-mosquitto:2
     restart: unless-stopped
     ports:
-      - "1883:1883"
+      - "${MQTT_PORT:-1883}:1883"
     volumes:
       - ${TOQUEHUB_CONFIG_DIR:-/etc/toquehub}/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - ${TOQUEHUB_DATA_DIR:-/var/lib/toquehub}/mosquitto/data:/mosquitto/data

@@ -6,6 +6,7 @@ BRANCH="${TOQUEHUB_BRANCH:-main}"
 INSTALL_DIR="${TOQUEHUB_INSTALL_DIR:-/opt/toquehub}"
 HTTP_PORT="${TOQUEHUB_HTTP_PORT:-8080}"
 ZIGBEE2MQTT_PORT="${ZIGBEE2MQTT_HTTP_PORT:-8081}"
+MQTT_PORT="${MQTT_PORT:-1883}"
 ENV_FILE="$INSTALL_DIR/.env.docker"
 
 usage() {
@@ -28,6 +29,7 @@ Useful environment variables:
   TOQUEHUB_INSTALL_DIR=/opt/toquehub
   TOQUEHUB_HTTP_PORT=8080
   ZIGBEE2MQTT_HTTP_PORT=8081
+  MQTT_PORT=1883
 
 Example:
   curl -fsSL https://raw.githubusercontent.com/Powarthy/toquehub/main/scripts/install-toquehub-ubuntu.sh | bash
@@ -76,6 +78,20 @@ secret() {
 
 server_ip() {
   hostname -I 2>/dev/null | awk '{print $1}'
+}
+
+get_env() {
+  local key="$1"
+  local fallback="${2:-}"
+  local value
+
+  if [[ -f "$ENV_FILE" ]]; then
+    value="$(grep -E "^${key}=" "$ENV_FILE" | tail -1 | cut -d= -f2- || true)"
+  else
+    value=""
+  fi
+
+  printf '%s\n' "${value:-$fallback}"
 }
 
 set_env() {
@@ -162,10 +178,11 @@ configure_toquehub() {
   log "Configuration de ToqueHub"
   cd "$INSTALL_DIR"
 
-  ./scripts/setup-toquehub-docker.sh
+  TOQUEHUB_HTTP_PORT="$HTTP_PORT" ZIGBEE2MQTT_HTTP_PORT="$ZIGBEE2MQTT_PORT" MQTT_PORT="$MQTT_PORT" ./scripts/setup-toquehub-docker.sh
 
-  set_env TOQUEHUB_HTTP_PORT "$HTTP_PORT"
-  set_env ZIGBEE2MQTT_HTTP_PORT "$ZIGBEE2MQTT_PORT"
+  HTTP_PORT="$(get_env TOQUEHUB_HTTP_PORT "$HTTP_PORT")"
+  ZIGBEE2MQTT_PORT="$(get_env ZIGBEE2MQTT_HTTP_PORT "$ZIGBEE2MQTT_PORT")"
+  MQTT_PORT="$(get_env MQTT_PORT "$MQTT_PORT")"
   set_env_if_placeholder POSTGRES_PASSWORD "$(secret)"
   set_env_if_placeholder JWT_SECRET "$(secret)"
   set_env_if_placeholder BACKUP_CLOUD_ENCRYPTION_KEY "$(secret)"
@@ -184,7 +201,7 @@ open_firewall_ports() {
     log "Ouverture des ports UFW"
     sudo_cmd ufw allow "$HTTP_PORT/tcp"
     sudo_cmd ufw allow "$ZIGBEE2MQTT_PORT/tcp"
-    sudo_cmd ufw allow 1883/tcp
+    sudo_cmd ufw allow "$MQTT_PORT/tcp"
   fi
 }
 
@@ -207,6 +224,11 @@ Adresse locale serveur:
 
 Adresse reseau probable:
   http://${ip:-IP_DU_SERVEUR}:$HTTP_PORT
+
+Ports:
+  ToqueHub web: $HTTP_PORT
+  Zigbee2MQTT: $ZIGBEE2MQTT_PORT
+  MQTT: $MQTT_PORT
 
 Commandes utiles:
   cd $INSTALL_DIR
