@@ -123,6 +123,7 @@ services:
       UPDATER_HEALTH_URL: http://web/api/system/status
       POSTGRES_DB: ${POSTGRES_DB:-toquehub}
       POSTGRES_USER: ${POSTGRES_USER:-toquehub}
+      TOQUEHUB_GITHUB_TOKEN: ${TOQUEHUB_GITHUB_TOKEN:-}
     volumes:
       - ${TOQUEHUB_INSTALL_DIR:-/opt/toquehub}:/workspace
       - ${TOQUEHUB_CONFIG_DIR:-/etc/toquehub}:/config

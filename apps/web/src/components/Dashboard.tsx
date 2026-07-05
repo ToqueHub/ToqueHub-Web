@@ -713,6 +713,11 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     setShowUpdateAvailableModal(false);
   }
 
+  function closeUpdateAvailableModal() {
+    if (isSystemUpdateRunning(autoUpdateOperation)) return;
+    dismissUpdateAvailableModal();
+  }
+
   async function applyUpdateFromModal() {
     setAutoUpdateApplying(true);
     setAutoUpdateError(null);
@@ -721,7 +726,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       if (result.operation) setAutoUpdateOperation(result.operation);
       if (result.status) setAutoUpdateStatus(result.status);
       if (result.skipped && result.message) setAutoUpdateError(result.message);
-      else setShowUpdateAvailableModal(false);
+      else setShowUpdateAvailableModal(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Impossible de lancer la mise à jour.';
       setAutoUpdateError(message);
@@ -3339,14 +3344,21 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         )}
       </Modal>
 
-      <Modal isOpen={showUpdateAvailableModal} onClose={dismissUpdateAvailableModal} title="Mise à jour disponible" size="lg">
+      <Modal isOpen={showUpdateAvailableModal} onClose={closeUpdateAvailableModal} title={autoUpdateOperation ? 'Installation de la mise à jour' : 'Mise à jour disponible'} size="lg">
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div className="alert-modern info" style={{ background: '#f8fafc', borderColor: '#dbe4ef', color: '#334155' }}>
-            <Download size={17} />
-            <span>
-              Une nouvelle version stable de ToqueHub est prête à être installée.
-            </span>
-          </div>
+          {autoUpdateOperation ? (
+            <div className={`alert-modern ${autoUpdateOperation.status === 'success' ? 'success' : autoUpdateOperation.status === 'error' || autoUpdateOperation.status === 'rollback' ? 'error' : 'info'}`} style={autoUpdateOperation.status === 'running' || autoUpdateOperation.status === 'queued' ? { background: '#f8fafc', borderColor: '#dbe4ef', color: '#334155' } : undefined}>
+              {isSystemUpdateRunning(autoUpdateOperation) ? <RefreshCw size={17} className="spin" /> : autoUpdateOperation.status === 'success' ? <CheckCircle2 size={17} /> : <AlertCircle size={17} />}
+              <span>{systemUpdateOperationMessage(autoUpdateOperation)}</span>
+            </div>
+          ) : (
+            <div className="alert-modern info" style={{ background: '#f8fafc', borderColor: '#dbe4ef', color: '#334155' }}>
+              <Download size={17} />
+              <span>
+                Une nouvelle version stable de ToqueHub est prête à être installée.
+              </span>
+            </div>
+          )}
 
           <div className="settings-grid-premium">
             <div className="info-card-premium">
@@ -3367,28 +3379,59 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             </div>
           </div>
 
-          <p className="muted" style={{ margin: 0, lineHeight: 1.6 }}>
-            L’installation crée d’abord une sauvegarde locale, télécharge les nouvelles images Docker, redémarre l’API et le web, puis vérifie l’état de santé. En cas d’échec, le service tente un rollback automatique.
-          </p>
+          {autoUpdateOperation ? (
+            <>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <strong style={{ color: 'var(--text-main)', fontSize: '0.9rem' }}>{systemUpdateProgress(autoUpdateOperation).label}</strong>
+                  <span className="badge badge-reception">{systemUpdateProgress(autoUpdateOperation).percent}%</span>
+                </div>
+                <div className="progress-bar-bg" style={{ height: '8px', borderRadius: '999px', background: '#e5e7eb', overflow: 'hidden' }}>
+                  <div className="progress-bar-fill" style={{ height: '100%', width: `${systemUpdateProgress(autoUpdateOperation).percent}%`, background: autoUpdateOperation.status === 'error' || autoUpdateOperation.status === 'rollback' ? '#ef4444' : '#10b981', borderRadius: '999px', transition: 'width 0.25s ease' }} />
+                </div>
+              </div>
+
+              <div className="settings-list">
+                <div><span>Statut</span><strong>{updateStatusLabel(autoUpdateOperation.status)}</strong></div>
+                <div><span>Cible</span><strong>{autoUpdateOperation.targetTag ?? autoUpdateStatus?.latest?.tag ?? '-'}</strong></div>
+                <div><span>Démarrée</span><strong>{new Date(autoUpdateOperation.startedAt).toLocaleString('fr-FR')}</strong></div>
+                <div><span>Terminée</span><strong>{autoUpdateOperation.finishedAt ? new Date(autoUpdateOperation.finishedAt).toLocaleString('fr-FR') : '-'}</strong></div>
+              </div>
+
+              {autoUpdateOperation.error ? <div className="alert-modern error"><AlertCircle size={16} /> {autoUpdateOperation.error}</div> : null}
+
+              <pre style={{ maxHeight: 300, overflow: 'auto', background: '#0f172a', color: '#e2e8f0', padding: '1rem', borderRadius: 12, fontSize: '0.78rem', lineHeight: 1.5, margin: 0 }}>
+                {(autoUpdateOperation.logs?.length ? autoUpdateOperation.logs : ['Initialisation de l’opération...']).join('\n')}
+              </pre>
+            </>
+          ) : (
+            <p className="muted" style={{ margin: 0, lineHeight: 1.6 }}>
+              L’installation crée d’abord une sauvegarde locale, télécharge les nouvelles images Docker, redémarre l’API et le web, puis vérifie l’état de santé. En cas d’échec, le service tente un rollback automatique.
+            </p>
+          )}
 
           {autoUpdateError ? <div className="alert-modern error"><AlertCircle size={16} /> {autoUpdateError}</div> : null}
 
           <div className="modal-footer" style={{ margin: '0 -1.75rem -1.75rem' }}>
-            <button className="btn btn-secondary" onClick={dismissUpdateAvailableModal} disabled={autoUpdateApplying}>Plus tard</button>
+            <button className="btn btn-secondary" onClick={closeUpdateAvailableModal} disabled={autoUpdateApplying || isSystemUpdateRunning(autoUpdateOperation)}>
+              {autoUpdateOperation?.status === 'success' ? 'Fermer' : 'Plus tard'}
+            </button>
             <button
               className="btn btn-secondary"
               onClick={() => {
                 setActiveTab('settings');
                 setShowUpdateAvailableModal(false);
               }}
-              disabled={autoUpdateApplying}
+              disabled={autoUpdateApplying || isSystemUpdateRunning(autoUpdateOperation)}
             >
               Voir détails
             </button>
-            <button className="btn btn-primary" onClick={() => void applyUpdateFromModal()} disabled={autoUpdateApplying || !autoUpdateStatus?.runtime.updaterAvailable}>
-              <Download size={15} />
-              {autoUpdateApplying ? 'Lancement...' : 'Installer maintenant'}
-            </button>
+            {!autoUpdateOperation || autoUpdateOperation.status === 'error' || autoUpdateOperation.status === 'rollback' ? (
+              <button className="btn btn-primary" onClick={() => void applyUpdateFromModal()} disabled={autoUpdateApplying || !autoUpdateStatus?.runtime.updaterAvailable}>
+                <Download size={15} />
+                {autoUpdateApplying ? 'Lancement...' : autoUpdateOperation ? 'Réessayer' : 'Installer maintenant'}
+              </button>
+            ) : null}
           </div>
         </div>
       </Modal>
@@ -7377,6 +7420,45 @@ function updateStatusLabel(status?: SystemUpdateOperation['status']) {
   return 'Prêt';
 }
 
+function isSystemUpdateRunning(operation?: SystemUpdateOperation | null) {
+  return Boolean(operation && ['queued', 'running', 'rollback'].includes(operation.status));
+}
+
+function systemUpdateOperationMessage(operation: SystemUpdateOperation) {
+  if (operation.status === 'queued') return 'La mise à jour est en file d’attente.';
+  if (operation.status === 'running') return 'Installation en cours. Gardez cette fenêtre ouverte pour suivre l’avancement.';
+  if (operation.status === 'success') return 'Mise à jour terminée avec succès.';
+  if (operation.status === 'rollback') return 'Un problème a été détecté. Rollback automatique en cours ou terminé.';
+  if (operation.status === 'error') return 'La mise à jour a échoué et nécessite une vérification.';
+  return 'Opération prête.';
+}
+
+function systemUpdateProgress(operation: SystemUpdateOperation) {
+  if (operation.status === 'success') return { percent: 100, label: 'Installation terminée' };
+  if (operation.status === 'error') return { percent: 100, label: 'Erreur détectée' };
+  if (operation.status === 'rollback') return { percent: 65, label: 'Rollback en cours' };
+  if (operation.status === 'queued') return { percent: 5, label: 'En attente de démarrage' };
+
+  const logs = operation.logs.join('\n').toLowerCase();
+  const backupStarted = logs.includes('backup postgresql');
+  const tagChanged = logs.includes('toquehub_image_tag');
+  if (logs.includes('healthcheck ok')) return { percent: 96, label: 'Vérification finale réussie' };
+  if (logs.includes('healthcheck')) return { percent: 88, label: 'Vérification de santé' };
+  if (logs.includes('up -d api web')) return { percent: 78, label: 'Redémarrage API et Web' };
+  if (tagChanged && logs.includes('pull api web')) return { percent: 62, label: 'Téléchargement des images Docker' };
+  if (tagChanged) return { percent: 48, label: 'Préparation de la nouvelle version' };
+  if (logs.includes('backup fichiers valid')) return { percent: 40, label: 'Sauvegarde fichiers validée' };
+  if (logs.includes('backup fichiers')) return { percent: 32, label: 'Sauvegarde des fichiers' };
+  if (logs.includes('backup logique postgresql valid')) return { percent: 26, label: 'Sauvegarde PostgreSQL validée' };
+  if (backupStarted) return { percent: 18, label: 'Sauvegarde PostgreSQL' };
+  if (logs.includes('précontrôle ok')) return { percent: 16, label: 'Précontrôle validé' };
+  if (logs.includes('vérification accès images docker')) return { percent: 14, label: 'Vérification des images Docker' };
+  if (logs.includes('ghcr: authentification docker')) return { percent: 13, label: 'Authentification GHCR' };
+  if (logs.includes('précontrôle service')) return { percent: 12, label: 'Vérification des services' };
+  if (logs.includes('update ')) return { percent: 12, label: 'Démarrage de la mise à jour' };
+  return { percent: 10, label: 'Initialisation' };
+}
+
 function SystemUpdatePanel({
   status,
   operation,
@@ -7482,6 +7564,79 @@ function SystemUpdatePanel({
   );
 }
 
+function SystemUpdateProgressModal({
+  isOpen,
+  status,
+  operation,
+  applying,
+  error,
+  onClose,
+}: {
+  isOpen: boolean;
+  status: SystemUpdateStatus | null;
+  operation: SystemUpdateOperation | null;
+  applying: boolean;
+  error: string | null;
+  onClose: () => void;
+}) {
+  const running = isSystemUpdateRunning(operation);
+  const progress = operation ? systemUpdateProgress(operation) : { percent: applying ? 8 : 0, label: applying ? 'Lancement de l’opération' : 'Prêt' };
+
+  return (
+    <Modal isOpen={isOpen} onClose={running ? () => undefined : onClose} title="Suivi de mise à jour" size="lg">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div className={`alert-modern ${operation?.status === 'success' ? 'success' : operation?.status === 'error' || operation?.status === 'rollback' || error ? 'error' : 'info'}`} style={!operation || running ? { background: '#f8fafc', borderColor: '#dbe4ef', color: '#334155' } : undefined}>
+          {running || applying ? <RefreshCw size={17} className="spin" /> : operation?.status === 'success' ? <CheckCircle2 size={17} /> : <AlertCircle size={17} />}
+          <span>{operation ? systemUpdateOperationMessage(operation) : 'Démarrage de la mise à jour...'}</span>
+        </div>
+
+        <div className="settings-grid-premium">
+          <div className="info-card-premium">
+            <div className="info-card-premium-header"><span className="info-card-premium-label">Version installée</span><span className="info-card-premium-icon"><Server size={16} /></span></div>
+            <div className="info-card-premium-value">{status?.current.version ?? '-'}</div>
+            <span className="badge badge-reception" style={{ width: 'fit-content', marginTop: '0.65rem' }}>{status?.current.imageTag ?? 'local'}</span>
+          </div>
+          <div className="info-card-premium">
+            <div className="info-card-premium-header"><span className="info-card-premium-label">Cible</span><span className="info-card-premium-icon"><Download size={16} /></span></div>
+            <div className="info-card-premium-value">{operation?.targetTag ?? status?.latest?.tag ?? status?.latest?.version ?? '-'}</div>
+          </div>
+        </div>
+
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <strong style={{ color: 'var(--text-main)', fontSize: '0.9rem' }}>{progress.label}</strong>
+            <span className="badge badge-reception">{progress.percent}%</span>
+          </div>
+          <div className="progress-bar-bg" style={{ height: '8px', borderRadius: '999px', background: '#e5e7eb', overflow: 'hidden' }}>
+            <div className="progress-bar-fill" style={{ height: '100%', width: `${progress.percent}%`, background: operation?.status === 'error' || operation?.status === 'rollback' ? '#ef4444' : '#10b981', borderRadius: '999px', transition: 'width 0.25s ease' }} />
+          </div>
+        </div>
+
+        {operation ? (
+          <div className="settings-list">
+            <div><span>Statut</span><strong>{updateStatusLabel(operation.status)}</strong></div>
+            <div><span>Démarrée</span><strong>{new Date(operation.startedAt).toLocaleString('fr-FR')}</strong></div>
+            <div><span>Terminée</span><strong>{operation.finishedAt ? new Date(operation.finishedAt).toLocaleString('fr-FR') : '-'}</strong></div>
+          </div>
+        ) : null}
+
+        {error ? <div className="alert-modern error"><AlertCircle size={16} /> {error}</div> : null}
+        {operation?.error ? <div className="alert-modern error"><AlertCircle size={16} /> {operation.error}</div> : null}
+
+        <pre style={{ maxHeight: 300, overflow: 'auto', background: '#0f172a', color: '#e2e8f0', padding: '1rem', borderRadius: 12, fontSize: '0.78rem', lineHeight: 1.5, margin: 0 }}>
+          {(operation?.logs?.length ? operation.logs : ['Initialisation de l’opération...']).join('\n')}
+        </pre>
+
+        <div className="modal-footer" style={{ margin: '0 -1.75rem -1.75rem' }}>
+          <button className="btn btn-secondary" onClick={onClose} disabled={running || applying}>
+            {operation?.status === 'success' ? 'Fermer' : 'Fermer le suivi'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKeysSaved, onSettingsSaved, onOpenUsers, onRestoreComplete, isAdmin = false }: { session: UserSession; token: string; dashboardSummary?: DashboardSummary; focusApiKeys?: boolean; onApiKeysSaved?: () => void; onSettingsSaved?: () => void; onOpenUsers?: () => void; onRestoreComplete: () => void; isAdmin?: boolean }) {
   const organization = dashboardSummary?.organization;
   const organizationName = organization?.name ?? session.user.organizationName ?? 'Organisation';
@@ -7534,6 +7689,7 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
   const [updateLoading, setUpdateLoading] = useState(false);
   const [updateApplying, setUpdateApplying] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
+  const [showUpdateProgressModal, setShowUpdateProgressModal] = useState(false);
 
   useEffect(() => {
     setApiKeyConfigured(initialConfigured);
@@ -7601,6 +7757,7 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
   }
 
   async function applySystemUpdate() {
+    setShowUpdateProgressModal(true);
     setUpdateApplying(true);
     setUpdateError(null);
     try {
@@ -8171,6 +8328,15 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
           )}
         </div>
       </div>
+
+      <SystemUpdateProgressModal
+        isOpen={showUpdateProgressModal}
+        status={updateStatus}
+        operation={updateOperation}
+        applying={updateApplying}
+        error={updateError}
+        onClose={() => setShowUpdateProgressModal(false)}
+      />
 
       <Modal
         isOpen={editingSetting !== null}

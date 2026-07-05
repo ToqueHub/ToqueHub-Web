@@ -230,6 +230,7 @@ export class SystemUpdateService {
     const operation = await this.callUpdater<UpdaterOperation>('POST', '/apply', {
       targetTag: status.latest.tag,
       targetVersion: status.latest.version,
+      githubToken: await this.getGithubToken(),
     });
 
     return { skipped: false, operation };

@@ -76,6 +76,96 @@ function composeArgs(...args) {
   return ['compose', '--env-file', ENV_FILE, '-f', COMPOSE_FILE, ...args];
 }
 
+function dockerCompose(operation, args, options = {}) {
+  return run(operation, 'docker', composeArgs(...args), options);
+}
+
+async function githubLoginFromToken(operation, token) {
+  const githubToken = String(token || process.env.TOQUEHUB_GITHUB_TOKEN || '').trim();
+  if (!githubToken) {
+    operationLog(operation, 'GHCR: aucun token GitHub fourni, pull Docker anonyme.');
+    return;
+  }
+
+  let username = '';
+  try {
+    const response = await fetch('https://api.github.com/user', {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${githubToken}`,
+        'User-Agent': 'toquehub-updater',
+      },
+    });
+    if (response.ok) {
+      const user = await response.json();
+      username = String(user.login || '').trim();
+    } else {
+      operationLog(operation, `GHCR: impossible de valider l'utilisateur GitHub (${response.status}), tentative avec le propriétaire du registre.`);
+    }
+  } catch (error) {
+    operationLog(operation, `GHCR: validation utilisateur GitHub indisponible (${error.message}), tentative avec le propriétaire du registre.`);
+  }
+
+  if (!username) {
+    const env = readEnvFile();
+    username = String(env.TOQUEHUB_IMAGE_REGISTRY || process.env.TOQUEHUB_IMAGE_REGISTRY || 'ghcr.io/toquehub').split('/')[1] || 'toquehub';
+  }
+
+  operationLog(operation, `GHCR: authentification Docker pour ${username}.`);
+  await new Promise((resolve, reject) => {
+    const child = spawn('docker', ['login', 'ghcr.io', '-u', username, '--password-stdin'], {
+      cwd: WORKDIR,
+      env: process.env,
+      shell: false,
+    });
+    child.stdout.on('data', (chunk) => operationLog(operation, chunk.toString('utf8').trimEnd()));
+    child.stderr.on('data', (chunk) => {
+      const text = chunk.toString('utf8').trimEnd();
+      if (text) operationLog(operation, text.replace(githubToken, '***'));
+    });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`docker login ghcr.io exited with ${code}`));
+    });
+    child.stdin.end(githubToken);
+  });
+}
+
+async function ensureServiceRunning(operation, service) {
+  operationLog(operation, `Précontrôle service: ${service}`);
+  const running = await new Promise((resolve, reject) => {
+    const child = spawn('docker', composeArgs('ps', '--status', 'running', '--services', service), {
+      cwd: WORKDIR,
+      env: process.env,
+      shell: false,
+    });
+    let output = '';
+    child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); });
+    child.stderr.on('data', (chunk) => operationLog(operation, chunk.toString('utf8').trimEnd()));
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code !== 0) reject(new Error(`docker compose ps ${service} exited with ${code}`));
+      else resolve(output.split(/\r?\n/).map((line) => line.trim()).includes(service));
+    });
+  });
+  if (!running) {
+    throw new Error(`Service "${service}" non démarré. Démarrez la stack ToqueHub complète avant la mise à jour.`);
+  }
+}
+
+async function preflight(operation, targetImageTag, githubToken) {
+  operationLog(operation, 'Précontrôle avant mise à jour.');
+  if (!existsSync(COMPOSE_FILE)) throw new Error(`Compose introuvable: ${COMPOSE_FILE}`);
+  if (!existsSync(ENV_FILE)) throw new Error(`Fichier env introuvable: ${ENV_FILE}`);
+  await ensureServiceRunning(operation, 'postgres');
+  await ensureServiceRunning(operation, 'api');
+  await githubLoginFromToken(operation, githubToken);
+  operationLog(operation, `Vérification accès images Docker: ${targetImageTag}`);
+  await dockerCompose(operation, ['pull', 'api', 'web'], { env: { TOQUEHUB_IMAGE_TAG: targetImageTag } });
+  operationLog(operation, 'Précontrôle OK.');
+}
+
 function readEnvFile() {
   if (!existsSync(ENV_FILE)) return {};
   return Object.fromEntries(
@@ -165,31 +255,43 @@ async function healthCheck(operation) {
   throw new Error('Healthcheck failed after update.');
 }
 
-async function runUpdate(operation, targetTag) {
+async function runUpdate(operation, targetTag, githubToken) {
   const previousEnv = readEnvFile();
   const previousTag = previousEnv.TOQUEHUB_IMAGE_TAG || 'latest';
+  const targetImageTag = targetTag.replace(/^v/i, '');
+  let envTagChanged = false;
 
   try {
     operation.status = 'running';
     operationLog(operation, `Update ${previousTag} -> ${targetTag}`);
+    await preflight(operation, targetImageTag, githubToken);
     await backup(operation);
-    setEnvValue('TOQUEHUB_IMAGE_TAG', targetTag.replace(/^v/i, ''));
-    operationLog(operation, `TOQUEHUB_IMAGE_TAG=${targetTag.replace(/^v/i, '')}`);
-    await run(operation, 'docker', composeArgs('pull', 'api', 'web'));
-    await run(operation, 'docker', composeArgs('up', '-d', 'api', 'web'));
+    setEnvValue('TOQUEHUB_IMAGE_TAG', targetImageTag);
+    envTagChanged = true;
+    operationLog(operation, `TOQUEHUB_IMAGE_TAG=${targetImageTag}`);
+    await dockerCompose(operation, ['up', '-d', 'api', 'web']);
     await healthCheck(operation);
     operation.status = 'success';
     operation.finishedAt = new Date().toISOString();
     operationLog(operation, 'Mise à jour terminée.');
   } catch (error) {
-    operation.status = 'rollback';
     operation.error = error instanceof Error ? error.message : 'Update failed.';
     operationLog(operation, `Erreur: ${operation.error}`);
+    if (!envTagChanged) {
+      operation.status = 'error';
+      operation.finishedAt = new Date().toISOString();
+      operationLog(operation, 'Aucun changement appliqué, rollback inutile.');
+      return;
+    }
+    operation.status = 'rollback';
     operationLog(operation, `Rollback vers ${previousTag}`);
     try {
       setEnvValue('TOQUEHUB_IMAGE_TAG', previousTag);
-      await run(operation, 'docker', composeArgs('pull', 'api', 'web'));
-      await run(operation, 'docker', composeArgs('up', '-d', 'api', 'web'));
+      await githubLoginFromToken(operation, githubToken);
+      await dockerCompose(operation, ['pull', 'api', 'web']).catch((pullError) => {
+        operationLog(operation, `Pull rollback ignoré: ${pullError.message}`);
+      });
+      await dockerCompose(operation, ['up', '-d', 'api', 'web']);
       operationLog(operation, 'Rollback terminé.');
     } catch (rollbackError) {
       operationLog(operation, `Rollback échoué: ${rollbackError.message}`);
@@ -199,7 +301,7 @@ async function runUpdate(operation, targetTag) {
   }
 }
 
-function createOperation(targetTag) {
+function createOperation(targetTag, githubToken) {
   const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const operation = {
     id,
@@ -212,7 +314,7 @@ function createOperation(targetTag) {
   };
   operations.set(id, operation);
   lastOperationId = id;
-  setImmediate(() => void runUpdate(operation, targetTag));
+  setImmediate(() => void runUpdate(operation, targetTag, githubToken));
   return operation;
 }
 
@@ -239,7 +341,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readBody(req);
       const targetTag = String(body.targetTag || body.targetVersion || '').trim();
       if (!targetTag) return json(res, 400, { error: 'targetTag is required.' });
-      return json(res, 202, createOperation(targetTag));
+      return json(res, 202, createOperation(targetTag, body.githubToken));
     }
 
     const operationMatch = req.url.match(/^\/operations\/([^/?#]+)$/);

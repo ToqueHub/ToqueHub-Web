@@ -135,6 +135,7 @@ services:
       UPDATER_HEALTH_URL: http://web/api/system/status
       POSTGRES_DB: ${POSTGRES_DB:-toquehub}
       POSTGRES_USER: ${POSTGRES_USER:-toquehub}
+      TOQUEHUB_GITHUB_TOKEN: ${TOQUEHUB_GITHUB_TOKEN:-}
     volumes:
       - ./:/workspace
       - /var/run/docker.sock:/var/run/docker.sock
