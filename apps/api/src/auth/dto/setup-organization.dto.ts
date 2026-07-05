@@ -4,7 +4,6 @@ import { IsIn, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class
 const ESTABLISHMENT_TYPES = ['Restaurant', 'EHPAD', 'Collectivité', 'Hôtel', 'Traiteur', 'Cuisine centrale', 'Autre'];
 const TEAM_SIZES = ['1-5', '6-10', '11-20', '20+'];
 const HR_COUNTRY_CODES = ['FR', 'FI'];
-const REGULATORY_SECTORS = ['PRIVATE', 'PUBLIC'];
 
 export class SetupOrganizationDto {
   @ApiProperty({ example: 'Bistrot des Halles' })
@@ -35,17 +34,11 @@ export class SetupOrganizationDto {
   @IsIn(HR_COUNTRY_CODES)
   hrCountryCode?: string;
 
-  @ApiPropertyOptional({ example: 'FR', enum: HR_COUNTRY_CODES, description: 'Pays de réglementation utilisé par les réglages et les droits RH.' })
+  @ApiPropertyOptional({ example: 'FR', enum: HR_COUNTRY_CODES, description: 'Pays RH utilisé pour les congés payés ou annuels.' })
   @IsOptional()
   @IsString()
   @IsIn(HR_COUNTRY_CODES)
   regulatoryCountryCode?: string;
-
-  @ApiPropertyOptional({ example: 'PRIVATE', enum: REGULATORY_SECTORS, description: 'Secteur réglementaire utilisé pour filtrer les droits RH.' })
-  @IsOptional()
-  @IsString()
-  @IsIn(REGULATORY_SECTORS)
-  regulatorySector?: string;
 
   @ApiPropertyOptional({ example: '6-10', enum: TEAM_SIZES })
   @IsOptional()

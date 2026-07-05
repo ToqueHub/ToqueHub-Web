@@ -1,6 +1,5 @@
 import { PrismaClient } from '@prisma/client';
 import { hash } from 'bcryptjs';
-import { seedFrenchLegalRights } from '../src/legal-rights/legal-rights.seed';
 
 const prisma = new PrismaClient();
 
@@ -177,7 +176,6 @@ async function main() {
     },
   });
 
-  await seedFrenchLegalRights(prisma);
 }
 
 main()

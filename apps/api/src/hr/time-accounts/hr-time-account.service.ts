@@ -1,7 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { HrAbsenceStatus, HrAbsenceType, PlanningAssignmentStatus, HrTimeAccountDirection, HrTimeAccountSourceType, PlanningTimeUnit, Prisma } from '@prisma/client';
+import { HrAbsenceStatus, HrAbsenceType, HrTimeAccountDirection, HrTimeAccountSourceType, PlanningTimeUnit, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { calculatePlanningAssignmentMinutes } from '../../planning/planning-time';
 import { AdjustHrTimeAccountDto, HrTimeAccountQueryDto, RecomputeHrTimeAccountsDto } from './hr-time-account.dto';
 
 type Actor = { id: string; role: string };
@@ -27,41 +26,31 @@ type RecomputeWarning = { type: string; employeeId?: string; date?: string; code
 
 const WRITE_ROLES = ['SUPER_ADMIN', 'Administrateur', 'ADMIN', 'Manager', 'MANAGER', 'Chef', 'Responsable'];
 
-const ABSENCE_ACCOUNT_MAP: Record<string, Omit<CounterDefinition, 'quantity'>> = {
-  [HrAbsenceType.CONGE]: { code: 'paid_leave', accountType: 'leave', label: 'Congés annuels', unit: PlanningTimeUnit.DAYS, direction: HrTimeAccountDirection.DEBIT },
-  [HrAbsenceType.RTT]: { code: 'rtt', accountType: 'rtt', label: 'RTT', unit: PlanningTimeUnit.DAYS, direction: HrTimeAccountDirection.DEBIT },
-  [HrAbsenceType.MALADIE]: { code: 'sick_leave', accountType: 'absence', label: 'Maladie', unit: PlanningTimeUnit.DAYS, direction: HrTimeAccountDirection.CREDIT },
-  [HrAbsenceType.FORMATION]: { code: 'training', accountType: 'training', label: 'Formation', unit: PlanningTimeUnit.DAYS, direction: HrTimeAccountDirection.CREDIT },
-  [HrAbsenceType.EXCEPTIONNELLE]: { code: 'exceptional_leave', accountType: 'leave', label: 'Congés exceptionnels', unit: PlanningTimeUnit.DAYS, direction: HrTimeAccountDirection.DEBIT },
-  [HrAbsenceType.REPOS]: { code: 'rest', accountType: 'rest', label: 'Repos', unit: PlanningTimeUnit.DAYS, direction: HrTimeAccountDirection.CREDIT },
-  [HrAbsenceType.ACCIDENT]: { code: 'work_accident', accountType: 'absence', label: 'Accident', unit: PlanningTimeUnit.DAYS, direction: HrTimeAccountDirection.CREDIT },
-  [HrAbsenceType.AUTRE]: { code: 'other_absence', accountType: 'absence', label: 'Absence autre', unit: PlanningTimeUnit.DAYS, direction: HrTimeAccountDirection.CREDIT },
-};
-
-const LEGACY_STATUS_ALIASES: Record<string, string> = {
-  vacation: 'paid_leave',
-  leave: 'paid_leave',
-  sick: 'sick_leave',
-  recovery: 'recovery',
-  vv: 'green_hours',
-};
-
-const GREEN_HOUR_CODES = new Set(['green_hours', 'heure_verte', 'heures_vertes']);
+const SIMPLE_LEAVE_CODES = ['paid_leave', 'annual_leave'] as const;
+const SIMPLE_LEAVE_ACCOUNT_TYPES = ['paid_leave', 'annual_leave', 'leave'] as const;
 
 @Injectable()
 export class HrTimeAccountService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // HrTimeAccount is a balance ledger fed by assignments, absences, attendance or manual adjustments.
-  // It must never be treated as a legal source; legal origin lives on LegalRightRuleVersion/configuration metadata.
+  // HrTimeAccount is now limited to simple paid or annual leave balances.
   private assertWrite(actor: Actor) {
     if (!WRITE_ROLES.includes(actor.role)) throw new ForbiddenException('RH write access is restricted to managers and administrators');
   }
 
   async list(organizationId: string, q: HrTimeAccountQueryDto = {}) {
     const periodYear = q.periodYear ?? q.year ?? new Date().getFullYear();
+    const accountWhere = this.simpleLeaveAccountWhere(q);
+    if (!accountWhere) {
+      return {
+        period: this.yearPeriod(periodYear),
+        employees: [],
+        accountCount: 0,
+        alerts: [],
+      };
+    }
     const accounts = await this.prisma.hrTimeAccount.findMany({
-      where: { organizationId, employeeId: q.employeeId, periodYear, accountType: q.accountType, code: q.code },
+      where: { organizationId, employeeId: q.employeeId, periodYear, ...accountWhere },
       include: { employee: { include: { department: true, position: true } } },
       orderBy: [{ employee: { lastName: 'asc' } }, { code: 'asc' }],
       take: Math.min(q.pageSize ?? 200, 500),
@@ -77,8 +66,22 @@ export class HrTimeAccountService {
   async employee(organizationId: string, employeeId: string, q: HrTimeAccountQueryDto = {}) {
     await this.ensureEmployee(organizationId, employeeId);
     const periodYear = q.periodYear ?? q.year ?? new Date().getFullYear();
+    const accountWhere = this.simpleLeaveAccountWhere(q);
+    if (!accountWhere) {
+      const period = this.yearPeriod(periodYear);
+      return {
+        employeeId,
+        employeeName: 'Collaborateur RH',
+        period,
+        accounts: [],
+        totals: this.emptyTotals(),
+        alerts: [],
+        periodYear,
+        recentTransactions: [],
+      };
+    }
     const accounts = await this.prisma.hrTimeAccount.findMany({
-      where: { organizationId, employeeId, periodYear, accountType: q.accountType, code: q.code },
+      where: { organizationId, employeeId, periodYear, ...accountWhere },
       include: { transactions: { where: { quantity: { not: 0 } }, orderBy: [{ date: 'asc' }, { createdAt: 'asc' }], take: 100 } },
       orderBy: { code: 'asc' },
     });
@@ -101,20 +104,13 @@ export class HrTimeAccountService {
     if (options.includeAttendance) warnings.push({ type: 'ATTENDANCE_COUNTER_SOURCE_PENDING', message: 'Émargement persistant préparé: aucune transaction compteur attendance générée dans cette passe.' });
     if (dto.employeeId) await this.ensureEmployee(organizationId, dto.employeeId);
     const scopedEmployeeIds = await this.employeeScope(organizationId, dto);
+    const leaveCounter = await this.leaveCounterDefinition(organizationId);
 
-    const [assignments, dayStatuses, absences, dictionary] = await Promise.all([
-      options.includeAssignments ? this.listAssignmentsForRecompute(organizationId, period, dto, scopedEmployeeIds) : Promise.resolve([]),
-      options.includeDayStatuses ? this.listDayStatusesForRecompute(organizationId, period, dto, scopedEmployeeIds) : Promise.resolve([]),
-      options.includeHrAbsences ? this.listAbsencesForRecompute(organizationId, period, dto, scopedEmployeeIds) : Promise.resolve([]),
-      options.includeDayStatuses ? this.prisma.planningCodeDictionary.findMany({ where: { organizationId }, take: 1000 }) : Promise.resolve([]),
-    ]);
-
-    const dictionaryMap = this.dictionaryMap(dictionary);
+    const absences = options.includeHrAbsences
+      ? await this.listAbsencesForRecompute(organizationId, period, dto, scopedEmployeeIds)
+      : [];
     const candidates: CounterCandidate[] = [];
     const candidateKeys = new Set<string>();
-    const absenceDayKeys = this.absenceDayKeys(absences, period);
-    const statusDayGroups = this.dayStatusGroups(dayStatuses);
-    const blockingStatusDayKeys = this.blockingDayStatusKeys(dayStatuses, dictionaryMap);
     const addCandidate = (candidate: CounterCandidate | null) => {
       if (!candidate) return;
       if (candidateKeys.has(candidate.idempotencyKey)) {
@@ -124,10 +120,10 @@ export class HrTimeAccountService {
       candidateKeys.add(candidate.idempotencyKey);
       candidates.push(candidate);
     };
-    let legacyDayStatusesProcessed = 0;
 
     for (const absence of absences) {
-      const mapped = ABSENCE_ACCOUNT_MAP[String(absence.type)] ?? ABSENCE_ACCOUNT_MAP[HrAbsenceType.AUTRE];
+      if (absence.type !== HrAbsenceType.CONGE) continue;
+      const mapped = leaveCounter;
       const quantity = this.absenceDays(absence.startDate, absence.endDate, period);
       if (quantity <= 0) continue;
       addCandidate({
@@ -141,70 +137,6 @@ export class HrTimeAccountService {
         comment: dto.note ?? null,
         metadata: { absenceType: absence.type, startDate: this.iso(absence.startDate), endDate: this.iso(absence.endDate), priority: 1 } as Prisma.InputJsonValue,
       });
-    }
-
-    for (const dayStatus of dayStatuses) {
-      addCandidate(this.dayStatusCandidate(dictionaryMap, {
-        employeeId: dayStatus.employeeId,
-        date: dayStatus.date,
-        statusCode: dayStatus.statusCode,
-        label: dayStatus.label,
-        sourceId: dayStatus.id,
-        idempotencyKey: `day_status:${dayStatus.dedupeKey ?? dayStatus.id}`,
-        metadata: { ...this.contentObject(dayStatus.metadata), priority: 2 },
-      }, warnings));
-    }
-
-    for (const assignment of assignments) {
-      const calculation = calculatePlanningAssignmentMinutes(assignment);
-      calculation.warnings.forEach(warning => warnings.push({ type: `ASSIGNMENT_${warning}`, employeeId: assignment.employeeId, date: this.iso(assignment.date), message: `Affectation ${assignment.id}` }));
-      const dayKey = this.employeeDateKey(assignment.employeeId, assignment.date);
-      const blockedByAbsence = absenceDayKeys.has(dayKey);
-      const blockedByStatus = blockingStatusDayKeys.has(dayKey);
-      if (calculation.plannedMinutes > 0 && !blockedByAbsence && !blockedByStatus) {
-        if (statusDayGroups.has(dayKey)) warnings.push({ type: 'PARTIAL_DAY_STATUS_WITH_ASSIGNMENT', employeeId: assignment.employeeId, date: this.iso(assignment.date), message: 'Un statut de jour non bloquant coexiste avec une affectation planifiée.' });
-        addCandidate({
-          employeeId: assignment.employeeId,
-          date: assignment.date,
-          quantity: calculation.plannedMinutes,
-          unit: PlanningTimeUnit.MINUTES,
-          direction: HrTimeAccountDirection.CREDIT,
-          sourceType: HrTimeAccountSourceType.ASSIGNMENT,
-          sourceId: assignment.id,
-          idempotencyKey: `assignment:${assignment.id}:planned_minutes`,
-          code: 'planned_time',
-          accountType: 'time',
-          label: 'Temps planifié',
-          comment: dto.note ?? null,
-          metadata: { startTime: assignment.startTime, endTime: assignment.endTime, breakMinutes: calculation.breakMinutes, grossMinutes: calculation.grossMinutes, crossesMidnight: calculation.crossesMidnight, priority: 4 } as Prisma.InputJsonValue,
-        });
-      } else if (calculation.plannedMinutes > 0 && blockedByAbsence) {
-        warnings.push({ type: 'ASSIGNMENT_SUPPRESSED_BY_HR_ABSENCE', employeeId: assignment.employeeId, date: this.iso(assignment.date), message: `Affectation ${assignment.id}` });
-      } else if (calculation.plannedMinutes > 0 && blockedByStatus) {
-        warnings.push({ type: 'ASSIGNMENT_SUPPRESSED_BY_DAY_STATUS', employeeId: assignment.employeeId, date: this.iso(assignment.date), message: `Affectation ${assignment.id}` });
-      }
-      const legacyStatus = this.assignmentBusinessStatus(assignment.comment);
-      if (!options.includeDayStatuses || !legacyStatus || legacyStatus === 'work') continue;
-      if (blockedByAbsence) {
-        warnings.push({ type: 'LEGACY_STATUS_IGNORED_BY_HR_ABSENCE', employeeId: assignment.employeeId, date: this.iso(assignment.date), code: legacyStatus });
-        continue;
-      }
-      if (statusDayGroups.has(dayKey)) {
-        warnings.push({ type: 'LEGACY_STATUS_IGNORED_BY_DAY_STATUS', employeeId: assignment.employeeId, date: this.iso(assignment.date), code: legacyStatus });
-        continue;
-      }
-      {
-        legacyDayStatusesProcessed += 1;
-        addCandidate(this.dayStatusCandidate(dictionaryMap, {
-          employeeId: assignment.employeeId,
-          date: assignment.date,
-          statusCode: legacyStatus,
-          label: legacyStatus,
-          sourceId: assignment.id,
-          idempotencyKey: `assignment:${assignment.id}:business_status:${legacyStatus}`,
-          metadata: { source: 'planning_assignments.comment', priority: 3 },
-        }, warnings));
-      }
     }
 
     const existing = await this.existingAutomaticTransactions(organizationId, period, options, dto, scopedEmployeeIds);
@@ -251,7 +183,7 @@ export class HrTimeAccountService {
       const touchedIds = await this.rebuildBalances(organizationId, period.year, dto.employeeId, [...employeeIdsProcessed]);
       accountsTouched = touchedIds.length || accountsTouched;
       const negativeAccounts = await this.prisma.hrTimeAccount.findMany({
-        where: { organizationId, periodYear: period.year, employeeId: dto.employeeId ?? (employeeIdsProcessed.size ? { in: [...employeeIdsProcessed] } : undefined), closingBalance: { lt: 0 } },
+        where: { organizationId, periodYear: period.year, employeeId: dto.employeeId ?? (employeeIdsProcessed.size ? { in: [...employeeIdsProcessed] } : undefined), code: { in: [...SIMPLE_LEAVE_CODES] }, closingBalance: { lt: 0 } },
         select: { employeeId: true, accountType: true, closingBalance: true },
         take: 100,
       });
@@ -271,9 +203,9 @@ export class HrTimeAccountService {
       dryRun: options.dryRun,
       idempotent: true,
       sources: {
-        assignmentsProcessed: assignments.length,
-        dayStatusesProcessed: dayStatuses.length,
-        legacyDayStatusesProcessed,
+        assignmentsProcessed: 0,
+        dayStatusesProcessed: 0,
+        legacyDayStatusesProcessed: 0,
         hrAbsencesProcessed: absences.length,
         attendanceProcessed: 0,
       },
@@ -283,13 +215,14 @@ export class HrTimeAccountService {
   async adjust(organizationId: string, actor: Actor, dto: AdjustHrTimeAccountDto) {
     this.assertWrite(actor);
     await this.ensureEmployee(organizationId, dto.employeeId);
-    const metadata = this.contentObject(dto.metadata);
-    if (this.isGreenHourCode(dto.code) || this.isGreenHourCode(dto.accountType ?? '')) {
-      this.assertGreenHourOrigin(metadata, dto.comment);
+    const code = this.normalizeCode(dto.code);
+    const accountType = this.normalizeCode(dto.accountType ?? dto.code);
+    if (!this.isSimpleLeaveCode(code) || !this.isSimpleLeaveAccountType(accountType)) {
+      throw new BadRequestException('Seuls les congÃ©s payÃ©s et congÃ©s annuels peuvent Ãªtre ajustÃ©s.');
     }
     const account = await this.ensureAccount(organizationId, dto.employeeId, dto.periodYear, {
-      code: this.normalizeCode(dto.code),
-      accountType: this.normalizeCode(dto.accountType ?? dto.code),
+      code,
+      accountType,
       label: dto.label,
       unit: dto.unit,
     });
@@ -317,11 +250,28 @@ export class HrTimeAccountService {
   async contextSummary(organizationId: string, q: HrTimeAccountQueryDto = {}) {
     const periodYear = q.periodYear ?? q.year ?? new Date().getFullYear();
     const period = this.yearPeriod(periodYear);
+    const accountWhere = this.simpleLeaveAccountWhere(q);
+    if (!accountWhere) {
+      return {
+        enabled: false,
+        periodYear,
+        period,
+        accountCount: 0,
+        transactionCount: 0,
+        neutralizedTransactionCount: 0,
+        negativeBalanceCount: 0,
+        totals: [],
+        employeePreview: [],
+        hiddenEmployeeCount: 0,
+        alerts: [],
+        storage: 'hr_time_accounts/hr_time_account_transactions',
+      };
+    }
     const [accounts, negatives, txCount, neutralizedTxCount] = await Promise.all([
-      this.prisma.hrTimeAccount.findMany({ where: { organizationId, employeeId: q.employeeId, periodYear }, include: { employee: { select: { id: true, firstName: true, lastName: true } } }, take: 1000 }),
-      this.prisma.hrTimeAccount.count({ where: { organizationId, employeeId: q.employeeId, periodYear, closingBalance: { lt: 0 } } }),
-      this.prisma.hrTimeAccountTransaction.count({ where: { organizationId, employeeId: q.employeeId, date: { gte: new Date(periodYear, 0, 1), lte: new Date(periodYear, 11, 31, 23, 59, 59, 999) }, quantity: { not: 0 } } }),
-      this.prisma.hrTimeAccountTransaction.count({ where: { organizationId, employeeId: q.employeeId, date: { gte: new Date(periodYear, 0, 1), lte: new Date(periodYear, 11, 31, 23, 59, 59, 999) }, quantity: 0, sourceType: { not: HrTimeAccountSourceType.MANUAL_ADJUSTMENT } } }),
+      this.prisma.hrTimeAccount.findMany({ where: { organizationId, employeeId: q.employeeId, periodYear, ...accountWhere }, include: { employee: { select: { id: true, firstName: true, lastName: true } } }, take: 1000 }),
+      this.prisma.hrTimeAccount.count({ where: { organizationId, employeeId: q.employeeId, periodYear, ...accountWhere, closingBalance: { lt: 0 } } }),
+      this.prisma.hrTimeAccountTransaction.count({ where: { organizationId, employeeId: q.employeeId, date: { gte: new Date(periodYear, 0, 1), lte: new Date(periodYear, 11, 31, 23, 59, 59, 999) }, account: { code: { in: [...SIMPLE_LEAVE_CODES] } }, quantity: { not: 0 } } }),
+      this.prisma.hrTimeAccountTransaction.count({ where: { organizationId, employeeId: q.employeeId, date: { gte: new Date(periodYear, 0, 1), lte: new Date(periodYear, 11, 31, 23, 59, 59, 999) }, account: { code: { in: [...SIMPLE_LEAVE_CODES] } }, quantity: 0, sourceType: { not: HrTimeAccountSourceType.MANUAL_ADJUSTMENT } } }),
     ]);
     const byCode = new Map<string, { code: string; accountType: string; label: string; unit: PlanningTimeUnit; total: number }>();
     for (const account of accounts) {
@@ -349,38 +299,11 @@ export class HrTimeAccountService {
   private recomputeOptions(dto: RecomputeHrTimeAccountsDto): RecomputeOptions {
     return {
       dryRun: !!dto.dryRun,
-      includeAssignments: dto.includeAssignments !== false,
-      includeDayStatuses: dto.includeDayStatuses !== false,
+      includeAssignments: false,
+      includeDayStatuses: false,
       includeHrAbsences: dto.includeHrAbsences !== false,
-      includeAttendance: !!dto.includeAttendance,
+      includeAttendance: false,
     };
-  }
-
-  private async listAssignmentsForRecompute(organizationId: string, period: Period, dto: RecomputeHrTimeAccountsDto, scopedEmployeeIds: string[] | null) {
-    return this.prisma.planningAssignment.findMany({
-      where: {
-        organizationId,
-        employeeId: dto.employeeId ?? (scopedEmployeeIds ? { in: scopedEmployeeIds } : undefined),
-        siteId: dto.siteId,
-        date: { gte: period.start, lte: period.end },
-        status: { not: PlanningAssignmentStatus.CANCELLED },
-      },
-      select: { id: true, employeeId: true, siteId: true, date: true, startTime: true, endTime: true, breakMinutes: true, status: true, comment: true },
-      take: 10000,
-    });
-  }
-
-  private async listDayStatusesForRecompute(organizationId: string, period: Period, dto: RecomputeHrTimeAccountsDto, scopedEmployeeIds: string[] | null) {
-    return this.prisma.planningDayStatus.findMany({
-      where: {
-        organizationId,
-        employeeId: dto.employeeId ?? (scopedEmployeeIds ? { in: scopedEmployeeIds } : undefined),
-        date: { gte: period.start, lte: period.end },
-        affectsCounters: true,
-      },
-      select: { id: true, employeeId: true, date: true, statusCode: true, label: true, sourceType: true, sourceId: true, dedupeKey: true, metadata: true },
-      take: 5000,
-    });
   }
 
   private async listAbsencesForRecompute(organizationId: string, period: Period, dto: RecomputeHrTimeAccountsDto, scopedEmployeeIds: string[] | null) {
@@ -388,6 +311,7 @@ export class HrTimeAccountService {
       where: {
         organizationId,
         employeeId: dto.employeeId ?? (scopedEmployeeIds ? { in: scopedEmployeeIds } : undefined),
+        type: HrAbsenceType.CONGE,
         status: HrAbsenceStatus.APPROVED,
         startDate: { lte: period.end },
         endDate: { gte: period.start },
@@ -409,100 +333,9 @@ export class HrTimeAccountService {
     return [...new Set([...siteEmployees.map(employee => employee.id), ...assignedEmployees.map(assignment => assignment.employeeId)])];
   }
 
-  private dictionaryMap(dictionary: Array<{ normalizedCode: string; defaultStatusCode: string | null; label: string; category?: string | null; accountType: string | null; unit: PlanningTimeUnit | null; defaultQuantity: number | null; affectsLeaveBalance: boolean }>) {
-    const map = new Map<string, typeof dictionary[number]>();
-    for (const entry of dictionary) {
-      map.set(entry.normalizedCode, entry);
-      if (entry.defaultStatusCode) map.set(entry.defaultStatusCode, entry);
-    }
-    return map;
-  }
-
-  private absenceDayKeys(absences: Array<{ employeeId: string; startDate: Date; endDate: Date }>, period: Period) {
-    const keys = new Set<string>();
-    for (const absence of absences) {
-      let current = this.day(absence.startDate < period.start ? period.start : absence.startDate);
-      const end = this.day(absence.endDate > period.end ? period.end : absence.endDate);
-      while (current <= end) {
-        keys.add(this.employeeDateKey(absence.employeeId, current));
-        current = this.addDays(current, 1);
-      }
-    }
-    return keys;
-  }
-
-  private dayStatusGroups(statuses: Array<{ employeeId: string; date: Date }>) {
-    const groups = new Map<string, number>();
-    statuses.forEach(status => {
-      const key = this.employeeDateKey(status.employeeId, status.date);
-      groups.set(key, (groups.get(key) ?? 0) + 1);
-    });
-    return groups;
-  }
-
-  private blockingDayStatusKeys(statuses: Array<{ employeeId: string; date: Date; statusCode: string; metadata?: unknown }>, dictionary: Map<string, any>) {
-    const keys = new Set<string>();
-    statuses.forEach(status => {
-      if (this.dayStatusBlocksPlannedTime(status, dictionary)) keys.add(this.employeeDateKey(status.employeeId, status.date));
-    });
-    return keys;
-  }
-
-  private dayStatusBlocksPlannedTime(status: { statusCode: string; metadata?: unknown }, dictionary: Map<string, any>) {
-    const metadata = this.contentObject(status.metadata);
-    if (metadata.blocksPlannedTime === false || metadata.partialDay === true) return false;
-    if (metadata.blocksPlannedTime === true || metadata.fullDay === true) return true;
-    const statusCode = this.normalizeCode(status.statusCode);
-    const mappedCode = LEGACY_STATUS_ALIASES[statusCode] ?? statusCode;
-    const dictionaryEntry = dictionary.get(mappedCode) ?? dictionary.get(statusCode);
-    const unit = this.validUnit(metadata.unit) ?? dictionaryEntry?.unit;
-    const accountType = this.normalizeCode(String(metadata.accountType ?? dictionaryEntry?.accountType ?? dictionaryEntry?.category ?? mappedCode));
-    const blockingCodes = new Set(['absence', 'exceptional_leave', 'leave', 'other_absence', 'paid_leave', 'rest', 'rtt', 'sick_leave', 'strike', 'vacation', 'work_accident']);
-    return unit === PlanningTimeUnit.DAYS && (blockingCodes.has(accountType) || blockingCodes.has(mappedCode));
-  }
-
-  private dayStatusCandidate(dictionary: Map<string, any>, input: { employeeId: string; date: Date; statusCode: string; label: string; sourceId: string; idempotencyKey: string; metadata?: unknown }, warnings: RecomputeWarning[]): CounterCandidate | null {
-    const metadata = this.contentObject(input.metadata);
-    const statusCode = this.normalizeCode(input.statusCode);
-    const mappedCode = LEGACY_STATUS_ALIASES[statusCode] ?? statusCode;
-    const dictionaryEntry = dictionary.get(mappedCode) ?? dictionary.get(statusCode);
-    const accountType = this.normalizeCode(String(metadata.accountType ?? dictionaryEntry?.accountType ?? dictionaryEntry?.defaultStatusCode ?? mappedCode));
-    const unit = this.validUnit(metadata.unit) ?? dictionaryEntry?.unit;
-    const quantity = Number(metadata.quantity ?? metadata.defaultQuantity ?? dictionaryEntry?.defaultQuantity ?? 0);
-    if (!dictionaryEntry && (!metadata.accountType || !unit || !quantity)) {
-      warnings.push({ type: 'UNKNOWN_CODE', employeeId: input.employeeId, date: this.iso(input.date), code: statusCode });
-      return null;
-    }
-    if (!unit || !Number.isFinite(quantity) || quantity <= 0) {
-      warnings.push({ type: 'MISSING_QUANTITY', employeeId: input.employeeId, date: this.iso(input.date), code: statusCode });
-      return null;
-    }
-    if (this.isGreenHourCode(accountType) && !this.hasGreenHourOrigin(metadata)) {
-      warnings.push({ type: 'GREEN_HOUR_ORIGIN_REQUIRED', employeeId: input.employeeId, date: this.iso(input.date), code: statusCode, message: 'HEURE_VERTE doit être rattachée à une récupération, RTT, repos compensateur, jour férié compensé, annualisation ou accord local.' });
-      return null;
-    }
-    return {
-      employeeId: input.employeeId,
-      date: input.date,
-      quantity: Math.round(quantity),
-      unit,
-      direction: dictionaryEntry?.affectsLeaveBalance === true || metadata.direction === HrTimeAccountDirection.DEBIT ? HrTimeAccountDirection.DEBIT : HrTimeAccountDirection.CREDIT,
-      sourceType: HrTimeAccountSourceType.DAY_STATUS,
-      sourceId: input.sourceId,
-      idempotencyKey: input.idempotencyKey,
-      code: accountType,
-      accountType,
-      label: dictionaryEntry?.label ?? input.label,
-      metadata: { ...metadata, statusCode, dictionaryCode: dictionaryEntry?.normalizedCode ?? null } as Prisma.InputJsonValue,
-    };
-  }
-
   private async existingAutomaticTransactions(organizationId: string, period: Period, options: RecomputeOptions, dto: RecomputeHrTimeAccountsDto, scopedEmployeeIds: string[] | null) {
     const sourceTypes = [
-      ...(options.includeAssignments ? [HrTimeAccountSourceType.ASSIGNMENT] : []),
-      ...(options.includeDayStatuses ? [HrTimeAccountSourceType.DAY_STATUS] : []),
       ...(options.includeHrAbsences ? [HrTimeAccountSourceType.HR_ABSENCE] : []),
-      ...(options.includeAttendance ? [HrTimeAccountSourceType.ATTENDANCE] : []),
     ];
     if (!sourceTypes.length) return [];
     return this.prisma.hrTimeAccountTransaction.findMany({
@@ -512,6 +345,7 @@ export class HrTimeAccountService {
         date: { gte: period.start, lte: period.end },
         sourceType: { in: sourceTypes },
         idempotencyKey: { not: null },
+        account: { code: { in: [...SIMPLE_LEAVE_CODES] } },
       },
       include: { account: { select: { code: true, periodYear: true } } },
       take: 20000,
@@ -525,6 +359,7 @@ export class HrTimeAccountService {
         employeeId: dto.employeeId ?? (scopedEmployeeIds ? { in: scopedEmployeeIds } : undefined),
         date: { gte: period.start, lte: period.end },
         sourceType: HrTimeAccountSourceType.MANUAL_ADJUSTMENT,
+        account: { code: { in: [...SIMPLE_LEAVE_CODES] } },
       },
     });
   }
@@ -562,9 +397,6 @@ export class HrTimeAccountService {
   }
 
   private async upsertTransaction(input: CounterCandidate & { organizationId: string; accountId: string; createdById: string }) {
-    if (this.isGreenHourCode(input.code) || this.isGreenHourCode(input.accountType)) {
-      this.assertGreenHourOrigin(this.contentObject(input.metadata), input.comment);
-    }
     return this.prisma.hrTimeAccountTransaction.upsert({
       where: { organizationId_idempotencyKey: { organizationId: input.organizationId, idempotencyKey: input.idempotencyKey } },
       create: {
@@ -599,7 +431,7 @@ export class HrTimeAccountService {
   }
 
   private async rebuildBalances(organizationId: string, periodYear: number, employeeId?: string, employeeIds?: string[]) {
-    const accounts = await this.prisma.hrTimeAccount.findMany({ where: { organizationId, periodYear, employeeId: employeeId ?? (employeeIds?.length ? { in: employeeIds } : undefined) }, include: { transactions: true } });
+    const accounts = await this.prisma.hrTimeAccount.findMany({ where: { organizationId, periodYear, employeeId: employeeId ?? (employeeIds?.length ? { in: employeeIds } : undefined), code: { in: [...SIMPLE_LEAVE_CODES] } }, include: { transactions: true } });
     for (const account of accounts) {
       let accrued = 0;
       let consumed = 0;
@@ -639,12 +471,7 @@ export class HrTimeAccountService {
         const code = this.normalizeCode(String(account.code));
         const accountType = this.normalizeCode(String(account.accountType));
         const balance = Number(account.closingBalance ?? 0) || 0;
-        if (code === 'planned_time' || accountType === 'time') totals.plannedMinutes += balance;
-        if (code === 'validated_time') totals.validatedMinutes += balance;
-        if (account.unit === PlanningTimeUnit.DAYS && ['absence', 'sick_leave', 'work_accident', 'other_absence'].includes(accountType)) totals.absenceDays += Math.abs(balance);
-        if (account.unit === PlanningTimeUnit.DAYS && ['leave', 'paid_leave', 'rtt'].includes(accountType)) totals.leaveDays += balance;
-        if (code === 'recovery' || accountType === 'recovery') totals.recoveryMinutes += balance;
-        if (code === 'overtime' || accountType === 'overtime') totals.overtimeMinutes += balance;
+        if (account.unit === PlanningTimeUnit.DAYS && this.isSimpleLeaveCode(code) && this.isSimpleLeaveAccountType(accountType)) totals.leaveDays += balance;
       }
       const employee = items[0]?.employee;
       return {
@@ -673,7 +500,7 @@ export class HrTimeAccountService {
   }
 
   private emptyTotals() {
-    return { plannedMinutes: 0, validatedMinutes: 0, absenceDays: 0, leaveDays: 0, recoveryMinutes: 0, overtimeMinutes: 0 };
+    return { leaveDays: 0 };
   }
 
   private counterAlerts(accounts: Array<any>) {
@@ -694,6 +521,37 @@ export class HrTimeAccountService {
   private async ensureEmployee(organizationId: string, employeeId: string) {
     const employee = await this.prisma.hrEmployee.findFirst({ where: { id: employeeId, organizationId, isArchived: false }, select: { id: true } });
     if (!employee) throw new NotFoundException('Collaborateur RH introuvable');
+  }
+
+  private simpleLeaveAccountWhere(q: HrTimeAccountQueryDto = {}) {
+    const code = q.code ? this.normalizeCode(q.code) : undefined;
+    if (code && !this.isSimpleLeaveCode(code)) return null;
+    const accountType = q.accountType ? this.normalizeCode(q.accountType) : undefined;
+    if (accountType && !this.isSimpleLeaveAccountType(accountType)) return null;
+    return {
+      code: code ?? { in: [...SIMPLE_LEAVE_CODES] },
+      accountType,
+    };
+  }
+
+  private isSimpleLeaveCode(code: string) {
+    return (SIMPLE_LEAVE_CODES as readonly string[]).includes(this.normalizeCode(code));
+  }
+
+  private isSimpleLeaveAccountType(accountType: string) {
+    return (SIMPLE_LEAVE_ACCOUNT_TYPES as readonly string[]).includes(this.normalizeCode(accountType));
+  }
+
+  private async leaveCounterDefinition(organizationId: string): Promise<Omit<CounterDefinition, 'quantity'>> {
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { hrCountryCode: true, regulatoryCountryCode: true },
+    });
+    const countryCode = String(organization?.hrCountryCode ?? organization?.regulatoryCountryCode ?? 'FR').toUpperCase();
+    if (countryCode === 'FI') {
+      return { code: 'annual_leave', accountType: 'annual_leave', label: 'Conges annuels', unit: PlanningTimeUnit.DAYS, direction: HrTimeAccountDirection.DEBIT };
+    }
+    return { code: 'paid_leave', accountType: 'paid_leave', label: 'Conges payes', unit: PlanningTimeUnit.DAYS, direction: HrTimeAccountDirection.DEBIT };
   }
 
   private absenceDays(startDate: Date, endDate: Date, period: Period) {
@@ -727,66 +585,16 @@ export class HrTimeAccountService {
     return x;
   }
 
-  private addDays(d: Date, days: number) {
-    const x = new Date(d);
-    x.setDate(x.getDate() + days);
-    return x;
-  }
-
   private iso(value: Date) {
     return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
-  }
-
-  private sameDay(a: Date, b: Date) {
-    return this.iso(a) === this.iso(b);
-  }
-
-  private employeeDateKey(employeeId: string, date: Date) {
-    return `${employeeId}:${this.iso(date)}`;
   }
 
   private accountKey(employeeId: string, periodYear: number, code: string) {
     return `${employeeId}:${periodYear}:${this.normalizeCode(code)}`;
   }
 
-  private assignmentBusinessStatus(comment?: string | null) {
-    if (!comment) return 'work';
-    try {
-      const parsed = JSON.parse(comment);
-      return this.normalizeCode(String((parsed?.planningAssignmentMeta ?? parsed ?? {}).businessStatus ?? 'work'));
-    } catch {
-      return 'work';
-    }
-  }
-
   private contentObject(value: unknown): Record<string, any> {
     return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : {};
-  }
-
-  private validUnit(value: unknown) {
-    return value === PlanningTimeUnit.MINUTES || value === PlanningTimeUnit.DAYS ? value : null;
-  }
-
-  private isGreenHourCode(value: string) {
-    return GREEN_HOUR_CODES.has(this.normalizeCode(String(value ?? '')));
-  }
-
-  private hasGreenHourOrigin(metadata: Record<string, any>, comment?: string | null) {
-    const reason = metadata.reason ?? metadata.reasonCode ?? comment;
-    const source = metadata.sourceRuleId ??
-      metadata.source_rule_id ??
-      metadata.sourceEventId ??
-      metadata.source_event_id ??
-      metadata.sourceLegalOrigin ??
-      metadata.originLegalCode ??
-      metadata.origin;
-    return !!reason && !!source;
-  }
-
-  private assertGreenHourOrigin(metadata: Record<string, any>, comment?: string | null) {
-    if (!this.hasGreenHourOrigin(metadata, comment)) {
-      throw new BadRequestException('HEURE_VERTE doit avoir une raison et une origine source_rule_id/source_event_id ou origine juridique structurée.');
-    }
   }
 
   private normalizeCode(value: string) {

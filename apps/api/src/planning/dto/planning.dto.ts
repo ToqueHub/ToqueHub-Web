@@ -1,6 +1,6 @@
 import { Type, Transform } from 'class-transformer';
-import { IsArray, IsBoolean, IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
-import { HrAbsenceStatus, HrAbsenceType, PlanningAssignmentOrigin, PlanningAssignmentStatus, PlanningAttendanceStatus, HrTimeAccountDirection, PlanningDayStatusSourceType, HrEntitlementAccrualFrequency, PlanningExportFormat, PlanningExportScope, PlanningNeedPriority, PlanningReplacementStatus, PlanningTimeUnit, PlanningVisibilityLevel } from '@prisma/client';
+import { IsArray, IsBoolean, IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { HrAbsenceStatus, HrAbsenceType, PlanningAssignmentOrigin, PlanningAssignmentStatus, PlanningAttendanceStatus, HrTimeAccountDirection, PlanningDayStatusSourceType, PlanningExportFormat, PlanningExportScope, PlanningNeedPriority, PlanningReplacementStatus, PlanningTimeUnit, PlanningVisibilityLevel } from '@prisma/client';
 
 export class PlanningQueryDto {
   @IsOptional() @IsString() search?: string;
@@ -109,86 +109,6 @@ export class ValidatePlanningAttendanceDto {
   @IsOptional() metadata?: unknown;
 }
 
-export class UpsertHrEntitlementRuleDto {
-  @IsString() @MaxLength(80) code!: string;
-  @IsString() @MaxLength(160) label!: string;
-  @IsOptional() @IsString() @MaxLength(2000) description?: string;
-  @IsString() @MaxLength(80) accountType!: string;
-  @IsEnum(PlanningTimeUnit) unit!: PlanningTimeUnit;
-  @IsOptional() @IsEnum(HrEntitlementAccrualFrequency) accrualFrequency?: HrEntitlementAccrualFrequency;
-  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) accrualQuantity?: number;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() startsAfterTrialPeriod?: boolean;
-  @IsOptional() @Type(() => Number) @IsInt() @Min(0) minimumSeniorityMonths?: number;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() prorateByContractTime?: boolean;
-  @IsOptional() @Type(() => Number) @IsInt() @Min(0) maxBalance?: number;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() carryOverEnabled?: boolean;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() enabled?: boolean;
-  @IsOptional() metadata?: unknown;
-}
-
-export class UpsertHrEmployeeEntitlementDto {
-  @IsOptional() @IsString() @MaxLength(80) code?: string;
-  @IsOptional() @IsString() @MaxLength(160) label?: string;
-  @IsOptional() @IsString() @MaxLength(80) accountType?: string;
-  @IsOptional() @IsEnum(PlanningTimeUnit) unit?: PlanningTimeUnit;
-  @IsOptional() @IsUUID() entitlementRuleId?: string;
-  @IsOptional() @IsUUID() policyProfileId?: string;
-  @IsOptional() @Type(() => Number) @IsInt() openingBalance?: number;
-  @IsOptional() @IsString() openingBalanceDate?: string;
-  @IsOptional() @IsString() effectiveFrom?: string;
-  @IsOptional() @IsString() effectiveTo?: string;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() enabled?: boolean;
-  @IsOptional() metadata?: unknown;
-}
-
-export class AdjustHrEmployeeEntitlementDto {
-  @IsString() @MaxLength(80) code!: string;
-  @Type(() => Number) @IsInt() @Min(1) quantity!: number;
-  @IsEnum(HrTimeAccountDirection) direction!: HrTimeAccountDirection;
-  @IsOptional() @IsString() date?: string;
-  @IsOptional() @IsString() @MaxLength(1000) comment?: string;
-}
-
-export class AdjustHrEmployeeEntitlementByIdDto {
-  @Type(() => Number) @IsInt() @Min(1) quantity!: number;
-  @IsEnum(HrTimeAccountDirection) direction!: HrTimeAccountDirection;
-  @IsOptional() @IsString() date?: string;
-  @IsOptional() @IsString() @MaxLength(1000) comment?: string;
-}
-
-export const PLANNING_HR_COUNTRY_CODES = ['FR', 'FI'] as const;
-export const PLANNING_ENTITLEMENT_TARGET_MODES = ['NONE', 'ALL_ACTIVE', 'DEPARTMENT', 'POSITION', 'MANUAL'] as const;
-export const PLANNING_EMPLOYMENT_FRAMEWORKS = ['PRIVATE', 'PUBLIC', 'MIXED', 'LOCAL', 'CUSTOM'] as const;
-
-export class PlanningEntitlementCatalogQueryDto {
-  @IsOptional() @IsIn(PLANNING_HR_COUNTRY_CODES) countryCode?: 'FR' | 'FI';
-  @IsOptional() @IsIn(PLANNING_EMPLOYMENT_FRAMEWORKS) employmentFramework?: 'PRIVATE' | 'PUBLIC' | 'MIXED' | 'LOCAL' | 'CUSTOM';
-  @IsOptional() @IsString() @MaxLength(80) organizationType?: string;
-  @IsOptional() @IsString() @MaxLength(120) search?: string;
-  @IsOptional() @IsString() @MaxLength(80) category?: string;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() advanced?: boolean;
-}
-
-export class PreparePlanningEntitlementCatalogDto {
-  @IsIn(PLANNING_HR_COUNTRY_CODES) countryCode!: 'FR' | 'FI';
-  @IsOptional() @IsIn(PLANNING_EMPLOYMENT_FRAMEWORKS) employmentFramework?: 'PRIVATE' | 'PUBLIC' | 'MIXED' | 'LOCAL' | 'CUSTOM';
-  @IsOptional() @IsString() @MaxLength(80) organizationType?: string;
-}
-
-export class ActivatePlanningEntitlementCatalogDto {
-  @IsOptional() @IsIn(PLANNING_ENTITLEMENT_TARGET_MODES) targetMode?: 'NONE' | 'ALL_ACTIVE' | 'DEPARTMENT' | 'POSITION' | 'MANUAL';
-  @IsOptional() @IsUUID() departmentId?: string;
-  @IsOptional() @IsUUID() positionId?: string;
-  @IsOptional() @IsArray() @IsUUID(undefined, { each: true }) employeeIds?: string[];
-  @IsOptional() @Type(() => Number) @IsInt() openingBalance?: number;
-  @IsOptional() @IsString() openingBalanceDate?: string;
-  @IsOptional() @IsString() effectiveFrom?: string;
-}
-
-export class ActivatePlanningEntitlementCatalogSelectionDto extends ActivatePlanningEntitlementCatalogDto {
-  @IsArray() @IsUUID(undefined, { each: true }) catalogItemIds!: string[];
-}
-
 export class UpsertPlanningCodeDictionaryDto {
   @IsString() @MaxLength(80) rawCode!: string;
   @IsOptional() @IsString() @MaxLength(80) normalizedCode?: string;
@@ -220,40 +140,9 @@ export class UpsertPlanningPolicyProfileDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) minDailyRestMinutes?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) minWeeklyRestMinutes?: number;
   @IsOptional() @IsEnum(PlanningTimeUnit) leaveUnit?: PlanningTimeUnit;
-  @IsOptional() @IsString() @MaxLength(80) overtimeMode?: string;
-  @IsOptional() @IsString() @MaxLength(80) rttMode?: string;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() annualizationEnabled?: boolean;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() countersEnabled?: boolean;
   @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() attendanceEnabled?: boolean;
   @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() isDefault?: boolean;
   @IsOptional() customRules?: unknown;
-}
-
-export class UpsertWorkTimeRegulationDto {
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() nightWorkEnabled?: boolean;
-  @IsOptional() @IsString() @MaxLength(5) nightWorkStartTime?: string;
-  @IsOptional() @IsString() @MaxLength(5) nightWorkEndTime?: string;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() publicHolidayWorkEnabled?: boolean;
-  @IsOptional() @IsArray() @IsString({ each: true }) publicHolidayDates?: string[];
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() weekendWorkEnabled?: boolean;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() saturdayWorkAllowed?: boolean;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() sundayWorkAllowed?: boolean;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() compensationsEnabled?: boolean;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() teleworkEnabled?: boolean;
-  @IsOptional() @IsString() @MaxLength(5) teleworkStartTime?: string;
-  @IsOptional() @IsString() @MaxLength(5) teleworkEndTime?: string;
-  @IsOptional() @Type(() => Number) @IsInt() @Min(0) teleworkMinBreakMinutes?: number;
-  @IsOptional() @Type(() => Number) @IsInt() @Min(0) teleworkDailyQuotaMinutes?: number;
-  @IsOptional() @Type(() => Number) @IsInt() @Min(0) teleworkMaxDaysPerWeek?: number;
-  @IsOptional() @Type(() => Number) @IsInt() @Min(0) teleworkMaxDaysPerYearFullTime?: number;
-  @IsOptional() @Type(() => Number) @IsInt() @Min(0) teleworkMaxDaysPerYearPartTime?: number;
-  @IsOptional() @IsString() @MaxLength(120) internalRulesSourceDocumentId?: string;
-  @IsOptional() @IsString() @MaxLength(240) sourceDocumentName?: string;
-  @IsOptional() sourceDocumentMetadata?: unknown;
-  @IsOptional() extractedRules?: unknown;
-  @IsOptional() rulesToConfirm?: unknown;
-  @IsOptional() positionMapping?: unknown;
-  @IsOptional() @IsString() @MaxLength(80) validationStatus?: string;
 }
 
 export class UpsertPlanningAssignmentDto {

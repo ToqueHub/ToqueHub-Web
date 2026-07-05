@@ -29,9 +29,8 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { api } from '../api/client';
-import type { CoreUser, HrCollaborator, HrCollaboratorPayload, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, HrReferencePayload, HrSummary, LegalRightSearchItem, PlanningEntitlementCatalogItem, RegulatoryCountryCode, RegulatorySector, Site } from '../types';
+import type { CoreUser, HrCollaborator, HrCollaboratorPayload, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, HrReferencePayload, HrSummary, Site } from '../types';
 import { HR_CATALOG } from '../hr-catalog';
-import { HrEntitlementsPanel } from './hr/HrEntitlementsPanel';
 import { CollaboratorModal as CollaboratorDossierModal } from './hr/collaborator/CollaboratorModal';
 
 const statusLabels: Record<string, string> = {
@@ -51,7 +50,7 @@ const statusOptions = [
 
 const HR_WIZARD_SERVICES_KEY = 'toquehub.hrWizard.selectedServices';
 
-type HrTab = 'dashboard' | 'collaborators' | 'departments' | 'positions' | 'rights' | 'orgchart';
+type HrTab = 'dashboard' | 'collaborators' | 'departments' | 'positions' | 'orgchart';
 
 type HrAppProps = {
   tab: HrTab;
@@ -62,13 +61,9 @@ type HrAppProps = {
   users: CoreUser[];
   sites: Site[];
   onboarding?: any;
-  token: string;
-  regulatoryCountryCode?: RegulatoryCountryCode | null;
-  regulatorySector?: RegulatorySector | null;
   canWrite: boolean;
   loading?: boolean;
   onNavigate: (tab: HrTab) => void;
-  onConfigureRegulatoryCountry?: () => void;
   onCreateCollaborator: (payload: HrCollaboratorPayload) => Promise<HrCollaborator | void>;
   onUpdateCollaborator: (id: string, payload: Partial<HrCollaboratorPayload>) => Promise<HrCollaborator | void>;
   onArchiveCollaborator: (id: string) => Promise<void>;
@@ -100,13 +95,9 @@ export function HrApp({
   users,
   sites,
   onboarding,
-  token,
-  regulatoryCountryCode,
-  regulatorySector,
   canWrite,
   loading,
   onNavigate,
-  onConfigureRegulatoryCountry,
   onCreateCollaborator,
   onUpdateCollaborator,
   onArchiveCollaborator,
@@ -183,7 +174,6 @@ export function HrApp({
     ['departments', 'Services'],
     ...(onboardingHasServices && onboardingHasPositions ? [['positions', 'Postes'] as [HrTab, string]] : []),
     ...(canAccessCollaborators ? [['collaborators', 'Collaborateurs'] as [HrTab, string]] : []),
-    ...(canAccessCollaborators ? [['rights', 'Droits'] as [HrTab, string]] : []),
     ...(canAccessOrgChart ? [['orgchart', 'Organigramme'] as [HrTab, string]] : []),
   ];
 
@@ -255,10 +245,6 @@ export function HrApp({
         <PositionsPage positions={positions} departments={departments} canWrite={canWrite} onCreate={() => setReferenceModal({ type: 'position' })} onEdit={(item: HrPosition) => setReferenceModal({ type: 'position', item })} onArchive={onArchivePosition} />
       ) : null}
 
-      {tab === 'rights' ? (
-        <HrEntitlementsPanel token={token} collaborators={collaborators} departments={activeDepartments} positions={activePositions} canWrite={canWrite} regulatoryCountryCode={regulatoryCountryCode} regulatorySector={regulatorySector} onConfigureRegulatoryCountry={onConfigureRegulatoryCountry} />
-      ) : null}
-
       {tab === 'orgchart' ? (
         <OrgChart collaborators={collaborators.filter((collaborator) => !isArchived(collaborator))} departments={departments} departmentFilter={orgDepartment} onDepartmentFilter={setOrgDepartment} />
       ) : null}
@@ -271,7 +257,6 @@ export function HrApp({
           positions={activePositions}
           users={selectableUsers}
           sites={sites.filter((site) => !isArchived(site))}
-          token={token}
           onClose={() => setCollaboratorModal(null)}
           onDeleteDocument={async (employeeId, documentId) => {
             await onDeleteCollaboratorDocument(employeeId, documentId);
@@ -335,10 +320,6 @@ export function HrApp({
           users={users}
           sites={sites}
           onboarding={onboarding}
-          token={token}
-          regulatoryCountryCode={regulatoryCountryCode}
-          regulatorySector={regulatorySector}
-          onConfigureRegulatoryCountry={onConfigureRegulatoryCountry}
           onCreateCollaborator={onCreateCollaborator}
           onUploadCollaboratorDocument={onUploadCollaboratorDocument}
           onCreateDepartmentsBulk={onCreateDepartmentsBulk}
@@ -748,10 +729,6 @@ function HrOnboardingWizard({
   users,
   sites,
   onboarding,
-  token,
-  regulatoryCountryCode,
-  regulatorySector,
-  onConfigureRegulatoryCountry,
   onCreateCollaborator,
   onUploadCollaboratorDocument,
   onCreateDepartmentsBulk,
@@ -768,10 +745,6 @@ function HrOnboardingWizard({
   users: CoreUser[];
   sites: Site[];
   onboarding?: any;
-  token: string;
-  regulatoryCountryCode?: RegulatoryCountryCode | null;
-  regulatorySector?: RegulatorySector | null;
-  onConfigureRegulatoryCountry?: () => void;
   onCreateCollaborator: (payload: HrCollaboratorPayload) => Promise<HrCollaborator | void>;
   onUploadCollaboratorDocument: (employeeId: string, payload: { file: File; category: string; notes?: string; expiresAt?: string }) => Promise<void>;
   onCreateDepartmentsBulk: (names: string[]) => Promise<void>;
@@ -983,7 +956,6 @@ function HrOnboardingWizard({
             positions={wizardPositions}
             users={users}
             sites={sites.filter((site) => !isArchived(site))}
-            token={token}
             onClose={() => setCreatingCollaborator(false)}
             onSubmit={async (payload, documents) => {
               const saved = await onCreateCollaborator(payload);
@@ -1264,301 +1236,6 @@ function PositionCatalogSelector({ departments, initialSelection = {}, onSelecti
               {submitting ? 'Création…' : 'Terminer et créer les postes'}
             </button>
           )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-type WizardRightCard = {
-  id: string;
-  kind: 'catalog' | 'legal';
-  sourceId: string;
-  title: string;
-  description: string;
-  category: string;
-  source: string;
-  active: boolean;
-  requiresReview: boolean;
-  searchText: string;
-};
-
-function regulatoryCountryLabel(code?: RegulatoryCountryCode | null) {
-  if (code === 'FR') return 'France';
-  if (code === 'FI') return 'Finlande';
-  return 'Pays non configuré';
-}
-
-function regulatorySectorLabel(code?: RegulatorySector | null) {
-  if (code === 'PRIVATE') return 'Secteur privé';
-  if (code === 'PUBLIC') return 'Secteur public';
-  return 'Secteur non configuré';
-}
-
-function regimeForSector(sector?: RegulatorySector | null) {
-  if (sector === 'PRIVATE') return 'private';
-  if (sector === 'PUBLIC') return 'public';
-  return 'all';
-}
-
-function frameworkForSector(sector?: RegulatorySector | null) {
-  if (sector === 'PRIVATE') return 'PRIVATE';
-  if (sector === 'PUBLIC') return 'PUBLIC';
-  return undefined;
-}
-
-function wizardSearchText(value: string) {
-  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-}
-
-function shortWizardDescription(value?: string | null) {
-  const description = String(value ?? '').trim();
-  if (!description) return 'Droit disponible pour votre établissement.';
-  if (description.length <= 120) return description;
-  return `${description.slice(0, 117).trim()}...`;
-}
-
-function categoryFromRight(value?: string | null) {
-  const normalized = wizardSearchText(String(value ?? ''));
-  if (normalized.includes('conge') || normalized.includes('leave')) return 'Congés';
-  if (normalized.includes('absence') || normalized.includes('maladie')) return 'Absences';
-  if (normalized.includes('temps') || normalized.includes('travail') || normalized.includes('heure')) return 'Temps de travail';
-  if (normalized.includes('recup') || normalized.includes('compens')) return 'Récupération';
-  return value ? String(value) : 'Droit';
-}
-
-function legalRightSource(item: LegalRightSearchItem) {
-  const rule = item.rules[0];
-  return rule?.sourceLabel || rule?.agreement?.name || rule?.publicRegime?.name || rule?.regime?.name || 'Base légale';
-}
-
-function buildWizardCatalogCard(item: PlanningEntitlementCatalogItem): WizardRightCard {
-  const text = [item.label, item.shortDescription, item.longDescription, item.category, item.sourceLabel, item.code, JSON.stringify(item.examples ?? [])].join(' ');
-  return {
-    id: `catalog-${item.id}`,
-    kind: 'catalog',
-    sourceId: item.id,
-    title: item.label,
-    description: shortWizardDescription(item.shortDescription ?? item.description ?? item.longDescription),
-    category: categoryFromRight(item.category),
-    source: item.sourceLabel || 'Modèle RH',
-    active: Boolean(item.active),
-    requiresReview: Boolean(item.requiresAdminValidation || item.legalValidationStatus === 'requires_review'),
-    searchText: wizardSearchText(text),
-  };
-}
-
-function buildWizardLegalCard(item: LegalRightSearchItem): WizardRightCard {
-  const source = legalRightSource(item);
-  const text = [item.name, item.description, item.category, source, item.tags.join(' ')].join(' ');
-  return {
-    id: `legal-${item.id}`,
-    kind: 'legal',
-    sourceId: item.id,
-    title: item.name,
-    description: shortWizardDescription(item.description),
-    category: categoryFromRight(item.category),
-    source,
-    active: Boolean(item.activated),
-    requiresReview: item.rules.some((rule) => rule.validationStatus !== 'active'),
-    searchText: wizardSearchText(text),
-  };
-}
-
-function OnboardingRightsStep({
-  token,
-  regulatoryCountryCode,
-  regulatorySector,
-  onConfigureRegulatoryCountry,
-  onBack,
-  onSubmit,
-}: {
-  token: string;
-  regulatoryCountryCode?: RegulatoryCountryCode | null;
-  regulatorySector?: RegulatorySector | null;
-  onConfigureRegulatoryCountry?: () => void;
-  onBack: () => void;
-  onSubmit: () => void;
-}) {
-  const [cards, setCards] = useState<WizardRightCard[]>([]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [query, setQuery] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string>();
-
-  const missingSetup = !regulatoryCountryCode || !regulatorySector;
-
-  useEffect(() => {
-    if (missingSetup) return;
-    let cancelled = false;
-    async function loadRights() {
-      setLoading(true);
-      setError(undefined);
-      try {
-        const [catalog, legal] = await Promise.all([
-          api.hrEntitlementCatalog(token, { employmentFramework: frameworkForSector(regulatorySector), advanced: false }),
-          regulatoryCountryCode
-            ? api.legalRightsSearch(token, {
-                regime: regimeForSector(regulatorySector),
-                status: 'all',
-                includeRequiresReview: true,
-              })
-            : Promise.resolve({ items: [] }),
-        ]);
-        if (cancelled) return;
-        const catalogCards = (catalog.items ?? []).map(buildWizardCatalogCard);
-        const legalCards = (legal.items ?? []).map(buildWizardLegalCard);
-        const merged = [...legalCards, ...catalogCards].sort((a, b) => {
-          if (a.active !== b.active) return a.active ? -1 : 1;
-          if (a.requiresReview !== b.requiresReview) return a.requiresReview ? 1 : -1;
-          return a.title.localeCompare(b.title, 'fr');
-        });
-        setCards(merged);
-        setSelected(new Set(merged.filter((card) => card.active).map((card) => card.id)));
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Droits RH indisponibles.');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    void loadRights();
-    return () => {
-      cancelled = true;
-    };
-  }, [missingSetup, regulatoryCountryCode, regulatorySector, token]);
-
-  const visibleCards = useMemo(() => {
-    const needle = wizardSearchText(query.trim());
-    return needle ? cards.filter((card) => card.searchText.includes(needle)) : cards;
-  }, [cards, query]);
-  const selectedCards = cards.filter((card) => selected.has(card.id) && !card.active);
-  const canContinue = !missingSetup && (cards.length === 0 || selected.size > 0);
-
-  function toggle(card: WizardRightCard) {
-    setSelected((current) => {
-      const next = new Set(current);
-      if (next.has(card.id)) next.delete(card.id);
-      else next.add(card.id);
-      return next;
-    });
-  }
-
-  async function activateAndContinue() {
-    if (!canContinue) return;
-    setSubmitting(true);
-    setError(undefined);
-    try {
-      const catalogIds = selectedCards.filter((card) => card.kind === 'catalog').map((card) => card.sourceId);
-      const legalIds = selectedCards.filter((card) => card.kind === 'legal').map((card) => card.sourceId);
-      if (catalogIds.length) await api.activateHrEntitlementCatalogSelection(token, { catalogItemIds: catalogIds, targetMode: 'NONE' });
-      for (const legalId of legalIds) await api.activateLegalRight(token, legalId);
-      onSubmit();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Activation des droits impossible.');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div className="hr-catalog" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-      <div className="hr-catalog-scroll">
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', marginBottom: '1rem' }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: '1.45rem', color: 'var(--text-main)' }}>Droits de l'établissement</h2>
-            <p className="muted" style={{ margin: '0.4rem 0 0', fontSize: '0.9rem' }}>
-              Sélectionnez les droits à activer pour votre structure avant de créer le premier collaborateur.
-            </p>
-          </div>
-          <button type="button" className="btn btn-secondary" onClick={onConfigureRegulatoryCountry} style={{ borderRadius: '10px', padding: '0.45rem 0.8rem', fontSize: '0.8rem' }}>
-            {regulatoryCountryLabel(regulatoryCountryCode)} · {regulatorySectorLabel(regulatorySector)}
-          </button>
-        </div>
-
-        {missingSetup ? (
-          <div className="alert-modern error" style={{ marginBottom: '1rem' }}>
-            <Info size={16} />
-            <span>Configurez le pays de réglementation et le secteur dans Organisation &gt; Général pour proposer les droits adaptés.</span>
-          </div>
-        ) : null}
-        {error ? <div className="alert-modern error" style={{ marginBottom: '1rem' }}><Info size={16} /> {error}</div> : null}
-
-        {!missingSetup ? (
-          <>
-            <div className="search-input-wrapper hr-wizard-search" style={{ border: '1px solid #cbd5e1', borderRadius: '12px', padding: '0.25rem 0.75rem', background: '#f8fafc', marginBottom: '1rem' }}>
-              <Search size={18} style={{ color: '#64748b' }} />
-              <input className="search-input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Rechercher : congés payés, RTT, enfant malade..." style={{ border: 'none', background: 'transparent', boxShadow: 'none', height: '38px', fontSize: '0.9rem' }} />
-            </div>
-            {loading ? <div className="card-modern" style={{ padding: '1rem' }}>Chargement des droits...</div> : null}
-            {!loading && cards.length === 0 ? (
-              <div className="rights-empty-state" style={{ marginTop: '1rem' }}>
-                <strong>Aucun droit disponible</strong>
-                <span>Vous pourrez continuer l'assistant et configurer les droits plus tard depuis RH &gt; Droits.</span>
-              </div>
-            ) : null}
-            <div className="hr-catalog-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
-              {visibleCards.map((card) => {
-                const isSelected = selected.has(card.id);
-                return (
-                  <button
-                    type="button"
-                    key={card.id}
-                    className={`hr-catalog-card ${isSelected ? 'selected' : ''}`}
-                    onClick={() => toggle(card)}
-                    style={{
-                      border: isSelected ? '2px solid #10b981' : '1px solid #e2e8f0',
-                      borderRadius: '14px',
-                      padding: '1rem',
-                      background: isSelected ? 'rgba(16, 185, 129, 0.04)' : 'white',
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: '0.75rem',
-                      minHeight: '148px',
-                    }}
-                  >
-                    <div
-                      className="hr-catalog-check"
-                      style={{
-                        background: isSelected ? '#10b981' : '#f1f5f9',
-                        color: isSelected ? 'white' : 'transparent',
-                        borderRadius: '8px',
-                        width: '24px',
-                        height: '24px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        border: isSelected ? 'none' : '2px solid #cbd5e1',
-                        flexShrink: 0,
-                        marginTop: '2px',
-                      }}
-                    >
-                      {isSelected ? <Check size={14} strokeWidth={3} /> : null}
-                    </div>
-                    <div className="hr-catalog-body" style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '0.3rem', minWidth: 0 }}>
-                      <span className="badge" style={{ width: 'fit-content', padding: '0.22rem 0.5rem', fontSize: '0.68rem' }}>{card.category}</span>
-                      <strong style={{ fontSize: '0.92rem', color: '#1e293b', fontWeight: 750 }}>{card.title}</strong>
-                      <span style={{ fontSize: '0.8rem', color: '#64748b', lineHeight: 1.35 }}>{card.description}</span>
-                      <small style={{ fontSize: '0.73rem', color: '#94a3b8', marginTop: 'auto' }}>
-                        {card.source}{card.active ? ' · déjà activé' : card.requiresReview ? ' · à valider' : ''}
-                      </small>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        ) : null}
-      </div>
-      <div className="hr-catalog-actions" style={{ borderTop: '1px solid #eef2f7', background: 'rgba(255,255,255,0.9)', padding: '1rem 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-        <span style={{ fontSize: '0.88rem', color: '#64748b', fontWeight: 500 }}>
-          {selected.size} droit{selected.size > 1 ? 's' : ''} sélectionné{selected.size > 1 ? 's' : ''}
-        </span>
-        <div className="row-actions" style={{ display: 'flex', gap: '0.75rem' }}>
-          <button type="button" className="btn btn-secondary" disabled={submitting} onClick={onBack} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Retour</button>
-          <button className="btn btn-primary" disabled={submitting || loading || !canContinue} onClick={() => void activateAndContinue()} style={{ borderRadius: '10px', padding: '0.5rem 1.5rem' }}>
-            {submitting ? 'Activation...' : 'Valider les droits'}
-          </button>
         </div>
       </div>
     </div>

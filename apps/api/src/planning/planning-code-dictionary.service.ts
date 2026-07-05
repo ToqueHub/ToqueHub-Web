@@ -39,13 +39,10 @@ export class PlanningCodeDictionaryService {
     const existing = await this.prisma.planningCodeDictionary.count({ where: { organizationId } });
     if (existing) return { created: 0, skipped: existing };
     const defaults = [
-      { rawCode: 'CP', label: 'Congé payé', category: 'leave', defaultStatusCode: 'paid_leave', accountType: 'leave', unit: 'DAYS', defaultQuantity: 1, affectsPaidTime: true, affectsLeaveBalance: true, visibleInPlanning: true, visibleInCounters: true },
-      { rawCode: 'RTT', label: 'RTT', category: 'leave', defaultStatusCode: 'rtt', accountType: 'rtt', unit: 'DAYS', defaultQuantity: 1, affectsPaidTime: true, affectsLeaveBalance: true, visibleInPlanning: true, visibleInCounters: true },
-      { rawCode: 'RECUP', label: 'Récupération', category: 'recovery', defaultStatusCode: 'recovery', accountType: 'recovery', unit: 'MINUTES', defaultQuantity: 0, affectsLeaveBalance: true, visibleInPlanning: true, visibleInCounters: true },
-      { rawCode: 'HV', label: 'Heures vertes', category: 'local_counter', defaultStatusCode: 'green_hours', accountType: 'green_hours', unit: 'MINUTES', defaultQuantity: 60, visibleInPlanning: true, visibleInCounters: true, requiresAdminValidation: true },
-      { rawCode: 'FORMATION', label: 'Formation', category: 'training', defaultStatusCode: 'training', accountType: 'training', unit: 'DAYS', defaultQuantity: 1, affectsPaidTime: true, visibleInPlanning: true, visibleInCounters: true },
-      { rawCode: 'GREVE', label: 'Grève', category: 'absence', defaultStatusCode: 'strike', accountType: 'strike', unit: 'DAYS', defaultQuantity: 1, affectsPaidTime: false, visibleInPlanning: true, visibleInCounters: true, requiresAdminValidation: true },
-      { rawCode: 'COS', label: 'Code local à vérifier', category: 'unknown', defaultStatusCode: 'unknown', unit: 'DAYS', defaultQuantity: 0, visibleInPlanning: true, visibleInCounters: false, requiresAdminValidation: true },
+      { rawCode: 'CP', label: 'Conges payes', category: 'leave', defaultStatusCode: 'paid_leave', accountType: 'paid_leave', unit: 'DAYS', defaultQuantity: 1, affectsPaidTime: true, affectsLeaveBalance: true, visibleInPlanning: true, visibleInCounters: true },
+      { rawCode: 'FORMATION', label: 'Formation', category: 'training', defaultStatusCode: 'training', accountType: 'training', unit: 'DAYS', defaultQuantity: 1, affectsPaidTime: true, visibleInPlanning: true, visibleInCounters: false },
+      { rawCode: 'GREVE', label: 'Greve', category: 'absence', defaultStatusCode: 'strike', accountType: 'strike', unit: 'DAYS', defaultQuantity: 1, affectsPaidTime: false, visibleInPlanning: true, visibleInCounters: false, requiresAdminValidation: true },
+      { rawCode: 'COS', label: 'Code local a verifier', category: 'unknown', defaultStatusCode: 'unknown', unit: 'DAYS', defaultQuantity: 0, visibleInPlanning: true, visibleInCounters: false, requiresAdminValidation: true },
     ] as const;
     await this.prisma.planningCodeDictionary.createMany({
       data: defaults.map(item => this.payload(organizationId, item)),
