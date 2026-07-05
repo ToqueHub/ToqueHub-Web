@@ -636,6 +636,8 @@ model Organization {
   haccpInstalledAt              DateTime?
   mistralApiKey                 String?   @db.Text
   mistralApiKeyUpdatedAt        DateTime?
+  githubToken                   String?   @db.Text
+  githubTokenUpdatedAt          DateTime?
   createdAt                     DateTime  @default(now())
   updatedAt                     DateTime  @updatedAt
 

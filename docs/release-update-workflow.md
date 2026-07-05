@@ -32,6 +32,7 @@ A ce moment-la:
 main est sauvegarde sur GitHub
 rien n'est publie pour les utilisateurs
 aucune mise a jour n'apparait dans ToqueHub
+aucune entree utilisateur n'est ajoutee au changelog ToqueHub
 ```
 
 Tu peux pousser plusieurs fois sur `main` sans impacter les utilisateurs.
@@ -51,8 +52,10 @@ A ce moment-la:
 GitHub Actions se lance
 les images Docker multi-arch sont construites
 la release GitHub v1.0.0 est publiee
+les notes de release GitHub sont generees automatiquement
 latest pointe vers v1.0.0
 les utilisateurs voient la mise a jour dans ToqueHub
+le bouton Changelog affiche cette version
 ```
 
 Important:
@@ -63,6 +66,15 @@ tag v1.0.0 = version stable visible comme mise a jour
 ```
 
 Si les images Docker existent mais qu'aucun tag `vX.Y.Z` ou aucune GitHub Release stable n'existe, l'onglet de mise a jour peut afficher qu'aucune version stable n'est disponible.
+
+Si le depot GitHub est prive, renseigne dans l'environnement serveur:
+
+```text
+TOQUEHUB_RELEASE_REPO=ToqueHub/ToqueHub-Web
+TOQUEHUB_GITHUB_TOKEN=github_pat_...
+```
+
+Le token doit seulement avoir un acces lecture au contenu du depot. Il sert a lire les releases GitHub pour la mise a jour et le changelog.
 
 Images publiees:
 

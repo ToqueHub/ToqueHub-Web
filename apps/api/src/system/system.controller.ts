@@ -39,6 +39,15 @@ export class SystemController {
     return this.systemUpdateService.getStatus();
   }
 
+  @Get('update/changelog')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOkResponse({
+    description: 'Returns recent stable GitHub Releases used as the ToqueHub changelog.',
+  })
+  updateChangelog() {
+    return this.systemUpdateService.getChangelog();
+  }
+
   @Post('update/check')
   @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiOkResponse({

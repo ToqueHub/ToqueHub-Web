@@ -145,27 +145,39 @@ const FREQUENCY_OPTIONS = [
   { value: 'monthly', label: 'Mensuel' },
 ];
 
+const DEFAULT_TEMPERATURE_CATEGORIES = [
+  { key: 'positive-cold-room', defaultName: 'Chambre froide positive', type: 'enceinte_positive', description: 'Entre 0°C et 4°C', recommendedTemp: 2 },
+  { key: 'sensitive-positive-room', defaultName: 'Enceinte sensible positive', type: 'enceinte_sensible_positive', description: 'Entre 0°C et 2°C', recommendedTemp: 1 },
+  { key: 'finished-products-fridge', defaultName: 'Enceinte produits finis', type: 'enceinte_produits_finis', description: 'Entre 0°C et 3°C', recommendedTemp: 1.5 },
+  { key: 'dairy-fridge', defaultName: 'Enceinte produits laitiers', type: 'enceinte_produits_laitiers', description: 'Entre 0°C et 8°C', recommendedTemp: 4 },
+  { key: 'negative-cold-room', defaultName: 'Chambre froide négative', type: 'enceinte_negative', description: 'Entre -16°C et -30°C', recommendedTemp: -18 },
+  { key: 'vegetable-fridge', defaultName: 'Enceinte légumes', type: 'enceinte_legumes', description: 'Entre 0°C et 10°C', recommendedTemp: 5 },
+  { key: 'refrigerated-zone', defaultName: 'Zone réfrigérée', type: 'zone_refrigeree', description: 'Inférieure à 12°C', recommendedTemp: 6 },
+  { key: 'meat-carcass-room', defaultName: 'Enceinte carcasse viande', type: 'enceinte_carcasse_viande', description: 'Entre 0°C et 7°C', recommendedTemp: 3.5 },
+  { key: 'ice-cream-freezer', defaultName: 'Frigo glaces / sorbets', type: 'frigo_glaces_sorbets', description: 'Entre -10°C et -25°C', recommendedTemp: -18 },
+  { key: 'charcuterie-dryer', defaultName: 'Séchoir charcuterie', type: 'sechoir_charcuterie', description: 'Entre 12°C et 16°C', recommendedTemp: 14 },
+  { key: 'chocolate-conserver', defaultName: 'Conservateur chocolat', type: 'conservateur_chocolat', description: 'Entre 14°C et 22°C', recommendedTemp: 18 },
+];
+
 const DEFAULT_TEMPERATURE_TEMPLATES: TemperatureTemplate[] = [
   { key: 'positive-cold-room', name: 'Chambre froide positive', type: 'enceinte_positive', description: 'Entre 0°C et 4°C', recommendedTemp: 2, selected: true },
-  { key: 'sensitive-positive-room', name: 'Enceinte sensible positive', type: 'enceinte_sensible_positive', description: 'Entre 0°C et 2°C', recommendedTemp: 1, selected: false },
   { key: 'finished-products-fridge', name: 'Enceinte produits finis', type: 'enceinte_produits_finis', description: 'Entre 0°C et 3°C', recommendedTemp: 1.5, selected: true },
-  { key: 'dairy-fridge', name: 'Enceinte produits laitiers', type: 'enceinte_produits_laitiers', description: 'Entre 0°C et 8°C', recommendedTemp: 4, selected: false },
   { key: 'negative-cold-room', name: 'Chambre froide négative', type: 'enceinte_negative', description: 'Entre -16°C et -30°C', recommendedTemp: -18, selected: true },
-  { key: 'vegetable-fridge', name: 'Enceinte légumes', type: 'enceinte_legumes', description: 'Entre 0°C et 10°C', recommendedTemp: 5, selected: false },
-  { key: 'refrigerated-zone', name: 'Zone réfrigérée', type: 'zone_refrigeree', description: 'Inférieure à 12°C', recommendedTemp: 6, selected: false },
-  { key: 'meat-carcass-room', name: 'Enceinte carcasse viande', type: 'enceinte_carcasse_viande', description: 'Entre 0°C et 7°C', recommendedTemp: 3.5, selected: false },
-  { key: 'ice-cream-freezer', name: 'Frigo glaces / sorbets', type: 'frigo_glaces_sorbets', description: 'Entre -10°C et -25°C', recommendedTemp: -18, selected: false },
-  { key: 'charcuterie-dryer', name: 'Séchoir charcuterie', type: 'sechoir_charcuterie', description: 'Entre 12°C et 16°C', recommendedTemp: 14, selected: false },
-  { key: 'chocolate-conserver', name: 'Conservateur chocolat', type: 'conservateur_chocolat', description: 'Entre 14°C et 22°C', recommendedTemp: 18, selected: false },
+];
+
+const DEFAULT_PROCESS_CATEGORIES = [
+  { key: 'reheat-oven', defaultName: 'Four de remise en température', type: 'rechauffement' as const, temperatureRange: { min: 60, max: 85 }, description: 'Remise en température et maintien chaud' },
+  { key: 'hot-cabinet', defaultName: 'Armoire chaude', type: 'rechauffement' as const, temperatureRange: { min: 60, max: 85 }, description: 'Liaison chaude et maintien avant service' },
+  { key: 'cooling-cell', defaultName: 'Cellule de refroidissement', type: 'refroidissement' as const, temperatureRange: { min: 0, max: 4 }, description: 'Refroidissement rapide des préparations' },
+  { key: 'blast-chiller', defaultName: 'Refroidisseur rapide', type: 'refroidissement' as const, temperatureRange: { min: 0, max: 4 }, description: 'Alternative cellule / blast chiller' },
+  { key: 'freezing-cell', defaultName: 'Cellule de congélation', type: 'congelation' as const, temperatureRange: { min: -25, max: -18 }, description: 'Congélation ou surgélation contrôlée' },
+  { key: 'freezer', defaultName: 'Congélateur de réserve', type: 'congelation' as const, temperatureRange: { min: -25, max: -18 }, description: 'Mise en réserve négative' },
 ];
 
 const DEFAULT_PROCESS_TEMPLATES: ProcessTemplate[] = [
   { key: 'reheat-oven', name: 'Four de remise en température', type: 'rechauffement', temperatureRange: { min: 60, max: 85 }, description: 'Remise en température et maintien chaud', selected: true },
-  { key: 'hot-cabinet', name: 'Armoire chaude', type: 'rechauffement', temperatureRange: { min: 60, max: 85 }, description: 'Liaison chaude et maintien avant service', selected: false },
   { key: 'cooling-cell', name: 'Cellule de refroidissement', type: 'refroidissement', temperatureRange: { min: 0, max: 4 }, description: 'Refroidissement rapide des préparations', selected: true },
-  { key: 'blast-chiller', name: 'Refroidisseur rapide', type: 'refroidissement', temperatureRange: { min: 0, max: 4 }, description: 'Alternative cellule / blast chiller', selected: false },
   { key: 'freezing-cell', name: 'Cellule de congélation', type: 'congelation', temperatureRange: { min: -25, max: -18 }, description: 'Congélation ou surgélation contrôlée', selected: true },
-  { key: 'freezer', name: 'Congélateur de réserve', type: 'congelation', temperatureRange: { min: -25, max: -18 }, description: 'Mise en réserve négative', selected: false },
 ];
 
 const DEFAULT_CLEANING_TEMPLATES: CleaningTemplate[] = [
@@ -799,14 +811,74 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
     }
   }
 
+  const TAB_HEADER_MAP: Record<string, { title: string; subtitle: string }> = {
+    dashboard: {
+      title: 'Tableau de bord HACCP',
+      subtitle: 'Contrôles sanitaires, traçabilité, productions et rapports quotidiens.',
+    },
+    setup: {
+      title: 'Configuration Zones & Matériels',
+      subtitle: 'Référentiel HACCP : équipements, process et plan de nettoyage.',
+    },
+    sensors: {
+      title: 'Capteurs de Température (IoT)',
+      subtitle: 'Suivi en temps réel et appairage des sondes Zigbee sans fil.',
+    },
+    temperatures: {
+      title: 'Relevé des Températures',
+      subtitle: 'Suivi quotidien et historique des températures de vos enceintes.',
+    },
+    cleaning: {
+      title: 'Plan de Nettoyage & Désinfection',
+      subtitle: 'Contrôles des surfaces et fréquences de nettoyage par zone.',
+    },
+    traceability: {
+      title: 'Traçabilité & Étiquetage',
+      subtitle: 'Enregistrement des matières premières et traçabilité secondaire.',
+    },
+    receptions: {
+      title: 'Réception des Marchandises',
+      subtitle: 'Contrôle à la livraison : hygiène, températures et emballages.',
+    },
+    process: {
+      title: 'Suivi des Processus HACCP',
+      subtitle: 'Refroidissement rapide, réchauffement et congélation.',
+    },
+    oil: {
+      title: 'Contrôle des Huiles de Friture',
+      subtitle: 'Mesure de polarité et renouvellement des bains d’huile.',
+    },
+    production: {
+      title: 'Suivi de Production',
+      subtitle: 'Fiches de fabrication et enregistrements des préparations.',
+    },
+    products: {
+      title: 'Catalogue Produits',
+      subtitle: 'Durées de conservation (DLC) et fiches produits sanitaires.',
+    },
+    labels: {
+      title: 'Impression d’Étiquettes',
+      subtitle: 'Édition et impression des étiquettes de traçabilité DLC.',
+    },
+    reports: {
+      title: 'Rapports & Audits HACCP',
+      subtitle: 'Génération et archivage des rapports sanitaires et registres.',
+    },
+  };
+
+  const activeHeader = TAB_HEADER_MAP[activeTab] || {
+    title: 'Module HACCP',
+    subtitle: 'Gestion globale de la sécurité alimentaire.',
+  };
+
   return (
     <>
       <div className="module-page haccp-module">
         <div className="haccp-topbar">
           <div>
             <p className="eyebrow">Qualité & Hygiène</p>
-            <h1>Tableau de bord HACCP</h1>
-            <p className="muted">Contrôles sanitaires, traçabilité, productions et rapports quotidiens.</p>
+            <h1>{activeHeader.title}</h1>
+            <p className="muted">{activeHeader.subtitle}</p>
           </div>
           <div className="haccp-header-actions">
             {activeTab === 'reports' ? (
@@ -1672,93 +1744,121 @@ function HaccpSetupManager({
   onCreate: (kind: HaccpConfigKind) => void;
   onDelete: (kind: HaccpConfigKind, item: HaccpItem) => void;
 }) {
+  const [activeSubTab, setActiveSubTab] = useState<'all' | 'temperature' | 'process' | 'cleaning'>('all');
+
   const query = searchQuery.trim().toLowerCase();
-  const filterRows = (rows: HaccpItem[]) => !query ? rows : rows.filter((row) => JSON.stringify(row).toLowerCase().includes(query));
+  const filterRows = (rows: HaccpItem[]) => (!query ? rows : rows.filter((row) => JSON.stringify(row).toLowerCase().includes(query)));
+
   const filteredTemperatures = filterRows(temperatureEquipment);
   const filteredProcess = filterRows(processEquipment);
   const filteredZones = filterRows(cleaningZones);
   const surfaceCount = cleaningZones.reduce((total, zone) => total + (Array.isArray(zone.surfaces) ? zone.surfaces.length : 0), 0);
+  const totalCount = filteredTemperatures.length + filteredProcess.length + filteredZones.length;
 
   return (
     <div className="haccp-config-page" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <section
         className="card-modern haccp-config-hero"
         style={{
-          padding: '2rem',
+          padding: '1.5rem 2rem',
           borderRadius: '24px',
-          background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+          background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
           color: 'var(--text-main)',
-          boxShadow: '0 10px 30px rgba(0, 0, 0, 0.02)',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.03)',
           border: '1px solid #e2e8f0',
         }}
       >
-        <div
-          className="section-header-modern"
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '1.25rem',
-            paddingBottom: '1.5rem',
-            borderBottom: '1px solid #e2e8f0',
-          }}
-        >
-          <div className="section-info">
-            <span
-              className="card-title"
-              style={{
-                fontSize: '1.35rem',
-                fontWeight: 900,
-                color: 'var(--text-main)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-              }}
-            >
-              <Settings2 size={20} color="#10b981" /> Configuration Zones & Matériels
-            </span>
-            <span className="section-tagline" style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginTop: '0.35rem', display: 'block' }}>
-              Référentiel HACCP partagé avec l’application ToqueHub mobile : équipements, process et zones de nettoyage.
-            </span>
-          </div>
-        </div>
-
-        <div className="haccp-config-summary-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '1rem', marginTop: '1.5rem' }}>
-          <ConfigSummaryCard icon={<Thermometer size={18} />} label="Équipements température" value={temperatureEquipment.length} detail="Enceintes suivies sur mobile" color="emerald" />
-          <ConfigSummaryCard icon={<Snowflake size={18} />} label="Équipements process" value={processEquipment.length} detail="Réchauffement, froid et congélation" color="blue" />
-          <ConfigSummaryCard icon={<ShieldCheck size={18} />} label="Zones de nettoyage" value={cleaningZones.length} detail={`${surfaceCount} surface(s) configurée(s)`} color="amber" />
+        <div className="section-info">
+          <span
+            className="card-title"
+            style={{
+              fontSize: '1.35rem',
+              fontWeight: 900,
+              color: 'var(--text-main)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.6rem',
+            }}
+          >
+            <Settings2 size={22} color="#10b981" /> Configuration Zones & Matériels
+          </span>
+          <span className="section-tagline" style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginTop: '0.35rem', display: 'block' }}>
+            Référentiel HACCP partagé avec l’application ToqueHub mobile : équipements, process et plan de nettoyage.
+          </span>
         </div>
       </section>
 
-      <div className="haccp-config-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '1.25rem', alignItems: 'start' }}>
-        <ConfigCollection
-          kind="temperature"
-          title="Matériels température"
-          subtitle="Chambres froides, frigos, enceintes et zones réfrigérées."
-          icon={<Thermometer size={16} />}
-          items={filteredTemperatures}
-          onCreate={onCreate}
-          onDelete={onDelete}
-        />
-        <ConfigCollection
-          kind="process"
-          title="Matériels process"
-          subtitle="Équipements de réchauffement, refroidissement ou congélation."
-          icon={<Snowflake size={16} />}
-          items={filteredProcess}
-          onCreate={onCreate}
-          onDelete={onDelete}
-        />
-        <ConfigCollection
-          kind="cleaning"
-          title="Zones de nettoyage"
-          subtitle="Zones et surfaces à contrôler dans l’application ToqueHub."
-          icon={<ShieldCheck size={16} />}
-          items={filteredZones}
-          onCreate={onCreate}
-          onDelete={onDelete}
-        />
+      {/* Navigation Filter Tabs */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className={`haccp-subtab-btn ${activeSubTab === 'all' ? 'active' : ''}`}
+            onClick={() => setActiveSubTab('all')}
+          >
+            Tous les matériels ({totalCount})
+          </button>
+          <button
+            type="button"
+            className={`haccp-subtab-btn ${activeSubTab === 'temperature' ? 'active' : ''}`}
+            onClick={() => setActiveSubTab('temperature')}
+          >
+            <Thermometer size={15} /> Températures ({filteredTemperatures.length})
+          </button>
+          <button
+            type="button"
+            className={`haccp-subtab-btn ${activeSubTab === 'process' ? 'active' : ''}`}
+            onClick={() => setActiveSubTab('process')}
+          >
+            <Snowflake size={15} /> Process ({filteredProcess.length})
+          </button>
+          <button
+            type="button"
+            className={`haccp-subtab-btn ${activeSubTab === 'cleaning' ? 'active' : ''}`}
+            onClick={() => setActiveSubTab('cleaning')}
+          >
+            <ShieldCheck size={15} /> Nettoyage ({filteredZones.length})
+          </button>
+        </div>
+      </div>
+
+      {/* Main List Layout */}
+      <div className="haccp-config-sections-list" style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
+        {(activeSubTab === 'all' || activeSubTab === 'temperature') && (
+          <ConfigSectionRowList
+            kind="temperature"
+            title="Équipements de Température"
+            subtitle="Chambres froides, réfrigérateurs, congélateurs et zones réfrigérées."
+            icon={<Thermometer size={18} />}
+            items={filteredTemperatures}
+            onCreate={() => onCreate('temperature')}
+            onDelete={(item) => onDelete('temperature', item)}
+          />
+        )}
+
+        {(activeSubTab === 'all' || activeSubTab === 'process') && (
+          <ConfigSectionRowList
+            kind="process"
+            title="Équipements de Process HACCP"
+            subtitle="Fours, cellules de refroidissement et matériel de congélation."
+            icon={<Snowflake size={18} />}
+            items={filteredProcess}
+            onCreate={() => onCreate('process')}
+            onDelete={(item) => onDelete('process', item)}
+          />
+        )}
+
+        {(activeSubTab === 'all' || activeSubTab === 'cleaning') && (
+          <ConfigSectionRowList
+            kind="cleaning"
+            title="Zones & Surfaces de Nettoyage"
+            subtitle="Plan de nettoyage HACCP : zones, surfaces et fréquences de contrôle."
+            icon={<ShieldCheck size={18} />}
+            items={filteredZones}
+            onCreate={() => onCreate('cleaning')}
+            onDelete={(item) => onDelete('cleaning', item)}
+          />
+        )}
       </div>
     </div>
   );
@@ -1770,12 +1870,16 @@ function ConfigSummaryCard({
   value,
   detail,
   color,
+  active,
+  onClick,
 }: {
   icon: ReactNode;
   label: string;
   value: number;
   detail: string;
   color: 'emerald' | 'blue' | 'amber';
+  active?: boolean;
+  onClick?: () => void;
 }) {
   const colorMap = {
     emerald: {
@@ -1799,16 +1903,19 @@ function ConfigSummaryCard({
   return (
     <motion.div
       whileHover={{ y: -3, boxShadow: '0 12px 24px rgba(0, 0, 0, 0.04)' }}
-      className="haccp-config-summary-card"
+      className={`haccp-config-summary-card ${active ? 'active' : ''}`}
+      onClick={onClick}
       style={{
         display: 'flex',
         alignItems: 'center',
         gap: '1rem',
         padding: '1.25rem',
         borderRadius: '16px',
-        border: '1px solid #e2e8f0',
+        border: active ? `2px solid ${theme.color}` : '1px solid #e2e8f0',
         background: 'white',
-        cursor: 'default',
+        cursor: 'pointer',
+        boxShadow: active ? `0 6px 16px ${theme.bg}` : 'none',
+        transition: 'all 0.2s ease',
       }}
     >
       <span
@@ -1835,7 +1942,7 @@ function ConfigSummaryCard({
   );
 }
 
-function ConfigCollection({
+function ConfigSectionRowList({
   kind,
   title,
   subtitle,
@@ -1849,295 +1956,137 @@ function ConfigCollection({
   subtitle: string;
   icon: ReactNode;
   items: HaccpItem[];
-  onCreate: (kind: HaccpConfigKind) => void;
-  onDelete: (kind: HaccpConfigKind, item: HaccpItem) => void;
+  onCreate: () => void;
+  onDelete: (item: HaccpItem) => void;
 }) {
   const colorMap = {
-    temperature: { color: '#10b981', label: 'Température', light: 'rgba(16, 185, 129, 0.1)', border: 'rgba(16, 185, 129, 0.2)' },
-    process: { color: '#3b82f6', label: 'Processus', light: 'rgba(59, 130, 246, 0.1)', border: 'rgba(59, 130, 246, 0.2)' },
-    cleaning: { color: '#f59e0b', label: 'Nettoyage', light: 'rgba(245, 158, 11, 0.1)', border: 'rgba(245, 158, 11, 0.2)' },
+    temperature: { color: '#10b981', light: 'rgba(16, 185, 129, 0.1)', border: 'rgba(16, 185, 129, 0.2)' },
+    process: { color: '#3b82f6', light: 'rgba(59, 130, 246, 0.1)', border: 'rgba(59, 130, 246, 0.2)' },
+    cleaning: { color: '#f59e0b', light: 'rgba(245, 158, 11, 0.1)', border: 'rgba(245, 158, 11, 0.2)' },
   };
   const theme = colorMap[kind];
 
   return (
-    <section
-      className="card-modern haccp-config-column"
-      style={{
-        padding: '1.5rem',
-        borderRadius: '20px',
-        background: '#f8fafc',
-        border: '1px solid #f1f5f9',
-        minHeight: '520px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '1.25rem',
-      }}
-    >
-      <div
-        className="haccp-config-column-header"
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          gap: '0.85rem',
-          paddingBottom: '1rem',
-          borderBottom: '1px solid #eef2f6',
-        }}
-      >
-        <div style={{ minWidth: 0 }}>
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              color: 'var(--text-main)',
-              fontWeight: 850,
-              fontSize: '1rem',
-            }}
-          >
-            <span
-              style={{
-                display: 'inline-flex',
-                color: theme.color,
-                background: theme.light,
-                border: `1px solid ${theme.border}`,
-                padding: '0.25rem',
-                borderRadius: '8px',
-              }}
-            >
-              {icon}
-            </span>
-            {title}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+          <span style={{ display: 'inline-flex', color: theme.color, background: theme.light, border: `1px solid ${theme.border}`, padding: '0.35rem', borderRadius: '10px' }}>
+            {icon}
           </span>
-          <p style={{ margin: '0.4rem 0 0', color: 'var(--text-muted)', fontSize: '0.78rem', lineHeight: 1.4 }}>
-            {subtitle}
-          </p>
+          <div>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>{title} ({items.length})</h3>
+            <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{subtitle}</span>
+          </div>
         </div>
         <button
           type="button"
-          className="btn btn-primary btn-sm"
-          onClick={() => onCreate(kind)}
-          style={{
-            background: theme.color,
-            borderColor: 'transparent',
-            borderRadius: '10px',
-            padding: '0.4rem 0.85rem',
-            fontSize: '0.82rem',
-            fontWeight: 700,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.35rem',
-            boxShadow: `0 4px 12px ${theme.light}`,
-          }}
+          className="haccp-add-category-btn"
+          onClick={onCreate}
         >
-          <Plus size={14} /> Créer
+          <Plus size={15} /> Ajouter
         </button>
       </div>
 
-      <div
-        className="haccp-config-list"
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '0.85rem',
-          marginTop: 0,
-          flexGrow: 1,
-          overflowY: 'auto',
-          maxHeight: '400px',
-          paddingRight: '0.25rem',
-        }}
-      >
+      <div className="haccp-equipment-list">
         <AnimatePresence>
           {items.map((item, index) => (
-            <ConfigItemCard
+            <ConfigRowCard
               key={item._id ?? item.id ?? index}
               kind={kind}
               item={item}
-              onDelete={() => onDelete(kind, item)}
+              onDelete={() => onDelete(item)}
             />
           ))}
         </AnimatePresence>
-        {!items.length ? (
-          <div
-            className="haccp-config-empty"
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.6rem',
-              padding: '3rem 1.5rem',
-              border: '1px dashed #cbd5e1',
-              borderRadius: '16px',
-              color: 'var(--text-muted)',
-              background: 'rgba(255,255,255,0.4)',
-              textAlign: 'center',
-              fontSize: '0.82rem',
-            }}
-          >
-            <ClipboardList size={22} style={{ color: '#94a3b8' }} />
-            <span style={{ fontWeight: 600 }}>Aucun élément configuré</span>
+
+        {items.length === 0 && (
+          <div className="haccp-config-empty" style={{ padding: '2.5rem 1.5rem', textAlign: 'center', border: '1.5px dashed #cbd5e1', borderRadius: '14px', background: 'white' }}>
+            <ClipboardList size={24} color="#94a3b8" style={{ marginBottom: '0.4rem' }} />
+            <p style={{ margin: 0, fontSize: '0.86rem', fontWeight: 700, color: '#475569' }}>Aucun élément configuré dans cette catégorie</p>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={onCreate} style={{ marginTop: '0.75rem' }}>
+              <Plus size={14} /> Ajouter un premier élément
+            </button>
           </div>
-        ) : null}
+        )}
       </div>
-    </section>
+    </div>
   );
 }
 
-function ConfigItemCard({ kind, item, onDelete }: { kind: HaccpConfigKind; item: HaccpItem; onDelete: () => void }) {
+function ConfigRowCard({ kind, item, onDelete }: { kind: HaccpConfigKind; item: HaccpItem; onDelete: () => void }) {
   const surfaces = Array.isArray(item.surfaces) ? item.surfaces : [];
-  const range = item.temperatureRange;
-
-  const colorMap = {
-    temperature: '#10b981',
-    process: '#3b82f6',
-    cleaning: '#f59e0b',
-  };
-  const themeColor = colorMap[kind];
+  const isNegative = (item.temperatureTarget ?? 0) < 0 || String(item.type || '').includes('negative');
+  const isHot = item.type === 'rechauffement';
 
   return (
-    <motion.article
-      initial={{ opacity: 0, y: 10 }}
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      whileHover={{ y: -2, boxShadow: '0 8px 16px rgba(0, 0, 0, 0.04)' }}
-      transition={{ duration: 0.15 }}
-      className="haccp-config-item-card"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '0.75rem',
-        padding: '1rem',
-        borderRadius: '16px',
-        border: '1px solid #e2e8f0',
-        borderLeft: `4px solid ${themeColor}`,
-        background: 'white',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.01)',
-      }}
+      exit={{ opacity: 0, y: -8 }}
+      className="haccp-equipment-row active"
     >
-      <div
-        className="haccp-config-item-top"
-        style={{
-          display: 'flex',
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-          gap: '0.75rem',
-        }}
-      >
-        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-          <strong style={{ color: 'var(--text-main)', fontSize: '0.92rem', fontWeight: 800, lineHeight: 1.2 }}>
-            {item.name ?? 'Sans nom'}
-          </strong>
-          <span style={{ color: 'var(--text-muted)', fontSize: '0.76rem', lineHeight: 1.3 }}>
-            {kind === 'cleaning' ? item.description || `${surfaces.length} surface(s)` : processLabel(item.type ?? '')}
-          </span>
+      <div className="haccp-equipment-row-main">
+        <div className="haccp-equipment-row-info">
+          <div className={`haccp-card-icon-badge ${kind === 'cleaning' ? 'cleaning' : kind === 'process' ? (isHot ? 'hot' : 'cold') : (isNegative ? 'negative' : 'positive')}`}>
+            {kind === 'cleaning' ? <ShieldCheck size={18} /> : kind === 'process' ? (isHot ? <Flame size={18} /> : <Snowflake size={18} />) : (isNegative ? <Snowflake size={18} /> : <Thermometer size={18} />)}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+              <strong className="haccp-equipment-title">{item.name || 'Sans nom'}</strong>
+
+              {kind === 'temperature' && (
+                <span className={`haccp-spec-pill target ${isNegative ? 'blue' : 'green'}`}>
+                  Cible {item.temperatureTarget != null ? `${item.temperatureTarget > 0 ? `+${item.temperatureTarget}` : item.temperatureTarget}°C` : formatTemperatureTypeLabel(item.type ?? '')}
+                </span>
+              )}
+
+              {kind === 'process' && (
+                <span className={`haccp-spec-pill target ${isHot ? 'amber' : 'blue'}`}>
+                  {item.temperatureRange ? `${item.temperatureRange.min}°C à ${item.temperatureRange.max}°C` : processLabel(item.type ?? '')}
+                </span>
+              )}
+
+              {kind === 'cleaning' && (
+                <span className="haccp-spec-pill range">{surfaces.length} surface(s)</span>
+              )}
+            </div>
+
+            <span className="haccp-equipment-desc">
+              {kind === 'cleaning' ? item.description || 'Zone de nettoyage' : kind === 'process' ? `${processLabel(item.type ?? '')} • Matériel HACCP` : `${formatTemperatureTypeLabel(item.type ?? '')} • Suivi de température`}
+            </span>
+          </div>
         </div>
-        <button
-          type="button"
-          className="haccp-action-btn"
-          onClick={onDelete}
-          aria-label="Supprimer"
-          style={{
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            padding: '0.35rem',
-            borderRadius: '8px',
-            color: '#94a3b8',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            transition: 'all 0.2s',
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.color = '#ef4444';
-            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.color = '#94a3b8';
-            e.currentTarget.style.background = 'transparent';
-          }}
-        >
-          <Trash2 size={13} />
-        </button>
+
+        <div className="haccp-equipment-actions">
+          <button
+            type="button"
+            className="haccp-instance-delete-btn"
+            onClick={onDelete}
+            title="Supprimer"
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
       </div>
 
-      {kind !== 'cleaning' ? (
-        <div
-          className="haccp-choice-meta"
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '0.5rem',
-            fontSize: '0.74rem',
-            color: '#64748b',
-            alignItems: 'center',
-          }}
-        >
-          <span style={{ background: '#f1f5f9', padding: '0.15rem 0.45rem', borderRadius: '6px', fontWeight: 700 }}>
-            {item.type ?? '-'}
+      {kind === 'cleaning' && surfaces.length > 0 && (
+        <div className="haccp-equipment-instances-box" style={{ marginTop: '0.2rem' }}>
+          <span style={{ fontSize: '0.78rem', fontWeight: 750, color: '#475569', marginBottom: '0.3rem' }}>
+            Surfaces contrôlées :
           </span>
-          {range?.min != null && range?.max != null ? (
-            <span style={{ background: '#f0fdf4', color: '#15803d', padding: '0.15rem 0.45rem', borderRadius: '6px', fontWeight: 700, border: '1px solid rgba(21, 128, 61, 0.1)' }}>
-              {range.min}°C à {range.max}°C
-            </span>
-          ) : null}
-          {item.location ? (
-            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-              <MapPin size={11} style={{ marginRight: '0.2rem', color: '#94a3b8' }} />
-              {item.location}
-            </span>
-          ) : null}
-        </div>
-      ) : (
-        <div
-          className="haccp-config-surface-pills"
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '0.3rem',
-          }}
-        >
-          {surfaces.slice(0, 4).map((surface: HaccpItem, index: number) => (
-            <span
-              key={surface._id ?? surface.id ?? `${surface.name}-${index}`}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                minHeight: '22px',
-                padding: '0.1rem 0.45rem',
-                borderRadius: '8px',
-                background: '#f1f5f9',
-                color: '#475569',
-                fontSize: '0.7rem',
-                fontWeight: 750,
-                border: '1px solid #e2e8f0',
-              }}
-            >
-              {surface.name} · {frequencyLabel(surface.frequency)}
-            </span>
-          ))}
-          {surfaces.length > 4 ? (
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                minHeight: '22px',
-                padding: '0.1rem 0.45rem',
-                borderRadius: '8px',
-                background: 'rgba(245, 158, 11, 0.08)',
-                color: '#d97706',
-                fontSize: '0.7rem',
-                fontWeight: 750,
-                border: '1px solid rgba(245, 158, 11, 0.15)',
-              }}
-            >
-              +{surfaces.length - 4}
-            </span>
-          ) : null}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+            {surfaces.map((s, idx) => (
+              <div key={idx} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', background: 'white', padding: '0.3rem 0.6rem', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.78rem', fontWeight: 650, color: '#0f172a' }}>
+                <span>{s.name}</span>
+                <span style={{ fontSize: '0.68rem', fontWeight: 750, color: '#047857', background: '#ecfdf5', padding: '0.1rem 0.4rem', borderRadius: '5px' }}>
+                  {s.frequency === 'daily' ? 'Quotidien' : s.frequency === 'weekly' ? 'Hebdo' : 'Mensuel'}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
-    </motion.article>
+    </motion.div>
   );
 }
 
@@ -2931,128 +2880,647 @@ function SensorMetric({ label, value, detail, tone = 'neutral' }: { label: strin
   );
 }
 
+function formatTemperatureTypeLabel(type: string): string {
+  const map: Record<string, string> = {
+    enceinte_positive: 'Froid positif',
+    enceinte_sensible_positive: 'Froid sensible',
+    enceinte_produits_finis: 'Produits finis',
+    enceinte_produits_laitiers: 'Produits laitiers',
+    enceinte_negative: 'Froid négatif',
+    enceinte_legumes: 'Zone légumes',
+    zone_refrigeree: 'Zone réfrigérée',
+    enceinte_carcasse_viande: 'Viandes & Carcasses',
+    frigo_glaces_sorbets: 'Glaces & Sorbets',
+    sechoir_charcuterie: 'Séchoir charcuterie',
+    conservateur_chocolat: 'Conservateur chocolat',
+  };
+  return map[type] || type.replace(/_/g, ' ');
+}
+
 function EditableTemperatureStep({ items, existing, onChange }: { items: TemperatureTemplate[]; existing: HaccpItem[]; onChange: (items: TemperatureTemplate[]) => void }) {
   const existingNames = new Set(existing.map((item) => normalizeName(item.name)));
+  const selectedItems = items.filter((i) => i.selected);
+
+  const [showCustomForm, setShowCustomForm] = useState(false);
+  const [customName, setCustomName] = useState('');
+  const [customTemp, setCustomTemp] = useState('2');
+  const [customType, setCustomType] = useState('enceinte_positive');
+
+  const addInstance = (category: typeof DEFAULT_TEMPERATURE_CATEGORIES[0]) => {
+    const categoryItems = items.filter((i) => i.type === category.type && i.selected);
+    const nextNumber = categoryItems.length + 1;
+    const newItem: TemperatureTemplate = {
+      key: `${category.type}-${Date.now()}-${nextNumber}-${Math.random().toString(36).substr(2, 4)}`,
+      name: nextNumber === 1 ? category.defaultName : `${category.defaultName} ${nextNumber}`,
+      type: category.type,
+      description: category.description,
+      recommendedTemp: category.recommendedTemp,
+      selected: true,
+    };
+    onChange([...items, newItem]);
+  };
+
+  const handleAddCustom = () => {
+    if (!customName.trim()) return;
+    const temp = parseFloat(customTemp) || 2;
+    const newItem: TemperatureTemplate = {
+      key: `custom-temp-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      name: customName.trim(),
+      type: customType,
+      description: `Cible ${temp > 0 ? `+${temp}` : temp}°C`,
+      recommendedTemp: temp,
+      selected: true,
+    };
+    onChange([...items, newItem]);
+    setCustomName('');
+    setShowCustomForm(false);
+  };
+
+  const removeInstance = (key: string) => {
+    onChange(items.filter((i) => i.key !== key));
+  };
+
+  const updateInstanceName = (key: string, newName: string) => {
+    onChange(items.map((i) => (i.key === key ? { ...i, name: newName } : i)));
+  };
+
   return (
     <div className="haccp-onboarding-step">
       <StepIntro
-        icon={<Thermometer size={20} />}
+        icon={<Thermometer size={22} />}
         title="Équipements de température"
-        text="Préparez les enceintes qui seront contrôlées chaque jour depuis l’application ToqueHub."
+        text="Ajoutez vos enceintes et personnalisez leurs noms (ex: CF Cuisine, Frigo Pâtisserie, Frigo Bar...)"
+        badge={`${selectedItems.length} enceinte(s) configurée(s)`}
       />
-      <div className="haccp-template-grid">
-        {items.map((item, index) => {
-          const alreadyExists = existingNames.has(normalizeName(item.name));
+      <div className="haccp-equipment-list">
+        {DEFAULT_TEMPERATURE_CATEGORIES.map((category) => {
+          const categoryInstances = items.filter((i) => i.type === category.type && i.selected);
+          const qty = categoryInstances.length;
+          const isNegative = category.recommendedTemp < 0;
+
           return (
-            <button
-              type="button"
-              key={item.key}
-              className={`haccp-template-card haccp-choice-card ${item.selected ? 'selected' : ''} ${alreadyExists ? 'existing' : ''}`}
-              onClick={() => updateArrayItem(items, index, { selected: !item.selected }, onChange)}
-            >
-              <div className="haccp-template-card-header">
-                <strong>{item.name}</strong>
-                <span className="haccp-choice-check">{alreadyExists || item.selected ? <CheckCircle2 size={18} /> : null}</span>
+            <div key={category.key} className={`haccp-equipment-row ${qty > 0 ? 'active' : ''}`}>
+              <div className="haccp-equipment-row-main">
+                <div className="haccp-equipment-row-info">
+                  <div className={`haccp-card-icon-badge ${isNegative ? 'negative' : 'positive'}`}>
+                    {isNegative ? <Snowflake size={18} /> : <Thermometer size={18} />}
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                      <strong className="haccp-equipment-title">{category.defaultName}</strong>
+                      <span className={`haccp-spec-pill target ${isNegative ? 'blue' : 'green'}`}>
+                        Cible {category.recommendedTemp > 0 ? `+${category.recommendedTemp}` : category.recommendedTemp}°C
+                      </span>
+                    </div>
+                    <span className="haccp-equipment-desc">{category.description} • {formatTemperatureTypeLabel(category.type)}</span>
+                  </div>
+                </div>
+
+                <div className="haccp-equipment-actions">
+                  {qty === 0 ? (
+                    <button
+                      type="button"
+                      className="haccp-add-category-btn"
+                      onClick={() => addInstance(category)}
+                    >
+                      <Plus size={15} /> Ajouter
+                    </button>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span className="haccp-count-pill">{qty} configurée(s)</span>
+                      <button
+                        type="button"
+                        className="haccp-add-category-btn active"
+                        onClick={() => addInstance(category)}
+                        title="Ajouter un autre"
+                      >
+                        <Plus size={15} />
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
-              <span className="haccp-choice-description">{item.description}</span>
-              <div className="haccp-choice-meta">
-                <span>{item.type}</span>
-                <span>Cible {item.recommendedTemp}°C</span>
-              </div>
-              {alreadyExists ? <small>Déjà présent dans HACCP</small> : null}
-            </button>
+
+              {qty > 0 ? (
+                <div className="haccp-equipment-instances-box">
+                  <div className="haccp-instances-grid">
+                    {categoryInstances.map((instance, idx) => {
+                      const alreadyExists = existingNames.has(normalizeName(instance.name));
+                      return (
+                        <div key={instance.key} className="haccp-instance-input-row">
+                          <span className="haccp-instance-num">#{idx + 1}</span>
+                          <input
+                            type="text"
+                            className="haccp-instance-input"
+                            value={instance.name}
+                            onChange={(e) => updateInstanceName(instance.key, e.target.value)}
+                            placeholder="Nom personnalisé (ex: CF Cuisine)..."
+                          />
+                          {alreadyExists ? <span className="haccp-exists-tag" style={{ fontSize: '0.68rem' }}>Déjà présent</span> : null}
+                          <button
+                            type="button"
+                            className="haccp-instance-delete-btn"
+                            onClick={() => removeInstance(instance.key)}
+                            title="Supprimer cette enceinte"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <button
+                    type="button"
+                    className="haccp-add-subinstance-btn"
+                    onClick={() => addInstance(category)}
+                  >
+                    <Plus size={14} /> Ajouter une autre {category.defaultName.toLowerCase()}
+                  </button>
+                </div>
+              ) : null}
+            </div>
           );
         })}
       </div>
+
+      {!showCustomForm ? (
+        <button
+          type="button"
+          className="haccp-add-custom-main-btn"
+          onClick={() => setShowCustomForm(true)}
+        >
+          <Plus size={16} /> Créer un équipement de température sur mesure
+        </button>
+      ) : (
+        <div className="haccp-custom-form-card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <strong style={{ fontSize: '0.92rem', color: '#0f172a', fontWeight: 800 }}>
+              Nouveau matériel de température sur mesure
+            </strong>
+            <button type="button" className="haccp-instance-delete-btn" onClick={() => setShowCustomForm(false)}><X size={16} /></button>
+          </div>
+          <div className="haccp-custom-form-grid">
+            <div className="haccp-custom-field">
+              <label>Nom de l'équipement</label>
+              <input
+                type="text"
+                placeholder="Ex: Frigo Bar 2, Chambre froide Sauces..."
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+              />
+            </div>
+            <div className="haccp-custom-field">
+              <label>Type de froid</label>
+              <select value={customType} onChange={(e) => setCustomType(e.target.value)}>
+                <option value="enceinte_positive">Froid positif (ex: 0°C à 4°C)</option>
+                <option value="enceinte_sensible_positive">Froid sensible (ex: 0°C à 2°C)</option>
+                <option value="enceinte_negative">Froid négatif (ex: -18°C)</option>
+                <option value="zone_refrigeree">Zone réfrigérée (&lt; 12°C)</option>
+              </select>
+            </div>
+            <div className="haccp-custom-field">
+              <label>Température cible (°C)</label>
+              <input
+                type="number"
+                step="0.5"
+                placeholder="Ex: 2"
+                value={customTemp}
+                onChange={(e) => setCustomTemp(e.target.value)}
+              />
+            </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem', marginTop: '0.4rem' }}>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowCustomForm(false)}>Annuler</button>
+            <button type="button" className="btn btn-primary btn-sm" onClick={handleAddCustom} disabled={!customName.trim()}>
+              <Plus size={14} /> Ajouter cet équipement
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 function EditableProcessStep({ items, existing, onChange }: { items: ProcessTemplate[]; existing: HaccpItem[]; onChange: (items: ProcessTemplate[]) => void }) {
   const existingKeys = new Set(existing.map((item) => `${String(item.type || '').toLowerCase()}::${normalizeName(item.name)}`));
+  const selectedItems = items.filter((i) => i.selected);
+
+  const [showCustomForm, setShowCustomForm] = useState(false);
+  const [customName, setCustomName] = useState('');
+  const [customProcessType, setCustomProcessType] = useState<'rechauffement' | 'refroidissement' | 'congelation'>('rechauffement');
+  const [minTemp, setMinTemp] = useState('63');
+  const [maxTemp, setMaxTemp] = useState('85');
+
+  const addInstance = (category: typeof DEFAULT_PROCESS_CATEGORIES[0]) => {
+    const categoryItems = items.filter((i) => i.type === category.type && i.selected);
+    const nextNumber = categoryItems.length + 1;
+    const newItem: ProcessTemplate = {
+      key: `${category.type}-${Date.now()}-${nextNumber}-${Math.random().toString(36).substr(2, 4)}`,
+      name: nextNumber === 1 ? category.defaultName : `${category.defaultName} ${nextNumber}`,
+      type: category.type,
+      temperatureRange: category.temperatureRange,
+      description: category.description,
+      selected: true,
+    };
+    onChange([...items, newItem]);
+  };
+
+  const handleAddCustom = () => {
+    if (!customName.trim()) return;
+    const min = parseFloat(minTemp) || 0;
+    const max = parseFloat(maxTemp) || 100;
+    const newItem: ProcessTemplate = {
+      key: `custom-proc-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      name: customName.trim(),
+      type: customProcessType,
+      temperatureRange: { min, max },
+      description: `Plage de ${min}°C à ${max}°C`,
+      selected: true,
+    };
+    onChange([...items, newItem]);
+    setCustomName('');
+    setShowCustomForm(false);
+  };
+
+  const removeInstance = (key: string) => {
+    onChange(items.filter((i) => i.key !== key));
+  };
+
+  const updateInstanceName = (key: string, newName: string) => {
+    onChange(items.map((i) => (i.key === key ? { ...i, name: newName } : i)));
+  };
+
   return (
     <div className="haccp-onboarding-step">
       <StepIntro
-        icon={<Snowflake size={20} />}
+        icon={<Snowflake size={22} />}
         title="Process HACCP"
-        text="Créez les équipements utilisés pour le réchauffement, le refroidissement et la congélation."
+        text="Ajoutez vos équipements de cuisson, refroidissement et congélation (ex: Four Pâtisserie, Cellule 1...)"
+        badge={`${selectedItems.length} équipement(s) configuré(s)`}
       />
-      <div className="haccp-template-grid">
-        {items.map((item, index) => {
-          const alreadyExists = existingKeys.has(`${item.type}::${normalizeName(item.name)}`);
+      <div className="haccp-equipment-list">
+        {DEFAULT_PROCESS_CATEGORIES.map((category) => {
+          const categoryInstances = items.filter((i) => i.type === category.type && i.selected);
+          const qty = categoryInstances.length;
+          const isHot = category.type === 'rechauffement';
+
           return (
-            <button
-              type="button"
-              key={item.key}
-              className={`haccp-template-card haccp-choice-card ${item.selected ? 'selected' : ''} ${alreadyExists ? 'existing' : ''}`}
-              onClick={() => updateArrayItem(items, index, { selected: !item.selected }, onChange)}
-            >
-              <div className="haccp-template-card-header">
-                <strong>{item.name}</strong>
-                <span className="haccp-choice-check">{alreadyExists || item.selected ? <CheckCircle2 size={18} /> : null}</span>
+            <div key={category.key} className={`haccp-equipment-row ${qty > 0 ? 'active' : ''}`}>
+              <div className="haccp-equipment-row-main">
+                <div className="haccp-equipment-row-info">
+                  <div className={`haccp-card-icon-badge ${isHot ? 'hot' : 'cold'}`}>
+                    {isHot ? <Flame size={18} /> : <Snowflake size={18} />}
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                      <strong className="haccp-equipment-title">{category.defaultName}</strong>
+                      <span className={`haccp-spec-pill target ${isHot ? 'amber' : 'blue'}`}>
+                        {category.temperatureRange.min}°C à {category.temperatureRange.max}°C
+                      </span>
+                    </div>
+                    <span className="haccp-equipment-desc">{category.description} • {processLabel(category.type)}</span>
+                  </div>
+                </div>
+
+                <div className="haccp-equipment-actions">
+                  {qty === 0 ? (
+                    <button
+                      type="button"
+                      className="haccp-add-category-btn"
+                      onClick={() => addInstance(category)}
+                    >
+                      <Plus size={15} /> Ajouter
+                    </button>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span className="haccp-count-pill">{qty} configuré(s)</span>
+                      <button
+                        type="button"
+                        className="haccp-add-category-btn active"
+                        onClick={() => addInstance(category)}
+                        title="Ajouter un autre"
+                      >
+                        <Plus size={15} />
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
-              <span className="haccp-choice-description">{item.description}</span>
-              <div className="haccp-choice-meta">
-                <span>{processLabel(item.type)}</span>
-                <span>{item.temperatureRange.min}°C à {item.temperatureRange.max}°C</span>
-              </div>
-              {alreadyExists ? <small>Déjà présent dans HACCP</small> : null}
-            </button>
+
+              {qty > 0 ? (
+                <div className="haccp-equipment-instances-box">
+                  <div className="haccp-instances-grid">
+                    {categoryInstances.map((instance, idx) => {
+                      const alreadyExists = existingKeys.has(`${instance.type}::${normalizeName(instance.name)}`);
+                      return (
+                        <div key={instance.key} className="haccp-instance-input-row">
+                          <span className="haccp-instance-num">#{idx + 1}</span>
+                          <input
+                            type="text"
+                            className="haccp-instance-input"
+                            value={instance.name}
+                            onChange={(e) => updateInstanceName(instance.key, e.target.value)}
+                            placeholder="Nom personnalisé (ex: Four Pâtisserie)..."
+                          />
+                          {alreadyExists ? <span className="haccp-exists-tag" style={{ fontSize: '0.68rem' }}>Déjà présent</span> : null}
+                          <button
+                            type="button"
+                            className="haccp-instance-delete-btn"
+                            onClick={() => removeInstance(instance.key)}
+                            title="Supprimer"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <button
+                    type="button"
+                    className="haccp-add-subinstance-btn"
+                    onClick={() => addInstance(category)}
+                  >
+                    <Plus size={14} /> Ajouter un autre {category.defaultName.toLowerCase()}
+                  </button>
+                </div>
+              ) : null}
+            </div>
           );
         })}
       </div>
+
+      {!showCustomForm ? (
+        <button
+          type="button"
+          className="haccp-add-custom-main-btn"
+          onClick={() => setShowCustomForm(true)}
+        >
+          <Plus size={16} /> Créer un équipement de process sur mesure
+        </button>
+      ) : (
+        <div className="haccp-custom-form-card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <strong style={{ fontSize: '0.92rem', color: '#0f172a', fontWeight: 800 }}>
+              Nouveau matériel de process sur mesure
+            </strong>
+            <button type="button" className="haccp-instance-delete-btn" onClick={() => setShowCustomForm(false)}><X size={16} /></button>
+          </div>
+          <div className="haccp-custom-form-grid">
+            <div className="haccp-custom-field">
+              <label>Nom du matériel / process</label>
+              <input
+                type="text"
+                placeholder="Ex: Salamandre 1, Friteuse double..."
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+              />
+            </div>
+            <div className="haccp-custom-field">
+              <label>Type de process</label>
+              <select value={customProcessType} onChange={(e) => setCustomProcessType(e.target.value as any)}>
+                <option value="rechauffement">Maintien chaud / Rechauffement</option>
+                <option value="refroidissement">Refroidissement rapide</option>
+                <option value="congelation">Congélation rapide</option>
+              </select>
+            </div>
+            <div className="haccp-custom-field">
+              <label>Température Min (°C)</label>
+              <input
+                type="number"
+                placeholder="Ex: 63"
+                value={minTemp}
+                onChange={(e) => setMinTemp(e.target.value)}
+              />
+            </div>
+            <div className="haccp-custom-field">
+              <label>Température Max (°C)</label>
+              <input
+                type="number"
+                placeholder="Ex: 85"
+                value={maxTemp}
+                onChange={(e) => setMaxTemp(e.target.value)}
+              />
+            </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem', marginTop: '0.4rem' }}>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowCustomForm(false)}>Annuler</button>
+            <button type="button" className="btn btn-primary btn-sm" onClick={handleAddCustom} disabled={!customName.trim()}>
+              <Plus size={14} /> Ajouter ce process
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 function EditableCleaningStep({ items, existing, onChange }: { items: CleaningTemplate[]; existing: HaccpItem[]; onChange: (items: CleaningTemplate[]) => void }) {
   const existingNames = new Set(existing.map((item) => normalizeName(item.name)));
+  const selectedCount = items.filter((i) => i.selected).length;
+
+  const [showCustomZoneForm, setShowCustomZoneForm] = useState(false);
+  const [customZoneName, setCustomZoneName] = useState('');
+  const [customZoneDesc, setCustomZoneDesc] = useState('');
+
+  const toggleZone = (index: number) => {
+    updateArrayItem(items, index, { selected: !items[index].selected }, onChange);
+  };
+
+  const updateSurfaceFrequency = (zoneIndex: number, surfaceIndex: number, frequency: string) => {
+    const updatedSurfaces = items[zoneIndex].surfaces.map((entry, idx) =>
+      idx === surfaceIndex ? { ...entry, frequency } : entry
+    );
+    updateArrayItem(items, zoneIndex, { surfaces: updatedSurfaces }, onChange);
+  };
+
+  const updateSurfaceName = (zoneIndex: number, surfaceIndex: number, name: string) => {
+    const updatedSurfaces = items[zoneIndex].surfaces.map((entry, idx) =>
+      idx === surfaceIndex ? { ...entry, name } : entry
+    );
+    updateArrayItem(items, zoneIndex, { surfaces: updatedSurfaces }, onChange);
+  };
+
+  const addSurface = (zoneIndex: number) => {
+    const newSurface = { name: `Surface ${items[zoneIndex].surfaces.length + 1}`, frequency: 'daily' };
+    const updatedSurfaces = [...items[zoneIndex].surfaces, newSurface];
+    updateArrayItem(items, zoneIndex, { surfaces: updatedSurfaces }, onChange);
+  };
+
+  const removeSurface = (zoneIndex: number, surfaceIndex: number) => {
+    const updatedSurfaces = items[zoneIndex].surfaces.filter((_, idx) => idx !== surfaceIndex);
+    updateArrayItem(items, zoneIndex, { surfaces: updatedSurfaces }, onChange);
+  };
+
+  const handleAddCustomZone = () => {
+    if (!customZoneName.trim()) return;
+    const newZone: CleaningTemplate = {
+      key: `custom-zone-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      name: customZoneName.trim(),
+      description: customZoneDesc.trim() || 'Zone de nettoyage sur mesure',
+      selected: true,
+      surfaces: [
+        { name: 'Plan de travail / Surface principale', frequency: 'daily' },
+        { name: 'Sols & Poignées', frequency: 'daily' },
+      ],
+    };
+    onChange([...items, newZone]);
+    setCustomZoneName('');
+    setCustomZoneDesc('');
+    setShowCustomZoneForm(false);
+  };
+
   return (
     <div className="haccp-onboarding-step">
       <StepIntro
-        icon={<ShieldCheck size={20} />}
+        icon={<ShieldCheck size={22} />}
         title="Zones et surfaces de nettoyage"
-        text="Préparez le plan de nettoyage : zones, surfaces et fréquences qui seront cochées sur le terrain."
+        text="Activez les zones de votre établissement, personnalisez les surfaces à contrôler et ajustez leurs fréquences."
+        badge={`${selectedCount} zone(s) configurée(s)`}
       />
-      <div className="haccp-cleaning-template-list">
-        {items.map((item, index) => {
+      <div className="haccp-equipment-list">
+        {items.map((item, zoneIndex) => {
           const alreadyExists = existingNames.has(normalizeName(item.name));
+          const isSelected = item.selected;
+
           return (
-            <div key={item.key} className={`haccp-template-card haccp-cleaning-card haccp-choice-card ${item.selected ? 'selected' : ''} ${alreadyExists ? 'existing' : ''}`}>
-              <button
-                type="button"
-                className="haccp-zone-choice-header"
-                onClick={() => updateArrayItem(items, index, { selected: !item.selected }, onChange)}
-              >
-                <span>
-                  <strong>{item.name}</strong>
-                  <small>{item.description}</small>
-                </span>
-                <span className="haccp-choice-check">{alreadyExists || item.selected ? <CheckCircle2 size={18} /> : null}</span>
-              </button>
-              <div className="haccp-surface-menu-list">
-                {item.surfaces.map((surface, surfaceIndex) => (
-                  <div key={`${item.key}-${surface.name}`} className="haccp-surface-menu-row">
-                    <span>{surface.name}</span>
-                    <select
-                      value={surface.frequency}
-                      onChange={(event) => {
-                        const surfaces = item.surfaces.map((entry, entryIndex) => entryIndex === surfaceIndex ? { ...entry, frequency: event.target.value } : entry);
-                        updateArrayItem(items, index, { surfaces }, onChange);
-                      }}
-                    >
-                      <option value="daily">Quotidien</option>
-                      <option value="weekly">Hebdomadaire</option>
-                      <option value="monthly">Mensuel</option>
-                    </select>
+            <div key={item.key} className={`haccp-equipment-row ${isSelected ? 'active' : ''}`}>
+              <div className="haccp-equipment-row-main">
+                <div className="haccp-equipment-row-info">
+                  <div className="haccp-card-icon-badge cleaning">
+                    <ShieldCheck size={18} />
                   </div>
-                ))}
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                      <strong className="haccp-equipment-title">{item.name}</strong>
+                      <span className="haccp-spec-pill range">{item.surfaces.length} surface(s)</span>
+                    </div>
+                    <span className="haccp-equipment-desc">{item.description}</span>
+                  </div>
+                </div>
+
+                <div className="haccp-equipment-actions">
+                  {!isSelected ? (
+                    <button
+                      type="button"
+                      className="haccp-add-category-btn"
+                      onClick={() => toggleZone(zoneIndex)}
+                    >
+                      <Plus size={15} /> Activer
+                    </button>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span className="haccp-count-pill">Configurée</span>
+                      <button
+                        type="button"
+                        className="haccp-add-category-btn active"
+                        onClick={() => toggleZone(zoneIndex)}
+                        title="Désactiver cette zone"
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
-              {alreadyExists ? <small className="muted">Zone déjà présente dans HACCP</small> : null}
+
+              {isSelected && (
+                <div className="haccp-equipment-instances-box">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 750, color: '#475569' }}>
+                      Surfaces à contrôler & Fréquences :
+                    </span>
+                    {alreadyExists && <span className="haccp-exists-tag" style={{ fontSize: '0.68rem' }}>Zone déjà présente</span>}
+                  </div>
+
+                  <div className="haccp-instances-grid">
+                    {item.surfaces.map((surface, surfaceIndex) => (
+                      <div key={`${item.key}-${surfaceIndex}`} className="haccp-instance-input-row">
+                        <input
+                          type="text"
+                          className="haccp-instance-input"
+                          value={surface.name}
+                          onChange={(e) => updateSurfaceName(zoneIndex, surfaceIndex, e.target.value)}
+                          placeholder="Nom de la surface (ex: Plan de travail)..."
+                        />
+                        <select
+                          className="haccp-frequency-select"
+                          value={surface.frequency}
+                          onChange={(e) => updateSurfaceFrequency(zoneIndex, surfaceIndex, e.target.value)}
+                        >
+                          <option value="daily">Quotidien</option>
+                          <option value="weekly">Hebdomadaire</option>
+                          <option value="monthly">Mensuel</option>
+                        </select>
+                        <button
+                          type="button"
+                          className="haccp-instance-delete-btn"
+                          onClick={() => removeSurface(zoneIndex, surfaceIndex)}
+                          title="Supprimer cette surface"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="haccp-add-subinstance-btn"
+                    onClick={() => addSurface(zoneIndex)}
+                  >
+                    <Plus size={14} /> Ajouter une surface à {item.name.toLowerCase()}
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}
       </div>
+
+      {!showCustomZoneForm ? (
+        <button
+          type="button"
+          className="haccp-add-custom-main-btn"
+          onClick={() => setShowCustomZoneForm(true)}
+        >
+          <Plus size={16} /> Créer une zone de nettoyage sur mesure
+        </button>
+      ) : (
+        <div className="haccp-custom-form-card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <strong style={{ fontSize: '0.92rem', color: '#0f172a', fontWeight: 800 }}>
+              Nouvelle zone de nettoyage sur mesure
+            </strong>
+            <button type="button" className="haccp-instance-delete-btn" onClick={() => setShowCustomZoneForm(false)}><X size={16} /></button>
+          </div>
+          <div className="haccp-custom-form-grid">
+            <div className="haccp-custom-field">
+              <label>Nom de la zone</label>
+              <input
+                type="text"
+                placeholder="Ex: Bar / Comptoir, Vestiaires..."
+                value={customZoneName}
+                onChange={(e) => setCustomZoneName(e.target.value)}
+              />
+            </div>
+            <div className="haccp-custom-field">
+              <label>Description (optionnel)</label>
+              <input
+                type="text"
+                placeholder="Ex: Zone de service et préparation des boissons"
+                value={customZoneDesc}
+                onChange={(e) => setCustomZoneDesc(e.target.value)}
+              />
+            </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem', marginTop: '0.4rem' }}>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowCustomZoneForm(false)}>Annuler</button>
+            <button type="button" className="btn btn-primary btn-sm" onClick={handleAddCustomZone} disabled={!customZoneName.trim()}>
+              <Plus size={14} /> Ajouter cette zone
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -3191,14 +3659,38 @@ function HaccpOnboardingReview({
   );
 }
 
-function StepIntro({ icon, title, text }: { icon: ReactNode; title: string; text: string }) {
+function StepIntro({
+  icon,
+  title,
+  text,
+  badge,
+  onToggleAll,
+  isAllSelected,
+}: {
+  icon: ReactNode;
+  title: string;
+  text: string;
+  badge?: string;
+  onToggleAll?: () => void;
+  isAllSelected?: boolean;
+}) {
   return (
     <div className="haccp-step-intro">
-      <span>{icon}</span>
-      <div>
-        <h3>{title}</h3>
-        <p>{text}</p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div className="haccp-intro-icon-box">{icon}</div>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <h3>{title}</h3>
+            {badge && <span className="haccp-intro-badge">{badge}</span>}
+          </div>
+          <p>{text}</p>
+        </div>
       </div>
+      {onToggleAll && (
+        <button type="button" className="btn btn-secondary btn-sm haccp-toggle-all-btn" onClick={onToggleAll}>
+          {isAllSelected ? 'Tout désélectionner' : 'Tout sélectionner'}
+        </button>
+      )}
     </div>
   );
 }

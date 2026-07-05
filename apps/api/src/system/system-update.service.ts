@@ -2,13 +2,17 @@ import { BadGatewayException, Injectable, ServiceUnavailableException } from '@n
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import process from 'node:process';
+import { PrismaService } from '../prisma/prisma.service';
 
 type GithubRelease = {
   tag_name?: string;
   name?: string;
   html_url?: string;
   published_at?: string;
+  created_at?: string;
   body?: string;
+  draft?: boolean;
+  prerelease?: boolean;
   source?: 'release' | 'tag';
 };
 
@@ -71,8 +75,7 @@ function readPackageVersion() {
   return '1.0.0';
 }
 
-function githubHeaders() {
-  const token = env('TOQUEHUB_GITHUB_TOKEN');
+function githubHeaders(token?: string | null) {
   return {
     Accept: 'application/vnd.github+json',
     'User-Agent': 'toquehub-update-checker',
@@ -80,14 +83,41 @@ function githubHeaders() {
   };
 }
 
+function githubApiError(endpoint: string, status: number, token?: string | null) {
+  if (status === 404 && !token) {
+    return `${endpoint} a répondu 404. Si le dépôt est privé, configurez un token GitHub en lecture seule dans Organisation > Général.`;
+  }
+  return `${endpoint} a répondu ${status}`;
+}
+
 @Injectable()
 export class SystemUpdateService {
   private latestReleaseCache: { checkedAt: string; release: GithubRelease | null; error: string | null } | null = null;
+  private changelogCache: {
+    checkedAt: string;
+    repo: string;
+    entries: Array<{
+      version: string;
+      tag: string;
+      name: string | null;
+      url: string | null;
+      publishedAt: string | null;
+      notes: string | null;
+      isInstalled: boolean;
+      isLatest: boolean;
+    }>;
+    currentVersion: string;
+    latestTag: string | null;
+    error: string | null;
+  } | null = null;
+
+  constructor(private readonly prisma: PrismaService) {}
 
   async getStatus(force = false) {
     const imageTag = env('TOQUEHUB_IMAGE_TAG') || 'local';
     const installedVersion = normalizeVersion(env('TOQUEHUB_VERSION') || (imageTag !== 'latest' && imageTag !== 'local' ? imageTag : readPackageVersion()));
-    const release = await this.getLatestRelease(force);
+    const githubToken = await this.getGithubToken();
+    const release = await this.getLatestRelease(force, githubToken);
     const latestVersion = normalizeVersion(release.release?.tag_name);
     const updater = await this.callUpdater<{ capable: boolean; platform?: string; currentTag?: string; lastOperation?: UpdaterOperation | null }>('GET', '/status').catch((error) => ({
       capable: false,
@@ -131,6 +161,63 @@ export class SystemUpdateService {
     return this.getStatus(true);
   }
 
+  async getChangelog() {
+    const githubToken = await this.getGithubToken();
+    if (this.changelogCache && !this.changelogCache.error && Date.now() - Date.parse(this.changelogCache.checkedAt) < 5 * 60 * 1000) return this.changelogCache;
+
+    const checkedAt = new Date().toISOString();
+    const repo = env('TOQUEHUB_RELEASE_REPO', 'ToqueHub/ToqueHub-Web');
+    const imageTag = env('TOQUEHUB_IMAGE_TAG') || 'local';
+    const currentVersion = normalizeVersion(env('TOQUEHUB_VERSION') || (imageTag !== 'latest' && imageTag !== 'local' ? imageTag : readPackageVersion()));
+
+    try {
+      const response = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=10`, {
+        headers: githubHeaders(githubToken),
+      });
+
+      if (!response.ok) {
+        throw new Error(githubApiError('GitHub releases', response.status, githubToken));
+      }
+
+      const releases = (await response.json() as GithubRelease[])
+        .filter((release) => !release.draft && !release.prerelease && /^v?\d+\.\d+\.\d+/.test(release.tag_name ?? ''))
+        .sort((left, right) => compareVersions(right.tag_name, left.tag_name));
+      const latestTag = releases[0]?.tag_name ?? null;
+
+      this.changelogCache = {
+        checkedAt,
+        repo,
+        currentVersion,
+        latestTag,
+        error: null,
+        entries: releases.map((release) => {
+          const version = normalizeVersion(release.tag_name);
+          return {
+            version,
+            tag: release.tag_name ?? version,
+            name: release.name ?? release.tag_name ?? null,
+            url: release.html_url ?? null,
+            publishedAt: release.published_at ?? release.created_at ?? null,
+            notes: release.body ?? null,
+            isInstalled: Boolean(version && compareVersions(version, currentVersion) === 0),
+            isLatest: Boolean(latestTag && release.tag_name === latestTag),
+          };
+        }),
+      };
+    } catch (error) {
+      this.changelogCache = {
+        checkedAt,
+        repo,
+        currentVersion,
+        latestTag: null,
+        entries: [],
+        error: error instanceof Error ? error.message : 'Impossible de contacter GitHub Releases.',
+      };
+    }
+
+    return this.changelogCache;
+  }
+
   async applyUpdate() {
     const status = await this.getStatus(true);
     if (!status.latest?.tag) {
@@ -152,7 +239,7 @@ export class SystemUpdateService {
     return this.callUpdater<UpdaterOperation>('GET', `/operations/${encodeURIComponent(id)}`);
   }
 
-  private async getLatestRelease(force: boolean) {
+  private async getLatestRelease(force: boolean, githubToken?: string | null) {
     if (!force && this.latestReleaseCache) return this.latestReleaseCache;
 
     const checkedAt = new Date().toISOString();
@@ -160,7 +247,7 @@ export class SystemUpdateService {
 
     try {
       const response = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
-        headers: githubHeaders(),
+        headers: githubHeaders(githubToken),
       });
 
       if (response.ok) {
@@ -173,10 +260,10 @@ export class SystemUpdateService {
       }
 
       if (response.status !== 404) {
-        throw new Error(`GitHub releases/latest a répondu ${response.status}`);
+        throw new Error(githubApiError('GitHub releases/latest', response.status, githubToken));
       }
 
-      const tagRelease = await this.getLatestStableTag(repo);
+      const tagRelease = await this.getLatestStableTag(repo, githubToken);
       this.latestReleaseCache = {
         checkedAt,
         release: tagRelease,
@@ -193,13 +280,13 @@ export class SystemUpdateService {
     return this.latestReleaseCache;
   }
 
-  private async getLatestStableTag(repo: string): Promise<GithubRelease | null> {
+  private async getLatestStableTag(repo: string, githubToken?: string | null): Promise<GithubRelease | null> {
     const response = await fetch(`https://api.github.com/repos/${repo}/tags?per_page=100`, {
-      headers: githubHeaders(),
+      headers: githubHeaders(githubToken),
     });
 
     if (!response.ok) {
-      throw new Error(`GitHub tags a répondu ${response.status}`);
+      throw new Error(githubApiError('GitHub tags', response.status, githubToken));
     }
 
     const tags = (await response.json() as GithubTag[])
@@ -252,5 +339,16 @@ export class SystemUpdateService {
     if (arch.includes('arm64') || arch.includes('aarch64')) return 'Docker arm64 / Raspberry compatible';
     if (arch.includes('x64') || arch.includes('amd64')) return 'Docker x86_64';
     return `Docker ${arch}`;
+  }
+
+  private async getGithubToken() {
+    const token = env('TOQUEHUB_GITHUB_TOKEN');
+    if (token) return token;
+    const organization = await this.prisma.organization.findFirst({
+      where: { githubToken: { not: null } },
+      orderBy: { githubTokenUpdatedAt: 'desc' },
+      select: { githubToken: true },
+    });
+    return organization?.githubToken ?? null;
   }
 }

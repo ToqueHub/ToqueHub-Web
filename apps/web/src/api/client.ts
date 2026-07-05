@@ -123,6 +123,7 @@ import type {
   BackupRestoreResult,
   BackupSchedule,
   BackupSummary,
+  SystemChangelogResponse,
   SystemInstanceInfo,
   SystemUpdateApplyResult,
   SystemUpdateOperation,
@@ -296,6 +297,9 @@ export const api = {
   systemUpdateStatus(token: string) {
     return request<SystemUpdateStatus>('/system/update/status', {}, token);
   },
+  systemChangelog(token: string) {
+    return request<SystemChangelogResponse>('/system/update/changelog', {}, token);
+  },
   systemUpdateCheck(token: string) {
     return request<SystemUpdateStatus>('/system/update/check', { method: 'POST' }, token);
   },
@@ -353,7 +357,7 @@ export const api = {
   organizationApiKeys(token: string) {
     return request<DashboardSummary['organization']['apiKeys']>('/auth/organization/api-keys', {}, token);
   },
-  updateOrganizationApiKeys(token: string, payload: { mistralApiKey?: string }) {
+  updateOrganizationApiKeys(token: string, payload: { mistralApiKey?: string; githubToken?: string }) {
     return request<DashboardSummary['organization']['apiKeys']>('/auth/organization/api-keys', { method: 'POST', body: JSON.stringify(payload) }, token);
   },
   updateOrganizationIdentity(token: string, payload: { name?: string; establishmentType?: string | null; teamSize?: string | null }) {

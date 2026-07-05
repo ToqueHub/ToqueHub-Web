@@ -140,6 +140,26 @@ export interface SystemUpdateStatus {
   };
 }
 
+export interface SystemChangelogEntry {
+  version: string;
+  tag: string;
+  name: string | null;
+  url: string | null;
+  publishedAt: string | null;
+  notes: string | null;
+  isInstalled: boolean;
+  isLatest: boolean;
+}
+
+export interface SystemChangelogResponse {
+  checkedAt: string;
+  repo: string;
+  currentVersion: string;
+  latestTag: string | null;
+  entries: SystemChangelogEntry[];
+  error: string | null;
+}
+
 export interface SystemUpdateApplyResult {
   skipped: boolean;
   message?: string;
@@ -360,6 +380,11 @@ export interface DashboardSummary {
 
 export interface OrganizationApiKeys {
   mistral: {
+    configured: boolean;
+    masked?: string | null;
+    updatedAt?: string | null;
+  };
+  github?: {
     configured: boolean;
     masked?: string | null;
     updatedAt?: string | null;

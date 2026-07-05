@@ -208,7 +208,7 @@ export class AuthService {
     if (!user.organizationId) throw new ForbiddenException('Organization setup is required before reading API keys');
     const organization = await this.prisma.organization.findUnique({
       where: { id: user.organizationId },
-      select: { mistralApiKey: true, mistralApiKeyUpdatedAt: true },
+      select: { mistralApiKey: true, mistralApiKeyUpdatedAt: true, githubToken: true, githubTokenUpdatedAt: true },
     });
     if (!organization) throw new ForbiddenException('Organization setup is required before reading API keys');
     return this.serializeApiKeys(organization);
@@ -218,13 +218,20 @@ export class AuthService {
     if (!user.organizationId) throw new ForbiddenException('Organization setup is required before updating API keys');
     if (!SETTINGS_ROLES.includes(user.role)) throw new ForbiddenException('Only administrators and managers can update organization API keys');
     const key = dto.mistralApiKey?.trim();
+    const githubToken = dto.githubToken?.trim();
     const organization = await this.prisma.organization.update({
       where: { id: user.organizationId },
       data: {
-        mistralApiKey: key || null,
-        mistralApiKeyUpdatedAt: key ? new Date() : null,
+        ...(dto.mistralApiKey !== undefined ? {
+          mistralApiKey: key || null,
+          mistralApiKeyUpdatedAt: key ? new Date() : null,
+        } : {}),
+        ...(dto.githubToken !== undefined ? {
+          githubToken: githubToken || null,
+          githubTokenUpdatedAt: githubToken ? new Date() : null,
+        } : {}),
       },
-      select: { mistralApiKey: true, mistralApiKeyUpdatedAt: true },
+      select: { mistralApiKey: true, mistralApiKeyUpdatedAt: true, githubToken: true, githubTokenUpdatedAt: true },
     });
     return this.serializeApiKeys(organization);
   }
@@ -711,8 +718,10 @@ export class AuthService {
       productionInstalledAt?: Date | null;
       menusInstalledAt?: Date | null;
       haccpInstalledAt?: Date | null;
-      mistralApiKey?: string | null;
-      mistralApiKeyUpdatedAt?: Date | null;
+        mistralApiKey?: string | null;
+        mistralApiKeyUpdatedAt?: Date | null;
+        githubToken?: string | null;
+        githubTokenUpdatedAt?: Date | null;
     } | null;
   }) {
     return {
@@ -790,6 +799,8 @@ export class AuthService {
       menusInstalledAt?: Date | null;
       mistralApiKey?: string | null;
       mistralApiKeyUpdatedAt?: Date | null;
+      githubToken?: string | null;
+      githubTokenUpdatedAt?: Date | null;
     } | null;
   }) {
     const payload = {
@@ -808,12 +819,17 @@ export class AuthService {
     };
   }
 
-  private serializeApiKeys(organization: { mistralApiKey?: string | null; mistralApiKeyUpdatedAt?: Date | null }) {
+  private serializeApiKeys(organization: { mistralApiKey?: string | null; mistralApiKeyUpdatedAt?: Date | null; githubToken?: string | null; githubTokenUpdatedAt?: Date | null }) {
     return {
       mistral: {
         configured: Boolean(organization.mistralApiKey),
         masked: organization.mistralApiKey ? this.maskSecret(organization.mistralApiKey) : null,
         updatedAt: organization.mistralApiKeyUpdatedAt ?? null,
+      },
+      github: {
+        configured: Boolean(organization.githubToken),
+        masked: organization.githubToken ? this.maskSecret(organization.githubToken) : null,
+        updatedAt: organization.githubTokenUpdatedAt ?? null,
       },
     };
   }

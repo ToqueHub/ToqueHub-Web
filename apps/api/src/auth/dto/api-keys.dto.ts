@@ -7,5 +7,10 @@ export class UpdateOrganizationApiKeysDto {
   @IsString()
   @MaxLength(500)
   mistralApiKey?: string;
-}
 
+  @ApiPropertyOptional({ description: 'GitHub token used to read private repository releases for updates and changelog.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  githubToken?: string;
+}

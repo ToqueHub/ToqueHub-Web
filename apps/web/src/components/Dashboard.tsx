@@ -152,6 +152,7 @@ import type {
   MarginProductDetail,
   MarginSupplierDetail,
   MarginSettings,
+  SystemChangelogResponse,
   SystemInstanceInfo,
   SystemUpdateOperation,
   SystemUpdateStatus,
@@ -507,6 +508,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [instanceInfo, setInstanceInfo] = useState<SystemInstanceInfo | null>(null);
   const [instanceLoading, setInstanceLoading] = useState(false);
   const [instanceError, setInstanceError] = useState<string | null>(null);
+  const [showChangelogModal, setShowChangelogModal] = useState(false);
+  const [changelog, setChangelog] = useState<SystemChangelogResponse | null>(null);
+  const [changelogLoading, setChangelogLoading] = useState(false);
+  const [changelogError, setChangelogError] = useState<string | null>(null);
   const [planningCustomizeSignal, setPlanningCustomizeSignal] = useState(0);
   const [showUserModal, setShowUserModal] = useState(false);
   const [editingUser, setEditingUser] = useState<CoreUser | null>(null);
@@ -658,6 +663,23 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       addAppNotification('error', message);
     } finally {
       setInstanceLoading(false);
+    }
+  }
+
+  async function openChangelogModal() {
+    setShowChangelogModal(true);
+    setChangelogLoading(true);
+    setChangelogError(null);
+    try {
+      const payload = await api.systemChangelog(token);
+      setChangelog(payload);
+      if (payload.error) setChangelogError(payload.error);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Changelog indisponible';
+      setChangelogError(message);
+      addAppNotification('error', message);
+    } finally {
+      setChangelogLoading(false);
     }
   }
 
@@ -2197,6 +2219,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               </button>
             )}
 
+            <button type="button" className="status-badge changelog-badge" onClick={() => void openChangelogModal()}>
+              <History size={13} />
+              Changelog
+            </button>
             <button type="button" className="status-badge" onClick={() => void openInstanceModal()}>
               <div className="status-dot"></div>
               Instance Locale
@@ -3338,6 +3364,15 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           onNotify={addAppNotification}
         />
       </Modal>
+
+      <Modal isOpen={showChangelogModal} onClose={() => setShowChangelogModal(false)} title="Changelog" size="lg">
+        <ChangelogPanel
+          changelog={changelog}
+          loading={changelogLoading}
+          error={changelogError}
+          onRefresh={() => void openChangelogModal()}
+        />
+      </Modal>
     </div>
   );
 }
@@ -3515,6 +3550,102 @@ function InstanceInfoPanel({
           <InstanceInfoRow label="Uptime API" value={formatDuration(info.api.uptimeSeconds)} />
         </InstanceInfoCard>
       </div>
+    </div>
+  );
+}
+
+function formatChangelogDate(value?: string | null) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+}
+
+function ChangelogPanel({
+  changelog,
+  loading,
+  error,
+  onRefresh,
+}: {
+  changelog: SystemChangelogResponse | null;
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+}) {
+  if (loading && !changelog) {
+    return (
+      <div className="instance-loading">
+        <RefreshCw size={18} className="spin" />
+        Chargement du changelog...
+      </div>
+    );
+  }
+
+  if (error && !changelog) {
+    return (
+      <div className="instance-empty">
+        <AlertCircle size={22} />
+        <strong>Changelog indisponible</strong>
+        <span>{error}</span>
+        <button type="button" className="btn btn-primary" onClick={onRefresh}>
+          <RefreshCw size={15} />
+          Réessayer
+        </button>
+      </div>
+    );
+  }
+
+  if (!changelog) return null;
+
+  return (
+    <div className="changelog-panel">
+      <div className="changelog-toolbar">
+        <div>
+          <strong>Releases stables GitHub</strong>
+          <span>
+            {changelog.repo} · version installée {changelog.currentVersion || '-'} · vérifié le{' '}
+            {new Date(changelog.checkedAt).toLocaleString('fr-FR')}
+          </span>
+        </div>
+        <button type="button" className="btn btn-secondary" onClick={onRefresh} disabled={loading}>
+          <RotateCw size={15} className={loading ? 'spin' : undefined} />
+          Actualiser
+        </button>
+      </div>
+
+      {error ? <div className="alert-modern error"><AlertCircle size={16} /> GitHub : {error}</div> : null}
+
+      {!changelog.entries.length ? (
+        <div className="instance-empty">
+          <Info size={22} />
+          <strong>Aucune release stable</strong>
+          <span>Publiez un tag vX.Y.Z pour générer automatiquement une release et l’afficher ici.</span>
+        </div>
+      ) : (
+        <div className="changelog-list">
+          {changelog.entries.map((entry) => (
+            <article key={entry.tag} className="changelog-entry">
+              <div className="changelog-entry-header">
+                <div>
+                  <h4>{entry.name || entry.tag}</h4>
+                  <span>{formatChangelogDate(entry.publishedAt)}</span>
+                </div>
+                <div className="changelog-entry-actions">
+                  {entry.isLatest ? <span className="changelog-pill latest">Dernière</span> : null}
+                  {entry.isInstalled ? <span className="changelog-pill installed">Installée</span> : null}
+                  <span className="changelog-pill">{entry.tag}</span>
+                  {entry.url ? (
+                    <a href={entry.url} target="_blank" rel="noreferrer" title="Voir la release GitHub">
+                      <ExternalLink size={15} />
+                    </a>
+                  ) : null}
+                </div>
+              </div>
+              <pre>{entry.notes?.trim() || 'Aucune note de version publiée pour cette release.'}</pre>
+            </article>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -7242,12 +7373,20 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
   const regulatorySector = organization?.regulatorySector ?? session.user.regulatorySector ?? null;
   const initialConfigured = organization?.apiKeys?.mistral.configured ?? session.user.apiKeys?.mistral.configured ?? false;
   const initialMasked = organization?.apiKeys?.mistral.masked ?? session.user.apiKeys?.mistral.masked;
+  const initialGithubConfigured = organization?.apiKeys?.github?.configured ?? session.user.apiKeys?.github?.configured ?? false;
+  const initialGithubMasked = organization?.apiKeys?.github?.masked ?? session.user.apiKeys?.github?.masked;
   const [mistralKey, setMistralKey] = useState('');
   const [apiKeyConfigured, setApiKeyConfigured] = useState(initialConfigured);
   const [apiKeyMasked, setApiKeyMasked] = useState<string | null | undefined>(initialMasked);
   const [apiKeyMessage, setApiKeyMessage] = useState<string>();
   const [apiKeyError, setApiKeyError] = useState<string>();
   const [savingApiKey, setSavingApiKey] = useState(false);
+  const [githubToken, setGithubToken] = useState('');
+  const [githubTokenConfigured, setGithubTokenConfigured] = useState(initialGithubConfigured);
+  const [githubTokenMasked, setGithubTokenMasked] = useState<string | null | undefined>(initialGithubMasked);
+  const [githubTokenMessage, setGithubTokenMessage] = useState<string>();
+  const [githubTokenError, setGithubTokenError] = useState<string>();
+  const [savingGithubToken, setSavingGithubToken] = useState(false);
   const [regulatoryCountryDraft, setRegulatoryCountryDraft] = useState<string>(regulatoryCountryCode ?? '');
   const [regulatorySectorDraft, setRegulatorySectorDraft] = useState<string>(regulatorySector ?? '');
   const [regulatoryCountryMessage, setRegulatoryCountryMessage] = useState<string>();
@@ -7274,6 +7413,11 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
     setApiKeyConfigured(initialConfigured);
     setApiKeyMasked(initialMasked);
   }, [initialConfigured, initialMasked]);
+
+  useEffect(() => {
+    setGithubTokenConfigured(initialGithubConfigured);
+    setGithubTokenMasked(initialGithubMasked);
+  }, [initialGithubConfigured, initialGithubMasked]);
 
   useEffect(() => {
     setRegulatoryCountryDraft(regulatoryCountryCode ?? '');
@@ -7350,7 +7494,7 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
     setApiKeyError(undefined);
     setApiKeyMessage(undefined);
     try {
-      const saved = await api.updateOrganizationApiKeys(token, { mistralApiKey: mistralKey.trim() || undefined });
+      const saved = await api.updateOrganizationApiKeys(token, { mistralApiKey: mistralKey.trim() || (apiKeyConfigured ? '' : undefined) });
       setApiKeyConfigured(Boolean(saved?.mistral.configured));
       setApiKeyMasked(saved?.mistral.masked);
       setMistralKey('');
@@ -7360,6 +7504,30 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
       setApiKeyError(err instanceof Error ? err.message : 'Impossible d’enregistrer la clé API.');
     } finally {
       setSavingApiKey(false);
+    }
+  }
+
+  async function saveGithubToken() {
+    setSavingGithubToken(true);
+    setGithubTokenError(undefined);
+    setGithubTokenMessage(undefined);
+    try {
+      const saved = await api.updateOrganizationApiKeys(token, { githubToken: githubToken.trim() || (githubTokenConfigured ? '' : undefined) });
+      setGithubTokenConfigured(Boolean(saved?.github?.configured));
+      setGithubTokenMasked(saved?.github?.masked);
+      setGithubToken('');
+      setGithubTokenMessage(saved?.github?.configured ? 'Token GitHub enregistré. Vérification des releases en cours...' : 'Token GitHub supprimé.');
+      if (saved?.github?.configured) {
+        const status = await api.systemUpdateCheck(token);
+        setUpdateStatus(status);
+        setUpdateOperation(status.runtime.lastOperation);
+        setGithubTokenMessage(status.github.error ? `Token enregistré, mais GitHub répond encore : ${status.github.error}` : 'Token GitHub enregistré. Releases et changelog accessibles.');
+      }
+      onSettingsSaved?.();
+    } catch (err) {
+      setGithubTokenError(err instanceof Error ? err.message : 'Impossible d’enregistrer le token GitHub.');
+    } finally {
+      setSavingGithubToken(false);
     }
   }
 
@@ -7607,6 +7775,56 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
                 </div>
                 {identityMessage ? <div className="alert-modern success" style={{ marginTop: '1rem' }}><CheckCircle2 size={16} /> {identityMessage}</div> : null}
                 {regulatoryCountryMessage ? <div className="alert-modern success" style={{ marginTop: '1rem' }}><CheckCircle2 size={16} /> {regulatoryCountryMessage}</div> : null}
+              </div>
+
+              <div className="card-modern" style={{ padding: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
+                  <div>
+                    <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
+                      <History size={18} /> GitHub releases & changelog
+                    </span>
+                    <p className="muted" style={{ fontSize: '0.85rem', margin: 0 }}>
+                      Token en lecture seule pour récupérer les mises à jour et les notes de version d’un dépôt privé.
+                    </p>
+                  </div>
+                  <span className={`badge ${githubTokenConfigured ? 'badge-reception' : 'badge-correction'}`}>
+                    {githubTokenConfigured ? 'GitHub configuré' : 'Token manquant'}
+                  </span>
+                </div>
+
+                {githubTokenMasked ? (
+                  <div className="alert-modern info" style={{ marginBottom: '1rem', background: '#f8fafc', borderColor: '#dbe4ef', color: '#334155' }}>
+                    <ShieldCheck size={16} />
+                    <span style={{ fontSize: '0.85rem' }}>Token GitHub actif : <code>{githubTokenMasked}</code></span>
+                  </div>
+                ) : null}
+                {githubTokenError ? <div className="alert-modern error" style={{ marginBottom: '1rem' }}><AlertCircle size={16} /> {githubTokenError}</div> : null}
+                {githubTokenMessage ? <div className="alert-modern success" style={{ marginBottom: '1rem' }}><CheckCircle2 size={16} /> {githubTokenMessage}</div> : null}
+
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontWeight: 700, fontSize: '0.85rem', marginBottom: '1rem', color: 'var(--text-main)' }}>
+                  Fine-grained token GitHub
+                  <div className="api-key-input-container">
+                    <input
+                      type="password"
+                      placeholder={githubTokenConfigured ? 'Nouveau token ou laisser vide pour supprimer' : 'github_pat_...'}
+                      value={githubToken}
+                      onChange={(event) => setGithubToken(event.target.value)}
+                    />
+                  </div>
+                </label>
+
+                <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <button className="btn btn-primary" onClick={() => void saveGithubToken()} disabled={savingGithubToken} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 1.5rem', borderRadius: '10px' }}>
+                    {savingGithubToken ? 'Vérification…' : githubTokenConfigured && !githubToken.trim() ? 'Supprimer le token' : 'Sauvegarder et tester'}
+                  </button>
+                  <button className="btn btn-secondary" onClick={() => { setActiveSubTab('updates'); void loadUpdateStatus(true); }} disabled={updateLoading} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 1rem', borderRadius: '10px' }}>
+                    <RotateCw size={15} className={updateLoading ? 'spin' : undefined} />
+                    Vérifier les mises à jour
+                  </button>
+                </div>
+                <p className="muted" style={{ fontSize: '0.78rem', margin: '0.85rem 0 0 0' }}>
+                  Permission GitHub recommandée : accès au dépôt privé avec <strong>Contents: Read-only</strong>. Le token est stocké côté serveur et n’est jamais réaffiché en clair.
+                </p>
               </div>
 
               <div className="card-modern" style={{ padding: '1.5rem', background: 'linear-gradient(135deg, rgba(16,185,129,0.04) 0%, rgba(59,130,246,0.04) 100%)', border: '1px solid rgba(16,185,129,0.1)' }}>
