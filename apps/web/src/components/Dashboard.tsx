@@ -512,6 +512,11 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [changelog, setChangelog] = useState<SystemChangelogResponse | null>(null);
   const [changelogLoading, setChangelogLoading] = useState(false);
   const [changelogError, setChangelogError] = useState<string | null>(null);
+  const [autoUpdateStatus, setAutoUpdateStatus] = useState<SystemUpdateStatus | null>(null);
+  const [autoUpdateOperation, setAutoUpdateOperation] = useState<SystemUpdateOperation | null>(null);
+  const [showUpdateAvailableModal, setShowUpdateAvailableModal] = useState(false);
+  const [autoUpdateApplying, setAutoUpdateApplying] = useState(false);
+  const [autoUpdateError, setAutoUpdateError] = useState<string | null>(null);
   const [planningCustomizeSignal, setPlanningCustomizeSignal] = useState(0);
   const [showUserModal, setShowUserModal] = useState(false);
   const [editingUser, setEditingUser] = useState<CoreUser | null>(null);
@@ -683,6 +688,49 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     }
   }
 
+  async function checkForUpdateNotification() {
+    if (!isAdmin) return;
+    try {
+      const status = await api.systemUpdateStatus(token);
+      setAutoUpdateStatus(status);
+      setAutoUpdateOperation(status.runtime.lastOperation);
+      const latestKey = status.latest?.tag ?? status.latest?.version ?? '';
+      const dismissedKey = latestKey ? `toquehub_update_modal_dismissed_${latestKey}` : '';
+      const hasDismissed = dismissedKey ? localStorage.getItem(dismissedKey) === 'true' : false;
+      const operationRunning = Boolean(status.runtime.lastOperation && ['queued', 'running', 'rollback'].includes(status.runtime.lastOperation.status));
+      if (status.updateAvailable && status.runtime.updaterAvailable && !operationRunning && !hasDismissed) {
+        setShowUpdateAvailableModal(true);
+        addAppNotification('success', `Mise à jour ToqueHub disponible : ${status.latest?.tag ?? status.latest?.version}.`);
+      }
+    } catch {
+      // La vérification automatique reste silencieuse pour ne pas gêner l'usage courant.
+    }
+  }
+
+  function dismissUpdateAvailableModal() {
+    const latestKey = autoUpdateStatus?.latest?.tag ?? autoUpdateStatus?.latest?.version ?? '';
+    if (latestKey) localStorage.setItem(`toquehub_update_modal_dismissed_${latestKey}`, 'true');
+    setShowUpdateAvailableModal(false);
+  }
+
+  async function applyUpdateFromModal() {
+    setAutoUpdateApplying(true);
+    setAutoUpdateError(null);
+    try {
+      const result = await api.systemUpdateApply(token);
+      if (result.operation) setAutoUpdateOperation(result.operation);
+      if (result.status) setAutoUpdateStatus(result.status);
+      if (result.skipped && result.message) setAutoUpdateError(result.message);
+      else setShowUpdateAvailableModal(false);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Impossible de lancer la mise à jour.';
+      setAutoUpdateError(message);
+      addAppNotification('error', message);
+    } finally {
+      setAutoUpdateApplying(false);
+    }
+  }
+
   async function refreshOcrStatusesFromServer() {
     try {
       const result = await api.stocksOcrStatuses(token);
@@ -732,6 +780,30 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     if (activeTab !== 'organization-documents') return;
     void refreshMyDocuments();
   }, [activeTab, token, documentsSearch, documentsSupplierFilter, documentsTypeFilter, documentsDateFrom, documentsDateTo]);
+
+  useEffect(() => {
+    void checkForUpdateNotification();
+  }, [token, isAdmin]);
+
+  useEffect(() => {
+    if (!autoUpdateOperation || !['queued', 'running', 'rollback'].includes(autoUpdateOperation.status)) return;
+    const interval = window.setInterval(async () => {
+      try {
+        const next = await api.systemUpdateOperation(token, autoUpdateOperation.id);
+        setAutoUpdateOperation(next);
+        if (!['queued', 'running', 'rollback'].includes(next.status)) {
+          const refreshed = await api.systemUpdateStatus(token);
+          setAutoUpdateStatus(refreshed);
+          if (next.status === 'success') addAppNotification('success', 'Mise à jour ToqueHub terminée.');
+          if (next.status === 'error' || next.status === 'rollback') addAppNotification('error', 'La mise à jour ToqueHub nécessite une vérification.');
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Impossible de suivre la mise à jour.';
+        setAutoUpdateError(message);
+      }
+    }, 3000);
+    return () => window.clearInterval(interval);
+  }, [token, autoUpdateOperation?.id, autoUpdateOperation?.status]);
 
 
   const stocksInstalled = installedApps.includes('stocks');
@@ -3265,6 +3337,60 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             onClose={() => setSelectedStoreApp(null)}
           />
         )}
+      </Modal>
+
+      <Modal isOpen={showUpdateAvailableModal} onClose={dismissUpdateAvailableModal} title="Mise à jour disponible" size="lg">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div className="alert-modern info" style={{ background: '#f8fafc', borderColor: '#dbe4ef', color: '#334155' }}>
+            <Download size={17} />
+            <span>
+              Une nouvelle version stable de ToqueHub est prête à être installée.
+            </span>
+          </div>
+
+          <div className="settings-grid-premium">
+            <div className="info-card-premium">
+              <div className="info-card-premium-header">
+                <span className="info-card-premium-label">Version installée</span>
+                <span className="info-card-premium-icon"><Server size={16} /></span>
+              </div>
+              <div className="info-card-premium-value">{autoUpdateStatus?.current.version ?? '-'}</div>
+              <span className="badge badge-reception" style={{ width: 'fit-content', marginTop: '0.65rem' }}>{autoUpdateStatus?.current.imageTag ?? 'local'}</span>
+            </div>
+            <div className="info-card-premium">
+              <div className="info-card-premium-header">
+                <span className="info-card-premium-label">Nouvelle version</span>
+                <span className="info-card-premium-icon"><ExternalLink size={16} /></span>
+              </div>
+              <div className="info-card-premium-value">{autoUpdateStatus?.latest?.tag ?? autoUpdateStatus?.latest?.version ?? '-'}</div>
+              {autoUpdateStatus?.latest?.source ? <span className="badge badge-reception" style={{ width: 'fit-content', marginTop: '0.65rem' }}>{autoUpdateStatus.latest.source === 'release' ? 'GitHub Release' : 'Tag GitHub'}</span> : null}
+            </div>
+          </div>
+
+          <p className="muted" style={{ margin: 0, lineHeight: 1.6 }}>
+            L’installation crée d’abord une sauvegarde locale, télécharge les nouvelles images Docker, redémarre l’API et le web, puis vérifie l’état de santé. En cas d’échec, le service tente un rollback automatique.
+          </p>
+
+          {autoUpdateError ? <div className="alert-modern error"><AlertCircle size={16} /> {autoUpdateError}</div> : null}
+
+          <div className="modal-footer" style={{ margin: '0 -1.75rem -1.75rem' }}>
+            <button className="btn btn-secondary" onClick={dismissUpdateAvailableModal} disabled={autoUpdateApplying}>Plus tard</button>
+            <button
+              className="btn btn-secondary"
+              onClick={() => {
+                setActiveTab('settings');
+                setShowUpdateAvailableModal(false);
+              }}
+              disabled={autoUpdateApplying}
+            >
+              Voir détails
+            </button>
+            <button className="btn btn-primary" onClick={() => void applyUpdateFromModal()} disabled={autoUpdateApplying || !autoUpdateStatus?.runtime.updaterAvailable}>
+              <Download size={15} />
+              {autoUpdateApplying ? 'Lancement...' : 'Installer maintenant'}
+            </button>
+          </div>
+        </div>
       </Modal>
 
       <ConfirmationModal
