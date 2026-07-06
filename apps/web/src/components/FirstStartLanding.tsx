@@ -33,12 +33,10 @@ import {
   ConciergeBell,
   CookingPot,
   MoreHorizontal,
-  Briefcase,
-  Landmark,
   Check,
 } from 'lucide-react';
 import { api } from '../api/client';
-import type { BackupInspection, EstablishmentType, RegulatoryCountryCode, RegulatorySector, SystemStatus, TeamSize, UserSession } from '../types';
+import type { BackupInspection, EstablishmentType, RegulatoryCountryCode, SystemStatus, TeamSize, UserSession } from '../types';
 
 interface FirstStartLandingProps {
   status?: SystemStatus;
@@ -51,16 +49,12 @@ interface FirstStartLandingProps {
 
 type OnboardingStep = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 type AdminForm = { username: string; firstName: string; lastName: string; email: string; password: string; confirm: string };
-type OrganizationForm = { name: string; type: string; regulatoryCountryCode: RegulatoryCountryCode | ''; regulatorySector: RegulatorySector | ''; teamSize: TeamSize; logo?: string };
+type OrganizationForm = { name: string; type: string; regulatoryCountryCode: RegulatoryCountryCode | ''; teamSize: TeamSize; logo?: string };
 
 const establishmentTypes = ['Restaurant', 'EHPAD', 'Collectivité', 'Hôtel', 'Traiteur', 'Cuisine centrale', 'Autre'];
 const regulatoryCountries: Array<{ label: string; value: RegulatoryCountryCode }> = [
   { label: 'France', value: 'FR' },
   { label: 'Finlande', value: 'FI' },
-];
-const regulatorySectors: Array<{ label: string; value: RegulatorySector }> = [
-  { label: 'Secteur privé', value: 'PRIVATE' },
-  { label: 'Secteur public', value: 'PUBLIC' },
 ];
 const teamSizes: Array<{ label: string; value: TeamSize }> = [
   { label: '1 à 5 personnes', value: '1-5' },
@@ -91,7 +85,7 @@ export function FirstStartLanding({
 }: FirstStartLandingProps) {
   const [step, setStep] = useState<OnboardingStep>(0);
   const [admin, setAdmin] = useState<AdminForm>({ username: '', firstName: '', lastName: '', email: '', password: '', confirm: '' });
-  const [organization, setOrganization] = useState<OrganizationForm>({ name: '', type: '', regulatoryCountryCode: '', regulatorySector: '', teamSize: '1-5' });
+  const [organization, setOrganization] = useState<OrganizationForm>({ name: '', type: '', regulatoryCountryCode: '', teamSize: '1-5' });
   const [showPassword, setShowPassword] = useState(false);
   const [mistralApiKey, setMistralApiKey] = useState('');
   const [formError, setFormError] = useState<string>();
@@ -121,11 +115,7 @@ export function FirstStartLanding({
       return;
     }
     if (step === 2 && !organization.regulatoryCountryCode) {
-      setFormError('Le pays de réglementation est requis.');
-      return;
-    }
-    if (step === 2 && !organization.regulatorySector) {
-      setFormError('Le secteur est requis.');
+      setFormError('Le pays RH est requis.');
       return;
     }
     if (step < 5) setStep((step + 1) as OnboardingStep);
@@ -163,11 +153,7 @@ export function FirstStartLanding({
   function updateOrganization(field: keyof Omit<OrganizationForm, 'logo'>) {
     return (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setOrganization((prev) => {
       const value = event.target.value;
-      return {
-        ...prev,
-        [field]: value,
-        ...(field === 'regulatoryCountryCode' && !value ? { regulatorySector: '' } : {}),
-      };
+      return { ...prev, [field]: value };
     });
   }
 
@@ -200,8 +186,8 @@ export function FirstStartLanding({
       setStep(2);
       return;
     }
-    if (!organization.regulatoryCountryCode || !organization.regulatorySector) {
-      setFormError('Le pays de réglementation et le secteur sont requis.');
+    if (!organization.regulatoryCountryCode) {
+      setFormError('Le pays RH est requis.');
       setStep(2);
       return;
     }
@@ -220,7 +206,6 @@ export function FirstStartLanding({
         organizationName: organization.name.trim(),
         establishmentType: (organization.type || undefined) as EstablishmentType | undefined,
         regulatoryCountryCode: organization.regulatoryCountryCode || undefined,
-        regulatorySector: organization.regulatorySector || undefined,
         teamSize: (organization.teamSize || undefined) as TeamSize | undefined,
         logoDataUrl: organization.logo,
         mistralApiKey: mistralApiKey.trim() || undefined,
@@ -1218,10 +1203,10 @@ function OrganizationStep({ organization, updateOrganization, setOrganization }:
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginTop: '0.25rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 420px)', gap: '1.25rem', marginTop: '0.25rem' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#475569' }}>
-            Pays de réglementation *
+            Pays RH *
           </span>
           <div style={{
             display: 'flex',
@@ -1241,7 +1226,6 @@ function OrganizationStep({ organization, updateOrganization, setOrganization }:
                     setOrganization(prev => ({
                       ...prev,
                       regulatoryCountryCode: country.value,
-                      ...(prev.regulatoryCountryCode !== country.value ? { regulatorySector: '' } : {})
                     }));
                   }}
                   style={{
@@ -1270,7 +1254,7 @@ function OrganizationStep({ organization, updateOrganization, setOrganization }:
                       {country.label}
                     </span>
                     <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-                      Réglementation {country.value}
+                      Conges {country.value === 'FI' ? 'annuels' : 'payes'}
                     </span>
                   </div>
                   {isSelected && (
@@ -1296,101 +1280,6 @@ function OrganizationStep({ organization, updateOrganization, setOrganization }:
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#475569' }}>
-            Secteur *
-          </span>
-          {organization.regulatoryCountryCode ? (
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.5rem',
-              marginTop: '0.25rem'
-            }}>
-              {regulatorySectors.map((sector) => {
-                const isSelected = organization.regulatorySector === sector.value;
-                const Icon = sector.value === 'PRIVATE' ? Briefcase : Landmark;
-                return (
-                  <motion.div
-                    key={sector.value}
-                    whileHover={{ y: -1, scale: 1.01 }}
-                    whileTap={{ scale: 0.99 }}
-                    onClick={() => {
-                      setOrganization(prev => ({ ...prev, regulatorySector: sector.value }));
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.75rem',
-                      padding: '0.65rem 0.85rem',
-                      borderRadius: '12px',
-                      border: isSelected ? '2px solid var(--primary)' : '1px solid var(--light-border)',
-                      background: isSelected ? 'rgba(16, 185, 129, 0.04)' : '#ffffff',
-                      cursor: 'pointer',
-                      position: 'relative',
-                      transition: 'border-color 0.2s, background-color 0.2s',
-                      boxShadow: isSelected ? '0 4px 12px rgba(16, 185, 129, 0.08)' : 'none'
-                    }}
-                  >
-                    <div style={{
-                      color: isSelected ? 'var(--primary)' : '#64748b',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}>
-                      <Icon size={18} strokeWidth={isSelected ? 2.5 : 2} />
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
-                      <span style={{
-                        fontSize: '0.8rem',
-                        fontWeight: isSelected ? 700 : 500,
-                        color: isSelected ? '#0f172a' : '#475569'
-                      }}>
-                        {sector.label}
-                      </span>
-                      <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-                        {sector.value === 'PRIVATE' ? 'Privé' : 'Public'}
-                      </span>
-                    </div>
-                    {isSelected && (
-                      <div style={{
-                        position: 'absolute',
-                        top: '6px',
-                        right: '6px',
-                        background: 'var(--primary)',
-                        color: 'white',
-                        borderRadius: '50%',
-                        width: '16px',
-                        height: '16px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}>
-                        <Check size={10} strokeWidth={3} />
-                      </div>
-                    )}
-                  </motion.div>
-                );
-              })}
-            </div>
-          ) : (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '1.25rem',
-              borderRadius: '12px',
-              border: '1px dashed var(--light-border)',
-              background: '#f8fafc',
-              height: '78px',
-              marginTop: '0.25rem'
-            }}>
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'center' }}>
-                Sélectionnez d'abord un pays
-              </span>
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );

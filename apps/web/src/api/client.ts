@@ -58,17 +58,7 @@ import type {
   PlanningDashboardResponse,
   PlanningDayPresetPayload,
   PlanningDayStatus,
-  PlanningEmployeeEntitlementsResponse,
-  PlanningEntitlementCatalogResponse,
-  PlanningEntitlementSetup,
   PlanningEmployeeTemplateAssignment,
-  PlanningEntitlementRule,
-  EmployeeApplicableRightsResponse,
-  EmployeeRightsOverviewResponse,
-  EstablishmentRightsRecommendationsResponse,
-  LegalRightDetail,
-  LegalRightsDiagnosticsResponse,
-  LegalRightsSearchResponse,
   PlanningGenerationResult,
   PlanningPeriodActionPayload,
   PlanningPeriodActionResult,
@@ -76,7 +66,6 @@ import type {
   PlanningRequirement,
   PlanningTemplate,
   PlanningWeeklyRotationPayload,
-  EstablishmentWorkTimeRegulation,
   TechnicalSheetAllergen,
   TechnicalSheetCategory,
   TechnicalSheetDashboard,
@@ -333,7 +322,6 @@ export const api = {
     establishmentType?: string;
     teamSize?: string;
     regulatoryCountryCode?: 'FR' | 'FI';
-    regulatorySector?: 'PRIVATE' | 'PUBLIC';
     logoDataUrl?: string;
     mistralApiKey?: string;
   }) {
@@ -363,7 +351,7 @@ export const api = {
   updateOrganizationIdentity(token: string, payload: { name?: string; establishmentType?: string | null; teamSize?: string | null }) {
     return request<DashboardSummary>('/auth/organization/identity', { method: 'POST', body: JSON.stringify(payload) }, token);
   },
-  updateOrganizationRegulatoryCountry(token: string, payload: { regulatoryCountryCode?: 'FR' | 'FI' | null; regulatorySector?: 'PRIVATE' | 'PUBLIC' | null }) {
+  updateOrganizationRegulatoryCountry(token: string, payload: { regulatoryCountryCode?: 'FR' | 'FI' | null }) {
     return request<DashboardSummary>('/auth/organization/regulatory-country', { method: 'POST', body: JSON.stringify(payload) }, token);
   },
   modularDashboard(token: string) {
@@ -753,90 +741,6 @@ export const api = {
   validatePlanningAttendance(token: string, id: string, payload: Record<string, any>) {
     return request<Record<string, any>>(`/planning/attendance/${id}/validate`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
   },
-  hrEntitlementRules(token: string) {
-    return request<PlanningEntitlementRule[]>('/hr/entitlements/rules', {}, token);
-  },
-  hrEntitlementSetup(token: string) {
-    return request<PlanningEntitlementSetup>('/hr/entitlements/setup', {}, token);
-  },
-  hrEntitlementCatalog(token: string, params: { countryCode?: string; employmentFramework?: string; organizationType?: string; search?: string; category?: string; advanced?: boolean } = {}) {
-    const search = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') search.set(key, String(value));
-    });
-    return request<PlanningEntitlementCatalogResponse>(`/hr/entitlements/catalog${search.size ? `?${search.toString()}` : ''}`, {}, token);
-  },
-  prepareHrEntitlementCatalog(token: string, payload: { countryCode: 'FR' | 'FI'; employmentFramework?: string; organizationType?: string }) {
-    return request<PlanningEntitlementCatalogResponse>('/hr/entitlements/catalog/prepare', { method: 'POST', body: JSON.stringify(payload) }, token);
-  },
-  activateHrEntitlementCatalogSelection(token: string, payload: { catalogItemIds: string[]; targetMode?: 'NONE' | 'ALL_ACTIVE' | 'DEPARTMENT' | 'POSITION' | 'MANUAL'; departmentId?: string; positionId?: string; employeeIds?: string[]; openingBalance?: number; openingBalanceDate?: string; effectiveFrom?: string }) {
-    return request<Record<string, any>>('/hr/entitlements/catalog/activate', { method: 'POST', body: JSON.stringify(payload) }, token);
-  },
-  activateHrEntitlementCatalogItem(token: string, id: string, payload: { targetMode?: 'NONE' | 'ALL_ACTIVE' | 'DEPARTMENT' | 'POSITION' | 'MANUAL'; departmentId?: string; positionId?: string; employeeIds?: string[]; openingBalance?: number; openingBalanceDate?: string; effectiveFrom?: string } = {}) {
-    return request<Record<string, any>>(`/hr/entitlements/catalog/${id}/activate`, { method: 'POST', body: JSON.stringify(payload) }, token);
-  },
-  createHrEntitlementRule(token: string, payload: Partial<PlanningEntitlementRule>) {
-    return request<PlanningEntitlementRule>('/hr/entitlements/rules', { method: 'POST', body: JSON.stringify(payload) }, token);
-  },
-  updateHrEntitlementRule(token: string, id: string, payload: Partial<PlanningEntitlementRule>) {
-    return request<PlanningEntitlementRule>(`/hr/entitlements/rules/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
-  },
-  employeeHrEntitlements(token: string, employeeId: string, params: { periodYear?: number; year?: number } = {}) {
-    const search = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) search.set(key, String(value));
-    });
-    return request<PlanningEmployeeEntitlementsResponse>(`/hr/employees/${employeeId}/entitlements${search.size ? `?${search.toString()}` : ''}`, {}, token);
-  },
-  legalRightsDiagnostics(token: string) {
-    return request<LegalRightsDiagnosticsResponse>('/rights/diagnostics', {}, token);
-  },
-  importLegalRightsFrance(token: string) {
-    return request<Record<string, any>>('/rights/import/fr-v1', { method: 'POST' }, token);
-  },
-  legalRightsSearch(token: string, params: { query?: string; country?: string; regime?: string; idcc?: string; publicRegime?: string; category?: string; tag?: string; status?: string; includeRequiresReview?: boolean; effectiveDate?: string } = {}) {
-    const search = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') search.set(key, String(value));
-    });
-    return request<LegalRightsSearchResponse>(`/rights/search${search.size ? `?${search.toString()}` : ''}`, {}, token);
-  },
-  employeeApplicableRights(token: string, employeeId: string, params: { periodStart?: string; periodEnd?: string; effectiveDate?: string } = {}) {
-    const search = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') search.set(key, String(value));
-    });
-    return request<EmployeeApplicableRightsResponse>(`/rights/employees/${employeeId}/applicable${search.size ? `?${search.toString()}` : ''}`, {}, token);
-  },
-  employeeRightsOverview(token: string, employeeId: string, params: { periodStart?: string; periodEnd?: string; effectiveDate?: string } = {}) {
-    const search = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') search.set(key, String(value));
-    });
-    return request<EmployeeRightsOverviewResponse>(`/rights/employees/${employeeId}/overview${search.size ? `?${search.toString()}` : ''}`, {}, token);
-  },
-  establishmentRightsRecommendations(params: { country?: string; regulatoryCountryCode?: string; sector?: string; regulatorySector?: string; establishmentType?: string; idcc?: string; publicRegime?: string; query?: string } = {}, token?: string) {
-    const search = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') search.set(key, String(value));
-    });
-    return request<EstablishmentRightsRecommendationsResponse>(`/rights/onboarding/recommendations${search.size ? `?${search.toString()}` : ''}`, {}, token);
-  },
-  legalRightDetail(token: string, id: string) {
-    return request<LegalRightDetail>(`/rights/${id}`, {}, token);
-  },
-  activateLegalRight(token: string, id: string, payload: { ruleVersionId?: string } = {}) {
-    return request<Record<string, any>>(`/rights/${id}/activate`, { method: 'POST', body: JSON.stringify(payload) }, token);
-  },
-  upsertEmployeeHrEntitlement(token: string, employeeId: string, payload: Record<string, any>) {
-    return request<Record<string, any>>(`/hr/employees/${employeeId}/entitlements`, { method: 'POST', body: JSON.stringify(payload) }, token);
-  },
-  updateEmployeeHrEntitlement(token: string, employeeId: string, id: string, payload: Record<string, any>) {
-    return request<Record<string, any>>(`/hr/employees/${employeeId}/entitlements/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
-  },
-  adjustEmployeeHrEntitlement(token: string, employeeId: string, id: string, payload: { quantity: number; direction: 'CREDIT' | 'DEBIT'; date?: string; comment?: string }) {
-    return request<Record<string, any>>(`/hr/employees/${employeeId}/entitlements/${id}/adjust`, { method: 'POST', body: JSON.stringify(payload) }, token);
-  },
   planningCodeDictionary(token: string) {
     return request<PlanningCodeDictionaryEntry[]>('/planning/code-dictionary', {}, token);
   },
@@ -854,15 +758,6 @@ export const api = {
   },
   updatePlanningPolicyProfile(token: string, id: string, payload: Partial<PlanningPolicyProfile>) {
     return request<PlanningPolicyProfile>(`/planning/policy-profiles/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
-  },
-  planningWorkTimeRegulation(token: string) {
-    return request<EstablishmentWorkTimeRegulation>('/planning/work-time-regulation', {}, token);
-  },
-  updatePlanningWorkTimeRegulation(token: string, payload: Partial<EstablishmentWorkTimeRegulation>) {
-    return request<EstablishmentWorkTimeRegulation>('/planning/work-time-regulation', { method: 'PATCH', body: JSON.stringify(payload) }, token);
-  },
-  previewPlanningWorkTimePositionMapping(token: string) {
-    return request<Record<string, any>>('/planning/work-time-regulation/position-mapping/preview', {}, token);
   },
   createPlanningAssignment(token: string, payload: Partial<PlanningAssignment>) {
     return request<PlanningAssignment>('/planning/assignments', { method: 'POST', body: JSON.stringify(payload) }, token);

@@ -2,8 +2,6 @@ export type EstablishmentType = 'Restaurant' | 'EHPAD' | 'Collectivité' | 'Hôt
 export type TeamSize = '1-5' | '6-10' | '11-20' | '20+';
 export type HrCountryCode = 'FR' | 'FI';
 export type RegulatoryCountryCode = 'FR' | 'FI';
-export type RegulatorySector = 'PRIVATE' | 'PUBLIC';
-export type EmploymentFramework = 'PRIVATE' | 'PUBLIC' | 'MIXED' | 'LOCAL' | 'CUSTOM';
 
 export interface CompleteOnboardingPayload {
   username: string;
@@ -15,7 +13,6 @@ export interface CompleteOnboardingPayload {
   establishmentType?: EstablishmentType;
   hrCountryCode?: HrCountryCode;
   regulatoryCountryCode?: RegulatoryCountryCode;
-  regulatorySector?: RegulatorySector;
   teamSize?: TeamSize;
   logoDataUrl?: string;
   mistralApiKey?: string;
@@ -283,7 +280,6 @@ export interface UserSession {
     organizationType?: EstablishmentType | null;
     hrCountryCode?: HrCountryCode | null;
     regulatoryCountryCode?: RegulatoryCountryCode | null;
-    regulatorySector?: RegulatorySector | null;
     regulatoryCountrySelectedAt?: string | null;
     regulatoryCountrySelectedById?: string | null;
     teamSize?: TeamSize | null;
@@ -357,7 +353,6 @@ export interface DashboardSummary {
     establishmentType?: EstablishmentType | null;
     hrCountryCode?: HrCountryCode | null;
     regulatoryCountryCode?: RegulatoryCountryCode | null;
-    regulatorySector?: RegulatorySector | null;
     regulatoryCountrySelectedAt?: string | null;
     regulatoryCountrySelectedById?: string | null;
     teamSize?: TeamSize | null;
@@ -914,8 +909,6 @@ export interface PlanningPolicyProfile {
   defaultWeeklyMinutes?: number | null;
   defaultDailyMinutes?: number | null;
   defaultBreakMinutes?: number | null;
-  countersEnabled?: boolean;
-  annualizationEnabled?: boolean;
   attendanceEnabled?: boolean;
   isDefault?: boolean;
   customRules?: Record<string, any> | null;
@@ -950,12 +943,7 @@ export interface PlanningCounterAlert {
 }
 
 export interface PlanningCounterTotals {
-  plannedMinutes: number;
-  validatedMinutes: number;
-  absenceDays: number;
   leaveDays: number;
-  recoveryMinutes: number;
-  overtimeMinutes: number;
 }
 
 export interface PlanningCounterEmployeeSummary {
@@ -1003,73 +991,6 @@ export interface PlanningCountersSummary {
   storage?: string;
 }
 
-export interface EstablishmentWorkTimeRule {
-  key: string;
-  label: string;
-  value: string | number | boolean | null;
-  unit?: string | null;
-  sourcePage?: number | null;
-  sourceSection?: string | null;
-  confidence?: 'high' | 'medium' | 'low' | string;
-  status?: 'validated' | 'to_confirm' | string;
-}
-
-export interface EstablishmentWorkTimeRegulation {
-  id?: string | null;
-  organizationId?: string | null;
-  sourceLayer: 'establishment_internal' | string;
-  sourceKind?: string;
-  nightWorkEnabled: boolean;
-  nightWorkStartTime?: string | null;
-  nightWorkEndTime?: string | null;
-  publicHolidayWorkEnabled: boolean;
-  publicHolidayDates?: string[];
-  weekendWorkEnabled: boolean;
-  saturdayWorkAllowed: boolean;
-  sundayWorkAllowed: boolean;
-  compensationsEnabled: boolean;
-  teleworkEnabled: boolean;
-  teleworkStartTime?: string | null;
-  teleworkEndTime?: string | null;
-  teleworkMinBreakMinutes?: number | null;
-  teleworkDailyQuotaMinutes?: number | null;
-  teleworkMaxDaysPerWeek?: number | null;
-  teleworkMaxDaysPerYearFullTime?: number | null;
-  teleworkMaxDaysPerYearPartTime?: number | null;
-  internalRulesSourceDocumentId?: string | null;
-  sourceDocumentName?: string | null;
-  sourceDocumentMetadata?: Record<string, any>;
-  extractedRules?: EstablishmentWorkTimeRule[];
-  rulesToConfirm?: EstablishmentWorkTimeRule[];
-  positionMapping?: Record<string, any>;
-  validationStatus: 'draft' | 'requires_review' | 'validated' | string;
-  createdAt?: string | null;
-  updatedAt?: string | null;
-}
-
-export interface WorkTimeTrackingRow {
-  employeeId: string;
-  employeeName: string;
-  jobTitle?: string | null;
-  accountType: string;
-  code: string;
-  label: string;
-  unit: 'MINUTES' | 'DAYS' | string;
-  quantity: number;
-  status?: 'OK' | 'TO_VALIDATE' | string;
-  validationStatus?: string;
-  sourceLayer?: string;
-  balanceImpact?: string;
-  compensationGenerated?: boolean;
-}
-
-export interface WorkTimeTrackingSummary {
-  sourceLayer: 'establishment_internal' | string;
-  balanceImpact: 'tracking_only' | string;
-  compensationGenerated: boolean;
-  rows: WorkTimeTrackingRow[];
-}
-
 export interface PlanningAttendanceRow {
   id?: string | null;
   assignmentId?: string | null;
@@ -1113,395 +1034,6 @@ export interface PlanningAttendanceResponse {
   totals: { plannedMinutes: number; declaredMinutes: number; validatedMinutes: number; rows: number };
 }
 
-export interface PlanningEntitlementRule {
-  id: string;
-  code: string;
-  label: string;
-  description?: string | null;
-  accountType: string;
-  unit: 'MINUTES' | 'DAYS' | string;
-  accrualFrequency: 'MONTHLY' | 'YEARLY' | 'WEEKLY' | 'MANUAL' | 'EVENT_BASED' | string;
-  accrualQuantity?: number | string | null;
-  startsAfterTrialPeriod?: boolean;
-  minimumSeniorityMonths?: number | null;
-  prorateByContractTime?: boolean;
-  maxBalance?: number | null;
-  carryOverEnabled?: boolean;
-  enabled?: boolean;
-  metadata?: Record<string, any> | null;
-}
-
-export interface PlanningEntitlementSetup {
-  hrCountryCode?: HrCountryCode | null;
-  regulatoryCountryCode?: RegulatoryCountryCode | null;
-  regulatorySector?: RegulatorySector | null;
-  organizationType?: EstablishmentType | string | null;
-  catalogPrepared?: boolean;
-  catalogCount?: number;
-}
-
-export interface PlanningEntitlementCatalogItem {
-  id: string;
-  countryCode: HrCountryCode;
-  employmentFramework?: EmploymentFramework | string | null;
-  organizationType?: EstablishmentType | string | null;
-  code: string;
-  label: string;
-  shortDescription?: string | null;
-  longDescription?: string | null;
-  description?: string | null;
-  category: string;
-  examples?: string[];
-  accountType: string;
-  unit: 'MINUTES' | 'DAYS' | string;
-  defaultAccrualFrequency: 'MONTHLY' | 'YEARLY' | 'WEEKLY' | 'MANUAL' | 'EVENT_BASED' | string;
-  defaultAccrualQuantity?: number | null;
-  defaultStartCondition?: string | null;
-  startsAfterTrialPeriod?: boolean;
-  minimumSeniorityMonths?: number | null;
-  prorateByContractTime?: boolean;
-  maxBalance?: number | null;
-  carryOverEnabled?: boolean;
-  requiresAdminValidation?: boolean;
-  isSystemTemplate?: boolean;
-  enabledByDefault?: boolean;
-  isRecommended?: boolean;
-  isCommon?: boolean;
-  isAdvanced?: boolean;
-  displayOrder?: number;
-  sourceTemplateCode?: string | null;
-  sourceLabel?: string | null;
-  sourceUrl?: string | null;
-  sourceReference?: string | null;
-  active?: boolean;
-  isLegalConfiguration?: boolean;
-  sourceLegalRightId?: string | null;
-  sourceRuleVersionId?: string | null;
-  legalValidationStatus?: string | null;
-}
-
-export interface PlanningEntitlementCatalogResponse {
-  setup: PlanningEntitlementSetup;
-  items: PlanningEntitlementCatalogItem[];
-  categories: string[];
-  counts: { total: number; active: number; recommended: number };
-  notice?: string;
-}
-
-export interface PlanningEmployeeEntitlement {
-  id: string;
-  code: string;
-  label: string;
-  accountType: string;
-  unit: 'MINUTES' | 'DAYS' | string;
-  enabled: boolean;
-  openingBalance: number;
-  openingBalanceDate?: string | null;
-  effectiveFrom?: string | null;
-  effectiveTo?: string | null;
-  rule?: PlanningEntitlementRule | null;
-  policyProfile?: PlanningPolicyProfile | null;
-  account?: PlanningCounterEmployeeSummary['accounts'][number] | null;
-  displayBalance?: number | null;
-  openingBalanceMissing?: boolean;
-}
-
-export interface PlanningEmployeeEntitlementsResponse {
-  employeeId: string;
-  employeeName: string;
-  periodYear: number;
-  setup?: PlanningEntitlementSetup;
-  rules: PlanningEntitlementRule[];
-  entitlements: PlanningEmployeeEntitlement[];
-  accounts: PlanningCounterEmployeeSummary['accounts'];
-  catalog?: PlanningEntitlementCatalogItem[];
-  alerts: PlanningCounterAlert[];
-}
-
-export interface LegalRightRuleSummary {
-  id: string;
-  stableId: string;
-  rightCode?: string;
-  name?: string;
-  countryCode?: string;
-  sector?: string;
-  sourceLayer?: LegalRightSourceLayer;
-  regime?: { code: string; type: string; name: string } | null;
-  agreement?: { key: string; idcc?: string | null; name: string } | null;
-  publicRegime?: { code: string; name: string } | null;
-  unit: string;
-  value?: number | null;
-  formulaType: string;
-  priority: number;
-  validationStatus: string;
-  confidenceLevel?: number | null;
-  sourceLabel?: string | null;
-  sourceUrl?: string | null;
-}
-
-export type LegalRightSourceLayer = 'common_law' | 'collective_agreement' | 'public_regime' | 'public_status' | 'legal_reference' | 'manual_template' | 'establishment_manual' | 'employee_assignment';
-export type LegalRightUiStatus = 'included' | 'included_requires_review' | 'activated' | 'requires_review' | 'available';
-
-export interface LegalRightDetail {
-  id: string;
-  code: string;
-  name: string;
-  category: string;
-  description?: string | null;
-  tags: string[];
-  active: boolean;
-  rules: Array<LegalRightRuleSummary & {
-    formulaJson?: unknown;
-    conditionsJson?: unknown;
-    effectiveFrom?: string | null;
-    effectiveTo?: string | null;
-    lastVerifiedAt?: string | null;
-    active?: boolean;
-  }>;
-}
-
-export interface LegalRightSearchItem {
-  id: string;
-  code: string;
-  name: string;
-  category: string;
-  description?: string | null;
-  tags: string[];
-  score: number;
-  activated?: boolean;
-  organizationRuleId?: string | null;
-  sourceLayer?: LegalRightSourceLayer;
-  autoApplicable?: boolean;
-  applicableByDefault?: boolean;
-  requiresConfiguration?: boolean;
-  employeeCounterSupported?: boolean;
-  establishmentConfigurationId?: string | null;
-  validationStatus?: string;
-  uiStatus?: LegalRightUiStatus;
-  priorityCommonLaw?: boolean;
-  rules: LegalRightRuleSummary[];
-}
-
-export interface LegalRightsSearchResponse {
-  query?: string | null;
-  country: string | null;
-  count: number;
-  status?: string;
-  message?: string;
-  items: LegalRightSearchItem[];
-}
-
-export interface LegalRightsDiagnosticsResponse {
-  migrationApplied: boolean;
-  organizationId?: string | null;
-  regulatoryCountryCode?: RegulatoryCountryCode | null;
-  status?: string;
-  legalBase?: {
-    country: RegulatoryCountryCode;
-    rightsCount: number;
-    ruleVersionsCount: number;
-    requiresReviewCount: number;
-  } | null;
-  establishmentConfigurations?: {
-    total: number;
-    enabled: number;
-    disabled: number;
-  };
-  counts: {
-    regimes: number;
-    collectiveAgreements: number;
-    publicRegimes: number;
-    rights: number;
-    ruleVersions: number;
-    activeRules: number;
-    requiresReviewRules: number;
-    sources: number;
-  };
-  lastImport?: {
-    importedAt: string;
-    sourceVersion: string;
-    sourceFile: string;
-    sourceHash: string;
-    status: string;
-    counts?: Record<string, unknown> | null;
-  } | null;
-  sourceHash?: string | null;
-  importErrors?: string[];
-}
-
-export interface EmployeeApplicableRightCounter {
-  right?: { id: string; code: string; name: string; category: string } | null;
-  acquired?: number | null;
-  used?: number | null;
-  remaining?: number | null;
-  unit?: string | null;
-  counterStatus?: string | null;
-  calculationStatus?: string | null;
-  validationStatus?: string | null;
-  source?: { label?: string | null; url?: string | null } | null;
-  formula?: unknown;
-}
-
-export interface EmployeeApplicableRight {
-  id: string;
-  code: string;
-  label: string;
-  name?: string;
-  category: string;
-  sourceLayer: LegalRightSourceLayer;
-  sourceLabel?: string;
-  autoApplicable: boolean;
-  applicableByDefault: boolean;
-  requiresConfiguration: boolean;
-  employeeCounterSupported: boolean;
-  validationStatus: string;
-  uiStatus: LegalRightUiStatus;
-  priorityCommonLaw?: boolean;
-  calculationStatus?: string;
-  counter?: EmployeeApplicableRightCounter | null;
-  warnings?: Array<{ code: string; message: string }>;
-  rules?: LegalRightRuleSummary[];
-}
-
-export interface EmployeeApplicableRightsResponse {
-  employeeId: string;
-  organizationId: string;
-  regulatoryCountryCode: RegulatoryCountryCode | null;
-  legalProfile?: {
-    regimeType: string;
-    agreement?: { id: string; key: string; idcc?: string | null; name: string } | null;
-    publicRegime?: { id: string; code: string; name: string } | null;
-    contractType?: string | null;
-    weeklyHours?: number | null;
-    annualHours?: number | null;
-    seniorityStartDate?: string | null;
-    fullTimeEquivalent?: number | null;
-    isSeasonal?: boolean;
-    source?: string;
-  } | null;
-  hasActiveContract: boolean;
-  calculationStatus: string;
-  period?: { startDate: string; endDate: string };
-  applicableRights: EmployeeApplicableRight[];
-  counters: EmployeeApplicableRightCounter[];
-  warnings: Array<{ code: string; message: string }>;
-}
-
-export interface EstablishmentRightsRecommendation {
-  id: string;
-  code: string;
-  name: string;
-  category: string;
-  description?: string | null;
-  activated?: boolean;
-  organizationRuleId?: string | null;
-  sourceLayer: LegalRightSourceLayer;
-  validationStatus?: string | null;
-  uiStatus?: LegalRightUiStatus;
-  recommendation?: string;
-  canBeUsedInPlanningStatus?: boolean;
-  planningStatusCode?: string | null;
-  hasBalance?: boolean;
-  balanceUnit?: string | null;
-  rules?: LegalRightRuleSummary[];
-}
-
-export interface EstablishmentManualTemplateRecommendation {
-  templateCode: string;
-  code: string;
-  label: string;
-  category: string;
-  shortDescription?: string | null;
-  longDescription?: string | null;
-  accountType: string;
-  unit: 'MINUTES' | 'DAYS' | string;
-  sourceLayer: LegalRightSourceLayer;
-  sourceKind: 'manual_template';
-  requiresAdminValidation?: boolean;
-  isRecommended?: boolean;
-  isAdvanced?: boolean;
-  hasBalance?: boolean;
-  balanceUnit?: string | null;
-  canBeUsedInPlanningStatus?: boolean;
-  planningStatusCode?: string | null;
-}
-
-export interface EstablishmentRightsRecommendationsResponse {
-  context: {
-    country: RegulatoryCountryCode | null;
-    sector: RegulatorySector | null;
-    establishmentType: EstablishmentType | string | null;
-    idcc?: string | null;
-    publicRegime?: string | null;
-    query?: string | null;
-  };
-  hiddenAutoIncludedCount: number;
-  recommendedRights: EstablishmentRightsRecommendation[];
-  manualTemplates: EstablishmentManualTemplateRecommendation[];
-  warnings: Array<{ code: string; message: string }>;
-}
-
-export interface EmployeeRightsOverviewResponse {
-  employee: { id: string; name: string; position?: string | null; department?: string | null };
-  organizationContext?: {
-    regulatoryCountryCode?: RegulatoryCountryCode | null;
-    regulatorySector?: RegulatorySector | string | null;
-    establishmentType?: EstablishmentType | string | null;
-  };
-  regulatoryCountryCode: RegulatoryCountryCode | null;
-  sector?: RegulatorySector | string | null;
-  establishmentType?: EstablishmentType | string | null;
-  activeContract?: Record<string, unknown> | null;
-  mandatoryRights: Array<EmployeeApplicableRight & {
-    uiGroup?: string;
-    applicability?: string;
-    hasBalance?: boolean;
-    balanceUnit?: string | null;
-    counterStatus?: string | null;
-    canBeUsedInPlanningStatus?: boolean;
-    planningStatusCode?: string | null;
-  }>;
-  applicableRights: Array<{
-    id: string;
-    code: string;
-    label: string;
-    category?: string | null;
-    sourceLayer?: LegalRightSourceLayer | string;
-    sourceLabel?: string | null;
-    applicability?: string;
-    uiGroup?: string;
-    hasBalance?: boolean;
-    balanceUnit?: string | null;
-    counterStatus?: string | null;
-    validationStatus?: string | null;
-    canBeUsedInPlanningStatus?: boolean;
-    planningStatusCode?: string | null;
-    establishmentConfigurationId?: string | null;
-    entitlementRuleId?: string | null;
-    counterAccountId?: string | null;
-  }>;
-  activeBalances: Array<{
-    source: string;
-    id?: string;
-    code: string;
-    label: string;
-    hasBalance?: boolean;
-    balanceUnit?: string | null;
-    initial?: number | null;
-    acquired?: number | null;
-    used?: number | null;
-    adjusted?: number | null;
-    remaining?: number | null;
-    counterStatus?: string | null;
-    validationStatus?: string | null;
-    lastUpdatedAt?: string | null;
-    periodYear?: number;
-    period?: { startDate: string; endDate: string };
-  }>;
-  warnings: Array<{ code: string; message: string }>;
-  calculationStatus: string;
-}
-
 export interface PlanningHistoryEntry {
   id?: string;
   action: string;
@@ -1522,8 +1054,6 @@ export interface PlanningSummary {
   plannedMinutes?: number;
   plannedHours?: number;
   estimatedCost?: number;
-  overtimeMinutes?: number;
-  overtimeHours?: number;
   activeAlerts?: number;
   priorityAlerts?: number;
   actionsToProcess?: number;

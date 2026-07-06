@@ -22,6 +22,7 @@
     "prisma:deploy": "npm run prisma:deploy -w apps/api",
     "prisma:migrate": "npm run prisma:migrate -w apps/api",
     "prisma:reset": "npm run prisma:reset -w apps/api --",
+    "prisma:restart": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/prisma-restart.ps1",
     "prisma:seed": "npm run prisma:seed -w apps/api",
     "seed:legal-rights": "npm run seed:legal-rights -w apps/api",
     "db:setup:local": "./scripts/setup-local-postgres.sh",
@@ -39,6 +40,7 @@
     "pi:image": "./scripts/build-rpi-image.sh",
     "pi:install": "./scripts/install-toquehub-pi.sh",
     "bienvenue": "./scripts/bootstrap-main.sh",
+    "welcome": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/bootstrap-main.ps1",
     "bootstrap:main": "./scripts/bootstrap-main.sh"
   },
   "devDependencies": {

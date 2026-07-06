@@ -13,7 +13,6 @@ import { TechnicalSheetsModule } from './technical-sheets/technical-sheets.modul
 import { ProductionModule } from './production/production.module';
 import { MenusModule } from './menus/menus.module';
 import { DashboardModule } from './dashboard/dashboard.module';
-import { LegalRightsModule } from './legal-rights/legal-rights.module';
 import { BackupsModule } from './backups/backups.module';
 import { DocumentsModule } from './documents/documents.module';
 import { HaccpModule } from './haccp/haccp.module';
@@ -38,7 +37,6 @@ import { DiscoveryModule } from './discovery/discovery.module';
     ProductionModule,
     MenusModule,
     DashboardModule,
-    LegalRightsModule,
     BackupsModule,
     DocumentsModule,
     HaccpModule,

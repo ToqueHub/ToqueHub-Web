@@ -12,7 +12,6 @@ const BUSINESS_STATUS_LABELS: Record<string, string> = {
   rest: 'Repos',
   vacation: 'Congé',
   sick: 'Maladie',
-  recovery: 'Récupération',
   vv: 'Heures vertes',
   leave: 'Congé',
   other: 'À vérifier',
@@ -169,7 +168,7 @@ export class PlanningDayStatusService {
   }
 
   private hrAbsenceLabel(type: string) {
-    return type === 'CONGE' ? 'Congé' : type === 'RTT' ? 'RTT' : type === 'MALADIE' ? 'Maladie' : type === 'FORMATION' ? 'Formation' : type === 'REPOS' ? 'Repos' : type === 'ACCIDENT' ? 'Accident' : type === 'EXCEPTIONNELLE' ? 'Congé exceptionnel' : 'Absence';
+    return type === 'CONGE' ? 'Conge' : type === 'MALADIE' ? 'Maladie' : type === 'FORMATION' ? 'Formation' : type === 'REPOS' ? 'Repos' : type === 'ACCIDENT' ? 'Accident' : type === 'EXCEPTIONNELLE' ? 'Congé exceptionnel' : 'Absence';
   }
 
   private normalizeCode(value: string) {

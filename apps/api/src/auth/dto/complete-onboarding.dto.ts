@@ -13,7 +13,6 @@ export const ESTABLISHMENT_TYPES = [
 
 export const TEAM_SIZES = ['1-5', '6-10', '11-20', '20+'] as const;
 export const HR_COUNTRY_CODES = ['FR', 'FI'] as const;
-export const REGULATORY_SECTORS = ['PRIVATE', 'PUBLIC'] as const;
 
 export class CompleteOnboardingDto {
   @ApiProperty({ example: 'admin' })
@@ -69,17 +68,11 @@ export class CompleteOnboardingDto {
   @IsIn(HR_COUNTRY_CODES)
   hrCountryCode?: string;
 
-  @ApiPropertyOptional({ enum: HR_COUNTRY_CODES, example: 'FR', description: 'Pays de réglementation utilisé par les réglages et les droits RH.' })
+  @ApiPropertyOptional({ enum: HR_COUNTRY_CODES, example: 'FR', description: 'Pays RH utilisé pour les congés payés ou annuels.' })
   @IsOptional()
   @IsString()
   @IsIn(HR_COUNTRY_CODES)
   regulatoryCountryCode?: string;
-
-  @ApiPropertyOptional({ enum: REGULATORY_SECTORS, example: 'PRIVATE', description: 'Secteur réglementaire utilisé pour filtrer les droits RH.' })
-  @IsOptional()
-  @IsString()
-  @IsIn(REGULATORY_SECTORS)
-  regulatorySector?: string;
 
   @ApiPropertyOptional({ enum: TEAM_SIZES, example: '6-10' })
   @IsOptional()
