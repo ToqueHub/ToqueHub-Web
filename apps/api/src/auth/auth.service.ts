@@ -11,6 +11,7 @@ import { LoginDto } from './dto/login.dto';
 import { SetupOrganizationDto } from './dto/setup-organization.dto';
 import { UpdateOrganizationApiKeysDto } from './dto/api-keys.dto';
 import { UpdateOrganizationIdentityDto } from './dto/organization-identity.dto';
+import { UpdateOrganizationRemoteAccessDto } from './dto/remote-access.dto';
 import { UpdateRegulatoryCountryDto } from './dto/regulatory-country.dto';
 
 type PrefillStocksDto = {
@@ -229,6 +230,34 @@ export class AuthService {
       select: { mistralApiKey: true, mistralApiKeyUpdatedAt: true, githubToken: true, githubTokenUpdatedAt: true },
     });
     return this.serializeApiKeys(organization);
+  }
+
+  async getOrganizationRemoteAccess(user: AuthenticatedUser) {
+    if (!user.organizationId) throw new ForbiddenException('Organization setup is required before reading remote access settings');
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: user.organizationId },
+      select: { tailscaleEnabled: true, tailscaleHostname: true, tailscaleUrl: true, tailscaleIp: true, tailscaleUpdatedAt: true },
+    });
+    if (!organization) throw new ForbiddenException('Organization setup is required before reading remote access settings');
+    return this.serializeRemoteAccess(organization);
+  }
+
+  async updateOrganizationRemoteAccess(user: AuthenticatedUser, dto: UpdateOrganizationRemoteAccessDto) {
+    if (!user.organizationId) throw new ForbiddenException('Organization setup is required before updating remote access settings');
+    if (!SETTINGS_ROLES.includes(user.role)) throw new ForbiddenException('Only administrators and managers can update remote access settings');
+    const enabled = dto.enabled ?? Boolean(dto.tailscaleUrl || dto.tailscaleIp || dto.tailscaleHostname);
+    const organization = await this.prisma.organization.update({
+      where: { id: user.organizationId },
+      data: {
+        tailscaleEnabled: enabled,
+        tailscaleHostname: dto.tailscaleHostname?.trim() || null,
+        tailscaleUrl: dto.tailscaleUrl?.trim() || null,
+        tailscaleIp: dto.tailscaleIp?.trim() || null,
+        tailscaleUpdatedAt: new Date(),
+      },
+      select: { tailscaleEnabled: true, tailscaleHostname: true, tailscaleUrl: true, tailscaleIp: true, tailscaleUpdatedAt: true },
+    });
+    return this.serializeRemoteAccess(organization);
   }
 
   async updateOrganizationIdentity(user: AuthenticatedUser, dto: UpdateOrganizationIdentityDto) {
@@ -543,6 +572,7 @@ export class AuthService {
         logoDataUrl: currentUser.organization.logoDataUrl,
         mainSiteName: currentUser.organization.mainSiteName,
         apiKeys: this.serializeApiKeys(currentUser.organization),
+        remoteAccess: this.serializeRemoteAccess(currentUser.organization),
       },
       installedApplications,
       counts: { products: productCount, suppliers: supplierCount, stockMovements: movementCount, activeUsers: activeUsersCount, hrCollaborators, technicalSheets },
@@ -706,6 +736,11 @@ export class AuthService {
         mistralApiKeyUpdatedAt?: Date | null;
         githubToken?: string | null;
         githubTokenUpdatedAt?: Date | null;
+        tailscaleEnabled?: boolean | null;
+        tailscaleHostname?: string | null;
+        tailscaleUrl?: string | null;
+        tailscaleIp?: string | null;
+        tailscaleUpdatedAt?: Date | null;
     } | null;
   }) {
     return {
@@ -726,6 +761,7 @@ export class AuthService {
       logoDataUrl: user.organization?.logoDataUrl ?? null,
       mainSiteName: user.organization?.mainSiteName ?? null,
       apiKeys: user.organization ? this.serializeApiKeys(user.organization) : undefined,
+      remoteAccess: user.organization ? this.serializeRemoteAccess(user.organization) : undefined,
       installedApplications: [
         ...(user.organization?.stocksInstalledAt ? ['stocks'] : []),
         ...(user.organization?.rnmPricesInstalledAt ? ['rnm-prices'] : []),
@@ -783,6 +819,11 @@ export class AuthService {
       mistralApiKeyUpdatedAt?: Date | null;
       githubToken?: string | null;
       githubTokenUpdatedAt?: Date | null;
+      tailscaleEnabled?: boolean | null;
+      tailscaleHostname?: string | null;
+      tailscaleUrl?: string | null;
+      tailscaleIp?: string | null;
+      tailscaleUpdatedAt?: Date | null;
     } | null;
   }) {
     const payload = {
@@ -813,6 +854,16 @@ export class AuthService {
         masked: organization.githubToken ? this.maskSecret(organization.githubToken) : null,
         updatedAt: organization.githubTokenUpdatedAt ?? null,
       },
+    };
+  }
+
+  private serializeRemoteAccess(organization: { tailscaleEnabled?: boolean | null; tailscaleHostname?: string | null; tailscaleUrl?: string | null; tailscaleIp?: string | null; tailscaleUpdatedAt?: Date | null }) {
+    return {
+      enabled: Boolean(organization.tailscaleEnabled),
+      tailscaleHostname: organization.tailscaleHostname ?? null,
+      tailscaleUrl: organization.tailscaleUrl ?? null,
+      tailscaleIp: organization.tailscaleIp ?? null,
+      updatedAt: organization.tailscaleUpdatedAt ?? null,
     };
   }
 

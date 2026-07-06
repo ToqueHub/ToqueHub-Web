@@ -7,6 +7,9 @@ INSTALL_DIR="${TOQUEHUB_INSTALL_DIR:-/opt/toquehub}"
 HTTP_PORT="${TOQUEHUB_HTTP_PORT:-8080}"
 ZIGBEE2MQTT_PORT="${ZIGBEE2MQTT_HTTP_PORT:-8081}"
 MQTT_PORT="${MQTT_PORT:-1883}"
+TOQUEHUB_TAILSCALE_ENABLED="${TOQUEHUB_TAILSCALE_ENABLED:-true}"
+TOQUEHUB_TAILSCALE_AUTHKEY="${TOQUEHUB_TAILSCALE_AUTHKEY:-}"
+TOQUEHUB_TAILSCALE_HOSTNAME="${TOQUEHUB_TAILSCALE_HOSTNAME:-toquehub}"
 ENV_FILE="$INSTALL_DIR/.env.docker"
 
 repo_slug() {
@@ -54,6 +57,9 @@ Useful environment variables:
   TOQUEHUB_HTTP_PORT=8080
   ZIGBEE2MQTT_HTTP_PORT=8081
   MQTT_PORT=1883
+  TOQUEHUB_TAILSCALE_ENABLED=true
+  TOQUEHUB_TAILSCALE_AUTHKEY=tskey-auth-... (optionnel, jamais stocké dans .env.docker)
+  TOQUEHUB_TAILSCALE_HOSTNAME=toquehub
 
 Example:
   curl -fsSL https://raw.githubusercontent.com/ToqueHub/ToqueHub-Web/1.0.0/scripts/install-toquehub-ubuntu.sh | bash
@@ -102,6 +108,11 @@ secret() {
 
 server_ip() {
   hostname -I 2>/dev/null | awk '{print $1}'
+}
+
+tailscale_ip() {
+  command -v tailscale >/dev/null 2>&1 || return 0
+  tailscale ip -4 2>/dev/null | head -1 || true
 }
 
 get_env() {
@@ -178,6 +189,27 @@ install_docker() {
   fi
 }
 
+install_tailscale() {
+  if [[ "$TOQUEHUB_TAILSCALE_ENABLED" != "true" && "$TOQUEHUB_TAILSCALE_ENABLED" != "1" ]]; then
+    return
+  fi
+
+  if ! command -v tailscale >/dev/null 2>&1; then
+    log "Installation de Tailscale"
+    curl -fsSL https://tailscale.com/install.sh | sudo_cmd sh
+  fi
+
+  sudo_cmd systemctl enable --now tailscaled || true
+
+  if [[ -n "$TOQUEHUB_TAILSCALE_AUTHKEY" ]]; then
+    log "Activation de Tailscale"
+    sudo_cmd tailscale up --authkey "$TOQUEHUB_TAILSCALE_AUTHKEY" --hostname "$TOQUEHUB_TAILSCALE_HOSTNAME" || true
+  else
+    log "Tailscale installe; activation manuelle requise"
+    printf 'Commande a lancer apres installation: sudo tailscale up --hostname %s\n' "$TOQUEHUB_TAILSCALE_HOSTNAME"
+  fi
+}
+
 prepare_repository() {
   log "Preparation du dossier ToqueHub: $INSTALL_DIR"
   sudo_cmd mkdir -p "$(dirname "$INSTALL_DIR")"
@@ -222,6 +254,9 @@ configure_toquehub() {
   set_env_if_placeholder TOQUEHUB_UPDATER_SECRET "$(secret)"
   set_env TOQUEHUB_DISCOVERY_ENABLED "true"
   set_env TOQUEHUB_DISCOVERY_PORT "$HTTP_PORT"
+  set_env TOQUEHUB_TAILSCALE_ENABLED "$TOQUEHUB_TAILSCALE_ENABLED"
+  set_env TOQUEHUB_TAILSCALE_INSTALLED "$(command -v tailscale >/dev/null 2>&1 && printf true || printf false)"
+  set_env TOQUEHUB_TAILSCALE_HOSTNAME "$TOQUEHUB_TAILSCALE_HOSTNAME"
 
   local ip
   ip="$(server_ip || true)"
@@ -229,6 +264,17 @@ configure_toquehub() {
     set_env CORS_ORIGIN "http://$ip:$HTTP_PORT,http://localhost:$HTTP_PORT,http://127.0.0.1:$HTTP_PORT"
     set_env ZIGBEE2MQTT_FRONTEND_URL "http://$ip:$ZIGBEE2MQTT_PORT"
     set_env TOQUEHUB_DISCOVERY_HOST "$ip"
+  fi
+
+  local tail_ip
+  tail_ip="$(tailscale_ip || true)"
+  if [[ -n "$tail_ip" ]]; then
+    set_env TOQUEHUB_TAILSCALE_IP "$tail_ip"
+    set_env TOQUEHUB_REMOTE_ACCESS_URL "http://$tail_ip:$HTTP_PORT"
+    set_env CORS_ORIGIN "$(get_env CORS_ORIGIN "http://localhost:$HTTP_PORT"),http://$tail_ip:$HTTP_PORT"
+  else
+    set_env TOQUEHUB_TAILSCALE_IP ""
+    set_env TOQUEHUB_REMOTE_ACCESS_URL ""
   fi
 }
 
@@ -266,6 +312,8 @@ Ports:
   ToqueHub web: $HTTP_PORT
   Zigbee2MQTT: $ZIGBEE2MQTT_PORT
   MQTT: $MQTT_PORT
+  Acces Tailscale: ${TOQUEHUB_TAILSCALE_ENABLED}
+  URL distante: $(get_env TOQUEHUB_REMOTE_ACCESS_URL "-")
 
 Commandes utiles:
   cd $INSTALL_DIR
@@ -273,6 +321,7 @@ Commandes utiles:
   docker compose --env-file .env.docker logs -f api web mdns postgres mosquitto zigbee2mqtt
   docker compose --env-file .env.docker down
   docker compose --env-file .env.docker up -d --build
+  sudo tailscale up --hostname $TOQUEHUB_TAILSCALE_HOSTNAME
 
 Note:
   Si ton utilisateur vient d'etre ajoute au groupe docker, reconnecte-toi en SSH
@@ -293,6 +342,7 @@ sudo_cmd apt-get install -y ca-certificates curl git openssl gnupg lsb-release p
 
 install_node
 install_docker
+install_tailscale
 prepare_repository
 configure_toquehub
 open_firewall_ports

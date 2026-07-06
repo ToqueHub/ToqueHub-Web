@@ -24,6 +24,11 @@ detect_zigbee_adapter() {
   fi
 }
 
+tailscale_ip() {
+  command -v tailscale >/dev/null 2>&1 || return 0
+  tailscale ip -4 2>/dev/null | head -1 || true
+}
+
 set_env() {
   local key="$1"
   local value="$2"
@@ -41,6 +46,42 @@ set_env() {
   chmod 0600 "$ENV_FILE"
 }
 
+configure_tailscale() {
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+
+  if [[ "${TOQUEHUB_TAILSCALE_ENABLED:-true}" != "true" && "${TOQUEHUB_TAILSCALE_ENABLED:-true}" != "1" ]]; then
+    set_env TOQUEHUB_TAILSCALE_INSTALLED "false"
+    return
+  fi
+
+  if ! command -v tailscale >/dev/null 2>&1; then
+    curl -fsSL https://tailscale.com/install.sh | sh
+  fi
+
+  systemctl enable --now tailscaled || true
+  set_env TOQUEHUB_TAILSCALE_INSTALLED "$(command -v tailscale >/dev/null 2>&1 && printf true || printf false)"
+
+  if [[ -n "${TOQUEHUB_TAILSCALE_AUTHKEY:-}" ]]; then
+    tailscale up --authkey "$TOQUEHUB_TAILSCALE_AUTHKEY" --hostname "${TOQUEHUB_TAILSCALE_HOSTNAME:-toquehub}" || true
+    if [[ -n "$(tailscale_ip)" ]]; then
+      set_env TOQUEHUB_TAILSCALE_AUTHKEY ""
+    fi
+  fi
+
+  local tail_ip
+  tail_ip="$(tailscale_ip || true)"
+  if [[ -n "$tail_ip" ]]; then
+    set_env TOQUEHUB_TAILSCALE_IP "$tail_ip"
+    set_env TOQUEHUB_REMOTE_ACCESS_URL "http://$tail_ip:${TOQUEHUB_HTTP_PORT:-8080}"
+  else
+    set_env TOQUEHUB_TAILSCALE_IP ""
+    set_env TOQUEHUB_REMOTE_ACCESS_URL ""
+  fi
+}
+
 mkdir -p "$CONFIG_DIR" "$DATA_DIR"/{api,postgres,mosquitto/data,mosquitto/log,zigbee2mqtt}
 chmod 0750 "$CONFIG_DIR" "$DATA_DIR"
 
@@ -55,6 +96,8 @@ if grep -q 'replace-with-generated-secret' "$ENV_FILE"; then
   set_env BACKUP_CLOUD_ENCRYPTION_KEY "$(secret)"
   set_env TOQUEHUB_UPDATER_SECRET "$(secret)"
 fi
+
+configure_tailscale
 
 if [[ ! -f "$CONFIG_DIR/mosquitto.conf" ]]; then
   cp /opt/toquehub/mosquitto.conf "$CONFIG_DIR/mosquitto.conf"

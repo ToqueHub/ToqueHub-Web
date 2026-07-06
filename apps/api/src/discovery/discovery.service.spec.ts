@@ -62,6 +62,18 @@ describe('DiscoveryService', () => {
     }));
   });
 
+  it('uses the configured ToqueHub version before npm package metadata', async () => {
+    const { service } = createService({
+      TOQUEHUB_VERSION: 'v1.4.2',
+      TOQUEHUB_IMAGE_TAG: 'latest',
+      npm_package_version: '0.1.0',
+    });
+
+    await expect(service.getDiscoveryInfo()).resolves.toEqual(expect.objectContaining({
+      version: '1.4.2',
+    }));
+  });
+
   it('stops publication on shutdown', () => {
     const { service, publisher } = createService();
 

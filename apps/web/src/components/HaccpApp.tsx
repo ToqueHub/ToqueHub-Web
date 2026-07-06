@@ -336,7 +336,16 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
         setSensors((current) => upsertSensor(current, sensor));
         void refreshSensorSummary();
       };
-      socket.on('sensor.discovered', upsert);
+      socket.on('sensor.discovered', (sensor: HaccpSensor) => {
+        upsert(sensor);
+        setPairing((current) => current?.status === 'ACTIVE'
+          ? {
+              ...current,
+              discoveredIds: Array.from(new Set([...(current.discoveredIds ?? []), sensor.id])),
+              sensors: upsertSensor(current.sensors ?? [], sensor),
+            }
+          : current);
+      });
       socket.on('sensor.updated', upsert);
       socket.on('sensor.reading', upsert);
       socket.on('sensor.status_changed', upsert);
@@ -543,6 +552,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
     setError(null);
     try {
       const updated = equipmentId ? await api.haccpAssignSensor(token, sensor.id, equipmentId) : await api.haccpUnassignSensor(token, sensor.id);
+      setSelectedSensorId(updated.id);
       setSensors((current) => upsertSensor(current, updated));
       await refreshSensorsOnly();
     } catch (err) {
@@ -1017,6 +1027,11 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
           temperatureEquipment={temperatureEquipment}
           processEquipment={processEquipment}
           cleaningZones={cleaningZones}
+          sensors={sensors}
+          gatewayStatus={sensorGatewayStatus}
+          pairing={pairing}
+          onStartPairing={startSensorPairing}
+          onStopPairing={stopSensorPairing}
           saving={saving}
           onComplete={completeOnboarding}
           onClose={() => setShowOnboarding(false)}
@@ -1499,6 +1514,7 @@ function HaccpOnboardingWizard({
   temperatureEquipment,
   processEquipment,
   cleaningZones,
+  sensors,
   gatewayStatus,
   pairing,
   onStartPairing,
@@ -1511,6 +1527,7 @@ function HaccpOnboardingWizard({
   temperatureEquipment: HaccpItem[];
   processEquipment: HaccpItem[];
   cleaningZones: HaccpItem[];
+  sensors: HaccpSensor[];
   gatewayStatus?: HaccpSensorGatewayStatus | null;
   pairing?: HaccpPairingSession | null;
   onStartPairing?: () => void;
@@ -1675,6 +1692,7 @@ function HaccpOnboardingWizard({
                         <EditableSensorsStep
                           gatewayStatus={gatewayStatus ?? null}
                           pairing={pairing ?? null}
+                          sensors={sensors}
                           onStartPairing={onStartPairing ?? (() => {})}
                           onStopPairing={onStopPairing ?? (() => {})}
                         />
@@ -2198,12 +2216,14 @@ function SectionView({ section, rows, products, searchQuery, setSearchQuery, pro
 function SonoffPairingScanModal({
   gatewayStatus,
   pairing,
+  sensors,
   onStartPairing,
   onStopPairing,
   onClose,
 }: {
   gatewayStatus: HaccpSensorGatewayStatus | null;
   pairing: HaccpPairingSession | null;
+  sensors?: HaccpSensor[];
   onStartPairing?: () => void;
   onStopPairing: () => void;
   onClose: () => void;
@@ -2213,18 +2233,32 @@ function SonoffPairingScanModal({
   const isMqttConnected = gatewayStatus?.mqtt?.connected ?? false;
   const isGatewayReady = Boolean(gatewayStatus?.ready || activePairing);
 
-  const discoveredCount = pairing?.sensors?.length ?? pairing?.discoveredIds?.length ?? 0;
-  const [secondsLeft, setSecondsLeft] = useState(60);
+  const discoveredSensors = useMemo(() => {
+    if (pairing?.sensors?.length) return pairing.sensors;
+    const discoveredIds = new Set(pairing?.discoveredIds ?? []);
+    if (discoveredIds.size && sensors?.length) return sensors.filter((sensor) => discoveredIds.has(sensor.id));
+    return activePairing ? sensors ?? [] : [];
+  }, [activePairing, pairing?.discoveredIds, pairing?.sensors, sensors]);
+  const discoveredCount = discoveredSensors.length || pairing?.discoveredIds?.length || 0;
+  const durationSeconds = Math.max(
+    1,
+    pairing ? Math.round((new Date(pairing.expiresAt).getTime() - new Date(pairing.startedAt).getTime()) / 1000) : 60,
+  );
+  const [secondsLeft, setSecondsLeft] = useState(durationSeconds);
 
   useEffect(() => {
     if (!isGatewayReady) return;
     const timer = setInterval(() => {
+      if (pairing?.expiresAt) {
+        setSecondsLeft(Math.max(0, Math.ceil((new Date(pairing.expiresAt).getTime() - Date.now()) / 1000)));
+        return;
+      }
       setSecondsLeft((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
     return () => clearInterval(timer);
-  }, [isGatewayReady]);
+  }, [isGatewayReady, pairing?.expiresAt]);
 
-  const progressPercent = Math.max(0, Math.min(100, ((60 - secondsLeft) / 60) * 100));
+  const progressPercent = Math.max(0, Math.min(100, ((durationSeconds - secondsLeft) / durationSeconds) * 100));
 
   return (
     <div
@@ -2415,10 +2449,19 @@ function SonoffPairingScanModal({
               </span>
 
               {discoveredCount > 0 ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(16, 185, 129, 0.08)', padding: '0.65rem 0.85rem', borderRadius: '10px', color: '#065f46', fontWeight: 600, fontSize: '0.88rem' }}>
-                  <CheckCircle2 size={18} color="#10b981" />
-                  <span>Capteur Température Sonoff (SNZB-02D) détecté !</span>
-                </div>
+                discoveredSensors.length ? (
+                  discoveredSensors.map((sensor) => (
+                    <div key={sensor.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(16, 185, 129, 0.08)', padding: '0.65rem 0.85rem', borderRadius: '10px', color: '#065f46', fontWeight: 600, fontSize: '0.88rem' }}>
+                      <CheckCircle2 size={18} color="#10b981" />
+                      <span>{sensorDisplayName(sensor)} détecté !</span>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(16, 185, 129, 0.08)', padding: '0.65rem 0.85rem', borderRadius: '10px', color: '#065f46', fontWeight: 600, fontSize: '0.88rem' }}>
+                    <CheckCircle2 size={18} color="#10b981" />
+                    <span>{discoveredCount} capteur détecté !</span>
+                  </div>
+                )
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#94a3b8', fontSize: '0.85rem', fontStyle: 'italic', padding: '0.25rem 0' }}>
                   <Clock size={16} />
@@ -2496,7 +2539,6 @@ function SensorsView({
 }) {
   const [draftName, setDraftName] = useState('');
   const [draftEquipmentId, setDraftEquipmentId] = useState('');
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [showDiagnosticModal, setShowDiagnosticModal] = useState(false);
   const [showScanModal, setShowScanModal] = useState(false);
 
@@ -2508,6 +2550,9 @@ function SensorsView({
 
   const activePairing = pairing?.status === 'ACTIVE';
   const selectedName = selectedSensor ? sensorDisplayName(selectedSensor) : '';
+  const selectedAssignmentId = selectedSensor?.assignedEquipment?.id ?? '';
+  const canSaveAssignment = Boolean(draftEquipmentId) && draftEquipmentId !== selectedAssignmentId;
+  const canClearAssignment = Boolean(selectedAssignmentId);
 
   useEffect(() => {
     setDraftName(selectedName);
@@ -2539,26 +2584,6 @@ function SensorsView({
           <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Rechercher un capteur..." />
         </div>
 
-        {/* View mode toggle */}
-        <div className="haccp-view-toggle">
-          <button
-            type="button"
-            className={`btn btn-sm ${viewMode === 'cards' ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setViewMode('cards')}
-            title="Vue Cartes"
-          >
-            <LayoutGrid size={14} /> Cartes
-          </button>
-          <button
-            type="button"
-            className={`btn btn-sm ${viewMode === 'table' ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setViewMode('table')}
-            title="Vue Tableau"
-          >
-            <List size={14} /> Tableau
-          </button>
-        </div>
-
         {/* Discrete Diagnostic Button */}
         <button
           type="button"
@@ -2587,6 +2612,7 @@ function SensorsView({
           <SonoffPairingScanModal
             gatewayStatus={gatewayStatus}
             pairing={pairing}
+            sensors={sensors}
             onStartPairing={onStartPairing}
             onStopPairing={onStopPairing}
             onClose={() => setShowScanModal(false)}
@@ -2665,135 +2691,174 @@ function SensorsView({
           </button>
         </div>
       ) : (
-        <div style={{ marginTop: '1.5rem' }}>
-          {viewMode === 'cards' ? (
-            <div className="haccp-sensors-cards-grid">
-              {filteredSensors.map((sensor) => {
-                const isSelected = selectedSensor?.id === sensor.id;
-                const temp = sensor.currentTemperature != null ? Number(sensor.currentTemperature) : null;
-                const isTempAlert = temp != null && (temp > 8 || temp < -25);
+        <div className="haccp-equipment-list" style={{ marginTop: '1.5rem' }}>
+          {filteredSensors.map((sensor) => {
+            const isSelected = selectedSensor?.id === sensor.id;
+            const temp = sensor.currentTemperature != null ? Number(sensor.currentTemperature) : null;
+            const isTempAlert = temp != null && (temp > 8 || temp < -25);
 
-                return (
-                  <div
-                    key={sensor.id}
-                    className={`haccp-sensor-card ${isSelected ? 'selected' : ''}`}
-                    onClick={() => onSelect(sensor)}
-                  >
-                    <div className="haccp-sensor-card-head">
-                      <img src="/capteur.png" alt="Sonoff" className="haccp-sensor-card-img" />
-                      <div className="haccp-sensor-card-info">
-                        <strong>{sensorDisplayName(sensor)}</strong>
-                        <small>{sensor.model ?? 'Capteur Sonoff'}</small>
+            return (
+              <div
+                key={sensor.id}
+                className={`haccp-equipment-row ${isSelected ? 'active' : ''}`}
+                style={{ cursor: 'pointer' }}
+                onClick={() => onSelect(sensor)}
+              >
+                <div className="haccp-equipment-row-main">
+                  <div className="haccp-equipment-row-info">
+                    <div className={`haccp-card-icon-badge ${sensor.status === 'ONLINE' ? 'positive' : 'cleaning'}`}>
+                      <Radio size={18} />
+                    </div>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+                        <strong className="haccp-equipment-title">{sensorDisplayName(sensor)}</strong>
+
+                        {temp != null && (
+                          <span className={`haccp-spec-pill target ${isTempAlert ? 'red' : 'green'}`}>
+                            {temp.toFixed(1)}°C
+                          </span>
+                        )}
+
+                        <span className={`haccp-status-pill ${sensorStatusClass(sensor.status)}`}>
+                          <span className="status-dot" />
+                          {sensorStatusLabel(sensor.status)}
+                        </span>
                       </div>
-                      <span className={`haccp-status-pill ${sensorStatusClass(sensor.status)}`}>
-                        <span className="status-dot" />
-                        {sensorStatusLabel(sensor.status)}
+                      <span className="haccp-equipment-desc">
+                        {sensor.model ?? 'Capteur Sonoff'} • Batterie {sensor.battery == null ? '-' : `${Math.round(Number(sensor.battery))}%`} • Signal {sensor.linkQuality ? `${sensor.linkQuality} LQI` : '-'}
                       </span>
                     </div>
+                  </div>
 
-                    <div className="haccp-sensor-card-body">
-                      <div className={`haccp-sensor-temp-display ${isTempAlert ? 'alert' : 'ok'}`}>
-                        <span className="temp-value">
-                          {temp == null ? '--' : `${temp.toFixed(1)}°C`}
-                        </span>
-                        <span className="temp-label">Température</span>
-                      </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    {sensor.assignedEquipment ? (
+                      <span className="haccp-spec-pill range" style={{ background: '#f0fdf4', color: '#166534', borderColor: '#bbf7d0' }}>
+                        📍 {sensor.assignedEquipment.name}
+                      </span>
+                    ) : (
+                      <span className="haccp-spec-pill range" style={{ background: '#fffbeb', color: '#92400e', borderColor: '#fde68a' }}>
+                        Non affecté
+                      </span>
+                    )}
 
-                      <div className="haccp-sensor-card-metrics">
-                        <div className="metric-badge">
-                          <Battery size={14} />
-                          <span>{sensor.battery == null ? '-' : `${Math.round(Number(sensor.battery))}%`}</span>
+                    <span style={{ color: '#94a3b8', display: 'flex', alignItems: 'center' }}>
+                      {isSelected ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </span>
+                  </div>
+                </div>
+
+                {isSelected && (
+                  <div className="haccp-equipment-instances-box" onClick={(e) => e.stopPropagation()} style={{ marginTop: '0.25rem' }}>
+                    {/* Inline Stats Grid */}
+                    <div className="haccp-custom-form-grid" style={{ marginBottom: '0.75rem' }}>
+                      <div className="haccp-custom-field">
+                        <label>Humidité ambiante</label>
+                        <div style={{ background: 'white', padding: '0.5rem 0.75rem', borderRadius: '10px', fontSize: '0.85rem', fontWeight: 650, color: '#0f172a', border: '1px solid #cbd5e1' }}>
+                          {sensor.currentHumidity == null ? '-' : `${Number(sensor.currentHumidity).toFixed(0)}%`}
                         </div>
-                        <div className="metric-badge">
-                          <Wifi size={14} />
-                          <span>{sensor.linkQuality ? `${sensor.linkQuality} LQI` : '-'}</span>
+                      </div>
+                      <div className="haccp-custom-field">
+                        <label>Niveau de batterie</label>
+                        <div style={{ background: 'white', padding: '0.5rem 0.75rem', borderRadius: '10px', fontSize: '0.85rem', fontWeight: 650, color: '#0f172a', border: '1px solid #cbd5e1', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                          <Battery size={14} /> {sensor.battery == null ? '-' : `${Math.round(Number(sensor.battery))}%`}
+                        </div>
+                      </div>
+                      <div className="haccp-custom-field">
+                        <label>Qualité du signal (LQI)</label>
+                        <div style={{ background: 'white', padding: '0.5rem 0.75rem', borderRadius: '10px', fontSize: '0.85rem', fontWeight: 650, color: '#0f172a', border: '1px solid #cbd5e1', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                          <Wifi size={14} /> {sensor.linkQuality ?? '-'}
+                        </div>
+                      </div>
+                      <div className="haccp-custom-field">
+                        <label>Détails techniques</label>
+                        <div style={{ background: 'white', padding: '0.5rem 0.75rem', borderRadius: '10px', fontSize: '0.85rem', fontWeight: 650, color: '#0f172a', border: '1px solid #cbd5e1' }}>
+                          {sensor.manufacturer ?? 'Sonoff'} {sensor.model ?? 'Zigbee'} · via {sensor.provider}
                         </div>
                       </div>
                     </div>
 
-                    <div className="haccp-sensor-card-foot">
-                      <div className="haccp-sensor-assignment">
-                        <span>Équipement :</span>
-                        <strong>{sensor.assignedEquipment?.name ?? 'Non affecté'}</strong>
+                    {/* Form Fields */}
+                    <div className="haccp-custom-form-grid" style={{ marginBottom: '0.75rem' }}>
+                      <div className="haccp-custom-field">
+                        <label>Nom personnalisé du capteur</label>
+                        <input
+                          type="text"
+                          value={draftName}
+                          onChange={(e) => setDraftName(e.target.value)}
+                          placeholder="Ex: Capteur Cuisine, CF Positive..."
+                        />
+                      </div>
+                      <div className="haccp-custom-field">
+                        <label>Équipement HACCP associé</label>
+                        <select value={draftEquipmentId} onChange={(e) => setDraftEquipmentId(e.target.value)}>
+                          <option value="">{temperatureEquipment.length ? 'Choisir un équipement' : 'Aucun équipement de température disponible'}</option>
+                          {temperatureEquipment.map((eq) => (
+                            <option key={eq._id ?? eq.id} value={eq._id ?? eq.id}>{eq.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Actions panel */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', borderTop: '1px solid #e2e8f0', paddingTop: '0.75rem' }}>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          disabled={saving || !draftName.trim() || draftName.trim() === sensorDisplayName(sensor)}
+                          onClick={() => onRename(sensor, draftName.trim())}
+                          style={{ borderRadius: '8px' }}
+                        >
+                          Renommer
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          disabled={saving || !canSaveAssignment}
+                          onClick={() => onAssign(sensor, draftEquipmentId)}
+                          style={{ borderRadius: '8px' }}
+                        >
+                          Enregistrer l'affectation
+                        </button>
+                        {canClearAssignment && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            disabled={saving}
+                            onClick={() => onAssign(sensor, '')}
+                            style={{ borderRadius: '8px' }}
+                          >
+                            Désaffecter
+                          </button>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          style={{ color: '#ef4444', borderColor: '#fca5a5' }}
+                          disabled={saving}
+                          onClick={() => onRemove(sensor, false)}
+                        >
+                          <Trash2 size={13} style={{ marginRight: '0.2rem' }} /> Supprimer ToqueHub
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          style={{ color: '#ef4444', borderColor: '#fca5a5' }}
+                          disabled={saving}
+                          onClick={() => onRemove(sensor, true)}
+                        >
+                          <Trash2 size={13} style={{ marginRight: '0.2rem' }} /> Supprimer réseau
+                        </button>
                       </div>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          ) : (
-            /* Table View */
-            <div className="haccp-sensors-layout">
-              <div className="haccp-list-panel">
-                <div className="haccp-table-wrapper">
-                  <table className="haccp-control-table">
-                    <thead>
-                      <tr>
-                        <th>Nom</th>
-                        <th>Modèle</th>
-                        <th>Équipement</th>
-                        <th>Température</th>
-                        <th>Batterie</th>
-                        <th>Signal</th>
-                        <th>Statut</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredSensors.map((sensor) => (
-                        <tr key={sensor.id} onClick={() => onSelect(sensor)} className={selectedSensor?.id === sensor.id ? 'selected' : ''}>
-                          <td><strong>{sensorDisplayName(sensor)}</strong><small>{sensor.manufacturer ?? 'Sonoff'}</small></td>
-                          <td>{sensor.model ?? 'SNZB-02D'}</td>
-                          <td>{sensor.assignedEquipment?.name ?? <span className="muted">Non affecté</span>}</td>
-                          <td>{sensor.currentTemperature == null ? '-' : `${Number(sensor.currentTemperature).toFixed(1)}°C`}</td>
-                          <td>{sensor.battery == null ? '-' : `${Math.round(Number(sensor.battery))}%`}</td>
-                          <td>{sensor.linkQuality ?? '-'}</td>
-                          <td><span className={`haccp-status-pill ${sensorStatusClass(sensor.status)}`}><span className="status-dot" />{sensorStatusLabel(sensor.status)}</span></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                )}
               </div>
-            </div>
-          )}
-
-          {/* Selected Sensor Detail Drawer */}
-          {selectedSensor ? (
-            <aside className="haccp-sensor-detail" style={{ marginTop: '1.5rem' }}>
-              <div className="haccp-sensor-detail-head">
-                <span className={`haccp-status-pill ${sensorStatusClass(selectedSensor.status)}`}><span className="status-dot" />{sensorStatusLabel(selectedSensor.status)}</span>
-                <strong>{sensorDisplayName(selectedSensor)}</strong>
-                <small>{selectedSensor.model ?? 'Modèle Sonoff'} · {selectedSensor.provider}</small>
-              </div>
-              <div className="haccp-sensor-current-grid">
-                <SensorMetric label="Température" value={selectedSensor.currentTemperature == null ? '-' : `${Number(selectedSensor.currentTemperature).toFixed(1)}°C`} detail="Dernier relevé" />
-                <SensorMetric label="Humidité" value={selectedSensor.currentHumidity == null ? '-' : `${Number(selectedSensor.currentHumidity).toFixed(0)}%`} detail="Dernier relevé" />
-                <SensorMetric label="Batterie" value={selectedSensor.battery == null ? '-' : `${Math.round(Number(selectedSensor.battery))}%`} detail="Niveau" />
-                <SensorMetric label="Signal" value={selectedSensor.linkQuality ?? '-'} detail="LQI" />
-              </div>
-              <label className="form-field">
-                <span>Nom ToqueHub</span>
-                <input value={draftName} onChange={(event) => setDraftName(event.target.value)} />
-              </label>
-              <label className="form-field">
-                <span>Équipement HACCP associé</span>
-                <select value={draftEquipmentId} onChange={(event) => setDraftEquipmentId(event.target.value)}>
-                  <option value="">Non affecté</option>
-                  {temperatureEquipment.map((equipment) => (
-                    <option key={equipment._id ?? equipment.id} value={equipment._id ?? equipment.id}>{equipment.name}</option>
-                  ))}
-                </select>
-              </label>
-              <div className="haccp-sensor-actions">
-                <button type="button" className="btn btn-primary" disabled={saving || !draftName.trim()} onClick={() => onRename(selectedSensor, draftName.trim())}>Renommer</button>
-                <button type="button" className="btn secondary" disabled={saving} onClick={() => onAssign(selectedSensor, draftEquipmentId)}>Affecter</button>
-              </div>
-              <div className="haccp-sensor-danger" style={{ marginTop: '1rem' }}>
-                <button type="button" className="btn secondary" disabled={saving} onClick={() => onRemove(selectedSensor, false)}><Trash2 size={15} /> Supprimer ToqueHub</button>
-                <button type="button" className="btn secondary" disabled={saving} onClick={() => onRemove(selectedSensor, true)}><Trash2 size={15} /> Supprimer réseau</button>
-              </div>
-            </aside>
-          ) : null}
+            );
+          })}
         </div>
       )}
     </div>
@@ -3528,11 +3593,13 @@ function EditableCleaningStep({ items, existing, onChange }: { items: CleaningTe
 function EditableSensorsStep({
   gatewayStatus,
   pairing,
+  sensors,
   onStartPairing,
   onStopPairing,
 }: {
   gatewayStatus: HaccpSensorGatewayStatus | null;
   pairing: HaccpPairingSession | null;
+  sensors: HaccpSensor[];
   onStartPairing: () => void;
   onStopPairing: () => void;
 }) {
@@ -3600,6 +3667,7 @@ function EditableSensorsStep({
           <SonoffPairingScanModal
             gatewayStatus={gatewayStatus}
             pairing={pairing}
+            sensors={sensors}
             onStartPairing={onStartPairing}
             onStopPairing={onStopPairing}
             onClose={() => setShowScanModal(false)}

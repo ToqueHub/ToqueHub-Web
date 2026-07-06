@@ -156,6 +156,7 @@ import type {
   SystemInstanceInfo,
   SystemUpdateOperation,
   SystemUpdateStatus,
+  OrganizationRemoteAccess,
 } from '../types';
 
 const movementLabels: Record<StockMovementType, string> = {
@@ -7642,6 +7643,7 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
   const initialMasked = organization?.apiKeys?.mistral.masked ?? session.user.apiKeys?.mistral.masked;
   const initialGithubConfigured = organization?.apiKeys?.github?.configured ?? session.user.apiKeys?.github?.configured ?? false;
   const initialGithubMasked = organization?.apiKeys?.github?.masked ?? session.user.apiKeys?.github?.masked;
+  const initialRemoteAccess = organization?.remoteAccess ?? session.user.remoteAccess;
   const [mistralKey, setMistralKey] = useState('');
   const [apiKeyConfigured, setApiKeyConfigured] = useState(initialConfigured);
   const [apiKeyMasked, setApiKeyMasked] = useState<string | null | undefined>(initialMasked);
@@ -7654,6 +7656,18 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
   const [githubTokenMessage, setGithubTokenMessage] = useState<string>();
   const [githubTokenError, setGithubTokenError] = useState<string>();
   const [savingGithubToken, setSavingGithubToken] = useState(false);
+  const [remoteAccess, setRemoteAccess] = useState<OrganizationRemoteAccess>({
+    enabled: Boolean(initialRemoteAccess?.enabled),
+    tailscaleHostname: initialRemoteAccess?.tailscaleHostname ?? 'toquehub',
+    tailscaleUrl: initialRemoteAccess?.tailscaleUrl ?? '',
+    tailscaleIp: initialRemoteAccess?.tailscaleIp ?? '',
+    updatedAt: initialRemoteAccess?.updatedAt ?? null,
+  });
+  const [remoteAccessMessage, setRemoteAccessMessage] = useState<string>();
+  const [remoteAccessError, setRemoteAccessError] = useState<string>();
+  const [savingRemoteAccess, setSavingRemoteAccess] = useState(false);
+  const [remoteInstance, setRemoteInstance] = useState<SystemInstanceInfo['remoteAccess'] | null>(null);
+  const [remoteInstanceLoading, setRemoteInstanceLoading] = useState(false);
   const [regulatoryCountryDraft, setRegulatoryCountryDraft] = useState<string>(regulatoryCountryCode ?? '');
   const [regulatoryCountryMessage, setRegulatoryCountryMessage] = useState<string>();
   const [regulatoryCountryError, setRegulatoryCountryError] = useState<string>();
@@ -7687,6 +7701,16 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
   }, [initialGithubConfigured, initialGithubMasked]);
 
   useEffect(() => {
+    setRemoteAccess({
+      enabled: Boolean(initialRemoteAccess?.enabled),
+      tailscaleHostname: initialRemoteAccess?.tailscaleHostname ?? 'toquehub',
+      tailscaleUrl: initialRemoteAccess?.tailscaleUrl ?? '',
+      tailscaleIp: initialRemoteAccess?.tailscaleIp ?? '',
+      updatedAt: initialRemoteAccess?.updatedAt ?? null,
+    });
+  }, [initialRemoteAccess?.enabled, initialRemoteAccess?.tailscaleHostname, initialRemoteAccess?.tailscaleUrl, initialRemoteAccess?.tailscaleIp, initialRemoteAccess?.updatedAt]);
+
+  useEffect(() => {
     setRegulatoryCountryDraft(regulatoryCountryCode ?? '');
   }, [regulatoryCountryCode]);
 
@@ -7708,6 +7732,12 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
       void loadUpdateStatus(false);
     }
   }, [activeSubTab, isAdmin, updateStatus, updateLoading]);
+
+  useEffect(() => {
+    if (activeSubTab === 'general' && isAdmin && !remoteInstance && !remoteInstanceLoading) {
+      void loadRemoteInstance();
+    }
+  }, [activeSubTab, isAdmin, remoteInstance, remoteInstanceLoading]);
 
   useEffect(() => {
     if (!updateOperation || !['queued', 'running', 'rollback'].includes(updateOperation.status)) return;
@@ -7753,6 +7783,79 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
       setUpdateError(err instanceof Error ? err.message : 'Impossible de lancer la mise à jour.');
     } finally {
       setUpdateApplying(false);
+    }
+  }
+
+  async function loadRemoteInstance() {
+    setRemoteInstanceLoading(true);
+    try {
+      const info = await api.systemInstance(token);
+      setRemoteInstance(info.remoteAccess ?? null);
+      if (!remoteAccess.tailscaleUrl && info.remoteAccess?.url) {
+        setRemoteAccess((current) => ({
+          ...current,
+          enabled: true,
+          tailscaleHostname: current.tailscaleHostname || info.remoteAccess?.hostname || 'toquehub',
+          tailscaleUrl: info.remoteAccess?.url ?? current.tailscaleUrl,
+          tailscaleIp: info.remoteAccess?.ip ?? current.tailscaleIp,
+        }));
+      }
+    } catch {
+      setRemoteInstance(null);
+    } finally {
+      setRemoteInstanceLoading(false);
+    }
+  }
+
+  async function saveRemoteAccess() {
+    setSavingRemoteAccess(true);
+    setRemoteAccessError(undefined);
+    setRemoteAccessMessage(undefined);
+    try {
+      const saved = await api.updateOrganizationRemoteAccess(token, {
+        enabled: remoteAccess.enabled || Boolean(remoteAccess.tailscaleUrl || remoteAccess.tailscaleIp),
+        tailscaleHostname: remoteAccess.tailscaleHostname?.trim() || 'toquehub',
+        tailscaleUrl: remoteAccess.tailscaleUrl?.trim() || null,
+        tailscaleIp: remoteAccess.tailscaleIp?.trim() || null,
+      });
+      setRemoteAccess(saved);
+      setRemoteAccessMessage(saved.enabled ? 'Accès à distance enregistré.' : 'Accès à distance désactivé.');
+      onSettingsSaved?.();
+    } catch (err) {
+      setRemoteAccessError(err instanceof Error ? err.message : 'Impossible d’enregistrer l’accès à distance.');
+    } finally {
+      setSavingRemoteAccess(false);
+    }
+  }
+
+  async function disableRemoteAccess() {
+    setSavingRemoteAccess(true);
+    setRemoteAccessError(undefined);
+    setRemoteAccessMessage(undefined);
+    try {
+      const saved = await api.updateOrganizationRemoteAccess(token, {
+        enabled: false,
+        tailscaleHostname: remoteAccess.tailscaleHostname?.trim() || 'toquehub',
+        tailscaleUrl: null,
+        tailscaleIp: null,
+      });
+      setRemoteAccess(saved);
+      setRemoteAccessMessage('Accès à distance désactivé dans ToqueHub.');
+      onSettingsSaved?.();
+    } catch (err) {
+      setRemoteAccessError(err instanceof Error ? err.message : 'Impossible de désactiver l’accès à distance.');
+    } finally {
+      setSavingRemoteAccess(false);
+    }
+  }
+
+  async function copyRemoteCommand() {
+    const command = remoteInstance?.activationCommand || `sudo tailscale up --hostname ${remoteAccess.tailscaleHostname || 'toquehub'}`;
+    try {
+      await navigator.clipboard.writeText(command);
+      setRemoteAccessMessage('Commande Tailscale copiée.');
+    } catch {
+      setRemoteAccessError('Impossible de copier la commande.');
     }
   }
 
@@ -7843,6 +7946,16 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
       setSavingRegulatoryCountry(false);
     }
   }
+  const remoteWebPort = remoteInstance?.url ? '' : (typeof window !== 'undefined' && window.location.port ? window.location.port : '8080');
+  const remoteAccessUrl = remoteAccess.tailscaleUrl || (remoteAccess.tailscaleIp ? `http://${remoteAccess.tailscaleIp}${remoteWebPort ? `:${remoteWebPort}` : ''}` : '');
+  const remoteStatusLabel = remoteAccess.enabled && remoteAccessUrl
+    ? 'Actif'
+    : remoteInstance?.installed
+      ? 'Installé à activer'
+      : 'Non configuré';
+  const remoteStatusBadge = remoteStatusLabel === 'Actif' ? 'badge-reception' : remoteStatusLabel === 'Installé à activer' ? 'badge-correction' : 'badge-correction';
+  const activationCommand = remoteInstance?.activationCommand || `sudo tailscale up --hostname ${remoteAccess.tailscaleHostname || 'toquehub'}`;
+
   return (
     <div className="settings-page">
       <section className="welcome-hero settings-hero" style={{ background: 'linear-gradient(135deg, #090d16 0%, #111827 100%)', border: '1px solid rgba(255, 255, 255, 0.05)', position: 'relative', overflow: 'hidden' }}>
@@ -8067,6 +8180,81 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
                 <p className="muted" style={{ fontSize: '0.78rem', margin: '0.85rem 0 0 0' }}>
                   Permission GitHub recommandée : accès au dépôt privé avec <strong>Contents: Read-only</strong>. Le token est stocké côté serveur et n’est jamais réaffiché en clair.
                 </p>
+              </div>
+
+              <div className="card-modern" style={{ padding: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
+                  <div>
+                    <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
+                      <Wifi size={18} /> Accès à distance
+                    </span>
+                    <p className="muted" style={{ fontSize: '0.85rem', margin: 0 }}>
+                      Accès privé via Tailscale, sans ouverture de port routeur ni exposition publique de ToqueHub.
+                    </p>
+                  </div>
+                  <span className={`badge ${remoteStatusBadge}`}>
+                    {remoteInstanceLoading ? 'Vérification...' : remoteStatusLabel}
+                  </span>
+                </div>
+
+                {remoteAccessError ? <div className="alert-modern error" style={{ marginBottom: '1rem' }}><AlertCircle size={16} /> {remoteAccessError}</div> : null}
+                {remoteAccessMessage ? <div className="alert-modern success" style={{ marginBottom: '1rem' }}><CheckCircle2 size={16} /> {remoteAccessMessage}</div> : null}
+
+                <div className="settings-grid-premium" style={{ marginBottom: '1rem' }}>
+                  <div className="info-card-premium">
+                    <div className="info-card-premium-header"><span className="info-card-premium-label">Hostname Tailscale</span><span className="info-card-premium-icon"><Server size={16} /></span></div>
+                    <div className="info-card-premium-value" style={{ fontSize: '1rem' }}>{remoteAccess.tailscaleHostname || remoteInstance?.hostname || 'toquehub'}</div>
+                  </div>
+                  <div className="info-card-premium">
+                    <div className="info-card-premium-header"><span className="info-card-premium-label">IP Tailscale</span><span className="info-card-premium-icon"><Wifi size={16} /></span></div>
+                    <div className="info-card-premium-value" style={{ fontSize: '1rem' }}>{remoteAccess.tailscaleIp || remoteInstance?.ip || '-'}</div>
+                  </div>
+                  <div className="info-card-premium">
+                    <div className="info-card-premium-header"><span className="info-card-premium-label">URL d’accès</span><span className="info-card-premium-icon"><ExternalLink size={16} /></span></div>
+                    <div className="info-card-premium-value" style={{ fontSize: '0.95rem', wordBreak: 'break-all' }}>{remoteAccessUrl || remoteInstance?.url || '-'}</div>
+                  </div>
+                  <div className="info-card-premium">
+                    <div className="info-card-premium-header"><span className="info-card-premium-label">Dernière mise à jour</span><span className="info-card-premium-icon"><Clock size={16} /></span></div>
+                    <div className="info-card-premium-value" style={{ fontSize: '0.95rem' }}>{remoteAccess.updatedAt ? new Date(remoteAccess.updatedAt).toLocaleString('fr-FR') : '-'}</div>
+                  </div>
+                </div>
+
+                <div className="settings-grid-premium" style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-main)' }}>
+                    Hostname Tailscale
+                    <input value={remoteAccess.tailscaleHostname ?? ''} placeholder="toquehub" onChange={(event) => setRemoteAccess((current) => ({ ...current, tailscaleHostname: event.target.value }))} />
+                  </label>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-main)' }}>
+                    IP Tailscale
+                    <input value={remoteAccess.tailscaleIp ?? ''} placeholder="100.x.x.x" onChange={(event) => setRemoteAccess((current) => ({ ...current, tailscaleIp: event.target.value }))} />
+                  </label>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-main)' }}>
+                    URL d’accès
+                    <input value={remoteAccess.tailscaleUrl ?? ''} placeholder="http://100.x.x.x:8080" onChange={(event) => setRemoteAccess((current) => ({ ...current, tailscaleUrl: event.target.value }))} />
+                  </label>
+                </div>
+
+                <div className="alert-modern info" style={{ marginBottom: '1rem', background: '#f8fafc', borderColor: '#dbe4ef', color: '#334155' }}>
+                  <Info size={16} />
+                  <span style={{ fontSize: '0.85rem' }}>Activation manuelle si besoin : <code>{activationCommand}</code></span>
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <button className="btn btn-primary" onClick={() => void saveRemoteAccess()} disabled={savingRemoteAccess} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 1.5rem', borderRadius: '10px' }}>
+                    {savingRemoteAccess ? 'Enregistrement...' : 'Enregistrer'}
+                  </button>
+                  <button className="btn btn-secondary" onClick={() => void disableRemoteAccess()} disabled={savingRemoteAccess} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 1rem', borderRadius: '10px' }}>
+                    Désactiver
+                  </button>
+                  <button className="btn btn-secondary" onClick={() => void copyRemoteCommand()} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 1rem', borderRadius: '10px' }}>
+                    <Copy size={15} /> Copier la commande d’activation
+                  </button>
+                  {(remoteAccessUrl || remoteInstance?.url) ? (
+                    <a className="btn btn-secondary" href={remoteAccessUrl || remoteInstance?.url || '#'} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 1rem', borderRadius: '10px' }}>
+                      <ExternalLink size={15} /> Ouvrir l’accès
+                    </a>
+                  ) : null}
+                </div>
               </div>
 
               <div className="card-modern" style={{ padding: '1.5rem', background: 'linear-gradient(135deg, rgba(16,185,129,0.04) 0%, rgba(59,130,246,0.04) 100%)', border: '1px solid rgba(16,185,129,0.1)' }}>

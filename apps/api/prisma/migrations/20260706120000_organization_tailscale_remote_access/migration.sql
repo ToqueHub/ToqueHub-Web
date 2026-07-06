@@ -1,0 +1,6 @@
+ALTER TABLE "organizations"
+  ADD COLUMN IF NOT EXISTS "tailscaleEnabled" BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS "tailscaleHostname" TEXT,
+  ADD COLUMN IF NOT EXISTS "tailscaleUrl" TEXT,
+  ADD COLUMN IF NOT EXISTS "tailscaleIp" TEXT,
+  ADD COLUMN IF NOT EXISTS "tailscaleUpdatedAt" TIMESTAMP(3);

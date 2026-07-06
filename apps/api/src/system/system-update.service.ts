@@ -1,7 +1,6 @@
 import { BadGatewayException, Injectable, ServiceUnavailableException } from '@nestjs/common';
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import process from 'node:process';
+import { resolveAppPackageInfo } from '../common/app-version';
 import { PrismaService } from '../prisma/prisma.service';
 
 type GithubRelease = {
@@ -54,27 +53,6 @@ function compareVersions(left?: string | null, right?: string | null) {
   return 0;
 }
 
-function readPackageVersion() {
-  const candidates = [
-    resolve(process.cwd(), 'package.json'),
-    resolve(process.cwd(), 'apps/api/package.json'),
-    resolve(__dirname, '../../../package.json'),
-    resolve(__dirname, '../../package.json'),
-  ];
-
-  for (const candidate of candidates) {
-    if (!existsSync(candidate)) continue;
-    try {
-      const payload = JSON.parse(readFileSync(candidate, 'utf8')) as { version?: string };
-      if (payload.version) return payload.version;
-    } catch {
-      // Continue.
-    }
-  }
-
-  return '1.0.0';
-}
-
 function githubHeaders(token?: string | null) {
   return {
     Accept: 'application/vnd.github+json',
@@ -115,7 +93,7 @@ export class SystemUpdateService {
 
   async getStatus(force = false) {
     const imageTag = env('TOQUEHUB_IMAGE_TAG') || 'local';
-    const installedVersion = normalizeVersion(env('TOQUEHUB_VERSION') || (imageTag !== 'latest' && imageTag !== 'local' ? imageTag : readPackageVersion()));
+    const installedVersion = normalizeVersion(resolveAppPackageInfo().version);
     const githubToken = await this.getGithubToken();
     const release = await this.getLatestRelease(force, githubToken);
     const latestVersion = normalizeVersion(release.release?.tag_name);
@@ -167,8 +145,7 @@ export class SystemUpdateService {
 
     const checkedAt = new Date().toISOString();
     const repo = env('TOQUEHUB_RELEASE_REPO', 'ToqueHub/ToqueHub-Web');
-    const imageTag = env('TOQUEHUB_IMAGE_TAG') || 'local';
-    const currentVersion = normalizeVersion(env('TOQUEHUB_VERSION') || (imageTag !== 'latest' && imageTag !== 'local' ? imageTag : readPackageVersion()));
+    const currentVersion = normalizeVersion(resolveAppPackageInfo().version);
 
     try {
       const response = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=10`, {

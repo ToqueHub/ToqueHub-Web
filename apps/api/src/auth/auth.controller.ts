@@ -11,6 +11,7 @@ import { SetupOrganizationDto } from './dto/setup-organization.dto';
 import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
 import { UpdateOrganizationApiKeysDto } from './dto/api-keys.dto';
 import { UpdateOrganizationIdentityDto } from './dto/organization-identity.dto';
+import { UpdateOrganizationRemoteAccessDto } from './dto/remote-access.dto';
 import { UpdateRegulatoryCountryDto } from './dto/regulatory-country.dto';
 import { LoginDto } from './dto/login.dto';
 
@@ -86,6 +87,22 @@ export class AuthController {
   @ApiOkResponse({ description: 'Updates organization API keys used server-side.' })
   updateOrganizationApiKeys(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateOrganizationApiKeysDto) {
     return this.authService.updateOrganizationApiKeys(user, dto);
+  }
+
+  @Get('organization/remote-access')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOkResponse({ description: 'Returns organization remote access configuration without exposing install secrets.' })
+  organizationRemoteAccess(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.getOrganizationRemoteAccess(user);
+  }
+
+  @Post('organization/remote-access')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOkResponse({ description: 'Updates organization remote access configuration.' })
+  updateOrganizationRemoteAccess(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateOrganizationRemoteAccessDto) {
+    return this.authService.updateOrganizationRemoteAccess(user, dto);
   }
 
   @Post('organization/identity')

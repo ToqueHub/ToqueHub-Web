@@ -2,6 +2,7 @@ import { Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown } fro
 import { ConfigService } from '@nestjs/config';
 import { createHash, randomUUID } from 'crypto';
 import { hostname } from 'os';
+import { resolveAppPackageInfo } from '../common/app-version';
 import { PrismaService } from '../prisma/prisma.service';
 import { MdnsPublisher } from './mdns-publisher';
 import type { DiscoveryInfo, DiscoveryTxtRecords } from './discovery.types';
@@ -125,7 +126,16 @@ export class DiscoveryService implements OnApplicationBootstrap, OnApplicationSh
   }
 
   private resolveVersion() {
-    return this.config.get<string>('npm_package_version') || '0.1.0';
+    const configuredVersion = this.config.get<string>('TOQUEHUB_VERSION')?.trim();
+    const imageTag = this.config.get<string>('TOQUEHUB_IMAGE_TAG')?.trim();
+    const npmPackageVersion = this.config.get<string>('npm_package_version')?.trim();
+    const version =
+      (configuredVersion && !['latest', 'local'].includes(configuredVersion.toLowerCase()) && configuredVersion) ||
+      (imageTag && !['latest', 'local'].includes(imageTag.toLowerCase()) && imageTag) ||
+      npmPackageVersion ||
+      resolveAppPackageInfo().version;
+
+    return version.replace(/^v/i, '');
   }
 
   private resolveHost() {

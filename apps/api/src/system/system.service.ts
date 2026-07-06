@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { arch, cpus, freemem, hostname, platform, release, totalmem, uptime as osUptime } from 'node:os';
 import { resolve } from 'node:path';
 import process from 'node:process';
+import { resolveAppPackageInfo } from '../common/app-version';
 import { PrismaService } from '../prisma/prisma.service';
 
 const ADMIN_ROLES = ['SUPER_ADMIN', 'Administrateur'];
@@ -20,6 +21,12 @@ type SafeUrlInfo = {
 
 function env(name: string, fallback = '') {
   return process.env[name] || fallback;
+}
+
+function boolEnv(name: string, fallback = false) {
+  const value = env(name);
+  if (!value) return fallback;
+  return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
 }
 
 function parseSafeUrl(value?: string): SafeUrlInfo {
@@ -52,33 +59,6 @@ function parseSafeUrl(value?: string): SafeUrlInfo {
       redacted: value.replace(/\/\/([^:@/]+):([^@/]+)@/, '//***:***@'),
     };
   }
-}
-
-function readPackageVersion() {
-  const candidates = [
-    resolve(process.cwd(), 'apps/api/package.json'),
-    resolve(process.cwd(), 'package.json'),
-    resolve(__dirname, '../../package.json'),
-    resolve(__dirname, '../../../package.json'),
-  ];
-
-  for (const candidate of candidates) {
-    if (!existsSync(candidate)) continue;
-    try {
-      const content = JSON.parse(readFileSync(candidate, 'utf8')) as { name?: string; version?: string; license?: string };
-      if (content.version) {
-        return {
-          name: content.name ?? '@toquehub/api',
-          version: content.version,
-          license: content.license ?? null,
-        };
-      }
-    } catch {
-      // Continue with the next candidate.
-    }
-  }
-
-  return { name: '@toquehub/api', version: env('npm_package_version', '0.1.0'), license: null };
 }
 
 function isContainerized() {
@@ -155,7 +135,7 @@ export class SystemService {
   async getInstanceInfo() {
     const database = parseSafeUrl(env('DATABASE_URL'));
     const mqtt = parseSafeUrl(env('MQTT_URL'));
-    const appPackage = readPackageVersion();
+    const appPackage = resolveAppPackageInfo();
     let databaseConnected = false;
     let databaseError: string | null = null;
 
@@ -178,6 +158,11 @@ export class SystemService {
       .map((origin) => origin.trim())
       .filter(Boolean);
     const preferredWebOrigin = env('TOQUEHUB_WEB_URL') || corsOrigins[0] || `http://localhost:${webPort}`;
+    const tailscaleHostname = env('TOQUEHUB_TAILSCALE_HOSTNAME', 'toquehub');
+    const tailscaleIp = env('TOQUEHUB_TAILSCALE_IP') || null;
+    const remoteAccessUrl = env('TOQUEHUB_REMOTE_ACCESS_URL') || (tailscaleIp ? `http://${tailscaleIp}:${webPort}` : null);
+    const tailscaleEnabled = boolEnv('TOQUEHUB_TAILSCALE_ENABLED');
+    const tailscaleInstalled = boolEnv('TOQUEHUB_TAILSCALE_INSTALLED', tailscaleEnabled || Boolean(remoteAccessUrl || tailscaleIp));
 
     return {
       generatedAt: new Date().toISOString(),
@@ -207,6 +192,16 @@ export class SystemService {
         imageRegistry: env('TOQUEHUB_IMAGE_REGISTRY') || null,
         imageTag: env('TOQUEHUB_IMAGE_TAG') || null,
         architecture: process.arch,
+      },
+      remoteAccess: {
+        provider: 'tailscale',
+        enabled: tailscaleEnabled,
+        installed: tailscaleInstalled,
+        active: Boolean(remoteAccessUrl || tailscaleIp),
+        hostname: tailscaleHostname,
+        url: remoteAccessUrl,
+        ip: tailscaleIp,
+        activationCommand: `sudo tailscale up --hostname ${tailscaleHostname}`,
       },
       database: {
         provider: 'postgresql',

@@ -638,6 +638,11 @@ model Organization {
   mistralApiKeyUpdatedAt        DateTime?
   githubToken                   String?   @db.Text
   githubTokenUpdatedAt          DateTime?
+  tailscaleEnabled              Boolean   @default(false)
+  tailscaleHostname             String?
+  tailscaleUrl                  String?   @db.Text
+  tailscaleIp                   String?
+  tailscaleUpdatedAt            DateTime?
   createdAt                     DateTime  @default(now())
   updatedAt                     DateTime  @updatedAt
 

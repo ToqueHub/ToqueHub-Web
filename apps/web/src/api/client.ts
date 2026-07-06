@@ -117,6 +117,7 @@ import type {
   SystemUpdateApplyResult,
   SystemUpdateOperation,
   SystemUpdateStatus,
+  OrganizationRemoteAccess,
 } from '../types';
 
 type PlanningRangeParams = {
@@ -347,6 +348,12 @@ export const api = {
   },
   updateOrganizationApiKeys(token: string, payload: { mistralApiKey?: string; githubToken?: string }) {
     return request<DashboardSummary['organization']['apiKeys']>('/auth/organization/api-keys', { method: 'POST', body: JSON.stringify(payload) }, token);
+  },
+  organizationRemoteAccess(token: string) {
+    return request<OrganizationRemoteAccess>('/auth/organization/remote-access', {}, token);
+  },
+  updateOrganizationRemoteAccess(token: string, payload: { enabled?: boolean; tailscaleHostname?: string | null; tailscaleUrl?: string | null; tailscaleIp?: string | null }) {
+    return request<OrganizationRemoteAccess>('/auth/organization/remote-access', { method: 'POST', body: JSON.stringify(payload) }, token);
   },
   updateOrganizationIdentity(token: string, payload: { name?: string; establishmentType?: string | null; teamSize?: string | null }) {
     return request<DashboardSummary>('/auth/organization/identity', { method: 'POST', body: JSON.stringify(payload) }, token);

@@ -6,6 +6,9 @@ INSTALL_DIR="${TOQUEHUB_INSTALL_DIR:-/opt/toquehub}"
 CONFIG_DIR="${TOQUEHUB_CONFIG_DIR:-/etc/toquehub}"
 DATA_DIR="${TOQUEHUB_DATA_DIR:-/var/lib/toquehub}"
 ENV_FILE="$CONFIG_DIR/toquehub.env"
+TOQUEHUB_TAILSCALE_ENABLED="${TOQUEHUB_TAILSCALE_ENABLED:-true}"
+TOQUEHUB_TAILSCALE_AUTHKEY="${TOQUEHUB_TAILSCALE_AUTHKEY:-}"
+TOQUEHUB_TAILSCALE_HOSTNAME="${TOQUEHUB_TAILSCALE_HOSTNAME:-toquehub}"
 
 usage() {
   cat <<'MSG'
@@ -18,6 +21,7 @@ This script:
   - copies ToqueHub Compose/runtime files
   - generates secrets
   - enables systemd services
+  - installs Tailscale for private remote access
   - starts ToqueHub
 MSG
 }
@@ -41,6 +45,18 @@ set_env() {
 
   sudo mv "$tmp" "$ENV_FILE"
   sudo chmod 0600 "$ENV_FILE"
+}
+
+install_tailscale() {
+  if [[ "$TOQUEHUB_TAILSCALE_ENABLED" != "true" && "$TOQUEHUB_TAILSCALE_ENABLED" != "1" ]]; then
+    return
+  fi
+
+  if ! command -v tailscale >/dev/null 2>&1; then
+    curl -fsSL https://tailscale.com/install.sh | sudo sh
+  fi
+
+  sudo systemctl enable --now tailscaled || true
 }
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
@@ -69,6 +85,7 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 sudo systemctl enable --now docker
+install_tailscale
 
 sudo mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$DATA_DIR"
 sudo cp "$ROOT_DIR/docker-compose.pi.yml" "$INSTALL_DIR/docker-compose.pi.yml"
@@ -91,6 +108,12 @@ set_env POSTGRES_PASSWORD "$(secret)"
 set_env JWT_SECRET "$(secret)"
 set_env BACKUP_CLOUD_ENCRYPTION_KEY "$(secret)"
 set_env TOQUEHUB_UPDATER_SECRET "$(secret)"
+set_env TOQUEHUB_TAILSCALE_ENABLED "$TOQUEHUB_TAILSCALE_ENABLED"
+set_env TOQUEHUB_TAILSCALE_HOSTNAME "$TOQUEHUB_TAILSCALE_HOSTNAME"
+set_env TOQUEHUB_TAILSCALE_INSTALLED "$(command -v tailscale >/dev/null 2>&1 && printf true || printf false)"
+if [[ -n "$TOQUEHUB_TAILSCALE_AUTHKEY" ]]; then
+  set_env TOQUEHUB_TAILSCALE_AUTHKEY "$TOQUEHUB_TAILSCALE_AUTHKEY"
+fi
 
 sudo cp "$ROOT_DIR/docker/iot/mosquitto.conf" "$CONFIG_DIR/mosquitto.conf"
 sudo systemctl daemon-reload
@@ -107,4 +130,6 @@ Useful commands:
   toquehub status
   toquehub logs
   toquehub update
+  toquehub remote-status
+  toquehub remote-up
 MSG

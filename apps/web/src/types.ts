@@ -53,6 +53,16 @@ export interface SystemInstanceInfo {
     imageTag: string | null;
     architecture: string;
   };
+  remoteAccess?: {
+    provider: 'tailscale' | string;
+    enabled: boolean;
+    installed: boolean;
+    active: boolean;
+    hostname: string | null;
+    url: string | null;
+    ip: string | null;
+    activationCommand: string;
+  };
   database: {
     provider: 'postgresql';
     connected: boolean;
@@ -288,6 +298,7 @@ export interface UserSession {
     mainSiteName?: string | null;
     installedApplications?: string[];
     apiKeys?: OrganizationApiKeys;
+    remoteAccess?: OrganizationRemoteAccess;
     role: string;
     status?: UserStatus;
     isPrimaryAdmin?: boolean;
@@ -359,6 +370,7 @@ export interface DashboardSummary {
     logoDataUrl?: string | null;
     mainSiteName?: string | null;
     apiKeys?: OrganizationApiKeys;
+    remoteAccess?: OrganizationRemoteAccess;
   };
   installedApplications: string[];
   counts: { products: number; suppliers: number; stockMovements: number; activeUsers?: number; users?: number; collaborators?: number; hrCollaborators?: number };
@@ -384,6 +396,14 @@ export interface OrganizationApiKeys {
     masked?: string | null;
     updatedAt?: string | null;
   };
+}
+
+export interface OrganizationRemoteAccess {
+  enabled: boolean;
+  tailscaleHostname?: string | null;
+  tailscaleUrl?: string | null;
+  tailscaleIp?: string | null;
+  updatedAt?: string | null;
 }
 
 export interface StocksOcrConfig {
