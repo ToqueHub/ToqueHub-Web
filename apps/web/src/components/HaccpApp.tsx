@@ -451,13 +451,15 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
         safeValue('sensors list', () => api.haccpSensors(token), []),
         safeValue('pairing current', () => api.haccpCurrentSensorPairing(token), null),
       ]);
+      const temperatureEquipmentList = equipment.data ?? [];
+      const sensorListWithMocks = withLocalMockSensors(sensorList, temperatureEquipmentList);
       if (dashboardData) setDashboard(dashboardData);
       setSensorGatewayStatus(gatewayStatus);
-      setSensorSummary(sensorSummaryData);
-      setSensors(sensorList);
+      setSensorSummary(withLocalMockSensorSummary(sensorSummaryData, sensorListWithMocks));
+      setSensors(sensorListWithMocks);
       setPairing(pairingData);
       setItems({
-        temperatureEquipment: equipment.data ?? [],
+        temperatureEquipment: temperatureEquipmentList,
         temperatureReadings: readings.data ?? [],
         cleaningZones: zones.data ?? [],
         traceability: traceability.data ?? [],
@@ -494,8 +496,9 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
         api.haccpCurrentSensorPairing(token),
       ]);
       setSensorGatewayStatus(gateway);
-      setSensorSummary(summary);
-      setSensors(list);
+      const sensorListWithMocks = withLocalMockSensors(list, temperatureEquipment);
+      setSensorSummary(withLocalMockSensorSummary(summary, sensorListWithMocks));
+      setSensors(sensorListWithMocks);
       setPairing(currentPairing);
     } catch {
       // Keep existing sensor state.
@@ -551,6 +554,17 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
     setSaving(true);
     setError(null);
     try {
+      if (isLocalMockSensor(sensor)) {
+        const equipment = temperatureEquipment.find((item) => (item._id ?? item.id) === equipmentId);
+        const assignedEquipmentId = equipment?._id ?? equipment?.id;
+        const updated: HaccpSensor = {
+          ...sensor,
+          assignedEquipment: equipment && assignedEquipmentId ? { id: assignedEquipmentId, name: String(equipment.name ?? 'Équipement'), type: String(equipment.type ?? 'enceinte_positive') } : null,
+        };
+        setSelectedSensorId(updated.id);
+        setSensors((current) => upsertSensor(current, updated));
+        return;
+      }
       const updated = equipmentId ? await api.haccpAssignSensor(token, sensor.id, equipmentId) : await api.haccpUnassignSensor(token, sensor.id);
       setSelectedSensorId(updated.id);
       setSensors((current) => upsertSensor(current, updated));
@@ -4206,6 +4220,109 @@ function upsertSensor(items: HaccpSensor[], sensor: HaccpSensor) {
     ? items.map((item) => item.id === sensor.id ? { ...item, ...sensor } : item)
     : [sensor, ...items];
   return next.filter((item) => !item.isRemoved);
+}
+
+const LOCAL_MOCK_SENSOR_PREFIX = 'mock-haccp-sensor-';
+
+function shouldUseLocalHaccpSensorMocks() {
+  const explicit = String(import.meta.env.VITE_HACCP_MOCK_SENSORS ?? '').toLowerCase();
+  if (['0', 'false', 'no'].includes(explicit)) return false;
+  if (['1', 'true', 'yes'].includes(explicit)) return true;
+  return false;
+}
+
+function isLocalMockSensor(sensor: HaccpSensor) {
+  return sensor.id.startsWith(LOCAL_MOCK_SENSOR_PREFIX);
+}
+
+function withLocalMockSensors(sensors: HaccpSensor[], temperatureEquipment: HaccpItem[]) {
+  if (!shouldUseLocalHaccpSensorMocks()) return sensors;
+  const mocks = buildLocalMockSensors(temperatureEquipment);
+  return mocks.reduce((current, sensor) => upsertSensor(current, sensor), sensors);
+}
+
+function withLocalMockSensorSummary(summary: HaccpSensorSummary, sensors: HaccpSensor[]): HaccpSensorSummary {
+  if (!shouldUseLocalHaccpSensorMocks()) return summary;
+  const total = sensors.length;
+  const online = sensors.filter((sensor) => sensor.status === 'ONLINE').length;
+  const offline = sensors.filter((sensor) => sensor.status === 'OFFLINE').length;
+  const batteries = sensors.map((sensor) => sensor.battery).filter((value): value is number => typeof value === 'number');
+  return {
+    total,
+    online,
+    offline,
+    unknown: total - online - offline,
+    averageBattery: batteries.length ? Math.round(batteries.reduce((sum, value) => sum + value, 0) / batteries.length) : null,
+    globalStatus: total === 0 ? 'unknown' : offline > 0 ? 'warning' : 'ok',
+  };
+}
+
+function buildLocalMockSensors(temperatureEquipment: HaccpItem[]): HaccpSensor[] {
+  const now = new Date().toISOString();
+  const equipmentFor = (index: number) => {
+    const equipment = temperatureEquipment[index];
+    const id = equipment?._id ?? equipment?.id;
+    return id ? { id, name: String(equipment.name ?? 'Équipement'), type: String(equipment.type ?? 'enceinte_positive') } : null;
+  };
+  return [
+    {
+      id: `${LOCAL_MOCK_SENSOR_PREFIX}frigo-cuisine`,
+      provider: 'ZIGBEE2MQTT',
+      externalId: '0xmockfrigo001',
+      manufacturer: 'SONOFF',
+      model: 'SNZB-02P',
+      friendlyName: 'mock-frigo-cuisine',
+      userName: 'Capteur Frigo Cuisine',
+      type: 'TEMPERATURE_HUMIDITY',
+      status: 'ONLINE',
+      battery: 96,
+      linkQuality: 184,
+      lastSeenAt: now,
+      currentTemperature: 3.4,
+      currentHumidity: 48,
+      assignedEquipment: equipmentFor(0),
+      readings: [],
+      events: [],
+    },
+    {
+      id: `${LOCAL_MOCK_SENSOR_PREFIX}chambre-froide`,
+      provider: 'ZIGBEE2MQTT',
+      externalId: '0xmockcoldroom02',
+      manufacturer: 'SONOFF',
+      model: 'SNZB-02P',
+      friendlyName: 'mock-chambre-froide',
+      userName: 'Capteur Chambre Froide',
+      type: 'TEMPERATURE_HUMIDITY',
+      status: 'ONLINE',
+      battery: 88,
+      linkQuality: 156,
+      lastSeenAt: now,
+      currentTemperature: 1.8,
+      currentHumidity: 54,
+      assignedEquipment: equipmentFor(1),
+      readings: [],
+      events: [],
+    },
+    {
+      id: `${LOCAL_MOCK_SENSOR_PREFIX}congelateur`,
+      provider: 'ZIGBEE2MQTT',
+      externalId: '0xmockfreezer003',
+      manufacturer: 'SONOFF',
+      model: 'SNZB-02P',
+      friendlyName: 'mock-congelateur',
+      userName: 'Capteur Congélateur',
+      type: 'TEMPERATURE_HUMIDITY',
+      status: 'OFFLINE',
+      battery: 62,
+      linkQuality: 91,
+      lastSeenAt: new Date(Date.now() - 45 * 60_000).toISOString(),
+      currentTemperature: -18.7,
+      currentHumidity: 35,
+      assignedEquipment: equipmentFor(2),
+      readings: [],
+      events: [],
+    },
+  ];
 }
 
 function sensorDisplayName(sensor: HaccpSensor) {
