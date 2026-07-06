@@ -26,6 +26,16 @@ export class UpdateSensorDto {
   @IsOptional()
   @IsString()
   type?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  temperatureMin?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  temperatureMax?: number;
 }
 
 export class RenameSensorDto {

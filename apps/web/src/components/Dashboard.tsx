@@ -45,6 +45,7 @@ import {
   CheckCircle2,
   TrendingUp,
   AlertCircle,
+  AlertTriangle,
   Clock,
   ArrowRight,
   Info,
@@ -356,7 +357,7 @@ const apps = [
   },
 ];
 
-type ActiveTab = 'overview' | 'applications' | 'settings' | 'organization-general' | 'organization-documents' | 'users' | 'architecture' | 'stocks-dashboard' | 'stocks-margins' | 'inventory' | 'movements' | 'products' | 'categories' | 'units' | 'suppliers' | 'inventories' | 'locations' | 'audit' | 'rnm-dashboard' | 'rnm-history' | 'rnm-favorites' | 'rnm-about' | 'hr-dashboard' | 'hr-collaborators' | 'hr-departments' | 'hr-positions' | 'hr-rotations' | 'hr-orgchart' | 'planning-dashboard' | 'planning-planning' | 'planning-settings' | 'planning-attendance' | 'planning-day' | 'planning-week' | 'planning-month' | 'planning-assignments' | 'planning-absences' | 'planning-replacements' | 'planning-templates' | 'planning-requirements' | 'technical-sheets-dashboard' | 'technical-sheets-recipes' | 'technical-sheets-categories' | 'technical-sheets-costs' | 'technical-sheets-allergens' | 'technical-sheets-production' | 'production-dashboard' | 'production-orders' | 'production-calendar' | 'production-today' | 'production-assignments' | 'production-materials' | 'production-exports' | 'production-history' | 'menus-dashboard' | 'menus-list' | 'menus-calendar' | 'menus-cycles' | 'menus-diets' | 'menus-guests' | 'menus-exports' | 'menus-history' | 'haccp-dashboard' | 'haccp-setup' | 'haccp-sensors' | 'haccp-temperatures' | 'haccp-cleaning' | 'haccp-traceability' | 'haccp-receptions' | 'haccp-process' | 'haccp-oil' | 'haccp-production' | 'haccp-products' | 'haccp-labels' | 'haccp-reports';
+type ActiveTab = 'overview' | 'applications' | 'settings' | 'organization-general' | 'organization-documents' | 'users' | 'architecture' | 'stocks-dashboard' | 'stocks-margins' | 'inventory' | 'movements' | 'products' | 'categories' | 'units' | 'suppliers' | 'inventories' | 'locations' | 'audit' | 'rnm-dashboard' | 'rnm-history' | 'rnm-favorites' | 'rnm-about' | 'hr-dashboard' | 'hr-collaborators' | 'hr-departments' | 'hr-positions' | 'hr-rotations' | 'hr-orgchart' | 'planning-dashboard' | 'planning-planning' | 'planning-settings' | 'planning-attendance' | 'planning-day' | 'planning-week' | 'planning-month' | 'planning-assignments' | 'planning-absences' | 'planning-replacements' | 'planning-templates' | 'planning-requirements' | 'technical-sheets-dashboard' | 'technical-sheets-recipes' | 'technical-sheets-categories' | 'technical-sheets-costs' | 'technical-sheets-allergens' | 'technical-sheets-production' | 'production-dashboard' | 'production-orders' | 'production-calendar' | 'production-today' | 'production-assignments' | 'production-materials' | 'production-exports' | 'production-history' | 'menus-dashboard' | 'menus-list' | 'menus-calendar' | 'menus-cycles' | 'menus-diets' | 'menus-guests' | 'menus-exports' | 'menus-history' | 'haccp-dashboard' | 'haccp-setup' | 'haccp-sensors' | 'haccp-alerts' | 'haccp-temperatures' | 'haccp-cleaning' | 'haccp-traceability' | 'haccp-receptions' | 'haccp-process' | 'haccp-oil' | 'haccp-production' | 'haccp-products' | 'haccp-labels' | 'haccp-reports';
 type StocksSettingsTab = 'categories' | 'units' | 'movements' | 'locations' | 'audit';
 
 const STOCKS_ALL_TABS: ActiveTab[] = [
@@ -834,7 +835,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const isTechnicalSheetsTab = useMemo(() => ['technical-sheets-dashboard', 'technical-sheets-recipes', 'technical-sheets-categories', 'technical-sheets-costs', 'technical-sheets-allergens', 'technical-sheets-production'].includes(activeTab), [activeTab]);
   const isProductionTab = useMemo(() => ['production-dashboard', 'production-orders', 'production-calendar', 'production-today', 'production-assignments', 'production-materials', 'production-exports', 'production-history'].includes(activeTab), [activeTab]);
   const isMenusTab = useMemo(() => ['menus-dashboard', 'menus-list', 'menus-calendar', 'menus-cycles', 'menus-diets', 'menus-guests', 'menus-exports', 'menus-history'].includes(activeTab), [activeTab]);
-  const isHaccpTab = useMemo(() => ['haccp-dashboard', 'haccp-setup', 'haccp-sensors', 'haccp-temperatures', 'haccp-cleaning', 'haccp-traceability', 'haccp-receptions', 'haccp-process', 'haccp-oil', 'haccp-production', 'haccp-products', 'haccp-labels', 'haccp-reports'].includes(activeTab), [activeTab]);
+  const isHaccpTab = useMemo(() => ['haccp-dashboard', 'haccp-setup', 'haccp-sensors', 'haccp-alerts', 'haccp-temperatures', 'haccp-cleaning', 'haccp-traceability', 'haccp-receptions', 'haccp-process', 'haccp-oil', 'haccp-production', 'haccp-products', 'haccp-labels', 'haccp-reports'].includes(activeTab), [activeTab]);
 
   useEffect(() => {
     if (isMenusTab) {
@@ -1070,6 +1071,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           ]
         },
         { tab: 'haccp-sensors', label: 'Capteurs', icon: Smartphone },
+        { tab: 'haccp-alerts', label: 'Alerte', icon: AlertTriangle },
         { tab: 'haccp-setup', label: 'Zones & matériels', icon: Boxes },
         { tab: 'haccp-reports', label: 'Rapports', icon: FileText }
       ]
@@ -1875,6 +1877,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     'haccp-dashboard': 'HACCP',
     'haccp-setup': 'Zones & matériels HACCP',
     'haccp-sensors': 'Capteurs HACCP',
+    'haccp-alerts': 'Alertes température HACCP',
     'haccp-temperatures': 'Températures HACCP',
     'haccp-cleaning': 'Nettoyage HACCP',
     'haccp-traceability': 'Traçabilité HACCP',
@@ -2608,7 +2611,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               {isHaccpTab && haccpInstalled && (
                 <HaccpApp
                   token={token}
-                  tab={activeTab === 'haccp-setup' ? 'setup' : activeTab === 'haccp-sensors' ? 'sensors' : activeTab === 'haccp-temperatures' ? 'temperatures' : activeTab === 'haccp-cleaning' ? 'cleaning' : activeTab === 'haccp-traceability' ? 'traceability' : activeTab === 'haccp-receptions' ? 'receptions' : activeTab === 'haccp-process' ? 'process' : activeTab === 'haccp-oil' ? 'oil' : activeTab === 'haccp-production' ? 'production' : activeTab === 'haccp-products' ? 'products' : activeTab === 'haccp-labels' ? 'labels' : activeTab === 'haccp-reports' ? 'reports' : 'dashboard'}
+                  tab={activeTab === 'haccp-setup' ? 'setup' : activeTab === 'haccp-sensors' ? 'sensors' : activeTab === 'haccp-alerts' ? 'alerts' : activeTab === 'haccp-temperatures' ? 'temperatures' : activeTab === 'haccp-cleaning' ? 'cleaning' : activeTab === 'haccp-traceability' ? 'traceability' : activeTab === 'haccp-receptions' ? 'receptions' : activeTab === 'haccp-process' ? 'process' : activeTab === 'haccp-oil' ? 'oil' : activeTab === 'haccp-production' ? 'production' : activeTab === 'haccp-products' ? 'products' : activeTab === 'haccp-labels' ? 'labels' : activeTab === 'haccp-reports' ? 'reports' : 'dashboard'}
                   onNavigate={(next) => setActiveTab(next as any)}
                 />
               )}

@@ -139,14 +139,74 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  async temperatureAlerts(organizationId: string) {
+    await this.markOfflineSensors(organizationId);
+    const [sensors, openAlerts, recentReadings] = await Promise.all([
+      this.prisma.iotSensor.findMany({
+        where: { organizationId, isRemoved: false },
+        include: this.sensorInclude(),
+        orderBy: [{ status: 'asc' }, { updatedAt: 'desc' }],
+      }),
+      this.prisma.iotAlertEvent.findMany({
+        where: { organizationId, type: { in: ['TEMPERATURE_OUT_OF_RANGE', 'SENSOR_OFFLINE'] }, status: 'OPEN' },
+        include: { sensor: true },
+        orderBy: { detectedAt: 'desc' },
+        take: 50,
+      }),
+      this.prisma.iotSensorReading.findMany({
+        where: { organizationId, temperature: { not: null } },
+        include: { sensor: { include: this.sensorInclude() } },
+        orderBy: { measuredAt: 'desc' },
+        take: 100,
+      }),
+    ]);
+    const monitoredSensors = sensors.map((sensor) => {
+      const serialized = this.serializeSensor(sensor);
+      const threshold = this.temperatureThresholdForSensor(serialized, serialized.assignedEquipment);
+      const temperatureStatus = this.temperatureStatus(serialized.currentTemperature, threshold);
+      return {
+        ...serialized,
+        threshold,
+        temperatureStatus,
+        alertOpen: openAlerts.some((alert) => alert.sensorId === sensor.id),
+      };
+    });
+    const assigned = monitoredSensors.filter((sensor) => sensor.assignedEquipment);
+    const critical = monitoredSensors.filter((sensor) => sensor.temperatureStatus.status === 'critical').length;
+    const warning = monitoredSensors.filter((sensor) => sensor.temperatureStatus.status === 'warning').length;
+    return {
+      summary: {
+        totalSensors: monitoredSensors.length,
+        assignedSensors: assigned.length,
+        unassignedSensors: monitoredSensors.length - assigned.length,
+        onlineSensors: monitoredSensors.filter((sensor) => sensor.status === IotSensorStatus.ONLINE).length,
+        offlineSensors: monitoredSensors.filter((sensor) => sensor.status === IotSensorStatus.OFFLINE).length,
+        critical,
+        warning,
+        ok: monitoredSensors.filter((sensor) => sensor.temperatureStatus.status === 'ok').length,
+      },
+      sensors: monitoredSensors,
+      alerts: openAlerts.map((alert) => ({ ...alert, sensor: alert.sensor ? this.serializeSensor({ ...alert.sensor, assignments: [] }) : null })),
+      recentReadings: recentReadings.map((reading) => ({
+        ...reading,
+        temperature: this.numberOrNull(reading.temperature),
+        humidity: this.numberOrNull(reading.humidity),
+        battery: this.numberOrNull(reading.battery),
+        sensor: reading.sensor ? this.serializeSensor(reading.sensor) : null,
+      })),
+    };
+  }
+
   async update(organizationId: string, id: string, dto: UpdateSensorDto) {
-    await this.ensureSensor(organizationId, id);
+    const current = await this.ensureSensor(organizationId, id);
     const type = dto.type ? this.normalizeType(dto.type) : undefined;
+    const metadata = this.withTemperatureThresholdMetadata(current.metadata, dto);
     const sensor = await this.prisma.iotSensor.update({
       where: { id },
       data: {
         userName: dto.userName?.trim() || undefined,
         type,
+        metadata: metadata ? this.json(metadata) : undefined,
       },
       include: this.sensorInclude(),
     });
@@ -371,6 +431,23 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
             payload: readingPayload,
           },
         });
+        const assignment = await tx.iotSensorAssignment.findFirst({
+          where: { organizationId: sensor.organizationId, sensorId: sensor.id, unassignedAt: null },
+          include: { haccpTemperatureEquipment: true },
+          orderBy: { assignedAt: 'desc' },
+        });
+        if (temperature != null && assignment?.haccpTemperatureEquipmentId) {
+          await tx.haccpTemperatureReading.create({
+            data: {
+              organizationId: sensor.organizationId,
+              equipmentId: assignment.haccpTemperatureEquipmentId,
+              temperature,
+              date: measuredAt,
+              notes: `Relevé automatique capteur ${sensor.userName ?? sensor.friendlyName ?? sensor.externalId}`,
+            },
+          });
+          await this.syncTemperatureAlert(tx, sensor, assignment.haccpTemperatureEquipment, temperature, measuredAt);
+        }
         return tx.iotSensor.update({
           where: { id: sensor.id },
           data: {
@@ -429,6 +506,39 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
     const serialized = this.serializeSensor(sensor);
     this.gateway.emitToOrganization(organizationId, discovered ? 'sensor.discovered' : 'sensor.updated', serialized);
     return sensor;
+  }
+
+  private async syncTemperatureAlert(tx: any, sensor: any, equipment: any, temperature: number, measuredAt: Date) {
+    const threshold = this.temperatureThresholdForSensor(sensor, equipment);
+    const status = this.temperatureStatus(temperature, threshold);
+    const openAlert = await tx.iotAlertEvent.findFirst({
+      where: { organizationId: sensor.organizationId, sensorId: sensor.id, type: 'TEMPERATURE_OUT_OF_RANGE', status: 'OPEN' },
+      orderBy: { detectedAt: 'desc' },
+    });
+    if (status.status === 'ok') {
+      if (openAlert) await tx.iotAlertEvent.update({ where: { id: openAlert.id }, data: { status: 'RESOLVED', resolvedAt: measuredAt } });
+      return;
+    }
+    const title = status.status === 'critical' ? 'Température critique' : 'Température à surveiller';
+    const message = `${equipment?.name ?? 'Enceinte'}: ${temperature.toFixed(1)}°C hors plage ${threshold.min}°C / ${threshold.max}°C`;
+    const payload = this.json({ temperature, threshold, equipmentId: equipment?.id ?? null, equipmentName: equipment?.name ?? null });
+    if (openAlert) {
+      await tx.iotAlertEvent.update({ where: { id: openAlert.id }, data: { severity: status.status === 'critical' ? 'CRITICAL' : 'WARNING', title, message, payload, detectedAt: measuredAt } });
+      return;
+    }
+    await tx.iotAlertEvent.create({
+      data: {
+        organizationId: sensor.organizationId,
+        sensorId: sensor.id,
+        type: 'TEMPERATURE_OUT_OF_RANGE',
+        severity: status.status === 'critical' ? 'CRITICAL' : 'WARNING',
+        status: 'OPEN',
+        title,
+        message,
+        payload,
+        detectedAt: measuredAt,
+      },
+    });
   }
 
   private async restoreOrCreateDevice(organizationId: string, device: ProviderDevice, discovered: boolean) {
@@ -566,6 +676,52 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
     }).catch(() => undefined);
   }
 
+  private temperatureThresholdForEquipment(equipment?: { type?: string | null; name?: string | null } | null) {
+    const source = `${equipment?.type ?? ''} ${equipment?.name ?? ''}`.toLowerCase();
+    if (source.includes('congel') || source.includes('surgel') || source.includes('neg') || source.includes('frozen')) {
+      return { min: -30, max: -18, label: 'Congélation' };
+    }
+    return { min: 0, max: 4, label: 'Froid positif' };
+  }
+
+  private temperatureThresholdForSensor(sensor: any, equipment?: { type?: string | null; name?: string | null } | null) {
+    const custom = this.extractCustomTemperatureThreshold(sensor?.metadata);
+    if (custom) return { min: custom.min, max: custom.max, label: custom.label ?? 'Seuil personnalisé' };
+    return this.temperatureThresholdForEquipment(equipment);
+  }
+
+  private extractCustomTemperatureThreshold(metadata: any) {
+    const threshold = metadata && typeof metadata === 'object' ? metadata.temperatureThreshold : null;
+    const min = this.parseNumber(threshold?.min);
+    const max = this.parseNumber(threshold?.max);
+    if (min == null || max == null || min >= max) return null;
+    return { min, max, label: typeof threshold?.label === 'string' ? threshold.label : undefined };
+  }
+
+  private withTemperatureThresholdMetadata(metadata: any, dto: UpdateSensorDto) {
+    if (dto.temperatureMin == null && dto.temperatureMax == null) return undefined;
+    const current = metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? { ...metadata } : {};
+    const existing = this.extractCustomTemperatureThreshold(current);
+    const min = dto.temperatureMin ?? existing?.min;
+    const max = dto.temperatureMax ?? existing?.max;
+    if (min == null || max == null || min >= max) throw new BadRequestException('Seuils température invalides');
+    current.temperatureThreshold = { min, max, label: 'Seuil personnalisé' };
+    return current;
+  }
+
+  private temperatureStatus(temperature: number | null | undefined, threshold: { min: number; max: number }) {
+    if (temperature == null) return { status: 'unknown', label: 'Sans relevé', delta: null };
+    if (temperature < threshold.min) {
+      const delta = threshold.min - temperature;
+      return { status: delta >= 3 ? 'critical' : 'warning', label: 'Trop froid', delta };
+    }
+    if (temperature > threshold.max) {
+      const delta = temperature - threshold.max;
+      return { status: delta >= 3 ? 'critical' : 'warning', label: 'Trop chaud', delta };
+    }
+    return { status: 'ok', label: 'Conforme', delta: 0 };
+  }
+
   private async ensureSensor(organizationId: string, id: string) {
     const sensor = await this.prisma.iotSensor.findFirst({ where: { id, organizationId, isRemoved: false } });
     if (!sensor) throw new NotFoundException('Capteur introuvable');
@@ -594,6 +750,7 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
       battery: this.numberOrNull(sensor.battery),
       currentTemperature: this.numberOrNull(sensor.currentTemperature),
       currentHumidity: this.numberOrNull(sensor.currentHumidity),
+      temperatureThreshold: this.extractCustomTemperatureThreshold(sensor.metadata),
       assignedEquipment: activeAssignment?.haccpTemperatureEquipment ? {
         id: activeAssignment.haccpTemperatureEquipment.id,
         name: activeAssignment.haccpTemperatureEquipment.name,
