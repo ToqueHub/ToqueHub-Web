@@ -29,6 +29,10 @@ tailscale_ip() {
   tailscale ip -4 2>/dev/null | head -1 || true
 }
 
+server_ip() {
+  hostname -I 2>/dev/null | awk '{print $1}'
+}
+
 set_env() {
   local key="$1"
   local value="$2"
@@ -82,6 +86,29 @@ configure_tailscale() {
   fi
 }
 
+configure_web_url() {
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+
+  local http_port ip origins
+  http_port="${TOQUEHUB_HTTP_PORT:-8080}"
+  ip="$(server_ip || true)"
+  origins="http://toquehub.local:$http_port,http://localhost:$http_port,http://127.0.0.1:$http_port"
+
+  if [[ -n "$ip" ]]; then
+    set_env TOQUEHUB_WEB_URL "http://$ip:$http_port"
+    set_env TOQUEHUB_DISCOVERY_HOST "$ip"
+    origins="http://$ip:$http_port,$origins"
+  else
+    set_env TOQUEHUB_WEB_URL "http://toquehub.local:$http_port"
+  fi
+
+  set_env TOQUEHUB_DISCOVERY_PORT "$http_port"
+  set_env CORS_ORIGIN "$origins"
+}
+
 mkdir -p "$CONFIG_DIR" "$DATA_DIR"/{api,postgres,mosquitto/data,mosquitto/log,zigbee2mqtt}
 chmod 0750 "$CONFIG_DIR" "$DATA_DIR"
 
@@ -95,9 +122,12 @@ if grep -q 'replace-with-generated-secret' "$ENV_FILE"; then
   set_env JWT_SECRET "$(secret)"
   set_env BACKUP_CLOUD_ENCRYPTION_KEY "$(secret)"
   set_env TOQUEHUB_UPDATER_SECRET "$(secret)"
+  set_env TOQUEHUB_REMOTE_AGENT_SECRET "$(secret)"
 fi
 
 configure_tailscale
+configure_web_url
+systemctl restart toquehub-remote-agent.service >/dev/null 2>&1 || true
 
 if [[ ! -f "$CONFIG_DIR/mosquitto.conf" ]]; then
   cp /opt/toquehub/mosquitto.conf "$CONFIG_DIR/mosquitto.conf"

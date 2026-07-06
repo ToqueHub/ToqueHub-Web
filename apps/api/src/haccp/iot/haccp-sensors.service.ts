@@ -317,11 +317,8 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
     }
     const sessions = await this.activePairingSessions();
     await Promise.all(sessions.map(async (session) => {
-      const created = await this.createDevice(session.organizationId, device, true);
-      await this.prisma.iotPairingSession.update({
-        where: { id: session.id },
-        data: { discoveredIds: { push: created.id } },
-      }).catch(() => undefined);
+      const sensor = await this.restoreOrCreateDevice(session.organizationId, device, true);
+      await this.addDiscoveredSensorToSession(session.id, sensor.id);
     }));
   }
 
@@ -337,12 +334,16 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
     let sensors = await this.findSensorsByExternal(externalId, undefined);
     if (!sensors.length) {
       const sessions = await this.activePairingSessions();
-      sensors = await Promise.all(sessions.map((session) => this.createDevice(session.organizationId, {
+      sensors = await Promise.all(sessions.map(async (session) => {
+        const sensor = await this.restoreOrCreateDevice(session.organizationId, {
         externalId,
         friendlyName: externalId,
         type: inferSensorType(readingPayload),
         metadata: {},
-      }, true)));
+      }, true);
+        await this.addDiscoveredSensorToSession(session.id, sensor.id);
+        return sensor;
+      }));
     }
 
     await Promise.all(sensors.map(async (sensor) => {
@@ -430,6 +431,45 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
     return sensor;
   }
 
+  private async restoreOrCreateDevice(organizationId: string, device: ProviderDevice, discovered: boolean) {
+    const removed = await this.findRemovedSensorByExternal(organizationId, device.externalId, device.ieeeAddress);
+    if (!removed) return this.createDevice(organizationId, device, discovered);
+
+    const sensor = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.iotSensor.update({
+        where: { id: removed.id },
+        data: {
+          externalId: device.externalId,
+          ieeeAddress: device.ieeeAddress ?? removed.ieeeAddress,
+          manufacturer: device.manufacturer ?? removed.manufacturer,
+          model: device.model ?? removed.model,
+          friendlyName: device.friendlyName ?? removed.friendlyName,
+          userName: removed.userName ?? device.friendlyName,
+          type: device.type ?? removed.type,
+          metadata: this.json(device.metadata ?? removed.metadata ?? {}),
+          isRemoved: false,
+          removedAt: null,
+          status: IotSensorStatus.UNKNOWN,
+        },
+        include: this.sensorInclude(),
+      });
+      await tx.iotSensorEvent.create({
+        data: {
+          organizationId,
+          sensorId: updated.id,
+          type: IotSensorEventType.DISCOVERED,
+          message: 'Capteur restauré automatiquement',
+          payload: this.json(device.metadata ?? {}),
+        },
+      });
+      await tx.auditLog.create({ data: { organizationId, action: AuditAction.HACCP_SENSOR_DISCOVERED, entityType: 'IotSensor', entityId: updated.id, entityName: updated.userName ?? updated.friendlyName } });
+      return updated;
+    });
+    const serialized = this.serializeSensor(sensor);
+    this.gateway.emitToOrganization(organizationId, discovered ? 'sensor.discovered' : 'sensor.updated', serialized);
+    return sensor;
+  }
+
   private async updateDevice(organizationId: string, id: string, device: ProviderDevice) {
     const sensor = await this.prisma.iotSensor.update({
       where: { id },
@@ -502,6 +542,28 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
         ],
       },
     });
+  }
+
+  private findRemovedSensorByExternal(organizationId: string, externalId: string, ieeeAddress?: string | null) {
+    return this.prisma.iotSensor.findFirst({
+      where: {
+        organizationId,
+        provider: IotSensorProvider.ZIGBEE2MQTT,
+        isRemoved: true,
+        OR: [
+          { externalId },
+          ...(ieeeAddress ? [{ ieeeAddress }] : []),
+        ],
+      },
+      orderBy: { removedAt: 'desc' },
+    });
+  }
+
+  private async addDiscoveredSensorToSession(sessionId: string, sensorId: string) {
+    await this.prisma.iotPairingSession.update({
+      where: { id: sessionId },
+      data: { discoveredIds: { push: sensorId } },
+    }).catch(() => undefined);
   }
 
   private async ensureSensor(organizationId: string, id: string) {

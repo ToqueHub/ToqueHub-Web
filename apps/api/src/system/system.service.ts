@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import process from 'node:process';
 import { resolveAppPackageInfo } from '../common/app-version';
 import { PrismaService } from '../prisma/prisma.service';
+import type { AuthenticatedUser } from '../auth/authenticated-user';
 
 const ADMIN_ROLES = ['SUPER_ADMIN', 'Administrateur'];
 const STARTED_AT = new Date();
@@ -17,6 +18,15 @@ type SafeUrlInfo = {
   port: string | null;
   database?: string | null;
   redacted: string | null;
+};
+
+type RemoteAccessStatus = {
+  status: 'inactive' | 'needs_login' | 'active' | 'unavailable';
+  url: string | null;
+  loginUrl: string | null;
+  hostname: string | null;
+  ip: string | null;
+  message: string;
 };
 
 function env(name: string, fallback = '') {
@@ -158,11 +168,7 @@ export class SystemService {
       .map((origin) => origin.trim())
       .filter(Boolean);
     const preferredWebOrigin = env('TOQUEHUB_WEB_URL') || corsOrigins[0] || `http://localhost:${webPort}`;
-    const tailscaleHostname = env('TOQUEHUB_TAILSCALE_HOSTNAME', 'toquehub');
-    const tailscaleIp = env('TOQUEHUB_TAILSCALE_IP') || null;
-    const remoteAccessUrl = env('TOQUEHUB_REMOTE_ACCESS_URL') || (tailscaleIp ? `http://${tailscaleIp}:${webPort}` : null);
-    const tailscaleEnabled = boolEnv('TOQUEHUB_TAILSCALE_ENABLED');
-    const tailscaleInstalled = boolEnv('TOQUEHUB_TAILSCALE_INSTALLED', tailscaleEnabled || Boolean(remoteAccessUrl || tailscaleIp));
+    const remoteAccess = await this.getRemoteAccessStatus().catch(() => this.remoteAccessFromEnv());
 
     return {
       generatedAt: new Date().toISOString(),
@@ -195,13 +201,16 @@ export class SystemService {
       },
       remoteAccess: {
         provider: 'tailscale',
-        enabled: tailscaleEnabled,
-        installed: tailscaleInstalled,
-        active: Boolean(remoteAccessUrl || tailscaleIp),
-        hostname: tailscaleHostname,
-        url: remoteAccessUrl,
-        ip: tailscaleIp,
-        activationCommand: `sudo tailscale up --hostname ${tailscaleHostname}`,
+        enabled: remoteAccess.status !== 'inactive' && remoteAccess.status !== 'unavailable',
+        installed: remoteAccess.status !== 'unavailable',
+        active: remoteAccess.status === 'active',
+        status: remoteAccess.status,
+        hostname: remoteAccess.hostname,
+        url: remoteAccess.url,
+        ip: remoteAccess.ip,
+        loginUrl: remoteAccess.loginUrl,
+        message: remoteAccess.message,
+        activationCommand: `sudo tailscale up --hostname ${remoteAccess.hostname || 'toquehub'}`,
       },
       database: {
         provider: 'postgresql',
@@ -244,5 +253,75 @@ export class SystemService {
         uptimeSeconds: Math.round(osUptime()),
       },
     };
+  }
+
+  async getRemoteAccessStatus(user?: AuthenticatedUser): Promise<RemoteAccessStatus> {
+    const status = await this.callRemoteAgent('GET', '/status').catch(() => this.remoteAccessFromEnv('Agent d’accès distant indisponible.'));
+    await this.syncOrganizationRemoteAccess(user, status);
+    return status;
+  }
+
+  async activateRemoteAccess(user: AuthenticatedUser): Promise<RemoteAccessStatus> {
+    const status = await this.callRemoteAgent('POST', '/activate').catch(() => this.remoteAccessFromEnv('Agent d’accès distant indisponible.'));
+    await this.syncOrganizationRemoteAccess(user, status);
+    return status;
+  }
+
+  async refreshRemoteAccess(user: AuthenticatedUser): Promise<RemoteAccessStatus> {
+    const status = await this.callRemoteAgent('POST', '/refresh').catch(() => this.remoteAccessFromEnv('Agent d’accès distant indisponible.'));
+    await this.syncOrganizationRemoteAccess(user, status);
+    return status;
+  }
+
+  private remoteAccessFromEnv(message?: string): RemoteAccessStatus {
+    const hostname = env('TOQUEHUB_TAILSCALE_HOSTNAME', 'toquehub');
+    const ip = env('TOQUEHUB_TAILSCALE_IP') || null;
+    const url = env('TOQUEHUB_REMOTE_ACCESS_URL') || (ip ? `http://${ip}:${env('TOQUEHUB_HTTP_PORT', '8080')}` : null);
+    const installed = boolEnv('TOQUEHUB_TAILSCALE_INSTALLED', boolEnv('TOQUEHUB_TAILSCALE_ENABLED') || Boolean(ip || url));
+    return {
+      status: url || ip ? 'active' : installed ? 'inactive' : 'unavailable',
+      url,
+      loginUrl: null,
+      hostname,
+      ip,
+      message: message || (url || ip ? 'Accès distant actif.' : installed ? 'Accès distant prêt à être activé.' : 'Agent d’accès distant indisponible.'),
+    };
+  }
+
+  private async callRemoteAgent(method: 'GET' | 'POST', path: string): Promise<RemoteAccessStatus> {
+    const baseUrl = env('TOQUEHUB_REMOTE_AGENT_URL');
+    const secret = env('TOQUEHUB_REMOTE_AGENT_SECRET');
+    if (!baseUrl || !secret) return this.remoteAccessFromEnv('Agent d’accès distant non configuré.');
+    const response = await fetch(`${baseUrl.replace(/\/$/, '')}${path}`, {
+      method,
+      headers: { 'X-ToqueHub-Remote-Agent-Secret': secret },
+    });
+    if (!response.ok) {
+      return this.remoteAccessFromEnv(`Agent d’accès distant a répondu ${response.status}.`);
+    }
+    const body = await response.json() as Partial<RemoteAccessStatus>;
+    const normalizedStatus = body.status === 'active' || body.status === 'needs_login' || body.status === 'inactive' || body.status === 'unavailable' ? body.status : 'unavailable';
+    return {
+      status: normalizedStatus,
+      url: body.url ?? null,
+      loginUrl: body.loginUrl ?? null,
+      hostname: body.hostname ?? env('TOQUEHUB_TAILSCALE_HOSTNAME', 'toquehub'),
+      ip: body.ip ?? null,
+      message: body.message ?? 'Statut accès distant récupéré.',
+    };
+  }
+
+  private async syncOrganizationRemoteAccess(user: AuthenticatedUser | undefined, status: RemoteAccessStatus) {
+    if (!user?.organizationId) return;
+    await this.prisma.organization.update({
+      where: { id: user.organizationId },
+      data: {
+        tailscaleEnabled: status.status === 'active' || status.status === 'needs_login',
+        tailscaleHostname: status.hostname || null,
+        tailscaleUrl: status.url || null,
+        tailscaleIp: status.ip || null,
+        tailscaleUpdatedAt: new Date(),
+      },
+    }).catch(() => undefined);
   }
 }

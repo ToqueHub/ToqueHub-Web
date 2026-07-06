@@ -6,6 +6,7 @@ INSTALL_DIR="${TOQUEHUB_INSTALL_DIR:-/opt/toquehub}"
 CONFIG_DIR="${TOQUEHUB_CONFIG_DIR:-/etc/toquehub}"
 DATA_DIR="${TOQUEHUB_DATA_DIR:-/var/lib/toquehub}"
 ENV_FILE="$CONFIG_DIR/toquehub.env"
+HTTP_PORT="${TOQUEHUB_HTTP_PORT:-8080}"
 TOQUEHUB_TAILSCALE_ENABLED="${TOQUEHUB_TAILSCALE_ENABLED:-true}"
 TOQUEHUB_TAILSCALE_AUTHKEY="${TOQUEHUB_TAILSCALE_AUTHKEY:-}"
 TOQUEHUB_TAILSCALE_HOSTNAME="${TOQUEHUB_TAILSCALE_HOSTNAME:-toquehub}"
@@ -47,6 +48,17 @@ set_env() {
   sudo chmod 0600 "$ENV_FILE"
 }
 
+set_env_if_placeholder() {
+  local key="$1"
+  local value="$2"
+  local current
+  current="$(grep -E "^${key}=" "$ENV_FILE" | tail -1 | cut -d= -f2- || true)"
+
+  if [[ -z "$current" || "$current" == replace-with-* || "$current" == change-me-* ]]; then
+    set_env "$key" "$value"
+  fi
+}
+
 install_tailscale() {
   if [[ "$TOQUEHUB_TAILSCALE_ENABLED" != "true" && "$TOQUEHUB_TAILSCALE_ENABLED" != "1" ]]; then
     return
@@ -78,7 +90,7 @@ fi
 command -v sudo >/dev/null 2>&1 || { echo "sudo is required." >&2; exit 1; }
 
 sudo apt-get update
-sudo apt-get install -y ca-certificates curl openssl postgresql-client
+sudo apt-get install -y ca-certificates curl openssl postgresql-client python3
 
 if ! command -v docker >/dev/null 2>&1; then
   curl -fsSL https://get.docker.com | sudo sh
@@ -93,10 +105,12 @@ sudo cp "$ROOT_DIR/.env.raspberry.example" "$INSTALL_DIR/toquehub.env.example"
 sudo cp "$ROOT_DIR/docker/iot/mosquitto.conf" "$INSTALL_DIR/mosquitto.conf"
 sudo cp "$ROOT_DIR/raspberry-pi/files/rootfs/usr/local/bin/toquehub" /usr/local/bin/toquehub
 sudo cp "$ROOT_DIR/raspberry-pi/files/rootfs/usr/local/sbin/toquehub-firstboot" /usr/local/sbin/toquehub-firstboot
+sudo cp "$ROOT_DIR/scripts/toquehub-remote-agent.py" /usr/local/sbin/toquehub-remote-agent
 sudo cp "$ROOT_DIR/raspberry-pi/files/rootfs/etc/systemd/system/toquehub.service" /etc/systemd/system/toquehub.service
 sudo cp "$ROOT_DIR/raspberry-pi/files/rootfs/etc/systemd/system/toquehub-firstboot.service" /etc/systemd/system/toquehub-firstboot.service
+sudo cp "$ROOT_DIR/raspberry-pi/files/rootfs/etc/systemd/system/toquehub-remote-agent.service" /etc/systemd/system/toquehub-remote-agent.service
 sudo cp "$ROOT_DIR/raspberry-pi/files/rootfs/etc/systemd/system/toquehub-zigbee.service" /etc/systemd/system/toquehub-zigbee.service
-sudo chmod +x /usr/local/bin/toquehub /usr/local/sbin/toquehub-firstboot
+sudo chmod +x /usr/local/bin/toquehub /usr/local/sbin/toquehub-firstboot /usr/local/sbin/toquehub-remote-agent
 
 if [[ ! -f "$ENV_FILE" ]]; then
   sudo cp "$ROOT_DIR/.env.raspberry.example" "$ENV_FILE"
@@ -104,10 +118,15 @@ fi
 
 set_env TOQUEHUB_DATA_DIR "$DATA_DIR"
 set_env TOQUEHUB_CONFIG_DIR "$CONFIG_DIR"
+set_env TOQUEHUB_HTTP_PORT "$HTTP_PORT"
+set_env TOQUEHUB_WEB_URL "http://toquehub.local:$HTTP_PORT"
+set_env TOQUEHUB_DISCOVERY_PORT "$HTTP_PORT"
 set_env POSTGRES_PASSWORD "$(secret)"
 set_env JWT_SECRET "$(secret)"
 set_env BACKUP_CLOUD_ENCRYPTION_KEY "$(secret)"
 set_env TOQUEHUB_UPDATER_SECRET "$(secret)"
+set_env_if_placeholder TOQUEHUB_REMOTE_AGENT_SECRET "$(secret)"
+set_env TOQUEHUB_REMOTE_AGENT_URL "http://host.docker.internal:3101"
 set_env TOQUEHUB_TAILSCALE_ENABLED "$TOQUEHUB_TAILSCALE_ENABLED"
 set_env TOQUEHUB_TAILSCALE_HOSTNAME "$TOQUEHUB_TAILSCALE_HOSTNAME"
 set_env TOQUEHUB_TAILSCALE_INSTALLED "$(command -v tailscale >/dev/null 2>&1 && printf true || printf false)"
@@ -117,6 +136,7 @@ fi
 
 sudo cp "$ROOT_DIR/docker/iot/mosquitto.conf" "$CONFIG_DIR/mosquitto.conf"
 sudo systemctl daemon-reload
+sudo systemctl enable --now toquehub-remote-agent.service
 sudo systemctl enable toquehub-firstboot.service
 sudo systemctl start toquehub-firstboot.service
 
@@ -124,7 +144,7 @@ cat <<MSG
 
 ToqueHub is installed.
 Open:
-  http://toquehub.local:8080
+  http://toquehub.local:$HTTP_PORT
 
 Useful commands:
   toquehub status

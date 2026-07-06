@@ -118,6 +118,7 @@ import type {
   SystemUpdateOperation,
   SystemUpdateStatus,
   OrganizationRemoteAccess,
+  RemoteAccessStatus,
 } from '../types';
 
 type PlanningRangeParams = {
@@ -284,6 +285,15 @@ export const api = {
   systemInstance(token: string) {
     return request<SystemInstanceInfo>('/system/instance', {}, token);
   },
+  remoteAccessStatus(token: string) {
+    return request<RemoteAccessStatus>('/system/remote-access/status', {}, token);
+  },
+  activateRemoteAccess(token: string) {
+    return request<RemoteAccessStatus>('/system/remote-access/activate', { method: 'POST' }, token);
+  },
+  refreshRemoteAccess(token: string) {
+    return request<RemoteAccessStatus>('/system/remote-access/refresh', { method: 'POST' }, token);
+  },
   systemUpdateStatus(token: string) {
     return request<SystemUpdateStatus>('/system/update/status', {}, token);
   },
@@ -420,6 +430,17 @@ export const api = {
   },
   haccpGenerateDailyReport(token: string) {
     return request<{ success?: boolean; data?: any }>('/daily-reports/generate', { method: 'POST' }, token);
+  },
+  async haccpDownloadDailyReport(token: string, reportId: string, filename = 'rapport-haccp.pdf') {
+    const response = await fetch(`${API_URL}/api/daily-reports/${reportId}/download`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) throw new ApiError(await response.text(), response.status);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = globalThis.document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
   },
   haccpDownloadDailyReportUrl(reportId: string) {
     return `${API_URL}/api/daily-reports/${reportId}/download`;

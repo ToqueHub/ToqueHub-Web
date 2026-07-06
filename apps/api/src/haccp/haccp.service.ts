@@ -477,6 +477,14 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
     return { id, label, weight, completed, expected, issues, description, score: Math.round(ratio * 100), scoreContribution: ratio * weight };
   }
 
+  private reportStatusLabel(module: any) {
+    if (module.expected <= 0) return 'Aucun prévu';
+    if (module.issues > 0 && module.score < 50) return 'Critique';
+    if (module.issues > 0) return 'À corriger';
+    if (module.score >= 100) return 'Conforme';
+    return 'Partiel';
+  }
+
   private alertIf(condition: boolean, module: string, severity: 'critical' | 'warning' | 'info', message: string) {
     return condition ? [{ module, severity, message }] : [];
   }
@@ -976,18 +984,78 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async generateDailyReport(organizationId: string, actor: Partial<Actor> | null, date = new Date()) {
+    const dailyData = await this.buildDailyReportData(organizationId, date);
+    const { start, modules, summary } = dailyData;
+    if ((summary.totalActivities ?? 0) <= 0) {
+      return this.ok({
+        skipped: true,
+        reason: 'Aucune donnée HACCP quotidienne à archiver',
+        reportDate: start,
+        modules,
+        summary,
+        pdfPath: null,
+        fileSize: 0,
+        status: 'skipped',
+      });
+    }
+    const createdById = actor?.id ?? null;
+    const report = await this.prisma.haccpDailyReport.upsert({ where: { organizationId_reportDate: { organizationId, reportDate: start } }, update: { createdById, modules, summary, generatedAt: new Date(), status: 'completed', errorMessage: null, syncVersion: { increment: 1 } }, create: { organizationId, createdById, reportDate: start, modules, summary, status: 'completed' } });
+    const pdf = this.writeDailyReportPdf(organizationId, report.id, start, modules, summary);
+    const updated = await this.prisma.haccpDailyReport.update({ where: { id: report.id }, data: { pdfPath: pdf.path, fileSize: pdf.size, status: 'completed', errorMessage: null } });
+    return this.ok(this.serializeReport(updated));
+  }
+
+  private async buildDailyReportData(organizationId: string, date = new Date()) {
     const { start, end } = this.dayRange(date);
-    const [temperature, traceability, reception, production, refroidissement, congelation, rechauffement, oil, cleaning] = await Promise.all([
+    const [
+      temperatureEquipment,
+      temperature,
+      cleaningDue,
+      cleaning,
+      traceability,
+      reception,
+      production,
+      refroidissement,
+      congelation,
+      rechauffement,
+      oilEquipment,
+      oil,
+    ] = await Promise.all([
+      this.prisma.haccpTemperatureEquipment.findMany({ where: { organizationId, isActive: true, deletedAt: null } }),
       this.prisma.haccpTemperatureReading.findMany({ where: { organizationId, deletedAt: null, date: { gte: start, lt: end } }, include: { equipment: true } }),
+      this.todayCleaningSurfaces(organizationId).then((response) => response.data ?? []),
+      this.prisma.haccpCleaningSession.findMany({ where: { organizationId, deletedAt: null, sessionDate: { gte: start, lt: end } }, include: { cleanedSurfaces: true } }),
       this.prisma.haccpTraceability.findMany({ where: { organizationId, deletedAt: null, date: { gte: start, lt: end } } }),
       this.prisma.haccpReception.findMany({ where: { organizationId, deletedAt: null, date: { gte: start, lt: end } } }),
       this.prisma.haccpProductionSession.findMany({ where: { organizationId, deletedAt: null, productionDate: { gte: start, lt: end } }, include: { finishedProduct: true } }),
       this.prisma.haccpProcessSession.findMany({ where: { organizationId, deletedAt: null, type: 'refroidissement', sessionDate: { gte: start, lt: end } }, include: { product: true, equipment: true } }),
       this.prisma.haccpProcessSession.findMany({ where: { organizationId, deletedAt: null, type: 'congelation', sessionDate: { gte: start, lt: end } }, include: { product: true, equipment: true } }),
       this.prisma.haccpProcessSession.findMany({ where: { organizationId, deletedAt: null, type: 'rechauffement', sessionDate: { gte: start, lt: end } }, include: { product: true, equipment: true } }),
+      this.prisma.haccpOilEquipment.findMany({ where: { organizationId, isActive: true, deletedAt: null } }),
       this.prisma.haccpOilSession.findMany({ where: { organizationId, deletedAt: null, sessionDate: { gte: start, lt: end } }, include: { equipment: true } }),
-      this.prisma.haccpCleaningSession.findMany({ where: { organizationId, deletedAt: null, sessionDate: { gte: start, lt: end } }, include: { cleanedSurfaces: true } }),
     ]);
+    const processSessions = [...refroidissement, ...congelation, ...rechauffement];
+    const cleanedSurfaceIds = new Set(cleaning.flatMap((session) => (session.cleanedSurfaces ?? []).map((surface) => surface.surfaceId)));
+    const completedProcess = processSessions.filter((session) => session.status === 'termine' && session.endTime && session.endTemperature != null).length;
+    const completedProduction = production.filter((item) => item.status === 'termine').length;
+    const missingTemperatureEquipment = Math.max(temperatureEquipment.length - new Set(temperature.map((item) => item.equipmentId)).size, 0);
+    const missingCleaning = cleaningDue.filter((surface) => !cleanedSurfaceIds.has(surface.surfaceId)).length;
+    const incompleteProcess = processSessions.length - completedProcess;
+    const incompleteProduction = production.length - completedProduction;
+    const receptionIssues = reception.filter((item) => !item.temperature || !item.supplier || !item.productName).length;
+    const traceabilityIssues = traceability.filter((item) => !item.photo || !item.lotNumber || !item.productName).length;
+    const oilMissing = Math.max(oilEquipment.length - new Set(oil.map((item) => item.equipmentId)).size, 0);
+
+    const complianceModules = [
+      this.scoreModule('temperature', 'Températures', 20, temperature.length, temperatureEquipment.length, missingTemperatureEquipment, 'Relevés attendus sur les enceintes actives'),
+      this.scoreModule('cleaning', 'Nettoyage', 20, cleanedSurfaceIds.size, cleaningDue.length, missingCleaning, 'Surfaces prévues au plan de nettoyage'),
+      this.scoreModule('traceability', 'Traçabilité', 15, traceability.length - traceabilityIssues, traceability.length, traceabilityIssues, 'Photos, lots et produits renseignés'),
+      this.scoreModule('receptions', 'Réceptions', 10, reception.length - receptionIssues, reception.length, receptionIssues, 'Températures et fournisseurs des entrées marchandises'),
+      this.scoreModule('process', 'Processus froid/chaud', 15, completedProcess, processSessions.length, incompleteProcess, 'Refroidissement, congélation et remise en température terminés'),
+      this.scoreModule('oil', 'Huiles', 10, oil.length, oilEquipment.length, oilMissing, 'Contrôle des friteuses actives'),
+      this.scoreModule('production', 'Production', 5, completedProduction, production.length, incompleteProduction, 'Productions terminées'),
+    ].map((module) => ({ ...module, statusLabel: this.reportStatusLabel(module) }));
+
     const modules = {
       temperature: { count: temperature.length, data: temperature.map((item) => this.serializeTemperatureReading(item)) },
       traceability: { count: traceability.length, data: traceability.map((item) => this.withId(item)) },
@@ -1000,15 +1068,31 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
       },
       oil: { count: oil.length, data: oil.map((item) => this.serializeOilSession(item)) },
       cleaning: { count: cleaning.length, data: cleaning.map((item) => this.serializeCleaningSession(item)) },
+      compliance: complianceModules,
     };
     const flatCounts = [modules.temperature, modules.traceability, modules.reception, modules.production, modules.cooling.refroidissement, modules.cooling.congelation, modules.cooling.rechauffement, modules.oil, modules.cleaning];
     const totalActivities = flatCounts.reduce((sum, item) => sum + item.count, 0);
-    const summary = { totalActivities, modulesCovered: Object.entries({ temperature: modules.temperature.count, traceability: modules.traceability.count, reception: modules.reception.count, production: modules.production.count, refroidissement: modules.cooling.refroidissement.count, congelation: modules.cooling.congelation.count, rechauffement: modules.cooling.rechauffement.count, oil: modules.oil.count, cleaning: modules.cleaning.count }).filter(([, count]) => count > 0).map(([name]) => name), criticalAlerts: [] };
-    const createdById = actor?.id ?? null;
-    const report = await this.prisma.haccpDailyReport.upsert({ where: { organizationId_reportDate: { organizationId, reportDate: start } }, update: { createdById, modules, summary, generatedAt: new Date(), status: 'completed', errorMessage: null, syncVersion: { increment: 1 } }, create: { organizationId, createdById, reportDate: start, modules, summary, status: 'completed' } });
-    const pdf = this.writeDailyReportPdf(organizationId, report.id, start, modules, summary);
-    const updated = await this.prisma.haccpDailyReport.update({ where: { id: report.id }, data: { pdfPath: pdf.path, fileSize: pdf.size, status: 'completed', errorMessage: null } });
-    return this.ok(this.serializeReport(updated));
+    const totalWeight = complianceModules.reduce((sum, item) => sum + item.weight, 0) || 1;
+    const score = Math.round((complianceModules.reduce((sum, item) => sum + item.scoreContribution, 0) / totalWeight) * 100);
+    const alerts = [
+      ...this.alertIf(missingTemperatureEquipment > 0, 'temperature', 'critical', `${missingTemperatureEquipment} enceinte(s) sans relevé.`),
+      ...this.alertIf(missingCleaning > 0, 'cleaning', 'critical', `${missingCleaning} surface(s) prévues restent à nettoyer.`),
+      ...this.alertIf(incompleteProcess > 0, 'process', 'warning', `${incompleteProcess} session(s) froid/chaud non terminée(s).`),
+      ...this.alertIf(incompleteProduction > 0, 'production', 'warning', `${incompleteProduction} production(s) non terminée(s).`),
+      ...this.alertIf(receptionIssues > 0, 'receptions', 'warning', `${receptionIssues} réception(s) incomplète(s).`),
+      ...this.alertIf(traceabilityIssues > 0, 'traceability', 'warning', `${traceabilityIssues} traçabilité(s) sans photo, lot ou produit.`),
+      ...this.alertIf(oilMissing > 0, 'oil', 'warning', `${oilMissing} équipement(s) huile sans contrôle.`),
+    ];
+    const summary = {
+      totalActivities,
+      score,
+      grade: score >= 90 ? 'A' : score >= 75 ? 'B' : score >= 60 ? 'C' : 'D',
+      modules: complianceModules,
+      alerts,
+      criticalAlerts: alerts.filter((alert) => alert.severity === 'critical'),
+      modulesCovered: Object.entries({ temperature: modules.temperature.count, traceability: modules.traceability.count, reception: modules.reception.count, production: modules.production.count, refroidissement: modules.cooling.refroidissement.count, congelation: modules.cooling.congelation.count, rechauffement: modules.cooling.rechauffement.count, oil: modules.oil.count, cleaning: modules.cleaning.count }).filter(([, count]) => count > 0).map(([name]) => name),
+    };
+    return { start, end, modules, summary };
   }
 
   async todayReport(organizationId: string) {
@@ -1086,8 +1170,12 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
         try {
           const existing = await this.prisma.haccpDailyReport.findUnique({ where: { organizationId_reportDate: { organizationId: organization.id, reportDate: start } } });
           if (existing?.generatedAt && existing.generatedAt >= this.dayRange(now).start) continue;
-          await this.generateDailyReport(organization.id, null, start);
-          this.logger.log(`Rapport HACCP journalier clôturé pour ${organization.name} (${this.formatReportDate(start)})`);
+          const response = await this.generateDailyReport(organization.id, null, start);
+          if (response.data?.skipped) {
+            this.logger.log(`Rapport HACCP journalier ignoré pour ${organization.name} (${this.formatReportDate(start)}): aucune donnée`);
+          } else {
+            this.logger.log(`Rapport HACCP journalier clôturé pour ${organization.name} (${this.formatReportDate(start)})`);
+          }
         } catch (error: any) {
           this.logger.error(`Clôture HACCP impossible pour ${organization.name}: ${error?.message || error}`);
         }
@@ -1108,25 +1196,25 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   private dailyReportPdfLines(reportDate: Date, modules: any, summary: any) {
+    const complianceModules = summary.modules ?? modules.compliance ?? [];
+    const alerts = summary.alerts ?? [];
     const lines = [
       `Rapport HACCP quotidien - ${this.formatReportDate(reportDate)}`,
       `Genere le ${this.formatReportDateTime(new Date())}`,
       '',
-      `Total activites tracabilite: ${summary.totalActivities ?? 0}`,
+      `Score global: ${summary.score ?? 0}% - Niveau ${summary.grade ?? '-'}`,
+      `Total activites HACCP: ${summary.totalActivities ?? 0}`,
       `Modules couverts: ${(summary.modulesCovered ?? []).join(', ') || 'Aucun'}`,
       '',
-      'Synthese par module',
-      `- Temperatures: ${modules.temperature.count}`,
-      `- Tracabilite: ${modules.traceability.count}`,
-      `- Receptions: ${modules.reception.count}`,
-      `- Production: ${modules.production.count}`,
-      `- Refroidissement: ${modules.cooling.refroidissement.count}`,
-      `- Congelation: ${modules.cooling.congelation.count}`,
-      `- Rechauffement: ${modules.cooling.rechauffement.count}`,
-      `- Huiles: ${modules.oil.count}`,
-      `- Nettoyage: ${modules.cleaning.count}`,
+      'Synthese attendu / realise',
+      ...complianceModules.map((module) => `- ${module.label}: Releves : ${module.completed}/${module.expected} - ${module.expected > 0 ? `${module.score}%` : '-'} - ${module.statusLabel ?? this.reportStatusLabel(module)} (${module.description})`),
       '',
     ];
+
+    lines.push('Alertes');
+    if (!alerts.length) lines.push('- Aucune alerte');
+    for (const alert of alerts) lines.push(`- ${this.alertSeverityLabel(alert.severity)} | ${alert.message}`);
+    lines.push('');
 
     this.appendPdfSection(lines, 'Temperatures', modules.temperature.data, (item) => `${this.formatReportDateTime(item.date)} | ${item.equipment?.name ?? 'Equipement'} | ${item.temperature} C | ${item.notes ?? ''}`);
     this.appendPdfSection(lines, 'Tracabilite', modules.traceability.data, (item) => `${this.formatReportDateTime(item.date)} | ${item.productName} | lot ${item.lotNumber} | ${item.barcode ?? ''}`);
@@ -1138,6 +1226,12 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
     this.appendPdfSection(lines, 'Huiles', modules.oil.data, (item) => `${this.formatReportDateTime(item.sessionDate)} | ${item.equipment?.name ?? 'Equipement'} | ${item.testMethod} | action: ${item.action} | ${item.notes ?? ''}`);
     this.appendPdfSection(lines, 'Nettoyage', modules.cleaning.data, (item) => `${this.formatReportDateTime(item.sessionDate)} | ${item.status} | ${item.completedSurfaces}/${item.totalSurfaces} surfaces | ${item.notes ?? ''}`);
     return lines;
+  }
+
+  private alertSeverityLabel(severity: string) {
+    if (severity === 'critical') return 'Critique';
+    if (severity === 'warning') return 'A surveiller';
+    return 'Information';
   }
 
   private appendPdfSection(lines: string[], title: string, items: any[] = [], format: (item: any) => string) {

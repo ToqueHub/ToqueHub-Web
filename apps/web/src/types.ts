@@ -24,6 +24,15 @@ export interface SystemStatus {
   hasAdmin: boolean;
 }
 
+export interface RemoteAccessStatus {
+  status: 'inactive' | 'needs_login' | 'active' | 'unavailable';
+  url: string | null;
+  loginUrl: string | null;
+  hostname: string | null;
+  ip: string | null;
+  message: string;
+}
+
 export interface SystemInstanceInfo {
   generatedAt: string;
   app: {
@@ -58,9 +67,12 @@ export interface SystemInstanceInfo {
     enabled: boolean;
     installed: boolean;
     active: boolean;
+    status?: RemoteAccessStatus['status'];
     hostname: string | null;
     url: string | null;
     ip: string | null;
+    loginUrl?: string | null;
+    message?: string;
     activationCommand: string;
   };
   database: {

@@ -60,6 +60,7 @@ Useful environment variables:
   TOQUEHUB_TAILSCALE_ENABLED=true
   TOQUEHUB_TAILSCALE_AUTHKEY=tskey-auth-... (optionnel, jamais stocké dans .env.docker)
   TOQUEHUB_TAILSCALE_HOSTNAME=toquehub
+  TOQUEHUB_REMOTE_AGENT_URL=http://host.docker.internal:3101
 
 Example:
   curl -fsSL https://raw.githubusercontent.com/ToqueHub/ToqueHub-Web/1.0.0/scripts/install-toquehub-ubuntu.sh | bash
@@ -205,9 +206,37 @@ install_tailscale() {
     log "Activation de Tailscale"
     sudo_cmd tailscale up --authkey "$TOQUEHUB_TAILSCALE_AUTHKEY" --hostname "$TOQUEHUB_TAILSCALE_HOSTNAME" || true
   else
-    log "Tailscale installe; activation manuelle requise"
-    printf 'Commande a lancer apres installation: sudo tailscale up --hostname %s\n' "$TOQUEHUB_TAILSCALE_HOSTNAME"
+    log "Tailscale installe; activation disponible depuis l'interface ToqueHub"
   fi
+}
+
+install_remote_agent() {
+  log "Installation de l'agent acces distant ToqueHub"
+  sudo_cmd install -m 0755 "$INSTALL_DIR/scripts/toquehub-remote-agent.py" /usr/local/sbin/toquehub-remote-agent
+
+  local service_tmp
+  service_tmp="$(mktemp)"
+  cat > "$service_tmp" <<SERVICE
+[Unit]
+Description=ToqueHub Remote Access Agent
+After=network-online.target tailscaled.service
+Wants=network-online.target tailscaled.service
+
+[Service]
+Type=simple
+EnvironmentFile=$ENV_FILE
+Environment=TOQUEHUB_REMOTE_AGENT_ENV_FILE=$ENV_FILE
+ExecStart=/usr/local/sbin/toquehub-remote-agent
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+  sudo_cmd mv "$service_tmp" /etc/systemd/system/toquehub-remote-agent.service
+  sudo_cmd chmod 0644 /etc/systemd/system/toquehub-remote-agent.service
+  sudo_cmd systemctl daemon-reload
+  sudo_cmd systemctl enable --now toquehub-remote-agent.service
 }
 
 prepare_repository() {
@@ -252,6 +281,8 @@ configure_toquehub() {
   set_env_if_placeholder JWT_SECRET "$(secret)"
   set_env_if_placeholder BACKUP_CLOUD_ENCRYPTION_KEY "$(secret)"
   set_env_if_placeholder TOQUEHUB_UPDATER_SECRET "$(secret)"
+  set_env_if_placeholder TOQUEHUB_REMOTE_AGENT_SECRET "$(secret)"
+  set_env TOQUEHUB_REMOTE_AGENT_URL "${TOQUEHUB_REMOTE_AGENT_URL:-http://host.docker.internal:3101}"
   set_env TOQUEHUB_DISCOVERY_ENABLED "true"
   set_env TOQUEHUB_DISCOVERY_PORT "$HTTP_PORT"
   set_env TOQUEHUB_TAILSCALE_ENABLED "$TOQUEHUB_TAILSCALE_ENABLED"
@@ -261,9 +292,13 @@ configure_toquehub() {
   local ip
   ip="$(server_ip || true)"
   if [[ -n "$ip" ]]; then
-    set_env CORS_ORIGIN "http://$ip:$HTTP_PORT,http://localhost:$HTTP_PORT,http://127.0.0.1:$HTTP_PORT"
+    set_env TOQUEHUB_WEB_URL "http://$ip:$HTTP_PORT"
+    set_env CORS_ORIGIN "http://$ip:$HTTP_PORT,http://toquehub.local:$HTTP_PORT,http://localhost:$HTTP_PORT,http://127.0.0.1:$HTTP_PORT"
     set_env ZIGBEE2MQTT_FRONTEND_URL "http://$ip:$ZIGBEE2MQTT_PORT"
     set_env TOQUEHUB_DISCOVERY_HOST "$ip"
+  else
+    set_env TOQUEHUB_WEB_URL "http://localhost:$HTTP_PORT"
+    set_env CORS_ORIGIN "http://toquehub.local:$HTTP_PORT,http://localhost:$HTTP_PORT,http://127.0.0.1:$HTTP_PORT"
   fi
 
   local tail_ip
@@ -308,6 +343,9 @@ Adresse locale serveur:
 Adresse reseau probable:
   http://${ip:-IP_DU_SERVEUR}:$HTTP_PORT
 
+Adresse web officielle:
+  $(get_env TOQUEHUB_WEB_URL "http://${ip:-IP_DU_SERVEUR}:$HTTP_PORT")
+
 Ports:
   ToqueHub web: $HTTP_PORT
   Zigbee2MQTT: $ZIGBEE2MQTT_PORT
@@ -321,7 +359,7 @@ Commandes utiles:
   docker compose --env-file .env.docker logs -f api web mdns postgres mosquitto zigbee2mqtt
   docker compose --env-file .env.docker down
   docker compose --env-file .env.docker up -d --build
-  sudo tailscale up --hostname $TOQUEHUB_TAILSCALE_HOSTNAME
+  sudo systemctl status toquehub-remote-agent
 
 Note:
   Si ton utilisateur vient d'etre ajoute au groupe docker, reconnecte-toi en SSH
@@ -338,13 +376,14 @@ require_ubuntu
 
 log "Installation des prerequis systeme"
 sudo_cmd apt-get update
-sudo_cmd apt-get install -y ca-certificates curl git openssl gnupg lsb-release postgresql-client
+sudo_cmd apt-get install -y ca-certificates curl git openssl gnupg lsb-release postgresql-client python3
 
 install_node
 install_docker
 install_tailscale
 prepare_repository
 configure_toquehub
+install_remote_agent
 open_firewall_ports
 start_toquehub
 print_summary

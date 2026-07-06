@@ -15,6 +15,7 @@ import {
   ClipboardList,
   Clock,
   Cpu,
+  Download,
   Droplets,
   Factory,
   FileText,
@@ -752,6 +753,13 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
     }
   }
 
+  async function downloadReport(item: HaccpItem) {
+    const id = item._id ?? item.id;
+    if (!id || !item.pdfPath) return;
+    const date = item.reportDate ? new Date(item.reportDate).toISOString().slice(0, 10) : 'haccp';
+    await api.haccpDownloadDailyReport(token, id, `rapport-haccp-${date}.pdf`);
+  }
+
   async function analyzeImage(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -977,6 +985,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
             onDelete={(item) => void remove(activeTab, item)}
             onAnalyzeImage={analyzeImage}
             onGenerateReport={generateReport}
+            onDownloadReport={(item) => void downloadReport(item)}
             saving={saving}
             onBack={() => {
               setActiveTab('dashboard');
@@ -2122,7 +2131,7 @@ function ConfigRowCard({ kind, item, onDelete }: { kind: HaccpConfigKind; item: 
   );
 }
 
-function SectionView({ section, rows, products, searchQuery, setSearchQuery, processType, onProcessType, onCreate, onDelete, onAnalyzeImage, onGenerateReport, saving, onBack }: {
+function SectionView({ section, rows, products, searchQuery, setSearchQuery, processType, onProcessType, onCreate, onDelete, onAnalyzeImage, onGenerateReport, onDownloadReport, saving, onBack }: {
   section: SectionId;
   rows: HaccpItem[];
   products: HaccpItem[];
@@ -2134,6 +2143,7 @@ function SectionView({ section, rows, products, searchQuery, setSearchQuery, pro
   onDelete: (item: HaccpItem) => void;
   onAnalyzeImage: (event: ChangeEvent<HTMLInputElement>) => void;
   onGenerateReport: () => void;
+  onDownloadReport?: (item: HaccpItem) => void;
   saving: boolean;
   onBack: () => void;
 }) {
@@ -2222,7 +2232,7 @@ function SectionView({ section, rows, products, searchQuery, setSearchQuery, pro
           ) : null}
         </div>
       </div>
-      <SimpleTable rows={rows} columns={columnsFor(section)} onDelete={onDelete} section={section} />
+      <SimpleTable rows={rows} columns={columnsFor(section)} onDelete={onDelete} onDownloadReport={onDownloadReport} section={section} />
     </div>
   );
 }
@@ -2622,7 +2632,7 @@ function SensorsView({
 
       {/* Pairing Scan Modal */}
       <AnimatePresence>
-        {(showScanModal || activePairing) && (
+        {showScanModal && (
           <SonoffPairingScanModal
             gatewayStatus={gatewayStatus}
             pairing={pairing}
@@ -3677,7 +3687,7 @@ function EditableSensorsStep({
 
       {/* Pairing Scan Modal */}
       <AnimatePresence>
-        {(showScanModal || activePairing) && (
+        {showScanModal && (
           <SonoffPairingScanModal
             gatewayStatus={gatewayStatus}
             pairing={pairing}
@@ -4049,7 +4059,7 @@ function LabelsView({ products, onCreate }: { products: HaccpItem[]; onCreate: (
   );
 }
 
-function SimpleTable({ rows, columns, onDelete, section }: { rows: HaccpItem[]; columns: string[]; onDelete?: (item: HaccpItem) => void; section?: HaccpTab }) {
+function SimpleTable({ rows, columns, onDelete, onDownloadReport, section }: { rows: HaccpItem[]; columns: string[]; onDelete?: (item: HaccpItem) => void; onDownloadReport?: (item: HaccpItem) => void; section?: HaccpTab }) {
   if (!rows.length) {
     return (
       <div className="haccp-empty-state">
@@ -4066,20 +4076,27 @@ function SimpleTable({ rows, columns, onDelete, section }: { rows: HaccpItem[]; 
   return (
     <div className="table-wrapper">
       <table className="table-modern">
-        <thead><tr>{columns.map((column) => <th key={column}>{headerFor(column)}</th>)}{onDelete ? <th></th> : null}</tr></thead>
+        <thead><tr>{columns.map((column) => <th key={column}>{headerFor(column)}</th>)}{onDelete || section === 'reports' ? <th></th> : null}</tr></thead>
         <tbody>
           {rows.map((row, index) => (
             <tr key={row._id ?? row.id ?? index}>
               {columns.map((column) => <td key={column}>{formatCell(row, column, section)}</td>)}
-              {onDelete ? (
+              {onDelete || section === 'reports' ? (
                 <td>
-                  <button type="button" className="haccp-action-btn" onClick={() => onDelete(row)}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M3 6h18" />
-                      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                    </svg>
-                  </button>
+                  {section === 'reports' && row.pdfPath && onDownloadReport ? (
+                    <button type="button" className="haccp-action-btn" title="Télécharger le PDF" onClick={() => onDownloadReport(row)}>
+                      <Download size={14} />
+                    </button>
+                  ) : null}
+                  {onDelete ? (
+                    <button type="button" className="haccp-action-btn" title="Supprimer" onClick={() => onDelete(row)}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 6h18" />
+                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                      </svg>
+                    </button>
+                  ) : null}
                 </td>
               ) : null}
             </tr>

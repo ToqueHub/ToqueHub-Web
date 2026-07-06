@@ -1,7 +1,9 @@
 import { Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { AdminGuard } from '../common/guards/admin.guard';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { SystemUpdateService } from './system-update.service';
 import { SystemService } from './system.service';
 
@@ -28,6 +30,33 @@ export class SystemController {
   })
   instance() {
     return this.systemService.getInstanceInfo();
+  }
+
+  @Get('remote-access/status')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOkResponse({
+    description: 'Returns simplified Tailscale remote access status.',
+  })
+  remoteAccessStatus(@CurrentUser() user: AuthenticatedUser) {
+    return this.systemService.getRemoteAccessStatus(user);
+  }
+
+  @Post('remote-access/activate')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOkResponse({
+    description: 'Starts or resumes Tailscale remote access activation through the host agent.',
+  })
+  activateRemoteAccess(@CurrentUser() user: AuthenticatedUser) {
+    return this.systemService.activateRemoteAccess(user);
+  }
+
+  @Post('remote-access/refresh')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOkResponse({
+    description: 'Refreshes Tailscale remote access status through the host agent.',
+  })
+  refreshRemoteAccess(@CurrentUser() user: AuthenticatedUser) {
+    return this.systemService.refreshRemoteAccess(user);
   }
 
   @Get('update/status')
