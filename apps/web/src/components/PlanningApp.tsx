@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  ClipboardList,
   Clock,
   Coins,
   FileSignature,
@@ -48,8 +47,8 @@ import type {
 
 type PlanningTab = 'dashboard' | 'planning' | 'settings' | 'attendance';
 type PlanningView = 'day' | 'week' | 'month' | 'year';
-type SettingKey = 'needs' | 'presets' | 'availability' | 'rules' | 'costs' | 'notifications' | 'exports' | 'imports';
-type InitialPlanningStep = 'services' | 'needs' | 'presets' | 'done';
+type SettingKey = 'presets' | 'availability' | 'rules' | 'costs' | 'notifications' | 'exports' | 'imports';
+type InitialPlanningStep = 'services' | 'presets' | 'done';
 type DashboardPeriod = 'week' | 'month' | 'year';
 type PlanningDashboardBlockKey = 'periodStatus' | 'planningSetup' | 'plannedHours' | 'estimatedCost' | 'activeAlerts' | 'alertsToReview' | 'planning' | 'departmentHours' | 'actions' | 'history';
 type PlanningBlockMode = 'day' | 'week' | 'month';
@@ -90,16 +89,6 @@ type CalendarAssignmentGroup = {
   businessStatus: string;
   hasConflict: boolean;
 };
-type RequirementPayload = Partial<PlanningRequirement> & {
-  departmentId: string;
-  startDate: string;
-  startTime: string;
-  endTime: string;
-  requiredCount: number;
-  season?: string;
-  timeSlot?: string;
-};
-
 type Props = {
   token: string;
   tab: PlanningTab;
@@ -159,7 +148,7 @@ const defaultPlanningDashboardConfig: PlanningDashboardConfig = {
     history: true,
   },
 };
-const initialPlanningSteps: InitialPlanningStep[] = ['services', 'needs', 'presets', 'done'];
+const initialPlanningSteps: InitialPlanningStep[] = ['services', 'presets', 'done'];
 const planningBusinessStatuses = [
   { value: 'work', label: 'Travail', className: 'work', countsHours: true },
   { value: 'rest', label: 'Repos', className: 'rest', countsHours: false },
@@ -191,7 +180,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
   const [quickPanelOpen, setQuickPanelOpen] = useState(true);
   const [quickAssignmentSelection, setQuickAssignmentSelection] = useState<QuickAssignmentSelection | null>(null);
   const [editingAssignment, setEditingAssignment] = useState<PlanningAssignment | null>(null);
-  const [selectedSetting, setSelectedSetting] = useState<SettingKey>('needs');
+  const [selectedSetting, setSelectedSetting] = useState<SettingKey>('presets');
   const [dashboardConfig, setDashboardConfig] = useState<PlanningDashboardConfig>(() => loadPlanningDashboardConfig());
   const [dashboardPeriodData, setDashboardPeriodData] = useState<DashboardPeriodData | null>(null);
   const [showDashboardCustomizer, setShowDashboardCustomizer] = useState(false);
@@ -304,8 +293,8 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
   const setup = buildPlanningSetup({
     collaborators: effectiveCollaborators,
     departments: effectiveDepartments,
-    requirements,
     templates,
+    rotations: planningWeeklyRotations,
     onNavigate,
     openSetting,
   });
@@ -508,31 +497,6 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
     }
   }
 
-  async function saveRequirement(payload: RequirementPayload, id?: string) {
-    if (!canWrite) return;
-    try {
-      if (id) await api.updatePlanningRequirement(token, id, payload);
-      else await api.createPlanningRequirement(token, payload);
-      setNotice(id ? 'Besoin par service modifié.' : 'Besoin par service créé.');
-      await loadContext({ showLoading: false });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Enregistrement du besoin impossible');
-    }
-  }
-
-  async function deleteRequirement(id: string) {
-    if (!canWrite) return;
-    const confirmed = window.confirm('Supprimer ce besoin par service ? Les alertes de couverture seront recalculées.');
-    if (!confirmed) return;
-    try {
-      await api.deletePlanningRequirement(token, id);
-      setNotice('Besoin par service supprimé.');
-      await loadContext({ showLoading: false });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Suppression du besoin impossible');
-    }
-  }
-
   async function controlPlanningPeriod() {
     if (!canWrite) return;
     try {
@@ -675,7 +639,6 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
         <PlanningSettings
           selected={selectedSetting}
           setSelected={setSelectedSetting}
-          requirements={requirements}
           templates={templates}
           rotations={planningWeeklyRotations}
           dayPresets={planningDayPresets}
@@ -690,8 +653,6 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
           onOpenInitialSetup={() => openInitialSetup('services')}
           selectedDate={selectedDate}
           canWrite={canWrite}
-          onSaveRequirement={saveRequirement}
-          onDeleteRequirement={deleteRequirement}
           onSaveDayPreset={saveDayPreset}
           onDeleteDayPreset={deleteDayPreset}
           onSaveWeeklyRotation={saveWeeklyRotation}
@@ -713,14 +674,13 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
           positions={effectivePositions}
           sites={effectiveSites}
           collaborators={effectiveCollaborators}
-          requirements={requirements}
           dayPresets={planningDayPresets}
+          weeklyRotations={planningWeeklyRotations}
           canWrite={canWrite}
-          selectedDate={selectedDate}
-          onSaveRequirement={saveRequirement}
-          onDeleteRequirement={deleteRequirement}
           onSaveDayPreset={saveDayPreset}
           onDeleteDayPreset={deleteDayPreset}
+          onSaveWeeklyRotation={saveWeeklyRotation}
+          onDeleteWeeklyRotation={deleteWeeklyRotation}
           onClose={() => initialSetupCompleted ? setShowInitialSetup(false) : openInitialSetup('services')}
           onComplete={completeInitialSetup}
         />
@@ -757,14 +717,13 @@ function PlanningInitialSetupModal({
   positions,
   sites,
   collaborators,
-  requirements,
   dayPresets,
+  weeklyRotations,
   canWrite,
-  selectedDate,
-  onSaveRequirement,
-  onDeleteRequirement,
   onSaveDayPreset,
   onDeleteDayPreset,
+  onSaveWeeklyRotation,
+  onDeleteWeeklyRotation,
   onClose,
   onComplete,
 }: {
@@ -775,14 +734,13 @@ function PlanningInitialSetupModal({
   positions: HrPosition[];
   sites: Site[];
   collaborators: HrCollaborator[];
-  requirements: PlanningRequirement[];
   dayPresets: PlanningTemplate[];
+  weeklyRotations: PlanningTemplate[];
   canWrite: boolean;
-  selectedDate: string;
-  onSaveRequirement: (payload: RequirementPayload, id?: string) => Promise<void>;
-  onDeleteRequirement: (id: string) => Promise<void>;
   onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>;
   onDeleteDayPreset: (id: string) => Promise<void>;
+  onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>;
+  onDeleteWeeklyRotation: (id: string) => Promise<void>;
   onClose: () => void;
   onComplete: () => void;
 }) {
@@ -819,8 +777,7 @@ function PlanningInitialSetupModal({
           </div>
 
           {step === 'services' ? <InitialServicesStep departments={departments} collaborators={collaborators} /> : null}
-          {step === 'needs' ? <InitialNeedsStep requirements={requirements} departments={departments} positions={positions} sites={sites} selectedDate={selectedDate} canWrite={canWrite} onSaveRequirement={onSaveRequirement} onDeleteRequirement={onDeleteRequirement} /> : null}
-          {step === 'presets' ? <InitialPresetsStep dayPresets={dayPresets} departments={departments} positions={positions} sites={sites} canWrite={canWrite} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} /> : null}
+          {step === 'presets' ? <InitialPresetsStep dayPresets={dayPresets} weeklyRotations={weeklyRotations} departments={departments} positions={positions} sites={sites} canWrite={canWrite} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} onSaveWeeklyRotation={onSaveWeeklyRotation} onDeleteWeeklyRotation={onDeleteWeeklyRotation} /> : null}
           {step === 'done' ? <InitialDoneStep setup={setup} /> : null}
         </div>
 
@@ -858,105 +815,11 @@ function InitialServicesStep({ departments, collaborators }: { departments: HrDe
   );
 }
 
-function InitialNeedsStep(props: { requirements: PlanningRequirement[]; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; selectedDate: string; canWrite: boolean; onSaveRequirement: (payload: RequirementPayload, id?: string) => Promise<void>; onDeleteRequirement: (id: string) => Promise<void> }) {
-  const [editingId, setEditingId] = useState<string>();
-  const [form, setForm] = useState<RequirementFormState>(() => defaultRequirementForm(props.selectedDate, props.departments[0]?.id ?? ''));
-  const departmentPositions = props.positions.filter((position) => !form.departmentId || position.departmentId === form.departmentId);
-  const selectedSlot = requirementSlots.find((item) => item.value === form.timeSlot) ?? requirementSlots[2];
-
-  function update<K extends keyof RequirementFormState>(key: K, value: RequirementFormState[K]) {
-    setForm((current) => ({ ...current, [key]: value }));
-  }
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!form.departmentId) return;
-    await props.onSaveRequirement({
-      departmentId: form.departmentId,
-      positionId: form.positionId || undefined,
-      siteId: form.siteId || undefined,
-      season: form.season,
-      timeSlot: form.timeSlot,
-      label: requirementSummaryFromForm(form, props.departments),
-      startDate: form.startDate,
-      endDate: form.endDate || form.startDate,
-      startTime: form.startTime,
-      endTime: form.endTime,
-      requiredCount: Math.max(1, Number(form.requiredCount) || 1),
-      priority: form.priority,
-      comment: JSON.stringify({ planningNeedMeta: { season: form.season, timeSlot: form.timeSlot, daysOfWeek: form.daysOfWeek, recurrence: form.recurrence } }),
-    }, editingId);
-    setEditingId(undefined);
-    setForm(defaultRequirementForm(props.selectedDate, props.departments[0]?.id ?? ''));
-  }
-
-  function editNeed(need: PlanningRequirement) {
-    const slot = requirementSlots.find((item) => item.value === need.timeSlot) ?? requirementSlots[2];
-    const metadata = need.metadata ?? {};
-    setEditingId(need.id);
-    setForm({
-      season: need.season || 'normale',
-      timeSlot: slot.value,
-      startDate: (need.startDate ?? need.date ?? props.selectedDate).slice(0, 10),
-      endDate: (need.endDate ?? need.startDate ?? need.date ?? props.selectedDate).slice(0, 10),
-      daysOfWeek: Array.isArray(metadata.daysOfWeek) ? metadata.daysOfWeek.map(Number).filter((day) => day >= 1 && day <= 7) : [1, 2, 3, 4, 5],
-      recurrence: typeof metadata.recurrence === 'string' ? metadata.recurrence : 'weekly',
-      siteId: need.siteId ?? '',
-      departmentId: need.departmentId ?? props.departments[0]?.id ?? '',
-      positionId: need.positionId ?? '',
-      requiredCount: String(need.requiredCount ?? 1),
-      startTime: need.startTime ?? slot.startTime,
-      endTime: need.endTime ?? slot.endTime,
-      priority: need.priority ?? 'NORMAL',
-    });
-  }
-
-  return (
-    <div className="planning-initial-step">
-      <div className="hr-wizard-hero-card">
-        <div className="hr-wizard-icon"><ClipboardList size={30} /></div>
-        <div><h3>Quand avez-vous besoin de personnel ?</h3><p>Choisissez un type de période, les jours concernés, le service, le créneau et le nombre de personnes. Vous verrez un résumé humain avant validation.</p></div>
-      </div>
-      <form className="planning-initial-form" onSubmit={(event) => void submit(event)}>
-        <div className="planning-form-row">
-          <label className="planning-field">Période début<input type="date" value={form.startDate} onChange={(event) => update('startDate', event.target.value)} /></label>
-          <label className="planning-field">Période fin<input type="date" value={form.endDate} onChange={(event) => update('endDate', event.target.value)} /></label>
-          <label className="planning-field">Créneau<select value={form.timeSlot} onChange={(event) => {
-            const slot = requirementSlots.find((item) => item.value === event.target.value);
-            setForm((current) => ({ ...current, timeSlot: event.target.value, startTime: slot?.startTime ?? current.startTime, endTime: slot?.endTime ?? current.endTime }));
-          }}>{requirementSlots.map((slot) => <option key={slot.value} value={slot.value}>{slot.label}</option>)}</select></label>
-        </div>
-        <div className="planning-day-picker">
-          {dayNames.map((day, index) => {
-            const value = index + 1;
-            return <button key={day} type="button" className={form.daysOfWeek.includes(value) ? 'active' : ''} onClick={() => setForm((current) => ({ ...current, daysOfWeek: toggleNumber(current.daysOfWeek, value), recurrence: 'weekly' }))}>{day.slice(0, 3)}</button>;
-          })}
-          <button type="button" className={form.recurrence === 'second-sunday' ? 'active wide' : 'wide'} onClick={() => setForm((current) => ({ ...current, recurrence: 'second-sunday', daysOfWeek: [7], timeSlot: 'midi', startTime: '11:00', endTime: '15:00' }))}>2e dimanche</button>
-        </div>
-        <div className="planning-form-row">
-          <label className="planning-field">Service<select value={form.departmentId} onChange={(event) => update('departmentId', event.target.value)} required><option value="">Choisir...</option>{props.departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
-          <label className="planning-field">Personnes<input type="number" min="1" max="100" value={form.requiredCount} onChange={(event) => update('requiredCount', event.target.value)} /></label>
-          <label className="planning-field">Poste<select value={form.positionId} onChange={(event) => update('positionId', event.target.value)}><option value="">Optionnel</option>{departmentPositions.map((position) => <option key={position.id} value={position.id}>{position.name}</option>)}</select></label>
-        </div>
-        <div className="planning-form-row">
-          <label className="planning-field">Site<select value={form.siteId} onChange={(event) => update('siteId', event.target.value)}><option value="">Tous sites</option>{props.sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}</select></label>
-          <label className="planning-field">Début<input type="time" value={form.startTime} onChange={(event) => update('startTime', event.target.value)} /></label>
-          <label className="planning-field">Fin<input type="time" value={form.endTime} onChange={(event) => update('endTime', event.target.value)} /></label>
-        </div>
-        <div className="planning-rule-preview">{requirementSummaryFromForm(form, props.departments)} - {selectedSlot.label}</div>
-        <div className="setup-actions">
-          <button className="btn btn-primary" type="submit" disabled={!props.canWrite || !form.departmentId}>{editingId ? 'Modifier ce besoin' : 'Ajouter ce besoin'}</button>
-          {editingId ? <button className="btn btn-secondary" type="button" onClick={() => { setEditingId(undefined); setForm(defaultRequirementForm(props.selectedDate, props.departments[0]?.id ?? '')); }}>Annuler</button> : null}
-        </div>
-      </form>
-      <RequirementRuleList requirements={props.requirements} departments={props.departments} positions={props.positions} onEdit={editNeed} onDelete={props.onDeleteRequirement} canWrite={props.canWrite} />
-    </div>
-  );
-}
-
-function InitialPresetsStep(props: { dayPresets: PlanningTemplate[]; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; canWrite: boolean; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void> }) {
+function InitialPresetsStep(props: { dayPresets: PlanningTemplate[]; weeklyRotations: PlanningTemplate[]; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; canWrite: boolean; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void> }) {
   const [editingId, setEditingId] = useState<string>();
   const [form, setForm] = useState<PlanningDayPresetPayload>(() => defaultDayPresetForm(props.departments[0]?.id));
+  const [editingRotationId, setEditingRotationId] = useState<string>();
+  const [rotationForm, setRotationForm] = useState<PlanningWeeklyRotationPayload>(() => defaultWeeklyRotationForm(props.departments[0]?.id));
   const quickPresets = [
     { name: 'Ouverture', startTime: '08:00', endTime: '14:00', businessStatus: 'work' },
     { name: 'Midi', startTime: '11:00', endTime: '15:00', businessStatus: 'work' },
@@ -976,11 +839,30 @@ function InitialPresetsStep(props: { dayPresets: PlanningTemplate[]; departments
     setForm({ name: preset.name, description: preset.description ?? '', startTime: preset.startTime ?? preset.lines?.[0]?.startTime ?? '10:00', endTime: preset.endTime ?? preset.lines?.[0]?.endTime ?? '17:00', departmentId: preset.departmentId ?? undefined, positionId: preset.positionId ?? preset.lines?.[0]?.positionId ?? undefined, siteId: preset.siteId ?? undefined, breakMinutes: preset.breakMinutes ?? preset.lines?.[0]?.breakMinutes ?? 30, paidBreak: !!preset.paidBreak, businessStatus: presetBusinessStatus(preset) ?? 'work' });
   }
 
+  async function submitRotation(event: FormEvent) {
+    event.preventDefault();
+    await props.onSaveWeeklyRotation({ ...rotationForm, departmentId: rotationForm.departmentId || undefined, siteId: rotationForm.siteId || undefined, days: rotationForm.days ?? defaultWeekDays() }, editingRotationId);
+    setEditingRotationId(undefined);
+    setRotationForm(defaultWeeklyRotationForm(props.departments[0]?.id));
+  }
+
+  function editRotation(rotation: PlanningTemplate) {
+    setEditingRotationId(rotation.id);
+    setRotationForm({ name: rotation.name, description: rotation.description ?? '', departmentId: rotation.departmentId ?? undefined, siteId: rotation.siteId ?? undefined, days: rotation.days?.length ? rotation.days : defaultWeekDays() });
+  }
+
+  function updateRotationDay(dayOfWeek: number, patch: Partial<PlanningTemplateDay>) {
+    setRotationForm((current) => {
+      const days = Array.isArray(current.days) ? current.days : defaultWeekDays();
+      return { ...current, days: days.map((day) => day.dayOfWeek === dayOfWeek ? { ...day, ...patch } : day) };
+    });
+  }
+
   return (
     <div className="planning-initial-step">
       <div className="hr-wizard-hero-card">
         <div className="hr-wizard-icon"><Clock size={30} /></div>
-        <div><h3>Presets horaires</h3><p>Créez quelques horaires types. Ils serviront ensuite à affecter rapidement les collaborateurs.</p></div>
+        <div><h3>Presets horaires / roulements</h3><p>Créez quelques horaires types et vos premiers roulements semaine. Ils serviront ensuite à affecter rapidement les collaborateurs.</p></div>
       </div>
       <div className="planning-preset-quick-grid">
         {quickPresets.map((preset) => <button key={preset.name} type="button" className="planning-preset-card" onClick={() => setForm((current) => ({ ...current, ...preset }))}><strong>{preset.name}</strong><span>{preset.businessStatus === 'rest' ? 'Repos' : `${preset.startTime} - ${preset.endTime}`}</span></button>)}
@@ -1003,6 +885,22 @@ function InitialPresetsStep(props: { dayPresets: PlanningTemplate[]; departments
         </div>
       </form>
       <PresetRuleList presets={props.dayPresets} onEdit={editPreset} onDelete={props.onDeleteDayPreset} canWrite={props.canWrite} />
+      <form className="planning-initial-form" onSubmit={(event) => void submitRotation(event)}>
+        <strong>Roulements</strong>
+        <div className="planning-form-row">
+          <label className="planning-field">Nom<input value={rotationForm.name} onChange={(event) => setRotationForm((current) => ({ ...current, name: event.target.value }))} required /></label>
+          <label className="planning-field">Service<select value={rotationForm.departmentId ?? ''} onChange={(event) => setRotationForm((current) => ({ ...current, departmentId: event.target.value || undefined }))}><option value="">Tous</option>{props.departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
+          <label className="planning-field">Site<select value={rotationForm.siteId ?? ''} onChange={(event) => setRotationForm((current) => ({ ...current, siteId: event.target.value || undefined }))}><option value="">Tous</option>{props.sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}</select></label>
+        </div>
+        <div className="planning-week-editor">
+          {(Array.isArray(rotationForm.days) ? rotationForm.days : defaultWeekDays()).map((day) => <div key={day.dayOfWeek} className="planning-week-row"><strong>{dayNameFromNumber(day.dayOfWeek)}</strong><label>Statut<select value={day.mode} onChange={(event) => updateRotationDay(day.dayOfWeek, { mode: event.target.value })}><option value="WORK">Travail</option><option value="REST">Repos</option><option value="LEAVE">Congé</option><option value="CLOSED">Fermé</option></select></label><label>Début<input type="time" value={day.startTime ?? ''} disabled={day.mode !== 'WORK'} onChange={(event) => updateRotationDay(day.dayOfWeek, { startTime: event.target.value })} /></label><label>Fin<input type="time" value={day.endTime ?? ''} disabled={day.mode !== 'WORK'} onChange={(event) => updateRotationDay(day.dayOfWeek, { endTime: event.target.value })} /></label><label>Pause<input type="number" min="0" max="720" value={day.breakMinutes ?? 0} disabled={day.mode !== 'WORK'} onChange={(event) => updateRotationDay(day.dayOfWeek, { breakMinutes: Number(event.target.value) })} /></label></div>)}
+        </div>
+        <div className="setup-actions">
+          <button className="btn btn-primary" type="submit" disabled={!props.canWrite}>{editingRotationId ? 'Modifier ce roulement' : 'Ajouter ce roulement'}</button>
+          {editingRotationId ? <button className="btn btn-secondary" type="button" onClick={() => { setEditingRotationId(undefined); setRotationForm(defaultWeeklyRotationForm(props.departments[0]?.id)); }}>Annuler</button> : null}
+        </div>
+      </form>
+      <RotationRuleList rotations={props.weeklyRotations} onEdit={editRotation} onDelete={props.onDeleteWeeklyRotation} canWrite={props.canWrite} />
     </div>
   );
 }
@@ -1021,20 +919,20 @@ function InitialDoneStep({ setup }: { setup: ReturnType<typeof buildPlanningSetu
   );
 }
 
-function RequirementRuleList({ requirements, departments, positions, onEdit, onDelete, canWrite }: { requirements: PlanningRequirement[]; departments: HrDepartment[]; positions: HrPosition[]; onEdit?: (need: PlanningRequirement) => void; onDelete: (id: string) => Promise<void>; canWrite: boolean }) {
-  return (
-    <div className="planning-rule-list-cards">
-      {requirements.slice(0, 8).map((need) => <div key={need.id} className="planning-rule-card"><strong>{requirementSummary(need, departments)}</strong><span>{formatPeriod(need.startDate ?? need.date, need.endDate)} - {need.startTime} à {need.endTime}</span><small>{need.position?.name ?? positions.find((item) => item.id === need.positionId)?.name ?? 'Tous postes'}</small><div className="setup-actions">{onEdit ? <button className="btn btn-secondary btn-compact" type="button" onClick={() => onEdit(need)}>Modifier</button> : null}<button className="btn btn-secondary btn-compact danger" type="button" disabled={!canWrite} onClick={() => void onDelete(need.id)}>Supprimer</button></div></div>)}
-      {!requirements.length ? <div className="planning-empty-state"><strong>Aucun besoin encore créé</strong><span>Ajoutez seulement les besoins évidents pour démarrer. Le détail pourra venir plus tard.</span></div> : null}
-    </div>
-  );
-}
-
 function PresetRuleList({ presets, onEdit, onDelete, canWrite }: { presets: PlanningTemplate[]; onEdit?: (preset: PlanningTemplate) => void; onDelete: (id: string) => Promise<void>; canWrite: boolean }) {
   return (
     <div className="planning-preset-list">
       {presets.slice(0, 8).map((preset) => <div key={preset.id} className="planning-preset-list-card"><strong>{preset.name}</strong><span>{preset.startTime ?? preset.lines?.[0]?.startTime ?? '--:--'} - {preset.endTime ?? preset.lines?.[0]?.endTime ?? '--:--'}</span><small>{preset.departmentId ? 'Service lié' : 'Libre'}</small><div className="setup-actions">{onEdit ? <button className="btn btn-secondary btn-compact" type="button" onClick={() => onEdit(preset)}>Modifier</button> : null}<button className="btn btn-secondary btn-compact danger" type="button" disabled={!canWrite} onClick={() => void onDelete(preset.id)}>Supprimer</button></div></div>)}
       {!presets.length ? <div className="planning-empty-state"><strong>Aucun preset encore créé</strong><span>Ajoutez Ouverture, Midi ou Fermeture pour commencer.</span></div> : null}
+    </div>
+  );
+}
+
+function RotationRuleList({ rotations, onEdit, onDelete, canWrite }: { rotations: PlanningTemplate[]; onEdit?: (rotation: PlanningTemplate) => void; onDelete: (id: string) => Promise<void>; canWrite: boolean }) {
+  return (
+    <div className="planning-preset-list">
+      {rotations.slice(0, 8).map((rotation) => <div key={rotation.id} className="planning-preset-list-card"><strong>{rotation.name}</strong><span>{weeklyRotationSummary(rotation)}</span><small>{rotation.employeeIds?.length ?? 0} personne(s) associée(s)</small><div className="setup-actions">{onEdit ? <button className="btn btn-secondary btn-compact" type="button" onClick={() => onEdit(rotation)}>Modifier</button> : null}<button className="btn btn-secondary btn-compact danger" type="button" disabled={!canWrite} onClick={() => void onDelete(rotation.id)}>Supprimer</button></div></div>)}
+      {!rotations.length ? <div className="planning-empty-state"><strong>Aucun roulement encore créé</strong><span>Ajoutez un roulement semaine pour préparer les cycles réguliers.</span></div> : null}
     </div>
   );
 }
@@ -1800,10 +1698,9 @@ function AssignmentEditModal({ assignment, collaborators, departments, positions
   );
 }
 
-function PlanningSettings({ selected, setSelected, requirements, templates, rotations, dayPresets, employeeTemplateAssignments, absences, departments, positions, sites, collaborators, settings, setup, onOpenInitialSetup, selectedDate, canWrite, onSaveRequirement, onDeleteRequirement, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { selected: SettingKey; setSelected: (value: SettingKey) => void; requirements: PlanningRequirement[]; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; dayPresets: PlanningTemplate[]; employeeTemplateAssignments: PlanningEmployeeTemplateAssignment[]; absences: Array<Record<string, any>>; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; settings?: Record<string, any>; setup: ReturnType<typeof buildPlanningSetup>; onOpenInitialSetup: () => void; selectedDate: string; canWrite: boolean; onSaveRequirement: (payload: RequirementPayload, id?: string) => Promise<void>; onDeleteRequirement: (id: string) => Promise<void>; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
-  const cards: Array<{ key: SettingKey; title: string; description: string; count: string; status: PlanningSetupStatus; Icon: typeof ClipboardList }> = [
-    { key: 'needs', title: 'Besoins par service', description: 'Saison, jour, créneau, service et besoin opérationnel.', count: `${requirements.length} besoin(s)`, status: requirements.length ? 'done' : 'todo', Icon: ClipboardList },
-    { key: 'presets', title: 'Presets & roulements', description: 'Presets journaliers et roulements semaine propriétaires Planning.', count: `${dayPresets.length + rotations.length} élément(s)`, status: dayPresets.length && rotations.length ? 'done' : dayPresets.length || rotations.length ? 'partial' : 'todo', Icon: Repeat2 },
+function PlanningSettings({ selected, setSelected, templates, rotations, dayPresets, employeeTemplateAssignments, absences, departments, positions, sites, collaborators, settings, setup, onOpenInitialSetup, selectedDate, canWrite, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { selected: SettingKey; setSelected: (value: SettingKey) => void; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; dayPresets: PlanningTemplate[]; employeeTemplateAssignments: PlanningEmployeeTemplateAssignment[]; absences: Array<Record<string, any>>; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; settings?: Record<string, any>; setup: ReturnType<typeof buildPlanningSetup>; onOpenInitialSetup: () => void; selectedDate: string; canWrite: boolean; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
+  const cards: Array<{ key: SettingKey; title: string; description: string; count: string; status: PlanningSetupStatus; Icon: typeof Repeat2 }> = [
+    { key: 'presets', title: 'Presets horaires / roulements', description: 'Horaires types et roulements semaine propriétaires Planning.', count: `${dayPresets.length + rotations.length} élément(s)`, status: dayPresets.length && rotations.length ? 'done' : dayPresets.length || rotations.length ? 'partial' : 'todo', Icon: Repeat2 },
     { key: 'availability', title: 'Indisponibilités & absences', description: 'Absences RH en lecture seule et futures indisponibilités Planning.', count: `${absences.length} absence(s)`, status: 'partial', Icon: ShieldAlert },
     { key: 'rules', title: 'Règles planning', description: 'Couverture, repos, quota, pauses et conflits configurables.', count: 'Préparé', status: 'done', Icon: SlidersHorizontal },
     { key: 'costs', title: 'Coûts', description: 'Salaire brut RH et estimation employeur.', count: 'Non configuré', status: 'partial', Icon: Coins },
@@ -1819,15 +1716,14 @@ function PlanningSettings({ selected, setSelected, requirements, templates, rota
           {cards.map(({ key, title, count, status, Icon }) => <button key={key} className={`settings-tab ${selected === key ? 'active' : ''}`} onClick={() => setSelected(key)}><Icon size={16} /><span>{title}</span><small>{count}</small><em className={`setup-status ${status}`}>{setupStatusLabel(status)}</em></button>)}
         </div>
         <div className="card-modern settings-detail">
-          <SettingsDetail selected={selected} requirements={requirements} templates={templates} rotations={rotations} dayPresets={dayPresets} employeeTemplateAssignments={employeeTemplateAssignments} absences={absences} departments={departments} positions={positions} sites={sites} collaborators={collaborators} settings={settings} selectedDate={selectedDate} canWrite={canWrite} onSaveRequirement={onSaveRequirement} onDeleteRequirement={onDeleteRequirement} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} onSaveWeeklyRotation={onSaveWeeklyRotation} onDeleteWeeklyRotation={onDeleteWeeklyRotation} onSaveEmployeeTemplateAssignment={onSaveEmployeeTemplateAssignment} />
+          <SettingsDetail selected={selected} templates={templates} rotations={rotations} dayPresets={dayPresets} employeeTemplateAssignments={employeeTemplateAssignments} absences={absences} departments={departments} positions={positions} sites={sites} collaborators={collaborators} settings={settings} selectedDate={selectedDate} canWrite={canWrite} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} onSaveWeeklyRotation={onSaveWeeklyRotation} onDeleteWeeklyRotation={onDeleteWeeklyRotation} onSaveEmployeeTemplateAssignment={onSaveEmployeeTemplateAssignment} />
         </div>
       </div>
     </>
   );
 }
 
-function SettingsDetail({ selected, requirements, rotations, dayPresets, employeeTemplateAssignments, absences, departments, positions, sites, collaborators, settings, selectedDate, canWrite, onSaveRequirement, onDeleteRequirement, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { selected: SettingKey; requirements: PlanningRequirement[]; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; dayPresets: PlanningTemplate[]; employeeTemplateAssignments: PlanningEmployeeTemplateAssignment[]; absences: Array<Record<string, any>>; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; settings?: Record<string, any>; selectedDate: string; canWrite: boolean; onSaveRequirement: (payload: RequirementPayload, id?: string) => Promise<void>; onDeleteRequirement: (id: string) => Promise<void>; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
-  if (selected === 'needs') return <NeedsSettingsDetail requirements={requirements} departments={departments} positions={positions} sites={sites} selectedDate={selectedDate} canWrite={canWrite} onSaveRequirement={onSaveRequirement} onDeleteRequirement={onDeleteRequirement} />;
+function SettingsDetail({ selected, rotations, dayPresets, employeeTemplateAssignments, absences, departments, positions, sites, collaborators, settings, canWrite, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { selected: SettingKey; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; dayPresets: PlanningTemplate[]; employeeTemplateAssignments: PlanningEmployeeTemplateAssignment[]; absences: Array<Record<string, any>>; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; settings?: Record<string, any>; selectedDate: string; canWrite: boolean; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
   if (selected === 'presets') return <PresetsRotationsSettings dayPresets={dayPresets} weeklyRotations={rotations} assignments={employeeTemplateAssignments} departments={departments} positions={positions} sites={sites} collaborators={collaborators} canWrite={canWrite} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} onSaveWeeklyRotation={onSaveWeeklyRotation} onDeleteWeeklyRotation={onDeleteWeeklyRotation} onSaveEmployeeTemplateAssignment={onSaveEmployeeTemplateAssignment} />;
   if (selected === 'availability') return <><span className="card-title">Indisponibilités & absences</span><div className="settings-list">{absences.map((absence) => <div key={absence.id}><strong>{collaboratorName(findCollaborator(collaborators, absence.employeeId ?? absence.collaboratorId))}</strong><span>{absence.type ?? absence.reason ?? 'Absence'} - {formatShort(absence.startDate)} à {formatShort(absence.endDate)} - lecture seule RH</span></div>)}{!absences.length ? <p className="muted">Aucune absence RH sur la période. Les indisponibilités Planning auront leur propre stockage plus tard.</p> : null}</div></>;
   if (selected === 'rules') return <PlanningRulesSettings rules={settings?.rules as Array<Record<string, any>> | undefined} />;
@@ -1904,7 +1800,7 @@ function PresetsRotationsSettings({ dayPresets, weeklyRotations, assignments, de
 
   return (
     <>
-      <div className="section-header-modern"><span className="card-title">Presets & roulements</span><span className="section-tagline">Horaires types, cycles et affectations par défaut.</span></div>
+      <div className="section-header-modern"><span className="card-title">Presets horaires / roulements</span><span className="section-tagline">Horaires types, cycles et affectations par défaut.</span></div>
       <div className="planning-settings-controls planning-settings-split">
         <form className="planning-need-form" onSubmit={(event) => void submitPreset(event)}>
           <strong>Presets horaires</strong>
@@ -1959,216 +1855,10 @@ function PresetsRotationsSettings({ dayPresets, weeklyRotations, assignments, de
   );
 }
 
-const requirementSeasons = [
-  ['basse', 'Basse'],
-  ['normale', 'Normale'],
-  ['haute', 'Haute'],
-  ['evenement-brunch', 'Événement / brunch'],
-] as const;
-
-const requirementSlots = [
-  { value: 'journee', label: 'Journée', startTime: '09:00', endTime: '17:00' },
-  { value: 'matin', label: 'Matin', startTime: '07:00', endTime: '12:00' },
-  { value: 'midi', label: 'Midi', startTime: '11:00', endTime: '15:00' },
-  { value: 'soir', label: 'Soir', startTime: '18:00', endTime: '23:00' },
-  { value: 'fermeture', label: 'Fermeture', startTime: '20:00', endTime: '00:00' },
-  { value: 'personnalise', label: 'Personnalisé', startTime: '10:00', endTime: '17:00' },
-] as const;
-
-type RequirementFormState = {
-  season: string;
-  timeSlot: string;
-  startDate: string;
-  endDate: string;
-  daysOfWeek: number[];
-  recurrence: string;
-  siteId: string;
-  departmentId: string;
-  positionId: string;
-  requiredCount: string;
-  startTime: string;
-  endTime: string;
-  priority: string;
-};
-
-function NeedsSettingsDetail({ requirements, departments, positions, sites, selectedDate, canWrite, onSaveRequirement, onDeleteRequirement }: { requirements: PlanningRequirement[]; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; selectedDate: string; canWrite: boolean; onSaveRequirement: (payload: RequirementPayload, id?: string) => Promise<void>; onDeleteRequirement: (id: string) => Promise<void> }) {
-  const [editingId, setEditingId] = useState<string>();
-  const [seasonFilter, setSeasonFilter] = useState('');
-  const [viewMode, setViewMode] = useState<'day' | 'service'>('day');
-  const [form, setForm] = useState<RequirementFormState>(() => defaultRequirementForm(selectedDate, departments[0]?.id ?? ''));
-  const departmentPositions = positions.filter((position) => !form.departmentId || position.departmentId === form.departmentId);
-  const filteredRequirements = requirements.filter((need) => !seasonFilter || need.season === seasonFilter);
-  const sortedRequirements = [...filteredRequirements].sort((a, b) => {
-    const left = viewMode === 'service' ? `${a.department?.name ?? a.departmentId ?? ''}-${a.startDate ?? a.date ?? ''}` : `${a.startDate ?? a.date ?? ''}-${a.department?.name ?? a.departmentId ?? ''}`;
-    const right = viewMode === 'service' ? `${b.department?.name ?? b.departmentId ?? ''}-${b.startDate ?? b.date ?? ''}` : `${b.startDate ?? b.date ?? ''}-${b.department?.name ?? b.departmentId ?? ''}`;
-    return left.localeCompare(right);
-  });
-
-  useEffect(() => {
-    setForm((current) => current.departmentId ? current : { ...current, departmentId: departments[0]?.id ?? '' });
-  }, [departments]);
-
-  function update<K extends keyof RequirementFormState>(key: K, value: RequirementFormState[K]) {
-    setForm((current) => ({ ...current, [key]: value }));
-  }
-
-  function updateSlot(value: string) {
-    const slot = requirementSlots.find((item) => item.value === value);
-    setForm((current) => ({ ...current, timeSlot: value, startTime: slot?.startTime ?? current.startTime, endTime: slot?.endTime ?? current.endTime }));
-  }
-
-  function editNeed(need: PlanningRequirement) {
-    const slot = requirementSlots.find((item) => item.value === need.timeSlot) ?? requirementSlots.find((item) => item.startTime === need.startTime && item.endTime === need.endTime) ?? requirementSlots[0];
-    setEditingId(need.id);
-    const metadata = need.metadata ?? {};
-    setForm({
-      season: need.season || 'normale',
-      timeSlot: slot.value,
-      startDate: (need.startDate ?? need.date ?? selectedDate).slice(0, 10),
-      endDate: (need.endDate ?? need.startDate ?? need.date ?? selectedDate).slice(0, 10),
-      daysOfWeek: Array.isArray(metadata.daysOfWeek) ? metadata.daysOfWeek.map(Number).filter((day) => day >= 1 && day <= 7) : [1, 2, 3, 4, 5],
-      recurrence: typeof metadata.recurrence === 'string' ? metadata.recurrence : 'weekly',
-      siteId: need.siteId ?? '',
-      departmentId: need.departmentId ?? departments[0]?.id ?? '',
-      positionId: need.positionId ?? '',
-      requiredCount: String(need.requiredCount ?? 1),
-      startTime: need.startTime ?? slot.startTime,
-      endTime: need.endTime ?? slot.endTime,
-      priority: need.priority ?? 'NORMAL',
-    });
-  }
-
-  function reset() {
-    setEditingId(undefined);
-    setForm(defaultRequirementForm(selectedDate, departments[0]?.id ?? ''));
-  }
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!form.departmentId) return;
-    await onSaveRequirement({
-      departmentId: form.departmentId,
-      positionId: form.positionId || undefined,
-      siteId: form.siteId || undefined,
-      season: form.season,
-      timeSlot: form.timeSlot,
-      label: requirementSummaryFromForm(form, departments),
-      startDate: form.startDate,
-      endDate: form.endDate || form.startDate,
-      startTime: form.startTime,
-      endTime: form.endTime,
-      requiredCount: Math.max(1, Number(form.requiredCount) || 1),
-      priority: form.priority,
-      comment: JSON.stringify({ planningNeedMeta: { season: form.season, timeSlot: form.timeSlot, daysOfWeek: form.daysOfWeek, recurrence: form.recurrence } }),
-    }, editingId);
-    reset();
-  }
-
-  return (
-    <>
-      <div className="section-header-modern">
-        <span className="card-title">Quand avez-vous besoin de personnel ?</span>
-        <span className="section-tagline">{requirements.length} besoin(s) réel(s) - période, jours, service, créneau, volume</span>
-      </div>
-      <div className="planning-settings-controls">
-        <label className="planning-field">Filtre saison
-          <select value={seasonFilter} onChange={(event) => setSeasonFilter(event.target.value)}>
-            <option value="">Toutes saisons</option>
-            {requirementSeasons.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
-        </label>
-        <div className="planning-segmented">
-          <button type="button" className={viewMode === 'day' ? 'active' : ''} onClick={() => setViewMode('day')}>Par jour</button>
-          <button type="button" className={viewMode === 'service' ? 'active' : ''} onClick={() => setViewMode('service')}>Par service</button>
-        </div>
-      </div>
-      <form className="planning-need-form" onSubmit={(event) => void submit(event)}>
-        <div className="planning-form-row">
-          <label className="planning-field">Saison
-            <select value={form.season} onChange={(event) => update('season', event.target.value)}>
-              {requirementSeasons.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </label>
-          <label className="planning-field">Début de période
-            <input type="date" value={form.startDate} onChange={(event) => update('startDate', event.target.value)} />
-          </label>
-          <label className="planning-field">Fin de période
-            <input type="date" value={form.endDate} onChange={(event) => update('endDate', event.target.value)} />
-          </label>
-          <label className="planning-field">Créneau
-            <select value={form.timeSlot} onChange={(event) => updateSlot(event.target.value)}>
-              {requirementSlots.map((slot) => <option key={slot.value} value={slot.value}>{slot.label}</option>)}
-            </select>
-          </label>
-        </div>
-        <div className="planning-form-row">
-          <label className="planning-field">Service
-            <select value={form.departmentId} onChange={(event) => update('departmentId', event.target.value)} required>
-              <option value="">Choisir...</option>
-              {departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}
-            </select>
-          </label>
-          <label className="planning-field">Poste
-            <select value={form.positionId} onChange={(event) => update('positionId', event.target.value)}>
-              <option value="">Tous postes</option>
-              {departmentPositions.map((position) => <option key={position.id} value={position.id}>{position.name}</option>)}
-            </select>
-          </label>
-          <label className="planning-field">Site
-            <select value={form.siteId} onChange={(event) => update('siteId', event.target.value)}>
-              <option value="">Tous sites</option>
-              {sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
-            </select>
-          </label>
-        </div>
-        <div className="planning-day-picker">
-          {dayNames.map((day, index) => {
-            const value = index + 1;
-            const selected = form.daysOfWeek.includes(value);
-            return <button key={day} type="button" className={selected ? 'active' : ''} onClick={() => setForm((current) => ({ ...current, daysOfWeek: toggleNumber(current.daysOfWeek, value) }))}>{day.slice(0, 3)}</button>;
-          })}
-          <select value={form.recurrence} onChange={(event) => update('recurrence', event.target.value)}>
-            <option value="weekly">Chaque semaine</option>
-            <option value="second-sunday">Chaque deuxième dimanche du mois</option>
-          </select>
-        </div>
-        <div className="planning-form-row">
-          <label className="planning-field">Début
-            <input type="time" value={form.startTime} onChange={(event) => update('startTime', event.target.value)} />
-          </label>
-          <label className="planning-field">Fin
-            <input type="time" value={form.endTime} onChange={(event) => update('endTime', event.target.value)} />
-          </label>
-          <label className="planning-field">Personnes
-            <input type="number" min="1" max="100" value={form.requiredCount} onChange={(event) => update('requiredCount', event.target.value)} />
-          </label>
-          <label className="planning-field">Niveau d’alerte
-            <select value={form.priority} onChange={(event) => update('priority', event.target.value)}>
-              <option value="LOW">Info</option>
-              <option value="NORMAL">Avertissement</option>
-              <option value="HIGH">Avertissement fort</option>
-              <option value="CRITICAL">Bloquant</option>
-            </select>
-          </label>
-        </div>
-        <div className="setup-actions">
-          <button className="btn btn-primary" type="submit" disabled={!canWrite || !departments.length}>{editingId ? 'Modifier' : 'Créer'}</button>
-          {editingId ? <button className="btn btn-secondary" type="button" onClick={reset}>Annuler</button> : null}
-        </div>
-      </form>
-      <div className="planning-table compact">
-        {sortedRequirements.map((need) => <div className="planning-row planning-row-actions" key={need.id}><strong>{viewMode === 'service' ? need.department?.name ?? departments.find((item) => item.id === need.departmentId)?.name ?? 'Service' : formatPeriod(need.startDate ?? need.date, need.endDate)}</strong><span>{requirementSummary(need, departments)} - {need.startTime} à {need.endTime}</span><span>{need.position?.name ?? positions.find((item) => item.id === need.positionId)?.name ?? 'Tous postes'}</span><span className="status-pill">{need.requiredCount ?? 0} requis</span><button className="btn btn-secondary btn-compact" type="button" onClick={() => editNeed(need)}>Modifier</button><button className="btn btn-secondary btn-compact danger" type="button" disabled={!canWrite} onClick={() => void onDeleteRequirement(need.id)}>Supprimer</button></div>)}
-        {!requirements.length ? <div className="planning-empty-state"><strong>Définissez vos premiers besoins</strong><span>Exemples : mardi midi salle 2 personnes, vendredi fermeture bar 1 personne, dimanche brunch cuisine 3 personnes.</span></div> : null}
-        {requirements.length && !sortedRequirements.length ? <p className="muted">Aucun besoin ne correspond au filtre saison sélectionné.</p> : null}
-      </div>
-    </>
-  );
-}
-
 const fallbackPlanningRules = [
-  { key: 'closing-covered', name: 'Fermeture obligatoire couverte', description: 'Alerte si un besoin fermeture n’a aucune affectation couvrante.', status: 'active', impact: 'blocking', requiredData: ['Besoins fermeture', 'Affectations'] },
-  { key: 'minimum-by-service', name: 'Minimum par service', description: 'Compare les besoins par service aux affectations du jour et du créneau.', status: 'active', impact: 'warning', requiredData: ['Besoins', 'Affectations'] },
-  { key: 'required-position-present', name: 'Poste obligatoire présent', description: 'Alerte si un besoin avec poste défini n’est pas couvert par ce poste.', status: 'active', impact: 'warning', requiredData: ['Postes RH', 'Besoins avec poste'] },
+  { key: 'closing-covered', name: 'Fermeture obligatoire couverte', description: 'Alerte si un créneau de fermeture n’a aucune affectation couvrante.', status: 'active', impact: 'blocking', requiredData: ['Créneaux fermeture', 'Affectations'] },
+  { key: 'minimum-by-service', name: 'Minimum par service', description: 'Compare la couverture par service aux affectations du jour et du créneau.', status: 'active', impact: 'warning', requiredData: ['Services', 'Affectations'] },
+  { key: 'required-position-present', name: 'Poste obligatoire présent', description: 'Alerte si un créneau avec poste défini n’est pas couvert par ce poste.', status: 'active', impact: 'warning', requiredData: ['Postes RH', 'Affectations'] },
   { key: 'weekly-quota', name: 'Quota hebdomadaire', description: 'Compare planifié et durée contractuelle RH.', status: 'active', impact: 'warning', requiredData: ['Contrats RH', 'Affectations'] },
   { key: 'mandatory-break', name: 'Pause obligatoire', description: 'Préparé pour profils configurables entreprise.', status: 'to_configure', impact: 'warning', requiredData: ['Règles configurables'] },
   { key: 'minimum-rest-between-shifts', name: 'Repos minimum entre shifts', description: 'Préparé pour les règles configurables de l’établissement.', status: 'to_configure', impact: 'warning', requiredData: ['Règles configurables'] },
@@ -2263,7 +1953,7 @@ function PlanningSetupPanel({ setup, compact, onOpenInitialSetup }: { setup: Ret
               </div>
             ))}
           </div>
-          <p className="muted">Besoins, presets, statuts et roulements restent modifiables depuis les sections ci-dessous.</p>
+          <p className="muted">Presets horaires, statuts et roulements restent modifiables depuis les sections ci-dessous.</p>
         </>
       ) : null}
     </div>
@@ -2328,7 +2018,7 @@ function AttendanceView({ rows, assignments, collaborators, selectedMonth, emplo
   );
 }
 function AlertList({ alerts }: { alerts: PlanningAlert[] }) {
-  const shown = alerts.length ? alerts : [{ id: 'ok', level: 'information', title: 'Aucune alerte prioritaire', message: 'Les alertes apparaîtront ici depuis planning_conflicts, besoins, absences RH et remplacements.' }];
+  const shown = alerts.length ? alerts : [{ id: 'ok', level: 'information', title: 'Aucune alerte prioritaire', message: 'Les alertes apparaîtront ici depuis planning_conflicts, shifts, absences RH et remplacements.' }];
   return <div className="planning-alert-list">{shown.slice(0, 8).map((alert) => <div key={alert.id ?? alert.title} className={`planning-alert ${alert.level ?? 'information'}`}><strong>{alert.title ?? alert.label ?? alert.code ?? 'Alerte Planning'}</strong><span>{alert.message ?? 'Contrôle Planning à vérifier.'}</span>{alert.createdAt ? <small>{formatShort(alert.createdAt)}</small> : null}</div>)}</div>;
 }
 
@@ -2342,7 +2032,7 @@ function PlaceholderList({ title, items }: { title: string; items: string[] }) {
 }
 
 function OnboardingCard() {
-  return <div className="card-modern planning-prerequisite"><span className="card-title"><Info size={18} /> Structure de démarrage</span><p>Complétez RH avant de planifier. Le futur onboarding guidera besoins, presets, roulements et règles internes.</p><div className="planning-sample-row"><span>Socle RH</span><span>Besoins récurrents</span><span>Règles configurables</span></div></div>;
+  return <div className="card-modern planning-prerequisite"><span className="card-title"><Info size={18} /> Structure de démarrage</span><p>Complétez RH avant de planifier. Le futur onboarding guidera les presets horaires, roulements et règles internes.</p><div className="planning-sample-row"><span>Socle RH</span><span>Presets horaires</span><span>Roulements</span></div></div>;
 }
 
 function buildDashboard(data: PlanningBootstrap | undefined, assignments: PlanningAssignment[], alerts: PlanningAlert[], replacements: PlanningReplacementProposal[], requirements: PlanningRequirement[], period?: DashboardPeriodRange) {
@@ -2421,13 +2111,12 @@ function periodStatusLabel(status: string) {
   return status === 'CONTROLLED' ? 'Contrôlé' : status === 'PUBLISHED' ? 'Publié' : status === 'MODIFIED_AFTER_PUBLICATION' ? 'Modifié après publication' : status === 'LOCKED' ? 'Verrouillé' : 'Brouillon';
 }
 
-function buildPlanningSetup({ collaborators, departments, requirements, templates, onNavigate, openSetting }: { collaborators: HrCollaborator[]; departments: HrDepartment[]; requirements: PlanningRequirement[]; templates: PlanningTemplate[]; onNavigate: (tab: PlanningTab) => void; openSetting: (setting: SettingKey) => void }) {
+function buildPlanningSetup({ collaborators, departments, templates, rotations, onNavigate, openSetting }: { collaborators: HrCollaborator[]; departments: HrDepartment[]; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; onNavigate: (tab: PlanningTab) => void; openSetting: (setting: SettingKey) => void }) {
   const activeCollaborators = collaborators.filter((collaborator) => collaborator.status !== 'DEPARTED');
   const presets = dayPresets(templates);
   const steps: PlanningSetupStep[] = [
     { key: 'services', title: 'Socle RH', description: `${departments.length} service(s) RH, ${activeCollaborators.length} collaborateur(s) actif(s).`, status: departments.length && activeCollaborators.length ? 'done' : departments.length || activeCollaborators.length ? 'partial' : 'todo', actionLabel: 'Voir RH', action: () => onNavigate('settings') },
-    { key: 'needs', title: 'Besoins récurrents', description: requirements.length ? `${requirements.length} règle(s) créée(s).` : 'Créez quelques règles de base.', status: requirements.length ? 'done' : 'partial', actionLabel: 'Configurer', action: () => openSetting('needs') },
-    { key: 'presets', title: 'Presets horaires', description: presets.length ? `${presets.length} preset(s) disponible(s).` : 'Ajoutez les horaires types.', status: presets.length ? 'done' : 'partial', actionLabel: 'Configurer', action: () => openSetting('presets') },
+    { key: 'presets', title: 'Presets horaires / roulements', description: `${presets.length} preset(s), ${rotations.length} roulement(s).`, status: presets.length && rotations.length ? 'done' : presets.length || rotations.length ? 'partial' : 'todo', actionLabel: 'Configurer', action: () => openSetting('presets') },
   ];
   const doneCount = steps.filter((step) => step.status === 'done').length;
   return { steps, doneCount, progress: Math.round((doneCount / steps.length) * 100), complete: steps.every((step) => step.status === 'done') };
@@ -2534,11 +2223,6 @@ function dayPresets(templates: PlanningTemplate[]) {
   return templatePresets.filter((preset) => preset.startTime && preset.endTime).slice(0, 8);
 }
 
-function defaultRequirementForm(selectedDate: string, departmentId: string): RequirementFormState {
-  const end = addMonths(selectedDate, 3);
-  return { season: 'normale', timeSlot: 'midi', startDate: selectedDate, endDate: end, daysOfWeek: [1, 2, 3, 4, 5], recurrence: 'weekly', siteId: '', departmentId, positionId: '', requiredCount: '1', startTime: '11:00', endTime: '15:00', priority: 'NORMAL' };
-}
-
 function normalizeHoursByDepartment(rows?: Array<Record<string, any>>) {
   const values = (rows ?? []).map((row) => ({ name: String(row.departmentName ?? row.name ?? 'Service'), hours: Number(row.plannedHours ?? row.hours ?? 0) })).filter((row) => row.hours > 0);
   const total = values.reduce((sum, row) => sum + row.hours, 0);
@@ -2627,21 +2311,7 @@ function loadPlanningDashboardConfig(): PlanningDashboardConfig {
     return defaultPlanningDashboardConfig;
   }
 }
-function requirementSummary(need: PlanningRequirement, departments: HrDepartment[]) {
-  const department = need.department?.name ?? departments.find((item) => item.id === need.departmentId)?.name ?? 'Service';
-  const metadata = need.metadata ?? {};
-  const days = Array.isArray(metadata.daysOfWeek) ? metadata.daysOfWeek.map(Number).filter((day) => day >= 1 && day <= 7) : [];
-  const recurrence = metadata.recurrence === 'second-sunday' ? 'chaque deuxième dimanche du mois' : days.length ? days.map(dayNameShort).join(' et ') : 'tous les jours';
-  return `${department} : ${need.requiredCount ?? 1} personne(s) ${recurrence} ${need.timeSlotLabel ?? need.label ?? 'créneau'}`;
-}
-function requirementSummaryFromForm(form: RequirementFormState, departments: HrDepartment[]) {
-  const department = departments.find((item) => item.id === form.departmentId)?.name ?? 'Service';
-  const recurrence = form.recurrence === 'second-sunday' ? 'chaque deuxième dimanche du mois' : form.daysOfWeek.length ? form.daysOfWeek.map(dayNameShort).join(' et ') : 'tous les jours';
-  const slot = requirementSlots.find((item) => item.value === form.timeSlot)?.label.toLowerCase() ?? form.timeSlot;
-  return `${department} : ${form.requiredCount || 1} personne(s) ${recurrence} ${slot}`;
-}
 function dayNameShort(day: number) { return ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'][Math.max(0, Math.min(6, day - 1))] ?? 'jour'; }
-function toggleNumber(values: number[], value: number) { return values.includes(value) ? values.filter((item) => item !== value) : [...values, value].sort((a, b) => a - b); }
 function isoDayOfWeek(value: string) { const day = new Date(`${value.slice(0, 10)}T12:00:00`).getDay(); return day === 0 ? 7 : day; }
 function isSecondSunday(value: string) { const date = new Date(`${value.slice(0, 10)}T12:00:00`); return date.getDay() === 0 && date.getDate() >= 8 && date.getDate() <= 14; }
 function formatPeriod(start?: string | null, end?: string | null) { return end && normalizePlanningDate(end) !== normalizePlanningDate(start) ? `${formatShort(start)} - ${formatShort(end)}` : formatShort(start); }
