@@ -164,8 +164,13 @@ ensure_port() {
     return
   fi
 
+  local search_start="$preferred"
+  if [[ "$key" == "TOQUEHUB_HTTP_PORT" && "$preferred" == "80" ]]; then
+    search_start="8080"
+  fi
+
   local next_port
-  next_port="$(find_free_port "$preferred" "${reserved[@]}")"
+  next_port="$(find_free_port "$search_start" "${reserved[@]}")"
   printf '%s occupe, utilisation de %s=%s\n' "$selected" "$key" "$next_port" >&2
   set_env "$key" "$next_port"
   printf '%s\n' "$next_port"
@@ -223,7 +228,7 @@ elif [[ -z "$ADAPTER_TYPE" || "$ADAPTER_TYPE" == "zstack" ]]; then
 fi
 
 log "Preparation de la configuration Docker"
-HTTP_PORT="$(ensure_port "TOQUEHUB_HTTP_PORT" "8080")"
+HTTP_PORT="$(ensure_port "TOQUEHUB_HTTP_PORT" "${TOQUEHUB_HTTP_PORT:-8080}")"
 ZIGBEE_HTTP_PORT="$(ensure_port "ZIGBEE2MQTT_HTTP_PORT" "8081" "$HTTP_PORT")"
 MQTT_PORT="$(ensure_port "MQTT_PORT" "1883" "$HTTP_PORT" "$ZIGBEE_HTTP_PORT")"
 set_env_if_placeholder "TOQUEHUB_UPDATER_SECRET" "$(secret)"

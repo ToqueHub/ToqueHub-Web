@@ -4,12 +4,14 @@ set -euo pipefail
 REPO_URL="${TOQUEHUB_REPO_URL:-https://github.com/ToqueHub/ToqueHub-Web.git}"
 BRANCH="${TOQUEHUB_BRANCH:-1.0.0}"
 INSTALL_DIR="${TOQUEHUB_INSTALL_DIR:-/opt/toquehub}"
-HTTP_PORT="${TOQUEHUB_HTTP_PORT:-8080}"
+HTTP_PORT="${TOQUEHUB_HTTP_PORT:-80}"
 ZIGBEE2MQTT_PORT="${ZIGBEE2MQTT_HTTP_PORT:-8081}"
 MQTT_PORT="${MQTT_PORT:-1883}"
 TOQUEHUB_TAILSCALE_ENABLED="${TOQUEHUB_TAILSCALE_ENABLED:-true}"
 TOQUEHUB_TAILSCALE_AUTHKEY="${TOQUEHUB_TAILSCALE_AUTHKEY:-}"
 TOQUEHUB_TAILSCALE_HOSTNAME="${TOQUEHUB_TAILSCALE_HOSTNAME:-toquehub}"
+TOQUEHUB_LOCAL_HOSTNAME="${TOQUEHUB_LOCAL_HOSTNAME:-toquehub}"
+TOQUEHUB_SET_LOCAL_HOSTNAME="${TOQUEHUB_SET_LOCAL_HOSTNAME:-true}"
 ENV_FILE="$INSTALL_DIR/.env.docker"
 
 repo_slug() {
@@ -54,9 +56,11 @@ Useful environment variables:
   TOQUEHUB_REPO_URL=https://github.com/ToqueHub/ToqueHub-Web.git
   TOQUEHUB_BRANCH=1.0.0
   TOQUEHUB_INSTALL_DIR=/opt/toquehub
-  TOQUEHUB_HTTP_PORT=8080
+  TOQUEHUB_HTTP_PORT=80
   ZIGBEE2MQTT_HTTP_PORT=8081
   MQTT_PORT=1883
+  TOQUEHUB_LOCAL_HOSTNAME=toquehub
+  TOQUEHUB_SET_LOCAL_HOSTNAME=true
   TOQUEHUB_TAILSCALE_ENABLED=true
   TOQUEHUB_TAILSCALE_AUTHKEY=tskey-auth-... (optionnel, jamais stocké dans .env.docker)
   TOQUEHUB_TAILSCALE_HOSTNAME=toquehub
@@ -109,6 +113,20 @@ secret() {
 
 server_ip() {
   hostname -I 2>/dev/null | awk '{print $1}'
+}
+
+origin_for_host() {
+  local host="$1"
+  local port="$2"
+  if [[ "$port" == "80" ]]; then
+    printf 'http://%s\n' "$host"
+  else
+    printf 'http://%s:%s\n' "$host" "$port"
+  fi
+}
+
+url_for_host() {
+  origin_for_host "$@"
 }
 
 tailscale_ip() {
@@ -187,6 +205,27 @@ install_docker() {
 
   if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
     sudo_cmd usermod -aG docker "$USER" || true
+  fi
+}
+
+configure_local_hostname() {
+  log "Configuration de l'adresse locale http://$TOQUEHUB_LOCAL_HOSTNAME.local"
+  sudo_cmd apt-get install -y avahi-daemon libnss-mdns
+  sudo_cmd systemctl enable --now avahi-daemon || true
+
+  if [[ "$TOQUEHUB_SET_LOCAL_HOSTNAME" == "true" || "$TOQUEHUB_SET_LOCAL_HOSTNAME" == "1" ]]; then
+    if command -v hostnamectl >/dev/null 2>&1; then
+      sudo_cmd hostnamectl set-hostname "$TOQUEHUB_LOCAL_HOSTNAME" || true
+    else
+      printf '%s\n' "$TOQUEHUB_LOCAL_HOSTNAME" | sudo_cmd tee /etc/hostname >/dev/null || true
+      sudo_cmd hostname "$TOQUEHUB_LOCAL_HOSTNAME" || true
+    fi
+
+    if grep -qE '^127\.0\.1\.1\s+' /etc/hosts; then
+      sudo_cmd sed -i "s/^127\\.0\\.1\\.1.*/127.0.1.1 $TOQUEHUB_LOCAL_HOSTNAME/" /etc/hosts || true
+    else
+      printf '127.0.1.1 %s\n' "$TOQUEHUB_LOCAL_HOSTNAME" | sudo_cmd tee -a /etc/hosts >/dev/null || true
+    fi
   fi
 }
 
@@ -285,28 +324,31 @@ configure_toquehub() {
   set_env TOQUEHUB_REMOTE_AGENT_URL "${TOQUEHUB_REMOTE_AGENT_URL:-http://host.docker.internal:3101}"
   set_env TOQUEHUB_DISCOVERY_ENABLED "true"
   set_env TOQUEHUB_DISCOVERY_PORT "$HTTP_PORT"
+  set_env TOQUEHUB_LOCAL_HOSTNAME "$TOQUEHUB_LOCAL_HOSTNAME"
   set_env TOQUEHUB_TAILSCALE_ENABLED "$TOQUEHUB_TAILSCALE_ENABLED"
   set_env TOQUEHUB_TAILSCALE_INSTALLED "$(command -v tailscale >/dev/null 2>&1 && printf true || printf false)"
   set_env TOQUEHUB_TAILSCALE_HOSTNAME "$TOQUEHUB_TAILSCALE_HOSTNAME"
 
   local ip
   ip="$(server_ip || true)"
+  local local_origin
+  local_origin="$(origin_for_host "$TOQUEHUB_LOCAL_HOSTNAME.local" "$HTTP_PORT")"
   if [[ -n "$ip" ]]; then
-    set_env TOQUEHUB_WEB_URL "http://$ip:$HTTP_PORT"
-    set_env CORS_ORIGIN "http://$ip:$HTTP_PORT,http://toquehub.local:$HTTP_PORT,http://localhost:$HTTP_PORT,http://127.0.0.1:$HTTP_PORT"
+    set_env TOQUEHUB_WEB_URL "$local_origin"
+    set_env CORS_ORIGIN "$(origin_for_host "$ip" "$HTTP_PORT"),$local_origin,$(origin_for_host localhost "$HTTP_PORT"),$(origin_for_host 127.0.0.1 "$HTTP_PORT")"
     set_env ZIGBEE2MQTT_FRONTEND_URL "http://$ip:$ZIGBEE2MQTT_PORT"
     set_env TOQUEHUB_DISCOVERY_HOST "$ip"
   else
-    set_env TOQUEHUB_WEB_URL "http://localhost:$HTTP_PORT"
-    set_env CORS_ORIGIN "http://toquehub.local:$HTTP_PORT,http://localhost:$HTTP_PORT,http://127.0.0.1:$HTTP_PORT"
+    set_env TOQUEHUB_WEB_URL "$local_origin"
+    set_env CORS_ORIGIN "$local_origin,$(origin_for_host localhost "$HTTP_PORT"),$(origin_for_host 127.0.0.1 "$HTTP_PORT")"
   fi
 
   local tail_ip
   tail_ip="$(tailscale_ip || true)"
   if [[ -n "$tail_ip" ]]; then
     set_env TOQUEHUB_TAILSCALE_IP "$tail_ip"
-    set_env TOQUEHUB_REMOTE_ACCESS_URL "http://$tail_ip:$HTTP_PORT"
-    set_env CORS_ORIGIN "$(get_env CORS_ORIGIN "http://localhost:$HTTP_PORT"),http://$tail_ip:$HTTP_PORT"
+    set_env TOQUEHUB_REMOTE_ACCESS_URL "$(url_for_host "$tail_ip" "$HTTP_PORT")"
+    set_env CORS_ORIGIN "$(get_env CORS_ORIGIN "$(origin_for_host localhost "$HTTP_PORT")"),$(origin_for_host "$tail_ip" "$HTTP_PORT")"
   else
     set_env TOQUEHUB_TAILSCALE_IP ""
     set_env TOQUEHUB_REMOTE_ACCESS_URL ""
@@ -332,19 +374,22 @@ start_toquehub() {
 print_summary() {
   local ip
   ip="$(server_ip || true)"
+  local local_url ip_url
+  local_url="$(url_for_host "$TOQUEHUB_LOCAL_HOSTNAME.local" "$HTTP_PORT")"
+  ip_url="$(url_for_host "${ip:-IP_DU_SERVEUR}" "$HTTP_PORT")"
 
   cat <<MSG
 
 ToqueHub est installe.
 
-Adresse locale serveur:
-  http://localhost:$HTTP_PORT
+Adresse a ouvrir en premier:
+  $local_url
 
-Adresse reseau probable:
-  http://${ip:-IP_DU_SERVEUR}:$HTTP_PORT
+Adresse IP de secours:
+  $ip_url
 
 Adresse web officielle:
-  $(get_env TOQUEHUB_WEB_URL "http://${ip:-IP_DU_SERVEUR}:$HTTP_PORT")
+  $(get_env TOQUEHUB_WEB_URL "$local_url")
 
 Ports:
   ToqueHub web: $HTTP_PORT
@@ -355,6 +400,7 @@ Ports:
 
 Commandes utiles:
   cd $INSTALL_DIR
+  ./scripts/toquehub-addresses.sh
   docker compose --env-file .env.docker ps
   docker compose --env-file .env.docker logs -f api web mdns postgres mosquitto zigbee2mqtt
   docker compose --env-file .env.docker down
@@ -380,6 +426,7 @@ sudo_cmd apt-get install -y ca-certificates curl git openssl gnupg lsb-release p
 
 install_node
 install_docker
+configure_local_hostname
 install_tailscale
 prepare_repository
 configure_toquehub

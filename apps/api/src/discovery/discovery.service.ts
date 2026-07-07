@@ -118,8 +118,24 @@ export class DiscoveryService implements OnApplicationBootstrap, OnApplicationSh
     const configured = this.config.get<string>('TOQUEHUB_DISCOVERY_ORGANIZATION')?.trim();
     if (configured) return configured;
 
+    const mobileUser = await this.prisma.user.findFirst({
+      where: {
+        isActive: true,
+        status: { not: 'DISABLED' as any },
+        organization: { isNot: null },
+      },
+      include: { organization: true },
+      orderBy: [
+        { isPrimaryAdmin: 'desc' },
+        { lastLoginAt: 'desc' },
+        { createdAt: 'asc' },
+      ],
+    });
+    const mobileOrganizationName = mobileUser?.organization?.name?.trim();
+    if (mobileOrganizationName) return mobileOrganizationName;
+
     const organization = await this.prisma.organization.findFirst({
-      orderBy: { createdAt: 'asc' },
+      orderBy: { updatedAt: 'desc' },
       select: { name: true },
     });
     return organization?.name?.trim() || '';

@@ -105,9 +105,12 @@ case "${1:-status}" in
     refresh_remote_env
     tailscale_ip
     ;;
+  address|addresses)
+    TOQUEHUB_ENV_FILE="$ENV_FILE" toquehub-addresses
+    ;;
   *)
     cat <<'MSG'
-Usage: toquehub [status|logs|update|restart|stop|start|backup|remote-status|remote-up|remote-ip]
+Usage: toquehub [status|logs|update|restart|stop|start|backup|remote-status|remote-up|remote-ip|address]
 MSG
     exit 1
     ;;

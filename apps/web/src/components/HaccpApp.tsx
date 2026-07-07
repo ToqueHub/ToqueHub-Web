@@ -64,6 +64,20 @@ type HaccpDashboard = {
 };
 
 type HaccpItem = Record<string, any> & { _id?: string; id?: string; name?: string };
+type HaccpCleaningSession = HaccpItem & {
+  cleanedSurfaces?: Array<{ surfaceId: string; surfaceName?: string; zoneId?: string; zoneName?: string; cleanedAt?: string }>;
+  totalSurfaces?: number;
+  completedSurfaces?: number;
+  status?: string;
+};
+type TodayCleaningSurface = {
+  surfaceId: string;
+  surfaceName: string;
+  zoneId: string;
+  zoneName: string;
+  frequency?: string;
+  lastCleaned?: string | null;
+};
 
 type SectionId = Exclude<HaccpTab, 'dashboard' | 'setup' | 'sensors' | 'alerts' | 'labels'>;
 type HaccpConfigKind = 'temperature' | 'process' | 'cleaning';
@@ -294,6 +308,14 @@ const SECTIONS: Array<{ id: HaccpTab; label: string; icon: typeof Thermometer }>
   { id: 'reports', label: 'Rapports', icon: FileText },
 ];
 
+const HaccpTabIds = new Set<HaccpTab>([
+  'dashboard',
+  'setup',
+  ...SECTIONS.map((section) => section.id),
+]);
+
+const isHaccpTab = (value: string): value is HaccpTab => HaccpTabIds.has(value as HaccpTab);
+
 const emptyForm = {
   name: '',
   type: '',
@@ -354,6 +376,8 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
   const [temperatureAlerts, setTemperatureAlerts] = useState<HaccpTemperatureAlertData | null>(null);
   const [pairing, setPairing] = useState<HaccpPairingSession | null>(null);
   const [selectedSensorId, setSelectedSensorId] = useState<string | null>(null);
+  const [activeCleaningSession, setActiveCleaningSession] = useState<HaccpCleaningSession | null>(null);
+  const [todayCleaningSurfaces, setTodayCleaningSurfaces] = useState<TodayCleaningSurface[]>([]);
 
   useEffect(() => setActiveTab(tab), [tab]);
   useEffect(() => { void refreshAll(); }, [token, processType]);
@@ -412,7 +436,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
   const currentRows = useMemo(() => {
     if (activeTab === 'dashboard' || activeTab === 'setup' || activeTab === 'sensors' || activeTab === 'alerts' || activeTab === 'labels') return [];
     if (activeTab === 'temperatures') return items.temperatureReadings ?? [];
-    if (activeTab === 'cleaning') return items.cleaningZones ?? [];
+    if (activeTab === 'cleaning') return items.cleaningSessions ?? [];
     if (activeTab === 'process') return items.processSessions ?? [];
     if (activeTab === 'oil') return items.oilSessions ?? [];
     if (activeTab === 'production') return items.productionSessions ?? [];
@@ -465,6 +489,8 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
         sensorList,
         temperatureAlertData,
         pairingData,
+        activeCleaningData,
+        todayCleaningData,
       ] = await Promise.all([
         safeValue('dashboard', () => api.haccpDashboard(token), null),
         safeList('/temperature/equipment'),
@@ -484,6 +510,8 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
         safeValue('sensors list', () => api.haccpSensors(token), []),
         safeValue('temperature alerts', () => api.haccpTemperatureAlerts(token), null),
         safeValue('pairing current', () => api.haccpCurrentSensorPairing(token), null),
+        safeValue('cleaning active session', () => api.haccpList(token, '/cleaning/sessions/active') as Promise<{ data: HaccpCleaningSession | null }>, { data: null }),
+        safeList('/cleaning/today-surfaces'),
       ]);
       const temperatureEquipmentList = equipment.data ?? [];
       if (dashboardData) setDashboard(dashboardData);
@@ -492,10 +520,13 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
       setSensors(sensorList);
       setTemperatureAlerts(temperatureAlertData);
       setPairing(pairingData);
+      setActiveCleaningSession(activeCleaningData.data ?? null);
+      setTodayCleaningSurfaces(todayCleaningData.data ?? []);
       setItems({
         temperatureEquipment: temperatureEquipmentList,
         temperatureReadings: readings.data ?? [],
         cleaningZones: zones.data ?? [],
+        cleaningSessions: activeCleaningData.data ? [activeCleaningData.data] : [],
         traceability: traceability.data ?? [],
         receptions: receptions.data ?? [],
         processEquipment: processEquipments.data ?? [],
@@ -662,15 +693,9 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
       if (configModal === 'process') {
         const exists = processEquipment.some((item) => `${String(item.type || '').toLowerCase()}::${normalizeName(item.name)}` === `${configForm.type}::${normalizeName(name)}`);
         if (exists) throw new Error('Cet équipement process existe déjà pour ce type.');
-        const min = Number(configForm.min);
-        const max = Number(configForm.max);
         await api.haccpCreate(token, '/cooling-equipment', {
           name,
           type: configForm.type || 'refroidissement',
-          location: configForm.location || undefined,
-          capacity: configForm.capacity || undefined,
-          notes: configForm.notes || undefined,
-          temperatureRange: Number.isFinite(min) && Number.isFinite(max) ? { min, max } : undefined,
         });
       }
       if (configModal === 'cleaning') {
@@ -771,6 +796,90 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
     };
     await api.haccpDelete(token, endpoints[kind]);
     await refreshAll();
+  }
+
+  async function refreshCleaningOnly() {
+    const [active, today, zones, dashboardData] = await Promise.all([
+      api.haccpList(token, '/cleaning/sessions/active'),
+      api.haccpList(token, '/cleaning/today-surfaces'),
+      api.haccpList(token, '/cleaning/zones'),
+      api.haccpDashboard(token),
+    ]);
+    setActiveCleaningSession(active.data ?? null);
+    setTodayCleaningSurfaces(active.data ? (today.data ?? []) : (today.data ?? []));
+    setItems((current) => ({
+      ...current,
+      cleaningZones: zones.data ?? [],
+      cleaningSessions: active.data ? [active.data] : [],
+    }));
+    setDashboard(dashboardData);
+  }
+
+  async function ensureCleaningSession() {
+    if (activeCleaningSession) return activeCleaningSession;
+    const created = await api.haccpCreate(token, '/cleaning/sessions/start', {});
+    const session = created.data ?? null;
+    setActiveCleaningSession(session);
+    return session;
+  }
+
+  async function markCleaningSurface(surface: TodayCleaningSurface | { surfaceId: string; surfaceName: string; zoneId: string; zoneName: string }) {
+    setSaving(true);
+    setError(null);
+    try {
+      await ensureCleaningSession();
+      const updated = await api.haccpCreate(token, '/cleaning/sessions/mark-surface', {
+        surfaceId: surface.surfaceId,
+        surfaceName: surface.surfaceName,
+        zoneId: surface.zoneId,
+        zoneName: surface.zoneName,
+        notes: '',
+      });
+      setActiveCleaningSession(updated.data ?? null);
+      await refreshCleaningOnly();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nettoyage impossible à enregistrer.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function markAllCleaningSurfaces(surfaces: Array<TodayCleaningSurface | { surfaceId: string; surfaceName: string; zoneId: string; zoneName: string }>) {
+    setSaving(true);
+    setError(null);
+    try {
+      await ensureCleaningSession();
+      let latest: HaccpCleaningSession | null = null;
+      for (const surface of surfaces) {
+        const updated = await api.haccpCreate(token, '/cleaning/sessions/mark-surface', {
+          surfaceId: surface.surfaceId,
+          surfaceName: surface.surfaceName,
+          zoneId: surface.zoneId,
+          zoneName: surface.zoneName,
+          notes: '',
+        });
+        latest = updated.data ?? latest;
+      }
+      if (latest) setActiveCleaningSession(latest);
+      await refreshCleaningOnly();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Impossible de marquer toutes les surfaces.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function completeCleaningSession() {
+    setSaving(true);
+    setError(null);
+    try {
+      await api.haccpCreate(token, '/cleaning/sessions/complete', {});
+      await refreshCleaningOnly();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Impossible de terminer la session de nettoyage.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function generateReport() {
@@ -985,6 +1094,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
           onStartOnboarding={() => setShowOnboarding(true)}
           onSelectTab={(nextTab) => {
             const target = nextTab === 'temperature' ? 'temperatures' : nextTab;
+            if (isHaccpTab(target)) setActiveTab(target);
             onNavigate?.(target === 'dashboard' ? 'haccp-dashboard' : `haccp-${target}`);
           }}
         />
@@ -1038,7 +1148,24 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
             }}
           />
         ) : null}
-        {activeTab !== 'dashboard' && activeTab !== 'setup' && activeTab !== 'sensors' && activeTab !== 'alerts' && activeTab !== 'labels' ? (
+        {activeTab === 'cleaning' ? (
+          <CleaningChecklistView
+            zones={cleaningZones}
+            todaySurfaces={todayCleaningSurfaces}
+            activeSession={activeCleaningSession}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            saving={saving}
+            onMarkSurface={(surface) => void markCleaningSurface(surface)}
+            onMarkAll={(surfaces) => void markAllCleaningSurfaces(surfaces)}
+            onComplete={() => void completeCleaningSession()}
+            onBack={() => {
+              setActiveTab('dashboard');
+              onNavigate?.('haccp-dashboard');
+            }}
+          />
+        ) : null}
+        {activeTab !== 'dashboard' && activeTab !== 'setup' && activeTab !== 'sensors' && activeTab !== 'alerts' && activeTab !== 'labels' && activeTab !== 'cleaning' ? (
           <SectionView
             section={activeTab}
             rows={visibleRows}
@@ -1231,7 +1358,137 @@ function ModuleCard({ module, onClick }: { module: HaccpDashboard['modules'][num
   );
 }
 
+function moduleStatusCopy(module: HaccpDashboard['modules'][number]) {
+  const missing = Math.max(module.expected - module.completed, 0);
+  const pending = Math.max(missing, module.issues);
+  const base = {
+    pending,
+    expectedLabel: 'Contrôles attendus',
+    completedLabel: 'Contrôles réalisés',
+    pendingLabel: 'Éléments à traiter',
+    pendingDetail: pending > 0 ? `${pending} point(s) restent à traiter.` : 'Aucun point en attente sur ce module.',
+    emptyDetail: 'Aucun contrôle attendu automatiquement pour ce module aujourd’hui.',
+  };
+
+  const byModule: Record<string, Partial<typeof base>> = {
+    temperature: {
+      expectedLabel: 'Enceintes actives à relever',
+      completedLabel: 'Relevés saisis aujourd’hui',
+      pendingLabel: 'Enceintes sans relevé',
+      pendingDetail: missing > 0 ? `${missing} enceinte(s) active(s) n’ont pas encore de relevé aujourd’hui.` : 'Toutes les enceintes attendues ont un relevé.',
+    },
+    cleaning: {
+      expectedLabel: 'Surfaces prévues au nettoyage',
+      completedLabel: 'Surfaces nettoyées',
+      pendingLabel: 'Surfaces restantes',
+      pendingDetail: missing > 0 ? `${missing} surface(s) prévues restent à nettoyer.` : 'Toutes les surfaces prévues sont nettoyées.',
+    },
+    traceability: {
+      expectedLabel: 'Traçabilités créées',
+      completedLabel: 'Traçabilités complètes',
+      pendingLabel: 'Fiches incomplètes',
+      pendingDetail: module.issues > 0 ? `${module.issues} traçabilité(s) sont sans photo, lot ou produit.` : 'Les traçabilités enregistrées sont complètes.',
+      emptyDetail: 'Aucune traçabilité n’est attendue automatiquement. Ajoutez-en si vous avez des lots à suivre.',
+    },
+    receptions: {
+      expectedLabel: 'Réceptions enregistrées',
+      completedLabel: 'Réceptions complètes',
+      pendingLabel: 'Réceptions incomplètes',
+      pendingDetail: module.issues > 0 ? `${module.issues} réception(s) manquent de température, fournisseur ou produit.` : 'Les réceptions enregistrées sont complètes.',
+      emptyDetail: 'Aucune réception enregistrée aujourd’hui.',
+    },
+    process: {
+      expectedLabel: 'Sessions froid/chaud lancées',
+      completedLabel: 'Sessions terminées',
+      pendingLabel: 'Sessions à clôturer',
+      pendingDetail: pending > 0 ? `${pending} session(s) froid/chaud doivent être terminées avec température finale.` : 'Toutes les sessions froid/chaud sont terminées.',
+      emptyDetail: 'Aucune session de refroidissement, congélation ou remise en température lancée aujourd’hui.',
+    },
+    oil: {
+      expectedLabel: 'Équipements huile actifs',
+      completedLabel: 'Contrôles huile réalisés',
+      pendingLabel: 'Équipements sans contrôle',
+      pendingDetail: missing > 0 ? `${missing} équipement(s) huile n’ont pas encore de contrôle.` : 'Tous les équipements huile actifs ont été contrôlés.',
+    },
+    production: {
+      expectedLabel: 'Productions lancées',
+      completedLabel: 'Productions terminées',
+      pendingLabel: 'Productions à clôturer',
+      pendingDetail: pending > 0 ? `${pending} production(s) ne sont pas encore terminées.` : 'Toutes les productions lancées sont terminées.',
+      emptyDetail: 'Aucune production HACCP lancée aujourd’hui.',
+    },
+  };
+
+  return { ...base, ...(byModule[module.id] || {}) };
+}
+
+function ModuleStatusModal({ module, alerts, onClose, onOpenModule }: { module: HaccpDashboard['modules'][number]; alerts: HaccpDashboard['alerts']; onClose: () => void; onOpenModule: () => void }) {
+  const status = !module.expected ? 'Aucun prévu' : module.issues > 0 ? module.score < 60 ? 'Critique' : 'À vérifier' : 'Conforme';
+  const tone = status === 'Conforme' ? '#10b981' : status === 'À vérifier' ? '#f59e0b' : status === 'Critique' ? '#ef4444' : '#64748b';
+  const copy = moduleStatusCopy(module);
+  const hasExpectedControls = module.expected > 0;
+
+  return (
+    <div className="modal-overlay haccp-modal-overlay" onClick={onClose}>
+      <div className="modal-content-wrapper modal-md" onClick={(event) => event.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <h2>{module.label}</h2>
+            <p className="muted" style={{ margin: '0.25rem 0 0' }}>{module.description}</p>
+          </div>
+          <button type="button" className="modal-close-btn" onClick={onClose}><X size={18} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.75rem' }}>
+            <MetricMini label={copy.expectedLabel} value={module.expected} />
+            <MetricMini label={copy.completedLabel} value={module.completed} />
+            <MetricMini label={copy.pendingLabel} value={copy.pending} tone={tone} />
+          </div>
+
+          <div style={{ border: `1px solid ${tone}33`, background: `${tone}10`, borderRadius: 14, padding: '1rem' }}>
+            <strong style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: tone }}>
+              <AlertCircle size={17} /> {status}
+            </strong>
+            <p style={{ margin: '0.5rem 0 0', color: 'var(--text-main)', fontWeight: 600 }}>
+              {hasExpectedControls ? copy.pendingDetail : copy.emptyDetail}
+            </p>
+          </div>
+
+          <div>
+            <h3 style={{ fontSize: '0.95rem', marginBottom: '0.6rem' }}>Alertes du module</h3>
+            {alerts.length ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {alerts.map((alert, index) => (
+                  <div key={`${alert.module}-${index}`} className={`alert ${alert.severity === 'critical' ? 'error' : 'warning'}`} style={{ margin: 0 }}>
+                    <AlertTriangle size={15} /> {alert.message}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="muted" style={{ margin: 0 }}>Aucune alerte ouverte pour ce module.</p>
+            )}
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button type="button" className="btn btn-secondary" onClick={onClose}>Fermer</button>
+          <button type="button" className="btn btn-primary" onClick={onOpenModule}>Ouvrir le module</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MetricMini({ label, value, tone = '#0f172a' }: { label: string; value: number; tone?: string }) {
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: '0.85rem', background: '#fff' }}>
+      <span style={{ display: 'block', color: 'var(--text-muted)', fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase' }}>{label}</span>
+      <strong style={{ display: 'block', color: tone, fontSize: '1.55rem', lineHeight: 1.1, marginTop: '0.35rem' }}>{value}</strong>
+    </div>
+  );
+}
+
 function DashboardView({ dashboard, readiness, loading, searchQuery, setSearchQuery, onGenerateReport, onStartOnboarding, onSelectTab }: { dashboard: HaccpDashboard | null; readiness: HaccpReadiness; loading: boolean; searchQuery: string; setSearchQuery: (value: string) => void; onGenerateReport: () => void; onStartOnboarding: () => void; onSelectTab?: (tabName: string) => void }) {
+  const [selectedModule, setSelectedModule] = useState<HaccpDashboard['modules'][number] | null>(null);
   if (loading && !dashboard) return <div className="empty-state">Chargement HACCP...</div>;
   if (!dashboard) return <div className="empty-state">Aucune donnée HACCP disponible.</div>;
   const filteredModules = dashboard.modules.filter((module) => {
@@ -1242,6 +1499,7 @@ function DashboardView({ dashboard, readiness, loading, searchQuery, setSearchQu
   const coveredModules = dashboard.modules.filter((module) => module.completed > 0).length;
   const criticalCount = dashboard.alerts.filter((alert) => alert.severity === 'critical').length;
   const warningCount = dashboard.alerts.filter((alert) => alert.severity === 'warning').length;
+  const selectedAlerts = selectedModule ? dashboard.alerts.filter((alert) => alert.module === selectedModule.id) : [];
 
   const formatActivityTime = (atStr: string) => {
     if (!atStr) return '';
@@ -1324,11 +1582,24 @@ function DashboardView({ dashboard, readiness, loading, searchQuery, setSearchQu
           </div>
           <div className="haccp-dashboard-grid">
             {filteredModules.map((module) => (
-              <ModuleCard key={module.id} module={module} onClick={() => onSelectTab?.(module.id)} />
+              <ModuleCard key={module.id} module={module} onClick={() => setSelectedModule(module)} />
             ))}
           </div>
         </div>
       </div>
+
+      {selectedModule ? (
+        <ModuleStatusModal
+          module={selectedModule}
+          alerts={selectedAlerts}
+          onClose={() => setSelectedModule(null)}
+          onOpenModule={() => {
+            const target = selectedModule.id === 'temperature' ? 'temperatures' : selectedModule.id;
+            setSelectedModule(null);
+            onSelectTab?.(target);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -2291,6 +2562,150 @@ function SectionView({ section, rows, products, searchQuery, setSearchQuery, pro
         </div>
       </div>
       <SimpleTable rows={rows} columns={columnsFor(section)} onDelete={onDelete} onDownloadReport={onDownloadReport} section={section} />
+    </div>
+  );
+}
+
+function CleaningChecklistView({
+  zones,
+  todaySurfaces,
+  activeSession,
+  searchQuery,
+  setSearchQuery,
+  saving,
+  onMarkSurface,
+  onMarkAll,
+  onComplete,
+  onBack,
+}: {
+  zones: HaccpItem[];
+  todaySurfaces: TodayCleaningSurface[];
+  activeSession: HaccpCleaningSession | null;
+  searchQuery: string;
+  setSearchQuery: (value: string) => void;
+  saving: boolean;
+  onMarkSurface: (surface: TodayCleaningSurface | { surfaceId: string; surfaceName: string; zoneId: string; zoneName: string }) => void;
+  onMarkAll: (surfaces: Array<TodayCleaningSurface | { surfaceId: string; surfaceName: string; zoneId: string; zoneName: string }>) => void;
+  onComplete: () => void;
+  onBack: () => void;
+}) {
+  const [view, setView] = useState<'today' | 'all'>('today');
+  const cleanedIds = new Set((activeSession?.cleanedSurfaces ?? []).map((surface) => surface.surfaceId));
+  const query = searchQuery.trim().toLowerCase();
+  const allSurfaces = zones.flatMap((zone) => {
+    const zoneId = String(zone._id ?? zone.id ?? '');
+    return (Array.isArray(zone.surfaces) ? zone.surfaces : [])
+      .filter((surface) => surface?.isActive !== false)
+      .map((surface) => ({
+        surfaceId: String(surface._id ?? surface.id ?? ''),
+        surfaceName: String(surface.name ?? ''),
+        zoneId,
+        zoneName: String(zone.name ?? 'Zone'),
+        frequency: String(surface.frequency ?? 'daily'),
+        lastCleaned: surface.lastCleaned ?? null,
+      }))
+      .filter((surface) => surface.surfaceId && surface.surfaceName);
+  });
+  const visibleToday = todaySurfaces.filter((surface) => !query || `${surface.zoneName} ${surface.surfaceName} ${surface.frequency ?? ''}`.toLowerCase().includes(query));
+  const visibleAll = allSurfaces.filter((surface) => !query || `${surface.zoneName} ${surface.surfaceName} ${surface.frequency ?? ''}`.toLowerCase().includes(query));
+  const activeList = view === 'today' ? visibleToday : visibleAll;
+  const remainingList = activeList.filter((surface) => !cleanedIds.has(surface.surfaceId));
+  const completedCount = activeSession?.cleanedSurfaces?.length ?? 0;
+  const totalCount = allSurfaces.length;
+
+  return (
+    <div className="card-modern">
+      <div className="section-header-modern">
+        <div className="section-info">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={onBack}>
+              <ArrowLeft size={14} /> Retour
+            </button>
+            <span className="card-title" style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
+              Nettoyage
+            </span>
+          </div>
+          <span className="section-tagline">
+            {remainingList.length} surface(s) en attente sur {view === 'today' ? 'le plan du jour' : 'toutes les zones'}
+          </span>
+        </div>
+        <div className="haccp-filter-right">
+          <button type="button" className="btn btn-secondary" onClick={() => onMarkAll(remainingList)} disabled={saving || !remainingList.length}>
+            <CheckCircle2 size={16} /> Tout cocher
+          </button>
+          <button type="button" className="btn btn-primary" onClick={onComplete} disabled={saving || !activeSession}>
+            Terminer la session
+          </button>
+        </div>
+      </div>
+
+      <div className="haccp-summary-row" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+        <MetricMini label="Surfaces configurées" value={totalCount} />
+        <MetricMini label="Nettoyées session" value={completedCount} tone="#10b981" />
+        <MetricMini label="À faire maintenant" value={remainingList.length} tone={remainingList.length ? '#f59e0b' : '#10b981'} />
+      </div>
+
+      <div className="haccp-filter-bar">
+        <div className="haccp-filter-left">
+          <div className="haccp-search">
+            <Search size={14} />
+            <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Rechercher une zone ou surface..." />
+          </div>
+          <div style={{ display: 'inline-flex', gap: '0.35rem', padding: '0.25rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12 }}>
+            <button type="button" className={`btn btn-sm ${view === 'today' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setView('today')}>
+              Aujourd’hui ({visibleToday.length})
+            </button>
+            <button type="button" className={`btn btn-sm ${view === 'all' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setView('all')}>
+              Toutes les surfaces ({visibleAll.length})
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {!allSurfaces.length ? (
+        <div className="haccp-empty-state">
+          <ShieldCheck size={40} />
+          <p>Aucune zone de nettoyage configurée. Ajoutez les zones depuis “Zones & matériels”.</p>
+        </div>
+      ) : !activeList.length ? (
+        <div className="haccp-empty-state">
+          <CheckCircle2 size={40} />
+          <p>{view === 'today' ? 'Toutes les surfaces prévues aujourd’hui sont à jour.' : 'Aucune surface ne correspond à la recherche.'}</p>
+        </div>
+      ) : (
+        <div className="haccp-equipment-list">
+          {activeList.map((surface) => {
+            const isCompleted = cleanedIds.has(surface.surfaceId);
+            return (
+              <div key={`${surface.zoneId}-${surface.surfaceId}`} className={`haccp-equipment-row ${isCompleted ? 'active' : ''}`}>
+                <div className="haccp-equipment-row-main">
+                  <div className="haccp-equipment-row-info">
+                    <div className={`haccp-card-icon-badge ${isCompleted ? 'positive' : 'cleaning'}`}>
+                      {isCompleted ? <CheckCircle2 size={18} /> : <ShieldCheck size={18} />}
+                    </div>
+                    <div>
+                      <strong className="haccp-equipment-title">{surface.surfaceName}</strong>
+                      <span className="haccp-equipment-desc">
+                        {surface.zoneName} • {frequencyLabel(surface.frequency ?? 'daily')}
+                        {surface.lastCleaned ? ` • Dernier nettoyage ${new Date(surface.lastCleaned).toLocaleDateString('fr-FR')}` : ''}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className={`btn ${isCompleted ? 'btn-secondary' : 'btn-primary'}`}
+                    onClick={() => onMarkSurface(surface)}
+                    disabled={saving || isCompleted}
+                  >
+                    <CheckCircle2 size={16} />
+                    {isCompleted ? 'Nettoyé' : 'Cocher'}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -4527,11 +4942,6 @@ function HaccpConfigForm({
       <div className="haccp-form-grid">
         <TextInput className="full-width" label="Nom du matériel" value={form.name} onChange={(value) => setField('name', value)} required placeholder="Ex : Four mixte production" />
         <SelectInput label="Type de process" value={form.type} onChange={(value) => setField('type', value)} options={PROCESS_TYPES.map((type) => ({ value: type.id, label: type.label }))} />
-        <TextInput label="Température min" value={form.min} onChange={(value) => setField('min', value)} type="number" />
-        <TextInput label="Température max" value={form.max} onChange={(value) => setField('max', value)} type="number" />
-        <TextInput label="Emplacement" value={form.location} onChange={(value) => setField('location', value)} placeholder="Cuisine chaude" />
-        <TextInput label="Capacité" value={form.capacity} onChange={(value) => setField('capacity', value)} placeholder="10 bacs GN" />
-        <TextInput className="full-width" label="Notes" value={form.notes} onChange={(value) => setField('notes', value)} />
       </div>
     );
   }

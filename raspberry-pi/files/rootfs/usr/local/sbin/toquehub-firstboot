@@ -33,6 +33,46 @@ server_ip() {
   hostname -I 2>/dev/null | awk '{print $1}'
 }
 
+origin_for_host() {
+  local host="$1"
+  local port="$2"
+  if [[ "$port" == "80" ]]; then
+    printf 'http://%s\n' "$host"
+  else
+    printf 'http://%s:%s\n' "$host" "$port"
+  fi
+}
+
+port_in_use() {
+  local port="$1"
+
+  if command -v ss >/dev/null 2>&1; then
+    ss -H -ltn "( sport = :$port )" | grep -q .
+    return
+  fi
+
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
+    return
+  fi
+
+  timeout 1 bash -c "</dev/tcp/127.0.0.1/$port" >/dev/null 2>&1
+}
+
+find_free_port() {
+  local start="$1"
+  local port
+  for ((port = start; port < start + 200; port++)); do
+    if ! port_in_use "$port"; then
+      printf '%s\n' "$port"
+      return
+    fi
+  done
+
+  echo "Aucun port libre trouve a partir de $start." >&2
+  exit 1
+}
+
 set_env() {
   local key="$1"
   local value="$2"
@@ -86,23 +126,59 @@ configure_tailscale() {
   fi
 }
 
+configure_local_hostname() {
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+
+  local local_hostname set_hostname
+  local_hostname="${TOQUEHUB_LOCAL_HOSTNAME:-toquehub}"
+  set_hostname="${TOQUEHUB_SET_LOCAL_HOSTNAME:-true}"
+
+  systemctl enable --now avahi-daemon >/dev/null 2>&1 || true
+  if [[ "$set_hostname" != "true" && "$set_hostname" != "1" ]]; then
+    return
+  fi
+
+  if command -v hostnamectl >/dev/null 2>&1; then
+    hostnamectl set-hostname "$local_hostname" || true
+  else
+    printf '%s\n' "$local_hostname" > /etc/hostname || true
+    hostname "$local_hostname" || true
+  fi
+
+  if grep -qE '^127\.0\.1\.1\s+' /etc/hosts; then
+    sed -i "s/^127\\.0\\.1\\.1.*/127.0.1.1 $local_hostname/" /etc/hosts || true
+  else
+    printf '127.0.1.1 %s\n' "$local_hostname" >> /etc/hosts || true
+  fi
+}
+
 configure_web_url() {
   set -a
   # shellcheck disable=SC1090
   . "$ENV_FILE"
   set +a
 
-  local http_port ip origins
+  local http_port ip origins local_hostname local_origin
   http_port="${TOQUEHUB_HTTP_PORT:-8080}"
+  if port_in_use "$http_port"; then
+    http_port="$(find_free_port 8080)"
+    set_env TOQUEHUB_HTTP_PORT "$http_port"
+  fi
+
+  local_hostname="${TOQUEHUB_LOCAL_HOSTNAME:-toquehub}"
+  local_origin="$(origin_for_host "$local_hostname.local" "$http_port")"
   ip="$(server_ip || true)"
-  origins="http://toquehub.local:$http_port,http://localhost:$http_port,http://127.0.0.1:$http_port"
+  origins="$local_origin,$(origin_for_host localhost "$http_port"),$(origin_for_host 127.0.0.1 "$http_port")"
 
   if [[ -n "$ip" ]]; then
-    set_env TOQUEHUB_WEB_URL "http://$ip:$http_port"
+    set_env TOQUEHUB_WEB_URL "$local_origin"
     set_env TOQUEHUB_DISCOVERY_HOST "$ip"
-    origins="http://$ip:$http_port,$origins"
+    origins="$(origin_for_host "$ip" "$http_port"),$origins"
   else
-    set_env TOQUEHUB_WEB_URL "http://toquehub.local:$http_port"
+    set_env TOQUEHUB_WEB_URL "$local_origin"
   fi
 
   set_env TOQUEHUB_DISCOVERY_PORT "$http_port"
@@ -125,6 +201,7 @@ if grep -q 'replace-with-generated-secret' "$ENV_FILE"; then
   set_env TOQUEHUB_REMOTE_AGENT_SECRET "$(secret)"
 fi
 
+configure_local_hostname
 configure_tailscale
 configure_web_url
 systemctl restart toquehub-remote-agent.service >/dev/null 2>&1 || true

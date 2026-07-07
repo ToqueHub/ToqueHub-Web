@@ -17,6 +17,9 @@ describe('DiscoveryService', () => {
       organization: {
         findFirst: jest.fn(async () => ({ name: 'Cuisine Centrale' })),
       },
+      user: {
+        findFirst: jest.fn(async () => null),
+      },
     } as any;
     const publisher = { publish: jest.fn(), stop: jest.fn() };
     const service = new DiscoveryService(config, prisma, publisher as any);

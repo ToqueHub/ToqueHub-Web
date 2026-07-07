@@ -34,6 +34,9 @@ import {
   CookingPot,
   MoreHorizontal,
   Check,
+  Store,
+  Network,
+  MapPin,
 } from 'lucide-react';
 import { api } from '../api/client';
 import type { BackupInspection, EstablishmentType, RegulatoryCountryCode, SystemStatus, TeamSize, UserSession } from '../types';
@@ -96,6 +99,20 @@ export function FirstStartLanding({
   onBootstrapComplete,
 }: FirstStartLandingProps) {
   const [step, setStep] = useState<OnboardingStep>(0);
+  const [miniStep, setMiniStep] = useState(0);
+  const [isMultiSite, setIsMultiSite] = useState<boolean | null>(null);
+
+  const changeStep = (nextStep: OnboardingStep) => {
+    if (nextStep === 2) {
+      if (step === 3) {
+        setMiniStep(2);
+      } else {
+        setMiniStep(0);
+      }
+    }
+    setStep(nextStep);
+  };
+
   const [admin, setAdmin] = useState<AdminForm>({ username: '', firstName: '', lastName: '', email: '', password: '', confirm: '' });
   const [organization, setOrganization] = useState<OrganizationForm>({ name: '', type: '', regulatoryCountryCode: '', teamSize: '1-5', primarySiteName: '', secondarySiteNames: [] });
   const [showPassword, setShowPassword] = useState(false);
@@ -113,31 +130,61 @@ export function FirstStartLanding({
   const [restoreDone, setRestoreDone] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  
+
   const score = useMemo(() => passwordScore(admin.password), [admin.password]);
   const allowLogin = Boolean(status?.hasOrganization || status?.hasAdmin);
   const allowCreate = !status?.hasAdmin && !status?.hasOrganization;
-  const progress = ((Math.min(step, 5) + 1) / 6) * 100;
+
+  const progress = useMemo(() => {
+    if (step === 2) {
+      return ((2 + (miniStep / 3)) / 6) * 100;
+    }
+    return ((Math.min(step, 5) + 1) / 6) * 100;
+  }, [step, miniStep]);
 
   function goNext() {
     setFormError(undefined);
     if (step === 1 && !validateAdmin()) return;
-    if (step === 2 && !organization.name.trim()) {
-      setFormError('Le nom de l’établissement est requis.');
-      return;
+    if (step === 2) {
+      if (isMultiSite === null) {
+        setFormError('Veuillez sélectionner si votre établissement est un site unique ou multi-site.');
+        return;
+      }
+      if (miniStep === 0) {
+        setMiniStep(1);
+        return;
+      }
+      if (miniStep === 1) {
+        if (!organization.name.trim()) {
+          setFormError('Le nom de l’établissement est requis.');
+          return;
+        }
+        if (isMultiSite && !organization.primarySiteName.trim()) {
+          setFormError('Le nom du site principal est requis pour une configuration multi-site.');
+          return;
+        }
+        setMiniStep(2);
+        return;
+      }
+      if (miniStep === 2) {
+        if (!organization.regulatoryCountryCode) {
+          setFormError('Le pays RH est requis.');
+          return;
+        }
+      }
     }
-    if (step === 2 && !organization.regulatoryCountryCode) {
-      setFormError('Le pays RH est requis.');
-      return;
-    }
-    if (step < 5) setStep((step + 1) as OnboardingStep);
+    if (step < 5) changeStep((step + 1) as OnboardingStep);
   }
 
   document.title = "Bienvenue sur ToqueHub - Onboarding";
 
   function goBack() {
     setFormError(undefined);
-    if (step > 0 && !submitting) setStep((step - 1) as OnboardingStep);
+    if (step === 2 && miniStep > 0) {
+      setMiniStep(miniStep - 1);
+      return;
+    }
+    if (step > 0 && !submitting) changeStep((step - 1) as OnboardingStep);
   }
 
   function validateAdmin() {
@@ -195,22 +242,24 @@ export function FirstStartLanding({
   async function createEnvironment() {
     setFormError(undefined);
     if (!validateAdmin()) {
-      setStep(1);
+      changeStep(1);
       return;
     }
     if (!organization.name.trim()) {
       setFormError('Le nom de l’établissement est requis.');
-      setStep(2);
+      changeStep(2);
+      setMiniStep(1);
       return;
     }
     if (!organization.regulatoryCountryCode) {
       setFormError('Le pays RH est requis.');
-      setStep(2);
+      changeStep(2);
+      setMiniStep(2);
       return;
     }
 
     setSubmitting(true);
-    setStep(6);
+    changeStep(6);
     setCompletedCreationSteps(0);
     try {
       await pause(350);
@@ -245,7 +294,7 @@ export function FirstStartLanding({
       setSubmitting(false);
       setFormError('Nous n’avons pas pu créer l’environnement. Vérifiez les informations puis réessayez.');
       if (err instanceof Error && err.message) setFormError(err.message);
-      setStep(5);
+      changeStep(5);
     }
   }
 
@@ -306,9 +355,12 @@ export function FirstStartLanding({
       <div style={{ width: '100%', maxWidth: isFullWidth ? '920px' : '1080px', zIndex: 10 }}>
         {/* Onboarding Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <ChefHat size={32} color="#10b981" />
-            <span style={{ fontWeight: 900, fontSize: '1.4rem', color: 'var(--text-main)', letterSpacing: '-0.04em' }}>TOQUE<span style={{ color: 'var(--primary)' }}>HUB</span></span>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <img
+              src="/toquehub-logo-wide-transparent.png"
+              alt="ToqueHub Logo"
+              style={{ height: '36px', objectFit: 'contain' }}
+            />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <span className="badge badge-reception" style={{ border: '1px solid var(--light-border)', textTransform: 'none', background: 'rgba(255,255,255,0.7)', fontSize: '0.8rem' }}>
@@ -338,7 +390,7 @@ export function FirstStartLanding({
           <AlreadyInitialized
             onLoginRequested={onLoginRequested}
             onShowOnboarding={() => {
-              setStep(0);
+              changeStep(0);
               setFormError(undefined);
               setShowOnboardingPreview(true);
             }}
@@ -435,7 +487,7 @@ export function FirstStartLanding({
                   >
                     {step === 0 && (
                       <WelcomeStep
-                        onStart={() => setStep(1)}
+                        onStart={() => changeStep(1)}
                         onRestore={() => setRestoreOpen(true)}
                         onHelp={() => setHelpOpen(true)}
                       />
@@ -454,6 +506,10 @@ export function FirstStartLanding({
                         organization={organization}
                         updateOrganization={updateOrganization}
                         setOrganization={setOrganization}
+                        miniStep={miniStep}
+                        setMiniStep={setMiniStep}
+                        isMultiSite={isMultiSite}
+                        setIsMultiSite={setIsMultiSite}
                       />
                     )}
                     {step === 3 && (
@@ -467,7 +523,7 @@ export function FirstStartLanding({
                         organization={organization}
                         fileInputRef={fileInputRef}
                         onFile={handleLogo}
-                        onSkip={() => setStep(5)}
+                        onSkip={() => changeStep(5)}
                       />
                     )}
                     {step === 5 && (
@@ -1110,280 +1166,469 @@ interface OrganizationStepProps {
   organization: OrganizationForm;
   updateOrganization: (field: keyof Omit<OrganizationForm, 'logo'>) => (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => void;
   setOrganization: React.Dispatch<React.SetStateAction<OrganizationForm>>;
+  miniStep: number;
+  setMiniStep: (val: number) => void;
+  isMultiSite: boolean | null;
+  setIsMultiSite: (val: boolean | null) => void;
 }
 
-function OrganizationStep({ organization, updateOrganization, setOrganization }: OrganizationStepProps) {
+function OrganizationStep({
+  organization,
+  updateOrganization,
+  setOrganization,
+  miniStep,
+  setMiniStep,
+  isMultiSite,
+  setIsMultiSite,
+}: OrganizationStepProps) {
   function addSecondarySite() {
     setOrganization((prev) => ({ ...prev, secondarySiteNames: [...prev.secondarySiteNames, ''] }));
   }
 
   function updateSecondarySite(index: number, value: string) {
-    setOrganization((prev) => ({ ...prev, secondarySiteNames: prev.secondarySiteNames.map((item, itemIndex) => itemIndex === index ? value : item) }));
+    setOrganization((prev) => ({
+      ...prev,
+      secondarySiteNames: prev.secondarySiteNames.map((item, itemIndex) => itemIndex === index ? value : item),
+    }));
   }
 
   function removeSecondarySite(index: number) {
     setOrganization((prev) => ({ ...prev, secondarySiteNames: prev.secondarySiteNames.filter((_, itemIndex) => itemIndex !== index) }));
   }
 
+  const syncSingleSiteName = (nameValue: string) => {
+    setOrganization((prev) => ({
+      ...prev,
+      name: nameValue,
+      primarySiteName: nameValue,
+    }));
+  };
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-      <div>
-        <span className="badge badge-reception" style={{ marginBottom: '0.5rem', display: 'inline-flex', gap: '0.35rem' }}>
-          <Building2 size={14} /> Établissement
-        </span>
-        <h2 style={{ fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.03em' }}>Votre établissement</h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginTop: '0.25rem' }}>
-          Identité de la structure rattachée à l'administrateur.
-        </p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', minHeight: '380px' }}>
+      {/* Mini Onboarding Sub-Progress Navigation indicator */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.85rem', marginBottom: '0.5rem', background: '#f8fafc', padding: '0.65rem 1rem', borderRadius: '12px', border: '1px solid var(--light-border)' }}>
+        <span style={{ fontSize: '0.78rem', fontWeight: 800, color: miniStep === 0 ? 'var(--primary)' : 'var(--text-muted)', transition: 'color 0.2s' }}>1. Structure</span>
+        <div style={{ width: '20px', height: '1.5px', background: 'var(--light-border)' }} />
+        <span style={{ fontSize: '0.78rem', fontWeight: 800, color: miniStep === 1 ? 'var(--primary)' : 'var(--text-muted)', transition: 'color 0.2s' }}>2. Identité & Activité</span>
+        <div style={{ width: '20px', height: '1.5px', background: 'var(--light-border)' }} />
+        <span style={{ fontSize: '0.78rem', fontWeight: 800, color: miniStep === 2 ? 'var(--primary)' : 'var(--text-muted)', transition: 'color 0.2s' }}>3. Législation</span>
       </div>
 
-      <label style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-        Nom de l'établissement *
-        <input
-          placeholder="ex: Bistrot des Cocottes, Resto Scolaire..."
-          value={organization.name}
-          onChange={updateOrganization('name')}
-          required
-          autoFocus
-          style={{
-            padding: '0.75rem 1rem',
-            borderRadius: '12px',
-            border: '1px solid var(--light-border)',
-            fontSize: '0.95rem',
-            outline: 'none',
-            transition: 'border-color 0.2s',
-          }}
-        />
-      </label>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          Nom du site principal
-          <input
-            placeholder="ex: The French Café"
-            value={organization.primarySiteName}
-            onChange={updateOrganization('primarySiteName')}
-            style={{
-              padding: '0.75rem 1rem',
-              borderRadius: '12px',
-              border: '1px solid var(--light-border)',
-              fontSize: '0.95rem',
-              outline: 'none',
-            }}
-          />
-        </label>
-        <button
-          type="button"
-          onClick={addSecondarySite}
-          style={{
-            alignSelf: 'flex-start',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.45rem',
-            border: '0',
-            background: 'transparent',
-            color: '#059669',
-            fontWeight: 800,
-            cursor: 'pointer',
-            padding: '0.15rem 0',
-          }}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={miniStep}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          transition={{ duration: 0.18 }}
+          style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', flexGrow: 1 }}
         >
-          <span style={{ display: 'grid', placeItems: 'center', width: 26, height: 26, borderRadius: '999px', background: '#ecfdf5', border: '1px solid #bbf7d0', fontSize: '1.2rem', lineHeight: 1 }}>+</span>
-          Ajouter un site secondaire
-        </button>
-        {organization.secondarySiteNames.map((siteName, index) => (
-          <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
-            <input
-              placeholder="Nom du site secondaire"
-              value={siteName}
-              onChange={(event) => updateSecondarySite(index, event.target.value)}
-              style={{
-                flex: 1,
-                padding: '0.75rem 1rem',
-                borderRadius: '12px',
-                border: '1px solid var(--light-border)',
-                fontSize: '0.95rem',
-                outline: 'none',
-              }}
-            />
-            <button
-              type="button"
-              aria-label="Retirer ce site secondaire"
-              onClick={() => removeSecondarySite(index)}
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: '12px',
-                border: '1px solid var(--light-border)',
-                background: '#fff',
-                color: '#64748b',
-                display: 'grid',
-                placeItems: 'center',
-                cursor: 'pointer',
-              }}
-            >
-              <X size={16} />
-            </button>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#475569' }}>
-          Type d'établissement
-        </span>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
-          gap: '0.65rem',
-          marginTop: '0.25rem'
-        }}>
-          {establishmentTypes.map((type) => {
-            const Icon = establishmentTypeIcons[type] || HelpCircle;
-            const isSelected = organization.type === type;
-            return (
-              <motion.div
-                key={type}
-                whileHover={{ y: -2, scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => {
-                  setOrganization(prev => ({ ...prev, type }));
-                }}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '0.75rem',
-                  borderRadius: '12px',
-                  border: isSelected ? '2px solid var(--primary)' : '1px solid var(--light-border)',
-                  background: isSelected ? 'rgba(16, 185, 129, 0.04)' : '#ffffff',
-                  cursor: 'pointer',
-                  position: 'relative',
-                  transition: 'border-color 0.2s, background-color 0.2s',
-                  minHeight: '80px',
-                  textAlign: 'center',
-                  boxShadow: isSelected ? '0 4px 12px rgba(16, 185, 129, 0.08)' : 'none'
-                }}
-              >
-                <div style={{
-                  color: isSelected ? 'var(--primary)' : '#64748b',
-                  marginBottom: '0.35rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <Icon size={20} strokeWidth={isSelected ? 2.5 : 2} />
-                </div>
-                <span style={{
-                  fontSize: '0.76rem',
-                  fontWeight: isSelected ? 700 : 500,
-                  color: isSelected ? '#0f172a' : '#475569',
-                  lineHeight: 1.2
-                }}>
-                  {type}
+          {miniStep === 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div>
+                <span className="badge badge-reception" style={{ marginBottom: '0.5rem', display: 'inline-flex', gap: '0.35rem' }}>
+                  <Building2 size={14} /> Structure
                 </span>
-                {isSelected && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '6px',
-                    right: '6px',
-                    background: 'var(--primary)',
-                    color: 'white',
-                    borderRadius: '50%',
-                    width: '16px',
-                    height: '16px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    <Check size={10} strokeWidth={3} />
-                  </div>
-                )}
-              </motion.div>
-            );
-          })}
-        </div>
-      </div>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--text-main)' }}>Votre organisation</h2>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                  Sélectionnez le mode de déploiement adapté à votre établissement.
+                </p>
+              </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 420px)', gap: '1.25rem', marginTop: '0.25rem' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#475569' }}>
-            Pays RH *
-          </span>
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.5rem',
-            marginTop: '0.25rem'
-          }}>
-            {regulatoryCountries.map((country) => {
-              const isSelected = organization.regulatoryCountryCode === country.value;
-              const flag = regulatoryCountryFlags[country.value];
-              return (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem', marginTop: '0.5rem' }}>
+                {/* Site Unique Card */}
                 <motion.div
-                  key={country.value}
-                  whileHover={{ y: -1, scale: 1.01 }}
-                  whileTap={{ scale: 0.99 }}
+                  whileHover={{ y: -5, boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05)', borderColor: isMultiSite === false ? 'var(--primary)' : '#cbd5e1' }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={() => {
-                    setOrganization(prev => ({
-                      ...prev,
-                      regulatoryCountryCode: country.value,
-                    }));
+                    setIsMultiSite(false);
+                    setOrganization(prev => ({ ...prev, secondarySiteNames: [] }));
                   }}
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.75rem',
-                    padding: '0.65rem 0.85rem',
-                    borderRadius: '12px',
-                    border: isSelected ? '2px solid var(--primary)' : '1px solid var(--light-border)',
-                    background: isSelected ? 'rgba(16, 185, 129, 0.04)' : '#ffffff',
                     cursor: 'pointer',
+                    padding: '1.5rem',
+                    borderRadius: '20px',
+                    border: isMultiSite === false ? '2px solid var(--primary)' : '1.5px solid var(--light-border)',
+                    background: isMultiSite === false ? 'rgba(16, 185, 129, 0.03)' : '#ffffff',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '1rem',
                     position: 'relative',
                     transition: 'border-color 0.2s, background-color 0.2s',
-                    boxShadow: isSelected ? '0 4px 12px rgba(16, 185, 129, 0.08)' : 'none'
+                    boxShadow: isMultiSite === false ? '0 10px 25px rgba(16, 185, 129, 0.08)' : 'var(--shadow-sm)',
                   }}
                 >
-                  <span style={{ fontSize: '1.6rem', lineHeight: 1 }}>
-                    {flag}
-                  </span>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
-                    <span style={{
-                      fontSize: '0.8rem',
-                      fontWeight: isSelected ? 700 : 500,
-                      color: isSelected ? '#0f172a' : '#475569'
-                    }}>
-                      {country.label}
-                    </span>
-                    <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-                      Conges {country.value === 'FI' ? 'annuels' : 'payes'}
-                    </span>
-                  </div>
-                  {isSelected && (
-                    <div style={{
-                      position: 'absolute',
-                      top: '6px',
-                      right: '6px',
-                      background: 'var(--primary)',
-                      color: 'white',
-                      borderRadius: '50%',
-                      width: '16px',
-                      height: '16px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}>
-                      <Check size={10} strokeWidth={3} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ width: '46px', height: '46px', borderRadius: '12px', background: isMultiSite === false ? 'var(--primary)' : '#f1f5f9', color: isMultiSite === false ? '#ffffff' : 'var(--text-muted)', display: 'grid', placeItems: 'center', transition: 'all 0.2s' }}>
+                      <Store size={22} />
                     </div>
-                  )}
+                    {isMultiSite === false && (
+                      <div style={{ background: 'var(--primary)', color: 'white', borderRadius: '50%', width: '20px', height: '20px', display: 'grid', placeItems: 'center' }}>
+                        <Check size={12} strokeWidth={3} />
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-main)' }}>Site unique</h3>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.35rem', lineHeight: 1.45 }}>
+                      Idéal si vous gérez un seul point de vente, restaurant ou cuisine. Vos stocks, plannings et HACCP sont centralisés au même endroit.
+                    </p>
+                  </div>
                 </motion.div>
-              );
-            })}
-          </div>
-        </div>
 
-      </div>
+                {/* Multi-site Card */}
+                <motion.div
+                  whileHover={{ y: -5, boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05)', borderColor: isMultiSite === true ? 'var(--primary)' : '#cbd5e1' }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    setIsMultiSite(true);
+                  }}
+                  style={{
+                    cursor: 'pointer',
+                    padding: '1.5rem',
+                    borderRadius: '20px',
+                    border: isMultiSite === true ? '2px solid var(--primary)' : '1.5px solid var(--light-border)',
+                    background: isMultiSite === true ? 'rgba(16, 185, 129, 0.03)' : '#ffffff',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '1rem',
+                    position: 'relative',
+                    transition: 'border-color 0.2s, background-color 0.2s',
+                    boxShadow: isMultiSite === true ? '0 10px 25px rgba(16, 185, 129, 0.08)' : 'var(--shadow-sm)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ width: '46px', height: '46px', borderRadius: '12px', background: isMultiSite === true ? 'var(--primary)' : '#f1f5f9', color: isMultiSite === true ? '#ffffff' : 'var(--text-muted)', display: 'grid', placeItems: 'center', transition: 'all 0.2s' }}>
+                      <Network size={22} />
+                    </div>
+                    {isMultiSite === true && (
+                      <div style={{ background: 'var(--primary)', color: 'white', borderRadius: '50%', width: '20px', height: '20px', display: 'grid', placeItems: 'center' }}>
+                        <Check size={12} strokeWidth={3} />
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-main)' }}>Multi-site</h3>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.35rem', lineHeight: 1.45 }}>
+                      Conçu pour les structures disposant de plusieurs établissements, cuisines ou points de vente. Permet de gérer et consolider l'activité de vos différents sites.
+                    </p>
+                  </div>
+                </motion.div>
+              </div>
+            </div>
+          )}
+
+          {miniStep === 1 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div>
+                <span className="badge badge-reception" style={{ marginBottom: '0.5rem', display: 'inline-flex', gap: '0.35rem' }}>
+                  <Utensils size={14} /> Identité & Activité
+                </span>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--text-main)' }}>Identité de l'établissement</h2>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                  Renseignez le nom de votre établissement ainsi que son type d'activité culinaire.
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontWeight: 600, fontSize: '0.88rem', color: '#334155' }}>
+                  Nom de l'établissement *
+                  <input
+                    placeholder="ex: Bistrot des Cocottes, Resto Scolaire..."
+                    value={organization.name}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (!isMultiSite) {
+                        syncSingleSiteName(val);
+                      } else {
+                        setOrganization(prev => {
+                          const previousName = prev.name.trim();
+                          const siteWasSynced = !prev.primarySiteName.trim() || prev.primarySiteName.trim() === previousName || prev.primarySiteName.trim() === `${previousName} — Site principal`;
+                          return {
+                            ...prev,
+                            name: val,
+                            primarySiteName: siteWasSynced ? val : prev.primarySiteName
+                          };
+                        });
+                      }
+                    }}
+                    required
+                    autoFocus
+                    style={{
+                      padding: '0.75rem 1rem',
+                      borderRadius: '12px',
+                      border: '1.5px solid var(--light-border)',
+                      fontSize: '0.95rem',
+                      outline: 'none',
+                      transition: 'all 0.2s',
+                      background: '#ffffff',
+                    }}
+                  />
+                </label>
+
+                {isMultiSite && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', background: '#f8fafc', padding: '1.25rem', borderRadius: '16px', border: '1.5px solid var(--light-border)' }}>
+                    <h3 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <MapPin size={15} color="var(--primary)" /> Gestion des différents sites
+                    </h3>
+
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.82rem', color: '#475569' }}>
+                      Nom du site principal *
+                      <input
+                        placeholder="ex: Cuisine Centrale, Site A..."
+                        value={organization.primarySiteName}
+                        onChange={updateOrganization('primarySiteName')}
+                        required
+                        style={{
+                          padding: '0.65rem 0.85rem',
+                          borderRadius: '10px',
+                          border: '1px solid var(--light-border)',
+                          fontSize: '0.9rem',
+                          outline: 'none',
+                          background: '#ffffff',
+                        }}
+                      />
+                    </label>
+
+                    {organization.secondarySiteNames.map((siteName, index) => (
+                      <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+                        <input
+                          placeholder={`Nom du site secondaire #${index + 1}`}
+                          value={siteName}
+                          onChange={(event) => updateSecondarySite(index, event.target.value)}
+                          style={{
+                            flex: 1,
+                            padding: '0.65rem 0.85rem',
+                            borderRadius: '10px',
+                            border: '1px solid var(--light-border)',
+                            fontSize: '0.9rem',
+                            outline: 'none',
+                            background: '#ffffff',
+                          }}
+                        />
+                        <button
+                          type="button"
+                          aria-label="Retirer ce site secondaire"
+                          onClick={() => removeSecondarySite(index)}
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: '10px',
+                            border: '1px solid var(--light-border)',
+                            background: '#fff',
+                            color: '#e11d48',
+                            display: 'grid',
+                            placeItems: 'center',
+                            cursor: 'pointer',
+                            transition: 'background-color 0.2s',
+                          }}
+                        >
+                          <X size={15} />
+                        </button>
+                      </div>
+                    ))}
+
+                    <motion.button
+                      type="button"
+                      whileHover={{ scale: 1.01, borderColor: 'var(--primary)', background: 'rgba(16, 185, 129, 0.04)' }}
+                      whileTap={{ scale: 0.99 }}
+                      onClick={addSecondarySite}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.5rem',
+                        width: '100%',
+                        padding: '0.65rem',
+                        borderRadius: '10px',
+                        border: '2px dashed #cbd5e1',
+                        background: '#ffffff',
+                        color: '#0f172a',
+                        fontWeight: 700,
+                        fontSize: '0.82rem',
+                        cursor: 'pointer',
+                        transition: 'border-color 0.2s ease, background-color 0.2s ease',
+                        marginTop: '0.25rem'
+                      }}
+                    >
+                      <span style={{ fontSize: '1.1rem', lineHeight: 1, color: 'var(--primary)', fontWeight: 800 }}>+</span>
+                      Ajouter un site secondaire
+                    </motion.button>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.25rem' }}>
+                <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#334155' }}>
+                  Type d'activité *
+                </span>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+                  gap: '0.65rem',
+                }}>
+                  {establishmentTypes.map((type) => {
+                    const Icon = establishmentTypeIcons[type] || HelpCircle;
+                    const isSelected = organization.type === type;
+                    return (
+                      <motion.div
+                        key={type}
+                        whileHover={{ y: -2, scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => {
+                          setOrganization(prev => ({ ...prev, type }));
+                        }}
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: '0.65rem',
+                          borderRadius: '12px',
+                          border: isSelected ? '2px solid var(--primary)' : '1.5px solid var(--light-border)',
+                          background: isSelected ? 'rgba(16, 185, 129, 0.03)' : '#ffffff',
+                          cursor: 'pointer',
+                          position: 'relative',
+                          transition: 'all 0.2s',
+                          minHeight: '76px',
+                          textAlign: 'center',
+                          boxShadow: isSelected ? '0 4px 12px rgba(16, 185, 129, 0.06)' : 'none'
+                        }}
+                      >
+                        <div style={{
+                          color: isSelected ? 'var(--primary)' : '#64748b',
+                          marginBottom: '0.25rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}>
+                          <Icon size={18} strokeWidth={isSelected ? 2.5 : 2} />
+                        </div>
+                        <span style={{
+                          fontSize: '0.74rem',
+                          fontWeight: isSelected ? 800 : 550,
+                          color: isSelected ? '#0f172a' : '#475569',
+                          lineHeight: 1.2
+                        }}>
+                          {type}
+                        </span>
+                        {isSelected && (
+                          <div style={{
+                            position: 'absolute',
+                            top: '4px',
+                            right: '4px',
+                            background: 'var(--primary)',
+                            color: 'white',
+                            borderRadius: '50%',
+                            width: '14px',
+                            height: '14px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}>
+                            <Check size={8} strokeWidth={3} />
+                          </div>
+                        )}
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {miniStep === 2 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div>
+                <span className="badge badge-reception" style={{ marginBottom: '0.5rem', display: 'inline-flex', gap: '0.35rem' }}>
+                  <ShieldCheck size={14} /> Législation
+                </span>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--text-main)' }}>Réglementation RH</h2>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                  Sélectionnez le pays dont dépend le droit du travail de vos collaborateurs.
+                </p>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem', marginTop: '0.5rem' }}>
+                {/* France Card */}
+                <motion.div
+                  whileHover={{ y: -5, boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05)', borderColor: organization.regulatoryCountryCode === 'FR' ? 'var(--primary)' : '#cbd5e1' }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    setOrganization(prev => ({ ...prev, regulatoryCountryCode: 'FR' }));
+                  }}
+                  style={{
+                    cursor: 'pointer',
+                    padding: '1.5rem',
+                    borderRadius: '20px',
+                    border: organization.regulatoryCountryCode === 'FR' ? '2px solid var(--primary)' : '1.5px solid var(--light-border)',
+                    background: organization.regulatoryCountryCode === 'FR' ? 'rgba(16, 185, 129, 0.03)' : '#ffffff',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '1rem',
+                    position: 'relative',
+                    transition: 'border-color 0.2s, background-color 0.2s',
+                    boxShadow: organization.regulatoryCountryCode === 'FR' ? '0 10px 25px rgba(16, 185, 129, 0.08)' : 'var(--shadow-sm)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '2.8rem', lineHeight: 1 }}>🇫🇷</span>
+                    {organization.regulatoryCountryCode === 'FR' && (
+                      <div style={{ background: 'var(--primary)', color: 'white', borderRadius: '50%', width: '20px', height: '20px', display: 'grid', placeItems: 'center' }}>
+                        <Check size={12} strokeWidth={3} />
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-main)' }}>France</h3>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.35rem', lineHeight: 1.45 }}>
+                      Gestion réglementaire conforme au Code du Travail français et conventions HCR (heures supplémentaires, congés payés standards, repos hebdomadaires, modulation).
+                    </p>
+                  </div>
+                </motion.div>
+
+                {/* Finlande Card */}
+                <motion.div
+                  whileHover={{ y: -5, boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05)', borderColor: organization.regulatoryCountryCode === 'FI' ? 'var(--primary)' : '#cbd5e1' }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    setOrganization(prev => ({ ...prev, regulatoryCountryCode: 'FI' }));
+                  }}
+                  style={{
+                    cursor: 'pointer',
+                    padding: '1.5rem',
+                    borderRadius: '20px',
+                    border: organization.regulatoryCountryCode === 'FI' ? '2px solid var(--primary)' : '1.5px solid var(--light-border)',
+                    background: organization.regulatoryCountryCode === 'FI' ? 'rgba(16, 185, 129, 0.03)' : '#ffffff',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '1rem',
+                    position: 'relative',
+                    transition: 'border-color 0.2s, background-color 0.2s',
+                    boxShadow: organization.regulatoryCountryCode === 'FI' ? '0 10px 25px rgba(16, 185, 129, 0.08)' : 'var(--shadow-sm)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '2.8rem', lineHeight: 1 }}>🇫🇮</span>
+                    {organization.regulatoryCountryCode === 'FI' && (
+                      <div style={{ background: 'var(--primary)', color: 'white', borderRadius: '50%', width: '20px', height: '20px', display: 'grid', placeItems: 'center' }}>
+                        <Check size={12} strokeWidth={3} />
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-main)' }}>Finlande</h3>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.35rem', lineHeight: 1.45 }}>
+                      Réglementation et droit du travail finlandais. Adapté aux établissements opérant en Finlande (gestion des congés annuels spécifiques, conventions TES locales).
+                    </p>
+                  </div>
+                </motion.div>
+              </div>
+            </div>
+          )}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }
@@ -1531,198 +1776,209 @@ interface MistralKeyStepProps {
 function MistralKeyStep({ value, onChange, onSkip }: MistralKeyStepProps) {
   const [showKey, setShowKey] = useState(false);
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: '2.5rem', alignItems: 'center', padding: '0.5rem 0' }}>
-      {/* Left Column - Presentation & Tech highlights */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
-          <span
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '1.25rem', maxWidth: '580px', margin: '0 auto', padding: '0.5rem 0' }}>
+      {/* Header Badges */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+            background: 'rgba(59, 130, 246, 0.06)',
+            color: '#2563eb',
+            border: '1px solid rgba(59, 130, 246, 0.12)',
+            fontSize: '0.72rem',
+            fontWeight: 700,
+            padding: '0.25rem 0.6rem',
+            borderRadius: '20px',
+          }}
+        >
+          <span style={{ display: 'inline-flex', borderRadius: '1.5px', overflow: 'hidden', width: '13px', height: '8px', boxShadow: '0 1px 1px rgba(0,0,0,0.1)' }}>
+            <span style={{ width: '33.3%', background: '#002395', height: '100%' }}></span>
+            <span style={{ width: '33.3%', background: '#FFFFFF', height: '100%' }}></span>
+            <span style={{ width: '33.3%', background: '#ED2939', height: '100%' }}></span>
+          </span>
+          Souveraineté Française
+        </span>
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.3rem',
+            background: 'rgba(249, 115, 22, 0.06)',
+            color: '#ea580c',
+            border: '1px solid rgba(249, 115, 22, 0.12)',
+            fontSize: '0.72rem',
+            fontWeight: 700,
+            padding: '0.25rem 0.6rem',
+            borderRadius: '20px',
+          }}
+        >
+          <Sparkles size={11} /> IA 100% Française
+        </span>
+      </div>
+
+      {/* Animated Mistral Logo (centered) */}
+      <div style={{ position: 'relative', width: '180px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0.25rem 0' }}>
+        <motion.div
+          style={{
+            position: 'absolute',
+            width: '180px',
+            height: '40px',
+            borderRadius: '12px',
+            background: 'radial-gradient(circle, rgba(249, 115, 22, 0.12) 0%, transparent 70%)',
+            filter: 'blur(8px)',
+          }}
+          animate={{ scale: [1, 1.15, 1] }}
+          transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
+        />
+        <img
+          src="/mistral-logo.png"
+          alt="Mistral AI"
+          style={{
+            height: '32px',
+            objectFit: 'contain',
+            filter: 'drop-shadow(0 4px 10px rgba(249, 115, 22, 0.15))',
+            zIndex: 2,
+          }}
+        />
+      </div>
+
+      {/* Title & Desc */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem' }}>
+        <h2 style={{ fontSize: '1.6rem', fontWeight: 900, letterSpacing: '-0.04em', lineHeight: 1.2, margin: 0, color: 'var(--text-main)' }}>
+          Intelligence Artificielle <span style={{ background: 'linear-gradient(90deg, #f97316, #ea580c)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Mistral AI</span>
+        </h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', lineHeight: 1.45, maxWidth: '500px', margin: 0 }}>
+          ToqueHub intègre nativement Mistral AI, le fleuron de l'IA française. Toutes vos requêtes restent sécurisées, localisées et traitées sur des serveurs en France (conformité RGPD totale).
+        </p>
+      </div>
+
+      {/* Input Box Card */}
+      <div style={{
+        width: '100%',
+        padding: '1.5rem',
+        borderRadius: '20px',
+        background: '#ffffff',
+        border: '1px solid var(--light-border)',
+        boxShadow: '0 4px 25px rgba(0, 0, 0, 0.03)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '1rem',
+        alignItems: 'stretch',
+        textAlign: 'left'
+      }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+          <h3 style={{ fontSize: '0.85rem', fontWeight: 800, margin: 0, color: 'var(--text-main)' }}>Activer l'assistant IA</h3>
+          <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+            Saisissez votre clé API ci-dessous. Vous pouvez en obtenir une gratuitement sur <a href="https://console.mistral.ai" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', fontWeight: 700, textDecoration: 'underline' }}>console.mistral.ai</a>
+          </span>
+        </div>
+
+        {/* Input */}
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+          <input
+            type={showKey ? 'text' : 'password'}
+            placeholder="Clé API Mistral (ex: mistral-...)"
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
             style={{
-              display: 'inline-flex',
+              width: '100%',
+              paddingRight: '2.5rem',
+              paddingLeft: '1rem',
+              height: '44px',
+              borderRadius: '12px',
+              border: '1.5px solid var(--light-border)',
+              background: '#f8fafc',
+              fontSize: '0.9rem',
+              outline: 'none',
+              transition: 'all 0.2s',
+            }}
+            onFocus={(e) => {
+              e.target.style.borderColor = 'var(--primary)';
+              e.target.style.background = '#ffffff';
+            }}
+            onBlur={(e) => {
+              e.target.style.borderColor = 'var(--light-border)';
+              e.target.style.background = '#f8fafc';
+            }}
+            autoFocus
+          />
+          <button
+            type="button"
+            onClick={() => setShowKey(!showKey)}
+            style={{
+              position: 'absolute',
+              right: '0.75rem',
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--text-muted)',
+              display: 'flex',
               alignItems: 'center',
-              gap: '0.45rem',
-              background: 'rgba(59, 130, 246, 0.08)',
-              color: '#2563eb',
-              border: '1px solid rgba(59, 130, 246, 0.15)',
-              fontSize: '0.75rem',
-              fontWeight: 700,
-              padding: '0.3rem 0.65rem',
-              borderRadius: '20px',
-              textTransform: 'none',
+              justifyContent: 'center',
+              padding: 0,
             }}
           >
-            <span style={{ display: 'inline-flex', borderRadius: '1.5px', overflow: 'hidden', width: '15px', height: '10px', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
-              <span style={{ width: '33.3%', background: '#002395', height: '100%' }}></span>
-              <span style={{ width: '33.3%', background: '#FFFFFF', height: '100%' }}></span>
-              <span style={{ width: '33.3%', background: '#ED2939', height: '100%' }}></span>
-            </span>
-            Souveraineté Française
-          </span>
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.3rem',
-              background: 'rgba(16, 185, 129, 0.08)',
-              color: '#10b981',
-              border: '1px solid rgba(16, 185, 129, 0.15)',
-              fontSize: '0.75rem',
-              fontWeight: 700,
-              padding: '0.3rem 0.65rem',
-              borderRadius: '20px',
-              textTransform: 'none',
-            }}
-          >
-            <Sparkles size={12} /> IA 100% Française
-          </span>
-        </div>
-
-        <div>
-          <h2 style={{ fontSize: '1.85rem', fontWeight: 900, letterSpacing: '-0.04em', lineHeight: 1.15, marginBottom: '0.5rem', color: 'var(--text-main)' }}>
-            Intelligence Artificielle <span style={{ color: '#f97316' }}>Mistral AI</span>
-          </h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', lineHeight: 1.5, margin: 0 }}>
-            ToqueHub intègre nativement Mistral, le fleuron de l'IA française. Toutes les requêtes et fichiers restent localisés et traités sur des serveurs hébergés en France (conformité RGPD totale).
-          </p>
-        </div>
-
-        {/* Animated Mistral Logo */}
-        <div style={{ display: 'flex', justifyContent: 'center', margin: '0.5rem 0' }}>
-          <div style={{ position: 'relative', width: '100%', minHeight: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <motion.div
-              style={{
-                position: 'absolute',
-                width: '120px',
-                height: '60px',
-                borderRadius: '50%',
-                background: 'radial-gradient(circle, rgba(249, 115, 22, 0.2) 0%, transparent 70%)',
-                filter: 'blur(12px)',
-              }}
-              animate={{ scale: [1, 1.2, 1] }}
-              transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
-            />
-            <motion.img
-              src="/mistral-logo.png"
-              alt="Mistral AI"
-              width="180"
-              animate={{ y: [0, -6, 0] }}
-              transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
-              style={{
-                filter: 'drop-shadow(0 6px 16px rgba(249, 115, 22, 0.25))',
-                objectFit: 'contain',
-                maxWidth: '100%',
-                zIndex: 2,
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Feature Highlights */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-          <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'start' }}>
-            <div style={{ display: 'grid', placeItems: 'center', width: '26px', height: '26px', borderRadius: '50%', background: 'rgba(59, 130, 246, 0.08)', color: '#2563eb', flexShrink: 0, marginTop: '2px' }}>
-              <Server size={13} />
-            </div>
-            <div>
-              <strong style={{ fontSize: '0.82rem', color: 'var(--text-main)', display: 'block' }}>Hébergement en France</strong>
-              <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>Aucun transfert de données hors du territoire français. Vos données financières et d'achats restent strictement privées.</span>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'start' }}>
-            <div style={{ display: 'grid', placeItems: 'center', width: '26px', height: '26px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.08)', color: '#10b981', flexShrink: 0, marginTop: '2px' }}>
-              <ImagePlus size={13} />
-            </div>
-            <div>
-              <strong style={{ fontSize: '0.82rem', color: 'var(--text-main)', display: 'block' }}>OCR Intelligent & Analyse d'images</strong>
-              <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>Analyse les photos et PDFs de vos factures / bons de livraison et en extrait instantanément les lignes et prix.</span>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'start' }}>
-            <div style={{ display: 'grid', placeItems: 'center', width: '26px', height: '26px', borderRadius: '50%', background: 'rgba(245, 158, 11, 0.08)', color: '#f59e0b', flexShrink: 0, marginTop: '2px' }}>
-              <ShieldCheck size={13} />
-            </div>
-            <div>
-              <strong style={{ fontSize: '0.82rem', color: 'var(--text-main)', display: 'block' }}>Évite la saisie manuelle et les erreurs</strong>
-              <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>L'IA remplit les réceptions de stock à votre place. Vous n'avez plus qu'à vérifier et valider en 1 clic.</span>
-            </div>
-          </div>
+            {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
         </div>
       </div>
 
-      {/* Right Column - Input form */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', padding: '1.5rem', borderRadius: '18px', background: '#f8fafc', border: '1px solid var(--light-border)' }}>
-        <div>
-          <h3 style={{ fontSize: '1rem', fontWeight: 800, margin: '0 0 0.35rem 0', color: 'var(--text-main)' }}>Activer l'OCR intelligent</h3>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', lineHeight: 1.45, margin: 0 }}>
-            Saisissez votre clé API ci-dessous. ToqueHub s'occupe de la connexion sécurisée aux services de Mistral AI.
-          </p>
+      {/* Horizontal Highlights Row */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        width: '100%',
+        gap: '0.75rem',
+        marginTop: '0.25rem',
+        flexWrap: 'wrap'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: '1 1 150px', background: '#f8fafc', padding: '0.6rem 0.85rem', borderRadius: '12px', border: '1px solid var(--light-border)', justifyContent: 'center' }}>
+          <Server size={14} color="#2563eb" />
+          <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-main)' }}>Hébergement France</span>
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: '1 1 150px', background: '#f8fafc', padding: '0.6rem 0.85rem', borderRadius: '12px', border: '1px solid var(--light-border)', justifyContent: 'center' }}>
+          <Sparkles size={14} color="#10b981" />
+          <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-main)' }}>IA 100% Souveraine</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: '1 1 150px', background: '#f8fafc', padding: '0.6rem 0.85rem', borderRadius: '12px', border: '1px solid var(--light-border)', justifyContent: 'center' }}>
+          <ShieldCheck size={14} color="#f59e0b" />
+          <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-main)' }}>Zéro saisie manuelle</span>
+        </div>
+      </div>
 
-        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-main)' }}>
-          Clé API Mistral
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-            <input
-              type={showKey ? 'text' : 'password'}
-              placeholder="mistral-..."
-              value={value}
-              onChange={(event) => onChange(event.target.value)}
-              style={{
-                width: '100%',
-                paddingRight: '2.5rem',
-                height: '42px',
-                borderRadius: '10px',
-                border: '1px solid var(--light-border)',
-                background: 'white',
-                fontSize: '0.88rem',
-              }}
-              autoFocus
-            />
-            <button
-              type="button"
-              onClick={() => setShowKey(!showKey)}
-              style={{
-                position: 'absolute',
-                right: '0.75rem',
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                color: 'var(--text-muted)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: 0,
-              }}
-            >
-              {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
-            </button>
-          </div>
-        </label>
-
-        <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '-0.5rem' }}>
-          Obtenez une clé gratuite sur <a href="https://console.mistral.ai" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', fontWeight: 700, textDecoration: 'underline' }}>console.mistral.ai</a>
+      {/* Skip option */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.25rem', width: '100%' }}>
+        <button
+          type="button"
+          onClick={onSkip}
+          style={{
+            height: '42px',
+            borderRadius: '12px',
+            background: 'transparent',
+            border: '1.5px solid var(--light-border)',
+            color: 'var(--text-main)',
+            fontWeight: 700,
+            fontSize: '0.85rem',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            width: '100%'
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.background = '#f1f5f9';
+            e.currentTarget.style.borderColor = '#cbd5e1';
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.borderColor = 'var(--light-border)';
+          }}
+        >
+          Passer cette étape
+        </button>
+        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+          L'IA est optionnelle. Vous pourrez configurer ou modifier votre clé plus tard dans vos paramètres.
         </span>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.75rem' }}>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={onSkip}
-            style={{
-              height: '42px',
-              borderRadius: '10px',
-              justifyContent: 'center',
-              fontWeight: 700,
-              fontSize: '0.85rem',
-              background: 'white',
-              border: '1px solid var(--light-border)',
-              color: 'var(--text-main)',
-            }}
-          >
-            Passer cette étape
-          </button>
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.3 }}>
-            L'IA est optionnelle. Vous pourrez également configurer ou modifier votre clé plus tard dans vos paramètres.
-          </span>
-        </div>
       </div>
     </div>
   );
@@ -1788,11 +2044,12 @@ function OnboardingAside({ step, organization }: { step: OnboardingStep; organiz
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem', height: '100%', justifyContent: 'space-between' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <ChefHat size={28} color="#10b981" />
-          <span style={{ fontWeight: 850, fontSize: '1.2rem', color: 'white', letterSpacing: '-0.03em' }}>
-            TOQUE<span style={{ color: 'var(--primary)' }}>HUB</span>
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <img
+            src="/toquehub-logo-wide-transparent-white.png"
+            alt="ToqueHub Logo"
+            style={{ height: '32px', objectFit: 'contain' }}
+          />
         </div>
 
         <div>
