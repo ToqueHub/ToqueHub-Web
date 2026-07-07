@@ -71,6 +71,20 @@ get_env() {
   printf '%s\n' "${!key:-${value:-$fallback}}"
 }
 
+origin_for_host() {
+  local host="$1"
+  local port="$2"
+  if [[ "$port" == "80" ]]; then
+    printf 'http://%s\n' "$host"
+  else
+    printf 'http://%s:%s\n' "$host" "$port"
+  fi
+}
+
+server_ip() {
+  hostname -I 2>/dev/null | awk '{print $1}'
+}
+
 set_env() {
   local key="$1"
   local value="$2"
@@ -85,6 +99,67 @@ set_env() {
   fi
 
   mv "$tmp" "$ENV_FILE"
+}
+
+run_privileged() {
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    "$@"
+    return
+  fi
+
+  if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+    sudo "$@"
+    return
+  fi
+
+  return 1
+}
+
+ensure_mdns_nsswitch() {
+  if [[ ! -f /etc/nsswitch.conf ]]; then
+    return
+  fi
+
+  if grep -E '^hosts:' /etc/nsswitch.conf | grep -q 'mdns4_minimal'; then
+    return
+  fi
+
+  run_privileged cp /etc/nsswitch.conf /etc/nsswitch.conf.toquehub.bak || true
+  run_privileged sed -i -E 's/^hosts:.*/hosts:          files mdns4_minimal [NOTFOUND=return] dns mdns4/' /etc/nsswitch.conf || true
+}
+
+configure_local_hostname() {
+  local local_hostname
+  local_hostname="$(get_env "TOQUEHUB_LOCAL_HOSTNAME" "toquehub")"
+
+  if [[ "$(uname -s)" != "Linux" ]]; then
+    return
+  fi
+
+  if ! command -v apt-get >/dev/null 2>&1 || ! command -v systemctl >/dev/null 2>&1; then
+    return
+  fi
+
+  log "Configuration mDNS locale: http://$local_hostname.local"
+  if ! run_privileged apt-get install -y avahi-daemon libnss-mdns; then
+    printf 'Avahi non configure automatiquement: relance avec sudo ou execute sudo apt-get install -y avahi-daemon libnss-mdns\n' >&2
+    return
+  fi
+
+  ensure_mdns_nsswitch
+  run_privileged systemctl enable --now avahi-daemon || true
+  if command -v hostnamectl >/dev/null 2>&1; then
+    run_privileged hostnamectl set-hostname "$local_hostname" || true
+  else
+    printf '%s\n' "$local_hostname" | run_privileged tee /etc/hostname >/dev/null || true
+    run_privileged hostname "$local_hostname" || true
+  fi
+
+  if grep -qE '^127\.0\.1\.1\s+' /etc/hosts; then
+    run_privileged sed -i "s/^127\\.0\\.1\\.1.*/127.0.1.1 $local_hostname/" /etc/hosts || true
+  else
+    printf '127.0.1.1 %s\n' "$local_hostname" | run_privileged tee -a /etc/hosts >/dev/null || true
+  fi
 }
 
 port_in_use() {
@@ -212,6 +287,8 @@ if [[ ! -f "$ENV_FILE" ]]; then
   cp "$ROOT_DIR/.env.docker.example" "$ENV_FILE"
 fi
 
+configure_local_hostname
+
 SERIAL_PORT="${ZIGBEE_ADAPTER_PATH:-$(detect_serial_port || true)}"
 if [[ -z "$SERIAL_PORT" ]]; then
   SERIAL_PORT="/dev/ttyUSB0"
@@ -266,13 +343,19 @@ else
   printf 'Adaptateur Zigbee2MQTT mis a jour: %s\n' "$ADAPTER_TYPE"
 fi
 
+INSTALL_IP="$(server_ip || true)"
+INSTALL_IP="${INSTALL_IP:-IP_DU_SERVEUR}"
+LOCAL_HOSTNAME="$(get_env "TOQUEHUB_LOCAL_HOSTNAME" "toquehub")"
+
 cat <<MSG
 
 Prototype Docker pret.
   Fichier env: $ENV_FILE
   Config Zigbee2MQTT: $IOT_CONFIG_FILE
   Coordinateur Zigbee: $SERIAL_PORT
-  Frontend ToqueHub: http://localhost:$HTTP_PORT
+  Frontend ToqueHub local: http://localhost:$HTTP_PORT
+  Depuis un ordinateur connecte au meme reseau: $(origin_for_host "$LOCAL_HOSTNAME.local" "$HTTP_PORT")
+  Adresse IP de secours: $(origin_for_host "$INSTALL_IP" "$HTTP_PORT")
   Zigbee2MQTT: http://localhost:$ZIGBEE_HTTP_PORT
   MQTT host: localhost:$MQTT_PORT
 

@@ -48,10 +48,10 @@ fi
 cat <<MSG
 Adresses ToqueHub
 -----------------
-Adresse a essayer en premier:
+Depuis un ordinateur connecte au meme reseau, ouvre:
   $local_url
 
-Adresse IP de secours:
+Si cette adresse ne charge pas, utilise l'adresse IP de secours:
   ${ip_url:-IP non detectee}
 
 Fichier env:
@@ -66,14 +66,45 @@ if command -v systemctl >/dev/null 2>&1; then
   fi
 fi
 
+if command -v getent >/dev/null 2>&1; then
+  printf '\nResolution mDNS:\n'
+  if getent hosts "$local_hostname.local" >/dev/null 2>&1; then
+    printf '  OK: %s\n' "$(getent hosts "$local_hostname.local" | head -1)"
+  else
+    printf '  KO: %s.local ne se resout pas sur cette machine.\n' "$local_hostname"
+    printf '  Correctif: sudo apt-get install -y avahi-daemon libnss-mdns && sudo systemctl enable --now avahi-daemon && sudo hostnamectl set-hostname %s\n' "$local_hostname"
+    printf '  Verifie aussi /etc/nsswitch.conf: la ligne hosts doit contenir mdns4_minimal.\n'
+  fi
+fi
+
+probe_url() {
+  local url="$1"
+  local attempts="${2:-1}"
+  local delay="${3:-2}"
+  local attempt
+
+  for ((attempt = 1; attempt <= attempts; attempt++)); do
+    if curl -fsS --max-time 3 "$url/api/discovery" >/dev/null 2>&1; then
+      return 0
+    fi
+    if [[ "$attempt" -lt "$attempts" ]]; then
+      sleep "$delay"
+    fi
+  done
+
+  return 1
+}
+
 if command -v curl >/dev/null 2>&1; then
   printf '\nTest API discovery:\n'
-  if curl -fsS --max-time 3 "$local_url/api/discovery" >/dev/null 2>&1; then
+  if probe_url "$local_url" 10 3; then
     printf '  OK: %s/api/discovery\n' "$local_url"
-  elif [[ -n "$ip_url" ]] && curl -fsS --max-time 3 "$ip_url/api/discovery" >/dev/null 2>&1; then
+  elif [[ -n "$ip_url" ]] && probe_url "$ip_url" 3 2; then
     printf '  OK via IP: %s/api/discovery\n' "$ip_url"
     printf '  Le serveur marche; si %s ne repond pas, le blocage vient du mDNS/multicast du reseau.\n' "$local_url"
   else
     printf '  KO: ToqueHub ne repond pas encore sur /api/discovery.\n'
+    printf '  A verifier: docker compose --env-file %s ps\n' "$ENV_FILE"
+    printf '  Puis: curl -v %s/api/discovery\n' "${ip_url:-$local_url}"
   fi
 fi

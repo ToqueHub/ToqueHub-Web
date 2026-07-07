@@ -129,6 +129,19 @@ url_for_host() {
   origin_for_host "$@"
 }
 
+ensure_mdns_nsswitch() {
+  if [[ ! -f /etc/nsswitch.conf ]]; then
+    return
+  fi
+
+  if grep -E '^hosts:' /etc/nsswitch.conf | grep -q 'mdns4_minimal'; then
+    return
+  fi
+
+  sudo_cmd cp /etc/nsswitch.conf /etc/nsswitch.conf.toquehub.bak || true
+  sudo_cmd sed -i -E 's/^hosts:.*/hosts:          files mdns4_minimal [NOTFOUND=return] dns mdns4/' /etc/nsswitch.conf || true
+}
+
 tailscale_ip() {
   command -v tailscale >/dev/null 2>&1 || return 0
   tailscale ip -4 2>/dev/null | head -1 || true
@@ -211,6 +224,7 @@ install_docker() {
 configure_local_hostname() {
   log "Configuration de l'adresse locale http://$TOQUEHUB_LOCAL_HOSTNAME.local"
   sudo_cmd apt-get install -y avahi-daemon libnss-mdns
+  ensure_mdns_nsswitch
   sudo_cmd systemctl enable --now avahi-daemon || true
 
   if [[ "$TOQUEHUB_SET_LOCAL_HOSTNAME" == "true" || "$TOQUEHUB_SET_LOCAL_HOSTNAME" == "1" ]]; then
@@ -382,10 +396,10 @@ print_summary() {
 
 ToqueHub est installe.
 
-Adresse a ouvrir en premier:
+Depuis un ordinateur connecte au meme reseau, ouvre:
   $local_url
 
-Adresse IP de secours:
+Si cette adresse ne charge pas, utilise l'adresse IP de secours:
   $ip_url
 
 Adresse web officielle:

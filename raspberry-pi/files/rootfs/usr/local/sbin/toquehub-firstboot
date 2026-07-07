@@ -73,6 +73,19 @@ find_free_port() {
   exit 1
 }
 
+ensure_mdns_nsswitch() {
+  if [[ ! -f /etc/nsswitch.conf ]]; then
+    return
+  fi
+
+  if grep -E '^hosts:' /etc/nsswitch.conf | grep -q 'mdns4_minimal'; then
+    return
+  fi
+
+  cp /etc/nsswitch.conf /etc/nsswitch.conf.toquehub.bak || true
+  sed -i -E 's/^hosts:.*/hosts:          files mdns4_minimal [NOTFOUND=return] dns mdns4/' /etc/nsswitch.conf || true
+}
+
 set_env() {
   local key="$1"
   local value="$2"
@@ -136,6 +149,7 @@ configure_local_hostname() {
   local_hostname="${TOQUEHUB_LOCAL_HOSTNAME:-toquehub}"
   set_hostname="${TOQUEHUB_SET_LOCAL_HOSTNAME:-true}"
 
+  ensure_mdns_nsswitch
   systemctl enable --now avahi-daemon >/dev/null 2>&1 || true
   if [[ "$set_hostname" != "true" && "$set_hostname" != "1" ]]; then
     return

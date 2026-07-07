@@ -33,6 +33,10 @@ secret() {
   openssl rand -hex 32
 }
 
+server_ip() {
+  hostname -I 2>/dev/null | awk '{print $1}'
+}
+
 set_env() {
   local key="$1"
   local value="$2"
@@ -83,6 +87,19 @@ origin_for_host() {
   fi
 }
 
+ensure_mdns_nsswitch() {
+  if [[ ! -f /etc/nsswitch.conf ]]; then
+    return
+  fi
+
+  if grep -E '^hosts:' /etc/nsswitch.conf | grep -q 'mdns4_minimal'; then
+    return
+  fi
+
+  sudo cp /etc/nsswitch.conf /etc/nsswitch.conf.toquehub.bak || true
+  sudo sed -i -E 's/^hosts:.*/hosts:          files mdns4_minimal [NOTFOUND=return] dns mdns4/' /etc/nsswitch.conf || true
+}
+
 port_in_use() {
   local port="$1"
 
@@ -126,6 +143,7 @@ resolve_http_port() {
 
 configure_local_hostname() {
   sudo apt-get install -y avahi-daemon libnss-mdns
+  ensure_mdns_nsswitch
   sudo systemctl enable --now avahi-daemon || true
 
   if [[ "$TOQUEHUB_SET_LOCAL_HOSTNAME" == "true" || "$TOQUEHUB_SET_LOCAL_HOSTNAME" == "1" ]]; then
@@ -217,13 +235,23 @@ sudo systemctl enable --now toquehub-remote-agent.service
 sudo systemctl enable toquehub-firstboot.service
 sudo systemctl start toquehub-firstboot.service
 
+install_ip="$(server_ip || true)"
+install_ip="${install_ip:-IP_DU_SERVEUR}"
+
 cat <<MSG
 
-ToqueHub is installed.
-Open:
+ToqueHub est installe.
+
+Depuis un ordinateur connecte au meme reseau, ouvre:
   $(origin_for_host "$TOQUEHUB_LOCAL_HOSTNAME.local" "$HTTP_PORT")
 
-Useful commands:
+Si cette adresse ne charge pas, utilise l'adresse IP de secours:
+  $(origin_for_host "$install_ip" "$HTTP_PORT")
+
+Pour revoir ces adresses, lance:
+  toquehub address
+
+Commandes utiles:
   toquehub status
   toquehub logs
   toquehub update
