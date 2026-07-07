@@ -2001,10 +2001,12 @@ export interface StockReception {
 export interface InventoryLine {
   id: string;
   productId: string;
+  lotId?: string | null;
   product: Product;
   countedQuantity?: string | number | null;
   theoreticalQuantity?: string | number | null;
   variance?: string | number | null;
+  varianceQuantity?: string | number | null;
 }
 
 export interface Inventory {

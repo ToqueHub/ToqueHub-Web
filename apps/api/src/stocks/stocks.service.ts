@@ -19,6 +19,8 @@ const WRITE_ROLES = ['SUPER_ADMIN', 'Administrateur', 'Manager', 'Chef', 'Second
 const ADMIN_MANAGER_ROLES = ['SUPER_ADMIN', 'Administrateur', 'Manager', 'Chef'];
 const NEGATIVE_TYPES = new Set<StockMovementType>([StockMovementType.OUT, StockMovementType.LOSS]);
 const CONSUMPTION_TYPES = [StockMovementType.OUT, StockMovementType.PRODUCTION, StockMovementType.LOSS, StockMovementType.CORRECTION, StockMovementType.INVENTORY];
+const UNCATEGORIZED_CATEGORY_NAME = 'Sans catégorie';
+const DEFAULT_STOCK_CATEGORIES = ['Sans catégorie', 'Épicerie', 'Produits frais', 'Surgelés', 'Boissons', 'Viandes', 'Poissons', 'Produits laitiers', 'Fruits et légumes'];
 
 type Actor = { id: string; role: string };
 type Tx = Prisma.TransactionClient;
@@ -50,7 +52,7 @@ export class StocksService {
     return this.prisma.$transaction(async (tx) => {
       await tx.organization.update({ where: { id: organizationId }, data: { stocksInstalledAt: new Date() } });
       await tx.category.createMany({
-        data: ['Épicerie', 'Produits frais', 'Surgelés', 'Boissons', 'Viandes', 'Poissons', 'Produits laitiers', 'Fruits et légumes'].map((name) => ({ organizationId, name })),
+        data: DEFAULT_STOCK_CATEGORIES.map((name) => ({ organizationId, name })),
         skipDuplicates: true,
       });
       await tx.unit.createMany({
@@ -107,7 +109,22 @@ export class StocksService {
   }
   async createCategory(organizationId: string, actor: Actor, dto: UpsertCategoryDto) { this.assertWrite(actor); return this.createAudited('category', organizationId, actor.id, AuditAction.CATEGORY_CREATED, dto); }
   async updateCategory(organizationId: string, actor: Actor, id: string, dto: UpsertCategoryDto) { this.assertWrite(actor); const item = await this.prisma.category.update({ where: { id, organizationId }, data: dto }); await this.log(organizationId, actor.id, AuditAction.CATEGORY_UPDATED, 'Category', item.id, item.name); return item; }
-  archiveCategory(organizationId: string, actor: Actor, id: string) { return this.archive('category', organizationId, actor, id, AuditAction.CATEGORY_ARCHIVED, 'Category'); }
+  async archiveCategory(organizationId: string, actor: Actor, id: string) {
+    this.assertWrite(actor);
+    return this.prisma.$transaction(async (tx) => {
+      const category = await tx.category.findFirst({ where: { id, organizationId } });
+      if (!category) throw new NotFoundException('Category not found');
+      if (this.categoryKey(category.name) === this.categoryKey(UNCATEGORIZED_CATEGORY_NAME)) {
+        throw new BadRequestException('La catégorie Sans catégorie ne peut pas être supprimée.');
+      }
+
+      const fallback = await this.ensureUncategorizedCategory(tx, organizationId);
+      const moved = await tx.product.updateMany({ where: { organizationId, categoryId: category.id }, data: { categoryId: fallback.id } });
+      const item = await tx.category.update({ where: { id: category.id }, data: { isArchived: true, archivedAt: new Date() } });
+      await this.audit(tx, organizationId, actor.id, AuditAction.CATEGORY_ARCHIVED, 'Category', item.id, item.name, { movedProducts: moved.count, fallbackCategoryId: fallback.id });
+      return item;
+    });
+  }
 
   listUnits(organizationId: string, q: ListQueryDto = {}) { return this.prisma.unit.findMany({ where: { organizationId, ...(q.includeArchived ? {} : { isArchived: false }), OR: q.search ? [{ name: { contains: q.search, mode: 'insensitive' } }, { symbol: { contains: q.search, mode: 'insensitive' } }] : undefined }, include: { fromConversions: { include: { toUnit: true } } }, orderBy: { name: 'asc' }, ...this.page(q) }); }
   async createUnit(organizationId: string, actor: Actor, dto: UpsertUnitDto) { this.assertWrite(actor); const item = await this.prisma.unit.create({ data: { ...dto, type: dto.type ?? UnitType.OTHER, organizationId } }); await this.log(organizationId, actor.id, AuditAction.UNIT_CREATED, 'Unit', item.id, item.name); return item; }
@@ -195,7 +212,7 @@ export class StocksService {
     });
   }
 
-  listInventories(organizationId: string, q: ListQueryDto = {}) { return this.prisma.inventory.findMany({ where: { organizationId, name: q.search ? { contains: q.search, mode: 'insensitive' } : undefined }, include: { lines: true, site: true, location: true, createdBy: { select: { email: true, firstName: true, lastName: true } } }, orderBy: { inventoryDate: 'desc' }, ...this.page(q) }); }
+  listInventories(organizationId: string, q: ListQueryDto = {}) { return this.prisma.inventory.findMany({ where: { organizationId, name: q.search ? { contains: q.search, mode: 'insensitive' } : undefined }, include: { lines: { include: { product: { include: { unit: true, category: true, primarySupplier: true } } } }, site: true, location: true, createdBy: { select: { email: true, firstName: true, lastName: true } } }, orderBy: { inventoryDate: 'desc' }, ...this.page(q) }); }
 
   async updateInventoryCounts(organizationId: string, actor: Actor, id: string, dto: UpdateInventoryCountsDto) {
     this.assertWrite(actor);
@@ -248,6 +265,14 @@ export class StocksService {
   private async recalculateAveragePrice(_tx: Tx, _product: { id: string; averagePrice: Prisma.Decimal }, _receivedQty: Prisma.Decimal) { /* V1 stores weighted average field; purchase price capture can refine this later. */ }
   private async log(organizationId: string, userId: string | null, action: AuditAction, entityType: string, entityId: string, entityName: string) { await this.prisma.auditLog.create({ data: { organizationId, userId: userId || null, action, entityType, entityId, entityName } }); }
   private async createAudited(model: 'category', organizationId: string, userId: string | null, action: AuditAction, dto: UpsertCategoryDto) { const item = await this.prisma.category.create({ data: { ...dto, organizationId } }); await this.log(organizationId, userId, action, 'Category', item.id, item.name); return item; }
+  private ensureUncategorizedCategory(tx: Tx, organizationId: string) {
+    return tx.category.upsert({
+      where: { organizationId_name: { organizationId, name: UNCATEGORIZED_CATEGORY_NAME } },
+      update: { isArchived: false, archivedAt: null },
+      create: { organizationId, name: UNCATEGORIZED_CATEGORY_NAME, description: 'Produits sans famille attribuée.' },
+    });
+  }
+  private categoryKey(name: string) { return name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase(); }
   private async archive(model: 'category' | 'unit' | 'supplier' | 'product' | 'site' | 'location', organizationId: string, actor: Actor, id: string, action: AuditAction, entityType: string) { this.assertWrite(actor); const delegate = this.prisma[model] as any; const item = await delegate.update({ where: { id, organizationId }, data: { isArchived: true, archivedAt: new Date() } }); await this.log(organizationId, actor.id, action, entityType, item.id, item.name); return item; }
   private async ensureCategory(organizationId: string, id: string) { const item = await this.prisma.category.findFirst({ where: { id, organizationId } }); if (!item) throw new NotFoundException('Category not found'); return item; }
   private async ensureUnit(organizationId: string, id: string) { const item = await this.prisma.unit.findFirst({ where: { id, organizationId } }); if (!item) throw new NotFoundException('Unit not found'); return item; }

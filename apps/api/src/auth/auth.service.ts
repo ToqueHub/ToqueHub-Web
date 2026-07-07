@@ -24,6 +24,19 @@ type PrefillStocksDto = {
 
 const ADMIN_ROLES = ['SUPER_ADMIN', 'Administrateur'];
 const SETTINGS_ROLES = ['SUPER_ADMIN', 'Administrateur', 'ADMIN', 'Manager', 'MANAGER'];
+const DEFAULT_STOCK_CATEGORIES = ['Sans catégorie', 'Épicerie', 'Produits frais', 'Surgelés', 'Boissons', 'Viandes', 'Poissons', 'Produits laitiers', 'Fruits et légumes'];
+const DEFAULT_STOCK_UNITS = [
+  { name: 'Kilogramme', symbol: 'kg', type: UnitType.MASS },
+  { name: 'Gramme', symbol: 'g', type: UnitType.MASS },
+  { name: 'Litre', symbol: 'L', type: UnitType.VOLUME },
+  { name: 'Millilitre', symbol: 'mL', type: UnitType.VOLUME },
+  { name: 'Pièce', symbol: 'pièce', type: UnitType.COUNT },
+  { name: 'Barquette', symbol: 'barquette', type: UnitType.PACKAGE },
+  { name: 'Caisse', symbol: 'caisse', type: UnitType.PACKAGE },
+  { name: 'Carton', symbol: 'carton', type: UnitType.PACKAGE },
+  { name: 'Bac', symbol: 'bac', type: UnitType.PACKAGE },
+];
+const DEFAULT_STOCK_LOCATIONS = ['Réserve sèche', 'Chambre froide positive', 'Chambre froide négative', 'Congélateur', 'Cuisine', 'Zone de production', 'Quai de réception'];
 
 @Injectable()
 export class AuthService {
@@ -336,9 +349,21 @@ export class AuthService {
     }
 
     await this.prisma.$transaction(async (tx) => {
+      await this.createDefaultStockCategories(tx, organizationId);
+      await this.createDefaultStockUnits(tx, organizationId);
+      await this.seedConversions(tx, organizationId);
+      const site = await tx.site.upsert({
+        where: { organizationId_name: { organizationId, name: organization.mainSiteName ?? 'Site principal' } },
+        update: {},
+        create: { organizationId, name: organization.mainSiteName ?? 'Site principal' },
+      });
+      await tx.location.createMany({
+        data: DEFAULT_STOCK_LOCATIONS.map((name) => ({ organizationId, siteId: site.id, name })),
+        skipDuplicates: true,
+      });
       await tx.organization.update({
         where: { id: organizationId },
-        data: { stocksInstalledAt: organization.stocksInstalledAt ?? new Date() },
+        data: { stocksInstalledAt: organization.stocksInstalledAt ?? new Date(), primarySiteId: organization.primarySiteId ?? site.id },
       });
       await tx.auditLog.create({ data: { organizationId, userId: user.id, action: AuditAction.MODULE_STOCKS_INSTALLED, entityType: 'Module', entityId: 'stocks', entityName: 'Stocks' } });
     });
@@ -359,27 +384,11 @@ export class AuthService {
 
     await this.prisma.$transaction(async (tx) => {
       if (dto.categories) {
-        await tx.category.createMany({
-          data: ['Épicerie', 'Produits frais', 'Surgelés', 'Boissons', 'Viandes', 'Poissons', 'Produits laitiers', 'Fruits et légumes'].map((name) => ({ organizationId, name })),
-          skipDuplicates: true,
-        });
+        await this.createDefaultStockCategories(tx, organizationId);
       }
 
       if (dto.units) {
-        await tx.unit.createMany({
-          data: [
-            { name: 'Kilogramme', symbol: 'kg', type: UnitType.MASS },
-            { name: 'Gramme', symbol: 'g', type: UnitType.MASS },
-            { name: 'Litre', symbol: 'L', type: UnitType.VOLUME },
-            { name: 'Millilitre', symbol: 'mL', type: UnitType.VOLUME },
-            { name: 'Pièce', symbol: 'pièce', type: UnitType.COUNT },
-            { name: 'Barquette', symbol: 'barquette', type: UnitType.PACKAGE },
-            { name: 'Caisse', symbol: 'caisse', type: UnitType.PACKAGE },
-            { name: 'Carton', symbol: 'carton', type: UnitType.PACKAGE },
-            { name: 'Bac', symbol: 'bac', type: UnitType.PACKAGE },
-          ].map((unit) => ({ ...unit, organizationId })),
-          skipDuplicates: true,
-        });
+        await this.createDefaultStockUnits(tx, organizationId);
         await this.seedConversions(tx, organizationId);
       }
 
@@ -395,7 +404,7 @@ export class AuthService {
 
       if ((dto.locations || dto.examples) && siteId) {
         await tx.location.createMany({
-          data: ['Réserve sèche', 'Chambre froide positive', 'Chambre froide négative', 'Congélateur', 'Cuisine', 'Zone de production', 'Quai de réception'].map((name) => ({ organizationId, siteId, name })),
+          data: DEFAULT_STOCK_LOCATIONS.map((name) => ({ organizationId, siteId, name })),
           skipDuplicates: true,
         });
       }
@@ -703,6 +712,20 @@ export class AuthService {
         },
       });
     }
+  }
+
+  private createDefaultStockCategories(tx: Prisma.TransactionClient, organizationId: string) {
+    return tx.category.createMany({
+      data: DEFAULT_STOCK_CATEGORIES.map((name) => ({ organizationId, name })),
+      skipDuplicates: true,
+    });
+  }
+
+  private createDefaultStockUnits(tx: Prisma.TransactionClient, organizationId: string) {
+    return tx.unit.createMany({
+      data: DEFAULT_STOCK_UNITS.map((unit) => ({ ...unit, organizationId })),
+      skipDuplicates: true,
+    });
   }
 
   private formatPlanningPrerequisites(items: string[]) {

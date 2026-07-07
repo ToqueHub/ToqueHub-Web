@@ -480,6 +480,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [documentsDateTo, setDocumentsDateTo] = useState('');
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const [selectedInventoryId, setSelectedInventoryId] = useState<string | null>(null);
   const [ocrPollingActive, setOcrPollingActive] = useState(false);
   const [productPrefillName, setProductPrefillName] = useState('');
   const [supplierPrefillName, setSupplierPrefillName] = useState('');
@@ -1394,7 +1396,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         const summary = appId === 'rnm-prices' ? await api.installRnmPrices(token) : appId === 'hr' ? await api.installHr(token) : appId === 'planning' ? await api.installPlanning(token) : appId === 'technical-sheets' ? await api.installTechnicalSheets(token) : appId === 'production' ? await api.installProduction(token) : appId === 'menus' ? await api.installMenus(token) : appId === 'haccp' ? await api.installHaccp(token) : await api.installStocks(token);
         setDashboardSummary((prev) => ({ ...prev, ...summary } as DashboardSummary));
         setInstalledApps(summary.installedApplications ?? Array.from(new Set([...installedApps, appId])));
-        setSuccess(appId === 'rnm-prices' ? 'L’application Cours des Produits a été installée. La navigation RNM est maintenant visible.' : appId === 'hr' ? 'L’application RH a été installée. Services et postes de départ sont disponibles.' : appId === 'planning' ? 'L’application Planning a été installée. Les vues opérationnelles consomment désormais le référentiel RH.' : appId === 'technical-sheets' ? 'L’application Fiches Techniques a été installée. Catégories recettes et allergènes standards sont disponibles.' : appId === 'production' ? 'L’application Production a été installée. Les ordres peuvent être créés depuis les fiches techniques sans dupliquer les référentiels.' : appId === 'menus' ? 'L’application Menus a été installée. Planification, cycles, convives et génération Production sont disponibles.' : appId === 'haccp' ? 'L’application HACCP a été installée. Dashboard conformité, contrôles et rapports sont disponibles.' : 'L’application Stocks a été installée avec succès. Lancez l’assistant de préremplissage pour ajouter catégories, unités et emplacements métier.');
+        setSuccess(appId === 'rnm-prices' ? 'L’application Cours des Produits a été installée. La navigation RNM est maintenant visible.' : appId === 'hr' ? 'L’application RH a été installée. Services et postes de départ sont disponibles.' : appId === 'planning' ? 'L’application Planning a été installée. Les vues opérationnelles consomment désormais le référentiel RH.' : appId === 'technical-sheets' ? 'L’application Fiches Techniques a été installée. Catégories recettes et allergènes standards sont disponibles.' : appId === 'production' ? 'L’application Production a été installée. Les ordres peuvent être créés depuis les fiches techniques sans dupliquer les référentiels.' : appId === 'menus' ? 'L’application Menus a été installée. Planification, cycles, convives et génération Production sont disponibles.' : appId === 'haccp' ? 'L’application HACCP a été installée. Dashboard conformité, contrôles et rapports sont disponibles.' : 'L’application Stocks a été installée avec succès. Le référentiel de base est prêt, vous pouvez créer le premier fournisseur.');
         if (appId === 'stocks') setShowStocksOnboarding(true);
         if (appId === 'rnm-prices') setActiveTab('rnm-dashboard');
         if (appId === 'hr') setActiveTab('hr-dashboard');
@@ -1577,6 +1579,16 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     setShowCategoryModal(false);
   }
 
+  async function handleUpdateCategory(categoryId: string, payload: { name: string; description?: string }) {
+    const updated = await submit(() => api.updateCategory(token, categoryId, payload), 'Catégorie mise à jour.');
+    setSelectedCategory(updated as Category);
+  }
+
+  async function handleDeleteCategory(categoryId: string) {
+    await submit(() => api.archiveCategory(token, categoryId), 'Catégorie supprimée. Les produits ont été déplacés dans “Sans catégorie”.');
+    setSelectedCategory(null);
+  }
+
   async function handleCreateUnit(payload: { name: string; symbol: string; type?: string; baseFactor?: number }) {
     await submit(() => api.createUnit(token, payload), 'Unité créée avec succès.');
     setShowUnitModal(false);
@@ -1731,12 +1743,21 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   }
 
   async function handleCreateInventory(payload: { name: string; date?: string; comment?: string; siteId?: string; locationId?: string }) {
-    await submit(() => api.createInventory(token, payload), 'Inventaire complet créé.');
+    const created = await submit(() => api.createInventory(token, payload), 'Inventaire complet créé. Vous pouvez saisir les quantités comptées.');
+    if ((created as Inventory | null)?.id) setSelectedInventoryId((created as Inventory).id);
     setShowInventoryModal(false);
   }
 
+  async function handleSaveInventoryCounts(inventoryId: string, lines: Array<{ productId: string; countedQuantity: number; lotId?: string }>) {
+    await submit(() => api.updateInventoryCounts(token, inventoryId, lines), 'Comptage inventaire enregistré.');
+  }
+
+  async function handleValidateInventory(inventoryId: string, lines: Array<{ productId: string; countedQuantity: number; lotId?: string }>) {
+    await submit(() => api.validateInventory(token, inventoryId, lines), 'Inventaire validé. Les corrections de stock ont été générées.');
+  }
+
   async function handlePrefillStocks(payload: { categories?: boolean; units?: boolean; sites?: boolean; locations?: boolean; examples?: boolean }) {
-    await submit(() => api.prefillStocks(token, payload), 'Référentiel Stocks prérempli.');
+    await submit(() => api.prefillStocks(token, payload), 'Référentiel Stocks initialisé.');
   }
 
   const activeProducts = useMemo(() => products.filter(p => showArchived || !isArchived(p)), [products, showArchived]);
@@ -1774,6 +1795,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   }, [activeUnits, unitSearch]);
   const filteredLocations = useMemo(() => activeLocations.filter(l => l.name.toLowerCase().includes(locationSearch.toLowerCase()) || l.site?.name?.toLowerCase().includes(locationSearch.toLowerCase())), [activeLocations, locationSearch]);
   const filteredInventories = useMemo(() => inventories.filter(i => i.name.toLowerCase().includes(inventorySessionSearch.toLowerCase()) || (i.status ?? '').toLowerCase().includes(inventorySessionSearch.toLowerCase())), [inventories, inventorySessionSearch]);
+  const selectedInventory = useMemo(() => selectedInventoryId ? inventories.find((inventory) => inventory.id === selectedInventoryId) ?? null : null, [inventories, selectedInventoryId]);
   const filteredAudit = useMemo(() => auditEntries.filter(a => `${a.action} ${a.entityType ?? ''} ${a.user?.email ?? ''}`.toLowerCase().includes(auditSearch.toLowerCase())), [auditEntries, auditSearch]);
 
   const filteredMovements = useMemo(() => {
@@ -2726,17 +2748,17 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                           role="button"
                           tabIndex={0}
                           whileHover={{ y: -3 }}
-                          onClick={() => openProductsForCategory(category.id)}
+                          onClick={() => setSelectedCategory(category)}
                           onKeyDown={(event) => {
                             if (event.key === 'Enter' || event.key === ' ') {
                               event.preventDefault();
-                              openProductsForCategory(category.id);
+                              setSelectedCategory(category);
                             }
                           }}
                         >
                           <div className="app-card-icon"><Layers size={20} /></div>
                           <h3>{category.name}</h3>
-                          <p>{category.description || 'Catégorie de produits'}</p>
+                          <p>{category.description || `${products.filter((product) => (product.categoryId ?? product.category?.id) === category.id).length} produit(s)`}</p>
                         </motion.div>
                       ))}
                     </div>
@@ -3052,7 +3074,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
               {/* TAB INVENTORIES */}
               {activeTab === 'inventories' && (
-                <InventoriesPage inventories={filteredInventories} products={products} search={inventorySessionSearch} setSearch={setInventorySessionSearch} onCreate={() => setShowInventoryModal(true)} />
+                <InventoriesPage inventories={filteredInventories} products={products} search={inventorySessionSearch} setSearch={setInventorySessionSearch} onCreate={() => setShowInventoryModal(true)} onOpen={(inventory) => setSelectedInventoryId(inventory.id)} />
               )}
 
               {/* TAB LOCATIONS */}
@@ -3159,6 +3181,18 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         <CategoryForm onSubmit={handleCreateCategory} onClose={() => setShowCategoryModal(false)} />
       </Modal>
 
+      <CategoryDetailModal
+        category={selectedCategory}
+        products={products}
+        onClose={() => setSelectedCategory(null)}
+        onUpdate={handleUpdateCategory}
+        onDelete={handleDeleteCategory}
+        onOpenProducts={(categoryId) => {
+          setSelectedCategory(null);
+          openProductsForCategory(categoryId);
+        }}
+      />
+
       {/* Unit Modal */}
       <Modal isOpen={showUnitModal} onClose={() => setShowUnitModal(false)} title="Créer une unité de mesure">
         <UnitForm onSubmit={handleCreateUnit} onClose={() => setShowUnitModal(false)} />
@@ -3213,7 +3247,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         />
       </Modal>
 
-      <Modal isOpen={showOcrImportModal} onClose={() => setShowOcrImportModal(false)} title="Importer facture / BL" size="lg">
+      <Modal isOpen={showOcrImportModal} onClose={() => setShowOcrImportModal(false)} title="Analyser bon de commande / facture / BL" size="lg">
         <StocksOcrImportPanel
           statuses={ocrStatuses}
           onUpload={handleUploadStocksOcr}
@@ -3254,6 +3288,13 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       <Modal isOpen={showInventoryModal} onClose={() => setShowInventoryModal(false)} title="Créer un inventaire complet" size="product">
         <InventoryForm sites={sites} locations={locations} onSubmit={handleCreateInventory} onClose={() => setShowInventoryModal(false)} />
       </Modal>
+
+      <InventoryDetailModal
+        inventory={selectedInventory}
+        onClose={() => setSelectedInventoryId(null)}
+        onSaveCounts={handleSaveInventoryCounts}
+        onValidate={handleValidateInventory}
+      />
 
       {showStocksOnboarding ? (
         <StocksOnboardingWizard
@@ -4620,7 +4661,7 @@ function MyDocumentsPage({ data, loading, search, supplierFilter, typeFilter, da
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
               >
-                <EmptyMini title={loading ? 'Chargement...' : 'Aucun document'} text="Les factures et BL importés via l’OCR Stocks apparaîtront ici." icon="📄" />
+                <EmptyMini title={loading ? 'Chargement...' : 'Aucun document'} text="Les bons de commande, factures et BL importés via l’OCR Stocks apparaîtront ici." icon="📄" />
               </motion.div>
             )}
           </AnimatePresence>
@@ -4679,9 +4720,11 @@ function computeStocksReadiness(categories: Category[], units: Unit[], products:
     return Boolean(document?.receptionId || document?.receptionStatus === 'VALIDATED' || (status as any).reception?.status === 'VALIDATED');
   });
   const flowReady = Boolean(movements.length || hasValidatedOcr);
-  const completed = [foundationReady, catalogReady, flowReady].filter(Boolean).length;
-  const nextStep: StocksOnboardingStep = !foundationReady ? 'foundation' : !catalogReady ? 'catalog' : !flowReady ? 'reception' : 'review';
-  return { foundationReady, catalogReady, flowReady, progress: Math.round((completed / 3) * 100), nextStep };
+  const supplierReady = Boolean(activeSuppliers.length);
+  const productReady = Boolean(activeProducts.length);
+  const completed = [foundationReady, supplierReady, productReady, flowReady].filter(Boolean).length;
+  const nextStep: StocksOnboardingStep = !foundationReady || !supplierReady ? 'foundation' : !productReady ? 'catalog' : !flowReady ? 'reception' : 'review';
+  return { foundationReady, catalogReady, flowReady, progress: Math.round((completed / 4) * 100), nextStep };
 }
 
 function StocksSetupCard({ readiness, products, suppliers, sites, locations, onStart, onDismiss }: { readiness: StocksReadiness; products: Product[]; suppliers: Supplier[]; sites: Site[]; locations: Location[]; onStart: () => void; onDismiss?: () => void }) {
@@ -4690,11 +4733,12 @@ function StocksSetupCard({ readiness, products, suppliers, sites, locations, onS
   const activeSuppliers = suppliers.filter((item) => !isArchived(item)).length;
   const activeSites = sites.filter((item) => !isArchived(item)).length;
   const activeLocations = locations.filter((item) => !isArchived(item)).length;
-  const label = readiness.flowReady ? 'Configuration terminée' : readiness.catalogReady ? 'Première réception à lancer' : readiness.foundationReady ? 'Premiers produits à ajouter' : 'Socle de stockage à préparer';
+  const label = readiness.flowReady ? 'Configuration terminée' : activeSuppliers === 0 ? 'Premier fournisseur à créer' : activeProducts === 0 ? 'Premiers produits à ajouter' : 'Bon de commande à analyser';
   const steps = [
-    { title: 'Socle', text: `${activeSites} site(s), ${activeLocations} emplacement(s)`, done: readiness.foundationReady },
-    { title: 'Catalogue', text: `${activeProducts} produit(s), ${activeSuppliers} fournisseur(s)`, done: readiness.catalogReady },
-    { title: 'Flux', text: 'Réception OCR ou mouvement manuel', done: readiness.flowReady },
+    { title: 'Socle auto', text: `${activeSites} site(s), ${activeLocations} emplacement(s)`, done: readiness.foundationReady },
+    { title: 'Fournisseurs', text: `${activeSuppliers} fournisseur(s)`, done: activeSuppliers > 0 },
+    { title: 'Catalogue', text: `${activeProducts} produit(s)`, done: activeProducts > 0 },
+    { title: 'Analyse', text: 'Bon de commande, facture ou BL', done: readiness.flowReady },
   ];
   return (
     <motion.section className="card-modern stocks-setup-card" style={{ position: 'relative' }} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
@@ -4827,9 +4871,9 @@ function StocksOnboardingAside({
 }) {
   const steps = [
     { key: 'welcome', label: 'Bienvenue' },
-    { key: 'foundation', label: 'Socle de stockage' },
+    { key: 'foundation', label: 'Premier fournisseur' },
     { key: 'catalog', label: 'Catalogue produits' },
-    { key: 'reception', label: 'Première réception' },
+    { key: 'reception', label: 'Bon à analyser' },
     { key: 'review', label: 'Résumé & Validation' },
   ] as Array<{ key: StocksOnboardingStep; label: string }>;
   const currentIdx = steps.findIndex((s) => s.key === step);
@@ -4967,8 +5011,15 @@ function StocksOnboardingWizard({
   const activeSuppliers = suppliers.filter((item) => !isArchived(item));
   const activeSites = sites.filter((item) => !isArchived(item));
   const activeLocations = locations.filter((item) => !isArchived(item));
+  const [autoPrefillAttempted, setAutoPrefillAttempted] = useState(false);
   const goNext = () => setStep(stepOrder[Math.min(stepIndex, stepOrder.length - 1)]);
   const goBack = () => setStep(stepOrder[Math.max(0, stepIndex - 2)]);
+
+  useEffect(() => {
+    if (readiness.foundationReady || autoPrefillAttempted) return;
+    setAutoPrefillAttempted(true);
+    void onPrefill({ categories: true, units: true, sites: true, locations: true, examples: false }).catch(() => undefined);
+  }, [autoPrefillAttempted, onPrefill, readiness.foundationReady]);
 
   return (
     <div
@@ -5080,14 +5131,12 @@ function StocksOnboardingWizard({
                       <StocksFoundationStep
                         categories={activeCategories}
                         units={activeUnits}
+                        suppliers={activeSuppliers}
                         sites={activeSites}
                         locations={activeLocations}
-                        ready={readiness.foundationReady}
+                        foundationReady={readiness.foundationReady}
                         onBack={goBack}
-                        onPrefill={async () => {
-                          await onPrefill({ categories: true, units: true, sites: true, locations: true, examples: false });
-                          setStep('catalog');
-                        }}
+                        onCreateSupplier={onCreateSupplier}
                         onNext={() => setStep('catalog')}
                       />
                     ) : null}
@@ -5181,20 +5230,20 @@ function StocksOnboardingWelcome({ onNext, onClose }: { onNext: () => void; onCl
           Bienvenue sur le module <span style={{ color: '#10b981' }}>Stocks & Réceptions</span>
         </h1>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.98rem', lineHeight: 1.6, marginBottom: '2rem' }}>
-          On va préparer votre socle de stockage, créer vos premiers produits réels, puis lancer une première réception par facture ou bon de livraison.
+          Le socle de catégories et d’emplacements est préparé automatiquement. On crée ensuite votre premier fournisseur, quelques produits réels, puis on analyse un bon de commande, une facture ou un BL.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '2rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', flexShrink: 0 }}><Warehouse size={16} /></div>
-            <span>Créer le socle (catégories, unités, emplacements)</span>
+            <span>Socle créé automatiquement (catégories, unités, emplacements)</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', flexShrink: 0 }}><Package size={16} /></div>
-            <span>Ajouter vos premiers produits et fournisseurs</span>
+            <span>Créer le premier fournisseur puis les premiers produits</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', flexShrink: 0 }}><FileText size={16} /></div>
-            <span>Lancer une première réception de stock</span>
+            <span>Analyser un bon de commande, une facture ou un BL</span>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
@@ -5220,47 +5269,104 @@ function StocksOnboardingWelcome({ onNext, onClose }: { onNext: () => void; onCl
   );
 }
 
-function StocksFoundationStep({ categories, units, sites, locations, ready, onBack, onPrefill, onNext }: { categories: Category[]; units: Unit[]; sites: Site[]; locations: Location[]; ready: boolean; onBack: () => void; onPrefill: () => Promise<void>; onNext: () => void }) {
+function StocksFoundationStep({
+  categories,
+  units,
+  suppliers,
+  sites,
+  locations,
+  foundationReady,
+  onBack,
+  onCreateSupplier,
+  onNext,
+}: {
+  categories: Category[];
+  units: Unit[];
+  suppliers: Supplier[];
+  sites: Site[];
+  locations: Location[];
+  foundationReady: boolean;
+  onBack: () => void;
+  onCreateSupplier: (payload: { name: string }) => Promise<unknown>;
+  onNext: () => void;
+}) {
+  const [supplierName, setSupplierName] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string>();
   const items = [
     { title: 'Catégories', value: categories.length, icon: Layers },
     { title: 'Unités', value: units.length, icon: Scale },
     { title: 'Sites', value: sites.length, icon: Warehouse },
     { title: 'Emplacements', value: locations.length, icon: MapPin },
   ];
+
+  async function createSupplierAndContinue() {
+    if (!supplierName.trim()) {
+      onNext();
+      return;
+    }
+    setSubmitting(true);
+    setError(undefined);
+    try {
+      await onCreateSupplier({ name: supplierName.trim() });
+      setSupplierName('');
+      onNext();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Le fournisseur n’a pas pu être créé.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', height: '100%', minHeight: 0, justifyContent: 'space-between' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
         <div>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>Préparer le socle de stockage</h2>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>Créer le premier fournisseur</h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginTop: '0.35rem', lineHeight: 1.5 }}>
-            Le socle ajoute les familles, unités, site principal et emplacements de base. Les données existantes sont conservées.
+            Les catégories, unités et emplacements de base sont préparés automatiquement. Commencez par le fournisseur que vous utilisez réellement.
           </p>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '0.5rem' }}>
+        {error ? <div className="alert-modern error" style={{ margin: 0 }}><AlertCircle size={16} /> {error}</div> : null}
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: '0.75rem', background: '#f8fafc', padding: '0.9rem', borderRadius: '14px', border: '1px solid #e2e8f0', alignItems: 'center' }}>
+          <input
+            value={supplierName}
+            onChange={(event) => setSupplierName(event.target.value)}
+            placeholder={suppliers.length ? 'Ajouter un autre fournisseur' : 'Nom du fournisseur, ex. Kespro'}
+            style={{ minWidth: 0, border: '1px solid #cbd5e1', borderRadius: '10px', padding: '0.65rem 0.75rem', background: 'white' }}
+            autoFocus
+          />
+          <button type="button" className="btn btn-primary" disabled={!supplierName.trim() || submitting} onClick={() => void createSupplierAndContinue()} style={{ borderRadius: '10px', whiteSpace: 'nowrap' }}>
+            <Plus size={15} /> Créer
+          </button>
+        </div>
+        {suppliers.length ? (
+          <div className="alert-modern success" style={{ margin: 0 }}>
+            <CheckCircle2 size={16} /> {suppliers.length} fournisseur{suppliers.length > 1 ? 's' : ''} déjà prêt{suppliers.length > 1 ? 's' : ''}.
+          </div>
+        ) : null}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: '0.75rem', marginBottom: '0.5rem' }}>
           {items.map(({ title, value, icon: Icon }) => {
             const isReady = value > 0;
             return (
               <div
                 key={title}
                 style={{
-                  border: isReady ? '2px solid #10b981' : '1px solid #e2e8f0',
-                  borderRadius: '16px',
-                  padding: '1.25rem',
+                  border: isReady ? '1px solid rgba(16,185,129,0.35)' : '1px solid #e2e8f0',
+                  borderRadius: '12px',
+                  padding: '0.85rem',
                   background: isReady ? 'rgba(16, 185, 129, 0.04)' : 'white',
-                  boxShadow: isReady ? '0 10px 25px rgba(16,185,129,0.06)' : '0 2px 4px rgba(0,0,0,0.02)',
                   transition: 'all 0.2s',
                   display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.5rem',
-                  alignItems: 'flex-start',
+                  gap: '0.65rem',
+                  alignItems: 'center',
                 }}
               >
                 <div
                   style={{
-                    width: '36px',
-                    height: '36px',
-                    borderRadius: '10px',
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '9px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -5270,21 +5376,25 @@ function StocksFoundationStep({ categories, units, sites, locations, ready, onBa
                 >
                   <Icon size={20} />
                 </div>
-                <span style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-main)', marginTop: '0.25rem', lineHeight: 1 }}>{value}</span>
-                <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>{title}</span>
+                <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                  <span style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)', lineHeight: 1 }}>{value}</span>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>{title}</span>
+                </div>
               </div>
             );
           })}
         </div>
-        <div className="alert-modern" style={{ margin: 0 }}><Info size={16} /> Aucun produit de démonstration ne sera créé pendant ce parcours.</div>
+        <div className="alert-modern" style={{ margin: 0 }}>
+          <Info size={16} /> {foundationReady ? 'Socle de stockage prêt automatiquement.' : 'Initialisation automatique du socle en cours.'} Aucun produit de démonstration ne sera créé.
+        </div>
       </div>
       <div className="hr-catalog-actions sticky" style={{ borderTop: '1px solid #eef2f7', background: 'rgba(255,255,255,0.9)', padding: '1rem 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
         <button type="button" className="btn btn-secondary" onClick={onBack} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Retour</button>
         <div className="row-actions" style={{ display: 'flex', gap: '0.75rem' }}>
-          <button type="button" className="btn btn-secondary" disabled={submitting} onClick={async () => { setSubmitting(true); try { await onPrefill(); } finally { setSubmitting(false); } }} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>
-            {submitting ? 'Préremplissage…' : ready ? 'Relancer le socle' : 'Préremplir le socle'}
+          <button type="button" className="btn btn-secondary" onClick={onNext} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Passer</button>
+          <button type="button" className="btn btn-primary" disabled={submitting || (!supplierName.trim() && !suppliers.length)} onClick={() => void createSupplierAndContinue()} style={{ borderRadius: '10px', padding: '0.5rem 1.5rem' }}>
+            {submitting ? 'Création…' : supplierName.trim() ? 'Créer et continuer' : 'Continuer'}
           </button>
-          <button type="button" className="btn btn-primary" onClick={onNext} disabled={!ready && submitting} style={{ borderRadius: '10px', padding: '0.5rem 1.5rem' }}>Continuer</button>
         </div>
       </div>
     </div>
@@ -5498,9 +5608,9 @@ function StocksReceptionStep({ ocrConfigured, ocrStatuses, onBack, onImportOcr, 
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', height: '100%', minHeight: 0, justifyContent: 'space-between' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
         <div>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>Lancer la première réception</h2>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>Analyser un bon de commande</h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginTop: '0.35rem', lineHeight: 1.5 }}>
-            Le chemin recommandé est l’import facture ou BL : l’OCR prépare les lignes, puis la validation crée la réception et les mouvements de stock.
+            Déposez un bon de commande, une facture ou un bon de livraison. L’analyse prépare les lignes, vous corrigez si besoin, puis seulement la validation crée la réception et les mouvements de stock.
           </p>
         </div>
         {!ocrConfigured ? (
@@ -5510,7 +5620,7 @@ function StocksReceptionStep({ ocrConfigured, ocrStatuses, onBack, onImportOcr, 
           </div>
         ) : null}
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem', marginBottom: '0.5rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem', marginBottom: '0.5rem' }}>
           <button
             type="button"
             onClick={onImportOcr}
@@ -5546,8 +5656,8 @@ function StocksReceptionStep({ ocrConfigured, ocrStatuses, onBack, onImportOcr, 
             >
               <FileText size={28} />
             </div>
-            <strong style={{ fontSize: '1.1rem', color: 'var(--text-main)', fontWeight: 800 }}>Importer facture / BL (Recommandé)</strong>
-            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>Analyse IA automatisée, détection et création des produits manquants, validation rapide.</span>
+            <strong style={{ fontSize: '1.1rem', color: 'var(--text-main)', fontWeight: 800 }}>Mettre un bon à analyser</strong>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>Bon de commande, facture ou BL : l’IA lit le document, propose les produits et garde la réception en brouillon jusqu’à votre validation.</span>
           </button>
 
           <button
@@ -5585,8 +5695,8 @@ function StocksReceptionStep({ ocrConfigured, ocrStatuses, onBack, onImportOcr, 
             >
               <Plus size={28} />
             </div>
-            <strong style={{ fontSize: '1.1rem', color: 'var(--text-main)', fontWeight: 800 }}>Réception manuelle</strong>
-            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>Saisir manuellement les articles reçus et les quantités pour créer un mouvement.</span>
+            <strong style={{ fontSize: '1.1rem', color: 'var(--text-main)', fontWeight: 800 }}>Saisie manuelle</strong>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>Alternative ponctuelle si aucun document n’est disponible.</span>
           </button>
         </div>
         {ocrStatuses.length ? <StocksOcrDashboardStatusBar statuses={ocrStatuses} onOpenExtraction={async () => undefined} onImportOcr={onImportOcr} /> : null}
@@ -5710,7 +5820,7 @@ function StocksDashboardPage({ products, suppliers, sites, locations, stocks, mo
         </p>
         <div className="stocks-reception-actions">
           <button className="btn btn-primary" onClick={onImportOcr}>
-            <FileText size={16} /> Importer facture / BL
+            <FileText size={16} /> Analyser un bon / facture / BL
           </button>
           <button className="btn btn-secondary" onClick={onCreateProduct}>
             <Plus size={16} /> Nouveau Produit
@@ -6597,7 +6707,222 @@ function UnitsPage({ units, search, setSearch, showArchived, setShowArchived, on
   );
 }
 
-function InventoriesPage({ inventories, products, search, setSearch, onCreate }: { inventories: Inventory[]; products: Product[]; search: string; setSearch: (v: string) => void; onCreate: () => void }) { return <ReferencePage title="Inventaires" subtitle="Inventaires complets: comptage réel, écarts, corrections automatiques et verrouillage après validation." search={search} setSearch={setSearch} onCreate={onCreate} createLabel="Créer un inventaire"><div className="table-wrapper"><table className="table-modern"><thead><tr><th>Nom</th><th>Date</th><th>Statut</th><th>Périmètre</th><th>Lignes</th></tr></thead><tbody>{inventories.map(i => <tr key={i.id}><td>{i.name}</td><td>{i.date ? new Date(i.date).toLocaleDateString('fr-FR') : '—'}</td><td><span className="badge badge-inventory">{i.status ?? 'Brouillon'}</span></td><td>{i.site?.name ?? 'Tous sites'} / {i.location?.name ?? 'Tous emplacements'}</td><td>{i.lines?.length ?? products.length}</td></tr>)}</tbody></table></div>{!inventories.length && <EmptyMini title="Aucun inventaire" text="Créez un inventaire complet pour charger les produits actifs et saisir les quantités comptées." />}</ReferencePage>; }
+function InventoriesPage({ inventories, products, search, setSearch, onCreate, onOpen }: { inventories: Inventory[]; products: Product[]; search: string; setSearch: (v: string) => void; onCreate: () => void; onOpen: (inventory: Inventory) => void }) {
+  return (
+    <ReferencePage title="Inventaires" subtitle="Inventaires complets: comptage réel, écarts, corrections automatiques et verrouillage après validation." search={search} setSearch={setSearch} onCreate={onCreate} createLabel="Créer un inventaire">
+      <div className="table-wrapper">
+        <table className="table-modern">
+          <thead>
+            <tr>
+              <th>Nom</th>
+              <th>Date</th>
+              <th>Statut</th>
+              <th>Périmètre</th>
+              <th>Lignes</th>
+              <th>Comptées</th>
+            </tr>
+          </thead>
+          <tbody>
+            {inventories.map((inventory) => {
+              const lines = inventory.lines ?? [];
+              const counted = lines.filter((line) => line.countedQuantity !== null && line.countedQuantity !== undefined).length;
+              return (
+                <tr key={inventory.id} className="clickable-row" onClick={() => onOpen(inventory)}>
+                  <td style={{ fontWeight: 700 }}>{inventory.name}</td>
+                  <td>{inventory.inventoryDate || inventory.date ? new Date((inventory.inventoryDate ?? inventory.date) as string).toLocaleDateString('fr-FR') : '—'}</td>
+                  <td><span className={`badge ${inventory.status === 'VALIDATED' ? 'badge-reception' : 'badge-inventory'}`}>{inventory.status === 'VALIDATED' ? 'Validé' : 'Brouillon'}</span></td>
+                  <td>{inventory.site?.name ?? 'Tous sites'} / {inventory.location?.name ?? 'Tous emplacements'}</td>
+                  <td>{lines.length || products.length}</td>
+                  <td>{counted}/{lines.length || products.length}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {!inventories.length && <EmptyMini title="Aucun inventaire" text="Créez un inventaire complet pour charger les produits actifs et saisir les quantités comptées." />}
+    </ReferencePage>
+  );
+}
+
+function InventoryDetailModal({
+  inventory,
+  onClose,
+  onSaveCounts,
+  onValidate,
+}: {
+  inventory: Inventory | null;
+  onClose: () => void;
+  onSaveCounts: (inventoryId: string, lines: Array<{ productId: string; countedQuantity: number; lotId?: string }>) => Promise<void>;
+  onValidate: (inventoryId: string, lines: Array<{ productId: string; countedQuantity: number; lotId?: string }>) => Promise<void>;
+}) {
+  const [counts, setCounts] = useState<Record<string, string>>({});
+  const [search, setSearch] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string>();
+
+  const lines = inventory?.lines ?? [];
+  const isLocked = inventory?.status === 'VALIDATED';
+
+  useEffect(() => {
+    if (!inventory) return;
+    const next: Record<string, string> = {};
+    for (const line of inventory.lines ?? []) {
+      next[inventoryLineKey(line)] = line.countedQuantity === null || line.countedQuantity === undefined ? '' : String(line.countedQuantity);
+    }
+    setCounts(next);
+    setSearch('');
+    setError(undefined);
+  }, [inventory]);
+
+  const filteredLines = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return lines;
+    return lines.filter((line) => `${line.product?.name ?? ''} ${line.product?.sku ?? ''} ${line.product?.category?.name ?? ''}`.toLowerCase().includes(query));
+  }, [lines, search]);
+
+  function payloadFromCounts() {
+    return lines
+      .map((line) => {
+        const raw = counts[inventoryLineKey(line)];
+        if (raw === undefined || raw === '') return null;
+        const countedQuantity = Number(raw);
+        if (!Number.isFinite(countedQuantity) || countedQuantity < 0) return null;
+        return { productId: line.productId, lotId: line.lotId ?? undefined, countedQuantity };
+      })
+      .filter(Boolean) as Array<{ productId: string; countedQuantity: number; lotId?: string }>;
+  }
+
+  async function saveCounts() {
+    if (!inventory) return;
+    const payload = payloadFromCounts();
+    if (!payload.length) {
+      setError('Saisissez au moins une quantité comptée.');
+      return;
+    }
+    setSubmitting(true);
+    setError(undefined);
+    try {
+      await onSaveCounts(inventory.id, payload);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Le comptage n’a pas pu être enregistré.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function validateInventory() {
+    if (!inventory) return;
+    const payload = payloadFromCounts();
+    if (!payload.length) {
+      setError('Saisissez au moins une quantité comptée avant validation.');
+      return;
+    }
+    const missing = lines.length - payload.length;
+    if (missing > 0 && !window.confirm(`${missing} ligne(s) n’ont pas de quantité comptée. Valider uniquement les lignes renseignées ?`)) return;
+    setSubmitting(true);
+    setError(undefined);
+    try {
+      await onValidate(inventory.id, payload);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'L’inventaire n’a pas pu être validé.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal isOpen={Boolean(inventory)} onClose={onClose} title={inventory?.name ?? 'Inventaire'} size="xl">
+      {inventory ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {error ? <div className="alert-modern error"><AlertCircle size={16} /> {error}</div> : null}
+          <div className="alert-modern info" style={{ margin: 0, background: '#f8fafc', borderColor: '#dbe4ef', color: '#334155' }}>
+            <ClipboardList size={16} />
+            <span>{inventory.site?.name ?? 'Tous sites'} / {inventory.location?.name ?? 'Tous emplacements'} · {lines.length} produit(s) à compter.</span>
+          </div>
+          <div className="filter-bar" style={{ margin: 0 }}>
+            <div className="search-input-wrapper" style={{ maxWidth: '100%' }}>
+              <Search />
+              <input className="search-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Filtrer les produits de l’inventaire..." />
+            </div>
+            {!isLocked ? (
+              <button type="button" className="btn btn-secondary" onClick={() => setCounts(Object.fromEntries(lines.map((line) => [inventoryLineKey(line), String(numeric(line.theoreticalQuantity))])))} disabled={!lines.length || submitting}>
+                <Copy size={14} /> Reprendre le théorique
+              </button>
+            ) : null}
+          </div>
+          <div className="table-wrapper" style={{ maxHeight: '48vh', overflow: 'auto' }}>
+            <table className="table-modern">
+              <thead>
+                <tr>
+                  <th>Produit</th>
+                  <th>Catégorie</th>
+                  <th style={{ textAlign: 'right' }}>Théorique</th>
+                  <th style={{ textAlign: 'right' }}>Compté</th>
+                  <th style={{ textAlign: 'right' }}>Écart</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredLines.map((line) => {
+                  const key = inventoryLineKey(line);
+                  const theoretical = numeric(line.theoreticalQuantity);
+                  const countedRaw = counts[key] ?? '';
+                  const counted = countedRaw === '' ? null : Number(countedRaw);
+                  const variance = counted === null || !Number.isFinite(counted) ? numeric(line.varianceQuantity ?? line.variance) : counted - theoretical;
+                  const unit = line.product?.unit?.symbol ?? '';
+                  return (
+                    <tr key={line.id}>
+                      <td style={{ fontWeight: 700 }}>{line.product?.name ?? 'Produit supprimé'}</td>
+                      <td>{line.product?.category?.name ?? <span style={{ color: 'var(--text-muted)' }}>Sans catégorie</span>}</td>
+                      <td style={{ textAlign: 'right' }}>{formatStockNumber(theoretical)} {unit}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        {isLocked ? (
+                          <strong>{countedRaw || '—'} {unit}</strong>
+                        ) : (
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.001"
+                            value={countedRaw}
+                            onChange={(event) => setCounts((current) => ({ ...current, [key]: event.target.value }))}
+                            style={{ width: '110px', textAlign: 'right' }}
+                          />
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 800, color: variance < 0 ? 'var(--danger)' : variance > 0 ? 'var(--success)' : 'var(--text-muted)' }}>
+                        {countedRaw === '' && !isLocked ? '—' : `${variance > 0 ? '+' : ''}${formatStockNumber(variance)} ${unit}`}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!filteredLines.length ? (
+                  <tr><td colSpan={5}><EmptyMini title="Aucune ligne" text="Aucun produit ne correspond à la recherche." /></td></tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+          <div className="modal-footer" style={{ margin: '0 -1.75rem -1.75rem' }}>
+            <button type="button" className="btn btn-secondary" onClick={onClose} disabled={submitting}>Fermer</button>
+            {!isLocked ? (
+              <>
+                <button type="button" className="btn btn-secondary" onClick={() => void saveCounts()} disabled={submitting}>{submitting ? 'Enregistrement...' : 'Enregistrer brouillon'}</button>
+                <button type="button" className="btn btn-primary" onClick={() => void validateInventory()} disabled={submitting}>{submitting ? 'Validation...' : 'Valider l’inventaire'}</button>
+              </>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </Modal>
+  );
+}
+
+function inventoryLineKey(line: NonNullable<Inventory['lines']>[number]) {
+  return `${line.productId}:${line.lotId ?? ''}`;
+}
+
+function formatStockNumber(value: number) {
+  return Number.isInteger(value) ? String(value) : parseFloat(value.toFixed(3)).toString();
+}
 
 function LocationsPage({ sites, locations, search, setSearch, showArchived, setShowArchived, onCreateSite, onCreateLocation }: { sites: Site[]; locations: Location[]; search: string; setSearch: (v: string) => void; showArchived: boolean; setShowArchived: (v: boolean) => void; onCreateSite: () => void; onCreateLocation: () => void }) { return <ReferencePage title="Sites & emplacements" subtitle="Deux niveaux pour transferts: site physique puis emplacement interne." search={search} setSearch={setSearch} showArchived={showArchived} setShowArchived={setShowArchived} onCreate={onCreateLocation} createLabel="Ajouter un emplacement" secondaryAction={<button className="btn btn-secondary" onClick={onCreateSite}><Warehouse size={16}/> Nouveau site</button>}><div className="apps-grid compact-grid">{sites.map(s => <div className="app-card compact-card" key={s.id}><div className="app-card-icon"><Warehouse size={20}/></div><h3>{s.name}</h3><p>{locations.filter(l => l.siteId === s.id || l.site?.id === s.id).length} emplacements · {isArchived(s) ? 'Archivé' : 'Actif'}</p></div>)}</div><div className="table-wrapper"><table className="table-modern"><thead><tr><th>Emplacement</th><th>Site</th><th>Statut</th></tr></thead><tbody>{locations.map(l => <tr key={l.id}><td>{l.name}</td><td>{l.site?.name ?? sites.find(s => s.id === l.siteId)?.name ?? '—'}</td><td>{isArchived(l) ? 'Archivé' : 'Actif'}</td></tr>)}</tbody></table></div>{!sites.length && <EmptyMini title="Aucun site" text="Ajoutez Restaurant principal, Cuisine centrale, Réserve sèche ou chambres froides." />}</ReferencePage>; }
 
@@ -8809,6 +9134,104 @@ function CategoryForm({ onSubmit, onClose }: CategoryFormProps) {
         </button>
       </div>
     </form>
+  );
+}
+
+function categoryNameKey(name: string) {
+  return name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+}
+
+function CategoryDetailModal({
+  category,
+  products,
+  onClose,
+  onUpdate,
+  onDelete,
+  onOpenProducts,
+}: {
+  category: Category | null;
+  products: Product[];
+  onClose: () => void;
+  onUpdate: (categoryId: string, payload: { name: string; description?: string }) => Promise<void>;
+  onDelete: (categoryId: string) => Promise<void>;
+  onOpenProducts: (categoryId: string) => void;
+}) {
+  const [name, setName] = useState(category?.name ?? '');
+  const [description, setDescription] = useState(category?.description ?? '');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string>();
+  const linkedProducts = useMemo(() => products.filter((product) => (product.categoryId ?? product.category?.id) === category?.id), [products, category?.id]);
+  const isUncategorized = category ? categoryNameKey(category.name) === categoryNameKey('Sans catégorie') : false;
+
+  useEffect(() => {
+    setName(category?.name ?? '');
+    setDescription(category?.description ?? '');
+    setError(undefined);
+  }, [category?.id, category?.name, category?.description]);
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    if (!category || !name.trim()) return;
+    setSubmitting(true);
+    setError(undefined);
+    try {
+      await onUpdate(category.id, { name: name.trim(), description: description.trim() || undefined });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'La catégorie n’a pas pu être modifiée.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function remove() {
+    if (!category || isUncategorized) return;
+    const confirmed = window.confirm(`Supprimer la catégorie "${category.name}" ? ${linkedProducts.length} produit(s) seront déplacés dans "Sans catégorie".`);
+    if (!confirmed) return;
+    setSubmitting(true);
+    setError(undefined);
+    try {
+      await onDelete(category.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'La catégorie n’a pas pu être supprimée.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal isOpen={Boolean(category)} onClose={onClose} title="Réglage catégorie">
+      {category ? (
+        <form onSubmit={save} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {error ? <div className="alert-modern error"><AlertCircle size={16} /> {error}</div> : null}
+          <div className="alert-modern info" style={{ margin: 0, background: '#f8fafc', borderColor: '#dbe4ef', color: '#334155' }}>
+            <Info size={16} />
+            <span>{linkedProducts.length} produit(s) actuellement dans cette catégorie.</span>
+          </div>
+          <label>
+            Nom de la catégorie *
+            <input value={name} onChange={(event) => setName(event.target.value)} required autoFocus />
+          </label>
+          <label>
+            Description
+            <textarea rows={3} value={description} onChange={(event) => setDescription(event.target.value)} />
+          </label>
+          <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
+            <button type="button" className="btn btn-secondary" onClick={() => onOpenProducts(category.id)}>
+              <Search size={15} /> Voir les produits
+            </button>
+            <button type="button" className="btn btn-outline-danger" disabled={submitting || isUncategorized} onClick={() => void remove()} title={isUncategorized ? 'Catégorie système conservée pour les produits non classés' : undefined}>
+              <Trash2 size={15} /> Supprimer
+            </button>
+          </div>
+          <div className="modal-footer" style={{ margin: '1rem -1.75rem -1.75rem' }}>
+            <button type="button" className="btn btn-secondary" onClick={onClose} disabled={submitting}>Fermer</button>
+            <button type="submit" className="btn btn-primary" disabled={submitting || !name.trim()}>
+              {submitting ? 'Enregistrement...' : 'Enregistrer'}
+            </button>
+          </div>
+        </form>
+      ) : null}
+    </Modal>
   );
 }
 
