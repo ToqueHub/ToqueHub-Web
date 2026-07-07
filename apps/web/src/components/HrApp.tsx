@@ -29,7 +29,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { api } from '../api/client';
-import type { CoreUser, HrCollaborator, HrCollaboratorPayload, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, HrReferencePayload, HrSummary, Site } from '../types';
+import type { CoreUser, HrCollaborator, HrCollaboratorPayload, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, HrReferencePayload, HrSummary, RegulatoryCountryCode, Site } from '../types';
 import { HR_CATALOG } from '../hr-catalog';
 import { CollaboratorModal as CollaboratorDossierModal } from './hr/collaborator/CollaboratorModal';
 
@@ -60,6 +60,7 @@ type HrAppProps = {
   positions: HrPosition[];
   users: CoreUser[];
   sites: Site[];
+  regulatoryCountryCode?: RegulatoryCountryCode | null;
   onboarding?: any;
   canWrite: boolean;
   loading?: boolean;
@@ -71,6 +72,7 @@ type HrAppProps = {
   onDeleteCollaboratorDocument: (employeeId: string, documentId: string) => Promise<void>;
   onReplaceCollaboratorDocument: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>;
   onViewCollaboratorDocument: (employeeId: string, document: HrDocument) => Promise<void>;
+  onPreviewCollaboratorDocument: (employeeId: string, document: HrDocument) => Promise<string>;
   onDownloadCollaboratorDocument: (employeeId: string, document: HrDocument) => Promise<void>;
   onCreateDepartment: (payload: HrReferencePayload) => Promise<void>;
   onCreateDepartmentsBulk: (names: string[]) => Promise<void>;
@@ -94,6 +96,7 @@ export function HrApp({
   positions,
   users,
   sites,
+  regulatoryCountryCode,
   onboarding,
   canWrite,
   loading,
@@ -105,6 +108,7 @@ export function HrApp({
   onDeleteCollaboratorDocument,
   onReplaceCollaboratorDocument,
   onViewCollaboratorDocument,
+  onPreviewCollaboratorDocument,
   onDownloadCollaboratorDocument,
   onCreateDepartment,
   onCreateDepartmentsBulk,
@@ -282,7 +286,7 @@ export function HrApp({
         />
       ) : null}
 
-      {selectedCollaborator ? <CollaboratorSheet collaborator={selectedCollaborator} onClose={() => setSelectedCollaborator(null)} onEdit={() => { setCollaboratorModal(selectedCollaborator); setSelectedCollaborator(null); }} canWrite={canWrite} onSaveNotes={async (notes) => { const updated = await onUpdateCollaborator(selectedCollaborator.id, collaboratorToPayload(selectedCollaborator, { notes })); setSelectedCollaborator((current) => current?.id === selectedCollaborator.id ? { ...(updated ?? current), notes } : current); }} onViewDocument={onViewCollaboratorDocument} onReplaceDocument={async (employeeId, documentId, file) => { const updated = await onReplaceCollaboratorDocument(employeeId, documentId, file); if (updated) setSelectedCollaborator((current) => current?.id === employeeId ? { ...current, documents: (current.documents ?? []).map((document) => document.id === documentId ? updated : document) } : current); return updated; }} onDeleteDocument={async (employeeId, documentId) => { await onDeleteCollaboratorDocument(employeeId, documentId); setSelectedCollaborator((current) => current?.id === employeeId ? { ...current, documents: (current.documents ?? []).filter((document) => document.id !== documentId) } : current); }} onDownloadDocument={onDownloadCollaboratorDocument} /> : null}
+      {selectedCollaborator ? <CollaboratorSheet collaborator={selectedCollaborator} regulatoryCountryCode={regulatoryCountryCode} onClose={() => setSelectedCollaborator(null)} onEdit={() => { setCollaboratorModal(selectedCollaborator); setSelectedCollaborator(null); }} canWrite={canWrite} onSaveNotes={async (notes) => { const updated = await onUpdateCollaborator(selectedCollaborator.id, collaboratorToPayload(selectedCollaborator, { notes })); setSelectedCollaborator((current) => current?.id === selectedCollaborator.id ? { ...(updated ?? current), notes } : current); }} onViewDocument={onViewCollaboratorDocument} onPreviewDocument={onPreviewCollaboratorDocument} onReplaceDocument={async (employeeId, documentId, file) => { const updated = await onReplaceCollaboratorDocument(employeeId, documentId, file); if (updated) setSelectedCollaborator((current) => current?.id === employeeId ? { ...current, documents: (current.documents ?? []).map((document) => document.id === documentId ? updated : document) } : current); return updated; }} onDeleteDocument={async (employeeId, documentId) => { await onDeleteCollaboratorDocument(employeeId, documentId); setSelectedCollaborator((current) => current?.id === employeeId ? { ...current, documents: (current.documents ?? []).filter((document) => document.id !== documentId) } : current); }} onDownloadDocument={onDownloadCollaboratorDocument} /> : null}
 
       {referenceModal ? (
         <ReferenceModal
@@ -1273,8 +1277,11 @@ function OnboardingCollaboratorStep({ departments, positions, collaborators, emp
             <div className="hr-position-tags" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.75rem' }}>{activePositions.map((p) => <span key={p.id} className="badge" style={{ padding: '0.35rem 0.6rem' }}>{p.name}</span>)}</div>
           </div>
         </div>
-        <div
-          className="hr-wizard-hero-card"
+        <button
+          type="button"
+          className="hr-wizard-hero-card hr-wizard-hero-card-action"
+          disabled={unlocking || finishing}
+          onClick={() => void unlockAndCreate()}
           style={{
             display: 'grid',
             gridTemplateColumns: 'auto 1fr',
@@ -1286,6 +1293,7 @@ function OnboardingCollaboratorStep({ departments, positions, collaborators, emp
             background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.06) 0%, rgba(59, 130, 246, 0.04) 100%)',
             boxShadow: '0 4px 12px rgba(0,0,0,0.01)',
             marginBottom: '1.5rem',
+            width: '100%',
           }}
         >
           <div
@@ -1307,7 +1315,7 @@ function OnboardingCollaboratorStep({ departments, positions, collaborators, emp
             <span className="welcome-tag" style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', color: '#10b981', letterSpacing: '0.05em' }}>Dernière étape</span>
             <p style={{ margin: '0.2rem 0 0', color: 'var(--text-main)', fontSize: '0.9rem', lineHeight: 1.45 }}>{collaborators.length ? `${collaborators.length} collaborateur${collaborators.length > 1 ? 's' : ''} déjà créé${collaborators.length > 1 ? 's' : ''}. Vous pouvez en ajouter un autre ou terminer l'initialisation.` : 'Créez le premier collaborateur pour finaliser la base RH initiale.'}</p>
           </div>
-        </div>
+        </button>
       </div>
       <div className="hr-catalog-actions sticky" style={{ borderTop: '1px solid #eef2f7', background: 'rgba(255,255,255,0.9)', padding: '1rem 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
         <span style={{ fontSize: '0.88rem', color: '#64748b', fontWeight: 500 }}>{collaborators.length} collaborateur{collaborators.length > 1 ? 's' : ''} actif{collaborators.length > 1 ? 's' : ''}</span>
@@ -1623,21 +1631,33 @@ function ReferenceModal({
   );
 }
 
-function CollaboratorSheet({ collaborator, canWrite, onClose, onEdit, onSaveNotes, onViewDocument, onReplaceDocument, onDeleteDocument, onDownloadDocument }: { collaborator: HrCollaborator; canWrite: boolean; onClose: () => void; onEdit: () => void; onSaveNotes: (notes: string) => Promise<void>; onViewDocument: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument: (employeeId: string, documentId: string) => Promise<void>; onDownloadDocument: (employeeId: string, document: HrDocument) => Promise<void> }) {
+function CollaboratorSheet({ collaborator, regulatoryCountryCode, canWrite, onClose, onEdit, onSaveNotes, onViewDocument, onPreviewDocument, onReplaceDocument, onDeleteDocument, onDownloadDocument }: { collaborator: HrCollaborator; regulatoryCountryCode?: RegulatoryCountryCode | null; canWrite: boolean; onClose: () => void; onEdit: () => void; onSaveNotes: (notes: string) => Promise<void>; onViewDocument: (employeeId: string, document: HrDocument) => Promise<void>; onPreviewDocument: (employeeId: string, document: HrDocument) => Promise<string>; onReplaceDocument: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument: (employeeId: string, documentId: string) => Promise<void>; onDownloadDocument: (employeeId: string, document: HrDocument) => Promise<void> }) {
   const [detailSection, setDetailSection] = useState<'contracts' | 'trainings' | 'documents' | 'leaves' | 'planning'>('contracts');
   const initialNotes = cleanLegacyHrNotes(collaborator.notes);
   const [notesDraft, setNotesDraft] = useState(initialNotes);
   const [savingNotes, setSavingNotes] = useState(false);
+  const [previewDocument, setPreviewDocument] = useState<HrDocument | null>(null);
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState('');
+  const detailPanelRef = useRef<HTMLDivElement>(null);
   useEffect(() => setNotesDraft(cleanLegacyHrNotes(collaborator.notes)), [collaborator.id, collaborator.notes]);
+  useEffect(() => () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
   const primaryContract = collaborator.activeContract ?? collaborator.contracts?.find((contract) => contract.status === 'ACTIVE') ?? collaborator.contracts?.[0];
   const contractType = primaryContract?.contractType ?? collaborator.contractType;
   const contractWeeklyMinutes = toFiniteNumber(primaryContract?.weeklyHours ?? collaborator.contractWeeklyMinutes);
   const contractEndDate = primaryContract?.endDate ?? collaborator.contractEndDate;
   const trialEndDate = primaryContract?.trialEndDate ?? collaborator.trialEndDate;
   const contractDocuments = (collaborator.documents ?? []).filter((document) => document.category === 'CONTRACT' || document.category === 'AMENDMENT');
+  const allDocuments = collaborator.documents ?? [];
+  const trainingDocuments = allDocuments.filter(isTrainingDocument);
   const hasContract = Boolean(contractType || contractDocuments.length);
-  const hasDocuments = Boolean(collaborator.documents?.length);
-  const hasTrainings = false;
+  const hasDocuments = Boolean(allDocuments.length);
+  const trainingNames = collaborator.trainingNames ?? [];
+  const hasTrainings = Boolean(trainingNames.length || trainingDocuments.length);
+  const leaveSummary = calculatePaidLeaveSummary(collaborator, regulatoryCountryCode);
   const hourlyRate = toFiniteNumber(collaborator.currentCompensation?.hourlyRate ?? collaborator.hourlyRate);
   const compensationCurrency = collaborator.currentCompensation?.currency ?? collaborator.currency ?? 'EUR';
   const contractWeeklyHours = contractWeeklyMinutes != null ? contractWeeklyMinutes / 60 : null;
@@ -1657,6 +1677,52 @@ function CollaboratorSheet({ collaborator, canWrite, onClose, onEdit, onSaveNote
     }
     onClose();
   };
+  async function previewInSheet(document: HrDocument) {
+    setPreviewDocument(document);
+    setPreviewLoading(true);
+    setPreviewError('');
+    try {
+      const nextUrl = await onPreviewDocument(collaborator.id, document);
+      setPreviewUrl((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return nextUrl;
+      });
+    } catch (error) {
+      setPreviewError(error instanceof Error ? error.message : "Impossible d'afficher l'aperçu PDF.");
+      setPreviewUrl((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return '';
+      });
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+  function openDetailSection(section: 'contracts' | 'trainings' | 'documents' | 'leaves' | 'planning') {
+    setDetailSection(section);
+    window.setTimeout(() => {
+      detailPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  }
+  useEffect(() => {
+    const firstDocument =
+      detailSection === 'contracts'
+        ? contractDocuments[0]
+        : detailSection === 'trainings'
+          ? trainingDocuments[0]
+          : detailSection === 'documents'
+            ? allDocuments[0]
+            : null;
+    setPreviewError('');
+    if (firstDocument) {
+      void previewInSheet(firstDocument);
+      return;
+    }
+    setPreviewDocument(null);
+    setPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return '';
+    });
+  }, [collaborator.id, detailSection]);
   return (
     <div className="modal-overlay" onClick={() => void closeSheet()}>
       <motion.div
@@ -1775,19 +1841,21 @@ function CollaboratorSheet({ collaborator, canWrite, onClose, onEdit, onSaveNote
         <div className="hr-future-cards">
           {[
             { id: 'contracts' as const, label: 'Contrats', icon: <ShieldCheck size={18} />, status: hasContract ? 'ok' : 'critical', hint: hasContract ? `Contrat ${contractType ?? 'PDF'}` : 'Contrat manquant' },
-            { id: 'trainings' as const, label: 'Formations', icon: <Sparkles size={18} />, status: hasTrainings ? 'ok' : 'pending', hint: hasTrainings ? 'À jour' : 'À paramétrer' },
+            { id: 'trainings' as const, label: 'Formations', icon: <Sparkles size={18} />, status: hasTrainings ? 'ok' : 'pending', hint: hasTrainings ? `${trainingNames.length + trainingDocuments.length} élément${trainingNames.length + trainingDocuments.length > 1 ? 's' : ''}` : 'À paramétrer' },
             { id: 'documents' as const, label: 'Documents', icon: <NotebookText size={18} />, status: hasDocuments ? 'ok' : 'missing', hint: hasDocuments ? `${collaborator.documents?.length} document${(collaborator.documents?.length ?? 0) > 1 ? 's' : ''}` : 'Aucun document' },
-            { id: 'leaves' as const, label: 'Congés', icon: <CalendarDays size={18} />, status: 'pending', hint: 'À venir' },
+            { id: 'leaves' as const, label: 'Congés', icon: <CalendarDays size={18} />, status: leaveSummary ? 'ok' : 'pending', hint: leaveSummary ? `${formatLeaveNumber(leaveSummary.balanceDays)} j estimés` : 'Pays à configurer' },
             { id: 'planning' as const, label: 'Planning', icon: <Clock size={18} />, status: 'pending', hint: 'Géré dans Planning' },
           ].map((item) => (
-            <button key={item.label} type="button" className={`hr-future-card ${detailSection === item.id ? 'active' : ''} ${item.status}`} onClick={() => setDetailSection(item.id)}>
+            <button key={item.label} type="button" className={`hr-future-card ${detailSection === item.id ? 'active' : ''} ${item.status}`} onClick={() => openDetailSection(item.id)}>
               <div className="hr-future-icon">{item.icon}</div>
               <strong>{item.label}</strong>
               <span>{item.hint}</span>
             </button>
           ))}
         </div>
-        <CollaboratorDetailPanel collaborator={collaborator} section={detailSection} primaryContract={primaryContract} contractType={contractType} contractWeeklyMinutes={contractWeeklyMinutes} contractEndDate={contractEndDate} trialEndDate={trialEndDate} canWrite={false} onViewDocument={onViewDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} onDownloadDocument={onDownloadDocument} />
+        <div ref={detailPanelRef}>
+          <CollaboratorDetailPanel collaborator={collaborator} regulatoryCountryCode={regulatoryCountryCode} section={detailSection} primaryContract={primaryContract} contractType={contractType} contractWeeklyMinutes={contractWeeklyMinutes} contractEndDate={contractEndDate} trialEndDate={trialEndDate} canWrite={canWrite} previewDocument={previewDocument} previewUrl={previewUrl} previewLoading={previewLoading} previewError={previewError} onPreviewDocument={previewInSheet} onViewDocument={onViewDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} onDownloadDocument={onDownloadDocument} />
+        </div>
       </motion.div>
     </div>
   );
@@ -1803,17 +1871,30 @@ function AvatarInitial({ collaborator }: { collaborator: HrCollaborator }) { con
 function StatusBadge({ status }: { status?: string }) { const className = status === 'ACTIVE' ? 'badge-reception' : status === 'ABSENT' ? 'badge-warning' : status === 'LEFT' ? 'badge-danger' : ''; return <span className={`badge ${className}`}>{statusLabels[status ?? 'ACTIVE'] ?? status ?? 'Actif'}</span>; }
 function HistoryList({ history }: { history: HrHistoryEntry[] }) { return history.length === 0 ? <p className="muted">L’historique utile apparaîtra ici : création, changements de statut, service, poste, liaison et archivage.</p> : <div className="hr-history">{history.map((entry) => <div key={entry.id ?? `${entry.createdAt}-${entry.type}`}><strong>{entry.label ?? entry.type}</strong><span>{entry.description}</span><small>{formatDate(entry.createdAt)}</small></div>)}</div>; }
 function InfoBlock({ title, rows }: { title: string; rows: Array<[React.ReactNode, React.ReactNode]> }) { return <div className="hr-info-block"><h3>{title}</h3>{rows.map(([icon, value], index) => <div key={index}>{icon}<span>{value}</span></div>)}</div>; }
-function DocumentList({ employeeId, documents, canWrite, onView, onReplace, onDelete, onDownload }: { employeeId: string; documents: HrDocument[]; canWrite: boolean; onView: (employeeId: string, document: HrDocument) => Promise<void>; onReplace: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDelete: (employeeId: string, documentId: string) => Promise<void>; onDownload: (employeeId: string, document: HrDocument) => Promise<void> }) {
+function DocumentList({ employeeId, documents, canWrite, selectedDocumentId, onPreview, onView, onReplace, onDelete, onDownload }: { employeeId: string; documents: HrDocument[]; canWrite: boolean; selectedDocumentId?: string | null; onPreview: (document: HrDocument) => void; onView: (employeeId: string, document: HrDocument) => Promise<void>; onReplace: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDelete: (employeeId: string, documentId: string) => Promise<void>; onDownload: (employeeId: string, document: HrDocument) => Promise<void> }) {
   return (
     <div className="hr-document-list">
       {documents.map((document) => (
-        <div key={document.id} className="hr-document-row">
+        <div
+          key={document.id}
+          className={`hr-document-row ${selectedDocumentId === document.id ? 'active' : ''}`}
+          role="button"
+          tabIndex={0}
+          onClick={() => onPreview(document)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              onPreview(document);
+            }
+          }}
+        >
           <div>
             <strong>{document.originalName}</strong>
             <span>{documentCategoryLabel(document.category)} · {formatBytes(document.sizeBytes)} · {document.expiresAt ? 'Echeance ' + formatDate(document.expiresAt) : 'Sans echeance'}</span>
           </div>
-          <div className="row-actions">
-            <button type="button" className="btn btn-secondary" onClick={() => onView(employeeId, document)}>Voir</button>
+          <div className="row-actions" onClick={(event) => event.stopPropagation()}>
+            <button type="button" className="btn btn-secondary" onClick={() => onPreview(document)}>Voir</button>
+            <button type="button" className="btn btn-secondary" onClick={() => onView(employeeId, document)}>Nouvel onglet</button>
             <button type="button" className="btn btn-secondary" onClick={() => onDownload(employeeId, document)}>Telecharger</button>
             {canWrite ? <label className="btn btn-secondary hr-file-action">Remplacer<input type="file" accept="application/pdf,.pdf" onChange={(event) => { const file = event.target.files?.[0]; if (file) void onReplace(employeeId, document.id, file); event.currentTarget.value = ''; }} /></label> : null}
             {canWrite ? <button type="button" className="icon-btn danger" onClick={() => onDelete(employeeId, document.id)} title="Supprimer"><Archive size={16} /></button> : null}
@@ -1823,16 +1904,19 @@ function DocumentList({ employeeId, documents, canWrite, onView, onReplace, onDe
     </div>
   );
 }
-function CollaboratorDetailPanel({ collaborator, section, primaryContract, contractType, contractWeeklyMinutes, contractEndDate, trialEndDate, canWrite, onViewDocument, onReplaceDocument, onDeleteDocument, onDownloadDocument }: { collaborator: HrCollaborator; section: 'contracts' | 'trainings' | 'documents' | 'leaves' | 'planning'; primaryContract?: any; contractType?: string | null; contractWeeklyMinutes?: number | null; contractEndDate?: string | null; trialEndDate?: string | null; canWrite: boolean; onViewDocument: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument: (employeeId: string, documentId: string) => Promise<void>; onDownloadDocument: (employeeId: string, document: HrDocument) => Promise<void> }) {
+function CollaboratorDetailPanel({ collaborator, regulatoryCountryCode, section, primaryContract, contractType, contractWeeklyMinutes, contractEndDate, trialEndDate, canWrite, previewDocument, previewUrl, previewLoading, previewError, onPreviewDocument, onViewDocument, onReplaceDocument, onDeleteDocument, onDownloadDocument }: { collaborator: HrCollaborator; regulatoryCountryCode?: RegulatoryCountryCode | null; section: 'contracts' | 'trainings' | 'documents' | 'leaves' | 'planning'; primaryContract?: any; contractType?: string | null; contractWeeklyMinutes?: number | null; contractEndDate?: string | null; trialEndDate?: string | null; canWrite: boolean; previewDocument: HrDocument | null; previewUrl: string; previewLoading: boolean; previewError: string; onPreviewDocument: (document: HrDocument) => void; onViewDocument: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument: (employeeId: string, documentId: string) => Promise<void>; onDownloadDocument: (employeeId: string, document: HrDocument) => Promise<void> }) {
   const title = section === 'contracts' ? 'Contrat de travail' : section === 'trainings' ? 'Formations' : section === 'documents' ? 'Documents justificatifs' : section === 'leaves' ? 'Conges' : 'Planning';
   const contractDocuments = (collaborator.documents ?? []).filter((document) => document.category === 'CONTRACT' || document.category === 'AMENDMENT');
-  const trainingDocuments = (collaborator.documents ?? []).filter((document) => document.category === 'CERTIFICATION' || document.category === 'DIPLOMA');
+  const trainingDocuments = (collaborator.documents ?? []).filter(isTrainingDocument);
+  const trainingNames = collaborator.trainingNames ?? [];
   const visibleDocuments = section === 'contracts' ? contractDocuments : section === 'trainings' ? trainingDocuments : collaborator.documents ?? [];
+  const canShowPreview = section === 'contracts' || section === 'documents' || (section === 'trainings' && trainingDocuments.length > 0);
   return (
     <div className="card-modern hr-detail-panel">
       <div className="section-header-modern">
         <span className="card-title">{title}</span>
         {section === 'contracts' && (contractType || contractDocuments.length) ? <span className="badge badge-reception">Complet</span> : null}
+        {section === 'trainings' && (trainingNames.length || trainingDocuments.length) ? <span className="badge badge-reception">{trainingNames.length + trainingDocuments.length} élément{trainingNames.length + trainingDocuments.length > 1 ? 's' : ''}</span> : null}
         {section === 'documents' && collaborator.documents?.length ? <span className="badge badge-reception">{collaborator.documents.length} document{collaborator.documents.length > 1 ? 's' : ''}</span> : null}
       </div>
       {section === 'contracts' ? (
@@ -1845,19 +1929,67 @@ function CollaboratorDetailPanel({ collaborator, section, primaryContract, contr
               [<CalendarDays size={14} />, "Fin periode d'essai : " + (trialEndDate ? formatDate(trialEndDate) : 'Non renseignee')],
               [<Clock size={14} />, 'Duree hebdo : ' + (contractWeeklyMinutes != null ? formatMinutes(contractWeeklyMinutes) : 'Non renseignee')],
             ]} /> : null}
-            {contractDocuments.length ? <DocumentList employeeId={collaborator.id} documents={contractDocuments} canWrite={canWrite} onView={onViewDocument} onReplace={onReplaceDocument} onDelete={onDeleteDocument} onDownload={onDownloadDocument} /> : null}
+            {contractDocuments.length ? <DocumentList employeeId={collaborator.id} documents={contractDocuments} canWrite={canWrite} selectedDocumentId={previewDocument?.id} onPreview={onPreviewDocument} onView={onViewDocument} onReplace={onReplaceDocument} onDelete={onDeleteDocument} onDownload={onDownloadDocument} /> : null}
             {collaborator.contracts?.length ? <InfoBlock title="Historique" rows={collaborator.contracts.map((contract) => [<ShieldCheck size={14} />, contract.contractType + ' · ' + (contract.status ?? 'ACTIVE') + ' · ' + formatDate(contract.startDate) + (contract.endDate ? ' -> ' + formatDate(contract.endDate) : '')] as [React.ReactNode, React.ReactNode])} /> : null}
           </div>
         ) : <EmptyState title="Contrat manquant" description="Ajoutez un type de contrat ou joignez le contrat de travail PDF dans la fiche collaborateur." />
       ) : null}
       {section === 'trainings' ? (
-        trainingDocuments.length ? <DocumentList employeeId={collaborator.id} documents={trainingDocuments} canWrite={canWrite} onView={onViewDocument} onReplace={onReplaceDocument} onDelete={onDeleteDocument} onDownload={onDownloadDocument} /> : <EmptyState title="Formations a parametrer" description="Les documents de formation classes en certification ou diplome apparaitront ici. Les formations obligatoires seront reliees plus tard." />
+        trainingNames.length || trainingDocuments.length ? (
+          <div className="hr-detail-stack">
+            {trainingNames.length ? <div className="hr-training-list">{trainingNames.map((training) => <span key={training} className="badge badge-reception">{training}</span>)}</div> : null}
+            {trainingDocuments.length ? <DocumentList employeeId={collaborator.id} documents={trainingDocuments} canWrite={canWrite} selectedDocumentId={previewDocument?.id} onPreview={onPreviewDocument} onView={onViewDocument} onReplace={onReplaceDocument} onDelete={onDeleteDocument} onDownload={onDownloadDocument} /> : null}
+          </div>
+        ) : <EmptyState title="Formations a parametrer" description="Les formations choisies dans la fiche collaborateur et les certificats PDF apparaitront ici." />
       ) : null}
       {section === 'documents' ? (
-        visibleDocuments.length ? <DocumentList employeeId={collaborator.id} documents={visibleDocuments} canWrite={canWrite} onView={onViewDocument} onReplace={onReplaceDocument} onDelete={onDeleteDocument} onDownload={onDownloadDocument} /> : <EmptyState title="Aucun document" description="Les justificatifs PDF du collaborateur apparaitront ici apres enregistrement dans la fiche collaborateur." />
+        visibleDocuments.length ? <DocumentList employeeId={collaborator.id} documents={visibleDocuments} canWrite={canWrite} selectedDocumentId={previewDocument?.id} onPreview={onPreviewDocument} onView={onViewDocument} onReplace={onReplaceDocument} onDelete={onDeleteDocument} onDownload={onDownloadDocument} /> : <EmptyState title="Aucun document" description="Les justificatifs PDF du collaborateur apparaitront ici apres enregistrement dans la fiche collaborateur." />
       ) : null}
-      {section === 'leaves' ? <EmptyState title="Conges a venir" description="La liaison avec les absences et conges sera traitee dans une prochaine etape." /> : null}
+      {canShowPreview ? <PdfPreview document={previewDocument} url={previewUrl} loading={previewLoading} error={previewError} /> : null}
+      {section === 'leaves' ? <LeaveBalancePanel collaborator={collaborator} regulatoryCountryCode={regulatoryCountryCode} /> : null}
       {section === 'planning' ? <EmptyState title="Planning géré dans le module Planning" description="Les roulements et cycles de travail sont configurés dans Planning pour éviter les doublons avec RH." /> : null}
+    </div>
+  );
+}
+function LeaveBalancePanel({ collaborator, regulatoryCountryCode }: { collaborator: HrCollaborator; regulatoryCountryCode?: RegulatoryCountryCode | null }) {
+  const summary = calculatePaidLeaveSummary(collaborator, regulatoryCountryCode);
+  if (!summary) {
+    return <EmptyState title="Pays de réglementation à configurer" description="Sélectionnez France ou Finlande dans Organisation > Général pour calculer le droit légal minimal de congés." />;
+  }
+  return (
+    <div className="hr-leave-balance">
+      <div className="hr-leave-balance-main">
+        <div>
+          <span className="welcome-tag">Solde estimé</span>
+          <strong>{formatLeaveNumber(summary.balanceDays)} jours</strong>
+          <small>{summary.countryLabel} · {summary.periodLabel}</small>
+        </div>
+        <CalendarDays size={28} />
+      </div>
+      <div className="hr-leave-kpis">
+        <div><span>Droit annuel</span><strong>{formatLeaveNumber(summary.annualDays)} j</strong></div>
+        <div><span>Acquis</span><strong>{formatLeaveNumber(summary.accruedDays)} j</strong></div>
+        <div><span>Pris</span><strong>{formatLeaveNumber(summary.usedDays)} j</strong></div>
+        <div><span>Rythme</span><strong>{formatLeaveNumber(summary.monthlyRate)} j/mois</strong></div>
+      </div>
+      <div className="hr-leave-note">
+        <Info size={15} />
+        <span>{summary.note}</span>
+      </div>
+    </div>
+  );
+}
+function PdfPreview({ document, url, loading, error }: { document: HrDocument | null; url: string; loading: boolean; error: string }) {
+  if (!document && !loading && !error) return <div className="hr-pdf-preview empty"><NotebookText size={18} /><span>Sélectionnez un document pour afficher son aperçu PDF ici.</span></div>;
+  return (
+    <div className="hr-pdf-preview">
+      <div className="hr-pdf-preview-header">
+        <strong>{document?.originalName ?? 'Aperçu PDF'}</strong>
+        {document ? <span>{documentCategoryLabel(document.category)}</span> : null}
+      </div>
+      {loading ? <div className="hr-pdf-preview-state">Chargement de l’aperçu...</div> : null}
+      {error ? <div className="hr-pdf-preview-state error">{error}</div> : null}
+      {!loading && !error && url ? <iframe title={`Aperçu PDF - ${document?.originalName ?? 'document RH'}`} src={url} /> : null}
     </div>
   );
 }
@@ -1868,6 +2000,98 @@ function normalizeLabel(value?: string | null) { return (value ?? '').normalize(
 function hasContractCoverage(collaborator: HrCollaborator) {
   return Boolean(collaborator.activeContract?.contractType || collaborator.contractType || (collaborator.documents ?? []).some((document) => document.category === 'CONTRACT' || document.category === 'AMENDMENT'));
 }
+function isTrainingDocument(document: HrDocument) {
+  return ['CERTIFICATION', 'DIPLOMA'].includes(document.category) || /formation|training|certificat|dipl[oô]me/i.test(`${document.category} ${document.originalName} ${document.notes ?? ''}`);
+}
+type PaidLeaveSummary = {
+  countryLabel: string;
+  periodLabel: string;
+  annualDays: number;
+  monthlyRate: number;
+  accruedDays: number;
+  usedDays: number;
+  balanceDays: number;
+  note: string;
+};
+function calculatePaidLeaveSummary(collaborator: HrCollaborator, regulatoryCountryCode?: RegulatoryCountryCode | null): PaidLeaveSummary | null {
+  if (!regulatoryCountryCode) return null;
+  const hireDate = parseDateSafe(collaborator.hireDate);
+  if (!hireDate) return null;
+  const today = startOfDay(new Date());
+  const config = paidLeaveConfig(regulatoryCountryCode, hireDate, today);
+  if (!config) return null;
+  const start = maxDate(config.periodStart, startOfDay(hireDate));
+  const end = minDate(today, config.periodEnd);
+  const elapsedMonths = end < start ? 0 : Math.min(12, inclusiveDays(start, end) / 30.4375);
+  const accruedDays = roundLeaveDays(Math.min(config.annualDays, elapsedMonths * config.monthlyRate));
+  const usedDays = roundLeaveDays(approvedPaidLeaveDays(collaborator, config.periodStart, config.periodEnd));
+  return {
+    countryLabel: regulatoryCountryLabel(regulatoryCountryCode),
+    periodLabel: `${formatShortDate(config.periodStart)} - ${formatShortDate(config.periodEnd)}`,
+    annualDays: config.annualDays,
+    monthlyRate: config.monthlyRate,
+    accruedDays,
+    usedDays,
+    balanceDays: roundLeaveDays(accruedDays - usedDays),
+    note: config.note,
+  };
+}
+function regulatoryCountryLabel(countryCode: RegulatoryCountryCode) {
+  return countryCode === 'FI' ? 'Finlande' : 'France';
+}
+function paidLeaveConfig(countryCode: RegulatoryCountryCode, hireDate: Date, today: Date) {
+  if (countryCode === 'FR') {
+    const periodStart = new Date(today.getFullYear(), 5, 1);
+    if (today < periodStart) periodStart.setFullYear(periodStart.getFullYear() - 1);
+    const periodEnd = new Date(periodStart.getFullYear() + 1, 4, 31);
+    return {
+      periodStart,
+      periodEnd,
+      annualDays: 30,
+      monthlyRate: 2.5,
+      note: 'Estimation légale minimale France: 2,5 jours ouvrables par mois de travail effectif, hors convention, report et règles internes.',
+    };
+  }
+  if (countryCode === 'FI') {
+    const periodStart = new Date(today.getFullYear(), 3, 1);
+    if (today < periodStart) periodStart.setFullYear(periodStart.getFullYear() - 1);
+    const periodEnd = new Date(periodStart.getFullYear() + 1, 2, 31);
+    const oneYearBeforePeriodEnd = new Date(periodEnd);
+    oneYearBeforePeriodEnd.setFullYear(oneYearBeforePeriodEnd.getFullYear() - 1);
+    const monthlyRate = startOfDay(hireDate) <= startOfDay(oneYearBeforePeriodEnd) ? 2.5 : 2;
+    return {
+      periodStart,
+      periodEnd,
+      annualDays: monthlyRate * 12,
+      monthlyRate,
+      note: 'Estimation légale minimale Finlande: 2 ou 2,5 jours par mois de référence selon l’ancienneté, hors convention et règles internes.',
+    };
+  }
+  return null;
+}
+function approvedPaidLeaveDays(collaborator: HrCollaborator, periodStart: Date, periodEnd: Date) {
+  const absences = Array.isArray((collaborator as HrCollaborator & { absences?: Array<Record<string, any>> }).absences) ? (collaborator as HrCollaborator & { absences?: Array<Record<string, any>> }).absences ?? [] : [];
+  return absences.reduce((total, absence) => {
+    const type = String(absence.type ?? absence.code ?? '').toUpperCase();
+    const status = String(absence.status ?? '').toUpperCase();
+    if (!['CONGE', 'PAID_LEAVE', 'LEAVE'].includes(type) || status !== 'APPROVED') return total;
+    const start = maxDate(parseDateSafe(String(absence.startDate ?? '')) ?? periodStart, periodStart);
+    const end = minDate(parseDateSafe(String(absence.endDate ?? '')) ?? start, periodEnd);
+    return end < start ? total : total + inclusiveDays(start, end);
+  }, 0);
+}
+function parseDateSafe(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+function startOfDay(date: Date) { return new Date(date.getFullYear(), date.getMonth(), date.getDate()); }
+function minDate(a: Date, b: Date) { return a < b ? a : b; }
+function maxDate(a: Date, b: Date) { return a > b ? a : b; }
+function inclusiveDays(start: Date, end: Date) { return Math.floor((startOfDay(end).getTime() - startOfDay(start).getTime()) / 86_400_000) + 1; }
+function roundLeaveDays(value: number) { return Math.round(value * 10) / 10; }
+function formatLeaveNumber(value: number) { return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 }).format(value); }
+function formatShortDate(value: Date) { return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(value); }
 function jobDescriptionSummary(description?: string | null) {
   if (!description?.trim()) return '';
   const missionIndex = description.indexOf('Mission generale');
@@ -1962,6 +2186,7 @@ function collaboratorToPayload(collaborator: HrCollaborator, patch: Partial<HrCo
     positionId: collaborator.positionId ?? collaborator.position?.id ?? '',
     secondaryPositionIds: collaborator.secondaryPositionIds ?? collaborator.secondaryPositions?.map((position) => position.id) ?? [],
     siteId: collaborator.mainSiteId ?? collaborator.siteId ?? collaborator.mainSite?.id ?? collaborator.site?.id ?? undefined,
+    secondarySiteIds: collaborator.secondarySiteIds ?? collaborator.secondarySites?.map((item) => 'siteId' in item ? item.siteId : item.id) ?? [],
     employeeNumber: collaborator.employeeNumber ?? undefined,
     notes: collaborator.notes ?? undefined,
     status: collaborator.status === 'LEFT' ? 'DEPARTED' : collaborator.status,
@@ -1971,6 +2196,7 @@ function collaboratorToPayload(collaborator: HrCollaborator, patch: Partial<HrCo
     contractEndDate: toInputDate(collaborator.activeContract?.endDate) || toInputDate(collaborator.contractEndDate) || undefined,
     trialEndDate: toInputDate(collaborator.activeContract?.trialEndDate) || toInputDate(collaborator.trialEndDate) || undefined,
     contractWeeklyMinutes: collaborator.activeContract?.weeklyHours ?? collaborator.contractWeeklyMinutes ?? undefined,
+    trainingNames: collaborator.trainingNames ?? undefined,
     hourlyRate: collaborator.currentCompensation?.hourlyRate ?? collaborator.hourlyRate ?? undefined,
     currency: collaborator.currentCompensation?.currency ?? collaborator.currency ?? undefined,
     rateEffectiveDate: toInputDate(collaborator.currentCompensation?.effectiveFrom) || toInputDate(collaborator.rateEffectiveDate) || undefined,

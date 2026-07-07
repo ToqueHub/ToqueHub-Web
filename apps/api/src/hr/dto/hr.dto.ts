@@ -48,6 +48,7 @@ export class UpsertHrEmployeeDto {
   @IsUUID() positionId!: string;
   @IsOptional() @IsArray() @IsUUID(undefined, { each: true }) secondaryPositionIds?: string[];
   @IsOptional() @IsUUID() mainSiteId?: string;
+  @IsOptional() @IsArray() @IsUUID(undefined, { each: true }) secondarySiteIds?: string[];
   @IsOptional() @IsString() @MaxLength(80) employeeNumber?: string;
   @IsOptional() @IsString() @MaxLength(4000) notes?: string;
   @IsOptional() @IsEnum(HrEmployeeStatus) status?: HrEmployeeStatus;
@@ -57,6 +58,7 @@ export class UpsertHrEmployeeDto {
   @IsOptional() @IsString() contractEndDate?: string;
   @IsOptional() @IsString() trialEndDate?: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) contractWeeklyMinutes?: number;
+  @IsOptional() @IsArray() @IsString({ each: true }) trainingNames?: string[];
   @IsOptional() @Type(() => Number) hourlyRate?: number;
   @IsOptional() @IsString() currency?: string;
   @IsOptional() @IsString() rateEffectiveDate?: string;

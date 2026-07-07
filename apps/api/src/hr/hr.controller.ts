@@ -65,7 +65,8 @@ export class HrController {
   async downloadEmployeeDocument(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('documentId') documentId: string, @Res() res: Response) {
     const { document, absolutePath } = await this.hrService.getEmployeeDocument(this.org(user), this.actor(user), id, documentId);
     res.setHeader('Content-Type', document.mimeType);
-    return res.download(absolutePath, document.originalName);
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(document.originalName)}"`);
+    return res.sendFile(absolutePath);
   }
   @Patch('employees/:id/documents/:documentId')
   @UseInterceptors(FileInterceptor('file'))

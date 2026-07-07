@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsEnum, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsEmail, IsEnum, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
 import { UnitType } from '@prisma/client';
 
 export class ListQueryDto {
@@ -39,6 +39,31 @@ export class UpsertCategoryDto {
   @IsString()
   @MaxLength(500)
   description?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  address?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  responsibleName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  responsiblePhone?: string;
+
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(180)
+  responsibleEmail?: string;
 }
 
 export class UpsertUnitDto {

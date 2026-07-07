@@ -1,9 +1,10 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { AcceptReplacementDto, ApplyPlanningRotationDto, ApplyPlanningTemplateDto, GeneratePlanningDto, MovePlanningAssignmentDto, PlanningAttendanceQueryDto, PlanningContextQueryDto, PlanningDayStatusQueryDto, PlanningPeriodActionDto, PlanningQueryDto, PlanningRotationPreviewDto, PrepareExportDto, SetEmployeePlanningTemplatesDto, SetEmployeeSkillsDto, UpsertDayPlanningAssignmentDto, UpsertDayPresetDto, UpsertHrAbsenceDto, UpsertHrSkillDto, UpsertPlanningAssignmentDto, UpsertPlanningAttendanceDto, UpsertPlanningCodeDictionaryDto, UpsertPlanningDayStatusDto, UpsertPlanningNeedDto, UpsertPlanningPolicyProfileDto, UpsertPlanningTemplateDto, UpsertWeeklyRotationDto, ValidatePlanningAttendanceDto } from './dto/planning.dto';
+import { AcceptReplacementDto, ApplyPlanningRotationDto, ApplyPlanningTemplateDto, GeneratePlanningDto, MovePlanningAssignmentDto, PlanningAttendanceQueryDto, PlanningContextQueryDto, PlanningDayStatusQueryDto, PlanningExportPdfQueryDto, PlanningPeriodActionDto, PlanningQueryDto, PlanningRotationPreviewDto, PrepareExportDto, SetEmployeePlanningTemplatesDto, SetEmployeeSkillsDto, UpsertDayPlanningAssignmentDto, UpsertDayPresetDto, UpsertHrAbsenceDto, UpsertHrSkillDto, UpsertPlanningAssignmentDto, UpsertPlanningAttendanceDto, UpsertPlanningCodeDictionaryDto, UpsertPlanningDayStatusDto, UpsertPlanningNeedDto, UpsertPlanningPolicyProfileDto, UpsertPlanningTemplateDto, UpsertWeeklyRotationDto, ValidatePlanningAttendanceDto } from './dto/planning.dto';
 import { PlanningAttendanceService } from './planning-attendance.service';
 import { PlanningCodeDictionaryService } from './planning-code-dictionary.service';
 import { PlanningDayStatusService } from './planning-day-status.service';
@@ -95,6 +96,14 @@ export class PlanningController {
 
   @Get('notifications') notifications(@CurrentUser() user: AuthenticatedUser) { return this.planningService.listNotifications(this.org(user), user.id); }
   @Post('notifications/:id/read') readNotification(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.planningService.markNotificationRead(this.org(user), id); }
+
+  @Get('exports/pdf')
+  async exportPlanningPdf(@CurrentUser() user: AuthenticatedUser, @Query() q: PlanningExportPdfQueryDto, @Res() res: Response) {
+    const file = await this.planningService.exportPlanningPdf(this.org(user), q);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${file.filename}"`);
+    res.send(file.buffer);
+  }
 
   @Post('exports') prepareExport(@CurrentUser() user: AuthenticatedUser, @Body() dto: PrepareExportDto) { return this.planningService.prepareExport(this.org(user), this.actor(user), dto); }
 

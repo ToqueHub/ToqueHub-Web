@@ -26,6 +26,17 @@ const statusOptions = [
   { value: 'DEPARTED', label: 'Départ' },
 ];
 
+function collaboratorSecondarySiteIds(collaborator?: HrCollaborator) {
+  if (collaborator?.secondarySiteIds?.length) return collaborator.secondarySiteIds;
+  return (collaborator?.secondarySites ?? []).map((item) => 'siteId' in item ? item.siteId : item.id).filter(Boolean);
+}
+
+function secondarySiteNames(collaborator?: HrCollaborator) {
+  return (collaborator?.secondarySites ?? [])
+    .map((item) => 'siteId' in item ? item.site?.name : item.name)
+    .filter(Boolean) as string[];
+}
+
 function FormField({
   label,
   icon,
@@ -63,7 +74,7 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
   const [requiredErrors, setRequiredErrors] = useState<RequiredFieldErrors>({});
   const [submitError, setSubmitError] = useState('');
   const [pendingDocuments, setPendingDocuments] = useState<PendingHrDocumentUpload[]>([]);
-  const [selectedTrainings, setSelectedTrainings] = useState<string[]>([]);
+  const [selectedTrainings, setSelectedTrainings] = useState<string[]>(collaborator?.trainingNames ?? []);
   const [customTraining, setCustomTraining] = useState('');
   const [form, setForm] = useState<HrCollaboratorPayload>({
     photoUrl: collaborator?.photoUrl ?? collaborator?.photoDataUrl ?? '',
@@ -84,6 +95,7 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
     positionId: collaborator?.positionId ?? collaborator?.position?.id ?? '',
     secondaryPositionIds: collaborator?.secondaryPositionIds ?? collaborator?.secondaryPositions?.map((position) => position.id) ?? [],
     siteId: collaborator?.mainSiteId ?? collaborator?.siteId ?? collaborator?.mainSite?.id ?? collaborator?.site?.id ?? '',
+    secondarySiteIds: collaboratorSecondarySiteIds(collaborator),
     employeeNumber: collaborator?.employeeNumber ?? '',
     notes: cleanLegacyHrNotes(collaborator?.notes),
     status: collaborator?.status === 'LEFT' ? 'DEPARTED' : collaborator?.status ?? 'ACTIVE',
@@ -139,7 +151,7 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
     setSubmitting(true);
     setSubmitError('');
     try {
-      await onSubmit(cleanPayload(form), pendingDocuments);
+      await onSubmit(cleanPayload({ ...form, trainingNames: selectedTrainings }), pendingDocuments);
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Impossible d'enregistrer le collaborateur.");
     } finally {
@@ -249,12 +261,13 @@ function ProfessionalTab({ form, set, requiredErrors, departments, positions, al
       <FormField label="Date d'embauche *" icon={<CalendarDays size={16} />}>
         <input type="date" value={form.hireDate} onChange={(e) => set('hireDate', e.target.value)} required />
       </FormField>
-      <FormField label="Établissement" icon={<UsersRound size={16} />} isSelect={true}>
-        <select value={form.siteId ?? ''} onChange={(e) => set('siteId', e.target.value)} disabled={!sites.length}>
+      <FormField label="Établissement principal" icon={<UsersRound size={16} />} isSelect={true}>
+        <select value={form.siteId ?? ''} onChange={(e) => { set('siteId', e.target.value); set('secondarySiteIds', (form.secondarySiteIds ?? []).filter((id) => id !== e.target.value)); }} disabled={!sites.length}>
           <option value="">{sites.length ? '-' : 'Aucun établissement configuré'}</option>
           {sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
         </select>
       </FormField>
+      <SecondarySiteSelector sites={sites} selectedIds={form.secondarySiteIds ?? []} mainSiteId={form.siteId} onChange={(ids) => set('secondarySiteIds', ids)} />
       <FormField label="Service principal *" icon={<UsersRound size={16} />} error={requiredErrors.departmentId} isSelect={true}>
         <select className={requiredErrors.departmentId ? 'hr-field-missing' : undefined} value={form.departmentId} onChange={(e) => { set('departmentId', e.target.value); clearPositionResetMessage(); }} required aria-invalid={Boolean(requiredErrors.departmentId)}>
           <option value="">-</option>
@@ -452,6 +465,7 @@ function OrganizationTab({ collaborator }: { collaborator?: HrCollaborator }) {
       <InfoRow label="Postes secondaires" value={collaborator?.secondaryPositions?.map((p) => p.name).join(', ')} />
       <InfoRow label="Durée hebdo contractuelle" value={contractMinutes != null ? formatMinutes(contractMinutes) : undefined} />
       <InfoRow label="Établissement" value={collaborator?.mainSite?.name ?? collaborator?.site?.name} />
+      <InfoRow label="Établissements secondaires" value={secondarySiteNames(collaborator).join(', ')} />
       <InfoRow label="Responsable direct" value={collaborator?.manager ? fullName(collaborator.manager) : undefined} />
     </div>
   </TabPanel>;
@@ -461,6 +475,45 @@ function HistoryTab({ history }: { history: HrHistoryEntry[] }) {
   return <TabPanel icon={<History size={18} />} title="Historique">
     {history.length === 0 ? <p className="muted">L'historique RH apparaîtra ici.</p> : <div className="hr-history">{history.map((entry) => <div key={entry.id ?? `${entry.createdAt}-${entry.type}`}><strong>{entry.label ?? entry.type}</strong><span>{entry.description}</span><small>{formatDate(entry.createdAt)}</small></div>)}</div>}
   </TabPanel>;
+}
+
+function SecondarySiteSelector({ sites, selectedIds, mainSiteId, onChange }: { sites: Site[]; selectedIds: string[]; mainSiteId?: string | null; onChange: (ids: string[]) => void }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+  const normalizedSearch = normalizeLabel(search);
+  const selected = sites.filter((site) => selectedIds.includes(site.id));
+  const available = sites
+    .filter((site) => site.id !== mainSiteId && !isArchived(site))
+    .filter((site) => !normalizedSearch || normalizeLabel(site.name).includes(normalizedSearch))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  useEffect(() => { function handleClick(e: MouseEvent) { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); } if (open) { document.addEventListener('mousedown', handleClick); return () => document.removeEventListener('mousedown', handleClick); } }, [open]);
+  const toggle = (id: string) => onChange(selectedIds.includes(id) ? selectedIds.filter((item) => item !== id) : [...new Set([...selectedIds, id])]);
+  return <div className="hr-secondary-selector span-2" ref={ref}>
+    <label>Établissements secondaires</label>
+    <button type="button" className="hr-secondary-trigger" onClick={() => setOpen((value) => !value)}>
+      {selected.length ? <div className="hr-secondary-badges">{selected.map((site) => <span key={site.id} className="badge">{site.name}<span onClick={(e) => { e.stopPropagation(); toggle(site.id); }}><X size={10} /></span></span>)}</div> : <span className="muted">+ Ajouter un établissement secondaire</span>}
+    </button>
+    {open ? (
+      <div className="hr-secondary-popover">
+        <div className="hr-secondary-search">
+          <div className="hr-field-wrapper has-icon" style={{ flex: 1 }}>
+            <span className="hr-field-icon"><Search size={14} /></span>
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher un établissement..." autoFocus />
+          </div>
+        </div>
+        <div className="hr-secondary-list">
+          {available.map((site) => (
+            <label key={site.id} className="hr-secondary-item">
+              <input type="checkbox" checked={selectedIds.includes(site.id)} onChange={() => toggle(site.id)} />
+              {site.name}
+            </label>
+          ))}
+          {!available.length ? <p className="muted" style={{ margin: '0.5rem' }}>Aucun autre établissement disponible.</p> : null}
+        </div>
+      </div>
+    ) : null}
+  </div>;
 }
 
 function SecondaryPositionSelector({ positions, selectedIds, mainPositionId, selectedDepartment, onChange }: { positions: HrPosition[]; selectedIds: string[]; mainPositionId?: string | null; selectedDepartment?: HrDepartment; onChange: (ids: string[]) => void }) {
@@ -541,6 +594,7 @@ function cleanPayload(form: HrCollaboratorPayload): HrCollaboratorPayload {
     userId: form.userId || undefined,
     managerId: form.managerId || undefined,
     secondaryPositionIds: form.secondaryPositionIds?.length ? form.secondaryPositionIds : undefined,
+    secondarySiteIds: form.secondarySiteIds?.length ? form.secondarySiteIds : undefined,
     contractType: form.contractType || undefined,
     contractEndDate: form.contractEndDate || undefined,
     trialEndDate: form.trialEndDate || undefined,
@@ -550,6 +604,7 @@ function cleanPayload(form: HrCollaboratorPayload): HrCollaboratorPayload {
     rateEffectiveDate: form.rateEffectiveDate || undefined,
     nextReviewDate: form.nextReviewDate || undefined,
     reviewFrequency: form.reviewFrequency || undefined,
+    trainingNames: form.trainingNames,
   };
 }
 function positionBelongsToDepartment(position: HrPosition, department?: HrDepartment) { if (!department) return false; if (position.departmentId) return position.departmentId === department.id; const catalog = HR_CATALOG.find((item) => normalizeLabel(item.name) === normalizeLabel(department.name)); return Boolean(catalog?.positions.some((name) => normalizeLabel(name) === normalizeLabel(position.name))); }

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsArray, IsIn, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
 const ESTABLISHMENT_TYPES = ['Restaurant', 'EHPAD', 'Collectivité', 'Hôtel', 'Traiteur', 'Cuisine centrale', 'Autre'];
 const TEAM_SIZES = ['1-5', '6-10', '11-20', '20+'];
@@ -51,6 +51,19 @@ export class SetupOrganizationDto {
   @IsString()
   @MaxLength(750_000)
   logoDataUrl?: string;
+
+  @ApiPropertyOptional({ example: 'Site principal' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(180)
+  primarySiteName?: string;
+
+  @ApiPropertyOptional({ type: [String], example: ['Cousamo', 'Oulu'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(180, { each: true })
+  secondarySiteNames?: string[];
 
   @ApiPropertyOptional({ description: 'Optional Mistral API key used for OCR imports.' })
   @IsOptional()

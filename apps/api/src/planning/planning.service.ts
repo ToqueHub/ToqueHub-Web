@@ -1,8 +1,9 @@
 import { BadRequestException, ForbiddenException, GoneException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { HrAbsenceStatus, HrEmployeeStatus, PlanningAssignmentOrigin, PlanningAssignmentStatus, PlanningConflictSeverity, PlanningHistoryAction, PlanningNotificationStatus, PlanningReplacementStatus, Prisma } from '@prisma/client';
+import PDFDocument from 'pdfkit';
 import { HrTimeAccountService } from '../hr/time-accounts/hr-time-account.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { AcceptReplacementDto, ApplyPlanningRotationDto, ApplyPlanningTemplateDto, GeneratePlanningDto, MovePlanningAssignmentDto, PlanningContextQueryDto, PlanningPeriodActionDto, PlanningQueryDto, PlanningRotationPreviewDto, PrepareExportDto, SetEmployeePlanningTemplatesDto, UpsertDayPlanningAssignmentDto, UpsertDayPresetDto, UpsertHrAbsenceDto, UpsertHrSkillDto, UpsertPlanningAssignmentDto, UpsertPlanningNeedDto, UpsertPlanningTemplateDto, UpsertWeeklyRotationDto } from './dto/planning.dto';
+import { AcceptReplacementDto, ApplyPlanningRotationDto, ApplyPlanningTemplateDto, GeneratePlanningDto, MovePlanningAssignmentDto, PlanningContextQueryDto, PlanningExportPdfQueryDto, PlanningPeriodActionDto, PlanningQueryDto, PlanningRotationPreviewDto, PrepareExportDto, SetEmployeePlanningTemplatesDto, UpsertDayPlanningAssignmentDto, UpsertDayPresetDto, UpsertHrAbsenceDto, UpsertHrSkillDto, UpsertPlanningAssignmentDto, UpsertPlanningNeedDto, UpsertPlanningTemplateDto, UpsertWeeklyRotationDto } from './dto/planning.dto';
 import { PlanningCodeDictionaryService } from './planning-code-dictionary.service';
 import { PlanningDayStatusService } from './planning-day-status.service';
 import { PlanningAttendanceService } from './planning-attendance.service';
@@ -57,13 +58,13 @@ export class PlanningService {
     const period = this.period(q);
     const assignmentWhere = this.assignmentWhere(organizationId, q, period, true);
     const needWhere = this.needWhere(organizationId, q, period, true);
-    const templateWhere = { organizationId, isArchived: false, departmentId: q.departmentId, siteId: q.siteId, id: q.seasonalTemplateId, name: q.search ? { contains: q.search, mode: 'insensitive' as const } : undefined };
+    const templateWhere = this.templateWhere(organizationId, q);
 
     const [org, employees, departments, positions, sites, skills, assignments, needs, templates, templateApplications, replacements, conflicts, notifications, history, absences] = await Promise.all([
       this.prisma.organization.findUnique({ where: { id: organizationId }, select: { hrInstalledAt: true, planningInstalledAt: true } }),
       this.prisma.hrEmployee.findMany({
-        where: { organizationId, isArchived: false, status: HrEmployeeStatus.ACTIVE, id: q.employeeId },
-        include: { department: true, position: { include: { department: true } }, secondaryPositions: { include: { position: true } }, mainSite: true, skills: { include: { skill: true } }, contracts: { orderBy: { startDate: 'desc' }, take: 1 }, compensations: { orderBy: { effectiveFrom: 'desc' }, take: 1 } },
+        where: { organizationId, isArchived: false, status: HrEmployeeStatus.ACTIVE, id: q.employeeId, ...this.siteEligibilityWhere(q.siteId) },
+        include: { department: true, position: { include: { department: true } }, secondaryPositions: { include: { position: true } }, mainSite: true, secondarySites: { include: { site: true } }, skills: { include: { skill: true } }, contracts: { orderBy: { startDate: 'desc' }, take: 1 }, compensations: { orderBy: { effectiveFrom: 'desc' }, take: 1 } },
         orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
       }),
       this.prisma.hrDepartment.findMany({ where: { organizationId, isArchived: false, id: q.departmentId }, orderBy: { name: 'asc' } }),
@@ -196,6 +197,30 @@ export class PlanningService {
   async listAssignments(organizationId: string, q: PlanningQueryDto = {}) {
     const period = this.period(q);
     return this.prisma.planningAssignment.findMany({ where: this.assignmentWhere(organizationId, q, period), include: ASSIGNMENT_INCLUDE, orderBy: [{ date: 'asc' }, { startTime: 'asc' }], ...this.page(q) });
+  }
+
+  async exportPlanningPdf(organizationId: string, q: PlanningExportPdfQueryDto) {
+    const mode = q.mode === 'month' ? 'month' : 'week';
+    const period = this.exportPeriod(mode, q);
+    const where = this.assignmentWhere(organizationId, { ...q, startDate: this.iso(period.start), endDate: this.iso(period.end), pageSize: undefined }, period, true);
+    if (!q.status) where.status = { not: PlanningAssignmentStatus.CANCELLED };
+    const [organization, assignments] = await Promise.all([
+      this.prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } }),
+      this.prisma.planningAssignment.findMany({
+        where,
+        include: ASSIGNMENT_INCLUDE,
+        orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
+        take: 5000,
+      }),
+    ]);
+    const buffer = await this.buildPlanningPdf({
+      title: mode === 'month' ? 'Planning mensuel' : 'Planning hebdomadaire',
+      organizationName: organization?.name ?? 'ToqueHub',
+      mode,
+      period,
+      assignments,
+    });
+    return { buffer, filename: `planning-${mode}-${this.iso(period.start)}-${this.iso(period.end)}.pdf` };
   }
 
   async createAssignment(organizationId: string, actor: Actor, dto: UpsertPlanningAssignmentDto) {
@@ -382,8 +407,9 @@ export class PlanningService {
     const start = this.day(this.parseDate(dto.startDate));
     const end = this.endDay(this.parseDate(dto.endDate));
     const employeeIds = dto.employeeId ? [dto.employeeId] : this.stringArray(template.employeeIds);
+    const rotationSiteId = dto.siteId ?? template.siteId ?? undefined;
     const employees = employeeIds.length
-      ? await this.prisma.hrEmployee.findMany({ where: { organizationId, id: { in: employeeIds }, isArchived: false, status: HrEmployeeStatus.ACTIVE }, include: { department: true, position: true, mainSite: true } })
+      ? await this.prisma.hrEmployee.findMany({ where: { organizationId, id: { in: employeeIds }, isArchived: false, status: HrEmployeeStatus.ACTIVE, ...this.siteEligibilityWhere(rotationSiteId) }, include: { department: true, position: true, mainSite: true, secondarySites: true } })
       : [];
     const assignments = this.planningRotationAssignmentsPreview(template, employees, start, end, dto.siteId);
     return { rotation: template, assignments, temporarySource: 'planning_templates', applied: false };
@@ -588,7 +614,14 @@ export class PlanningService {
     };
   }
   private templateWhere(organizationId: string, q: PlanningQueryDto = {}): Prisma.PlanningTemplateWhereInput {
-    return { organizationId, isArchived: false, departmentId: q.departmentId, siteId: q.siteId, id: q.seasonalTemplateId, name: q.search ? { contains: q.search, mode: 'insensitive' } : undefined };
+    return {
+      organizationId,
+      isArchived: false,
+      departmentId: q.departmentId,
+      OR: q.siteId ? [{ siteId: q.siteId }, { siteId: null }] : undefined,
+      id: q.seasonalTemplateId,
+      name: q.search ? { contains: q.search, mode: 'insensitive' } : undefined,
+    };
   }
   private async getPlanningTemplate(organizationId: string, id: string) {
     const template = await this.prisma.planningTemplate.findFirst({ where: { id, organizationId }, include: { department: true, site: true } });
@@ -715,10 +748,177 @@ export class PlanningService {
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) days.push(this.iso(d));
     return { start, end, month, year, days };
   }
+  private exportPeriod(mode: 'week' | 'month', q: PlanningExportPdfQueryDto): Period {
+    const now = new Date();
+    const base = q.startDate || q.date
+      ? this.parseDate(q.startDate ?? q.date ?? '')
+      : new Date(q.year ?? now.getFullYear(), (q.month ?? now.getMonth() + 1) - 1, 1);
+    const start = mode === 'week'
+      ? this.weekStart(base)
+      : this.day(new Date(base.getFullYear(), base.getMonth(), 1));
+    const end = mode === 'week'
+      ? this.endDay(this.addDays(start, 6))
+      : this.endDay(new Date(start.getFullYear(), start.getMonth() + 1, 0));
+    const days: string[] = [];
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) days.push(this.iso(d));
+    return { start, end, month: start.getMonth() + 1, year: start.getFullYear(), days };
+  }
+  private async buildPlanningPdf(input: { title: string; organizationName: string; mode: 'week' | 'month'; period: Period; assignments: AnyAssignment[] }) {
+    return new Promise<Buffer>((resolve, reject) => {
+      const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 22, bufferPages: false, info: { Title: input.title, Author: 'ToqueHub' } });
+      const chunks: Buffer[] = [];
+      doc.on('data', chunk => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+      this.drawPlanningPdf(doc, input);
+      doc.end();
+    });
+  }
+  private drawPlanningPdf(doc: PDFKit.PDFDocument, input: { title: string; organizationName: string; mode: 'week' | 'month'; period: Period; assignments: AnyAssignment[] }) {
+    const weeks = this.exportWeeks(input.period);
+    let firstPage = true;
+    let pageNumber = 0;
+    for (const week of weeks) {
+      const rows = this.exportRows(input.assignments, week.days);
+      const printableRows = rows.length ? rows : [{ employeeName: 'Aucun shift planifié', departmentName: '', assignmentsByDate: new Map<string, AnyAssignment[]>() }];
+      let y = 0;
+      for (const row of printableRows) {
+        const rowHeight = this.exportRowHeight(row, week.days);
+        if (!y || y + rowHeight > doc.page.height - doc.page.margins.bottom - 18) {
+          if (!firstPage) doc.addPage({ size: 'A4', layout: 'landscape', margin: 22 });
+          firstPage = false;
+          pageNumber += 1;
+          y = this.drawPlanningPdfHeader(doc, input, week.days, pageNumber);
+        }
+        this.drawPlanningPdfRow(doc, row, week.days, y, rowHeight);
+        y += rowHeight;
+      }
+    }
+  }
+  private drawPlanningPdfHeader(doc: PDFKit.PDFDocument, input: { title: string; organizationName: string; mode: 'week' | 'month'; period: Period; assignments: AnyAssignment[] }, days: string[], pageNumber: number) {
+    const left = doc.page.margins.left;
+    const right = doc.page.width - doc.page.margins.right;
+    const tableWidth = right - left;
+    const nameWidth = 116;
+    const dayWidth = (tableWidth - nameWidth) / 7;
+    const y = doc.page.margins.top;
+    const periodLabel = `${this.formatPdfDate(input.period.start)} - ${this.formatPdfDate(input.period.end)}`;
+    const totalMinutes = input.assignments.reduce((sum, assignment) => sum + plannedMinutes(assignment), 0);
+
+    doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(15).text(input.title, left, y, { width: tableWidth * 0.5 });
+    doc.font('Helvetica').fontSize(8).fillColor('#64748b').text(`${input.organizationName} · ${periodLabel} · ${input.assignments.length} shift(s) · ${this.formatPdfMinutes(totalMinutes)}`, left, y + 18, { width: tableWidth * 0.72 });
+    doc.fontSize(7).fillColor('#94a3b8').text(`Page ${pageNumber}`, right - 80, y + 2, { width: 80, align: 'right' });
+
+    const tableY = y + 42;
+    doc.lineWidth(0.6).strokeColor('#cbd5e1').fillColor('#eefdf6').rect(left, tableY, tableWidth, 24).fillAndStroke('#eefdf6', '#cbd5e1');
+    doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(7.5).text('Collaborateur', left + 5, tableY + 8, { width: nameWidth - 10 });
+    days.forEach((day, index) => {
+      const x = left + nameWidth + index * dayWidth;
+      doc.strokeColor('#cbd5e1').rect(x, tableY, dayWidth, 24).stroke();
+      doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(7).text(this.formatPdfDayHeader(day), x + 3, tableY + 5, { width: dayWidth - 6, align: 'center' });
+    });
+    return tableY + 24;
+  }
+  private drawPlanningPdfRow(doc: PDFKit.PDFDocument, row: { employeeName: string; departmentName: string; assignmentsByDate: Map<string, AnyAssignment[]> }, days: string[], y: number, height: number) {
+    const left = doc.page.margins.left;
+    const right = doc.page.width - doc.page.margins.right;
+    const tableWidth = right - left;
+    const nameWidth = 116;
+    const dayWidth = (tableWidth - nameWidth) / 7;
+
+    doc.lineWidth(0.45).strokeColor('#dbe4ee').rect(left, y, tableWidth, height).stroke();
+    doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(7.2).text(row.employeeName, left + 5, y + 6, { width: nameWidth - 10, lineGap: 1 });
+    if (row.departmentName) doc.fillColor('#64748b').font('Helvetica').fontSize(6.4).text(row.departmentName, left + 5, y + 18, { width: nameWidth - 10 });
+    days.forEach((day, index) => {
+      const x = left + nameWidth + index * dayWidth;
+      doc.strokeColor('#dbe4ee').rect(x, y, dayWidth, height).stroke();
+      const assignments = row.assignmentsByDate.get(day) ?? [];
+      if (!assignments.length) return;
+      const lines = assignments.map(assignment => this.assignmentPdfLine(assignment));
+      doc.fillColor('#0f766e').font('Helvetica').fontSize(6.2).text(lines.join('\n'), x + 3, y + 5, { width: dayWidth - 6, lineGap: 1 });
+    });
+  }
+  private exportWeeks(period: Period) {
+    const weeks: Array<{ days: string[] }> = [];
+    let cursor = this.weekStart(period.start);
+    while (cursor <= period.end) {
+      const days: string[] = [];
+      for (let index = 0; index < 7; index += 1) days.push(this.iso(this.addDays(cursor, index)));
+      weeks.push({ days });
+      cursor = this.addDays(cursor, 7);
+    }
+    return weeks;
+  }
+  private exportRows(assignments: AnyAssignment[], days: string[]) {
+    const daySet = new Set(days);
+    const rows = new Map<string, { employeeName: string; departmentName: string; assignmentsByDate: Map<string, AnyAssignment[]> }>();
+    for (const assignment of assignments) {
+      const date = this.assignmentDateIso(assignment);
+      if (!daySet.has(date)) continue;
+      const employee = assignment.employee ?? assignment.collaborator ?? {};
+      const key = String(assignment.employeeId ?? employee.id ?? assignment.id);
+      const employeeName = this.employeePdfName(employee);
+      const departmentName = assignment.department?.name ?? employee.department?.name ?? 'Sans service';
+      const row = rows.get(key) ?? { employeeName, departmentName, assignmentsByDate: new Map<string, AnyAssignment[]>() };
+      const dayAssignments = row.assignmentsByDate.get(date) ?? [];
+      dayAssignments.push(assignment);
+      dayAssignments.sort((a, b) => this.timeLabel(a.startTime).localeCompare(this.timeLabel(b.startTime)));
+      row.assignmentsByDate.set(date, dayAssignments);
+      rows.set(key, row);
+    }
+    return [...rows.values()].sort((a, b) => a.employeeName.localeCompare(b.employeeName, 'fr'));
+  }
+  private exportRowHeight(row: { assignmentsByDate: Map<string, AnyAssignment[]> }, days: string[]) {
+    const maxLines = Math.max(1, ...days.map(day => row.assignmentsByDate.get(day)?.length ?? 0));
+    return Math.max(30, 14 + maxLines * 9);
+  }
+  private assignmentPdfLine(assignment: AnyAssignment) {
+    const range = `${this.timeLabel(assignment.startTime)}-${this.timeLabel(assignment.endTime)}`;
+    const breakLabel = Number(assignment.breakMinutes ?? 0) ? ` · P${assignment.breakMinutes}` : '';
+    const label = assignment.position?.name ?? assignment.department?.name ?? assignment.site?.name ?? assignment.status ?? 'Shift';
+    return this.truncatePdfText(`${range} ${label}${breakLabel}`, 34);
+  }
+  private employeePdfName(employee: AnyEmployee) {
+    return `${employee.lastName ?? ''} ${employee.firstName ?? ''}`.trim() || `${employee.firstName ?? ''} ${employee.lastName ?? ''}`.trim() || 'Collaborateur';
+  }
+  private assignmentDateIso(assignment: AnyAssignment) {
+    const value = assignment.date;
+    if (value instanceof Date) return this.iso(value);
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) return value.slice(0, 10);
+    return this.iso(this.parseDate(String(value)));
+  }
+  private timeLabel(value?: string | null) {
+    if (!value) return '--:--';
+    const raw = String(value);
+    if (/^\d{2}:\d{2}/.test(raw)) return raw.slice(0, 5);
+    const date = new Date(raw);
+    return Number.isNaN(date.getTime()) ? raw.slice(0, 5) : date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  }
+  private formatPdfDayHeader(day: string) {
+    const date = this.parseDate(day);
+    return `${date.toLocaleDateString('fr-FR', { weekday: 'short' })}\n${date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}`;
+  }
+  private formatPdfDate(date: Date) {
+    return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }
+  private formatPdfMinutes(value: number) {
+    const minutes = Math.max(0, Math.round(value));
+    return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, '0')}`;
+  }
+  private truncatePdfText(value: string, max: number) {
+    return value.length <= max ? value : `${value.slice(0, Math.max(0, max - 1))}…`;
+  }
   private hasPeriodFilter(q: PlanningQueryDto) { return Boolean(q.date || q.startDate || q.endDate || q.month || q.year); }
   private assignmentWhere(organizationId: string, q: PlanningQueryDto, period: Period, forcePeriod = false): Prisma.PlanningAssignmentWhereInput {
     const date = q.date ? { gte: this.day(this.parseDate(q.date)), lte: this.endDay(this.parseDate(q.date)) } : forcePeriod || this.hasPeriodFilter(q) ? { gte: period.start, lte: period.end } : undefined;
     return { organizationId, employeeId: q.employeeId, departmentId: q.departmentId, positionId: q.positionId, siteId: q.siteId, status: q.status, date };
+  }
+  private siteEligibilityWhere(siteId?: string): Prisma.HrEmployeeWhereInput {
+    return siteId ? { OR: [{ mainSiteId: siteId }, { secondarySites: { some: { siteId } } }] } : {};
+  }
+  private employeeCanWorkSite(employee: { mainSiteId?: string | null; secondarySites?: Array<{ siteId: string }> }, siteId?: string | null) {
+    if (!siteId) return true;
+    return employee.mainSiteId === siteId || Boolean(employee.secondarySites?.some((item) => item.siteId === siteId));
   }
   private needWhere(organizationId: string, q: PlanningQueryDto, period: Period, forcePeriod = false): Prisma.PlanningOperationalNeedWhereInput {
     const dateFilter = forcePeriod || this.hasPeriodFilter(q);
@@ -861,7 +1061,7 @@ export class PlanningService {
     if (endTime <= startTime) endTime.setDate(endTime.getDate() + 1);
     return { organizationId, employeeId: dto.employeeId, departmentId: dto.departmentId, positionId: dto.positionId, siteId: dto.siteId ?? null, date: this.day(this.parseDate(dto.date)), startTime, endTime, breakMinutes: dto.breakMinutes ?? 0, status: dto.status ?? PlanningAssignmentStatus.PLANNED, origin: dto.origin ?? PlanningAssignmentOrigin.MANUAL, comment: dto.comment ?? null, allowCriticalOverride: !!dto.allowCriticalOverride, overrideReason: dto.overrideReason ?? null };
   }
-  private async validateRefs(organizationId: string, dto: UpsertPlanningAssignmentDto) { const [e, d, p] = await Promise.all([this.ensureEmployee(organizationId, dto.employeeId), this.prisma.hrDepartment.findFirst({ where: { id: dto.departmentId, organizationId, isArchived: false } }), this.prisma.hrPosition.findFirst({ where: { id: dto.positionId, organizationId, isArchived: false } })]); if (!d) throw new NotFoundException('Service RH introuvable'); if (!p) throw new NotFoundException('Poste RH introuvable'); if (e.departmentId !== dto.departmentId) {/* warning handled in controls */} if (dto.siteId && !(await this.prisma.site.findFirst({ where: { id: dto.siteId, organizationId, isArchived: false } }))) throw new NotFoundException('Site introuvable'); }
+  private async validateRefs(organizationId: string, dto: UpsertPlanningAssignmentDto) { const [e, d, p] = await Promise.all([this.ensureEmployee(organizationId, dto.employeeId), this.prisma.hrDepartment.findFirst({ where: { id: dto.departmentId, organizationId, isArchived: false } }), this.prisma.hrPosition.findFirst({ where: { id: dto.positionId, organizationId, isArchived: false } })]); if (!d) throw new NotFoundException('Service RH introuvable'); if (!p) throw new NotFoundException('Poste RH introuvable'); if (e.departmentId !== dto.departmentId) {/* warning handled in controls */} if (dto.status !== PlanningAssignmentStatus.CANCELLED && !dto.siteId) throw new BadRequestException('Sélectionnez un site précis pour affecter un collaborateur. Tous sites est uniquement une vue de consultation.'); if (dto.siteId && !(await this.prisma.site.findFirst({ where: { id: dto.siteId, organizationId, isArchived: false } }))) throw new NotFoundException('Site introuvable'); if (dto.siteId && !this.employeeCanWorkSite(e, dto.siteId)) throw new BadRequestException('Ce collaborateur n’est pas affecté à ce site. Ajoutez-le en site secondaire dans sa fiche RH.'); }
   private normalizeOperationalNeed(need: any) {
     const metadata = this.parseOperationalNeedMetadata(need.comment);
     const season = this.getNeedSeason(need);
@@ -921,15 +1121,22 @@ export class PlanningService {
     return { currentProfile: 'custom', availableProfiles: ['france', 'finland', 'custom'], configurableByCompany: true, families: ['heures supplémentaires', 'dimanche', 'jours fériés', 'nuit', 'pauses', 'arrondis', 'primes'], persistence: false, note: 'Préparé pour calcul paie/coût futur sans règle légale codée en dur.' };
   }
   private async validateNeedRefs(organizationId: string, dto: UpsertPlanningNeedDto) { if (!(await this.prisma.hrDepartment.findFirst({ where: { id: dto.departmentId, organizationId, isArchived: false } }))) throw new NotFoundException('Service RH introuvable'); if (dto.positionId && !(await this.prisma.hrPosition.findFirst({ where: { id: dto.positionId, organizationId, isArchived: false } }))) throw new NotFoundException('Poste RH introuvable'); if (dto.requiredSkillId && !(await this.prisma.hrSkill.findFirst({ where: { id: dto.requiredSkillId, organizationId, isArchived: false } }))) throw new NotFoundException('Compétence RH introuvable'); }
-  private async ensureEmployee(organizationId: string, id: string) { const e = await this.prisma.hrEmployee.findFirst({ where: { id, organizationId, isArchived: false }, include: { skills: true, user: true } }); if (!e) throw new NotFoundException('Collaborateur RH introuvable'); return e; }
+  private async ensureEmployee(organizationId: string, id: string) { const e = await this.prisma.hrEmployee.findFirst({ where: { id, organizationId, isArchived: false }, include: { skills: true, user: true, secondarySites: true } }); if (!e) throw new NotFoundException('Collaborateur RH introuvable'); return e; }
   private async detectConflicts(organizationId: string, data: any, excludeId?: string) {
     const conflicts: any[] = [];
     const employee = await this.prisma.hrEmployee.findFirst({ where: { id: data.employeeId, organizationId }, include: { skills: true } });
     if (!employee || employee.isArchived || employee.status !== HrEmployeeStatus.ACTIVE) conflicts.push({ severity: 'BLOCKING', code: 'EMPLOYEE_UNAVAILABLE', label: 'Collaborateur inactif ou archivé' });
     const absence = await this.prisma.hrAbsence.findFirst({ where: { organizationId, employeeId: data.employeeId, status: HrAbsenceStatus.APPROVED, startDate: { lte: data.endTime }, endDate: { gte: data.startTime } } });
     if (absence) conflicts.push({ severity: 'BLOCKING', code: 'APPROVED_ABSENCE', label: 'Collaborateur affecté pendant une absence validée', absenceId: absence.id });
-    const overlap = await this.prisma.planningAssignment.findFirst({ where: { organizationId, employeeId: data.employeeId, id: excludeId ? { not: excludeId } : undefined, status: { not: PlanningAssignmentStatus.CANCELLED }, startTime: { lt: data.endTime }, endTime: { gt: data.startTime } } });
-    if (overlap) conflicts.push({ severity: 'BLOCKING', code: 'TIME_OVERLAP', label: 'Chevauchement horaire bloquant' });
+    const overlap = await this.prisma.planningAssignment.findFirst({ where: { organizationId, employeeId: data.employeeId, id: excludeId ? { not: excludeId } : undefined, status: { not: PlanningAssignmentStatus.CANCELLED }, startTime: { lt: data.endTime }, endTime: { gt: data.startTime } }, include: { site: true } });
+    if (overlap) {
+      const crossSite = Boolean(data.siteId && overlap.siteId && data.siteId !== overlap.siteId);
+      conflicts.push({
+        severity: 'BLOCKING',
+        code: crossSite ? 'CROSS_SITE_TIME_OVERLAP' : 'TIME_OVERLAP',
+        label: crossSite ? `Ce collaborateur est déjà affecté sur ce même créneau dans un autre site${overlap.site?.name ? ` (${overlap.site.name})` : ''}` : 'Chevauchement horaire bloquant',
+      });
+    }
     if (employee && employee.departmentId !== data.departmentId) conflicts.push({ severity: 'STRONG_WARNING', code: 'DEPARTMENT_MISMATCH', label: 'Service différent du service habituel' });
     if (employee && employee.positionId !== data.positionId) conflicts.push({ severity: 'STRONG_WARNING', code: 'POSITION_MISMATCH', label: 'Poste différent du poste habituel' });
 
@@ -988,6 +1195,6 @@ export class PlanningService {
     return (hours || 0) * 60 + (minutes || 0);
   }
   private async detectAbsenceImpact(organizationId: string, actor: Actor, absenceId: string) { const absence = await this.prisma.hrAbsence.findFirst({ where: { id: absenceId, organizationId } }); if (!absence || absence.status !== HrAbsenceStatus.APPROVED) return; const impacted = await this.prisma.planningAssignment.findMany({ where: { organizationId, employeeId: absence.employeeId, status: { not: PlanningAssignmentStatus.CANCELLED }, startTime: { lte: absence.endDate }, endTime: { gte: absence.startDate } } }); for (const a of impacted) { const exists = await this.prisma.planningReplacement.findFirst({ where: { organizationId, assignmentId: a.id, absenceId } }); if (!exists) await this.prisma.planningReplacement.create({ data: { organizationId, assignmentId: a.id, absenceId, absentEmployeeId: absence.employeeId, status: PlanningReplacementStatus.TO_PROCESS, requestedById: actor.id, rationale: await this.replacementCandidates(organizationId, a) as Prisma.InputJsonValue } }); } }
-  private async replacementCandidates(organizationId: string, a: any) { const emps = await this.prisma.hrEmployee.findMany({ where: { organizationId, isArchived: false, status: HrEmployeeStatus.ACTIVE, id: { not: a.employeeId } }, include: { skills: { include: { skill: true } }, department: true, position: true } }); const busy = await this.prisma.planningAssignment.findMany({ where: { organizationId, startTime: { lt: a.endTime }, endTime: { gt: a.startTime }, status: { not: PlanningAssignmentStatus.CANCELLED } } }); const busyIds = new Set(busy.map(b => b.employeeId)); return emps.map(e => ({ employeeId: e.id, score: (e.departmentId === a.departmentId ? 40 : 0) + (e.positionId === a.positionId ? 30 : 0) + (!busyIds.has(e.id) ? 20 : -100), reasons: [e.departmentId === a.departmentId ? 'Même service' : 'Service différent', e.positionId === a.positionId ? 'Même poste' : 'Poste différent', !busyIds.has(e.id) ? 'Disponible' : 'Conflit horaire'] })).filter(c => c.score > 0).sort((x, y) => y.score - x.score).slice(0, 5); }
-  private async buildGenerationPreview(organizationId: string, start: Date, end: Date, siteId?: string) { const [needs, employees, absences, existing] = await Promise.all([this.prisma.planningOperationalNeed.findMany({ where: { organizationId, siteId: siteId ?? undefined }, include: { department: true, position: true } }), this.prisma.hrEmployee.findMany({ where: { organizationId, isArchived: false, status: HrEmployeeStatus.ACTIVE, mainSiteId: siteId ?? undefined }, include: { skills: true } }), this.prisma.hrAbsence.findMany({ where: { organizationId, status: HrAbsenceStatus.APPROVED, startDate: { lte: end }, endDate: { gte: start } } }), this.prisma.planningAssignment.findMany({ where: { organizationId, date: { gte: start, lte: end }, status: { not: PlanningAssignmentStatus.CANCELLED } } })]); const assignments: any[] = [], alerts: any[] = []; for (const need of needs) { for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) { const already = existing.filter(a => a.departmentId === need.departmentId && a.date.toDateString() === d.toDateString()).length + assignments.filter(a => a.departmentId === need.departmentId && a.date === d.toISOString().slice(0, 10)).length; for (let i = already; i < need.requiredCount; i++) { const candidate = employees.find(e => e.departmentId === need.departmentId && !absences.some(ab => ab.employeeId === e.id && ab.startDate <= d && ab.endDate >= d) && !assignments.some(a => a.employeeId === e.id && a.date === d.toISOString().slice(0, 10))); if (!candidate) { alerts.push({ level: 'critical', code: 'UNCOVERED_NEED', needId: need.id, date: d.toISOString().slice(0, 10) }); continue; } assignments.push({ employeeId: candidate.id, departmentId: need.departmentId, positionId: need.positionId ?? candidate.positionId, siteId: need.siteId ?? siteId, date: d.toISOString().slice(0, 10), startTime: need.startTime, endTime: need.endTime, breakMinutes: 30, status: PlanningAssignmentStatus.PLANNED, origin: PlanningAssignmentOrigin.AUTO_GENERATION }); } } } return { assignments, alerts, summary: { created: assignments.length, uncovered: alerts.length }, deterministicRules: ['besoins par service', 'collaborateur actif', 'absence validée exclue', 'pas de doublon journalier'] }; }
+  private async replacementCandidates(organizationId: string, a: any) { const emps = await this.prisma.hrEmployee.findMany({ where: { organizationId, isArchived: false, status: HrEmployeeStatus.ACTIVE, id: { not: a.employeeId }, ...this.siteEligibilityWhere(a.siteId ?? undefined) }, include: { skills: { include: { skill: true } }, department: true, position: true } }); const busy = await this.prisma.planningAssignment.findMany({ where: { organizationId, startTime: { lt: a.endTime }, endTime: { gt: a.startTime }, status: { not: PlanningAssignmentStatus.CANCELLED } } }); const busyIds = new Set(busy.map(b => b.employeeId)); return emps.map(e => ({ employeeId: e.id, score: (e.departmentId === a.departmentId ? 40 : 0) + (e.positionId === a.positionId ? 30 : 0) + (!busyIds.has(e.id) ? 20 : -100), reasons: [e.departmentId === a.departmentId ? 'Même service' : 'Service différent', e.positionId === a.positionId ? 'Même poste' : 'Poste différent', !busyIds.has(e.id) ? 'Disponible' : 'Conflit horaire'] })).filter(c => c.score > 0).sort((x, y) => y.score - x.score).slice(0, 5); }
+  private async buildGenerationPreview(organizationId: string, start: Date, end: Date, siteId?: string) { const [needs, employees, absences, existing] = await Promise.all([this.prisma.planningOperationalNeed.findMany({ where: { organizationId, siteId: siteId ?? undefined }, include: { department: true, position: true } }), this.prisma.hrEmployee.findMany({ where: { organizationId, isArchived: false, status: HrEmployeeStatus.ACTIVE, ...this.siteEligibilityWhere(siteId) }, include: { skills: true } }), this.prisma.hrAbsence.findMany({ where: { organizationId, status: HrAbsenceStatus.APPROVED, startDate: { lte: end }, endDate: { gte: start } } }), this.prisma.planningAssignment.findMany({ where: { organizationId, date: { gte: start, lte: end }, status: { not: PlanningAssignmentStatus.CANCELLED } } })]); const assignments: any[] = [], alerts: any[] = []; for (const need of needs) { for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) { const already = existing.filter(a => a.departmentId === need.departmentId && a.date.toDateString() === d.toDateString()).length + assignments.filter(a => a.departmentId === need.departmentId && a.date === d.toISOString().slice(0, 10)).length; for (let i = already; i < need.requiredCount; i++) { const candidate = employees.find(e => e.departmentId === need.departmentId && !absences.some(ab => ab.employeeId === e.id && ab.startDate <= d && ab.endDate >= d) && !assignments.some(a => a.employeeId === e.id && a.date === d.toISOString().slice(0, 10))); if (!candidate) { alerts.push({ level: 'critical', code: 'UNCOVERED_NEED', needId: need.id, date: d.toISOString().slice(0, 10) }); continue; } assignments.push({ employeeId: candidate.id, departmentId: need.departmentId, positionId: need.positionId ?? candidate.positionId, siteId: need.siteId ?? siteId, date: d.toISOString().slice(0, 10), startTime: need.startTime, endTime: need.endTime, breakMinutes: 30, status: PlanningAssignmentStatus.PLANNED, origin: PlanningAssignmentOrigin.AUTO_GENERATION }); } } } return { assignments, alerts, summary: { created: assignments.length, uncovered: alerts.length }, deterministicRules: ['besoins par service', 'collaborateur actif', 'absence validée exclue', 'pas de doublon journalier'] }; }
 }

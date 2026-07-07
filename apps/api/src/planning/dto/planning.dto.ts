@@ -1,5 +1,5 @@
 import { Type, Transform } from 'class-transformer';
-import { IsArray, IsBoolean, IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsEnum, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import { HrAbsenceStatus, HrAbsenceType, PlanningAssignmentOrigin, PlanningAssignmentStatus, PlanningAttendanceStatus, HrTimeAccountDirection, PlanningDayStatusSourceType, PlanningExportFormat, PlanningExportScope, PlanningNeedPriority, PlanningReplacementStatus, PlanningTimeUnit, PlanningVisibilityLevel } from '@prisma/client';
 
 export class PlanningQueryDto {
@@ -22,6 +22,10 @@ export class PlanningQueryDto {
 }
 
 export class PlanningContextQueryDto extends PlanningQueryDto {}
+
+export class PlanningExportPdfQueryDto extends PlanningQueryDto {
+  @IsIn(['week', 'month']) mode!: 'week' | 'month';
+}
 
 export class PlanningDayStatusQueryDto extends PlanningQueryDto {
   @IsOptional() @IsString() statusCode?: string;

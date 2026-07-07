@@ -53,6 +53,8 @@ export class AuthService {
     if (existingIdentity?.username === dto.username) throw new ConflictException('Username already exists');
 
     const user = await this.prisma.$transaction(async (tx) => {
+      const primarySiteName = this.primarySiteName(dto.organizationName, dto.primarySiteName);
+      const secondarySiteNames = this.secondarySiteNames(dto.secondarySiteNames, primarySiteName);
       const role = await tx.role.upsert({
         where: { name: 'SUPER_ADMIN' },
         update: {},
@@ -71,12 +73,20 @@ export class AuthService {
           regulatoryCountrySelectedAt: dto.regulatoryCountryCode || dto.hrCountryCode ? new Date() : null,
           teamSize: dto.teamSize,
           logoDataUrl: dto.logoDataUrl,
-          mainSiteName: `${dto.organizationName} — Site principal`,
+          mainSiteName: primarySiteName,
           mistralApiKey: dto.mistralApiKey?.trim() || null,
           mistralApiKeyUpdatedAt: dto.mistralApiKey?.trim() ? new Date() : null,
         },
       });
 
+      const primarySite = await tx.site.create({ data: { organizationId: organization.id, name: primarySiteName } });
+      if (secondarySiteNames.length) {
+        await tx.site.createMany({
+          data: secondarySiteNames.map((name) => ({ organizationId: organization.id, name })),
+          skipDuplicates: true,
+        });
+      }
+      await tx.organization.update({ where: { id: organization.id }, data: { primarySiteId: primarySite.id } });
       await this.createDefaultUnits(tx, organization.id);
 
       return tx.user.create({
@@ -172,6 +182,8 @@ export class AuthService {
     }
 
     const updatedUser = await this.prisma.$transaction(async (tx) => {
+      const primarySiteName = this.primarySiteName(dto.name, dto.primarySiteName);
+      const secondarySiteNames = this.secondarySiteNames(dto.secondarySiteNames, primarySiteName);
       const organization = await tx.organization.create({
         data: {
           name: dto.name,
@@ -182,12 +194,20 @@ export class AuthService {
           regulatoryCountrySelectedAt: dto.regulatoryCountryCode || dto.hrCountryCode ? new Date() : null,
           teamSize: dto.teamSize,
           logoDataUrl: dto.logoDataUrl,
-          mainSiteName: `${dto.name} — Site principal`,
+          mainSiteName: primarySiteName,
           mistralApiKey: dto.mistralApiKey?.trim() || null,
           mistralApiKeyUpdatedAt: dto.mistralApiKey?.trim() ? new Date() : null,
         },
       });
 
+      const primarySite = await tx.site.create({ data: { organizationId: organization.id, name: primarySiteName } });
+      if (secondarySiteNames.length) {
+        await tx.site.createMany({
+          data: secondarySiteNames.map((name) => ({ organizationId: organization.id, name })),
+          skipDuplicates: true,
+        });
+      }
+      await tx.organization.update({ where: { id: organization.id }, data: { primarySiteId: primarySite.id } });
       await this.createDefaultUnits(tx, organization.id);
 
       return tx.user.update({
@@ -571,6 +591,7 @@ export class AuthService {
         teamSize: currentUser.organization.teamSize,
         logoDataUrl: currentUser.organization.logoDataUrl,
         mainSiteName: currentUser.organization.mainSiteName,
+        primarySiteId: currentUser.organization.primarySiteId,
         apiKeys: this.serializeApiKeys(currentUser.organization),
         remoteAccess: this.serializeRemoteAccess(currentUser.organization),
       },
@@ -690,6 +711,24 @@ export class AuthService {
     return `au moins ${items.slice(0, -1).join(', ')} et ${items[items.length - 1]}`;
   }
 
+  private primarySiteName(organizationName: string, primarySiteName?: string) {
+    return primarySiteName?.trim() || `${organizationName.trim()} — Site principal`;
+  }
+
+  private secondarySiteNames(names: string[] | undefined, primarySiteName: string) {
+    const primaryKey = primarySiteName.trim().toLowerCase();
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const rawName of names ?? []) {
+      const name = rawName.trim();
+      const key = name.toLowerCase();
+      if (!name || key === primaryKey || seen.has(key)) continue;
+      seen.add(key);
+      result.push(name);
+    }
+    return result;
+  }
+
   private createDefaultUnits(tx: Prisma.TransactionClient, organizationId: string) {
     return tx.unit.createMany({
       data: [
@@ -724,6 +763,7 @@ export class AuthService {
       teamSize: string | null;
       logoDataUrl: string | null;
       mainSiteName: string | null;
+      primarySiteId?: string | null;
       stocksInstalledAt: Date | null;
       rnmPricesInstalledAt: Date | null;
       hrInstalledAt: Date | null;
@@ -760,6 +800,7 @@ export class AuthService {
       logoUrl: user.organization?.logoDataUrl ?? null,
       logoDataUrl: user.organization?.logoDataUrl ?? null,
       mainSiteName: user.organization?.mainSiteName ?? null,
+      primarySiteId: user.organization?.primarySiteId ?? null,
       apiKeys: user.organization ? this.serializeApiKeys(user.organization) : undefined,
       remoteAccess: user.organization ? this.serializeRemoteAccess(user.organization) : undefined,
       installedApplications: [
@@ -808,6 +849,7 @@ export class AuthService {
       teamSize: string | null;
       logoDataUrl: string | null;
       mainSiteName: string | null;
+      primarySiteId?: string | null;
       stocksInstalledAt: Date | null;
       rnmPricesInstalledAt: Date | null;
       hrInstalledAt: Date | null;

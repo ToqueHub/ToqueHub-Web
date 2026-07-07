@@ -47,7 +47,7 @@ import type {
 
 type PlanningTab = 'dashboard' | 'planning' | 'settings' | 'attendance';
 type PlanningView = 'day' | 'week' | 'month' | 'year';
-type SettingKey = 'presets' | 'availability' | 'rules' | 'costs' | 'notifications' | 'exports' | 'imports';
+type SettingKey = 'presets' | 'availability' | 'rules' | 'costs' | 'notifications' | 'exports';
 type InitialPlanningStep = 'services' | 'presets' | 'done';
 type DashboardPeriod = 'week' | 'month' | 'year';
 type PlanningDashboardBlockKey = 'periodStatus' | 'planningSetup' | 'plannedHours' | 'estimatedCost' | 'activeAlerts' | 'alertsToReview' | 'planning' | 'departmentHours' | 'actions' | 'history';
@@ -60,7 +60,7 @@ type PlanningDashboardConfig = {
   planningBlockSize: PlanningBlockSize;
 };
 type DashboardPeriodRange = { startDate: string; endDate: string; label: string; mode: DashboardPeriod | PlanningBlockMode };
-type DashboardPeriodData = { range: DashboardPeriodRange; summary: PlanningDashboardResponse | null; assignments: PlanningAssignment[] };
+type DashboardPeriodData = { range: DashboardPeriodRange; siteId: string; summary: PlanningDashboardResponse | null; assignments: PlanningAssignment[] };
 type PlanningSetupStatus = 'todo' | 'partial' | 'done';
 type PlanningRotationOption = Pick<PlanningTemplate, 'id' | 'name' | 'description' | 'departmentId' | 'siteId' | 'days' | 'employeeIds' | 'source' | 'templateType'>;
 type PlanningSetupStep = {
@@ -182,8 +182,10 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
   const [editingAssignment, setEditingAssignment] = useState<PlanningAssignment | null>(null);
   const [selectedSetting, setSelectedSetting] = useState<SettingKey>('presets');
   const [dashboardConfig, setDashboardConfig] = useState<PlanningDashboardConfig>(() => loadPlanningDashboardConfig());
+  const [dashboardSiteFilter, setDashboardSiteFilter] = useState('');
   const [dashboardPeriodData, setDashboardPeriodData] = useState<DashboardPeriodData | null>(null);
   const [showDashboardCustomizer, setShowDashboardCustomizer] = useState(false);
+  const [planningSiteInitialized, setPlanningSiteInitialized] = useState(false);
   const planningSetupStorageKey = `${PLANNING_INITIAL_SETUP_PREFIX}.${session.user.organizationId ?? session.user.id}`;
   const [initialSetupCompleted, setInitialSetupCompleted] = useState(() => localStorage.getItem(planningSetupStorageKey) === 'true');
   const [showInitialSetup, setShowInitialSetup] = useState(() => localStorage.getItem(planningSetupStorageKey) !== 'true');
@@ -207,19 +209,19 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
         const params = {
           startDate: range.startDate,
           endDate: range.endDate,
-          siteId: siteFilter || undefined,
+          siteId: dashboardSiteFilter || undefined,
           departmentId: serviceFilter || undefined,
           employeeId: employeeFilter || undefined,
         };
         const summary = await api.planningDashboard(token, params);
-        if (!cancelled) setDashboardPeriodData({ range, summary, assignments: [] });
+        if (!cancelled) setDashboardPeriodData({ range, siteId: dashboardSiteFilter, summary, assignments: [] });
       } catch {
-        if (!cancelled) setDashboardPeriodData({ range, summary: null, assignments: [] });
+        if (!cancelled) setDashboardPeriodData({ range, siteId: dashboardSiteFilter, summary: null, assignments: [] });
       }
     }
     void loadDashboardPeriod();
     return () => { cancelled = true; };
-  }, [token, dashboardPeriod, selectedDate, siteFilter, serviceFilter, employeeFilter]);
+  }, [token, dashboardPeriod, selectedDate, dashboardSiteFilter, serviceFilter, employeeFilter]);
 
   useEffect(() => {
     if (!dashboardCustomizeSignal) return;
@@ -263,6 +265,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
   const effectiveDepartments = data?.departments?.length ? data.departments : departments;
   const effectivePositions = data?.positions?.length ? data.positions : positions;
   const effectiveSites = data?.sites?.length ? data.sites : sites;
+  const primaryPlanningSiteId = session.user.primarySiteId || effectiveSites.find((site) => site.isPrimary || site.isMain)?.id || effectiveSites[0]?.id || '';
   const templates = data?.templates ?? [];
   const planningDayPresets = planningSettingsArray<PlanningTemplate>(data?.settings, 'dayPresets').length ? planningSettingsArray<PlanningTemplate>(data?.settings, 'dayPresets') : dayPresetTemplates(templates);
   const planningWeeklyRotations = planningSettingsArray<PlanningTemplate>(data?.settings, 'weeklyRotations');
@@ -277,6 +280,12 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
   const periodStatus = data?.periodStatus ?? data?.planning?.periodStatus as PlanningPeriodStatus | undefined;
   const periodPayload = currentMonthPeriod(selectedDate, siteFilter);
   const selectedEmployee = findCollaborator(effectiveCollaborators, selectedEmployeeId || employeeFilter);
+
+  useEffect(() => {
+    if (planningSiteInitialized || !primaryPlanningSiteId) return;
+    setSiteFilter(primaryPlanningSiteId);
+    setPlanningSiteInitialized(true);
+  }, [planningSiteInitialized, primaryPlanningSiteId]);
 
   const filteredAssignments = useMemo(() => assignments.filter((assignment) => {
     const collaborator = findCollaborator(effectiveCollaborators, assignment.collaboratorId);
@@ -323,16 +332,24 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
       setNotice('Sélectionnez d’abord un collaborateur pour affecter un créneau.');
       return;
     }
+    if (!siteFilter) {
+      setError('Sélectionnez un site précis pour affecter un collaborateur. “Tous sites” sert uniquement à consulter le planning global.');
+      return;
+    }
     const date = dateOverride ?? selectedDate;
     const businessStatus = cleanBusinessStatus(businessStatusOverride ?? presetBusinessStatus(preset) ?? quickBusinessStatus);
     const effectiveStart = businessStatusCountsHours(businessStatus) ? startTime : (startTime || '00:00');
     const effectiveEnd = businessStatusCountsHours(businessStatus) ? endTime : (endTime || startTime || '00:00');
+    const targetSiteId = preset?.siteId || siteFilter;
     const overlap = assignments.find((assignment) => {
       const employeeId = assignment.collaboratorId ?? assignment.employeeId;
       return employeeId === collaborator.id && assignment.status !== 'CANCELLED' && sameDay(assignment.date, date) && rangesOverlap(effectiveStart, effectiveEnd, assignment.startTime, assignment.endTime);
     });
     if (overlap) {
-      setError(`${collaboratorName(collaborator)} a déjà une affectation qui chevauche ce créneau.`);
+      const sameSite = !targetSiteId || !overlap.siteId || overlap.siteId === targetSiteId || overlap.site?.id === targetSiteId;
+      setError(sameSite
+        ? `${collaboratorName(collaborator)} a déjà une affectation qui chevauche ce créneau.`
+        : `${collaboratorName(collaborator)} est déjà affecté sur ce même créneau dans un autre site.`);
       return;
     }
     const departmentId = preset?.departmentId || collaborator.departmentId || serviceFilter || effectiveDepartments[0]?.id;
@@ -346,7 +363,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
         employeeId: collaborator.id,
         departmentId,
         positionId,
-        siteId: preset?.siteId || siteFilter || collaborator.mainSiteId || collaborator.siteId || effectiveSites[0]?.id,
+        siteId: targetSiteId,
         date,
         startTime: effectiveStart,
         endTime: effectiveEnd,
@@ -390,7 +407,9 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
       return item.id !== assignment.id && item.status !== 'CANCELLED' && itemEmployeeId === employeeId && sameDay(item.date, date) && rangesOverlap(startTime, endTime, item.startTime, item.endTime);
     });
     if (overlap) {
-      setError('Ce collaborateur a déjà un créneau qui chevauche cet horaire.');
+      const targetSiteId = patch.siteId ?? assignment.siteId ?? '';
+      const sameSite = !targetSiteId || !overlap.siteId || overlap.siteId === targetSiteId || overlap.site?.id === targetSiteId;
+      setError(sameSite ? 'Ce collaborateur a déjà un créneau qui chevauche cet horaire.' : 'Ce collaborateur est déjà affecté sur ce même créneau dans un autre site.');
       return;
     }
     try {
@@ -479,6 +498,10 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
   async function applyRotation(rotation: PlanningRotationOption, dateOverride?: string) {
     if (!selectedEmployee) {
       setNotice('Sélectionnez d’abord un collaborateur pour appliquer un roulement.');
+      return;
+    }
+    if (!siteFilter) {
+      setError('Sélectionnez un site précis pour appliquer un roulement. “Tous sites” est une vue de consultation.');
       return;
     }
     const targetDate = dateOverride ?? selectedDate;
@@ -582,8 +605,11 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
           hoursByDepartment={data?.dashboard?.hoursByDepartment as Array<Record<string, any>> | undefined}
           actions={data?.dashboard?.actions as Array<Record<string, any>> | undefined}
           history={data?.historyHuman}
-          assignments={filteredAssignments}
+          assignments={assignments}
+          sites={effectiveSites}
           selectedDate={selectedDate}
+          dashboardSiteFilter={dashboardSiteFilter}
+          setDashboardSiteFilter={setDashboardSiteFilter}
           dashboardPeriodData={dashboardPeriodData}
           onOpenPlanning={(view) => { setPlanningView(view); onNavigate('planning'); }}
         />
@@ -637,6 +663,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
 
       {tab === 'settings' ? (
         <PlanningSettings
+          token={token}
           selected={selectedSetting}
           setSelected={setSelectedSetting}
           templates={templates}
@@ -652,6 +679,9 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
           setup={setup}
           onOpenInitialSetup={() => openInitialSetup('services')}
           selectedDate={selectedDate}
+          siteFilter={siteFilter}
+          serviceFilter={serviceFilter}
+          employeeFilter={employeeFilter}
           canWrite={canWrite}
           onSaveDayPreset={saveDayPreset}
           onDeleteDayPreset={deleteDayPreset}
@@ -785,11 +815,13 @@ function PlanningInitialSetupModal({
           <button className="btn btn-secondary" type="button" disabled={!canGoBack} onClick={goBack}>Retour</button>
           <div className="setup-actions">
             {step === 'done' ? (
-              <button className="btn btn-primary" type="button" onClick={onComplete}>Ouvrir Planning</button>
+              <>
+                <button className="btn btn-secondary" type="button" onClick={onClose}>Fermer</button>
+                <button className="btn btn-primary" type="button" onClick={onComplete}>Ouvrir Planning</button>
+              </>
             ) : (
               <button className="btn btn-primary" type="button" onClick={goNext}>Continuer</button>
             )}
-            {step === 'done' ? <button className="btn btn-secondary" type="button" onClick={onClose}>Fermer</button> : null}
           </div>
         </div>
       </motion.div>
@@ -862,7 +894,7 @@ function InitialPresetsStep(props: { dayPresets: PlanningTemplate[]; weeklyRotat
     <div className="planning-initial-step">
       <div className="hr-wizard-hero-card">
         <div className="hr-wizard-icon"><Clock size={30} /></div>
-        <div><h3>Presets horaires / roulements</h3><p>Créez quelques horaires types et vos premiers roulements semaine. Ils serviront ensuite à affecter rapidement les collaborateurs.</p></div>
+        <div><h3>Presets / roulements horaires</h3><p>Créez les horaires types et les roulements semaine. Ils serviront ensuite à affecter rapidement les collaborateurs.</p></div>
       </div>
       <div className="planning-preset-quick-grid">
         {quickPresets.map((preset) => <button key={preset.name} type="button" className="planning-preset-card" onClick={() => setForm((current) => ({ ...current, ...preset }))}><strong>{preset.name}</strong><span>{preset.businessStatus === 'rest' ? 'Repos' : `${preset.startTime} - ${preset.endTime}`}</span></button>)}
@@ -886,7 +918,7 @@ function InitialPresetsStep(props: { dayPresets: PlanningTemplate[]; weeklyRotat
       </form>
       <PresetRuleList presets={props.dayPresets} onEdit={editPreset} onDelete={props.onDeleteDayPreset} canWrite={props.canWrite} />
       <form className="planning-initial-form" onSubmit={(event) => void submitRotation(event)}>
-        <strong>Roulements</strong>
+        <strong>Roulements horaires</strong>
         <div className="planning-form-row">
           <label className="planning-field">Nom<input value={rotationForm.name} onChange={(event) => setRotationForm((current) => ({ ...current, name: event.target.value }))} required /></label>
           <label className="planning-field">Service<select value={rotationForm.departmentId ?? ''} onChange={(event) => setRotationForm((current) => ({ ...current, departmentId: event.target.value || undefined }))}><option value="">Tous</option>{props.departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
@@ -937,12 +969,13 @@ function RotationRuleList({ rotations, onEdit, onDelete, canWrite }: { rotations
   );
 }
 
-function PlanningDashboard({ dashboard, alerts, setup, period, setPeriod, config, onConfigChange, hoursByDepartment, actions, history, assignments, selectedDate, dashboardPeriodData, onOpenPlanning }: { dashboard: ReturnType<typeof buildDashboard>; alerts: PlanningAlert[]; setup: ReturnType<typeof buildPlanningSetup>; period: DashboardPeriod; setPeriod: (value: DashboardPeriod) => void; config: PlanningDashboardConfig; onConfigChange: (value: PlanningDashboardConfig) => void; hoursByDepartment?: Array<Record<string, any>>; actions?: Array<Record<string, any>>; history?: Array<Record<string, any>>; assignments: PlanningAssignment[]; selectedDate: string; dashboardPeriodData: DashboardPeriodData | null; onOpenPlanning: (view: PlanningView) => void }) {
+function PlanningDashboard({ dashboard, alerts, setup, period, setPeriod, config, onConfigChange, hoursByDepartment, actions, history, assignments, sites, selectedDate, dashboardSiteFilter, setDashboardSiteFilter, dashboardPeriodData, onOpenPlanning }: { dashboard: ReturnType<typeof buildDashboard>; alerts: PlanningAlert[]; setup: ReturnType<typeof buildPlanningSetup>; period: DashboardPeriod; setPeriod: (value: DashboardPeriod) => void; config: PlanningDashboardConfig; onConfigChange: (value: PlanningDashboardConfig) => void; hoursByDepartment?: Array<Record<string, any>>; actions?: Array<Record<string, any>>; history?: Array<Record<string, any>>; assignments: PlanningAssignment[]; sites: Site[]; selectedDate: string; dashboardSiteFilter: string; setDashboardSiteFilter: (value: string) => void; dashboardPeriodData: DashboardPeriodData | null; onOpenPlanning: (view: PlanningView) => void }) {
   const periodRange = getDashboardPeriodRange(period, selectedDate);
   const scheduleRange = getPlanningScheduleRange(config.planningBlockMode, selectedDate);
-  const remoteMatches = dashboardPeriodData?.range.startDate === periodRange.startDate && dashboardPeriodData.range.endDate === periodRange.endDate;
-  const periodAssignments = assignments.filter((assignment) => assignmentInRange(assignment, periodRange));
-  const scheduleAssignments = assignments.filter((assignment) => assignmentInRange(assignment, scheduleRange));
+  const remoteMatches = dashboardPeriodData?.range.startDate === periodRange.startDate && dashboardPeriodData.range.endDate === periodRange.endDate && dashboardPeriodData.siteId === dashboardSiteFilter;
+  const siteAssignments = assignments.filter((assignment) => assignmentMatchesSite(assignment, dashboardSiteFilter));
+  const periodAssignments = siteAssignments.filter((assignment) => assignmentInRange(assignment, periodRange));
+  const scheduleAssignments = siteAssignments.filter((assignment) => assignmentInRange(assignment, scheduleRange));
   const remoteDashboard = remoteMatches ? dashboardPeriodData.summary?.dashboard : undefined;
   const remoteSummary = remoteMatches ? (dashboardPeriodData.summary?.stats ?? remoteDashboard?.summary) : undefined;
   const localAlerts = alertsForPeriod(alerts, periodAssignments, periodRange);
@@ -966,8 +999,17 @@ function PlanningDashboard({ dashboard, alerts, setup, period, setPeriod, config
           <span className="section-tagline">Période dashboard</span>
           <h2>{periodRange.label}</h2>
         </div>
-        <div className="planning-segmented">
-          {(['week', 'month', 'year'] as DashboardPeriod[]).map((value) => <button key={value} className={period === value ? 'active' : ''} onClick={() => setPeriod(value)}>{value === 'week' ? 'Semaine' : value === 'year' ? 'Année' : 'Mois'}</button>)}
+        <div className="planning-dashboard-controls">
+          <label className="planning-field planning-dashboard-site-field">
+            Site
+            <select value={dashboardSiteFilter} onChange={(event) => setDashboardSiteFilter(event.target.value)}>
+              <option value="">Tous sites</option>
+              {sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
+            </select>
+          </label>
+          <div className="planning-segmented">
+            {(['week', 'month', 'year'] as DashboardPeriod[]).map((value) => <button key={value} className={period === value ? 'active' : ''} onClick={() => setPeriod(value)}>{value === 'week' ? 'Semaine' : value === 'year' ? 'Année' : 'Mois'}</button>)}
+          </div>
         </div>
       </div>
 
@@ -1536,8 +1578,9 @@ function PlanningMonthlyCalendar({ selectedDate, onDayClick, assignments, requir
   );
 }
 
-function QuickAssignmentPanel(props: { selectedDate: string; collaborators: HrCollaborator[]; selectedEmployeeId: string; setSelectedEmployeeId: (value: string) => void; selectedEmployee?: HrCollaborator; templates: PlanningTemplate[]; rotations: PlanningRotationOption[]; assignments: PlanningAssignment[]; replacements: PlanningReplacementProposal[]; onOpenSettings: () => void; customStart: string; setCustomStart: (value: string) => void; customEnd: string; setCustomEnd: (value: string) => void; quickBusinessStatus: string; setQuickBusinessStatus: (value: string) => void; saveCustomShift: () => void; createQuickAssignment: (startTime: string, endTime: string, origin?: string, templateId?: string, preset?: Partial<PlanningAssignment>, dateOverride?: string, businessStatusOverride?: string) => Promise<void>; quickAssignmentSelection: QuickAssignmentSelection | null; setQuickAssignmentSelection: (value: QuickAssignmentSelection | null) => void; setQuickPanelOpen: (value: boolean) => void; applyRotation: (rotation: PlanningRotationOption, dateOverride?: string) => Promise<void> }) {
+function QuickAssignmentPanel(props: { selectedDate: string; siteFilter: string; collaborators: HrCollaborator[]; selectedEmployeeId: string; setSelectedEmployeeId: (value: string) => void; selectedEmployee?: HrCollaborator; templates: PlanningTemplate[]; rotations: PlanningRotationOption[]; assignments: PlanningAssignment[]; replacements: PlanningReplacementProposal[]; onOpenSettings: () => void; customStart: string; setCustomStart: (value: string) => void; customEnd: string; setCustomEnd: (value: string) => void; quickBusinessStatus: string; setQuickBusinessStatus: (value: string) => void; saveCustomShift: () => void; createQuickAssignment: (startTime: string, endTime: string, origin?: string, templateId?: string, preset?: Partial<PlanningAssignment>, dateOverride?: string, businessStatusOverride?: string) => Promise<void>; quickAssignmentSelection: QuickAssignmentSelection | null; setQuickAssignmentSelection: (value: QuickAssignmentSelection | null) => void; setQuickPanelOpen: (value: boolean) => void; applyRotation: (rotation: PlanningRotationOption, dateOverride?: string) => Promise<void> }) {
   const presets = dayPresets(props.templates);
+  const readOnlyAllSites = !props.siteFilter;
   const selectedDay = normalizePlanningDate(props.selectedDate);
   const week = weekDates(selectedDay);
   const monthPeriod = currentMonthPeriod(selectedDay);
@@ -1585,12 +1628,14 @@ function QuickAssignmentPanel(props: { selectedDate: string; collaborators: HrCo
 
       <label className="planning-field">
         Collaborateur
-        <select value={props.selectedEmployeeId} onChange={(event) => props.setSelectedEmployeeId(event.target.value)}>
+        <select value={props.selectedEmployeeId} disabled={readOnlyAllSites} onChange={(event) => props.setSelectedEmployeeId(event.target.value)}>
           <CollaboratorOptions collaborators={props.collaborators} placeholder="Sélectionner..." />
         </select>
       </label>
 
-      {props.selectedEmployee ? (
+      {readOnlyAllSites ? (
+        <p className="muted">Tous sites est une vue globale de consultation. Sélectionnez un site précis pour affecter un collaborateur.</p>
+      ) : props.selectedEmployee ? (
         <>
           <label className="planning-field">
             Statut
@@ -1603,7 +1648,7 @@ function QuickAssignmentPanel(props: { selectedDate: string; collaborators: HrCo
             <div className="chip-row">
               {presets.map((preset) => {
                 const selected = props.quickAssignmentSelection?.templateId === preset.templateId && props.quickAssignmentSelection?.startTime === preset.startTime && props.quickAssignmentSelection?.endTime === preset.endTime;
-                return <button key={preset.id} className={`planning-chip ${selected ? 'active' : ''}`} type="button" onClick={() => selectPreset(preset)}>{preset.label}<small>{presetRangeLabel(preset)} - {businessStatusLabel(presetBusinessStatus(preset) ?? props.quickBusinessStatus)}</small></button>;
+                return <button key={preset.id} className={`planning-chip ${selected ? 'active' : ''}`} type="button" disabled={readOnlyAllSites} onClick={() => selectPreset(preset)}>{preset.label}<small>{presetRangeLabel(preset)} - {businessStatusLabel(presetBusinessStatus(preset) ?? props.quickBusinessStatus)}</small></button>;
               })}
             </div>
             {!presets.length ? <GuidedEmptyState title="Aucun preset jour" description="Créez d’abord un horaire type pour affecter rapidement vos salariés." actionLabel="Configurer les presets" onAction={props.onOpenSettings} /> : null}
@@ -1612,7 +1657,7 @@ function QuickAssignmentPanel(props: { selectedDate: string; collaborators: HrCo
           <div className="quick-section">
             <strong>Roulements semaine</strong>
             <div className="chip-row">
-              {props.rotations.slice(0, 5).map((rotation) => <button key={rotation.id} className={`planning-chip ${props.quickAssignmentSelection?.kind === 'weekly-rotation' && props.quickAssignmentSelection.rotation?.id === rotation.id ? 'active' : ''}`} type="button" onClick={() => selectRotation(rotation)}><Repeat2 size={13} /> {rotation.name}</button>)}
+              {props.rotations.slice(0, 5).map((rotation) => <button key={rotation.id} className={`planning-chip ${props.quickAssignmentSelection?.kind === 'weekly-rotation' && props.quickAssignmentSelection.rotation?.id === rotation.id ? 'active' : ''}`} type="button" disabled={readOnlyAllSites} onClick={() => selectRotation(rotation)}><Repeat2 size={13} /> {rotation.name}</button>)}
             </div>
             {props.rotations.length ? <span className="muted tiny">Roulements configurés dans Planning.</span> : <GuidedEmptyState title="Aucun roulement semaine" description="Vous pouvez planifier en manuel ou préparer les roulements dans Paramétrage." actionLabel="Voir les roulements" onAction={props.onOpenSettings} />}
           </div>
@@ -1622,7 +1667,7 @@ function QuickAssignmentPanel(props: { selectedDate: string; collaborators: HrCo
               <label className="planning-field">Début<input type="time" value={props.customStart} onChange={(event) => props.setCustomStart(event.target.value)} /></label>
               <label className="planning-field">Fin<input type="time" value={props.customEnd} onChange={(event) => props.setCustomEnd(event.target.value)} /></label>
             </div>
-            <button className="btn btn-secondary btn-compact" type="button" onClick={props.saveCustomShift}>Utiliser cet horaire</button>
+            <button className="btn btn-secondary btn-compact" type="button" disabled={readOnlyAllSites} onClick={props.saveCustomShift}>Utiliser cet horaire</button>
           </div>
           <div className="quota-box">
             <div className="quota-box-head">
@@ -1698,15 +1743,14 @@ function AssignmentEditModal({ assignment, collaborators, departments, positions
   );
 }
 
-function PlanningSettings({ selected, setSelected, templates, rotations, dayPresets, employeeTemplateAssignments, absences, departments, positions, sites, collaborators, settings, setup, onOpenInitialSetup, selectedDate, canWrite, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { selected: SettingKey; setSelected: (value: SettingKey) => void; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; dayPresets: PlanningTemplate[]; employeeTemplateAssignments: PlanningEmployeeTemplateAssignment[]; absences: Array<Record<string, any>>; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; settings?: Record<string, any>; setup: ReturnType<typeof buildPlanningSetup>; onOpenInitialSetup: () => void; selectedDate: string; canWrite: boolean; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
+function PlanningSettings({ token, selected, setSelected, templates, rotations, dayPresets, employeeTemplateAssignments, absences, departments, positions, sites, collaborators, settings, setup, onOpenInitialSetup, selectedDate, siteFilter, serviceFilter, employeeFilter, canWrite, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { token: string; selected: SettingKey; setSelected: (value: SettingKey) => void; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; dayPresets: PlanningTemplate[]; employeeTemplateAssignments: PlanningEmployeeTemplateAssignment[]; absences: Array<Record<string, any>>; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; settings?: Record<string, any>; setup: ReturnType<typeof buildPlanningSetup>; onOpenInitialSetup: () => void; selectedDate: string; siteFilter: string; serviceFilter: string; employeeFilter: string; canWrite: boolean; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
   const cards: Array<{ key: SettingKey; title: string; description: string; count: string; status: PlanningSetupStatus; Icon: typeof Repeat2 }> = [
-    { key: 'presets', title: 'Presets horaires / roulements', description: 'Horaires types et roulements semaine propriétaires Planning.', count: `${dayPresets.length + rotations.length} élément(s)`, status: dayPresets.length && rotations.length ? 'done' : dayPresets.length || rotations.length ? 'partial' : 'todo', Icon: Repeat2 },
+    { key: 'presets', title: 'Presets / roulements horaires', description: 'Presets journaliers et roulements semaine propriétaires Planning.', count: `${dayPresets.length + rotations.length} élément(s)`, status: dayPresets.length && rotations.length ? 'done' : dayPresets.length || rotations.length ? 'partial' : 'todo', Icon: Repeat2 },
     { key: 'availability', title: 'Indisponibilités & absences', description: 'Absences RH en lecture seule et futures indisponibilités Planning.', count: `${absences.length} absence(s)`, status: 'partial', Icon: ShieldAlert },
     { key: 'rules', title: 'Règles planning', description: 'Couverture, repos, quota, pauses et conflits configurables.', count: 'Préparé', status: 'done', Icon: SlidersHorizontal },
     { key: 'costs', title: 'Coûts', description: 'Salaire brut RH et estimation employeur.', count: 'Non configuré', status: 'partial', Icon: Coins },
     { key: 'notifications', title: 'Notifications', description: 'Publication et rappels salariés futurs.', count: 'Préparé', status: 'partial', Icon: Bell },
-    { key: 'exports', title: 'Exports', description: 'PDF, tableur et paie futurs.', count: 'Préparé', status: 'partial', Icon: FileSignature },
-    { key: 'imports', title: 'Imports', description: 'ODS/XLSX et dictionnaire de codes.', count: 'Préparé', status: 'partial', Icon: RefreshCw },
+    { key: 'exports', title: 'Exports', description: 'Planning PDF semaine et mois.', count: 'PDF actif', status: 'done', Icon: FileSignature },
   ];
   return (
     <>
@@ -1716,21 +1760,67 @@ function PlanningSettings({ selected, setSelected, templates, rotations, dayPres
           {cards.map(({ key, title, count, status, Icon }) => <button key={key} className={`settings-tab ${selected === key ? 'active' : ''}`} onClick={() => setSelected(key)}><Icon size={16} /><span>{title}</span><small>{count}</small><em className={`setup-status ${status}`}>{setupStatusLabel(status)}</em></button>)}
         </div>
         <div className="card-modern settings-detail">
-          <SettingsDetail selected={selected} templates={templates} rotations={rotations} dayPresets={dayPresets} employeeTemplateAssignments={employeeTemplateAssignments} absences={absences} departments={departments} positions={positions} sites={sites} collaborators={collaborators} settings={settings} selectedDate={selectedDate} canWrite={canWrite} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} onSaveWeeklyRotation={onSaveWeeklyRotation} onDeleteWeeklyRotation={onDeleteWeeklyRotation} onSaveEmployeeTemplateAssignment={onSaveEmployeeTemplateAssignment} />
+          <SettingsDetail token={token} selected={selected} templates={templates} rotations={rotations} dayPresets={dayPresets} employeeTemplateAssignments={employeeTemplateAssignments} absences={absences} departments={departments} positions={positions} sites={sites} collaborators={collaborators} settings={settings} selectedDate={selectedDate} siteFilter={siteFilter} serviceFilter={serviceFilter} employeeFilter={employeeFilter} canWrite={canWrite} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} onSaveWeeklyRotation={onSaveWeeklyRotation} onDeleteWeeklyRotation={onDeleteWeeklyRotation} onSaveEmployeeTemplateAssignment={onSaveEmployeeTemplateAssignment} />
         </div>
       </div>
     </>
   );
 }
 
-function SettingsDetail({ selected, rotations, dayPresets, employeeTemplateAssignments, absences, departments, positions, sites, collaborators, settings, canWrite, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { selected: SettingKey; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; dayPresets: PlanningTemplate[]; employeeTemplateAssignments: PlanningEmployeeTemplateAssignment[]; absences: Array<Record<string, any>>; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; settings?: Record<string, any>; selectedDate: string; canWrite: boolean; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
+function SettingsDetail({ token, selected, rotations, dayPresets, employeeTemplateAssignments, absences, departments, positions, sites, collaborators, settings, selectedDate, siteFilter, serviceFilter, employeeFilter, canWrite, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { token: string; selected: SettingKey; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; dayPresets: PlanningTemplate[]; employeeTemplateAssignments: PlanningEmployeeTemplateAssignment[]; absences: Array<Record<string, any>>; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; settings?: Record<string, any>; selectedDate: string; siteFilter: string; serviceFilter: string; employeeFilter: string; canWrite: boolean; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
   if (selected === 'presets') return <PresetsRotationsSettings dayPresets={dayPresets} weeklyRotations={rotations} assignments={employeeTemplateAssignments} departments={departments} positions={positions} sites={sites} collaborators={collaborators} canWrite={canWrite} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} onSaveWeeklyRotation={onSaveWeeklyRotation} onDeleteWeeklyRotation={onDeleteWeeklyRotation} onSaveEmployeeTemplateAssignment={onSaveEmployeeTemplateAssignment} />;
   if (selected === 'availability') return <><span className="card-title">Indisponibilités & absences</span><div className="settings-list">{absences.map((absence) => <div key={absence.id}><strong>{collaboratorName(findCollaborator(collaborators, absence.employeeId ?? absence.collaboratorId))}</strong><span>{absence.type ?? absence.reason ?? 'Absence'} - {formatShort(absence.startDate)} à {formatShort(absence.endDate)} - lecture seule RH</span></div>)}{!absences.length ? <p className="muted">Aucune absence RH sur la période. Les indisponibilités Planning auront leur propre stockage plus tard.</p> : null}</div></>;
   if (selected === 'rules') return <PlanningRulesSettings rules={settings?.rules as Array<Record<string, any>> | undefined} />;
   if (selected === 'costs') return <EmployerCostsSettings />;
   if (selected === 'notifications') return <PlaceholderList title="Notifications" items={['Publication Planning', 'Rappels émargement', 'Alertes manager']} />;
-  if (selected === 'exports') return <PlaceholderList title="Exports" items={['Export planning', 'Export paie', 'Export compteurs']} />;
-  return <PlaceholderList title="Imports" items={['Import ODS/XLSX', 'Dictionnaire de codes', 'Rapport de contrôle']} />;
+  if (selected === 'exports') return <PlanningExportsSettings token={token} selectedDate={selectedDate} siteFilter={siteFilter} serviceFilter={serviceFilter} employeeFilter={employeeFilter} />;
+  return null;
+}
+
+function PlanningExportsSettings({ token, selectedDate, siteFilter, serviceFilter, employeeFilter }: { token: string; selectedDate: string; siteFilter: string; serviceFilter: string; employeeFilter: string }) {
+  const [exportDate, setExportDate] = useState(selectedDate);
+  const [busyMode, setBusyMode] = useState<'week' | 'month' | null>(null);
+  const [message, setMessage] = useState('');
+
+  useEffect(() => setExportDate(selectedDate), [selectedDate]);
+
+  async function download(mode: 'week' | 'month') {
+    setBusyMode(mode);
+    setMessage('');
+    try {
+      await api.downloadPlanningPdf(token, {
+        mode,
+        startDate: exportDate,
+        siteId: siteFilter || undefined,
+        departmentId: serviceFilter || undefined,
+        employeeId: employeeFilter || undefined,
+      });
+      setMessage(mode === 'week' ? 'Export semaine généré.' : 'Export mois généré.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Impossible de générer l'export.");
+    } finally {
+      setBusyMode(null);
+    }
+  }
+
+  return (
+    <>
+      <div className="section-header-modern">
+        <span className="card-title">Exports PDF</span>
+        <span className="section-tagline">Semaine et mois</span>
+      </div>
+      <div className="planning-settings-controls">
+        <div className="planning-form-row">
+          <label className="planning-field">Date de référence<input type="date" value={exportDate} onChange={(event) => setExportDate(event.target.value)} /></label>
+        </div>
+        <div className="setup-actions">
+          <button className="btn btn-secondary" type="button" disabled={busyMode !== null} onClick={() => void download('week')}><FileSignature size={16} /> {busyMode === 'week' ? 'Génération...' : 'Exporter semaine PDF'}</button>
+          <button className="btn btn-primary" type="button" disabled={busyMode !== null} onClick={() => void download('month')}><FileSignature size={16} /> {busyMode === 'month' ? 'Génération...' : 'Exporter mois PDF'}</button>
+        </div>
+        {message ? <p className="muted">{message}</p> : null}
+      </div>
+    </>
+  );
 }
 
 function PresetsRotationsSettings({ dayPresets, weeklyRotations, assignments, departments, positions, sites, collaborators, canWrite, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { dayPresets: PlanningTemplate[]; weeklyRotations: PlanningTemplate[]; assignments: PlanningEmployeeTemplateAssignment[]; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; canWrite: boolean; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
@@ -1800,7 +1890,7 @@ function PresetsRotationsSettings({ dayPresets, weeklyRotations, assignments, de
 
   return (
     <>
-      <div className="section-header-modern"><span className="card-title">Presets horaires / roulements</span><span className="section-tagline">Horaires types, cycles et affectations par défaut.</span></div>
+      <div className="section-header-modern"><span className="card-title">Presets / roulements horaires</span><span className="section-tagline">Horaires types, cycles et affectations par défaut.</span></div>
       <div className="planning-settings-controls planning-settings-split">
         <form className="planning-need-form" onSubmit={(event) => void submitPreset(event)}>
           <strong>Presets horaires</strong>
@@ -1825,7 +1915,7 @@ function PresetsRotationsSettings({ dayPresets, weeklyRotations, assignments, de
       </div>
       <div className="planning-settings-controls planning-settings-split">
         <form className="planning-need-form" onSubmit={(event) => void submitRotation(event)}>
-          <strong>Roulements</strong>
+          <strong>Roulements horaires</strong>
           <div className="planning-form-row">
             <label className="planning-field">Nom<input value={rotationForm.name} onChange={(event) => setRotationForm((current) => ({ ...current, name: event.target.value }))} required /></label>
             <label className="planning-field">Service<select value={rotationForm.departmentId ?? ''} onChange={(event) => setRotationForm((current) => ({ ...current, departmentId: event.target.value || undefined }))}><option value="">Tous</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
@@ -2032,7 +2122,7 @@ function PlaceholderList({ title, items }: { title: string; items: string[] }) {
 }
 
 function OnboardingCard() {
-  return <div className="card-modern planning-prerequisite"><span className="card-title"><Info size={18} /> Structure de démarrage</span><p>Complétez RH avant de planifier. Le futur onboarding guidera les presets horaires, roulements et règles internes.</p><div className="planning-sample-row"><span>Socle RH</span><span>Presets horaires</span><span>Roulements</span></div></div>;
+  return <div className="card-modern planning-prerequisite"><span className="card-title"><Info size={18} /> Structure de démarrage</span><p>Complétez RH avant de planifier. Le futur onboarding guidera les presets, roulements et règles internes.</p><div className="planning-sample-row"><span>Socle RH</span><span>Presets / roulements</span><span>Règles configurables</span></div></div>;
 }
 
 function buildDashboard(data: PlanningBootstrap | undefined, assignments: PlanningAssignment[], alerts: PlanningAlert[], replacements: PlanningReplacementProposal[], requirements: PlanningRequirement[], period?: DashboardPeriodRange) {
@@ -2114,9 +2204,10 @@ function periodStatusLabel(status: string) {
 function buildPlanningSetup({ collaborators, departments, templates, rotations, onNavigate, openSetting }: { collaborators: HrCollaborator[]; departments: HrDepartment[]; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; onNavigate: (tab: PlanningTab) => void; openSetting: (setting: SettingKey) => void }) {
   const activeCollaborators = collaborators.filter((collaborator) => collaborator.status !== 'DEPARTED');
   const presets = dayPresets(templates);
+  const presetCount = presets.length + rotations.length;
   const steps: PlanningSetupStep[] = [
     { key: 'services', title: 'Socle RH', description: `${departments.length} service(s) RH, ${activeCollaborators.length} collaborateur(s) actif(s).`, status: departments.length && activeCollaborators.length ? 'done' : departments.length || activeCollaborators.length ? 'partial' : 'todo', actionLabel: 'Voir RH', action: () => onNavigate('settings') },
-    { key: 'presets', title: 'Presets horaires / roulements', description: `${presets.length} preset(s), ${rotations.length} roulement(s).`, status: presets.length && rotations.length ? 'done' : presets.length || rotations.length ? 'partial' : 'todo', actionLabel: 'Configurer', action: () => openSetting('presets') },
+    { key: 'presets', title: 'Presets / roulements horaires', description: presetCount ? `${presetCount} élément(s) disponible(s).` : 'Ajoutez les horaires types et les roulements.', status: presetCount ? 'done' : 'todo', actionLabel: 'Configurer', action: () => openSetting('presets') },
   ];
   const doneCount = steps.filter((step) => step.status === 'done').length;
   return { steps, doneCount, progress: Math.round((doneCount / steps.length) * 100), complete: steps.every((step) => step.status === 'done') };
@@ -2423,6 +2514,10 @@ function getPlanningScheduleRange(mode: PlanningBlockMode, selectedDate: string)
 function assignmentInRange(assignment: PlanningAssignment, period: DashboardPeriodRange) {
   const date = normalizePlanningDate(assignment.date);
   return Boolean(date && date >= period.startDate && date <= period.endDate && assignment.status !== 'CANCELLED');
+}
+function assignmentMatchesSite(assignment: PlanningAssignment, siteId: string) {
+  if (!siteId) return true;
+  return assignment.siteId === siteId || assignment.site?.id === siteId;
 }
 function alertsForPeriod(alerts: PlanningAlert[], assignments: PlanningAssignment[], period: DashboardPeriodRange) {
   const assignmentIds = new Set(assignments.map((assignment) => assignment.id));

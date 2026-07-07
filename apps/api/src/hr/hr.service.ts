@@ -1,7 +1,8 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { existsSync } from 'fs';
 import { mkdir, unlink, writeFile } from 'fs/promises';
-import { extname, join, resolve } from 'path';
+import { basename, dirname, extname, join, resolve } from 'path';
 import { AuditAction, HrContractStatus, HrDocumentCategory, HrEmployeeStatus, HrHistoryEventType, HrOnboardingStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { HrListQueryDto, UpsertHrEmployeeDto, UpsertHrReferenceDto } from './dto/hr.dto';
@@ -14,8 +15,18 @@ const MANAGER_ROLES = [...WRITE_ROLES, 'Manager', 'MANAGER', 'Chef', 'Responsabl
 const ADMIN_ROLES = ['SUPER_ADMIN', 'Administrateur', 'ADMIN'];
 const LEGACY_HR_DEFAULT_DEPARTMENTS = ['Cuisine', 'Pâtisserie', 'Administration', 'Entretien', 'Soins', 'Animation', 'Direction', 'Magasin'];
 const LEGACY_HR_DEFAULT_POSITIONS = ['Chef de cuisine', 'Second de cuisine', 'Commis', 'Pâtissier', 'Magasinier', 'Agent polyvalent', 'Directeur', 'Infirmier', 'Animateur'];
-const includeEmployee: any = { department: true, position: { include: { department: true } }, secondaryPositions: { include: { position: { include: { department: true } } } }, mainSite: true, user: { select: { id: true, email: true, firstName: true, lastName: true, role: { select: { name: true } } } }, manager: { select: { id: true, firstName: true, lastName: true } }, history: { orderBy: { createdAt: 'desc' }, take: 30, include: { user: { select: { id: true, email: true, firstName: true, lastName: true } } } }, contracts: { orderBy: { startDate: 'desc' } }, compensations: { orderBy: { effectiveFrom: 'desc' } }, salaryReviews: { orderBy: { dueDate: 'asc' } }, documents: { orderBy: { createdAt: 'desc' } } };
-const HR_UPLOAD_ROOT = resolve(process.env.HR_UPLOAD_DIR || process.env.UPLOAD_DIR || 'uploads', 'hr');
+const includeEmployee: any = { department: true, position: { include: { department: true } }, secondaryPositions: { include: { position: { include: { department: true } } } }, mainSite: true, secondarySites: { include: { site: true } }, user: { select: { id: true, email: true, firstName: true, lastName: true, role: { select: { name: true } } } }, manager: { select: { id: true, firstName: true, lastName: true } }, history: { orderBy: { createdAt: 'desc' }, take: 30, include: { user: { select: { id: true, email: true, firstName: true, lastName: true } } } }, contracts: { orderBy: { startDate: 'desc' } }, compensations: { orderBy: { effectiveFrom: 'desc' } }, salaryReviews: { orderBy: { dueDate: 'asc' } }, documents: { orderBy: { createdAt: 'desc' } } };
+function defaultHrUploadRoot() {
+  const cwd = process.cwd();
+  if (basename(cwd) === 'api' && basename(dirname(cwd)) === 'apps') return resolve(cwd, '..', '..', 'uploads', 'hr');
+  return resolve(cwd, 'uploads', 'hr');
+}
+
+const HR_UPLOAD_ROOT = process.env.HR_UPLOAD_DIR
+  ? resolve(process.env.HR_UPLOAD_DIR)
+  : process.env.UPLOAD_DIR
+    ? resolve(process.env.UPLOAD_DIR, 'hr')
+    : defaultHrUploadRoot();
 
 @Injectable()
 export class HrService {
@@ -304,6 +315,9 @@ export class HrService {
       if (dto.secondaryPositionIds?.length) {
         await tx.hrEmployeeSecondaryPosition.createMany({ data: dto.secondaryPositionIds.map((positionId) => ({ employeeId: employee.id, positionId })), skipDuplicates: true });
       }
+      if (dto.secondarySiteIds?.length) {
+        await tx.hrEmployeeSecondarySite.createMany({ data: dto.secondarySiteIds.map((siteId) => ({ employeeId: employee.id, siteId })), skipDuplicates: true });
+      }
       await this.syncContractAndCompensation(tx, organizationId, employee.id, dto, actor.id);
       await this.history(tx, organizationId, employee.id, actor.id, HrHistoryEventType.CREATED, 'Création du collaborateur');
       if (dto.userId) await this.history(tx, organizationId, employee.id, actor.id, HrHistoryEventType.USER_LINKED, 'Compte ToqueHub associé', { userId: dto.userId });
@@ -325,6 +339,12 @@ export class HrService {
         await tx.hrEmployeeSecondaryPosition.deleteMany({ where: { employeeId: id } });
         if (dto.secondaryPositionIds.length) {
           await tx.hrEmployeeSecondaryPosition.createMany({ data: dto.secondaryPositionIds.map((positionId) => ({ employeeId: id, positionId })), skipDuplicates: true });
+        }
+      }
+      if (dto.secondarySiteIds !== undefined) {
+        await tx.hrEmployeeSecondarySite.deleteMany({ where: { employeeId: id } });
+        if (dto.secondarySiteIds.length) {
+          await tx.hrEmployeeSecondarySite.createMany({ data: dto.secondarySiteIds.map((siteId) => ({ employeeId: id, siteId })), skipDuplicates: true });
         }
       }
       await this.syncContractAndCompensation(tx, organizationId, id, dto, actor.id);
@@ -383,7 +403,9 @@ export class HrService {
     const document = await this.prisma.hrDocument.findFirst({ where: { id: documentId, employeeId, organizationId } });
     if (!document) throw new NotFoundException('Document introuvable');
     this.assertRead(actor, employeeId, actor.employeeId);
-    return { document, absolutePath: join(HR_UPLOAD_ROOT, document.storagePath) };
+    const absolutePath = join(HR_UPLOAD_ROOT, document.storagePath);
+    if (!existsSync(absolutePath)) throw new NotFoundException('Le fichier PDF est référencé en base mais introuvable sur le disque. Remplacez ou téléversez à nouveau ce document.');
+    return { document, absolutePath };
   }
 
   async replaceEmployeeDocument(organizationId: string, actor: Actor, employeeId: string, documentId: string, file: any) {
@@ -391,14 +413,16 @@ export class HrService {
     if (!file) throw new BadRequestException('Aucun fichier PDF fourni');
     if (file.mimetype !== 'application/pdf' && extname(file.originalname).toLowerCase() !== '.pdf') throw new BadRequestException('Seuls les documents PDF sont acceptés');
     if (file.size > 10 * 1024 * 1024) throw new BadRequestException('Le document ne doit pas dépasser 10 Mo');
-    const { document, absolutePath } = await this.getEmployeeDocument(organizationId, actor, employeeId, documentId);
+    const document = await this.prisma.hrDocument.findFirst({ where: { id: documentId, employeeId, organizationId } });
+    if (!document) throw new NotFoundException('Document introuvable');
+    const previousAbsolutePath = join(HR_UPLOAD_ROOT, document.storagePath);
     const filename = `${randomUUID()}.pdf`;
     const relativePath = join(organizationId, employeeId, filename);
     const absoluteDirectory = join(HR_UPLOAD_ROOT, organizationId, employeeId);
     const nextAbsolutePath = join(absoluteDirectory, filename);
     await mkdir(absoluteDirectory, { recursive: true });
     await writeFile(nextAbsolutePath, file.buffer);
-    await unlink(absolutePath).catch(() => undefined);
+    await unlink(previousAbsolutePath).catch(() => undefined);
     const updated = await this.prisma.hrDocument.update({
       where: { id: document.id },
       data: {
@@ -415,7 +439,9 @@ export class HrService {
 
   async deleteEmployeeDocument(organizationId: string, actor: Actor, employeeId: string, documentId: string) {
     this.assertWrite(actor);
-    const { document, absolutePath } = await this.getEmployeeDocument(organizationId, actor, employeeId, documentId);
+    const document = await this.prisma.hrDocument.findFirst({ where: { id: documentId, employeeId, organizationId } });
+    if (!document) throw new NotFoundException('Document introuvable');
+    const absolutePath = join(HR_UPLOAD_ROOT, document.storagePath);
     await this.prisma.hrDocument.delete({ where: { id: document.id } });
     await unlink(absolutePath).catch(() => undefined);
     await this.prisma.hrEmployeeHistory.create({ data: { organizationId, employeeId, userId: actor.id, type: HrHistoryEventType.UPDATED, label: 'Document RH supprimé', details: { documentId: document.id, category: document.category } } });
@@ -441,7 +467,14 @@ export class HrService {
     if (!this.positionBelongsToDepartment(position, department)) {
       throw new BadRequestException('Le poste principal sélectionné n’appartient pas au service principal.');
     }
-    if (dto.mainSiteId && !(await this.prisma.site.findFirst({ where: { id: dto.mainSiteId, organizationId } }))) throw new NotFoundException('Site introuvable');
+    if (dto.mainSiteId && !(await this.prisma.site.findFirst({ where: { id: dto.mainSiteId, organizationId, isArchived: false } }))) throw new NotFoundException('Site introuvable');
+    if (dto.secondarySiteIds?.length) {
+      if (dto.mainSiteId && dto.secondarySiteIds.includes(dto.mainSiteId)) throw new BadRequestException('Le site principal ne peut pas être sélectionné comme site secondaire');
+      const uniqueSiteIds = [...new Set(dto.secondarySiteIds)];
+      if (uniqueSiteIds.length !== dto.secondarySiteIds.length) throw new BadRequestException('Les sites secondaires doivent être uniques');
+      const secondarySites = await this.prisma.site.findMany({ where: { id: { in: uniqueSiteIds }, organizationId, isArchived: false } });
+      if (secondarySites.length !== uniqueSiteIds.length) throw new BadRequestException('Un ou plusieurs sites secondaires sont introuvables ou archivés');
+    }
     if (dto.managerId) {
       if (dto.managerId === employeeId) throw new BadRequestException('Un collaborateur ne peut pas être son propre responsable');
       const manager = await this.prisma.hrEmployee.findFirst({ where: { id: dto.managerId, organizationId, isArchived: false } });
@@ -540,6 +573,7 @@ export class HrService {
   private requiredDate(value: string, label: string) { const date = new Date(value); if (!value || Number.isNaN(date.getTime())) throw new BadRequestException(`${label} invalide ou manquante`); return date; }
   private optionalDate(value?: string | null, label = 'Date') { if (!value) return null; const date = new Date(value); if (Number.isNaN(date.getTime())) throw new BadRequestException(`${label} invalide`); return date; }
   private cleanText(value?: string | null) { return value && value.trim() ? value : null; }
+  private cleanTextList(values?: string[] | null) { return [...new Set((values ?? []).map((value) => value.trim()).filter(Boolean))]; }
   private sameLabel(a?: string | null, b?: string | null) { return this.normalizeLabel(a) === this.normalizeLabel(b); }
   private normalizeLabel(value?: string | null) { return (value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim(); }
   private employeeData(organizationId: string, dto: UpsertHrEmployeeDto): Prisma.HrEmployeeUncheckedCreateInput {
@@ -571,6 +605,7 @@ export class HrService {
       contractEndDate: this.optionalDate(dto.contractEndDate, 'Date de fin de contrat'),
       trialEndDate: this.optionalDate(dto.trialEndDate, 'Date de fin de période d\'essai'),
       contractWeeklyMinutes: dto.contractWeeklyMinutes ?? null,
+      trainingNames: dto.trainingNames === undefined ? undefined : this.cleanTextList(dto.trainingNames),
       hourlyRate: dto.hourlyRate != null && Number.isFinite(dto.hourlyRate) ? new Prisma.Decimal(dto.hourlyRate) : null,
       currency: this.cleanText(dto.currency),
       rateEffectiveDate: this.optionalDate(dto.rateEffectiveDate, 'Date d\'effet'),
@@ -606,6 +641,7 @@ export class HrService {
       contractEndDate: this.optionalDate(dto.contractEndDate, 'Date de fin de contrat'),
       trialEndDate: this.optionalDate(dto.trialEndDate, 'Date de fin de période d\'essai'),
       contractWeeklyMinutes: dto.contractWeeklyMinutes ?? null,
+      trainingNames: dto.trainingNames === undefined ? undefined : this.cleanTextList(dto.trainingNames),
       hourlyRate: dto.hourlyRate != null && Number.isFinite(dto.hourlyRate) ? new Prisma.Decimal(dto.hourlyRate) : null,
       currency: this.cleanText(dto.currency),
       rateEffectiveDate: this.optionalDate(dto.rateEffectiveDate, 'Date d\'effet'),

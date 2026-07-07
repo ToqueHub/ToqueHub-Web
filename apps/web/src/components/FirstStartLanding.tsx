@@ -49,7 +49,7 @@ interface FirstStartLandingProps {
 
 type OnboardingStep = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 type AdminForm = { username: string; firstName: string; lastName: string; email: string; password: string; confirm: string };
-type OrganizationForm = { name: string; type: string; regulatoryCountryCode: RegulatoryCountryCode | ''; teamSize: TeamSize; logo?: string };
+type OrganizationForm = { name: string; type: string; regulatoryCountryCode: RegulatoryCountryCode | ''; teamSize: TeamSize; logo?: string; primarySiteName: string; secondarySiteNames: string[] };
 
 const establishmentTypes = ['Restaurant', 'EHPAD', 'Collectivité', 'Hôtel', 'Traiteur', 'Cuisine centrale', 'Autre'];
 const regulatoryCountries: Array<{ label: string; value: RegulatoryCountryCode }> = [
@@ -75,6 +75,18 @@ function passwordScore(password: string) {
   return Math.min(score, 100);
 }
 
+function cleanSecondarySiteNames(value: string[]) {
+  const seen = new Set<string>();
+  return value
+    .map((item) => item.trim())
+    .filter((item) => {
+      const key = item.toLowerCase();
+      if (!item || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
 export function FirstStartLanding({
   status,
   loading,
@@ -85,7 +97,7 @@ export function FirstStartLanding({
 }: FirstStartLandingProps) {
   const [step, setStep] = useState<OnboardingStep>(0);
   const [admin, setAdmin] = useState<AdminForm>({ username: '', firstName: '', lastName: '', email: '', password: '', confirm: '' });
-  const [organization, setOrganization] = useState<OrganizationForm>({ name: '', type: '', regulatoryCountryCode: '', teamSize: '1-5' });
+  const [organization, setOrganization] = useState<OrganizationForm>({ name: '', type: '', regulatoryCountryCode: '', teamSize: '1-5', primarySiteName: '', secondarySiteNames: [] });
   const [showPassword, setShowPassword] = useState(false);
   const [mistralApiKey, setMistralApiKey] = useState('');
   const [formError, setFormError] = useState<string>();
@@ -151,8 +163,13 @@ export function FirstStartLanding({
   document.title = "Bienvenue sur ToqueHub";
 
   function updateOrganization(field: keyof Omit<OrganizationForm, 'logo'>) {
-    return (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setOrganization((prev) => {
+    return (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setOrganization((prev) => {
       const value = event.target.value;
+      if (field === 'name') {
+        const previousName = prev.name.trim();
+        const siteWasSynced = !prev.primarySiteName.trim() || prev.primarySiteName.trim() === previousName || prev.primarySiteName.trim() === `${previousName} — Site principal`;
+        return { ...prev, name: value, primarySiteName: siteWasSynced ? value : prev.primarySiteName };
+      }
       return { ...prev, [field]: value };
     });
   }
@@ -208,6 +225,8 @@ export function FirstStartLanding({
         regulatoryCountryCode: organization.regulatoryCountryCode || undefined,
         teamSize: (organization.teamSize || undefined) as TeamSize | undefined,
         logoDataUrl: organization.logo,
+        primarySiteName: organization.primarySiteName.trim() || organization.name.trim(),
+        secondarySiteNames: cleanSecondarySiteNames(organization.secondarySiteNames),
         mistralApiKey: mistralApiKey.trim() || undefined,
       });
       setCompletedCreationSteps(1);
@@ -1089,11 +1108,23 @@ const regulatoryCountryFlags: Record<RegulatoryCountryCode, string> = {
 // 2. Organization Info Step
 interface OrganizationStepProps {
   organization: OrganizationForm;
-  updateOrganization: (field: keyof Omit<OrganizationForm, 'logo'>) => (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
+  updateOrganization: (field: keyof Omit<OrganizationForm, 'logo'>) => (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => void;
   setOrganization: React.Dispatch<React.SetStateAction<OrganizationForm>>;
 }
 
 function OrganizationStep({ organization, updateOrganization, setOrganization }: OrganizationStepProps) {
+  function addSecondarySite() {
+    setOrganization((prev) => ({ ...prev, secondarySiteNames: [...prev.secondarySiteNames, ''] }));
+  }
+
+  function updateSecondarySite(index: number, value: string) {
+    setOrganization((prev) => ({ ...prev, secondarySiteNames: prev.secondarySiteNames.map((item, itemIndex) => itemIndex === index ? value : item) }));
+  }
+
+  function removeSecondarySite(index: number) {
+    setOrganization((prev) => ({ ...prev, secondarySiteNames: prev.secondarySiteNames.filter((_, itemIndex) => itemIndex !== index) }));
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       <div>
@@ -1124,6 +1155,78 @@ function OrganizationStep({ organization, updateOrganization, setOrganization }:
           }}
         />
       </label>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          Nom du site principal
+          <input
+            placeholder="ex: The French Café"
+            value={organization.primarySiteName}
+            onChange={updateOrganization('primarySiteName')}
+            style={{
+              padding: '0.75rem 1rem',
+              borderRadius: '12px',
+              border: '1px solid var(--light-border)',
+              fontSize: '0.95rem',
+              outline: 'none',
+            }}
+          />
+        </label>
+        <button
+          type="button"
+          onClick={addSecondarySite}
+          style={{
+            alignSelf: 'flex-start',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.45rem',
+            border: '0',
+            background: 'transparent',
+            color: '#059669',
+            fontWeight: 800,
+            cursor: 'pointer',
+            padding: '0.15rem 0',
+          }}
+        >
+          <span style={{ display: 'grid', placeItems: 'center', width: 26, height: 26, borderRadius: '999px', background: '#ecfdf5', border: '1px solid #bbf7d0', fontSize: '1.2rem', lineHeight: 1 }}>+</span>
+          Ajouter un site secondaire
+        </button>
+        {organization.secondarySiteNames.map((siteName, index) => (
+          <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+            <input
+              placeholder="Nom du site secondaire"
+              value={siteName}
+              onChange={(event) => updateSecondarySite(index, event.target.value)}
+              style={{
+                flex: 1,
+                padding: '0.75rem 1rem',
+                borderRadius: '12px',
+                border: '1px solid var(--light-border)',
+                fontSize: '0.95rem',
+                outline: 'none',
+              }}
+            />
+            <button
+              type="button"
+              aria-label="Retirer ce site secondaire"
+              onClick={() => removeSecondarySite(index)}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: '12px',
+                border: '1px solid var(--light-border)',
+                background: '#fff',
+                color: '#64748b',
+                display: 'grid',
+                placeItems: 'center',
+                cursor: 'pointer',
+              }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+        ))}
+      </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
         <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#475569' }}>

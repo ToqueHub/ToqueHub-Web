@@ -1497,6 +1497,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     await api.viewHrCollaboratorDocument(token, employeeId, document);
   }
 
+  async function handlePreviewHrCollaboratorDocument(employeeId: string, document: HrDocument) {
+    return api.createHrCollaboratorDocumentPreviewUrl(token, employeeId, document);
+  }
+
   async function handleDownloadHrCollaboratorDocument(employeeId: string, document: HrDocument) {
     await api.downloadHrCollaboratorDocument(token, employeeId, document);
   }
@@ -2524,6 +2528,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   positions={hrPositions}
                   users={users}
                   sites={sites}
+                  regulatoryCountryCode={dashboardSummary?.organization.regulatoryCountryCode ?? session.user.regulatoryCountryCode ?? null}
                   onboarding={hrOnboarding}
                   canWrite={canWriteHr}
                   loading={isLoading}
@@ -2536,6 +2541,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   onDeleteCollaboratorDocument={handleDeleteHrCollaboratorDocument}
                   onReplaceCollaboratorDocument={handleReplaceHrCollaboratorDocument}
                   onViewCollaboratorDocument={handleViewHrCollaboratorDocument}
+                  onPreviewCollaboratorDocument={handlePreviewHrCollaboratorDocument}
                   onDownloadCollaboratorDocument={handleDownloadHrCollaboratorDocument}
                   onCreateDepartment={handleCreateHrDepartment}
                   onCreateDepartmentsBulk={handleCreateHrDepartmentsBulk}
@@ -2618,10 +2624,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
               {/* TAB SETTINGS */}
               {activeTab === 'settings' && (
-                <SettingsPage session={session} token={token} dashboardSummary={dashboardSummary} focusApiKeys={apiKeysPanelHint} onApiKeysSaved={() => { setApiKeysPanelHint(false); void refresh(); }} onSettingsSaved={() => { void refresh(); }} onOpenUsers={() => goToTab('users')} onRestoreComplete={onLogout} isAdmin={isAdmin} />
+                <SettingsPage session={session} token={token} dashboardSummary={dashboardSummary} sites={sites} focusApiKeys={apiKeysPanelHint} onApiKeysSaved={() => { setApiKeysPanelHint(false); void refresh(); }} onSettingsSaved={() => { void refresh(); }} onOpenUsers={() => goToTab('users')} onRestoreComplete={onLogout} isAdmin={isAdmin} />
               )}
               {activeTab === 'organization-general' && (
-                <SettingsPage session={session} token={token} dashboardSummary={dashboardSummary} focusApiKeys={apiKeysPanelHint} onApiKeysSaved={() => { setApiKeysPanelHint(false); void refresh(); }} onSettingsSaved={() => { void refresh(); }} onOpenUsers={() => goToTab('users')} onRestoreComplete={onLogout} isAdmin={isAdmin} />
+                <SettingsPage session={session} token={token} dashboardSummary={dashboardSummary} sites={sites} focusApiKeys={apiKeysPanelHint} onApiKeysSaved={() => { setApiKeysPanelHint(false); void refresh(); }} onSettingsSaved={() => { void refresh(); }} onOpenUsers={() => goToTab('users')} onRestoreComplete={onLogout} isAdmin={isAdmin} />
               )}
               {activeTab === 'organization-documents' && (
                 <MyDocumentsPage
@@ -7378,7 +7384,8 @@ function BackupRestorePage({ token, onRestoreComplete }: { token: string; onRest
 }
 
 type SettingsSubTab = 'general' | 'users' | 'architecture' | 'backups' | 'updates' | 'remote-access' | 'api-keys' | 'core';
-type OrganizationSettingModal = 'name' | 'establishmentType' | 'regulatoryCountry' | null;
+type OrganizationSettingModal = 'name' | 'establishmentType' | 'regulatoryCountry' | 'secondarySites' | 'siteForm' | null;
+type SiteDraft = { name: string; description: string; address: string; phone: string; responsibleName: string; responsiblePhone: string; responsibleEmail: string };
 
 const establishmentTypeOptions: EstablishmentType[] = ['Restaurant', 'EHPAD', 'Collectivité', 'Hôtel', 'Traiteur', 'Cuisine centrale', 'Autre'];
 const teamSizeOptions: Array<{ label: string; value: TeamSize }> = [
@@ -7629,7 +7636,7 @@ function SystemUpdateProgressModal({
   );
 }
 
-function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKeysSaved, onSettingsSaved, onOpenUsers, onRestoreComplete, isAdmin = false }: { session: UserSession; token: string; dashboardSummary?: DashboardSummary; focusApiKeys?: boolean; onApiKeysSaved?: () => void; onSettingsSaved?: () => void; onOpenUsers?: () => void; onRestoreComplete: () => void; isAdmin?: boolean }) {
+function SettingsPage({ session, token, dashboardSummary, sites, focusApiKeys, onApiKeysSaved, onSettingsSaved, onOpenUsers, onRestoreComplete, isAdmin = false }: { session: UserSession; token: string; dashboardSummary?: DashboardSummary; sites: Site[]; focusApiKeys?: boolean; onApiKeysSaved?: () => void; onSettingsSaved?: () => void; onOpenUsers?: () => void; onRestoreComplete: () => void; isAdmin?: boolean }) {
   const organization = dashboardSummary?.organization;
   const organizationName = organization?.name ?? session.user.organizationName ?? 'Organisation';
   const organizationType = organization?.establishmentType ?? session.user.organizationType ?? null;
@@ -7643,6 +7650,13 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
       : 'Synchronisé RH'
     : 'Valeur onboarding';
   const regulatoryCountryCode = organization?.regulatoryCountryCode ?? session.user.regulatoryCountryCode ?? null;
+  const activeOrganizationSites = sites.filter((site) => !isArchived(site));
+  const primarySiteId = organization?.primarySiteId ?? session.user.primarySiteId ?? null;
+  const primarySite = activeOrganizationSites.find((site) => site.id === primarySiteId)
+    ?? activeOrganizationSites.find((site) => site.name === (organization?.mainSiteName ?? session.user.mainSiteName))
+    ?? activeOrganizationSites[0]
+    ?? null;
+  const secondarySites = activeOrganizationSites.filter((site) => site.id !== primarySite?.id);
   const initialConfigured = organization?.apiKeys?.mistral.configured ?? session.user.apiKeys?.mistral.configured ?? false;
   const initialMasked = organization?.apiKeys?.mistral.masked ?? session.user.apiKeys?.mistral.masked;
   const initialGithubConfigured = organization?.apiKeys?.github?.configured ?? session.user.apiKeys?.github?.configured ?? false;
@@ -7685,6 +7699,11 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
   const [identityMessage, setIdentityMessage] = useState<string>();
   const [identityError, setIdentityError] = useState<string>();
   const [savingIdentity, setSavingIdentity] = useState(false);
+  const [siteDraft, setSiteDraft] = useState<SiteDraft>({ name: '', description: '', address: '', phone: '', responsibleName: '', responsiblePhone: '', responsibleEmail: '' });
+  const [editingSiteId, setEditingSiteId] = useState<string | null>(null);
+  const [siteEditorTitle, setSiteEditorTitle] = useState('Modifier le site');
+  const [siteError, setSiteError] = useState<string>();
+  const [savingSite, setSavingSite] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState<SettingsSubTab>(() => {
     return focusApiKeys ? 'api-keys' : 'general';
   });
@@ -7905,6 +7924,55 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
     }
   }
 
+  function siteToDraft(site?: Site | null): SiteDraft {
+    return {
+      name: site?.name ?? '',
+      description: site?.description ?? '',
+      address: site?.address ?? '',
+      phone: site?.phone ?? '',
+      responsibleName: site?.responsibleName ?? '',
+      responsiblePhone: site?.responsiblePhone ?? '',
+      responsibleEmail: site?.responsibleEmail ?? '',
+    };
+  }
+
+  function openSiteForm(site: Site | null, title: string) {
+    setEditingSiteId(site?.id ?? null);
+    setSiteDraft(siteToDraft(site));
+    setSiteEditorTitle(title);
+    setSiteError(undefined);
+    setEditingSetting('siteForm');
+  }
+
+  async function saveSite() {
+    if (!siteDraft.name.trim()) {
+      setSiteError('Le nom du site est requis.');
+      return;
+    }
+    setSavingSite(true);
+    setSiteError(undefined);
+    try {
+      const payload = {
+        name: siteDraft.name.trim(),
+        description: siteDraft.description.trim() || undefined,
+        address: siteDraft.address.trim() || undefined,
+        phone: siteDraft.phone.trim() || undefined,
+        responsibleName: siteDraft.responsibleName.trim() || undefined,
+        responsiblePhone: siteDraft.responsiblePhone.trim() || undefined,
+        responsibleEmail: siteDraft.responsibleEmail.trim() || undefined,
+      };
+      if (editingSiteId) await api.updateSite(token, editingSiteId, payload);
+      else await api.createSite(token, payload);
+      setIdentityMessage('Site enregistré.');
+      setEditingSetting(null);
+      onSettingsSaved?.();
+    } catch (err) {
+      setSiteError(err instanceof Error ? err.message : 'Impossible d’enregistrer ce site.');
+    } finally {
+      setSavingSite(false);
+    }
+  }
+
   async function saveRegulatoryCountry(closeOnSuccess = false) {
     const next = regulatoryCountryDraft || null;
     if (regulatoryCountryCode && next && next !== regulatoryCountryCode) {
@@ -8077,14 +8145,26 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
                     </span>
                   </div>
 
-                  <div className="info-card-premium">
+                  <div role="button" tabIndex={0} className="info-card-premium" onClick={() => openSiteForm(primarySite, 'Modifier le site principal')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') openSiteForm(primarySite, 'Modifier le site principal'); }} style={{ cursor: 'pointer' }}>
                     <div className="info-card-premium-header">
                       <span className="info-card-premium-label">Site principal</span>
                       <span className="info-card-premium-icon"><MapPin size={16} /></span>
                     </div>
                     <div className="info-card-premium-value">
-                      {organization?.mainSiteName ?? session.user.mainSiteName ?? 'Site principal'}
+                      {primarySite?.name ?? organization?.mainSiteName ?? session.user.mainSiteName ?? 'Site principal'}
                     </div>
+                    {primarySite?.address ? <span className="muted" style={{ marginTop: '0.45rem', fontSize: '0.8rem' }}>{primarySite.address}</span> : null}
+                  </div>
+
+                  <div role="button" tabIndex={0} className="info-card-premium" onClick={() => setEditingSetting('secondarySites')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setEditingSetting('secondarySites'); }} style={{ cursor: 'pointer' }}>
+                    <div className="info-card-premium-header">
+                      <span className="info-card-premium-label">Sites secondaires</span>
+                      <span className="info-card-premium-icon"><Warehouse size={16} /></span>
+                    </div>
+                    <div className="info-card-premium-value">
+                      {secondarySites.length ? `${secondarySites.length} site${secondarySites.length > 1 ? 's' : ''}` : 'Aucun'}
+                    </div>
+                    {secondarySites.length ? <span className="muted" style={{ marginTop: '0.45rem', fontSize: '0.8rem' }}>{secondarySites.slice(0, 3).map((site) => site.name).join(', ')}{secondarySites.length > 3 ? '...' : ''}</span> : null}
                   </div>
 
                   <div role="button" tabIndex={0} className="info-card-premium" onClick={() => setEditingSetting('regulatoryCountry')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setEditingSetting('regulatoryCountry'); }} style={{ cursor: 'pointer' }}>
@@ -8476,11 +8556,14 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
           setEditingSetting(null);
           setIdentityError(undefined);
           setRegulatoryCountryError(undefined);
+          setSiteError(undefined);
         }}
         title={
           editingSetting === 'name' ? 'Modifier le nom de l’établissement'
             : editingSetting === 'establishmentType' ? 'Modifier le type d’établissement'
-              : editingSetting === 'regulatoryCountry' ? 'Modifier le pays RH' : 'Modifier le reglage'
+              : editingSetting === 'regulatoryCountry' ? 'Modifier le pays RH'
+                : editingSetting === 'secondarySites' ? 'Sites secondaires'
+                  : editingSetting === 'siteForm' ? siteEditorTitle : 'Modifier le reglage'
         }
       >
         {editingSetting === 'name' ? (
@@ -8526,6 +8609,60 @@ function SettingsPage({ session, token, dashboardSummary, focusApiKeys, onApiKey
             <div className="modal-footer" style={{ margin: '1rem -1.75rem -1.75rem' }}>
               <button type="button" className="btn btn-secondary" onClick={() => setEditingSetting(null)}>Annuler</button>
               <button className="btn btn-primary" disabled={savingRegulatoryCountry || regulatoryCountryDraft === (regulatoryCountryCode ?? '')}>{savingRegulatoryCountry ? 'Enregistrement...' : 'Enregistrer'}</button>
+            </div>
+          </form>
+        ) : null}
+
+        {editingSetting === 'secondarySites' ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div className="settings-list">
+              {secondarySites.map((site) => (
+                <div key={site.id} className="planning-settings-item">
+                  <div>
+                    <strong>{site.name}</strong>
+                    <span>{site.address || site.phone || site.responsibleName ? [site.address, site.phone, site.responsibleName].filter(Boolean).join(' · ') : 'Coordonnées à compléter'}</span>
+                  </div>
+                  <button type="button" className="btn btn-secondary btn-compact" onClick={() => openSiteForm(site, 'Modifier le site secondaire')}>Modifier</button>
+                </div>
+              ))}
+              {!secondarySites.length ? <p className="muted" style={{ margin: 0 }}>Aucun site secondaire configuré.</p> : null}
+            </div>
+            <div className="modal-footer" style={{ margin: '1rem -1.75rem -1.75rem' }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setEditingSetting(null)}>Fermer</button>
+              <button type="button" className="btn btn-primary" onClick={() => openSiteForm(null, 'Ajouter un site secondaire')}>Ajouter un site</button>
+            </div>
+          </div>
+        ) : null}
+
+        {editingSetting === 'siteForm' ? (
+          <form onSubmit={(event) => { event.preventDefault(); void saveSite(); }} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {siteError ? <div className="alert-modern error"><AlertCircle size={16} /> {siteError}</div> : null}
+            <label>Nom du site
+              <input value={siteDraft.name} onChange={(event) => setSiteDraft((current) => ({ ...current, name: event.target.value }))} autoFocus />
+            </label>
+            <label>Adresse
+              <textarea rows={2} value={siteDraft.address} onChange={(event) => setSiteDraft((current) => ({ ...current, address: event.target.value }))} />
+            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
+              <label>Téléphone
+                <input value={siteDraft.phone} onChange={(event) => setSiteDraft((current) => ({ ...current, phone: event.target.value }))} />
+              </label>
+              <label>Responsable
+                <input value={siteDraft.responsibleName} onChange={(event) => setSiteDraft((current) => ({ ...current, responsibleName: event.target.value }))} />
+              </label>
+              <label>Téléphone responsable
+                <input value={siteDraft.responsiblePhone} onChange={(event) => setSiteDraft((current) => ({ ...current, responsiblePhone: event.target.value }))} />
+              </label>
+              <label>Email responsable
+                <input type="email" value={siteDraft.responsibleEmail} onChange={(event) => setSiteDraft((current) => ({ ...current, responsibleEmail: event.target.value }))} />
+              </label>
+            </div>
+            <label>Description
+              <textarea rows={2} value={siteDraft.description} onChange={(event) => setSiteDraft((current) => ({ ...current, description: event.target.value }))} />
+            </label>
+            <div className="modal-footer" style={{ margin: '1rem -1.75rem -1.75rem' }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setEditingSetting(null)}>Annuler</button>
+              <button className="btn btn-primary" disabled={savingSite || !siteDraft.name.trim()}>{savingSite ? 'Enregistrement...' : 'Enregistrer'}</button>
             </div>
           </form>
         ) : null}

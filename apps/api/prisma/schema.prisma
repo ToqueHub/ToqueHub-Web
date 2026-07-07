@@ -626,6 +626,7 @@ model Organization {
   teamSize                      String?
   logoDataUrl                   String?   @db.Text
   mainSiteName                  String?
+  primarySiteId                 String?   @db.Uuid
   stocksInstalledAt             DateTime?
   rnmPricesInstalledAt          DateTime?
   hrInstalledAt                 DateTime?
@@ -648,11 +649,12 @@ model Organization {
 
   users                          User[]
   regulatoryCountrySelectedBy    User?                            @relation("OrganizationRegulatoryCountrySelectedBy", fields: [regulatoryCountrySelectedById], references: [id], onDelete: SetNull)
+  primarySite                    Site?                            @relation("OrganizationPrimarySite", fields: [primarySiteId], references: [id], onDelete: SetNull)
   categories                     Category[]
   units                          Unit[]
   products                       Product[]
   suppliers                      Supplier[]
-  sites                          Site[]
+  sites                          Site[]                           @relation("OrganizationSites")
   locations                      Location[]
   lots                           Lot[]
   stocks                         Stock[]
@@ -764,6 +766,7 @@ model Organization {
 
   @@index([regulatoryCountryCode])
   @@index([regulatoryCountrySelectedById])
+  @@index([primarySiteId])
   @@map("organizations")
 }
 
@@ -1079,13 +1082,19 @@ model Site {
   id             String    @id @default(uuid()) @db.Uuid
   name           String
   description    String?
+  address        String?   @db.Text
+  phone          String?
+  responsibleName  String?
+  responsiblePhone String?
+  responsibleEmail String?
   isArchived     Boolean   @default(false)
   archivedAt     DateTime?
   organizationId String    @db.Uuid
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  organization                 Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization                 Organization                  @relation("OrganizationSites", fields: [organizationId], references: [id], onDelete: Cascade)
+  primaryForOrganizations      Organization[]                @relation("OrganizationPrimarySite")
   locations                    Location[]
   stocks                       Stock[]
   lots                         Lot[]
@@ -1094,6 +1103,7 @@ model Site {
   destinationMovements         StockMovement[]               @relation("StockMovementDestinationSite")
   inventories                  Inventory[]
   employees                    HrEmployee[]
+  secondaryEmployees           HrEmployeeSecondarySite[]
   planningAssignments          PlanningAssignment[]
   planningNeeds                PlanningOperationalNeed[]
   planningTemplates            PlanningTemplate[]
@@ -1623,6 +1633,7 @@ model HrEmployee {
   contractEndDate       DateTime?
   trialEndDate          DateTime?
   contractWeeklyMinutes Int?
+  trainingNames         String[]         @default([])
   hourlyRate            Decimal?         @db.Decimal(10, 4)
   currency              String?          @default("EUR")
   rateEffectiveDate     DateTime?
@@ -1643,6 +1654,7 @@ model HrEmployee {
   history                       HrEmployeeHistory[]
   rotationAssignments           HrRotationAssignment[]
   secondaryPositions            HrEmployeeSecondaryPosition[]
+  secondarySites                HrEmployeeSecondarySite[]
   contracts                     HrEmploymentContract[]
   compensations                 HrEmployeeCompensation[]
   salaryReviews                 HrSalaryReview[]
@@ -1689,6 +1701,19 @@ model HrEmployeeSecondaryPosition {
 
   @@id([employeeId, positionId])
   @@map("hr_employee_secondary_positions")
+}
+
+model HrEmployeeSecondarySite {
+  employeeId String   @db.Uuid
+  siteId     String   @db.Uuid
+  createdAt  DateTime @default(now())
+
+  employee HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  site     Site       @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@id([employeeId, siteId])
+  @@index([siteId])
+  @@map("hr_employee_secondary_sites")
 }
 
 model HrEmployeeHistory {

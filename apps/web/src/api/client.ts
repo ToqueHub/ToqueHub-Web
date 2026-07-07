@@ -134,6 +134,16 @@ type PlanningRangeParams = {
   pageSize?: number;
 };
 
+type SitePayload = {
+  name: string;
+  description?: string;
+  address?: string;
+  phone?: string;
+  responsibleName?: string;
+  responsiblePhone?: string;
+  responsibleEmail?: string;
+};
+
 const API_URL = import.meta.env.VITE_API_URL?.replace(/\/$/, '') ?? '';
 const API_SOCKET_URL = API_URL || (import.meta.env.DEV ? 'http://localhost:3000' : window.location.origin);
 
@@ -180,6 +190,19 @@ export class ApiError extends Error {
   ) {
     super(message);
   }
+}
+
+async function readApiErrorMessage(response: Response, fallback = `Erreur API ${response.status}`) {
+  const raw = await response.text();
+  if (!raw) return fallback;
+  try {
+    const body = JSON.parse(raw) as { message?: string | string[] };
+    if (Array.isArray(body.message)) return body.message.join(', ');
+    if (body.message) return body.message;
+  } catch {
+    // Keep the raw response below.
+  }
+  return raw;
 }
 
 async function request<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
@@ -334,6 +357,8 @@ export const api = {
     teamSize?: string;
     regulatoryCountryCode?: 'FR' | 'FI';
     logoDataUrl?: string;
+    primarySiteName?: string;
+    secondarySiteNames?: string[];
     mistralApiKey?: string;
   }) {
     return request<UserSession>('/auth/setup-organization', {
@@ -717,6 +742,23 @@ export const api = {
     });
     return request<PlanningDashboardResponse>(`/planning/dashboard${search.size ? `?${search.toString()}` : ''}`, {}, token);
   },
+  async downloadPlanningPdf(token: string, params: PlanningRangeParams & { mode: 'week' | 'month' }) {
+    const search = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') search.set(key, String(value));
+    });
+    const response = await fetch(`${API_URL}/api/planning/exports/pdf?${search.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
+    const blob = await response.blob();
+    const disposition = response.headers.get('Content-Disposition') ?? '';
+    const filename = disposition.match(/filename="?([^"]+)"?/)?.[1] ?? `planning-${params.mode}.pdf`;
+    const url = URL.createObjectURL(blob);
+    const link = globalThis.document.createElement('a');
+    link.href = url;
+    link.download = decodeURIComponent(filename);
+    link.click();
+    URL.revokeObjectURL(url);
+  },
   controlPlanningPeriod(token: string, payload: PlanningPeriodActionPayload) {
     return request<PlanningPeriodActionResult>('/planning/period/control', { method: 'POST', body: JSON.stringify(payload) }, token);
   },
@@ -972,8 +1014,11 @@ export const api = {
   sites(token: string) {
     return request<Site[]>('/sites', {}, token);
   },
-  createSite(token: string, payload: { name: string; description?: string }) {
+  createSite(token: string, payload: SitePayload) {
     return request<Site>('/sites', { method: 'POST', body: JSON.stringify(payload) }, token);
+  },
+  updateSite(token: string, id: string, payload: Partial<SitePayload>) {
+    return request<Site>(`/sites/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
   },
   archiveSite(token: string, id: string) {
     return request<Site>(`/sites/${id}/archive`, { method: 'POST' }, token);
@@ -1308,7 +1353,7 @@ export const api = {
       headers: { Authorization: `Bearer ${token}` },
       body,
     }).then(async (response) => {
-      if (!response.ok) throw new ApiError(await response.text(), response.status);
+      if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
       return response.json() as Promise<HrDocument>;
     });
   },
@@ -1323,25 +1368,28 @@ export const api = {
       headers: { Authorization: `Bearer ${token}` },
       body,
     }).then(async (response) => {
-      if (!response.ok) throw new ApiError(await response.text(), response.status);
+      if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
       return response.json() as Promise<HrDocument>;
     });
   },
   async viewHrCollaboratorDocument(token: string, employeeId: string, document: HrDocument) {
+    const url = await this.createHrCollaboratorDocumentPreviewUrl(token, employeeId, document);
+    globalThis.open(url, '_blank', 'noopener,noreferrer');
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  },
+  async createHrCollaboratorDocumentPreviewUrl(token: string, employeeId: string, document: HrDocument) {
     const response = await fetch(`${API_URL}/api/hr/employees/${employeeId}/documents/${document.id}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!response.ok) throw new ApiError(await response.text(), response.status);
+    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
     const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    globalThis.open(url, '_blank', 'noopener,noreferrer');
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    return URL.createObjectURL(blob);
   },
   async downloadHrCollaboratorDocument(token: string, employeeId: string, document: HrDocument) {
     const response = await fetch(`${API_URL}/api/hr/employees/${employeeId}/documents/${document.id}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!response.ok) throw new ApiError(await response.text(), response.status);
+    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);
     const link = globalThis.document.createElement('a');

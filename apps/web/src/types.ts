@@ -15,6 +15,8 @@ export interface CompleteOnboardingPayload {
   regulatoryCountryCode?: RegulatoryCountryCode;
   teamSize?: TeamSize;
   logoDataUrl?: string;
+  primarySiteName?: string;
+  secondarySiteNames?: string[];
   mistralApiKey?: string;
 }
 
@@ -308,6 +310,7 @@ export interface UserSession {
     logoUrl?: string | null;
     logoDataUrl?: string | null;
     mainSiteName?: string | null;
+    primarySiteId?: string | null;
     installedApplications?: string[];
     apiKeys?: OrganizationApiKeys;
     remoteAccess?: OrganizationRemoteAccess;
@@ -381,6 +384,7 @@ export interface DashboardSummary {
     teamSize?: TeamSize | null;
     logoDataUrl?: string | null;
     mainSiteName?: string | null;
+    primarySiteId?: string | null;
     apiKeys?: OrganizationApiKeys;
     remoteAccess?: OrganizationRemoteAccess;
   };
@@ -606,6 +610,8 @@ export interface HrCollaborator {
   secondaryPositions?: HrPosition[] | null;
   mainSite?: Site | null;
   site?: Site | null;
+  secondarySiteIds?: string[] | null;
+  secondarySites?: Site[] | Array<{ siteId: string; site?: Site | null }> | null;
   user?: CoreUser | null;
   manager?: HrCollaborator | null;
   /** @deprecated Champs plats – utiliser activeContract */
@@ -616,6 +622,7 @@ export interface HrCollaborator {
   trialEndDate?: string | null;
   /** @deprecated Champs plats – utiliser activeContract */
   contractWeeklyMinutes?: number | null;
+  trainingNames?: string[] | null;
   /** @deprecated Champs plats – utiliser currentCompensation */
   hourlyRate?: number | null;
   /** @deprecated Champs plats – utiliser currentCompensation */
@@ -657,6 +664,7 @@ export interface HrCollaboratorPayload {
   positionId: string;
   secondaryPositionIds?: string[];
   siteId?: string;
+  secondarySiteIds?: string[];
   employeeNumber?: string;
   notes?: string;
   status?: string;
@@ -668,6 +676,7 @@ export interface HrCollaboratorPayload {
   contractEndDate?: string;
   trialEndDate?: string;
   contractWeeklyMinutes?: number | null;
+  trainingNames?: string[];
   hourlyRate?: number | null;
   currency?: string;
   rateEffectiveDate?: string;
@@ -1780,7 +1789,13 @@ export interface Site {
   id: string;
   name: string;
   description?: string | null;
+  address?: string | null;
+  phone?: string | null;
+  responsibleName?: string | null;
+  responsiblePhone?: string | null;
+  responsibleEmail?: string | null;
   isMain?: boolean;
+  isPrimary?: boolean;
   archivedAt?: string | null;
   isArchived?: boolean;
 }
