@@ -376,6 +376,14 @@ const STOCKS_ALL_TABS: ActiveTab[] = [
 
 const STOCKS_SETTINGS_TABS: StocksSettingsTab[] = ['categories', 'units', 'movements', 'locations', 'audit'];
 const isStocksSettingsRoute = (tab: ActiveTab): tab is StocksSettingsTab => STOCKS_SETTINGS_TABS.includes(tab as StocksSettingsTab);
+const STOCKS_NAV_TABS: Array<{ tab: ActiveTab; label: string }> = [
+  { tab: 'stocks-dashboard', label: 'Tableau de bord' },
+  { tab: 'suppliers', label: 'Fournisseur' },
+  { tab: 'products', label: 'Produits' },
+  { tab: 'inventory', label: 'Stocks' },
+  { tab: 'inventories', label: 'Inventaire' },
+  { tab: 'categories', label: 'Réglage' },
+];
 
 type Confirmation = 'install-stocks' | 'uninstall-stocks' | 'uninstall-rnm-prices' | 'uninstall-planning' | 'uninstall-technical-sheets' | 'uninstall-production' | 'uninstall-menus' | null;
 type AppNotification = {
@@ -1761,7 +1769,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   }
 
   const activeProducts = useMemo(() => products.filter(p => showArchived || !isArchived(p)), [products, showArchived]);
-  const activeCategories = useMemo(() => categories.filter(c => showArchived || !isArchived(c)), [categories, showArchived]);
+  const categoriesWithUncategorizedLast = useMemo(() => sortCategoriesWithUncategorizedLast(categories), [categories]);
+  const activeCategories = useMemo(() => sortCategoriesWithUncategorizedLast(categories.filter(c => showArchived || !isArchived(c))), [categories, showArchived]);
   const activeUnits = useMemo(() => units.filter(u => showArchived || !isArchived(u)), [units, showArchived]);
   const activeSuppliers = useMemo(() => suppliers.filter(s => showArchived || !isArchived(s)), [suppliers, showArchived]);
   const activeSites = useMemo(() => sites.filter(s => showArchived || !isArchived(s)), [sites, showArchived]);
@@ -1952,6 +1961,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         })}
       </div>
     </div>
+  );
+
+  const renderStocksModuleNav = () => (
+    <StocksModuleTabs activeTab={activeTab} onNavigate={goToTab} />
   );
 
   return (
@@ -2699,6 +2712,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
               {activeTab === 'stocks-dashboard' && (
                 <StocksDashboardPage
+                  activeTab={activeTab}
                   products={products}
                   suppliers={suppliers}
                   sites={sites}
@@ -2711,6 +2725,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   onImportOcr={() => setShowOcrImportModal(true)}
                   onOpenExtraction={handleOpenOcrExtraction}
                   onOpenStocks={() => setActiveTab('inventory')}
+                  onNavigate={goToTab}
                   onStartOnboarding={() => setShowStocksOnboarding(true)}
                   onCreateProduct={() => setShowProductModal(true)}
                 />
@@ -2723,6 +2738,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               {/* TAB CATEGORIES */}
               {activeTab === 'categories' && (
                 <>
+                  {renderStocksModuleNav()}
                   {renderStocksSettingsHeader()}
                   <div className="card-modern">
                     <div className="section-header-modern">
@@ -2741,7 +2757,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                           <span className="empty-state-title">Aucune catégorie</span>
                           <span className="empty-state-desc">Créez vos familles de produits dès que Stocks est installé.</span>
                         </div>
-                      ) : categories.map((category) => (
+                      ) : categoriesWithUncategorizedLast.map((category) => (
                         <motion.div
                           key={category.id}
                           className="app-card compact-card"
@@ -2768,101 +2784,105 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
               {/* TAB INVENTORY */}
               {activeTab === 'inventory' && (
-                <div className="card-modern">
-                  <div className="section-header-modern">
-                    <div className="section-info">
-                      <span className="card-title">Inventaire des Stocks</span>
-                      <span className="section-tagline">Quantités actuelles en stock par produit.</span>
+                <>
+                  {renderStocksModuleNav()}
+                  <div className="card-modern">
+                    <div className="section-header-modern">
+                      <div className="section-info">
+                        <span className="card-title">Inventaire des Stocks</span>
+                        <span className="section-tagline">Quantités actuelles en stock par produit.</span>
+                      </div>
+                      <button className="btn btn-primary" onClick={() => setShowMovementModal(true)}>
+                        <Plus size={16} /> Enregistrer un mouvement
+                      </button>
                     </div>
-                    <button className="btn btn-primary" onClick={() => setShowMovementModal(true)}>
-                      <Plus size={16} /> Enregistrer un mouvement
-                    </button>
-                  </div>
 
-                  <div className="filter-bar">
-                    <div className="search-input-wrapper">
-                      <Search />
-                      <input
-                        type="text"
-                        placeholder="Rechercher un produit ou un SKU..."
-                        className="search-input"
-                        value={inventorySearch}
-                        onChange={(e) => setInventorySearch(e.target.value)}
-                      />
+                    <div className="filter-bar">
+                      <div className="search-input-wrapper">
+                        <Search />
+                        <input
+                          type="text"
+                          placeholder="Rechercher un produit ou un SKU..."
+                          className="search-input"
+                          value={inventorySearch}
+                          onChange={(e) => setInventorySearch(e.target.value)}
+                        />
+                      </div>
+                      <select
+                        value={inventoryCategoryFilter}
+                        onChange={(e) => setInventoryCategoryFilter(e.target.value)}
+                        style={{ maxWidth: '200px' }}
+                      >
+                        <option value="">Toutes les catégories</option>
+                        {categoriesWithUncategorizedLast.map((cat) => (
+                          <option key={cat.id} value={cat.id}>{cat.name}</option>
+                        ))}
+                      </select>
                     </div>
-                    <select
-                      value={inventoryCategoryFilter}
-                      onChange={(e) => setInventoryCategoryFilter(e.target.value)}
-                      style={{ maxWidth: '200px' }}
-                    >
-                      <option value="">Toutes les catégories</option>
-                      {categories.map((cat) => (
-                        <option key={cat.id} value={cat.id}>{cat.name}</option>
-                      ))}
-                    </select>
-                  </div>
 
-                  <div className="table-wrapper">
-                    <table className="table-modern">
-                      <thead>
-                        <tr>
-                           <th>Produit</th>
-                           <th>Catégorie</th>
-                           <th>Site / emplacement</th>
-                           <th>Lot / DLC</th>
-                           <th style={{ textAlign: 'right' }}>Stock actuel</th>
-                           <th style={{ textAlign: 'right' }}>Valeur</th>
-                           <th>Seuil minimum</th>
-                           <th>Statut</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredStocks.length === 0 ? (
+                    <div className="table-wrapper">
+                      <table className="table-modern">
+                        <thead>
                           <tr>
-                            <td colSpan={4}>
-                              <div className="empty-state">
-                                <div className="empty-state-icon">📦</div>
-                                <span className="empty-state-title">Aucun produit en stock</span>
-                                <span className="empty-state-desc">Aucun produit ne correspond à vos filtres ou aucun mouvement de stock n'a été enregistré.</span>
-                                <button className="btn btn-primary" onClick={() => setShowMovementModal(true)}>
-                                  <Plus size={16} /> Ajouter un mouvement
-                                </button>
-                              </div>
-                            </td>
+                             <th>Produit</th>
+                             <th>Catégorie</th>
+                             <th>Site / emplacement</th>
+                             <th>Lot / DLC</th>
+                             <th style={{ textAlign: 'right' }}>Stock actuel</th>
+                             <th style={{ textAlign: 'right' }}>Valeur</th>
+                             <th>Seuil minimum</th>
+                             <th>Statut</th>
                           </tr>
-                        ) : (
-                          filteredStocks.map((stock) => (
-                            <tr key={stock.id}>
-                              <td style={{ fontWeight: 600 }}>{stock.product.name}</td>
-                              <td>
-                                {stock.product.category?.name ? (
-                                  <span className="badge badge-production" style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1' }}>
-                                    {stock.product.category.name}
-                                  </span>
-                                ) : (
-                                  <span style={{ color: 'var(--text-muted)' }}>Non classé</span>
-                                )}
+                        </thead>
+                        <tbody>
+                          {filteredStocks.length === 0 ? (
+                            <tr>
+                              <td colSpan={4}>
+                                <div className="empty-state">
+                                  <div className="empty-state-icon">📦</div>
+                                  <span className="empty-state-title">Aucun produit en stock</span>
+                                  <span className="empty-state-desc">Aucun produit ne correspond à vos filtres ou aucun mouvement de stock n'a été enregistré.</span>
+                                  <button className="btn btn-primary" onClick={() => setShowMovementModal(true)}>
+                                    <Plus size={16} /> Ajouter un mouvement
+                                  </button>
+                                </div>
                               </td>
-                              <td>{stock.site?.name ?? 'Tous sites'} / {stock.location?.name ?? 'Tous emplacements'}</td>
-                              <td>{stock.lot?.lotNumber ?? '—'} {stock.lot?.expiresAt || stock.lot?.expirationDate ? <span className="badge badge-correction">DLC {new Date((stock.lot.expiresAt ?? stock.lot.expirationDate) as string).toLocaleDateString('fr-FR')}</span> : null}</td>
-                              <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '0.95rem', color: Number(stock.quantity) < 0 ? 'var(--danger)' : 'var(--text-main)' }}>
-                                {stock.currentQuantity ?? stock.quantity} {stock.product.unit?.symbol ?? ''}
-                              </td>
-                              <td style={{ textAlign: 'right' }}>{numeric(stock.stockValue ?? stock.value ?? numeric(stock.currentQuantity ?? stock.quantity) * numeric(stock.product.averagePrice ?? stock.product.averagePurchasePrice ?? stock.product.weightedAveragePrice)).toFixed(2)} €</td>
-                              <td>{stock.product.minimumStock ?? stock.product.minStock ?? '—'}</td>
-                              <td><span className={`badge ${stockStatus(stock).className}`}>{stockStatus(stock).label}</span></td>
                             </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
+                          ) : (
+                            filteredStocks.map((stock) => (
+                              <tr key={stock.id}>
+                                <td style={{ fontWeight: 600 }}>{stock.product.name}</td>
+                                <td>
+                                  {stock.product.category?.name ? (
+                                    <span className="badge badge-production" style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1' }}>
+                                      {stock.product.category.name}
+                                    </span>
+                                  ) : (
+                                    <span style={{ color: 'var(--text-muted)' }}>Non classé</span>
+                                  )}
+                                </td>
+                                <td>{stock.site?.name ?? 'Tous sites'} / {stock.location?.name ?? 'Tous emplacements'}</td>
+                                <td>{stock.lot?.lotNumber ?? '—'} {stock.lot?.expiresAt || stock.lot?.expirationDate ? <span className="badge badge-correction">DLC {new Date((stock.lot.expiresAt ?? stock.lot.expirationDate) as string).toLocaleDateString('fr-FR')}</span> : null}</td>
+                                <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '0.95rem', color: Number(stock.quantity) < 0 ? 'var(--danger)' : 'var(--text-main)' }}>
+                                  {stock.currentQuantity ?? stock.quantity} {stock.product.unit?.symbol ?? ''}
+                                </td>
+                                <td style={{ textAlign: 'right' }}>{numeric(stock.stockValue ?? stock.value ?? numeric(stock.currentQuantity ?? stock.quantity) * numeric(stock.product.averagePrice ?? stock.product.averagePurchasePrice ?? stock.product.weightedAveragePrice)).toFixed(2)} €</td>
+                                <td>{stock.product.minimumStock ?? stock.product.minStock ?? '—'}</td>
+                                <td><span className={`badge ${stockStatus(stock).className}`}>{stockStatus(stock).label}</span></td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                </div>
+                </>
               )}
 
               {/* TAB MOVEMENTS */}
               {activeTab === 'movements' && (
                 <>
+                  {renderStocksModuleNav()}
                   {renderStocksSettingsHeader()}
                   <div className="card-modern">
                     <div className="section-header-modern">
@@ -2971,6 +2991,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               {/* TAB PRODUCTS */}
               {activeTab === 'products' && (
                 <>
+                  {renderStocksModuleNav()}
                   <div className="card-modern">
                     <div className="section-header-modern">
                       <div className="section-info">
@@ -3067,6 +3088,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               {/* TAB UNITS */}
               {activeTab === 'units' && (
                 <>
+                  {renderStocksModuleNav()}
                   {renderStocksSettingsHeader()}
                   <UnitsPage units={filteredUnits} search={unitSearch} setSearch={setUnitSearch} showArchived={showArchived} setShowArchived={setShowArchived} onCreate={() => setShowUnitModal(true)} />
                 </>
@@ -3074,12 +3096,16 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
               {/* TAB INVENTORIES */}
               {activeTab === 'inventories' && (
-                <InventoriesPage inventories={filteredInventories} products={products} search={inventorySessionSearch} setSearch={setInventorySessionSearch} onCreate={() => setShowInventoryModal(true)} onOpen={(inventory) => setSelectedInventoryId(inventory.id)} />
+                <>
+                  {renderStocksModuleNav()}
+                  <InventoriesPage inventories={filteredInventories} products={products} search={inventorySessionSearch} setSearch={setInventorySessionSearch} onCreate={() => setShowInventoryModal(true)} onOpen={(inventory) => setSelectedInventoryId(inventory.id)} />
+                </>
               )}
 
               {/* TAB LOCATIONS */}
               {activeTab === 'locations' && (
                 <>
+                  {renderStocksModuleNav()}
                   {renderStocksSettingsHeader()}
                   <LocationsPage sites={activeSites} locations={filteredLocations} search={locationSearch} setSearch={setLocationSearch} showArchived={showArchived} setShowArchived={setShowArchived} onCreateSite={() => setShowSiteModal(true)} onCreateLocation={() => setShowLocationModal(true)} />
                 </>
@@ -3088,6 +3114,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               {/* TAB AUDIT */}
               {activeTab === 'audit' && (
                 <>
+                  {renderStocksModuleNav()}
                   {renderStocksSettingsHeader()}
                   <AuditPage entries={filteredAudit} search={auditSearch} setSearch={setAuditSearch} onExport={() => exportAuditCsv(token)} />
                 </>
@@ -3095,81 +3122,84 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
               {/* TAB SUPPLIERS */}
               {activeTab === 'suppliers' && (
-                <div className="card-modern">
-                  <div className="section-header-modern">
-                    <div className="section-info">
-                      <span className="card-title">Gestion des Fournisseurs</span>
-                      <span className="section-tagline">Coordonnées de vos partenaires fournisseurs pour les réceptions de marchandises.</span>
+                <>
+                  {renderStocksModuleNav()}
+                  <div className="card-modern">
+                    <div className="section-header-modern">
+                      <div className="section-info">
+                        <span className="card-title">Gestion des Fournisseurs</span>
+                        <span className="section-tagline">Coordonnées de vos partenaires fournisseurs pour les réceptions de marchandises.</span>
+                      </div>
+                      <button className="btn btn-primary" onClick={() => setShowSupplierModal(true)}>
+                        <Plus size={16} /> Nouveau Fournisseur
+                      </button>
                     </div>
-                    <button className="btn btn-primary" onClick={() => setShowSupplierModal(true)}>
-                      <Plus size={16} /> Nouveau Fournisseur
-                    </button>
-                  </div>
 
-                  <div className="filter-bar">
-                    <div className="search-input-wrapper" style={{ maxWidth: '100%' }}>
-                      <Search />
-                      <input
-                        type="text"
-                        placeholder="Rechercher par nom ou email de fournisseur..."
-                        className="search-input"
-                        value={supplierSearch}
-                        onChange={(e) => setSupplierSearch(e.target.value)}
-                      />
+                    <div className="filter-bar">
+                      <div className="search-input-wrapper" style={{ maxWidth: '100%' }}>
+                        <Search />
+                        <input
+                          type="text"
+                          placeholder="Rechercher par nom ou email de fournisseur..."
+                          className="search-input"
+                          value={supplierSearch}
+                          onChange={(e) => setSupplierSearch(e.target.value)}
+                        />
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="table-wrapper">
-                    <table className="table-modern">
-                      <thead>
-                        <tr>
-                          <th>Nom du fournisseur</th>
-                          <th>Contact Email</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredSuppliers.length === 0 ? (
+                    <div className="table-wrapper">
+                      <table className="table-modern">
+                        <thead>
                           <tr>
-                            <td colSpan={2}>
-                              <div className="empty-state">
-                                <div className="empty-state-icon">🛒</div>
-                                <span className="empty-state-title">Aucun fournisseur enregistré</span>
-                                <span className="empty-state-desc">Ajoutez votre premier fournisseur pour tracer les livraisons de marchandises dans votre cuisine.</span>
-                                <button className="btn btn-primary" onClick={() => setShowSupplierModal(true)}>
-                                  <Plus size={16} /> Ajouter un fournisseur
-                                </button>
-                              </div>
-                            </td>
+                            <th>Nom du fournisseur</th>
+                            <th>Contact Email</th>
                           </tr>
-                        ) : (
-                          filteredSuppliers.map((s) => (
-                            <tr
-                              key={s.id}
-                              onClick={() => setSelectedSupplier(s)}
-                              style={{ cursor: 'pointer' }}
-                              className="clickable-row"
-                            >
-                              <td style={{ fontWeight: 600 }}>{s.name}</td>
-                              <td>
-                                {s.email ? (
-                                  <a
-                                    href={`mailto:${s.email}`}
-                                    style={{ textDecoration: 'underline' }}
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    {s.email}
-                                  </a>
-                                ) : (
-                                  <span style={{ color: 'var(--text-muted)' }}>—</span>
-                                )}
+                        </thead>
+                        <tbody>
+                          {filteredSuppliers.length === 0 ? (
+                            <tr>
+                              <td colSpan={2}>
+                                <div className="empty-state">
+                                  <div className="empty-state-icon">🛒</div>
+                                  <span className="empty-state-title">Aucun fournisseur enregistré</span>
+                                  <span className="empty-state-desc">Ajoutez votre premier fournisseur pour tracer les livraisons de marchandises dans votre cuisine.</span>
+                                  <button className="btn btn-primary" onClick={() => setShowSupplierModal(true)}>
+                                    <Plus size={16} /> Ajouter un fournisseur
+                                  </button>
+                                </div>
                               </td>
                             </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
+                          ) : (
+                            filteredSuppliers.map((s) => (
+                              <tr
+                                key={s.id}
+                                onClick={() => setSelectedSupplier(s)}
+                                style={{ cursor: 'pointer' }}
+                                className="clickable-row"
+                              >
+                                <td style={{ fontWeight: 600 }}>{s.name}</td>
+                                <td>
+                                  {s.email ? (
+                                    <a
+                                      href={`mailto:${s.email}`}
+                                      style={{ textDecoration: 'underline' }}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      {s.email}
+                                    </a>
+                                  ) : (
+                                    <span style={{ color: 'var(--text-muted)' }}>—</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                </div>
+                </>
               )}
             </motion.div>
           </AnimatePresence>
@@ -5778,7 +5808,29 @@ function randomLocalId() {
   return `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function StocksDashboardPage({ products, suppliers, sites, locations, stocks, movements, ocrStatuses, readiness, onCreateMovement, onImportOcr, onOpenExtraction, onOpenStocks, onStartOnboarding, onCreateProduct }: { products: Product[]; suppliers: Supplier[]; sites: Site[]; locations: Location[]; stocks: Stock[]; movements: StockMovement[]; ocrStatuses: StocksOcrStatus[]; readiness: StocksReadiness; onCreateMovement: () => void; onImportOcr: () => void; onOpenExtraction: (extractionId: string) => Promise<void>; onOpenStocks: () => void; onStartOnboarding: () => void; onCreateProduct: () => void }) {
+function StocksModuleTabs({ activeTab, onNavigate }: { activeTab: ActiveTab; onNavigate: (tab: ActiveTab) => void }) {
+  return (
+    <div className="hr-tabs stocks-module-tabs" role="tablist" aria-label="Navigation Stocks">
+      {STOCKS_NAV_TABS.map((item) => {
+        const isActive = item.tab === activeTab || (item.tab === 'categories' && isStocksSettingsRoute(activeTab));
+        return (
+          <button
+            key={item.tab}
+            type="button"
+            className={isActive ? 'active' : ''}
+            onClick={() => onNavigate(item.tab)}
+            role="tab"
+            aria-selected={isActive}
+          >
+            {item.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function StocksDashboardPage({ activeTab, products, suppliers, sites, locations, stocks, movements, ocrStatuses, readiness, onCreateMovement, onImportOcr, onOpenExtraction, onOpenStocks, onNavigate, onStartOnboarding, onCreateProduct }: { activeTab: ActiveTab; products: Product[]; suppliers: Supplier[]; sites: Site[]; locations: Location[]; stocks: Stock[]; movements: StockMovement[]; ocrStatuses: StocksOcrStatus[]; readiness: StocksReadiness; onCreateMovement: () => void; onImportOcr: () => void; onOpenExtraction: (extractionId: string) => Promise<void>; onOpenStocks: () => void; onNavigate: (tab: ActiveTab) => void; onStartOnboarding: () => void; onCreateProduct: () => void }) {
   const [hideSetupCard, setHideSetupCard] = useState(() => {
     try {
       return localStorage.getItem('toquehub_stocks_hide_setup_card') === 'true';
@@ -5827,6 +5879,8 @@ function StocksDashboardPage({ products, suppliers, sites, locations, stocks, mo
           </button>
         </div>
       </motion.section>
+
+      <StocksModuleTabs activeTab={activeTab} onNavigate={onNavigate} />
 
       {(!hideSetupCard || (!hideOcrStatus && ocrStatuses.length > 0)) && (
         <div className="stocks-dashboard-setup-row">
@@ -9141,6 +9195,19 @@ function categoryNameKey(name: string) {
   return name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
 }
 
+function isUncategorizedCategoryName(name: string) {
+  return categoryNameKey(name) === categoryNameKey('Sans catégorie');
+}
+
+function sortCategoriesWithUncategorizedLast<T extends { name: string }>(categories: T[]) {
+  return [...categories].sort((a, b) => {
+    const aIsUncategorized = isUncategorizedCategoryName(a.name);
+    const bIsUncategorized = isUncategorizedCategoryName(b.name);
+    if (aIsUncategorized === bIsUncategorized) return 0;
+    return aIsUncategorized ? 1 : -1;
+  });
+}
+
 function CategoryDetailModal({
   category,
   products,
@@ -9161,7 +9228,7 @@ function CategoryDetailModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
   const linkedProducts = useMemo(() => products.filter((product) => (product.categoryId ?? product.category?.id) === category?.id), [products, category?.id]);
-  const isUncategorized = category ? categoryNameKey(category.name) === categoryNameKey('Sans catégorie') : false;
+  const isUncategorized = category ? isUncategorizedCategoryName(category.name) : false;
 
   useEffect(() => {
     setName(category?.name ?? '');

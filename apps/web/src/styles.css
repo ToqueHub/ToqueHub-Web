@@ -7934,6 +7934,12 @@ input:checked + .slider-round:before {
   background: white;
 }
 
+.stocks-module-tabs {
+  max-width: 100%;
+  overflow-x: auto;
+  margin-bottom: 1.75rem;
+}
+
 /* Stats Metric Cards Grid */
 .hr-stat-grid {
   display: grid;
@@ -14088,8 +14094,15 @@ input:checked + .slider-round:before {
   border-radius: 10px;
   background: #f8fafc;
   border: 1px dashed #cbd5e1;
+  color: #0f172a;
   cursor: pointer;
   transition: all 0.2s ease;
+}
+
+.hr-secondary-trigger .muted {
+  color: #0f172a;
+  opacity: 1;
+  font-weight: 700;
 }
 
 .hr-secondary-trigger:hover {
@@ -14133,6 +14146,11 @@ input:checked + .slider-round:before {
   outline: none;
   font-size: 0.85rem;
   color: #0f172a;
+}
+
+.hr-secondary-search input::placeholder {
+  color: #475569;
+  opacity: 1;
 }
 
 .hr-secondary-item {
