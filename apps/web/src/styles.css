@@ -18446,3 +18446,271 @@ input:checked + .slider-round:before {
     width: 100%;
   }
 }
+
+/* HACCP History Modal Modernization */
+.haccp-modal-overlay-modern {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(9, 13, 22, 0.45);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1.5rem;
+  animation: haccpFadeIn 0.3s ease-out;
+}
+
+.haccp-modal-card-modern {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: 28px;
+  box-shadow:
+    0 10px 40px -10px rgba(0, 0, 0, 0.08),
+    0 0 0 1px rgba(226, 232, 240, 0.8),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.6);
+  width: min(960px, 94vw);
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.haccp-modal-body-scrollable {
+  overflow-y: auto;
+  padding: 1.5rem;
+  flex: 1;
+}
+
+.haccp-modal-header-modern {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+  background: rgba(255, 255, 255, 0.5);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.haccp-live-pulse {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background-color: var(--primary);
+  border-radius: 50%;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  animation: haccpPulse 2s infinite;
+  vertical-align: middle;
+  margin-right: 0.5rem;
+}
+
+@keyframes haccpPulse {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+@keyframes haccpFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.haccp-kpi-grid-modern {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  .haccp-kpi-grid-modern {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.haccp-metric-card-modern {
+  background: white;
+  border-radius: 20px;
+  padding: 1.25rem;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -2px rgba(0, 0, 0, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.haccp-metric-card-modern:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 20px -8px rgba(0, 0, 0, 0.05);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.haccp-metric-card-modern.tone-ok:hover {
+  border-color: rgba(16, 185, 129, 0.4);
+  box-shadow: 0 12px 20px -8px rgba(16, 185, 129, 0.08);
+}
+
+.haccp-metric-card-modern.tone-warning:hover {
+  border-color: rgba(245, 158, 11, 0.4);
+  box-shadow: 0 12px 20px -8px rgba(245, 158, 11, 0.08);
+}
+
+.haccp-metric-card-modern.tone-danger:hover {
+  border-color: rgba(239, 68, 68, 0.4);
+  box-shadow: 0 12px 20px -8px rgba(239, 68, 68, 0.08);
+}
+
+.haccp-metric-icon-wrapper {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--light-bg);
+  color: var(--text-muted);
+  transition: all 0.3s ease;
+}
+
+.haccp-metric-card-modern:hover .haccp-metric-icon-wrapper {
+  transform: scale(1.08);
+}
+
+.haccp-metric-card-modern.tone-ok .haccp-metric-icon-wrapper {
+  background: rgba(16, 185, 129, 0.08);
+  color: #10b981;
+}
+
+.haccp-metric-card-modern.tone-warning .haccp-metric-icon-wrapper {
+  background: rgba(245, 158, 11, 0.08);
+  color: #f59e0b;
+}
+
+.haccp-metric-card-modern.tone-danger .haccp-metric-icon-wrapper {
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+}
+
+.haccp-metric-card-modern .label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.haccp-metric-card-modern .value {
+  font-size: 1.6rem;
+  font-weight: 850;
+  color: var(--text-main);
+  line-height: 1.15;
+}
+
+.haccp-metric-card-modern .detail {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.haccp-chart-card-modern {
+  background: white;
+  border-radius: 24px;
+  padding: 1.5rem;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+  margin-bottom: 1.5rem;
+}
+
+.haccp-table-card-modern {
+  background: white;
+  border-radius: 24px;
+  padding: 1.5rem;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+}
+
+.haccp-sensor-signal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.haccp-sensor-battery-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.haccp-sensor-battery-badge.high {
+  background: rgba(16, 185, 129, 0.08);
+  color: #10b981;
+}
+
+.haccp-sensor-battery-badge.medium {
+  background: rgba(245, 158, 11, 0.08);
+  color: #f59e0b;
+}
+
+.haccp-sensor-battery-badge.low {
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+  animation: haccpLowBatteryBlink 1.5s infinite alternate;
+}
+
+@keyframes haccpLowBatteryBlink {
+  from { opacity: 1; }
+  to { opacity: 0.6; }
+}
+
+.modal-close-btn-modern {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: #f1f5f9;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.modal-close-btn-modern:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+  transform: rotate(90deg);
+}
+
+.haccp-chart-svg {
+  filter: drop-shadow(0px 8px 16px rgba(15, 118, 110, 0.06));
+}

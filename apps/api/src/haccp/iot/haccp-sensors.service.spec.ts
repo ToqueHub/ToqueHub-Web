@@ -20,7 +20,7 @@ function createPrismaMock() {
     iotSensorAssignment: { updateMany: jest.fn(), create: jest.fn(), findFirst: jest.fn() },
     iotPairingSession: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn().mockResolvedValue({}), updateMany: jest.fn() },
     haccpTemperatureEquipment: { findFirst: jest.fn() },
-    haccpTemperatureReading: { create: jest.fn() },
+    haccpTemperatureReading: { create: jest.fn(), findFirst: jest.fn() },
     iotAlertEvent: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
     auditLog: { create: jest.fn() },
   };
@@ -51,6 +51,10 @@ function createService(prisma = createPrismaMock()) {
 }
 
 describe('HaccpSensorsService', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('creates a discovered sensor only for active pairing sessions', async () => {
     const { service, prisma, gateway } = createService();
     prisma.iotSensor.findMany.mockResolvedValueOnce([]);
@@ -121,12 +125,14 @@ describe('HaccpSensorsService', () => {
   });
 
   it('copies assigned sensor temperature readings into HACCP temperature records and opens alerts', async () => {
+    jest.useFakeTimers().setSystemTime(new Date(2026, 6, 7, 15, 2, 0, 0));
     const { service, prisma } = createService();
     prisma.iotSensor.findMany.mockResolvedValueOnce([{ id: 'sensor-1', organizationId: orgId, externalId: 'Frigo 1', userName: 'Capteur Frigo 1', isRemoved: false }]);
     prisma.iotSensorAssignment.findFirst.mockResolvedValue({
       haccpTemperatureEquipmentId: 'equipment-1',
       haccpTemperatureEquipment: { id: 'equipment-1', name: 'Frigo positif', type: 'enceinte_positive' },
     });
+    prisma.haccpTemperatureReading.findFirst.mockResolvedValue(null);
     prisma.iotAlertEvent.findFirst.mockResolvedValue(null);
     prisma.iotSensor.update.mockResolvedValue({
       id: 'sensor-1',
@@ -147,7 +153,8 @@ describe('HaccpSensorsService', () => {
         organizationId: orgId,
         equipmentId: 'equipment-1',
         temperature: 9.5,
-        notes: expect.stringContaining('Relevé automatique capteur Capteur Frigo 1'),
+        date: new Date(2026, 6, 7, 15, 0, 0, 0),
+        notes: expect.stringContaining('Relevé automatique Sonoff 15:00 - capteur Capteur Frigo 1'),
       }),
     }));
     expect(prisma.iotAlertEvent.create).toHaveBeenCalledWith(expect.objectContaining({

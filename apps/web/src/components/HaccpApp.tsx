@@ -153,6 +153,14 @@ type HaccpTemperatureAlertData = {
   recentReadings: HaccpItem[];
 };
 type HaccpPairingSession = HaccpItem & { id: string; status: string; startedAt: string; expiresAt: string; discoveredIds?: string[]; sensors?: HaccpSensor[] };
+type HaccpSensorReading = HaccpItem & {
+  id: string;
+  temperature?: number | null;
+  humidity?: number | null;
+  battery?: number | null;
+  linkQuality?: number | null;
+  measuredAt: string;
+};
 
 const PROCESS_TYPES = [
   { id: 'refroidissement', label: 'Refroidissement', icon: Snowflake },
@@ -478,11 +486,10 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
         safeValue('pairing current', () => api.haccpCurrentSensorPairing(token), null),
       ]);
       const temperatureEquipmentList = equipment.data ?? [];
-      const sensorListWithMocks = withLocalMockSensors(sensorList, temperatureEquipmentList);
       if (dashboardData) setDashboard(dashboardData);
       setSensorGatewayStatus(gatewayStatus);
-      setSensorSummary(withLocalMockSensorSummary(sensorSummaryData, sensorListWithMocks));
-      setSensors(sensorListWithMocks);
+      setSensorSummary(sensorSummaryData);
+      setSensors(sensorList);
       setTemperatureAlerts(temperatureAlertData);
       setPairing(pairingData);
       setItems({
@@ -523,9 +530,8 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
         api.haccpCurrentSensorPairing(token),
       ]);
       setSensorGatewayStatus(gateway);
-      const sensorListWithMocks = withLocalMockSensors(list, temperatureEquipment);
-      setSensorSummary(withLocalMockSensorSummary(summary, sensorListWithMocks));
-      setSensors(sensorListWithMocks);
+      setSensorSummary(summary);
+      setSensors(list);
       setPairing(currentPairing);
     } catch {
       // Keep existing sensor state.
@@ -590,17 +596,6 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
     setSaving(true);
     setError(null);
     try {
-      if (isLocalMockSensor(sensor)) {
-        const equipment = temperatureEquipment.find((item) => (item._id ?? item.id) === equipmentId);
-        const assignedEquipmentId = equipment?._id ?? equipment?.id;
-        const updated: HaccpSensor = {
-          ...sensor,
-          assignedEquipment: equipment && assignedEquipmentId ? { id: assignedEquipmentId, name: String(equipment.name ?? 'Équipement'), type: String(equipment.type ?? 'enceinte_positive') } : null,
-        };
-        setSelectedSensorId(updated.id);
-        setSensors((current) => upsertSensor(current, updated));
-        return;
-      }
       const updated = equipmentId ? await api.haccpAssignSensor(token, sensor.id, equipmentId) : await api.haccpUnassignSensor(token, sensor.id);
       setSelectedSensorId(updated.id);
       setSensors((current) => upsertSensor(current, updated));
@@ -1031,6 +1026,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
         ) : null}
         {activeTab === 'alerts' ? (
           <TemperatureAlertsView
+            token={token}
             data={temperatureAlerts}
             sensors={sensors}
             searchQuery={searchQuery}
@@ -1153,15 +1149,15 @@ function ModuleCard({ module, onClick }: { module: HaccpDashboard['modules'][num
   const hasExpectedControls = module.expected > 0;
   const status = !hasExpectedControls ? 'Aucun prévu' : module.issues > 0 ? module.score < 60 ? 'Critique' : 'À vérifier' : 'Conforme';
   const badgeClass = !hasExpectedControls ? 'neutral' : status === 'Conforme' ? 'ok' : status === 'À vérifier' ? 'warning' : 'danger';
-  
+
   const iconColor = !hasExpectedControls ? '#64748b' : status === 'Conforme' ? '#10b981' : status === 'À vérifier' ? '#f59e0b' : '#ef4444';
   const cardBorderColor = !hasExpectedControls ? 'rgba(100, 116, 139, 0.14)' : status === 'Conforme' ? 'rgba(16, 185, 129, 0.12)' : status === 'À vérifier' ? 'rgba(245, 158, 11, 0.12)' : 'rgba(239, 68, 68, 0.12)';
   const cardBgGlow = !hasExpectedControls ? 'rgba(100, 116, 139, 0.01)' : status === 'Conforme' ? 'rgba(16, 185, 129, 0.01)' : status === 'À vérifier' ? 'rgba(245, 158, 11, 0.01)' : 'rgba(239, 68, 68, 0.01)';
   const displayScore = hasExpectedControls ? module.score : 0;
 
   return (
-    <div 
-      className={`haccp-module-card card-hover-effect status-${badgeClass}`} 
+    <div
+      className={`haccp-module-card card-hover-effect status-${badgeClass}`}
       onClick={onClick}
       style={{
         background: `linear-gradient(135deg, white 0%, ${cardBgGlow} 100%)`,
@@ -1191,14 +1187,14 @@ function ModuleCard({ module, onClick }: { module: HaccpDashboard['modules'][num
     >
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <div style={{ 
-            background: `${iconColor}15`, 
-            padding: '0.6rem', 
-            borderRadius: '12px', 
-            display: 'flex', 
-            alignItems: 'center', 
+          <div style={{
+            background: `${iconColor}15`,
+            padding: '0.6rem',
+            borderRadius: '12px',
+            display: 'flex',
+            alignItems: 'center',
             justifyContent: 'center',
-            color: iconColor 
+            color: iconColor
           }}>
             {getModuleIcon(module.id, iconColor)}
           </div>
@@ -1266,12 +1262,12 @@ function DashboardView({ dashboard, readiness, loading, searchQuery, setSearchQu
       <div className="haccp-summary-row" style={{ display: 'flex', gap: '2.5rem', marginBottom: '2rem', padding: '0.5rem 0', flexWrap: 'wrap' }}>
         {/* Contrôles manquants */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-          <div style={{ 
-            background: criticalCount ? 'rgba(239, 68, 68, 0.1)' : warningCount ? 'rgba(245, 158, 11, 0.1)' : 'rgba(16, 185, 129, 0.1)', 
-            padding: '0.75rem', 
-            borderRadius: '12px', 
-            display: 'flex', 
-            color: criticalCount ? '#ef4444' : warningCount ? '#f59e0b' : '#10b981' 
+          <div style={{
+            background: criticalCount ? 'rgba(239, 68, 68, 0.1)' : warningCount ? 'rgba(245, 158, 11, 0.1)' : 'rgba(16, 185, 129, 0.1)',
+            padding: '0.75rem',
+            borderRadius: '12px',
+            display: 'flex',
+            color: criticalCount ? '#ef4444' : warningCount ? '#f59e0b' : '#10b981'
           }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10" />
@@ -1292,12 +1288,12 @@ function DashboardView({ dashboard, readiness, loading, searchQuery, setSearchQu
 
         {/* Score HACCP */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-          <div style={{ 
-            background: 'rgba(16, 185, 129, 0.1)', 
-            padding: '0.75rem', 
-            borderRadius: '12px', 
-            display: 'flex', 
-            color: '#10b981' 
+          <div style={{
+            background: 'rgba(16, 185, 129, 0.1)',
+            padding: '0.75rem',
+            borderRadius: '12px',
+            display: 'flex',
+            color: '#10b981'
           }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M20 13c0 5-3.5 7.5-7.66 9.7a1 1 0 0 1-.68 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 .76-.97l8-2a1 1 0 0 1 .48 0l8 2A1 1 0 0 1 20 6Z" />
@@ -2214,9 +2210,9 @@ function SectionView({ section, rows, products, searchQuery, setSearchQuery, pro
       <div className="section-header-modern">
         <div className="section-info">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
-            <button 
-              type="button" 
-              className="btn btn-secondary btn-sm" 
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
               onClick={onBack}
               style={{
                 padding: '0.3rem 0.6rem',
@@ -2300,6 +2296,7 @@ function SectionView({ section, rows, products, searchQuery, setSearchQuery, pro
 }
 
 function TemperatureAlertsView({
+  token,
   data,
   sensors,
   searchQuery,
@@ -2307,6 +2304,7 @@ function TemperatureAlertsView({
   onSaveThreshold,
   onBack,
 }: {
+  token: string;
   data: HaccpTemperatureAlertData | null;
   sensors: HaccpSensor[];
   searchQuery: string;
@@ -2314,11 +2312,31 @@ function TemperatureAlertsView({
   onSaveThreshold: (sensor: HaccpSensor, min: number, max: number) => void;
   onBack: () => void;
 }) {
+  const [historySensor, setHistorySensor] = useState<HaccpSensor | null>(null);
+  const [historyReadings, setHistoryReadings] = useState<HaccpSensorReading[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const fallbackData = useMemo<HaccpTemperatureAlertData>(() => buildLocalTemperatureAlertData(sensors), [sensors]);
   const current = data ?? fallbackData;
   const query = searchQuery.trim().toLowerCase();
   const visibleSensors = current.sensors.filter((sensor) => !query || JSON.stringify(sensor).toLowerCase().includes(query));
   const mostRecent = current.recentReadings.slice(0, 8);
+
+  async function openSensorHistory(sensor: HaccpSensor) {
+    setHistorySensor(sensor);
+    setHistoryReadings([]);
+    setHistoryError(null);
+    setHistoryLoading(true);
+    try {
+      const readings = await api.haccpSensorReadings(token, sensor.id);
+      setHistoryReadings(readings);
+    } catch (error) {
+      console.warn('[HACCP] Historique capteur indisponible', error);
+      setHistoryError('Impossible de charger l’historique du capteur.');
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
 
   return (
     <div className="haccp-sensors-page">
@@ -2356,7 +2374,7 @@ function TemperatureAlertsView({
           const status = sensor.temperatureStatus ?? localTemperatureStatus(temp, threshold);
           const tone = status.status === 'critical' ? '#dc2626' : status.status === 'warning' ? '#d97706' : status.status === 'ok' ? '#059669' : '#64748b';
           return (
-            <div key={sensor.id} className="haccp-equipment-row active">
+            <div key={sensor.id} className="haccp-equipment-row active" style={{ cursor: 'pointer' }} onClick={() => void openSensorHistory(sensor)}>
               <div className="haccp-equipment-row-main">
                 <div className="haccp-equipment-row-info">
                   <div className={`haccp-card-icon-badge ${status.status === 'critical' ? 'hot' : status.status === 'ok' ? 'positive' : 'cleaning'}`}>
@@ -2386,8 +2404,13 @@ function TemperatureAlertsView({
                   <span className="haccp-spec-pill range">Batterie {sensor.battery == null ? '-' : `${Math.round(Number(sensor.battery))}%`}</span>
                 </div>
               </div>
-              <div className="haccp-equipment-instances-box" style={{ marginTop: '0.45rem' }}>
+              <div className="haccp-equipment-instances-box" style={{ marginTop: '0.45rem' }} onClick={(event) => event.stopPropagation()}>
                 <SensorThresholdEditor sensor={sensor} threshold={threshold} onSave={onSaveThreshold} />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.6rem' }}>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => void openSensorHistory(sensor)}>
+                    <BarChart3 size={14} /> Voir courbe & relevés
+                  </button>
+                </div>
               </div>
             </div>
           );
@@ -2414,8 +2437,408 @@ function TemperatureAlertsView({
           section="alerts"
         />
       </div>
+
+      {historySensor ? (
+        <SensorHistoryModal
+          sensor={historySensor}
+          readings={historyReadings}
+          loading={historyLoading}
+          error={historyError}
+          onClose={() => setHistorySensor(null)}
+          onRefresh={() => void openSensorHistory(historySensor)}
+        />
+      ) : null}
     </div>
   );
+}
+
+function SensorHistoryModal({
+  sensor,
+  readings,
+  loading,
+  error,
+  onClose,
+  onRefresh,
+}: {
+  sensor: HaccpSensor;
+  readings: HaccpSensorReading[];
+  loading: boolean;
+  error: string | null;
+  onClose: () => void;
+  onRefresh: () => void;
+}) {
+  const [expandedReadings, setExpandedReadings] = useState(false);
+  const temperatureReadings = readings
+    .filter((reading) => reading.temperature != null)
+    .sort((a, b) => new Date(a.measuredAt).getTime() - new Date(b.measuredAt).getTime());
+  const latest = temperatureReadings[temperatureReadings.length - 1] ?? null;
+  const chartReadings = temperatureReadings.slice(-72);
+  const intervalMinutes = estimateReadingIntervalMinutes(temperatureReadings);
+
+  // Calculations for KPIs
+  const tempVal = latest ? Number(latest.temperature) : null;
+  const threshold = sensor.threshold ?? sensor.temperatureThreshold ?? localTemperatureThreshold(sensor.assignedEquipment);
+  const status = sensor.temperatureStatus ?? localTemperatureStatus(tempVal, threshold);
+  const tempTone = status.status === 'critical' ? 'danger' : status.status === 'warning' ? 'warning' : status.status === 'ok' ? 'ok' : 'neutral';
+
+  const batteryVal = latest?.battery == null ? (sensor.battery == null ? null : Number(sensor.battery)) : Number(latest.battery);
+  const batteryTone = batteryVal == null ? 'neutral' : batteryVal < 20 ? 'danger' : batteryVal < 50 ? 'warning' : 'ok';
+
+  return (
+    <div className="haccp-modal-overlay-modern" onClick={onClose}>
+      <motion.div
+        className="haccp-modal-card-modern"
+        initial={{ opacity: 0, y: 20, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="haccp-modal-header-modern">
+          <div>
+            <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 800 }}>
+              <span className="haccp-live-pulse" />
+              Historique température capteur
+            </h3>
+            <p className="muted" style={{ margin: '0.25rem 0 0', fontSize: '0.82rem' }}>
+              {sensorDisplayName(sensor)} • <strong>{sensor.assignedEquipment?.name ?? 'Non affecté'}</strong> • relevés toutes les {intervalMinutes ? `${intervalMinutes} min` : '5 min'} env.
+            </p>
+          </div>
+          <button type="button" className="modal-close-btn-modern" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="haccp-modal-body-scrollable">
+          <div className="haccp-kpi-grid-modern">
+            {/* KPI 1: Dernière Temp */}
+            <div className={`haccp-metric-card-modern tone-${tempTone}`}>
+              <div className="haccp-metric-icon-wrapper">
+                <Thermometer size={18} />
+              </div>
+              <span className="label">Dernière Temp.</span>
+              <strong className="value">{latest ? `${Number(latest.temperature).toFixed(1)}°C` : '-'}</strong>
+              <span className="detail">{latest ? new Date(latest.measuredAt).toLocaleString('fr-FR') : 'Aucun relevé'}</span>
+            </div>
+
+            {/* KPI 2: Relevés Chargés */}
+            <div className="haccp-metric-card-modern tone-ok">
+              <div className="haccp-metric-icon-wrapper">
+                <Activity size={18} />
+              </div>
+              <span className="label">Relevés chargés</span>
+              <strong className="value">{temperatureReadings.length}</strong>
+              <span className="detail">Historique de l'enceinte</span>
+            </div>
+
+            {/* KPI 3: Humidité */}
+            <div className="haccp-metric-card-modern tone-ok">
+              <div className="haccp-metric-icon-wrapper">
+                <Droplets size={18} />
+              </div>
+              <span className="label">Humidité</span>
+              <strong className="value">{latest?.humidity == null ? '-' : `${Number(latest.humidity).toFixed(0)}%`}</strong>
+              <span className="detail">Dernière mesure</span>
+            </div>
+
+            {/* KPI 4: Batterie */}
+            <div className={`haccp-metric-card-modern tone-${batteryTone}`}>
+              <div className="haccp-metric-icon-wrapper">
+                <Battery size={18} />
+              </div>
+              <span className="label">Batterie</span>
+              <strong className="value">{batteryVal == null ? '-' : `${Math.round(batteryVal)}%`}</strong>
+              <span className="detail">Niveau de charge</span>
+            </div>
+          </div>
+
+          <div className="haccp-chart-card-modern">
+            <div className="haccp-list-header" style={{ marginBottom: '1.25rem' }}>
+              <div>
+                <span className="card-title">Courbe de température</span>
+                <p className="muted" style={{ margin: '0.25rem 0 0', fontSize: '0.78rem' }}>Derniers relevés disponibles.</p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={onRefresh}
+                disabled={loading}
+                style={{ borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+              >
+                <RefreshCw size={14} className={loading ? 'spin' : ''} /> Actualiser
+              </button>
+            </div>
+            {loading ? (
+              <div className="haccp-empty-state"><Activity size={32} className="spin" /><p>Chargement des relevés...</p></div>
+            ) : error ? (
+              <div className="alert-modern error"><AlertCircle size={16} /> {error}</div>
+            ) : chartReadings.length ? (
+              <TemperatureLineChart readings={chartReadings} threshold={sensor.temperatureThreshold ?? localTemperatureThreshold(sensor.assignedEquipment)} />
+            ) : (
+              <div className="haccp-empty-state"><Thermometer size={32} /><p>Aucun relevé température disponible pour ce capteur.</p></div>
+            )}
+          </div>
+
+          <div className="haccp-table-card-modern">
+            <div className="haccp-list-header" style={{ marginBottom: '1.25rem' }}>
+              <span className="card-title">Historique détaillé des relevés</span>
+            </div>
+            <div className="table-responsive">
+              <table className="table-modern">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Température</th>
+                    <th>Humidité</th>
+                    <th>Batterie</th>
+                    <th>Signal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const visibleReadingsList = [...temperatureReadings].reverse();
+                    const slicedReadings = expandedReadings ? visibleReadingsList.slice(0, 80) : visibleReadingsList.slice(0, 10);
+                    return slicedReadings.map((reading) => {
+                      const rTemp = reading.temperature == null ? null : Number(reading.temperature);
+                      const rStatus = rTemp == null ? 'neutral' : (rTemp < threshold.min || rTemp > threshold.max) ? 'critical' : 'ok';
+                      const pillClass = rStatus === 'critical' ? 'danger' : rStatus === 'ok' ? 'ok' : 'neutral';
+
+                      const batt = reading.battery == null ? null : Number(reading.battery);
+                      const battClass = batt == null ? '' : batt < 20 ? 'low' : batt < 50 ? 'medium' : 'high';
+
+                      return (
+                        <tr key={reading.id ?? reading.measuredAt}>
+                          <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                            {new Date(reading.measuredAt).toLocaleString('fr-FR')}
+                          </td>
+                          <td>
+                            <span className={`haccp-status-pill ${pillClass}`} style={{ fontSize: '0.85rem', padding: '0.25rem 0.65rem', fontWeight: 700 }}>
+                              {reading.temperature == null ? '-' : `${Number(reading.temperature).toFixed(1)}°C`}
+                            </span>
+                          </td>
+                          <td style={{ fontWeight: 600 }}>
+                            {reading.humidity == null ? '-' : `${Number(reading.humidity).toFixed(0)}%`}
+                          </td>
+                          <td>
+                            {batt == null ? (
+                              <span className="muted">-</span>
+                            ) : (
+                              <span className={`haccp-sensor-battery-badge ${battClass}`}>
+                                <Battery size={11} />
+                                {Math.round(batt)}%
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            {reading.linkQuality == null ? (
+                              <span className="muted">-</span>
+                            ) : (
+                              <span className="haccp-sensor-signal-badge">
+                                <Wifi size={11} />
+                                {reading.linkQuality}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
+            {temperatureReadings.length > 10 && (
+              <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1rem' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', borderRadius: '12px', padding: '0.45rem 1.25rem' }}
+                  onClick={() => setExpandedReadings(!expandedReadings)}
+                >
+                  {expandedReadings ? (
+                    <>
+                      <ChevronUp size={14} /> Réduire l'historique
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown size={14} /> Afficher tout l'historique ({temperatureReadings.length - 10} relevés de plus)
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function TemperatureLineChart({ readings, threshold }: { readings: HaccpSensorReading[]; threshold: { min: number; max: number; label?: string } }) {
+  const values = readings.map((reading) => Number(reading.temperature)).filter(Number.isFinite);
+  const minValue = Math.min(...values, threshold.min);
+  const maxValue = Math.max(...values, threshold.max);
+  const padding = Math.max(1, (maxValue - minValue) * 0.15);
+  const min = minValue - padding;
+  const max = maxValue + padding;
+  const width = 860;
+  const height = 280;
+  const left = 48;
+  const right = 18;
+  const top = 18;
+  const bottom = 42;
+  const innerWidth = width - left - right;
+  const innerHeight = height - top - bottom;
+
+  const pointFor = (reading: HaccpSensorReading, index: number) => {
+    const x = left + (readings.length === 1 ? innerWidth / 2 : (index / (readings.length - 1)) * innerWidth);
+    const value = Number(reading.temperature);
+    const y = top + ((max - value) / (max - min || 1)) * innerHeight;
+    return { x, y, value };
+  };
+
+  const points = readings.map(pointFor);
+  const path = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(' ');
+  const areaPath = points.length > 0
+    ? `${path} L ${points[points.length - 1].x.toFixed(1)} ${(top + innerHeight).toFixed(1)} L ${points[0].x.toFixed(1)} ${(top + innerHeight).toFixed(1)} Z`
+    : '';
+  const yFor = (value: number) => top + ((max - value) / (max - min || 1)) * innerHeight;
+
+  const yMax = yFor(threshold.max);
+  const yMin = yFor(threshold.min);
+
+  const firstDate = readings[0] ? new Date(readings[0].measuredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '';
+  const lastDate = readings.at(-1) ? new Date(readings.at(-1)!.measuredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '';
+
+  const gridSteps = 4;
+  const gridValues = Array.from({ length: gridSteps + 1 }, (_, i) => min + (i * (max - min)) / gridSteps);
+
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label="Courbe de température capteur"
+        style={{ width: '100%', minWidth: 620, height: 'auto' }}
+        className="haccp-chart-svg"
+      >
+        <defs>
+          <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#0f766e" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="#0f766e" stopOpacity="0.0" />
+          </linearGradient>
+        </defs>
+
+        {/* Background container */}
+        <rect x={left} y={top} width={innerWidth} height={innerHeight} rx="16" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1" />
+
+        {/* Gridlines */}
+        {gridValues.map((val, idx) => (
+          <line
+            key={`grid-${idx}`}
+            x1={left}
+            y1={yFor(val)}
+            x2={width - right}
+            y2={yFor(val)}
+            stroke="#e2e8f0"
+            strokeWidth="1"
+            strokeDasharray="4 4"
+            opacity="0.6"
+          />
+        ))}
+
+        {/* Warning zones background (above max, below min) */}
+        {yMax > top && (
+          <rect
+            x={left}
+            y={top}
+            width={innerWidth}
+            height={yMax - top}
+            fill="rgba(239, 68, 68, 0.02)"
+          />
+        )}
+        {top + innerHeight > yMin && (
+          <rect
+            x={left}
+            y={yMin}
+            width={innerWidth}
+            height={top + innerHeight - yMin}
+            fill="rgba(239, 68, 68, 0.02)"
+          />
+        )}
+
+        {/* Safe zone background (between min and max) */}
+        {yMin > yMax && (
+          <rect
+            x={left}
+            y={yMax}
+            width={innerWidth}
+            height={yMin - yMax}
+            fill="rgba(16, 185, 129, 0.04)"
+            stroke="rgba(16, 185, 129, 0.08)"
+            strokeWidth="1"
+          />
+        )}
+
+        {/* Threshold lines */}
+        {[threshold.min, threshold.max].map((value) => (
+          <g key={value}>
+            <line
+              x1={left}
+              x2={width - right}
+              y1={yFor(value)}
+              y2={yFor(value)}
+              stroke="#f59e0b"
+              strokeWidth="1.5"
+              strokeDasharray="5 5"
+            />
+            <text
+              x={left + 12}
+              y={yFor(value) - 6}
+              fill="#b45309"
+              fontSize="11"
+              fontWeight="800"
+            >
+              Seuil: {value}°C
+            </text>
+          </g>
+        ))}
+
+        {/* Filled gradient area under line */}
+        {areaPath && <path d={areaPath} fill="url(#chartGradient)" />}
+
+        {/* Main temperature line path */}
+        {path && <path d={path} fill="none" stroke="#0f766e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />}
+
+        {/* Interactive nodes */}
+        {points.map((point, index) => (
+          <circle
+            key={`${readings[index].id ?? readings[index].measuredAt}-${index}`}
+            cx={point.x}
+            cy={point.y}
+            r="4.5"
+            fill="#0f766e"
+            stroke="#ffffff"
+            strokeWidth="2"
+            style={{ filter: 'drop-shadow(0px 2px 4px rgba(15, 118, 110, 0.3))' }}
+          />
+        ))}
+
+        {/* Labels */}
+        <text x="8" y={top + 6} fill="#64748b" fontSize="11" fontWeight="600">{max.toFixed(1)}°C</text>
+        <text x="8" y={top + innerHeight} fill="#64748b" fontSize="11" fontWeight="600">{min.toFixed(1)}°C</text>
+        <text x={left} y={height - 14} fill="#64748b" fontSize="11" fontWeight="600">{firstDate}</text>
+        <text x={width - right - 44} y={height - 14} fill="#64748b" fontSize="11" fontWeight="600">{lastDate}</text>
+      </svg>
+    </div>
+  );
+}
+
+function estimateReadingIntervalMinutes(readings: HaccpSensorReading[]) {
+  if (readings.length < 2) return null;
+  const deltas = readings.slice(1).map((reading, index) => (
+    Math.round((new Date(reading.measuredAt).getTime() - new Date(readings[index].measuredAt).getTime()) / 60000)
+  )).filter((delta) => delta > 0 && delta < 180);
+  if (!deltas.length) return null;
+  deltas.sort((a, b) => a - b);
+  return deltas[Math.floor(deltas.length / 2)];
 }
 
 function SensorThresholdEditor({ sensor, threshold, onSave }: { sensor: HaccpSensor; threshold: { min: number; max: number; label?: string }; onSave: (sensor: HaccpSensor, min: number, max: number) => void }) {
@@ -4035,18 +4458,18 @@ function ScoreGauge({ score }: { score: number }) {
   const r = 26;
   const circ = 2 * Math.PI * r;
   const strokeDashoffset = circ - (normalized / 100) * circ;
-  
+
   return (
     <div className="haccp-score-ring">
       <svg viewBox="0 0 60 60">
         <circle cx="30" cy="30" r={r} className="track" />
-        <circle cx="30" cy="30" r={r} className="value" 
-          style={{ 
-            strokeDasharray: circ, 
+        <circle cx="30" cy="30" r={r} className="value"
+          style={{
+            strokeDasharray: circ,
             strokeDashoffset: strokeDashoffset,
             transform: 'rotate(-90deg)',
             transformOrigin: '30px 30px'
-          }} 
+          }}
         />
       </svg>
       <div className="haccp-ring-value">
@@ -4415,7 +4838,7 @@ function configModalTitle(kind: HaccpConfigKind) {
 }
 
 function labelFor(section: HaccpTab) {
-  return ({ sensors: 'Capteurs', alerts: 'Alerte', temperatures: 'Températures', setup: 'Zones & matériels', cleaning: 'Nettoyage', traceability: 'Traçabilité', receptions: 'Réceptions', process: 'Processus', oil: 'Huiles', production: 'Production', products: 'Produits', labels: 'Étiquettes', reports: 'Rapports', dashboard: 'Dashboard' } as Record<HaccpTab, string>)[section];
+  return ({ sensors: 'Capteurs', alerts: 'Alerte', temperatures: 'Températures', setup: 'Zones & matériels', cleaning: 'Nettoyage', traceability: 'Traçabilité', receptions: 'Réceptions', process: 'Processus', oil: 'Huiles', production: 'Production', products: 'Produits', labels: 'Étiquettes', reports: 'Rapports', dashboard: 'Tableau de bord' } as Record<HaccpTab, string>)[section];
 }
 
 function columnsFor(section: HaccpTab) {
@@ -4457,6 +4880,47 @@ function buildLocalTemperatureAlertData(sensors: HaccpSensor[]): HaccpTemperatur
     const temperatureStatus = localTemperatureStatus(sensor.currentTemperature == null ? null : Number(sensor.currentTemperature), threshold);
     return { ...sensor, threshold, temperatureStatus, alertOpen: temperatureStatus.status === 'critical' || temperatureStatus.status === 'warning' };
   });
+  const alerts = monitored.flatMap((sensor) => {
+    const detectedAt = sensor.lastSeenAt ?? new Date().toISOString();
+    const temperature = sensor.currentTemperature == null ? null : Number(sensor.currentTemperature);
+    const entries: HaccpItem[] = [];
+    if (sensor.temperatureStatus.status === 'critical' || sensor.temperatureStatus.status === 'warning') {
+      entries.push({
+        id: `${sensor.id}-temperature-alert`,
+        type: 'TEMPERATURE_OUT_OF_RANGE',
+        severity: sensor.temperatureStatus.status === 'critical' ? 'CRITICAL' : 'WARNING',
+        status: 'OPEN',
+        title: sensor.temperatureStatus.status === 'critical' ? 'Température critique' : 'Température à surveiller',
+        message: `${sensor.assignedEquipment?.name ?? sensorDisplayName(sensor)}: ${temperature == null ? '-' : `${temperature.toFixed(1)}°C`} hors plage ${sensor.threshold.min}°C / ${sensor.threshold.max}°C`,
+        detectedAt,
+        sensor,
+        payload: {
+          temperature,
+          threshold: sensor.threshold,
+          equipmentId: sensor.assignedEquipment?.id ?? null,
+          equipmentName: sensor.assignedEquipment?.name ?? null,
+        },
+      });
+    }
+    if (sensor.status === 'OFFLINE') {
+      entries.push({
+        id: `${sensor.id}-offline-alert`,
+        type: 'SENSOR_OFFLINE',
+        severity: 'WARNING',
+        status: 'OPEN',
+        title: 'Capteur hors ligne',
+        message: `${sensorDisplayName(sensor)} ne remonte plus de relevé depuis ${sensor.lastSeenAt ? new Date(sensor.lastSeenAt).toLocaleString('fr-FR') : 'un moment'}.`,
+        detectedAt,
+        sensor,
+        payload: { lastSeenAt: sensor.lastSeenAt ?? null },
+      });
+    }
+    return entries;
+  }).sort((a, b) => new Date(b.detectedAt ?? 0).getTime() - new Date(a.detectedAt ?? 0).getTime());
+  const recentReadings: HaccpItem[] = monitored
+    .flatMap((sensor) => (sensor.readings ?? []).map((reading) => ({ ...reading, sensor })))
+    .sort((a, b) => new Date((b as HaccpItem).measuredAt ?? (b as HaccpItem).createdAt ?? 0).getTime() - new Date((a as HaccpItem).measuredAt ?? (a as HaccpItem).createdAt ?? 0).getTime())
+    .slice(0, 20);
   return {
     summary: {
       totalSensors: monitored.length,
@@ -4469,8 +4933,8 @@ function buildLocalTemperatureAlertData(sensors: HaccpSensor[]): HaccpTemperatur
       ok: monitored.filter((sensor) => sensor.temperatureStatus.status === 'ok').length,
     },
     sensors: monitored,
-    alerts: [],
-    recentReadings: monitored.flatMap((sensor) => (sensor.readings ?? []).map((reading) => ({ ...reading, sensor }))).slice(0, 20),
+    alerts,
+    recentReadings,
   };
 }
 
@@ -4500,107 +4964,8 @@ function upsertSensor(items: HaccpSensor[], sensor: HaccpSensor) {
   return next.filter((item) => !item.isRemoved);
 }
 
-const LOCAL_MOCK_SENSOR_PREFIX = 'mock-haccp-sensor-';
-
-function shouldUseLocalHaccpSensorMocks() {
-  const explicit = String(import.meta.env.VITE_HACCP_MOCK_SENSORS ?? '').toLowerCase();
-  if (['0', 'false', 'no'].includes(explicit)) return false;
-  if (['1', 'true', 'yes'].includes(explicit)) return true;
-  return false;
-}
-
-function isLocalMockSensor(sensor: HaccpSensor) {
-  return sensor.id.startsWith(LOCAL_MOCK_SENSOR_PREFIX);
-}
-
-function withLocalMockSensors(sensors: HaccpSensor[], temperatureEquipment: HaccpItem[]) {
-  if (!shouldUseLocalHaccpSensorMocks()) return sensors;
-  const mocks = buildLocalMockSensors(temperatureEquipment);
-  return mocks.reduce((current, sensor) => upsertSensor(current, sensor), sensors);
-}
-
-function withLocalMockSensorSummary(summary: HaccpSensorSummary, sensors: HaccpSensor[]): HaccpSensorSummary {
-  if (!shouldUseLocalHaccpSensorMocks()) return summary;
-  const total = sensors.length;
-  const online = sensors.filter((sensor) => sensor.status === 'ONLINE').length;
-  const offline = sensors.filter((sensor) => sensor.status === 'OFFLINE').length;
-  const batteries = sensors.map((sensor) => sensor.battery).filter((value): value is number => typeof value === 'number');
-  return {
-    total,
-    online,
-    offline,
-    unknown: total - online - offline,
-    averageBattery: batteries.length ? Math.round(batteries.reduce((sum, value) => sum + value, 0) / batteries.length) : null,
-    globalStatus: total === 0 ? 'unknown' : offline > 0 ? 'warning' : 'ok',
-  };
-}
-
-function buildLocalMockSensors(temperatureEquipment: HaccpItem[]): HaccpSensor[] {
-  const now = new Date().toISOString();
-  const equipmentFor = (index: number) => {
-    const equipment = temperatureEquipment[index];
-    const id = equipment?._id ?? equipment?.id;
-    return id ? { id, name: String(equipment.name ?? 'Équipement'), type: String(equipment.type ?? 'enceinte_positive') } : null;
-  };
-  return [
-    {
-      id: `${LOCAL_MOCK_SENSOR_PREFIX}frigo-cuisine`,
-      provider: 'ZIGBEE2MQTT',
-      externalId: '0xmockfrigo001',
-      manufacturer: 'SONOFF',
-      model: 'SNZB-02P',
-      friendlyName: 'mock-frigo-cuisine',
-      userName: 'Capteur Frigo Cuisine',
-      type: 'TEMPERATURE_HUMIDITY',
-      status: 'ONLINE',
-      battery: 96,
-      linkQuality: 184,
-      lastSeenAt: now,
-      currentTemperature: 3.4,
-      currentHumidity: 48,
-      assignedEquipment: equipmentFor(0),
-      readings: [],
-      events: [],
-    },
-    {
-      id: `${LOCAL_MOCK_SENSOR_PREFIX}chambre-froide`,
-      provider: 'ZIGBEE2MQTT',
-      externalId: '0xmockcoldroom02',
-      manufacturer: 'SONOFF',
-      model: 'SNZB-02P',
-      friendlyName: 'mock-chambre-froide',
-      userName: 'Capteur Chambre Froide',
-      type: 'TEMPERATURE_HUMIDITY',
-      status: 'ONLINE',
-      battery: 88,
-      linkQuality: 156,
-      lastSeenAt: now,
-      currentTemperature: 1.8,
-      currentHumidity: 54,
-      assignedEquipment: equipmentFor(1),
-      readings: [],
-      events: [],
-    },
-    {
-      id: `${LOCAL_MOCK_SENSOR_PREFIX}congelateur`,
-      provider: 'ZIGBEE2MQTT',
-      externalId: '0xmockfreezer003',
-      manufacturer: 'SONOFF',
-      model: 'SNZB-02P',
-      friendlyName: 'mock-congelateur',
-      userName: 'Capteur Congélateur',
-      type: 'TEMPERATURE_HUMIDITY',
-      status: 'OFFLINE',
-      battery: 62,
-      linkQuality: 91,
-      lastSeenAt: new Date(Date.now() - 45 * 60_000).toISOString(),
-      currentTemperature: -18.7,
-      currentHumidity: 35,
-      assignedEquipment: equipmentFor(2),
-      readings: [],
-      events: [],
-    },
-  ];
+function formatBattery(value?: number | null) {
+  return value == null ? '-' : `${Math.round(Number(value))}%`;
 }
 
 function sensorDisplayName(sensor: HaccpSensor) {

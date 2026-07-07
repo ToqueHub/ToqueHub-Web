@@ -12,6 +12,8 @@ import { AssignSensorDto, PairingStartDto, RenameSensorDto, UpdateSensorDto } fr
 import { Zigbee2MqttProvider } from './zigbee2mqtt.provider';
 
 type Actor = { id: string; role: string };
+const HACCP_TEMPERATURE_READING_HOURS = [5, 15, 23];
+const HACCP_TEMPERATURE_READING_WINDOW_MINUTES = 10;
 
 @Injectable()
 export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
@@ -437,14 +439,12 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
           orderBy: { assignedAt: 'desc' },
         });
         if (temperature != null && assignment?.haccpTemperatureEquipmentId) {
-          await tx.haccpTemperatureReading.create({
-            data: {
-              organizationId: sensor.organizationId,
-              equipmentId: assignment.haccpTemperatureEquipmentId,
-              temperature,
-              date: measuredAt,
-              notes: `Relevé automatique capteur ${sensor.userName ?? sensor.friendlyName ?? sensor.externalId}`,
-            },
+          await this.recordScheduledHaccpTemperatureReading(tx, {
+            sensor,
+            equipment: assignment.haccpTemperatureEquipment,
+            equipmentId: assignment.haccpTemperatureEquipmentId,
+            temperature,
+            measuredAt,
           });
           await this.syncTemperatureAlert(tx, sensor, assignment.haccpTemperatureEquipment, temperature, measuredAt);
         }
@@ -541,6 +541,44 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  private async recordScheduledHaccpTemperatureReading(tx: any, params: { sensor: any; equipment?: any; equipmentId: string; temperature: number; measuredAt: Date }) {
+    const slot = this.currentHaccpTemperatureSlot(params.measuredAt);
+    if (!slot) return false;
+    const existing = await tx.haccpTemperatureReading.findFirst({
+      where: {
+        organizationId: params.sensor.organizationId,
+        equipmentId: params.equipmentId,
+        deletedAt: null,
+        date: slot.date,
+        notes: { contains: slot.noteMarker },
+      },
+    });
+    if (existing) return false;
+    await tx.haccpTemperatureReading.create({
+      data: {
+        organizationId: params.sensor.organizationId,
+        equipmentId: params.equipmentId,
+        temperature: params.temperature,
+        date: slot.date,
+        notes: `${slot.noteMarker} - capteur ${params.sensor.userName ?? params.sensor.friendlyName ?? params.sensor.externalId}`,
+      },
+    });
+    return true;
+  }
+
+  private currentHaccpTemperatureSlot(date: Date) {
+    for (const hour of HACCP_TEMPERATURE_READING_HOURS) {
+      const slotDate = new Date(date);
+      slotDate.setHours(hour, 0, 0, 0);
+      const windowEnd = new Date(slotDate.getTime() + HACCP_TEMPERATURE_READING_WINDOW_MINUTES * 60_000);
+      if (date >= slotDate && date < windowEnd) {
+        const label = `${String(hour).padStart(2, '0')}:00`;
+        return { date: slotDate, label, noteMarker: `Relevé automatique Sonoff ${label}` };
+      }
+    }
+    return null;
+  }
+
   private async restoreOrCreateDevice(organizationId: string, device: ProviderDevice, discovered: boolean) {
     const removed = await this.findRemovedSensorByExternal(organizationId, device.externalId, device.ieeeAddress);
     if (!removed) return this.createDevice(organizationId, device, discovered);
@@ -622,9 +660,41 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
     try {
       await this.expirePairingSessions();
       await this.markOfflineSensors();
+      await this.createDueScheduledHaccpTemperatureReadings();
     } catch (error: any) {
       this.logger.warn(`HACCP sensor maintenance skipped: ${error?.message ?? 'unknown error'}`);
     }
+  }
+
+  private async createDueScheduledHaccpTemperatureReadings(now = new Date()) {
+    const slot = this.currentHaccpTemperatureSlot(now);
+    if (!slot) return;
+    const sensors = await this.prisma.iotSensor.findMany({
+      where: {
+        isRemoved: false,
+        currentTemperature: { not: null },
+        assignments: {
+          some: { unassignedAt: null },
+        },
+      },
+      include: this.sensorInclude(),
+    });
+    await Promise.all(sensors.map(async (sensor) => {
+      const assignment = (sensor.assignments ?? []).find((item: any) => !item.unassignedAt);
+      if (!assignment?.haccpTemperatureEquipmentId) return;
+      const temperature = this.numberOrNull(sensor.currentTemperature);
+      if (temperature == null) return;
+      await this.prisma.$transaction(async (tx) => {
+        await this.recordScheduledHaccpTemperatureReading(tx, {
+          sensor,
+          equipment: assignment.haccpTemperatureEquipment,
+          equipmentId: assignment.haccpTemperatureEquipmentId,
+          temperature,
+          measuredAt: now,
+        });
+        await this.syncTemperatureAlert(tx, sensor, assignment.haccpTemperatureEquipment, temperature, now);
+      });
+    }));
   }
 
   private async expirePairingSessions(organizationId?: string) {

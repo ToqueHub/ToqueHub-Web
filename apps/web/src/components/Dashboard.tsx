@@ -1058,9 +1058,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       isActive: isHaccpTab,
       defaultTab: 'haccp-dashboard',
       submenu: [
-        { 
-          tab: 'haccp-dashboard', 
-          label: 'Dashboard', 
+        {
+          tab: 'haccp-dashboard',
+          label: 'Tableau de bord',
           icon: LayoutDashboard,
           matches: [
             'haccp-temperatures',
