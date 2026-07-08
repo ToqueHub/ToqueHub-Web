@@ -13,6 +13,10 @@ import type {
   Location,
   Lot,
   Product,
+  ProductImportCommitResult,
+  ProductImportField,
+  ProductImportPreview,
+  ProductImportPreviewFields,
   Site,
   Stock,
   StockReception,
@@ -991,6 +995,31 @@ export const api = {
   },
   archiveProduct(token: string, id: string) {
     return request<Product>(`/products/${id}/archive`, { method: 'POST' }, token);
+  },
+  async downloadProductImportTemplate(token: string) {
+    const response = await fetch(`${API_URL}/api/products/import/template.csv`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = globalThis.document.createElement('a');
+    link.href = url;
+    link.download = 'modele-import-produits.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  },
+  async analyzeProductImport(token: string, file: File) {
+    const body = new FormData();
+    body.append('file', file);
+    const response = await fetch(`${API_URL}/api/products/import/analyze`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    });
+    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
+    return response.json() as Promise<ProductImportPreview>;
+  },
+  commitProductImport(token: string, payload: { rows: Array<{ rowNumber: number; fields: ProductImportPreviewFields; selected?: boolean }>; mapping?: Record<string, ProductImportField>; options?: { createMissingCategories?: boolean; createMissingSuppliers?: boolean } }) {
+    return request<ProductImportCommitResult>('/products/import/commit', { method: 'POST', body: JSON.stringify(payload) }, token);
   },
   suppliers(token: string) {
     return request<Supplier[]>('/suppliers', {}, token);

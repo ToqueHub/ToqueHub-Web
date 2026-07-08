@@ -119,6 +119,12 @@ import type {
   Inventory,
   Location,
   Product,
+  ProductImportCommitResult,
+  ProductImportField,
+  ProductImportPreview,
+  ProductImportPreviewFields,
+  ProductImportPreviewRow,
+  ProductImportStatus,
   Site,
   Stock,
   StockMovement,
@@ -470,6 +476,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showUnitModal, setShowUnitModal] = useState(false);
   const [showProductModal, setShowProductModal] = useState(false);
+  const [showProductImportModal, setShowProductImportModal] = useState(false);
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const [showMovementModal, setShowMovementModal] = useState(false);
   const [showSiteModal, setShowSiteModal] = useState(false);
@@ -929,6 +936,11 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     });
   };
 
+  function closeStocksOnboardingToDashboard() {
+    setShowStocksOnboarding(false);
+    setActiveTab('stocks-dashboard');
+  }
+
   const userInitials = useMemo(() => {
     const fn = session.user.firstName || '';
     const ln = session.user.lastName || '';
@@ -1252,6 +1264,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       setInstalledApps(summary.installedApplications ?? ['stocks']);
       setSuccess('L’application Stocks a été installée. Les menus métier sont maintenant visibles pour toute l’organisation.');
       await refresh();
+      setActiveTab('stocks-dashboard');
       setShowStocksOnboarding(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Installation de Stocks impossible.');
@@ -1405,7 +1418,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         setDashboardSummary((prev) => ({ ...prev, ...summary } as DashboardSummary));
         setInstalledApps(summary.installedApplications ?? Array.from(new Set([...installedApps, appId])));
         setSuccess(appId === 'rnm-prices' ? 'L’application Cours des Produits a été installée. La navigation RNM est maintenant visible.' : appId === 'hr' ? 'L’application RH a été installée. Services et postes de départ sont disponibles.' : appId === 'planning' ? 'L’application Planning a été installée. Les vues opérationnelles consomment désormais le référentiel RH.' : appId === 'technical-sheets' ? 'L’application Fiches Techniques a été installée. Catégories recettes et allergènes standards sont disponibles.' : appId === 'production' ? 'L’application Production a été installée. Les ordres peuvent être créés depuis les fiches techniques sans dupliquer les référentiels.' : appId === 'menus' ? 'L’application Menus a été installée. Planification, cycles, convives et génération Production sont disponibles.' : appId === 'haccp' ? 'L’application HACCP a été installée. Dashboard conformité, contrôles et rapports sont disponibles.' : 'L’application Stocks a été installée avec succès. Le référentiel de base est prêt, vous pouvez créer le premier fournisseur.');
-        if (appId === 'stocks') setShowStocksOnboarding(true);
+        if (appId === 'stocks') {
+          setActiveTab('stocks-dashboard');
+          setShowStocksOnboarding(true);
+        }
         if (appId === 'rnm-prices') setActiveTab('rnm-dashboard');
         if (appId === 'hr') setActiveTab('hr-dashboard');
         if (appId === 'planning') setActiveTab('planning-dashboard');
@@ -1614,6 +1630,15 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
   async function handleDeleteProduct(productId: string) {
     await submit(() => api.archiveProduct(token, productId), 'Produit supprimé avec succès.');
+  }
+
+  async function handleCommitProductImport(payload: { rows: Array<{ rowNumber: number; fields: ProductImportPreviewFields; selected?: boolean }>; mapping?: Record<string, ProductImportField>; options?: { createMissingCategories?: boolean; createMissingSuppliers?: boolean } }) {
+    setError(undefined);
+    setSuccess(undefined);
+    const result = await api.commitProductImport(token, payload);
+    setSuccess(`${result.created} produit${result.created > 1 ? 's' : ''} importé${result.created > 1 ? 's' : ''}.`);
+    await refresh();
+    return result;
   }
 
   async function handleCreateSupplier(payload: { name: string; contactName?: string; email?: string; phone?: string }) {
@@ -2998,9 +3023,14 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                         <span className="card-title">Catalogue des Produits</span>
                         <span className="section-tagline">Liste globale des produits référencés dans votre cuisine.</span>
                       </div>
-                      <button className="btn btn-primary" onClick={() => setShowProductModal(true)}>
-                        <Plus size={16} /> Nouveau Produit
-                      </button>
+                      <div className="row-actions">
+                        <button className="btn btn-secondary" onClick={() => setShowProductImportModal(true)}>
+                          <UploadCloud size={16} /> Importer produits
+                        </button>
+                        <button className="btn btn-primary" onClick={() => setShowProductModal(true)}>
+                          <Plus size={16} /> Nouveau Produit
+                        </button>
+                      </div>
                     </div>
 
                     <div className="filter-bar">
@@ -3052,6 +3082,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                                   <span className="empty-state-desc">Ajustez la recherche ou les filtres fournisseur/catégorie.</span>
                                   <button className="btn btn-primary" onClick={() => setShowProductModal(true)}>
                                     <Plus size={16} /> Ajouter un produit
+                                  </button>
+                                  <button className="btn btn-secondary" onClick={() => setShowProductImportModal(true)}>
+                                    <UploadCloud size={16} /> Importer un CSV
                                   </button>
                                 </div>
                               </td>
@@ -3229,6 +3262,15 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       </Modal>
 
       {/* Product Modal */}
+      {showProductImportModal ? (
+        <ProductImportWizard
+          onClose={() => setShowProductImportModal(false)}
+          onDownloadTemplate={() => api.downloadProductImportTemplate(token)}
+          onAnalyze={(file) => api.analyzeProductImport(token, file)}
+          onCommit={handleCommitProductImport}
+        />
+      ) : null}
+
       <Modal isOpen={showProductModal} onClose={() => setShowProductModal(false)} title="Créer un produit" size="product">
         <ProductForm
           categories={categories}
@@ -3366,7 +3408,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             setShowStocksOnboarding(false);
             setShowOcrImportModal(true);
           }}
-          onClose={() => setShowStocksOnboarding(false)}
+          onClose={closeStocksOnboardingToDashboard}
         />
       ) : null}
 
@@ -5802,6 +5844,530 @@ function StocksReviewStep({ readiness, categories, units, products, suppliers, s
       </div>
     </div>
   );
+}
+
+type ProductImportStep = 'welcome' | 'structure' | 'upload' | 'mapping' | 'review' | 'done';
+
+const PRODUCT_IMPORT_STEPS: Array<{ key: ProductImportStep; label: string }> = [
+  { key: 'welcome', label: 'Bienvenue' },
+  { key: 'structure', label: 'Structure CSV' },
+  { key: 'upload', label: 'Importer' },
+  { key: 'mapping', label: 'Associer' },
+  { key: 'review', label: 'Vérifier' },
+  { key: 'done', label: 'Terminer' },
+];
+
+const PRODUCT_IMPORT_FIELD_LABELS: Record<ProductImportField, string> = {
+  name: 'Nom',
+  unit: 'Unité',
+  sku: 'SKU',
+  gtin: 'GTIN',
+  supplier: 'Fournisseur',
+  category: 'Catégorie',
+  averagePrice: 'Prix HT',
+  minimumStock: 'Seuil min.',
+  description: 'Description',
+  originCountry: 'Origine',
+  packageLabel: 'Conditionnement',
+  unitsPerPackage: 'Unités / colis',
+  unitWeightGrams: 'Poids unitaire',
+  netWeightGrams: 'Poids net',
+  ingredients: 'Ingrédients',
+  allergensPresent: 'Allergènes',
+  possibleTraces: 'Traces',
+  dietaryTags: 'Tags',
+  energyKj: 'Énergie kJ',
+  energyKcal: 'Énergie kcal',
+  fatGrams: 'Matières grasses',
+  saturatedFatGrams: 'Acides gras saturés',
+  carbohydratesGrams: 'Glucides',
+  sugarsGrams: 'Sucres',
+  fiberGrams: 'Fibres',
+  proteinGrams: 'Protéines',
+  saltGrams: 'Sel',
+  storageType: 'Conservation',
+  shelfLifeAfterOpening: 'Après ouverture',
+  storageInstructions: 'Instructions stockage',
+  preparationInstructions: 'Préparation',
+};
+
+function ProductImportWizard({
+  onClose,
+  onDownloadTemplate,
+  onAnalyze,
+  onCommit,
+}: {
+  onClose: () => void;
+  onDownloadTemplate: () => Promise<void>;
+  onAnalyze: (file: File) => Promise<ProductImportPreview>;
+  onCommit: (payload: { rows: Array<{ rowNumber: number; fields: ProductImportPreviewFields; selected?: boolean }>; mapping?: Record<string, ProductImportField>; options?: { createMissingCategories?: boolean; createMissingSuppliers?: boolean } }) => Promise<ProductImportCommitResult>;
+}) {
+  const [step, setStep] = useState<ProductImportStep>('welcome');
+  const [preview, setPreview] = useState<ProductImportPreview | null>(null);
+  const [options, setOptions] = useState({ createMissingCategories: false, createMissingSuppliers: false });
+  const [result, setResult] = useState<ProductImportCommitResult | null>(null);
+  const [busy, setBusy] = useState<'download' | 'analyze' | 'commit' | null>(null);
+  const [error, setError] = useState<string>();
+  const currentIndex = PRODUCT_IMPORT_STEPS.findIndex((item) => item.key === step);
+  const progress = Math.round(((currentIndex + 1) / PRODUCT_IMPORT_STEPS.length) * 100);
+  const summary = preview ? summarizeProductImportRows(preview.rows) : null;
+  const selectedRows = preview?.rows.filter((row) => row.selected && (row.status === 'ready' || row.status === 'needs_review')) ?? [];
+
+  async function downloadTemplate() {
+    setBusy('download');
+    setError(undefined);
+    try {
+      await onDownloadTemplate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Téléchargement du modèle impossible.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function analyzeFile(file: File) {
+    setBusy('analyze');
+    setError(undefined);
+    try {
+      const next = await onAnalyze(file);
+      setPreview(next);
+      setOptions(next.options ?? { createMissingCategories: false, createMissingSuppliers: false });
+      setStep('mapping');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Analyse du CSV impossible.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function commitImport() {
+    if (!preview || !selectedRows.length) return;
+    setBusy('commit');
+    setError(undefined);
+    try {
+      const commitResult = await onCommit({
+        rows: preview.rows.map(({ rowNumber, fields, selected }) => ({ rowNumber, fields, selected })),
+        mapping: preview.mapping,
+        options,
+      });
+      setResult(commitResult);
+      setStep('done');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Import des produits impossible.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function patchRow(rowNumber: number, selected: boolean) {
+    setPreview((current) => current ? {
+      ...current,
+      rows: current.rows.map((row) => row.rowNumber === rowNumber ? { ...row, selected } : row),
+    } : current);
+  }
+
+  const goNext = () => {
+    const next = PRODUCT_IMPORT_STEPS[Math.min(currentIndex + 1, PRODUCT_IMPORT_STEPS.length - 1)];
+    setStep(next.key);
+  };
+  const goBack = () => {
+    const previous = PRODUCT_IMPORT_STEPS[Math.max(currentIndex - 1, 0)];
+    setStep(previous.key);
+  };
+
+  return (
+    <div className="modal-overlay hr-wizard-overlay product-import-overlay">
+      <motion.div
+        className="modal-card hr-wizard-modal product-import-modal"
+        initial={{ opacity: 0, y: 18, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 18, scale: 0.98 }}
+        transition={{ type: 'spring', damping: 24, stiffness: 220 }}
+      >
+        {step === 'welcome' ? (
+          <ProductImportWelcome onClose={onClose} onNext={() => setStep('structure')} />
+        ) : (
+          <div className="product-import-shell">
+            <aside className="product-import-rail">
+              <ProductImportAside step={step} summary={summary} result={result} />
+            </aside>
+            <main className="product-import-main">
+              <div className="product-import-topbar">
+                <div>
+                  <span className="badge badge-reception">Étape {currentIndex + 1} / {PRODUCT_IMPORT_STEPS.length}</span>
+                  <div className="progress-bar-bg"><div className="progress-bar-fill" style={{ width: `${progress}%` }} /></div>
+                </div>
+                <button type="button" className="product-import-close" onClick={onClose} aria-label="Fermer">
+                  <X size={20} />
+                </button>
+              </div>
+              {error ? <div className="alert-modern error product-import-error"><AlertCircle size={16} /> {error}</div> : null}
+              <AnimatePresence mode="wait">
+                <motion.div key={step} className="product-import-panel" initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -18 }} transition={{ duration: 0.16 }}>
+                  {step === 'structure' ? <ProductImportStructureStep onBack={goBack} onNext={goNext} onDownload={downloadTemplate} downloading={busy === 'download'} /> : null}
+                  {step === 'upload' ? <ProductImportUploadStep onBack={goBack} onAnalyze={analyzeFile} busy={busy === 'analyze'} /> : null}
+                  {step === 'mapping' ? <ProductImportMappingStep preview={preview} onBack={goBack} onNext={() => setStep('review')} onUploadAgain={() => setStep('upload')} /> : null}
+                  {step === 'review' ? (
+                    <ProductImportReviewStep
+                      preview={preview}
+                      summary={summary}
+                      options={options}
+                      selectedRows={selectedRows.length}
+                      busy={busy === 'commit'}
+                      onBack={goBack}
+                      onPatchRow={patchRow}
+                      onOptionsChange={setOptions}
+                      onCommit={commitImport}
+                    />
+                  ) : null}
+                  {step === 'done' ? <ProductImportDoneStep result={result} onClose={onClose} onRestart={() => { setPreview(null); setResult(null); setStep('structure'); }} /> : null}
+                </motion.div>
+              </AnimatePresence>
+            </main>
+          </div>
+        )}
+      </motion.div>
+    </div>
+  );
+}
+
+function ProductImportWelcome({ onClose, onNext }: { onClose: () => void; onNext: () => void }) {
+  return (
+    <div className="product-import-welcome">
+      <button type="button" className="product-import-close welcome" onClick={onClose} aria-label="Fermer">
+        <X size={20} />
+      </button>
+      <div>
+        <span className="badge badge-reception product-import-badge"><Sparkles size={14} color="#10b981" /> Configuration Guidée</span>
+        <h1>Bienvenue sur l'importation de <span>produits</span></h1>
+        <p>
+          Ici, vous pourrez ajouter vos produits depuis un document CSV. L'assistant va d'abord vous guider pour la structure du document CSV attendu, puis vous guider pas à pas pour intégrer votre propre base de produits.
+        </p>
+        <div className="product-import-bullets">
+          <span><Download size={16} /> Préparer le bon modèle CSV</span>
+          <span><UploadCloud size={16} /> Importer votre fichier produit</span>
+          <span><CheckCircle2 size={16} /> Vérifier avant création</span>
+        </div>
+        <div className="product-import-actions">
+          <button type="button" className="btn btn-primary" onClick={onNext}>
+            Démarrer l'importation <ArrowRight size={18} />
+          </button>
+          <button type="button" className="btn btn-secondary" onClick={onClose}>Faire plus tard</button>
+        </div>
+      </div>
+      <ProductImportCsvIllustration />
+    </div>
+  );
+}
+
+function ProductImportAside({ step, summary, result }: { step: ProductImportStep; summary: ReturnType<typeof summarizeProductImportRows> | null; result: ProductImportCommitResult | null }) {
+  const currentIdx = PRODUCT_IMPORT_STEPS.findIndex((item) => item.key === step);
+  return (
+    <>
+      <div className="product-import-rail-content">
+        <div className="product-import-brand"><Package size={28} /> TOQUE<span>HUB</span> STOCKS</div>
+        <div>
+          <span className="stocks-onboarding-kicker">Import guidé</span>
+          <h3>Assistant produits CSV</h3>
+        </div>
+        <div className="product-import-steps">
+          {PRODUCT_IMPORT_STEPS.map((item, idx) => {
+            const done = idx < currentIdx;
+            const active = idx === currentIdx;
+            return (
+              <div key={item.key} className={`${done ? 'done' : ''} ${active ? 'active' : ''}`}>
+                <span>{done ? '✓' : idx + 1}</span>
+                {item.label}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="product-import-rail-card">
+        <ShieldCheck size={20} />
+        <strong>{result ? `${result.created} produit(s) créé(s)` : summary ? `${summary.selected} ligne(s) sélectionnée(s)` : 'Validation avant création'}</strong>
+        <span>Aucune quantité de stock ni mouvement ne sera créé depuis cet import.</span>
+      </div>
+    </>
+  );
+}
+
+function ProductImportStructureStep({ onBack, onNext, onDownload, downloading }: { onBack: () => void; onNext: () => void; onDownload: () => void; downloading: boolean }) {
+  const columns = ['nom', 'unite', 'sku', 'gtin', 'fournisseur', 'categorie', 'prix_achat_ht', 'seuil_minimum'];
+  return (
+    <div className="product-import-step">
+      <div className="product-import-copy">
+        <h2>Structure du document CSV</h2>
+        <p>Le fichier doit contenir au minimum un nom de produit et une unité. Les autres colonnes enrichissent la fiche produit sans toucher au stock.</p>
+      </div>
+      <div className="product-import-structure-grid">
+        {columns.map((column, index) => (
+          <div key={column} className={index < 2 ? 'required' : ''}>
+            <strong>{column}</strong>
+            <span>{index < 2 ? 'Obligatoire' : 'Optionnel'}</span>
+          </div>
+        ))}
+      </div>
+      <div className="alert-modern">
+        <Info size={16} /> Si votre fichier vient de Numbers, exportez-le d'abord en CSV depuis Fichier &gt; Exporter vers &gt; CSV.
+      </div>
+      <div className="hr-catalog-actions sticky product-import-footer">
+        <button type="button" className="btn btn-secondary" onClick={onBack}>Retour</button>
+        <div className="row-actions">
+          <button type="button" className="btn btn-secondary" onClick={onDownload} disabled={downloading}>
+            <Download size={15} /> {downloading ? 'Téléchargement…' : 'Modèle CSV'}
+          </button>
+          <button type="button" className="btn btn-primary" onClick={onNext}>Continuer</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProductImportUploadStep({ onBack, onAnalyze, busy }: { onBack: () => void; onAnalyze: (file: File) => void; busy: boolean }) {
+  const [file, setFile] = useState<File | null>(null);
+  return (
+    <div className="product-import-step">
+      <div className="product-import-copy">
+        <h2>Importer votre CSV</h2>
+        <p>Déposez le fichier exporté. L’assistant va lire les colonnes, préparer un mapping et signaler les lignes à vérifier.</p>
+      </div>
+      <label
+        className="stocks-ocr-dropzone product-import-dropzone"
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          const next = Array.from(event.dataTransfer.files ?? []).find((item) => item.name.toLowerCase().endsWith('.csv'));
+          if (next) setFile(next);
+        }}
+      >
+        <UploadCloud size={34} style={{ color: '#10b981' }} />
+        <span>{file ? file.name : 'Déposer le CSV ici ou cliquer pour parcourir'}</span>
+        <small>CSV uniquement, jusqu’à 5 Mo. Les fichiers Numbers doivent être exportés en CSV.</small>
+        <input type="file" accept=".csv,text/csv" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+      </label>
+      {file ? (
+        <div className="stocks-ocr-file-row product-import-file-row">
+          <FileText size={18} />
+          <div className="stocks-ocr-file-row-details">
+            <span>{file.name}</span>
+            <small>{formatBytes(file.size)}</small>
+          </div>
+          <button type="button" className="stocks-ocr-file-remove" onClick={() => setFile(null)}><X size={14} /></button>
+        </div>
+      ) : null}
+      <div className="hr-catalog-actions sticky product-import-footer">
+        <button type="button" className="btn btn-secondary" onClick={onBack}>Retour</button>
+        <button type="button" className="btn btn-primary" disabled={!file || busy} onClick={() => file && onAnalyze(file)}>
+          {busy ? 'Analyse…' : 'Analyser le CSV'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ProductImportMappingStep({ preview, onBack, onNext, onUploadAgain }: { preview: ProductImportPreview | null; onBack: () => void; onNext: () => void; onUploadAgain: () => void }) {
+  if (!preview) {
+    return (
+      <div className="product-import-step">
+        <EmptyMini title="Aucun fichier analysé" text="Importez un CSV avant d’associer les colonnes." />
+        <div className="hr-catalog-actions sticky product-import-footer">
+          <button type="button" className="btn btn-secondary" onClick={onBack}>Retour</button>
+          <button type="button" className="btn btn-primary" onClick={onUploadAgain}>Importer</button>
+        </div>
+      </div>
+    );
+  }
+  const mapped = Object.entries(preview.mapping);
+  const unmapped = preview.headers.filter((header) => !preview.mapping[header]);
+  return (
+    <div className="product-import-step">
+      <div className="product-import-copy">
+        <h2>Associer les colonnes</h2>
+        <p>Les colonnes reconnues sont prêtes. Les colonnes non reconnues restent ignorées pour éviter de créer des informations incorrectes.</p>
+      </div>
+      <div className="product-import-mapping-grid">
+        {mapped.map(([header, field]) => (
+          <div key={header}>
+            <span>{header}</span>
+            <strong>{PRODUCT_IMPORT_FIELD_LABELS[field] ?? field}</strong>
+          </div>
+        ))}
+      </div>
+      {unmapped.length ? (
+        <div className="alert-modern" style={{ margin: 0 }}>
+          <Info size={16} /> Colonnes ignorées : {unmapped.slice(0, 6).join(', ')}{unmapped.length > 6 ? '…' : ''}
+        </div>
+      ) : null}
+      {preview.ai?.warnings?.length ? <div className="alert-modern"><Info size={16} /> {preview.ai.warnings[0]}</div> : null}
+      <div className="hr-catalog-actions sticky product-import-footer">
+        <button type="button" className="btn btn-secondary" onClick={onBack}>Retour</button>
+        <div className="row-actions">
+          <button type="button" className="btn btn-secondary" onClick={onUploadAgain}>Changer de fichier</button>
+          <button type="button" className="btn btn-primary" onClick={onNext}>Vérifier les lignes</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProductImportReviewStep({
+  preview,
+  summary,
+  options,
+  selectedRows,
+  busy,
+  onBack,
+  onPatchRow,
+  onOptionsChange,
+  onCommit,
+}: {
+  preview: ProductImportPreview | null;
+  summary: ReturnType<typeof summarizeProductImportRows> | null;
+  options: { createMissingCategories: boolean; createMissingSuppliers: boolean };
+  selectedRows: number;
+  busy: boolean;
+  onBack: () => void;
+  onPatchRow: (rowNumber: number, selected: boolean) => void;
+  onOptionsChange: (options: { createMissingCategories: boolean; createMissingSuppliers: boolean }) => void;
+  onCommit: () => void;
+}) {
+  if (!preview || !summary) {
+    return (
+      <div className="product-import-step">
+        <EmptyMini title="Aucune prévisualisation" text="Analysez un CSV avant de valider." />
+        <div className="hr-catalog-actions sticky product-import-footer">
+          <button type="button" className="btn btn-secondary" onClick={onBack}>Retour</button>
+        </div>
+      </div>
+    );
+  }
+  const invalidCount = summary.error + summary.duplicate;
+  return (
+    <div className="product-import-step">
+      <div className="product-import-copy">
+        <h2>Vérifier avant création</h2>
+        <p>Sélectionnez les lignes à importer. Les doublons et les lignes en erreur ne sont pas créés.</p>
+      </div>
+      <div className="product-import-summary">
+        <div><strong>{summary.ready}</strong><span>Prêtes</span></div>
+        <div><strong>{summary.needs_review}</strong><span>À vérifier</span></div>
+        <div><strong>{summary.duplicate}</strong><span>Doublons</span></div>
+        <div><strong>{summary.error}</strong><span>Erreurs</span></div>
+      </div>
+      <div className="product-import-options">
+        <label><input type="checkbox" checked={options.createMissingCategories} onChange={(event) => onOptionsChange({ ...options, createMissingCategories: event.target.checked })} /> Créer les catégories manquantes</label>
+        <label><input type="checkbox" checked={options.createMissingSuppliers} onChange={(event) => onOptionsChange({ ...options, createMissingSuppliers: event.target.checked })} /> Créer les fournisseurs manquants</label>
+      </div>
+      <div className="table-wrapper product-import-table-wrap">
+        <table className="table-modern product-import-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Ligne</th>
+              <th>Statut</th>
+              <th>Produit</th>
+              <th>Unité</th>
+              <th>Fournisseur</th>
+              <th>Catégorie</th>
+              <th>Info</th>
+            </tr>
+          </thead>
+          <tbody>
+            {preview.rows.map((row) => {
+              const selectable = row.status === 'ready' || row.status === 'needs_review';
+              return (
+                <tr key={row.rowNumber}>
+                  <td><input type="checkbox" checked={Boolean(row.selected && selectable)} disabled={!selectable} onChange={(event) => onPatchRow(row.rowNumber, event.target.checked)} /></td>
+                  <td>{row.rowNumber}</td>
+                  <td><span className={`product-import-status ${row.status}`}>{productImportStatusLabel(row.status)}</span></td>
+                  <td style={{ fontWeight: 700 }}>{productImportCell(row.fields.name)}</td>
+                  <td>{productImportCell(row.fields.unitLabel ?? row.fields.unit)}</td>
+                  <td>{productImportCell(row.fields.supplierName ?? row.fields.supplier)}</td>
+                  <td>{productImportCell(row.fields.categoryName ?? row.fields.category)}</td>
+                  <td>{row.errors[0] || row.warnings[0] || '—'}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {invalidCount ? <div className="alert-modern"><Info size={16} /> {invalidCount} ligne(s) seront ignorée(s) tant qu’elles restent en doublon ou en erreur.</div> : null}
+      <div className="hr-catalog-actions sticky product-import-footer">
+        <button type="button" className="btn btn-secondary" onClick={onBack}>Retour</button>
+        <button type="button" className="btn btn-primary" disabled={!selectedRows || busy} onClick={onCommit}>
+          {busy ? 'Création…' : `Créer ${selectedRows} produit${selectedRows > 1 ? 's' : ''}`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ProductImportDoneStep({ result, onClose, onRestart }: { result: ProductImportCommitResult | null; onClose: () => void; onRestart: () => void }) {
+  return (
+    <div className="product-import-step">
+      <div className="product-import-done">
+        <div><CheckCircle2 size={34} /></div>
+        <h2>Import terminé</h2>
+        <p>{result ? `${result.created} produit${result.created > 1 ? 's ont' : ' a'} été ajouté${result.created > 1 ? 's' : ''} au catalogue.` : 'Les produits validés ont été ajoutés au catalogue.'}</p>
+      </div>
+      <div className="hr-catalog-actions sticky product-import-footer">
+        <button type="button" className="btn btn-secondary" onClick={onRestart}>Nouvel import</button>
+        <button type="button" className="btn btn-primary" onClick={onClose}>Voir les produits</button>
+      </div>
+    </div>
+  );
+}
+
+function ProductImportCsvIllustration() {
+  const rows = [
+    ['nom', 'unite', 'sku', 'fournisseur'],
+    ['Farine T55', 'kg', 'FAR55', 'Kespro'],
+    ['Lait entier', 'L', 'LAIT1', 'Metro'],
+    ['Beurre doux', 'kg', 'BEU10', 'Local'],
+  ];
+  return (
+    <div className="product-import-illustration" aria-hidden="true">
+      <div className="product-import-sheet">
+        <div className="product-import-sheet-header">
+          <FileText size={18} />
+          <span>produits.csv</span>
+          <strong>CSV</strong>
+        </div>
+        <div className="product-import-sheet-grid">
+          {rows.flatMap((row, rowIndex) => row.map((cell, cellIndex) => (
+            <span key={`${rowIndex}-${cellIndex}`} className={rowIndex === 0 ? 'header' : ''}>{cell}</span>
+          )))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function summarizeProductImportRows(rows: ProductImportPreviewRow[]) {
+  return rows.reduce<Record<ProductImportStatus | 'total' | 'selected', number>>((acc, row) => {
+    acc.total += 1;
+    acc[row.status] += 1;
+    if (row.selected) acc.selected += 1;
+    return acc;
+  }, { total: 0, selected: 0, ready: 0, needs_review: 0, duplicate: 0, ignored: 0, error: 0 });
+}
+
+function productImportStatusLabel(status: ProductImportStatus) {
+  const labels: Record<ProductImportStatus, string> = {
+    ready: 'Prêt',
+    needs_review: 'À corriger',
+    duplicate: 'Doublon',
+    ignored: 'Ignoré',
+    error: 'Erreur',
+  };
+  return labels[status] ?? status;
+}
+
+function productImportCell(value: unknown) {
+  if (Array.isArray(value)) return value.length ? value.join(', ') : '—';
+  if (value === null || value === undefined || value === '') return '—';
+  return String(value);
 }
 
 function randomLocalId() {

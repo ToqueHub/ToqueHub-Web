@@ -1,5 +1,5 @@
-import { BadRequestException, Body, Controller, Get, Header, Param, Patch, Post, Query, Res, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
-import { FilesInterceptor } from '@nestjs/platform-express';
+import { BadRequestException, Body, Controller, Get, Header, Param, Patch, Post, Query, Res, UploadedFile, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
@@ -9,9 +9,11 @@ import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
 import { CreateInventoryDto, UpdateInventoryCountsDto } from './dto/inventory.dto';
 import { GenerateMarginReportDto, MarginsQueryDto, UpdateMarginSettingsDto } from './dto/stocks-margins.dto';
 import { AnalyzeBatchDto, SaveOcrCorrectionDto } from './dto/stocks-ocr.dto';
+import { CommitProductImportDto } from './dto/stocks-product-import.dto';
 import { ListQueryDto, UpsertCategoryDto, UpsertLocationDto, UpsertLotDto, UpsertProductDto, UpsertSiteDto, UpsertSupplierDto, UpsertUnitConversionDto, UpsertUnitDto } from './dto/stocks-reference.dto';
 import { StocksMarginsService } from './stocks-margins.service';
 import { StocksOcrService } from './stocks-ocr.service';
+import { StocksProductImportService } from './stocks-product-import.service';
 import { StocksService } from './stocks.service';
 
 @ApiTags('stocks')
@@ -19,7 +21,7 @@ import { StocksService } from './stocks.service';
 @UseGuards(JwtAuthGuard)
 @Controller()
 export class StocksController {
-  constructor(private readonly stocksService: StocksService, private readonly stocksOcrService: StocksOcrService, private readonly stocksMarginsService: StocksMarginsService) {}
+  constructor(private readonly stocksService: StocksService, private readonly stocksOcrService: StocksOcrService, private readonly stocksMarginsService: StocksMarginsService, private readonly stocksProductImportService: StocksProductImportService) {}
 
   private org(user: AuthenticatedUser) {
     if (!user.organizationId) throw new BadRequestException('Organization setup is required before using stock endpoints');
@@ -109,6 +111,15 @@ export class StocksController {
   @Post('products') createProduct(@CurrentUser() u: AuthenticatedUser, @Body() d: UpsertProductDto) { return this.stocksService.createProduct(this.org(u), this.actor(u), d); }
   @Patch('products/:id') updateProduct(@CurrentUser() u: AuthenticatedUser, @Param('id') id: string, @Body() d: UpsertProductDto) { return this.stocksService.updateProduct(this.org(u), this.actor(u), id, d); }
   @Post('products/:id/archive') archiveProduct(@CurrentUser() u: AuthenticatedUser, @Param('id') id: string) { return this.stocksService.archiveProduct(this.org(u), this.actor(u), id); }
+  @Get('products/import/template.csv')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  @Header('Content-Disposition', 'attachment; filename="modele-import-produits.csv"')
+  productImportTemplate(@CurrentUser() u: AuthenticatedUser) { this.org(u); return this.stocksProductImportService.templateCsv(); }
+  @Post('products/import/analyze')
+  @UseInterceptors(FileInterceptor('file', { limits: { files: 1, fileSize: 5 * 1024 * 1024 } }))
+  analyzeProductImport(@CurrentUser() u: AuthenticatedUser, @UploadedFile() file: any) { return this.stocksProductImportService.analyzeProductImport(this.org(u), this.actor(u), file); }
+  @Post('products/import/commit')
+  commitProductImport(@CurrentUser() u: AuthenticatedUser, @Body() dto: CommitProductImportDto) { return this.stocksProductImportService.commitProductImport(this.org(u), this.actor(u), dto); }
 
   @Get('sites') listSites(@CurrentUser() u: AuthenticatedUser, @Query() q: ListQueryDto) { return this.stocksService.listSites(this.org(u), q); }
   @Post('sites') createSite(@CurrentUser() u: AuthenticatedUser, @Body() d: UpsertSiteDto) { return this.stocksService.createSite(this.org(u), this.actor(u), d); }

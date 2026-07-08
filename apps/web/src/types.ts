@@ -1427,6 +1427,81 @@ export interface Product {
   primarySupplier?: Supplier | null;
 }
 
+export type ProductImportStatus = 'ready' | 'needs_review' | 'duplicate' | 'ignored' | 'error';
+
+export type ProductImportField =
+  | 'name'
+  | 'unit'
+  | 'sku'
+  | 'gtin'
+  | 'supplier'
+  | 'category'
+  | 'averagePrice'
+  | 'minimumStock'
+  | 'description'
+  | 'originCountry'
+  | 'packageLabel'
+  | 'unitsPerPackage'
+  | 'unitWeightGrams'
+  | 'netWeightGrams'
+  | 'ingredients'
+  | 'allergensPresent'
+  | 'possibleTraces'
+  | 'dietaryTags'
+  | 'energyKj'
+  | 'energyKcal'
+  | 'fatGrams'
+  | 'saturatedFatGrams'
+  | 'carbohydratesGrams'
+  | 'sugarsGrams'
+  | 'fiberGrams'
+  | 'proteinGrams'
+  | 'saltGrams'
+  | 'storageType'
+  | 'shelfLifeAfterOpening'
+  | 'storageInstructions'
+  | 'preparationInstructions';
+
+export interface ProductImportPreviewFields extends Partial<Record<ProductImportField, string | number | string[] | null>> {
+  unitId?: string | null;
+  unitLabel?: string | null;
+  categoryId?: string | null;
+  categoryName?: string | null;
+  primarySupplierId?: string | null;
+  supplierName?: string | null;
+}
+
+export interface ProductImportPreviewRow {
+  rowNumber: number;
+  source: Record<string, string>;
+  fields: ProductImportPreviewFields;
+  status: ProductImportStatus;
+  selected: boolean;
+  warnings: string[];
+  errors: string[];
+  duplicateOf?: { type: 'existing' | 'file'; field: 'sku' | 'gtin' | 'name'; value: string; label: string } | null;
+}
+
+export interface ProductImportPreview {
+  filename: string;
+  headers: string[];
+  delimiter: string;
+  mapping: Record<string, ProductImportField>;
+  localMapping?: Record<string, ProductImportField>;
+  templateColumns: string[];
+  rows: ProductImportPreviewRow[];
+  summary: Record<ProductImportStatus | 'total' | 'selected', number>;
+  options: { createMissingCategories: boolean; createMissingSuppliers: boolean };
+  ai?: { status: string; provider?: string | null; model?: string | null; warnings?: string[]; mapping?: Record<string, ProductImportField> | null };
+}
+
+export interface ProductImportCommitResult {
+  created: number;
+  skipped: number;
+  skippedRows?: Array<{ rowNumber: number; reason: string }>;
+  products: Product[];
+}
+
 export interface TechnicalSheetCategory {
   id: string;
   name: string;
