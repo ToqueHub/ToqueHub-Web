@@ -763,6 +763,7 @@ model Organization {
   iotSensorEvents                IotSensorEvent[]
   iotPairingSessions             IotPairingSession[]
   iotAlertEvents                 IotAlertEvent[]
+  mobilePushTokens               MobilePushToken[]
 
   @@index([regulatoryCountryCode])
   @@index([regulatoryCountrySelectedById])
@@ -862,6 +863,7 @@ model User {
   createdHaccpDailyReports           HaccpDailyReport[]             @relation("HaccpDailyReportCreatedBy")
   assignedIotSensors                 IotSensorAssignment[]          @relation("IotSensorAssignedBy")
   actorIotSensorEvents               IotSensorEvent[]               @relation("IotSensorEventActor")
+  mobilePushTokens                   MobilePushToken[]
   createdMarginReports               MarginReport[]                 @relation("MarginReportCreatedBy")
   dashboardPreferences               DashboardPreference[]
   backupCloudOAuthStates             BackupCloudOAuthState[]        @relation("BackupCloudOAuthStateUser")
@@ -921,6 +923,29 @@ model DashboardPreference {
   @@unique([userId, organizationId])
   @@index([organizationId])
   @@map("dashboard_preferences")
+}
+
+model MobilePushToken {
+  id               String    @id @default(uuid()) @db.Uuid
+  organizationId   String    @db.Uuid
+  userId           String    @db.Uuid
+  token            String    @unique
+  platform         String?
+  deviceId         String?
+  isActive         Boolean   @default(true)
+  lastRegisteredAt DateTime  @default(now())
+  disabledAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([isActive])
+  @@index([lastRegisteredAt])
+  @@map("mobile_push_tokens")
 }
 
 model Category {
@@ -1079,19 +1104,19 @@ model Supplier {
 }
 
 model Site {
-  id             String    @id @default(uuid()) @db.Uuid
-  name           String
-  description    String?
-  address        String?   @db.Text
-  phone          String?
+  id               String    @id @default(uuid()) @db.Uuid
+  name             String
+  description      String?
+  address          String?   @db.Text
+  phone            String?
   responsibleName  String?
   responsiblePhone String?
   responsibleEmail String?
-  isArchived     Boolean   @default(false)
-  archivedAt     DateTime?
-  organizationId String    @db.Uuid
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  isArchived       Boolean   @default(false)
+  archivedAt       DateTime?
+  organizationId   String    @db.Uuid
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   organization                 Organization                  @relation("OrganizationSites", fields: [organizationId], references: [id], onDelete: Cascade)
   primaryForOrganizations      Organization[]                @relation("OrganizationPrimarySite")
@@ -4047,6 +4072,8 @@ model HaccpTemperatureEquipment {
   clientUpdatedAt DateTime?
   name            String
   type            String
+  temperatureMin  Decimal?  @db.Decimal(7, 2)
+  temperatureMax  Decimal?  @db.Decimal(7, 2)
   isActive        Boolean   @default(true)
   archivedAt      DateTime?
   deletedAt       DateTime?
@@ -4608,20 +4635,22 @@ model IotPairingSession {
 }
 
 model IotAlertEvent {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String    @db.Uuid
-  sensorId       String?   @db.Uuid
-  type           String
-  severity       String    @default("INFO")
-  status         String    @default("OPEN")
-  title          String
-  message        String?   @db.Text
-  payload        Json      @default("{}")
-  detectedAt     DateTime  @default(now())
-  acknowledgedAt DateTime?
-  resolvedAt     DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id                     String    @id @default(uuid()) @db.Uuid
+  organizationId         String    @db.Uuid
+  sensorId               String?   @db.Uuid
+  type                   String
+  severity               String    @default("INFO")
+  status                 String    @default("OPEN")
+  title                  String
+  message                String?   @db.Text
+  payload                Json      @default("{}")
+  detectedAt             DateTime  @default(now())
+  acknowledgedAt         DateTime?
+  resolvedAt             DateTime?
+  notificationLastSentAt DateTime?
+  notificationCount      Int       @default(0)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   sensor       IotSensor?   @relation(fields: [sensorId], references: [id], onDelete: SetNull)
@@ -4632,5 +4661,6 @@ model IotAlertEvent {
   @@index([severity])
   @@index([status])
   @@index([detectedAt])
+  @@index([notificationLastSentAt])
   @@map("iot_alert_events")
 }

@@ -12,9 +12,15 @@ export class ListHaccpQueryDto {
   @IsOptional() @IsString() endDate?: string;
 }
 
+export class TemperatureRangeDto {
+  @Transform(toNumber) @IsNumber() min!: number;
+  @Transform(toNumber) @IsNumber() max!: number;
+}
+
 export class CreateTemperatureEquipmentDto {
   @IsString() @IsNotEmpty() name!: string;
   @IsString() @IsNotEmpty() type!: string;
+  @IsOptional() @ValidateNested() @Type(() => TemperatureRangeDto) temperatureRange?: TemperatureRangeDto;
 }
 
 export class CreateTemperatureReadingDto {
@@ -91,11 +97,6 @@ export class UpdateHaccpProductDto {
   @Transform(toNumber) @IsOptional() @IsNumber() price?: number;
   @Transform(toNumber) @IsOptional() @IsNumber() quantity?: number;
   @IsOptional() @IsString() unit?: string;
-}
-
-export class TemperatureRangeDto {
-  @Transform(toNumber) @IsNumber() min!: number;
-  @Transform(toNumber) @IsNumber() max!: number;
 }
 
 export class ProcessEquipmentDto {

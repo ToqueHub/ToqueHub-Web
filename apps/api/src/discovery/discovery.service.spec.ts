@@ -15,9 +15,11 @@ describe('DiscoveryService', () => {
         }),
       },
       organization: {
+        count: jest.fn(async () => 1),
         findFirst: jest.fn(async () => ({ name: 'Cuisine Centrale' })),
       },
       user: {
+        count: jest.fn(async () => 1),
         findFirst: jest.fn(async () => null),
       },
     } as any;

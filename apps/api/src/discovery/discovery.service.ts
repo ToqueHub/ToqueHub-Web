@@ -40,11 +40,13 @@ export class DiscoveryService implements OnApplicationBootstrap, OnApplicationSh
   }
 
   async getDiscoveryInfo(): Promise<DiscoveryInfo> {
-    const [instanceId, organizationName] = await Promise.all([
+    const [instanceId, organizationName, initialization] = await Promise.all([
       this.getInstanceId(),
       this.resolveOrganizationName(),
+      this.resolveInitializationState(),
     ]);
     const instanceName = this.config.get<string>('TOQUEHUB_DISCOVERY_NAME')?.trim() || organizationName || FALLBACK_INSTANCE_NAME;
+    const webUrl = this.resolveWebUrl();
 
     return {
       instanceId,
@@ -54,6 +56,11 @@ export class DiscoveryService implements OnApplicationBootstrap, OnApplicationSh
       apiVersion: API_VERSION,
       serverTime: new Date().toISOString(),
       supportsMobile: true,
+      setupRequired: !initialization.hasAdmin || !initialization.hasOrganization,
+      hasAdmin: initialization.hasAdmin,
+      hasOrganization: initialization.hasOrganization,
+      webUrl,
+      recommendedUrl: webUrl,
     };
   }
 
@@ -139,6 +146,33 @@ export class DiscoveryService implements OnApplicationBootstrap, OnApplicationSh
       select: { name: true },
     });
     return organization?.name?.trim() || '';
+  }
+
+  private async resolveInitializationState() {
+    const [organizationCount, adminCount] = await Promise.all([
+      this.prisma.organization.count(),
+      this.prisma.user.count({
+        where: {
+          role: {
+            name: { in: ['SUPER_ADMIN', 'Administrateur'] },
+          },
+        },
+      }),
+    ]);
+
+    return {
+      hasOrganization: organizationCount > 0,
+      hasAdmin: adminCount > 0,
+    };
+  }
+
+  private resolveWebUrl() {
+    const configured = this.config.get<string>('TOQUEHUB_WEB_URL')?.trim();
+    if (configured) return configured;
+
+    const localHostname = this.config.get<string>('TOQUEHUB_LOCAL_HOSTNAME')?.trim() || 'toquehub';
+    const port = this.resolvePort();
+    return `http://${localHostname}.local${port === 80 ? '' : `:${port}`}`;
   }
 
   private resolveVersion() {

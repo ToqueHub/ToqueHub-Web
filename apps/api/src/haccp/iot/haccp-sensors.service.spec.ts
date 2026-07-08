@@ -4,6 +4,13 @@ import { HaccpSensorsService } from './haccp-sensors.service';
 
 const orgId = '11111111-1111-1111-1111-111111111111';
 const actor = { id: '22222222-2222-2222-2222-222222222222', role: 'Administrateur' };
+const positiveColdEquipment = {
+  id: 'equipment-1',
+  name: 'Frigo positif',
+  type: 'enceinte_positive',
+  temperatureMin: 0,
+  temperatureMax: 4,
+};
 
 function createPrismaMock() {
   const prisma: any = {
@@ -46,8 +53,9 @@ function createService(prisma = createPrismaMock()) {
     removeDevice: jest.fn().mockResolvedValue(undefined),
   };
   const gateway = { emitToOrganization: jest.fn() };
+  const mobilePush = { sendToOrganization: jest.fn().mockResolvedValue({ sent: 1 }) };
   const config = { get: jest.fn((key: string, fallback?: unknown) => fallback) };
-  return { service: new HaccpSensorsService(prisma, config as any, mqtt as any, provider as any, gateway as any), prisma, provider, gateway, messages$ };
+  return { service: new HaccpSensorsService(prisma, config as any, mqtt as any, provider as any, gateway as any, mobilePush as any), prisma, provider, gateway, mobilePush, messages$ };
 }
 
 describe('HaccpSensorsService', () => {
@@ -125,22 +133,30 @@ describe('HaccpSensorsService', () => {
   });
 
   it('copies assigned sensor temperature readings into HACCP temperature records and opens alerts', async () => {
-    jest.useFakeTimers().setSystemTime(new Date(2026, 6, 7, 15, 2, 0, 0));
-    const { service, prisma } = createService();
+    jest.useFakeTimers().setSystemTime(new Date(Date.UTC(2026, 6, 7, 13, 2, 0, 0)));
+    const { service, prisma, mobilePush } = createService();
     prisma.iotSensor.findMany.mockResolvedValueOnce([{ id: 'sensor-1', organizationId: orgId, externalId: 'Frigo 1', userName: 'Capteur Frigo 1', isRemoved: false }]);
     prisma.iotSensorAssignment.findFirst.mockResolvedValue({
       haccpTemperatureEquipmentId: 'equipment-1',
-      haccpTemperatureEquipment: { id: 'equipment-1', name: 'Frigo positif', type: 'enceinte_positive' },
+      haccpTemperatureEquipment: positiveColdEquipment,
     });
     prisma.haccpTemperatureReading.findFirst.mockResolvedValue(null);
     prisma.iotAlertEvent.findFirst.mockResolvedValue(null);
+    prisma.iotAlertEvent.create.mockResolvedValue({
+      id: 'alert-1',
+      organizationId: orgId,
+      sensorId: 'sensor-1',
+      title: 'Température critique',
+      message: 'Frigo positif: 9.5°C hors plage 0°C / 4°C',
+      severity: 'CRITICAL',
+    });
     prisma.iotSensor.update.mockResolvedValue({
       id: 'sensor-1',
       organizationId: orgId,
       externalId: 'Frigo 1',
       currentTemperature: 9.5,
       status: IotSensorStatus.ONLINE,
-      assignments: [{ haccpTemperatureEquipment: { id: 'equipment-1', name: 'Frigo positif', type: 'enceinte_positive' } }],
+      assignments: [{ haccpTemperatureEquipment: positiveColdEquipment }],
     });
 
     await service.handleMqttMessage({
@@ -153,7 +169,7 @@ describe('HaccpSensorsService', () => {
         organizationId: orgId,
         equipmentId: 'equipment-1',
         temperature: 9.5,
-        date: new Date(2026, 6, 7, 15, 0, 0, 0),
+        date: new Date(Date.UTC(2026, 6, 7, 13, 0, 0, 0)),
         notes: expect.stringContaining('Relevé automatique Sonoff 15:00 - capteur Capteur Frigo 1'),
       }),
     }));
@@ -164,21 +180,185 @@ describe('HaccpSensorsService', () => {
         type: 'TEMPERATURE_OUT_OF_RANGE',
         severity: 'CRITICAL',
         status: 'OPEN',
+        notificationLastSentAt: new Date(Date.UTC(2026, 6, 7, 13, 2, 0, 0)),
+        notificationCount: 1,
       }),
     }));
+    expect(mobilePush.sendToOrganization).toHaveBeenCalledWith(orgId, expect.objectContaining({
+      title: 'Température critique',
+      channelId: 'haccp-sensor-alerts',
+      data: expect.objectContaining({
+        type: 'haccp_sensor_temperature_alert',
+        alertId: 'alert-1',
+        sensorId: 'sensor-1',
+        equipmentId: 'equipment-1',
+      }),
+    }));
+  });
+
+  it('does not repeat warning temperature notifications while the alert stays open', async () => {
+    jest.useFakeTimers().setSystemTime(new Date(Date.UTC(2026, 6, 7, 13, 5, 0, 0)));
+    const { service, prisma, mobilePush } = createService();
+    prisma.iotSensor.findMany.mockResolvedValueOnce([{ id: 'sensor-1', organizationId: orgId, externalId: 'Frigo 1', userName: 'Capteur Frigo 1', isRemoved: false }]);
+    prisma.iotSensorAssignment.findFirst.mockResolvedValue({
+      haccpTemperatureEquipmentId: 'equipment-1',
+      haccpTemperatureEquipment: positiveColdEquipment,
+    });
+    prisma.haccpTemperatureReading.findFirst.mockResolvedValue({ id: 'reading-1' });
+    prisma.iotAlertEvent.findFirst.mockResolvedValue({
+      id: 'alert-1',
+      organizationId: orgId,
+      sensorId: 'sensor-1',
+      severity: 'WARNING',
+      notificationLastSentAt: new Date(Date.UTC(2026, 6, 7, 13, 0, 0, 0)),
+      notificationCount: 1,
+    });
+    prisma.iotAlertEvent.update.mockResolvedValue({ id: 'alert-1' });
+    prisma.iotSensor.update.mockResolvedValue({ id: 'sensor-1', organizationId: orgId, externalId: 'Frigo 1', currentTemperature: 5.5, status: IotSensorStatus.ONLINE, assignments: [] });
+
+    await service.handleMqttMessage({
+      topic: 'zigbee2mqtt/Frigo 1',
+      payload: { temperature: 5.5, battery: 80 },
+    });
+
+    expect(prisma.iotAlertEvent.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.not.objectContaining({
+        notificationLastSentAt: expect.any(Date),
+        notificationCount: expect.anything(),
+      }),
+    }));
+    expect(mobilePush.sendToOrganization).not.toHaveBeenCalled();
+  });
+
+  it('repeats critical temperature notifications only after one hour', async () => {
+    jest.useFakeTimers().setSystemTime(new Date(Date.UTC(2026, 6, 7, 13, 30, 0, 0)));
+    const { service, prisma, mobilePush } = createService();
+    prisma.iotSensor.findMany.mockResolvedValue([{ id: 'sensor-1', organizationId: orgId, externalId: 'Frigo 1', userName: 'Capteur Frigo 1', isRemoved: false }]);
+    prisma.iotSensorAssignment.findFirst.mockResolvedValue({
+      haccpTemperatureEquipmentId: 'equipment-1',
+      haccpTemperatureEquipment: positiveColdEquipment,
+    });
+    prisma.haccpTemperatureReading.findFirst.mockResolvedValue({ id: 'reading-1' });
+    prisma.iotSensor.update.mockResolvedValue({ id: 'sensor-1', organizationId: orgId, externalId: 'Frigo 1', currentTemperature: 9.5, status: IotSensorStatus.ONLINE, assignments: [] });
+    prisma.iotAlertEvent.findFirst.mockResolvedValueOnce({
+      id: 'alert-1',
+      organizationId: orgId,
+      sensorId: 'sensor-1',
+      severity: 'CRITICAL',
+      notificationLastSentAt: new Date(Date.UTC(2026, 6, 7, 13, 0, 0, 0)),
+      notificationCount: 1,
+    });
+    prisma.iotAlertEvent.update.mockResolvedValue({ id: 'alert-1' });
+
+    await service.handleMqttMessage({
+      topic: 'zigbee2mqtt/Frigo 1',
+      payload: { temperature: 9.5, battery: 80 },
+    });
+
+    expect(mobilePush.sendToOrganization).not.toHaveBeenCalled();
+
+    jest.setSystemTime(new Date(Date.UTC(2026, 6, 7, 14, 1, 0, 0)));
+    prisma.iotAlertEvent.findFirst.mockResolvedValueOnce({
+      id: 'alert-1',
+      organizationId: orgId,
+      sensorId: 'sensor-1',
+      severity: 'CRITICAL',
+      notificationLastSentAt: new Date(Date.UTC(2026, 6, 7, 13, 0, 0, 0)),
+      notificationCount: 1,
+    });
+    prisma.iotAlertEvent.update.mockResolvedValueOnce({
+      id: 'alert-1',
+      organizationId: orgId,
+      sensorId: 'sensor-1',
+      title: 'Température critique',
+      message: 'Frigo positif: 9.5°C hors plage 0°C / 4°C',
+      severity: 'CRITICAL',
+    });
+
+    await service.handleMqttMessage({
+      topic: 'zigbee2mqtt/Frigo 1',
+      payload: { temperature: 9.5, battery: 80 },
+    });
+
+    expect(prisma.iotAlertEvent.update).toHaveBeenLastCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        notificationLastSentAt: new Date(Date.UTC(2026, 6, 7, 14, 1, 0, 0)),
+        notificationCount: { increment: 1 },
+      }),
+    }));
+    expect(mobilePush.sendToOrganization).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not open temperature alerts when the linked equipment has no thresholds', async () => {
+    const { service, prisma, mobilePush } = createService();
+    prisma.iotSensor.findMany.mockResolvedValueOnce([{ id: 'sensor-1', organizationId: orgId, externalId: 'Frigo 1', userName: 'Capteur Frigo 1', isRemoved: false }]);
+    prisma.iotSensorAssignment.findFirst.mockResolvedValue({
+      haccpTemperatureEquipmentId: 'equipment-1',
+      haccpTemperatureEquipment: { id: 'equipment-1', name: 'Frigo sans seuil', type: 'enceinte_positive', temperatureMin: null, temperatureMax: null },
+    });
+    prisma.haccpTemperatureReading.findFirst.mockResolvedValue({ id: 'reading-1' });
+    prisma.iotAlertEvent.findFirst.mockResolvedValue(null);
+    prisma.iotSensor.update.mockResolvedValue({ id: 'sensor-1', organizationId: orgId, externalId: 'Frigo 1', currentTemperature: 9.5, status: IotSensorStatus.ONLINE, assignments: [] });
+
+    await service.handleMqttMessage({
+      topic: 'zigbee2mqtt/Frigo 1',
+      payload: { temperature: 9.5, battery: 80 },
+    });
+
+    expect(prisma.iotAlertEvent.create).not.toHaveBeenCalled();
+    expect(mobilePush.sendToOrganization).not.toHaveBeenCalled();
+  });
+
+  it('resolves recovered temperature alerts without sending a push notification', async () => {
+    const { service, prisma, mobilePush } = createService();
+    prisma.iotSensor.findMany.mockResolvedValueOnce([{ id: 'sensor-1', organizationId: orgId, externalId: 'Frigo 1', userName: 'Capteur Frigo 1', isRemoved: false }]);
+    prisma.iotSensorAssignment.findFirst.mockResolvedValue({
+      haccpTemperatureEquipmentId: 'equipment-1',
+      haccpTemperatureEquipment: positiveColdEquipment,
+    });
+    prisma.haccpTemperatureReading.findFirst.mockResolvedValue({ id: 'reading-1' });
+    prisma.iotAlertEvent.findFirst.mockResolvedValue({ id: 'alert-1', organizationId: orgId, sensorId: 'sensor-1', status: 'OPEN' });
+    prisma.iotAlertEvent.update.mockResolvedValue({ id: 'alert-1', status: 'RESOLVED' });
+    prisma.iotSensor.update.mockResolvedValue({ id: 'sensor-1', organizationId: orgId, externalId: 'Frigo 1', currentTemperature: 3.5, status: IotSensorStatus.ONLINE, assignments: [] });
+
+    await service.handleMqttMessage({
+      topic: 'zigbee2mqtt/Frigo 1',
+      payload: { temperature: 3.5, battery: 80 },
+    });
+
+    expect(prisma.iotAlertEvent.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: 'RESOLVED' }),
+    }));
+    expect(mobilePush.sendToOrganization).not.toHaveBeenCalled();
   });
 
   it('historizes assignment changes and scopes them to the organization', async () => {
     const { service, prisma } = createService();
     prisma.iotSensor.findFirst.mockResolvedValue({ id: 'sensor-1', organizationId: orgId });
-    prisma.haccpTemperatureEquipment.findFirst.mockResolvedValue({ id: 'equipment-1', organizationId: orgId, name: 'Chambre froide positive' });
-    prisma.iotSensor.findUniqueOrThrow.mockResolvedValue({ id: 'sensor-1', organizationId: orgId, assignments: [{ haccpTemperatureEquipment: { id: 'equipment-1', name: 'Chambre froide positive', type: 'enceinte_positive' } }] });
+    prisma.haccpTemperatureEquipment.findFirst.mockResolvedValue({
+      id: 'equipment-1',
+      organizationId: orgId,
+      name: 'Chambre froide positive',
+      temperatureMin: 1,
+      temperatureMax: 5,
+    });
+    prisma.iotSensor.findUniqueOrThrow.mockResolvedValue({
+      id: 'sensor-1',
+      organizationId: orgId,
+      metadata: { temperatureThreshold: { min: 1, max: 5, label: 'Équipement Chambre froide positive' } },
+      assignments: [{ haccpTemperatureEquipment: { id: 'equipment-1', name: 'Chambre froide positive', type: 'enceinte_positive', temperatureMin: 1, temperatureMax: 5 } }],
+    });
 
     await service.assign(orgId, actor, 'sensor-1', { haccpTemperatureEquipmentId: 'equipment-1' });
 
     expect(prisma.haccpTemperatureEquipment.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ id: 'equipment-1', organizationId: orgId }) }));
     expect(prisma.iotSensorAssignment.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId: orgId, sensorId: 'sensor-1', unassignedAt: null } }));
     expect(prisma.iotSensorAssignment.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ organizationId: orgId, sensorId: 'sensor-1', haccpTemperatureEquipmentId: 'equipment-1' }) }));
+    expect(prisma.iotSensor.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        metadata: expect.objectContaining({ temperatureThreshold: { min: 1, max: 5, label: 'Équipement Chambre froide positive' } }),
+      }),
+    }));
   });
 
   it('updates custom temperature alert thresholds on a sensor', async () => {

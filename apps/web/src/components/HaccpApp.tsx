@@ -9,6 +9,7 @@ import {
   ArrowRight,
   BarChart3,
   Battery,
+  Bell,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -143,7 +144,7 @@ type HaccpSensor = HaccpItem & {
   currentTemperature?: number | null;
   currentHumidity?: number | null;
   temperatureThreshold?: { min: number; max: number; label: string } | null;
-  assignedEquipment?: { id: string; name: string; type: string } | null;
+  assignedEquipment?: { id: string; name: string; type: string; temperatureRange?: { min: number | null; max: number | null } | null } | null;
   readings?: HaccpItem[];
   events?: HaccpItem[];
 };
@@ -159,7 +160,7 @@ type HaccpTemperatureAlertData = {
     ok: number;
   };
   sensors: Array<HaccpSensor & {
-    threshold?: { min: number; max: number; label: string };
+    threshold?: { min: number; max: number; label: string } | null;
     temperatureStatus?: { status: string; label: string; delta?: number | null };
     alertOpen?: boolean;
   }>;
@@ -2770,6 +2771,11 @@ function TemperatureAlertsView({
         <SensorMetric label="Hors ligne" value={current.summary.offlineSensors} detail="Sans relevé récent" tone={current.summary.offlineSensors > 0 ? 'danger' : 'neutral'} />
       </div>
 
+      <div className="alert-modern info" style={{ margin: '1rem 0' }}>
+        <Bell size={17} />
+        Les seuils de température affichés ici sont ceux utilisés pour envoyer les notifications sur l’app mobile en cas d’alerte.
+      </div>
+
       {current.alerts.length ? (
         <div className="alert-modern error" style={{ margin: '1rem 0' }}>
           <AlertTriangle size={17} />
@@ -2788,6 +2794,7 @@ function TemperatureAlertsView({
           const threshold = sensor.threshold ?? sensor.temperatureThreshold ?? localTemperatureThreshold(sensor.assignedEquipment);
           const status = sensor.temperatureStatus ?? localTemperatureStatus(temp, threshold);
           const tone = status.status === 'critical' ? '#dc2626' : status.status === 'warning' ? '#d97706' : status.status === 'ok' ? '#059669' : '#64748b';
+          const thresholdLabel = threshold ? `Plage ${threshold.label}: ${threshold.min}°C à ${threshold.max}°C` : 'Seuil non défini';
           return (
             <div key={sensor.id} className="haccp-equipment-row active" style={{ cursor: 'pointer' }} onClick={() => void openSensorHistory(sensor)}>
               <div className="haccp-equipment-row-main">
@@ -2807,7 +2814,7 @@ function TemperatureAlertsView({
                       </span>
                     </div>
                     <span className="haccp-equipment-desc">
-                      {sensorDisplayName(sensor)} • Plage {threshold.label}: {threshold.min}°C à {threshold.max}°C • Dernier relevé {sensor.lastSeenAt ? new Date(sensor.lastSeenAt).toLocaleString('fr-FR') : '-'}
+                      {sensorDisplayName(sensor)} • {thresholdLabel} • Dernier relevé {sensor.lastSeenAt ? new Date(sensor.lastSeenAt).toLocaleString('fr-FR') : '-'}
                     </span>
                   </div>
                 </div>
@@ -2986,7 +2993,7 @@ function SensorHistoryModal({
             ) : error ? (
               <div className="alert-modern error"><AlertCircle size={16} /> {error}</div>
             ) : chartReadings.length ? (
-              <TemperatureLineChart readings={chartReadings} threshold={sensor.temperatureThreshold ?? localTemperatureThreshold(sensor.assignedEquipment)} />
+              <TemperatureLineChart readings={chartReadings} threshold={threshold} />
             ) : (
               <div className="haccp-empty-state"><Thermometer size={32} /><p>Aucun relevé température disponible pour ce capteur.</p></div>
             )}
@@ -3013,7 +3020,7 @@ function SensorHistoryModal({
                     const slicedReadings = expandedReadings ? visibleReadingsList.slice(0, 80) : visibleReadingsList.slice(0, 10);
                     return slicedReadings.map((reading) => {
                       const rTemp = reading.temperature == null ? null : Number(reading.temperature);
-                      const rStatus = rTemp == null ? 'neutral' : (rTemp < threshold.min || rTemp > threshold.max) ? 'critical' : 'ok';
+                      const rStatus = rTemp == null || !threshold ? 'neutral' : (rTemp < threshold.min || rTemp > threshold.max) ? 'critical' : 'ok';
                       const pillClass = rStatus === 'critical' ? 'danger' : rStatus === 'ok' ? 'ok' : 'neutral';
 
                       const batt = reading.battery == null ? null : Number(reading.battery);
@@ -3086,10 +3093,10 @@ function SensorHistoryModal({
   );
 }
 
-function TemperatureLineChart({ readings, threshold }: { readings: HaccpSensorReading[]; threshold: { min: number; max: number; label?: string } }) {
+function TemperatureLineChart({ readings, threshold }: { readings: HaccpSensorReading[]; threshold?: { min: number; max: number; label?: string } | null }) {
   const values = readings.map((reading) => Number(reading.temperature)).filter(Number.isFinite);
-  const minValue = Math.min(...values, threshold.min);
-  const maxValue = Math.max(...values, threshold.max);
+  const minValue = Math.min(...values, ...(threshold ? [threshold.min] : []));
+  const maxValue = Math.max(...values, ...(threshold ? [threshold.max] : []));
   const padding = Math.max(1, (maxValue - minValue) * 0.15);
   const min = minValue - padding;
   const max = maxValue + padding;
@@ -3116,8 +3123,8 @@ function TemperatureLineChart({ readings, threshold }: { readings: HaccpSensorRe
     : '';
   const yFor = (value: number) => top + ((max - value) / (max - min || 1)) * innerHeight;
 
-  const yMax = yFor(threshold.max);
-  const yMin = yFor(threshold.min);
+  const yMax = threshold ? yFor(threshold.max) : null;
+  const yMin = threshold ? yFor(threshold.min) : null;
 
   const firstDate = readings[0] ? new Date(readings[0].measuredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '';
   const lastDate = readings.at(-1) ? new Date(readings.at(-1)!.measuredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '';
@@ -3160,7 +3167,7 @@ function TemperatureLineChart({ readings, threshold }: { readings: HaccpSensorRe
         ))}
 
         {/* Warning zones background (above max, below min) */}
-        {yMax > top && (
+        {yMax != null && yMax > top && (
           <rect
             x={left}
             y={top}
@@ -3169,7 +3176,7 @@ function TemperatureLineChart({ readings, threshold }: { readings: HaccpSensorRe
             fill="rgba(239, 68, 68, 0.02)"
           />
         )}
-        {top + innerHeight > yMin && (
+        {yMin != null && top + innerHeight > yMin && (
           <rect
             x={left}
             y={yMin}
@@ -3180,7 +3187,7 @@ function TemperatureLineChart({ readings, threshold }: { readings: HaccpSensorRe
         )}
 
         {/* Safe zone background (between min and max) */}
-        {yMin > yMax && (
+        {yMin != null && yMax != null && yMin > yMax && (
           <rect
             x={left}
             y={yMax}
@@ -3193,7 +3200,7 @@ function TemperatureLineChart({ readings, threshold }: { readings: HaccpSensorRe
         )}
 
         {/* Threshold lines */}
-        {[threshold.min, threshold.max].map((value) => (
+        {threshold ? [threshold.min, threshold.max].map((value) => (
           <g key={value}>
             <line
               x1={left}
@@ -3214,7 +3221,7 @@ function TemperatureLineChart({ readings, threshold }: { readings: HaccpSensorRe
               Seuil: {value}°C
             </text>
           </g>
-        ))}
+        )) : null}
 
         {/* Filled gradient area under line */}
         {areaPath && <path d={areaPath} fill="url(#chartGradient)" />}
@@ -3256,19 +3263,19 @@ function estimateReadingIntervalMinutes(readings: HaccpSensorReading[]) {
   return deltas[Math.floor(deltas.length / 2)];
 }
 
-function SensorThresholdEditor({ sensor, threshold, onSave }: { sensor: HaccpSensor; threshold: { min: number; max: number; label?: string }; onSave: (sensor: HaccpSensor, min: number, max: number) => void }) {
-  const [min, setMin] = useState(String(threshold.min));
-  const [max, setMax] = useState(String(threshold.max));
+function SensorThresholdEditor({ sensor, threshold, onSave }: { sensor: HaccpSensor; threshold?: { min: number; max: number; label?: string } | null; onSave: (sensor: HaccpSensor, min: number, max: number) => void }) {
+  const [min, setMin] = useState(threshold ? String(threshold.min) : '');
+  const [max, setMax] = useState(threshold ? String(threshold.max) : '');
 
   useEffect(() => {
-    setMin(String(threshold.min));
-    setMax(String(threshold.max));
-  }, [sensor.id, threshold.min, threshold.max]);
+    setMin(threshold ? String(threshold.min) : '');
+    setMax(threshold ? String(threshold.max) : '');
+  }, [sensor.id, threshold?.min, threshold?.max]);
 
   const minValue = Number(min);
   const maxValue = Number(max);
   const invalid = !Number.isFinite(minValue) || !Number.isFinite(maxValue) || minValue >= maxValue;
-  const unchanged = minValue === threshold.min && maxValue === threshold.max;
+  const unchanged = threshold ? minValue === threshold.min && maxValue === threshold.max : false;
 
   return (
     <div className="haccp-custom-form-grid" style={{ alignItems: 'end' }}>
@@ -5301,7 +5308,7 @@ function buildLocalTemperatureAlertData(sensors: HaccpSensor[]): HaccpTemperatur
         severity: sensor.temperatureStatus.status === 'critical' ? 'CRITICAL' : 'WARNING',
         status: 'OPEN',
         title: sensor.temperatureStatus.status === 'critical' ? 'Température critique' : 'Température à surveiller',
-        message: `${sensor.assignedEquipment?.name ?? sensorDisplayName(sensor)}: ${temperature == null ? '-' : `${temperature.toFixed(1)}°C`} hors plage ${sensor.threshold.min}°C / ${sensor.threshold.max}°C`,
+        message: `${sensor.assignedEquipment?.name ?? sensorDisplayName(sensor)}: ${temperature == null ? '-' : `${temperature.toFixed(1)}°C`} hors plage ${sensor.threshold?.min}°C / ${sensor.threshold?.max}°C`,
         detectedAt,
         sensor,
         payload: {
@@ -5348,13 +5355,15 @@ function buildLocalTemperatureAlertData(sensors: HaccpSensor[]): HaccpTemperatur
   };
 }
 
-function localTemperatureThreshold(equipment?: { type?: string | null; name?: string | null } | null) {
-  const source = `${equipment?.type ?? ''} ${equipment?.name ?? ''}`.toLowerCase();
-  if (source.includes('congel') || source.includes('surgel') || source.includes('neg') || source.includes('frozen')) return { min: -30, max: -18, label: 'Congélation' };
-  return { min: 0, max: 4, label: 'Froid positif' };
+function localTemperatureThreshold(equipment?: { name?: string | null; temperatureRange?: { min: number | null; max: number | null } | null } | null) {
+  const min = equipment?.temperatureRange?.min;
+  const max = equipment?.temperatureRange?.max;
+  if (min == null || max == null || min >= max) return null;
+  return { min, max, label: equipment?.name ? `Équipement ${equipment.name}` : 'Équipement lié' };
 }
 
-function localTemperatureStatus(temperature: number | null, threshold: { min: number; max: number }) {
+function localTemperatureStatus(temperature: number | null, threshold?: { min: number; max: number } | null) {
+  if (!threshold) return { status: 'unknown', label: 'Seuil non défini', delta: null };
   if (temperature == null) return { status: 'unknown', label: 'Sans relevé', delta: null };
   if (temperature < threshold.min) {
     const delta = threshold.min - temperature;

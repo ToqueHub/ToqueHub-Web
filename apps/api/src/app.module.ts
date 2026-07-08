@@ -17,6 +17,7 @@ import { BackupsModule } from './backups/backups.module';
 import { DocumentsModule } from './documents/documents.module';
 import { HaccpModule } from './haccp/haccp.module';
 import { DiscoveryModule } from './discovery/discovery.module';
+import { MobileModule } from './mobile/mobile.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { DiscoveryModule } from './discovery/discovery.module';
     DocumentsModule,
     HaccpModule,
     DiscoveryModule,
+    MobileModule,
   ],
 })
 export class AppModule {}

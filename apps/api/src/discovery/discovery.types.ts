@@ -6,6 +6,11 @@ export interface DiscoveryInfo {
   apiVersion: number;
   serverTime: string;
   supportsMobile: true;
+  setupRequired: boolean;
+  hasAdmin: boolean;
+  hasOrganization: boolean;
+  webUrl: string;
+  recommendedUrl: string;
 }
 
 export interface DiscoveryTxtRecords {

@@ -12,6 +12,7 @@ type Actor = { id: string; role: string };
 const HACCP_UPLOAD_ROOT = resolve(process.env.HACCP_UPLOAD_DIR || process.env.UPLOAD_DIR || 'uploads', 'haccp');
 const PROCESS_TYPES = new Set(['refroidissement', 'congelation', 'rechauffement']);
 const REPORTS_ROOT = join(HACCP_UPLOAD_ROOT, 'daily-reports');
+const HACCP_AUTOMATIC_TEMPERATURE_TIME_ZONE = 'Europe/Paris';
 
 @Injectable()
 export class HaccpService implements OnModuleInit, OnModuleDestroy {
@@ -77,14 +78,56 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   private serializeTemperatureEquipment(item: any) {
-    return this.withId(item);
+    const out = this.withId(item);
+    out.temperatureRange = {
+      min: item.temperatureMin == null ? null : Number(item.temperatureMin),
+      max: item.temperatureMax == null ? null : Number(item.temperatureMax),
+    };
+    delete out.temperatureMin;
+    delete out.temperatureMax;
+    return out;
   }
 
   private serializeTemperatureReading(item: any) {
     const out = this.withId(item);
+    out.date = this.correctAutomaticSonoffTemperatureDate(item.date, item.notes) ?? out.date;
     out.equipmentId = item.equipmentId;
     if (item.equipment) out.equipment = { name: item.equipment.name, type: item.equipment.type };
     return out;
+  }
+
+  private correctAutomaticSonoffTemperatureDate(date: Date | string, notes?: string | null) {
+    const slot = String(notes ?? '').match(/Relevé automatique Sonoff\s+([0-2]\d):00/i)?.[1];
+    if (!slot) return null;
+    const hour = Number(slot);
+    if (!Number.isFinite(hour)) return null;
+    const measured = new Date(date);
+    if (Number.isNaN(measured.getTime())) return null;
+    const parts = this.zonedParts(measured, HACCP_AUTOMATIC_TEMPERATURE_TIME_ZONE);
+    const candidates = [-1, 0, 1].map((dayOffset) => {
+      const candidate = this.zonedDateTimeToUtc(parts.year, parts.month, parts.day + dayOffset, hour, 0, 0, HACCP_AUTOMATIC_TEMPERATURE_TIME_ZONE);
+      return { candidate, distance: Math.abs(candidate.getTime() - measured.getTime()) };
+    }).sort((a, b) => a.distance - b.distance);
+    return candidates[0]?.distance <= 3 * 60 * 60 * 1000 ? candidates[0].candidate : null;
+  }
+
+  private zonedDateTimeToUtc(year: number, month: number, day: number, hour: number, minute: number, second: number, timeZone: string) {
+    let utc = Date.UTC(year, month - 1, day, hour, minute, second, 0);
+    for (let i = 0; i < 2; i += 1) utc = Date.UTC(year, month - 1, day, hour, minute, second, 0) - this.timeZoneOffsetMs(new Date(utc), timeZone);
+    return new Date(utc);
+  }
+
+  private timeZoneOffsetMs(date: Date, timeZone: string) {
+    const parts = this.zonedParts(date, timeZone);
+    return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second, 0) - date.getTime();
+  }
+
+  private zonedParts(date: Date, timeZone: string) {
+    const values = new Intl.DateTimeFormat('fr-FR', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(date).reduce((acc, part) => {
+      if (part.type !== 'literal') acc[part.type] = Number(part.value);
+      return acc;
+    }, {} as Record<string, number>);
+    return { year: values.year, month: values.month, day: values.day, hour: values.hour, minute: values.minute, second: values.second };
   }
 
   private serializeProcessEquipment(item: any) {
@@ -501,7 +544,17 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async createTemperatureEquipment(organizationId: string, actor: Actor, dto: any) {
-    const item = await this.prisma.haccpTemperatureEquipment.create({ data: { organizationId, createdById: actor.id, ...this.syncData(dto), name: dto.name, type: dto.type } });
+    const item = await this.prisma.haccpTemperatureEquipment.create({
+      data: {
+        organizationId,
+        createdById: actor.id,
+        ...this.syncData(dto),
+        name: dto.name,
+        type: dto.type,
+        temperatureMin: dto.temperatureRange?.min,
+        temperatureMax: dto.temperatureRange?.max,
+      },
+    });
     return this.ok(this.serializeTemperatureEquipment(item));
   }
 
