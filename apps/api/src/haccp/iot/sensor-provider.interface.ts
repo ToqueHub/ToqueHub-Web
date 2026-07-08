@@ -24,6 +24,7 @@ export interface SensorProvider {
   readonly provider: IotSensorProvider;
   startPairing(durationSeconds: number): Promise<void>;
   stopPairing(): Promise<void>;
+  requestDevices?(): Promise<void>;
   listDevices(): Promise<ProviderDevice[]>;
   renameDevice(externalId: string, nextName: string): Promise<void>;
   removeDevice(externalId: string): Promise<void>;

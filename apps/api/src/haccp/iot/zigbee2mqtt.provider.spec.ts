@@ -32,12 +32,14 @@ describe('Zigbee2MqttProvider', () => {
   it('publishes pairing, rename and remove commands on Zigbee2MQTT request topics', async () => {
     const { provider, mqtt } = createProvider();
     await provider.startPairing(180);
+    await provider.requestDevices();
     await provider.stopPairing();
     await provider.renameDevice('old-name', 'new-name');
     await provider.removeDevice('new-name');
 
-    expect(mqtt.publish).toHaveBeenCalledWith('zigbee2mqtt/bridge/request/permit_join', { value: true, time: 180 });
-    expect(mqtt.publish).toHaveBeenCalledWith('zigbee2mqtt/bridge/request/permit_join', { value: false });
+    expect(mqtt.publish).toHaveBeenCalledWith('zigbee2mqtt/bridge/request/permit_join', { time: 180 });
+    expect(mqtt.publish).toHaveBeenCalledWith('zigbee2mqtt/bridge/request/devices', {});
+    expect(mqtt.publish).toHaveBeenCalledWith('zigbee2mqtt/bridge/request/permit_join', { time: 0 });
     expect(mqtt.publish).toHaveBeenCalledWith('zigbee2mqtt/bridge/request/device/rename', { from: 'old-name', to: 'new-name' });
     expect(mqtt.publish).toHaveBeenCalledWith('zigbee2mqtt/bridge/request/device/remove', { id: 'new-name', force: true });
   });

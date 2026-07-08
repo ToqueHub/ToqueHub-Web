@@ -49,6 +49,7 @@ function createService(prisma = createPrismaMock()) {
     })),
     startPairing: jest.fn().mockResolvedValue(undefined),
     stopPairing: jest.fn().mockResolvedValue(undefined),
+    requestDevices: jest.fn().mockResolvedValue(undefined),
     renameDevice: jest.fn().mockResolvedValue(undefined),
     removeDevice: jest.fn().mockResolvedValue(undefined),
   };
@@ -86,6 +87,31 @@ describe('HaccpSensorsService', () => {
       data: expect.objectContaining({ organizationId: orgId, externalId: 'Frigo 1', ieeeAddress: '0xabc' }),
     }));
     expect(prisma.iotPairingSession.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'pairing-1' } }));
+    expect(gateway.emitToOrganization).toHaveBeenCalledWith(orgId, 'sensor.discovered', expect.objectContaining({ id: 'sensor-1' }));
+  });
+
+  it('creates discovered sensors from Zigbee2MQTT devices responses', async () => {
+    const { service, prisma, gateway } = createService();
+    prisma.iotSensor.findMany.mockResolvedValueOnce([]);
+    prisma.iotPairingSession.findMany.mockResolvedValue([{ id: 'pairing-1', organizationId: orgId, status: IotPairingStatus.ACTIVE }]);
+    prisma.iotSensor.create.mockResolvedValue({
+      id: 'sensor-1',
+      organizationId: orgId,
+      externalId: 'Frigo 1',
+      provider: 'ZIGBEE2MQTT',
+      type: IotSensorType.TEMPERATURE_HUMIDITY,
+      status: IotSensorStatus.UNKNOWN,
+      assignments: [],
+    });
+
+    await service.handleMqttMessage({
+      topic: 'zigbee2mqtt/bridge/response/devices',
+      payload: { status: 'ok', data: [{ ieee_address: '0xabc', friendly_name: 'Frigo 1' }] },
+    });
+
+    expect(prisma.iotSensor.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ organizationId: orgId, externalId: 'Frigo 1', ieeeAddress: '0xabc' }),
+    }));
     expect(gateway.emitToOrganization).toHaveBeenCalledWith(orgId, 'sensor.discovered', expect.objectContaining({ id: 'sensor-1' }));
   });
 

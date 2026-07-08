@@ -30,13 +30,16 @@ export class Zigbee2MqttProvider implements SensorProvider, OnModuleInit, OnModu
 
   startPairing(durationSeconds: number) {
     return this.mqttService.publish(`${this.mqttService.baseTopic}/bridge/request/permit_join`, {
-      value: true,
       time: durationSeconds,
     });
   }
 
+  requestDevices() {
+    return this.mqttService.publish(`${this.mqttService.baseTopic}/bridge/request/devices`, {});
+  }
+
   stopPairing() {
-    return this.mqttService.publish(`${this.mqttService.baseTopic}/bridge/request/permit_join`, { value: false });
+    return this.mqttService.publish(`${this.mqttService.baseTopic}/bridge/request/permit_join`, { time: 0 });
   }
 
   async listDevices() {

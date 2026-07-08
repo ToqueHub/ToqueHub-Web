@@ -309,6 +309,9 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
     await this.expirePairingSessions(organizationId);
     const durationSeconds = dto.durationSeconds ?? Number(this.configService.get('HACCP_PAIRING_DURATION_SECONDS', 180));
     await this.provider.startPairing(durationSeconds);
+    await this.provider.requestDevices?.().catch((error: any) => {
+      this.logger.warn(`Zigbee2MQTT device refresh skipped: ${error?.message ?? 'unknown error'}`);
+    });
     const expiresAt = new Date(Date.now() + durationSeconds * 1000);
     const session = await this.prisma.$transaction(async (tx) => {
       await tx.iotPairingSession.updateMany({ where: { organizationId, status: IotPairingStatus.ACTIVE }, data: { status: IotPairingStatus.STOPPED, stoppedAt: new Date() } });
@@ -352,8 +355,11 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
       const base = this.mqttService.baseTopic;
       if (!message.topic.startsWith(`${base}/`)) return;
       const path = message.topic.slice(base.length + 1);
-      if (path === 'bridge/devices' && Array.isArray(message.payload)) {
-        await Promise.all(message.payload.map((device) => this.handleProviderDevice(this.provider.normalizeDevice(device))));
+      if (path === 'bridge/devices' || path === 'bridge/response/devices') {
+        const devices = this.extractBridgeDevices(message.payload);
+        if (devices) {
+          await Promise.all(devices.map((device) => this.handleProviderDevice(this.provider.normalizeDevice(device))));
+        }
         return;
       }
       if (path === 'bridge/event') {
@@ -378,15 +384,31 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
     const data = event.data && typeof event.data === 'object' ? event.data : event;
     const externalId = String(data.friendly_name ?? data.friendlyName ?? data.ieee_address ?? data.ieeeAddress ?? '').trim();
     if (!externalId) return;
+    const definition = data.definition && typeof data.definition === 'object' ? data.definition : {};
     await this.handleProviderDevice({
       externalId,
       ieeeAddress: data.ieee_address ?? data.ieeeAddress ?? null,
       friendlyName: data.friendly_name ?? data.friendlyName ?? externalId,
-      manufacturer: data.vendor ?? data.manufacturer ?? null,
-      model: data.model ?? null,
-      type: IotSensorType.GENERIC,
+      manufacturer: definition.vendor ?? data.vendor ?? data.manufacturer ?? null,
+      model: definition.model ?? data.model ?? data.model_id ?? null,
+      type: inferSensorType({
+        temperature: this.bridgeEventExposesFeature(definition, 'temperature') ? true : undefined,
+        humidity: this.bridgeEventExposesFeature(definition, 'humidity') ? true : undefined,
+      }),
       metadata: event,
     });
+  }
+
+  private extractBridgeDevices(payload: unknown): unknown[] | null {
+    if (Array.isArray(payload)) return payload;
+    if (!payload || typeof payload !== 'object') return null;
+    const data = (payload as Record<string, any>).data;
+    return Array.isArray(data) ? data : null;
+  }
+
+  private bridgeEventExposesFeature(definition: Record<string, any>, property: string) {
+    const exposes = Array.isArray(definition.exposes) ? definition.exposes : [];
+    return JSON.stringify(exposes).includes(`"property":"${property}"`);
   }
 
   private async handleProviderDevice(device: ProviderDevice | null) {
@@ -517,30 +539,35 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async createDevice(organizationId: string, device: ProviderDevice, discovered: boolean) {
-    const sensor = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.iotSensor.create({
-        data: {
-          organizationId,
-          provider: IotSensorProvider.ZIGBEE2MQTT,
-          externalId: device.externalId,
-          ieeeAddress: device.ieeeAddress,
-          manufacturer: device.manufacturer,
-          model: device.model,
-          friendlyName: device.friendlyName,
-          userName: device.friendlyName,
-          type: device.type ?? IotSensorType.GENERIC,
-          metadata: this.json(device.metadata ?? {}),
-          status: IotSensorStatus.UNKNOWN,
-        },
-        include: this.sensorInclude(),
+    try {
+      const sensor = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.iotSensor.create({
+          data: {
+            organizationId,
+            provider: IotSensorProvider.ZIGBEE2MQTT,
+            externalId: device.externalId,
+            ieeeAddress: device.ieeeAddress,
+            manufacturer: device.manufacturer,
+            model: device.model,
+            friendlyName: device.friendlyName,
+            userName: device.friendlyName,
+            type: device.type ?? IotSensorType.GENERIC,
+            metadata: this.json(device.metadata ?? {}),
+            status: IotSensorStatus.UNKNOWN,
+          },
+          include: this.sensorInclude(),
+        });
+        await tx.iotSensorEvent.create({ data: { organizationId, sensorId: created.id, type: IotSensorEventType.DISCOVERED, message: 'Capteur détecté automatiquement', payload: this.json(device.metadata ?? {}) } });
+        await tx.auditLog.create({ data: { organizationId, action: AuditAction.HACCP_SENSOR_DISCOVERED, entityType: 'IotSensor', entityId: created.id, entityName: created.userName ?? created.friendlyName } });
+        return created;
       });
-      await tx.iotSensorEvent.create({ data: { organizationId, sensorId: created.id, type: IotSensorEventType.DISCOVERED, message: 'Capteur détecté automatiquement', payload: this.json(device.metadata ?? {}) } });
-      await tx.auditLog.create({ data: { organizationId, action: AuditAction.HACCP_SENSOR_DISCOVERED, entityType: 'IotSensor', entityId: created.id, entityName: created.userName ?? created.friendlyName } });
-      return created;
-    });
-    const serialized = this.serializeSensor(sensor);
-    this.gateway.emitToOrganization(organizationId, discovered ? 'sensor.discovered' : 'sensor.updated', serialized);
-    return sensor;
+      const serialized = this.serializeSensor(sensor);
+      this.gateway.emitToOrganization(organizationId, discovered ? 'sensor.discovered' : 'sensor.updated', serialized);
+      return sensor;
+    } catch (error: any) {
+      if (error?.code !== 'P2002') throw error;
+      return this.restoreOrUpdateConflictingDevice(organizationId, device, discovered);
+    }
   }
 
   private async syncTemperatureAlert(tx: any, sensor: any, equipment: any, temperature: number, measuredAt: Date): Promise<TemperatureAlertNotification | null> {
@@ -755,6 +782,52 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
     return sensor;
   }
 
+  private async restoreOrUpdateConflictingDevice(organizationId: string, device: ProviderDevice, discovered: boolean) {
+    const existing = await this.findAnySensorByExternal(organizationId, device.externalId, device.ieeeAddress);
+    if (!existing) throw new BadRequestException('Capteur déjà connu mais introuvable après conflit de synchronisation');
+    if (existing.isRemoved) return this.restoreRemovedDevice(existing, device, discovered);
+    const updated = await this.updateDevice(organizationId, existing.id, device, existing.metadata);
+    const serialized = this.serializeSensor(updated);
+    if (discovered) this.gateway.emitToOrganization(organizationId, 'sensor.discovered', serialized);
+    return updated;
+  }
+
+  private async restoreRemovedDevice(removed: any, device: ProviderDevice, discovered: boolean) {
+    const sensor = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.iotSensor.update({
+        where: { id: removed.id },
+        data: {
+          externalId: device.externalId,
+          ieeeAddress: device.ieeeAddress ?? removed.ieeeAddress,
+          manufacturer: device.manufacturer ?? removed.manufacturer,
+          model: device.model ?? removed.model,
+          friendlyName: device.friendlyName ?? removed.friendlyName,
+          userName: removed.userName ?? device.friendlyName,
+          type: device.type ?? removed.type,
+          metadata: this.json(device.metadata ?? removed.metadata ?? {}),
+          isRemoved: false,
+          removedAt: null,
+          status: IotSensorStatus.UNKNOWN,
+        },
+        include: this.sensorInclude(),
+      });
+      await tx.iotSensorEvent.create({
+        data: {
+          organizationId: removed.organizationId,
+          sensorId: updated.id,
+          type: IotSensorEventType.DISCOVERED,
+          message: 'Capteur restauré automatiquement',
+          payload: this.json(device.metadata ?? {}),
+        },
+      });
+      await tx.auditLog.create({ data: { organizationId: removed.organizationId, action: AuditAction.HACCP_SENSOR_DISCOVERED, entityType: 'IotSensor', entityId: updated.id, entityName: updated.userName ?? updated.friendlyName } });
+      return updated;
+    });
+    const serialized = this.serializeSensor(sensor);
+    this.gateway.emitToOrganization(removed.organizationId, discovered ? 'sensor.discovered' : 'sensor.updated', serialized);
+    return sensor;
+  }
+
   private async updateDevice(organizationId: string, id: string, device: ProviderDevice, currentMetadata?: any) {
     const sensor = await this.prisma.iotSensor.update({
       where: { id },
@@ -769,6 +842,7 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
       include: this.sensorInclude(),
     });
     this.gateway.emitToOrganization(organizationId, 'sensor.updated', this.serializeSensor(sensor));
+    return sensor;
   }
 
   private async markOfflineSensors(organizationId?: string) {
@@ -874,6 +948,20 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
         ],
       },
       orderBy: { removedAt: 'desc' },
+    });
+  }
+
+  private findAnySensorByExternal(organizationId: string, externalId: string, ieeeAddress?: string | null) {
+    return this.prisma.iotSensor.findFirst({
+      where: {
+        organizationId,
+        provider: IotSensorProvider.ZIGBEE2MQTT,
+        OR: [
+          { externalId },
+          ...(ieeeAddress ? [{ ieeeAddress }] : []),
+        ],
+      },
+      orderBy: [{ isRemoved: 'asc' }, { updatedAt: 'desc' }],
     });
   }
 
