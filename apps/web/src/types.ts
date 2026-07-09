@@ -756,6 +756,20 @@ export interface PlanningAssignment {
   updatedAt?: string | null;
 }
 
+export interface PlanningCrossSiteReplacement {
+  assignmentId?: string | null;
+  employeeId?: string | null;
+  employeeName?: string | null;
+  date?: string | null;
+  existingSiteId?: string | null;
+  existingSiteName?: string | null;
+  targetSiteId?: string | null;
+  existingStartTime?: string | null;
+  existingEndTime?: string | null;
+  targetStartTime?: string | null;
+  targetEndTime?: string | null;
+}
+
 export interface PlanningRequirement {
   id: string;
   date?: string | null;

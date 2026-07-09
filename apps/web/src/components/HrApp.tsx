@@ -2166,6 +2166,19 @@ function printJobDescriptionPdf({ name, departmentName, description }: { name: s
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] ?? char);
 }
+function collaboratorSecondaryPositionIds(collaborator: HrCollaborator) {
+  if (collaborator.secondaryPositionIds?.length) return validUuidList(collaborator.secondaryPositionIds);
+  return validUuidList((collaborator.secondaryPositions ?? []).map((item) => {
+    const relation = item as HrPosition & { positionId?: string | null; position?: HrPosition | null };
+    return relation.positionId ?? relation.position?.id ?? relation.id;
+  }));
+}
+function validUuidList(values: Array<string | null | undefined>) {
+  return [...new Set(values.filter((value): value is string => isUuid(value)))];
+}
+function isUuid(value?: string | null) {
+  return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
+}
 function collaboratorToPayload(collaborator: HrCollaborator, patch: Partial<HrCollaboratorPayload> = {}): HrCollaboratorPayload {
   return {
     photoUrl: collaborator.photoUrl ?? collaborator.photoDataUrl ?? undefined,
@@ -2184,7 +2197,7 @@ function collaboratorToPayload(collaborator: HrCollaborator, patch: Partial<HrCo
     hireDate: toInputDate(collaborator.hireDate) || new Date().toISOString().slice(0, 10),
     departmentId: collaborator.departmentId ?? collaborator.department?.id ?? '',
     positionId: collaborator.positionId ?? collaborator.position?.id ?? '',
-    secondaryPositionIds: collaborator.secondaryPositionIds ?? collaborator.secondaryPositions?.map((position) => position.id) ?? [],
+    secondaryPositionIds: collaboratorSecondaryPositionIds(collaborator),
     siteId: collaborator.mainSiteId ?? collaborator.siteId ?? collaborator.mainSite?.id ?? collaborator.site?.id ?? undefined,
     secondarySiteIds: collaborator.secondarySiteIds ?? collaborator.secondarySites?.map((item) => 'siteId' in item ? item.siteId : item.id) ?? [],
     employeeNumber: collaborator.employeeNumber ?? undefined,

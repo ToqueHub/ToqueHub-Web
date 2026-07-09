@@ -69,7 +69,7 @@ export class PlanningService {
       }),
       this.prisma.hrDepartment.findMany({ where: { organizationId, isArchived: false, id: q.departmentId }, orderBy: { name: 'asc' } }),
       this.prisma.hrPosition.findMany({ where: { organizationId, isArchived: false, id: q.positionId, departmentId: q.departmentId }, include: { department: true }, orderBy: { name: 'asc' } }),
-      this.prisma.site.findMany({ where: { organizationId, isArchived: false, id: q.siteId }, orderBy: { name: 'asc' } }),
+      this.prisma.site.findMany({ where: { organizationId, isArchived: false }, orderBy: { name: 'asc' } }),
       this.prisma.hrSkill.findMany({ where: { organizationId, isArchived: false }, orderBy: { name: 'asc' } }),
       this.prisma.planningAssignment.findMany({ where: assignmentWhere, include: ASSIGNMENT_INCLUDE, orderBy: [{ date: 'asc' }, { startTime: 'asc' }], take: 1000 }),
       this.prisma.planningOperationalNeed.findMany({ where: needWhere, include: { department: true, site: true, position: true, requiredSkill: true }, orderBy: [{ startDate: 'asc' }, { startTime: 'asc' }], take: 500 }),
@@ -412,7 +412,8 @@ export class PlanningService {
       ? await this.prisma.hrEmployee.findMany({ where: { organizationId, id: { in: employeeIds }, isArchived: false, status: HrEmployeeStatus.ACTIVE, ...this.siteEligibilityWhere(rotationSiteId) }, include: { department: true, position: true, mainSite: true, secondarySites: true } })
       : [];
     const assignments = this.planningRotationAssignmentsPreview(template, employees, start, end, dto.siteId);
-    return { rotation: template, assignments, temporarySource: 'planning_templates', applied: false };
+    const crossSiteReplacements = await this.crossSiteRotationReplacements(organizationId, assignments as UpsertPlanningAssignmentDto[]);
+    return { rotation: template, assignments, crossSiteReplacements, temporarySource: 'planning_templates', applied: false };
   }
 
   async applyWeeklyRotation(organizationId: string, actor: Actor, rotationId: string, dto: ApplyPlanningRotationDto) {
@@ -423,6 +424,15 @@ export class PlanningService {
     const proposed = (preview.assignments ?? []) as UpsertPlanningAssignmentDto[];
     const applied: any[] = [];
     const skipped: any[] = [];
+    const crossSiteReplacements = (preview as any).crossSiteReplacements ?? await this.crossSiteRotationReplacements(organizationId, proposed);
+
+    if (crossSiteReplacements.length && dto.replaceExisting !== true) {
+      throw new BadRequestException({
+        code: 'CROSS_SITE_REPLACEMENT_CONFIRMATION_REQUIRED',
+        message: 'Confirmation requise avant de remplacer les horaires existants sur un autre site.',
+        crossSiteReplacements,
+      });
+    }
 
     if (dto.replaceExisting !== false && dto.employeeId && preview.temporarySource === 'planning_templates') {
       await this.prisma.planningAssignment.updateMany({
@@ -448,7 +458,40 @@ export class PlanningService {
 
     await this.prisma.planningHistory.create({ data: { organizationId, actorUserId: actor.id, action: PlanningHistoryAction.GENERATION_APPLIED, entityType: 'PlanningTemplate', entityId: rotationId, label: 'Roulement semaine appliqué', newValue: { startDate: dto.startDate, endDate: dto.endDate, employeeId: dto.employeeId, source: preview.temporarySource, applied: applied.length, skipped: skipped.length } as Prisma.InputJsonValue } });
     await this.recalculateBaseAlerts(organizationId, start, end);
-    return { rotation: preview.rotation, appliedAssignments: applied, skipped, applied: true, temporarySource: preview.temporarySource };
+    return { rotation: preview.rotation, appliedAssignments: applied, skipped, crossSiteReplacements, applied: true, temporarySource: preview.temporarySource };
+  }
+
+  private async crossSiteRotationReplacements(organizationId: string, proposed: UpsertPlanningAssignmentDto[]) {
+    const replacements = new Map<string, Record<string, any>>();
+    for (const item of proposed) {
+      if (!item.employeeId || !item.siteId || !item.date) continue;
+      const existing = await this.prisma.planningAssignment.findFirst({
+        where: {
+          organizationId,
+          employeeId: item.employeeId,
+          date: this.day(this.parseDate(item.date)),
+          status: { not: PlanningAssignmentStatus.CANCELLED },
+          OR: [{ siteId: { not: item.siteId } }, { siteId: null }],
+        },
+        include: { site: true, employee: true },
+        orderBy: { startTime: 'asc' },
+      });
+      if (!existing || replacements.has(existing.id)) continue;
+      replacements.set(existing.id, {
+        assignmentId: existing.id,
+        employeeId: existing.employeeId,
+        employeeName: this.employeePdfName(existing.employee ?? {}),
+        date: this.iso(existing.date),
+        existingSiteId: existing.siteId ?? null,
+        existingSiteName: existing.site?.name ?? 'Sans site',
+        targetSiteId: item.siteId,
+        existingStartTime: this.timeLabel(existing.startTime),
+        existingEndTime: this.timeLabel(existing.endTime),
+        targetStartTime: this.timeLabel(item.startTime),
+        targetEndTime: this.timeLabel(item.endTime),
+      });
+    }
+    return [...replacements.values()];
   }
 
   async listSkills(organizationId: string) { return this.prisma.hrSkill.findMany({ where: { organizationId, isArchived: false }, orderBy: { name: 'asc' } }); }
@@ -887,7 +930,7 @@ export class PlanningService {
     if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) return value.slice(0, 10);
     return this.iso(this.parseDate(String(value)));
   }
-  private timeLabel(value?: string | null) {
+  private timeLabel(value?: string | Date | null) {
     if (!value) return '--:--';
     const raw = String(value);
     if (/^\d{2}:\d{2}/.test(raw)) return raw.slice(0, 5);

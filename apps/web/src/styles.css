@@ -10650,6 +10650,55 @@ input:checked + .slider-round:before {
   padding: 1.25rem;
 }
 
+.planning-replace-modal {
+  width: min(560px, calc(100vw - 2rem));
+}
+
+.planning-replace-warning {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(245, 158, 11, 0.24);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.planning-replace-warning strong {
+  color: #92400e;
+  font-size: 0.95rem;
+}
+
+.planning-replace-warning span,
+.planning-replace-item span {
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.planning-replace-list {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.85rem;
+}
+
+.planning-replace-item {
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--light-border);
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.planning-replace-item strong {
+  display: block;
+  margin-bottom: 0.18rem;
+  color: var(--text-main);
+}
+
+.planning-replace-actions {
+  margin-top: 1rem;
+}
+
 .status-pill.status-work {
   color: #047857;
   background: rgba(16, 185, 129, 0.1);

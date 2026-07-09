@@ -37,6 +37,22 @@ function secondarySiteNames(collaborator?: HrCollaborator) {
     .filter(Boolean) as string[];
 }
 
+function collaboratorSecondaryPositionIds(collaborator?: HrCollaborator) {
+  if (collaborator?.secondaryPositionIds?.length) return validUuidList(collaborator.secondaryPositionIds);
+  return validUuidList((collaborator?.secondaryPositions ?? []).map((item) => {
+    const relation = item as HrPosition & { positionId?: string | null; position?: HrPosition | null };
+    return relation.positionId ?? relation.position?.id ?? relation.id;
+  }));
+}
+
+function validUuidList(values: Array<string | null | undefined>) {
+  return [...new Set(values.filter((value): value is string => isUuid(value)))];
+}
+
+function isUuid(value?: string | null) {
+  return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
+}
+
 function FormField({
   label,
   icon,
@@ -93,7 +109,7 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
     hireDate: toInputDate(collaborator?.hireDate) || new Date().toISOString().slice(0, 10),
     departmentId: collaborator?.departmentId ?? collaborator?.department?.id ?? '',
     positionId: collaborator?.positionId ?? collaborator?.position?.id ?? '',
-    secondaryPositionIds: collaborator?.secondaryPositionIds ?? collaborator?.secondaryPositions?.map((position) => position.id) ?? [],
+    secondaryPositionIds: collaboratorSecondaryPositionIds(collaborator),
     siteId: collaborator?.mainSiteId ?? collaborator?.siteId ?? collaborator?.mainSite?.id ?? collaborator?.site?.id ?? '',
     secondarySiteIds: collaboratorSecondarySiteIds(collaborator),
     employeeNumber: collaborator?.employeeNumber ?? '',
@@ -310,10 +326,17 @@ function ProfessionalTab({ form, set, requiredErrors, departments, positions, al
 }
 
 function ContractsTab({ form, set, collaborator, onViewDocument, onDownloadDocument, onReplaceDocument, onDeleteDocument }: TabProps & { collaborator?: HrCollaborator; onViewDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onDownloadDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument?: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument?: (employeeId: string, documentId: string) => Promise<void> }) {
+  const [weeklyHoursInput, setWeeklyHoursInput] = useState(() => hoursInputValue(form.contractWeeklyMinutes ?? collaborator?.activeContract?.weeklyHours ?? null));
   const weekly = form.contractWeeklyMinutes ?? collaborator?.activeContract?.weeklyHours ?? null;
   const rate = form.hourlyRate ?? collaborator?.currentCompensation?.hourlyRate ?? null;
   const weeklyHours = weekly != null ? weekly / 60 : null;
   const weeklyGross = rate != null && weeklyHours != null ? rate * weeklyHours : null;
+  function updateWeeklyHours(value: string) {
+    if (!/^\d*([,.]\d{0,2})?$/.test(value)) return;
+    setWeeklyHoursInput(value);
+    const hours = parseHoursInput(value);
+    set('contractWeeklyMinutes', hours != null ? Math.round(hours * 60) : null);
+  }
   return <TabPanel icon={<ShieldCheck size={18} />} title="Contrats & rémunération">
     <div className="hr-form-grid">
       <FormField label="Type de contrat" icon={<ShieldCheck size={16} />} isSelect={true}>
@@ -334,7 +357,7 @@ function ContractsTab({ form, set, collaborator, onViewDocument, onDownloadDocum
         <input type="date" value={form.trialEndDate ?? ''} onChange={(e) => set('trialEndDate', e.target.value)} />
       </FormField>
       <FormField label="Durée hebdo contractuelle (h)" icon={<Hash size={16} />}>
-        <input type="number" min={0} step={0.5} value={form.contractWeeklyMinutes != null ? (form.contractWeeklyMinutes / 60).toFixed(2) : ''} onChange={(e) => { const hours = parseFloat(e.target.value); set('contractWeeklyMinutes', Number.isFinite(hours) && hours >= 0 ? Math.round(hours * 60) : null); }} />
+        <input type="text" inputMode="decimal" value={weeklyHoursInput} onChange={(e) => updateWeeklyHours(e.target.value)} onBlur={() => setWeeklyHoursInput((value) => hoursInputValue(parseHoursInput(value) != null ? Math.round(parseHoursInput(value)! * 60) : null))} placeholder="Ex: 35" />
       </FormField>
       <FormField label="Taux horaire" icon={<Hash size={16} />}>
         <input type="number" min={0} step={0.01} value={form.hourlyRate ?? ''} onChange={(e) => set('hourlyRate', e.target.value ? parseFloat(e.target.value) : null)} />
@@ -593,7 +616,7 @@ function cleanPayload(form: HrCollaboratorPayload): HrCollaboratorPayload {
     notes: form.notes || undefined,
     userId: form.userId || undefined,
     managerId: form.managerId || undefined,
-    secondaryPositionIds: form.secondaryPositionIds?.length ? form.secondaryPositionIds : undefined,
+    secondaryPositionIds: validUuidList(form.secondaryPositionIds ?? []).length ? validUuidList(form.secondaryPositionIds ?? []) : undefined,
     secondarySiteIds: form.secondarySiteIds?.length ? form.secondarySiteIds : undefined,
     contractType: form.contractType || undefined,
     contractEndDate: form.contractEndDate || undefined,
@@ -616,4 +639,15 @@ function cleanLegacyHrNotes(value?: string | null) { return value && /Documents 
 function toInputDate(value?: string | null) { return value ? new Date(value).toISOString().slice(0, 10) : ''; }
 function formatDate(value?: string | null) { return value ? new Intl.DateTimeFormat('fr-FR').format(new Date(value)) : '-'; }
 function formatMinutes(value?: number | null) { if (value == null) return '-'; const hours = Math.floor(value / 60); const minutes = Math.round(value % 60); return `${hours}h${minutes.toString().padStart(2, '0')}`; }
+function hoursInputValue(minutes?: number | null) {
+  if (minutes == null) return '';
+  const hours = minutes / 60;
+  return Number.isInteger(hours) ? String(hours) : String(hours).replace('.', ',');
+}
+function parseHoursInput(value: string) {
+  const normalized = value.trim().replace(',', '.');
+  if (!normalized) return null;
+  const hours = Number(normalized);
+  return Number.isFinite(hours) && hours >= 0 ? hours : null;
+}
 function formatBytes(value?: number | null) { if (!value) return '-'; if (value < 1024 * 1024) return `${Math.round(value / 1024)} Ko`; return `${(value / 1024 / 1024).toFixed(1)} Mo`; }

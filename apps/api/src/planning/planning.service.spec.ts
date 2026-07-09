@@ -1,9 +1,12 @@
-import { GoneException } from '@nestjs/common';
+import { BadRequestException, GoneException } from '@nestjs/common';
 import { HrEmployeeStatus, PlanningAssignmentOrigin, PlanningAssignmentStatus } from '@prisma/client';
 import { PlanningService } from './planning.service';
 
 function mockPrisma(overrides?: any): any {
   const base: any = {
+    organization: {
+      findUnique: jest.fn(),
+    },
     planningAssignment: {
       findFirst: jest.fn(),
       findMany: jest.fn(),
@@ -24,21 +27,31 @@ function mockPrisma(overrides?: any): any {
       findMany: jest.fn(),
       update: jest.fn(),
     },
+    planningTemplateApplication: {
+      findMany: jest.fn(),
+    },
+    planningReplacement: {
+      findMany: jest.fn(),
+    },
     planningHistory: {
       create: jest.fn(),
       findMany: jest.fn(),
     },
     planningNotification: {
       create: jest.fn(),
+      findMany: jest.fn(),
     },
     hrDepartment: {
       findFirst: jest.fn(),
+      findMany: jest.fn(),
     },
     hrPosition: {
       findFirst: jest.fn(),
+      findMany: jest.fn(),
     },
     hrSkill: {
       findFirst: jest.fn(),
+      findMany: jest.fn(),
     },
     hrEmployee: {
       findFirst: jest.fn(),
@@ -46,9 +59,11 @@ function mockPrisma(overrides?: any): any {
     },
     hrAbsence: {
       findFirst: jest.fn(),
+      findMany: jest.fn(),
     },
     site: {
       findFirst: jest.fn(),
+      findMany: jest.fn(),
     },
   };
   return { ...base, ...(overrides || {}) };
@@ -303,6 +318,58 @@ describe('PlanningService weekly rotations', () => {
     })]);
   });
 
+  it('reports cross-site replacements in the weekly rotation preview', async () => {
+    const prisma = mockPrisma();
+    prisma.planningTemplate.findFirst.mockResolvedValue({
+      id: 'template-rotation-1',
+      organizationId: 'org-1',
+      name: 'Semaine salle',
+      periodType: 'WEEKLY_ROTATION',
+      departmentId: 'dept-1',
+      siteId: 'site-2',
+      content: {
+        type: 'WEEKLY_ROTATION',
+        employeeIds: ['emp-1'],
+        days: [
+          { dayOfWeek: 1, mode: 'WORK', startTime: '09:00', endTime: '17:00', breakMinutes: 30 },
+          { dayOfWeek: 2, mode: 'REST' },
+          { dayOfWeek: 3, mode: 'REST' },
+          { dayOfWeek: 4, mode: 'REST' },
+          { dayOfWeek: 5, mode: 'REST' },
+          { dayOfWeek: 6, mode: 'REST' },
+          { dayOfWeek: 7, mode: 'REST' },
+        ],
+      },
+    });
+    prisma.hrEmployee.findMany.mockResolvedValue([{ id: 'emp-1', departmentId: 'dept-1', positionId: 'pos-1', mainSiteId: 'site-2' }]);
+    prisma.planningAssignment.findFirst.mockResolvedValue({
+      id: 'assignment-site-1',
+      employeeId: 'emp-1',
+      date: new Date('2026-06-22T00:00:00.000Z'),
+      siteId: 'site-1',
+      site: { name: 'Site A' },
+      employee: { firstName: 'Paul', lastName: 'Breton' },
+      startTime: '10:00',
+      endTime: '14:00',
+    });
+    const service = new PlanningService(prisma);
+
+    const result = await service.applyWeeklyRotationPreview('org-1', 'template-rotation-1', {
+      employeeId: 'emp-1',
+      siteId: 'site-2',
+      startDate: '2026-06-22',
+      endDate: '2026-06-28',
+    });
+
+    expect(result.crossSiteReplacements).toEqual([expect.objectContaining({
+      assignmentId: 'assignment-site-1',
+      existingSiteName: 'Site A',
+      targetSiteId: 'site-2',
+      existingStartTime: '10:00',
+      targetStartTime: '09:00',
+    })]);
+  });
+
   it('applies a Planning weekly rotation template into Planning assignments', async () => {
     const prisma = mockPrisma();
     prisma.planningAssignment.findFirst.mockResolvedValue(null);
@@ -327,6 +394,28 @@ describe('PlanningService weekly rotations', () => {
       origin: PlanningAssignmentOrigin.AUTO_GENERATION,
       allowCriticalOverride: true,
     }));
+  });
+
+  it('requires explicit confirmation before replacing assignments from another site', async () => {
+    const prisma = mockPrisma();
+    const service = new PlanningService(prisma);
+    jest.spyOn(service, 'applyWeeklyRotationPreview').mockResolvedValue({
+      rotation: { id: 'rotation-1' },
+      assignments: [{ ...assignmentPayload, siteId: 'site-2' }],
+      crossSiteReplacements: [{ assignmentId: 'assignment-site-1', existingSiteName: 'Site A', targetSiteId: 'site-2' }],
+      temporarySource: 'planning_templates',
+      applied: false,
+    } as any);
+    const saveAssignmentAllowingConflicts = jest.spyOn(service as any, 'saveAssignmentAllowingConflicts').mockResolvedValue({ id: 'assignment-1' });
+
+    await expect(service.applyWeeklyRotation('org-1', actor, 'rotation-1', {
+      employeeId: 'emp-1',
+      siteId: 'site-2',
+      startDate: '2026-06-22',
+      endDate: '2026-06-28',
+    })).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(saveAssignmentAllowingConflicts).not.toHaveBeenCalled();
   });
 });
 
@@ -393,6 +482,40 @@ describe('PlanningService planning templates', () => {
       weeklyRotationIds: ['rotation-1'],
       defaultWeeklyRotationId: 'rotation-1',
     }));
+  });
+});
+
+describe('PlanningService context', () => {
+  it('keeps all active sites available in the context when a site filter is selected', async () => {
+    const prisma = mockPrisma();
+    prisma.organization.findUnique.mockResolvedValue({ hrInstalledAt: new Date(), planningInstalledAt: new Date() });
+    prisma.hrEmployee.findMany.mockResolvedValue([]);
+    prisma.hrDepartment.findMany.mockResolvedValue([]);
+    prisma.hrPosition.findMany.mockResolvedValue([]);
+    prisma.site.findMany.mockResolvedValue([{ id: 'site-kuusamo', name: 'Kuusamo' }, { id: 'site-oulu', name: 'Oulu' }]);
+    prisma.hrSkill.findMany.mockResolvedValue([]);
+    prisma.planningAssignment.findMany.mockResolvedValue([]);
+    prisma.planningOperationalNeed.findMany.mockResolvedValue([]);
+    prisma.planningTemplate.findMany.mockResolvedValue([]);
+    prisma.planningTemplateApplication.findMany.mockResolvedValue([]);
+    prisma.planningReplacement.findMany.mockResolvedValue([]);
+    prisma.planningConflict.findMany.mockResolvedValue([]);
+    prisma.planningNotification.findMany.mockResolvedValue([]);
+    prisma.planningHistory.findMany.mockResolvedValue([]);
+    prisma.hrAbsence.findMany.mockResolvedValue([]);
+    const service = new PlanningService(prisma);
+
+    const result = await service.context('org-1', {
+      month: 7,
+      year: 2026,
+      siteId: 'site-kuusamo',
+    });
+
+    expect(prisma.site.findMany).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1', isArchived: false },
+      orderBy: { name: 'asc' },
+    });
+    expect(result.sites).toEqual([{ id: 'site-kuusamo', name: 'Kuusamo' }, { id: 'site-oulu', name: 'Oulu' }]);
   });
 });
 

@@ -31,6 +31,7 @@ import type {
   PlanningAlert,
   PlanningAssignment,
   PlanningBootstrap,
+  PlanningCrossSiteReplacement,
   PlanningDashboardResponse,
   PlanningDayPresetPayload,
   PlanningEmployeeTemplateAssignment,
@@ -81,6 +82,14 @@ type QuickAssignmentSelection = {
   templateId?: string;
   preset?: Partial<PlanningAssignment>;
   rotation?: PlanningRotationOption;
+};
+type PendingSiteReplacementConfirmation = {
+  rotation: PlanningRotationOption;
+  targetDate: string;
+  employeeId: string;
+  siteId: string;
+  replacements: PlanningCrossSiteReplacement[];
+  busy?: boolean;
 };
 type CalendarAssignmentGroup = {
   employeeId: string;
@@ -179,6 +188,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
   const [lastCustomSignature, setLastCustomSignature] = useState('');
   const [quickPanelOpen, setQuickPanelOpen] = useState(true);
   const [quickAssignmentSelection, setQuickAssignmentSelection] = useState<QuickAssignmentSelection | null>(null);
+  const [siteReplacementConfirmation, setSiteReplacementConfirmation] = useState<PendingSiteReplacementConfirmation | null>(null);
   const [editingAssignment, setEditingAssignment] = useState<PlanningAssignment | null>(null);
   const [selectedSetting, setSelectedSetting] = useState<SettingKey>('presets');
   const [dashboardConfig, setDashboardConfig] = useState<PlanningDashboardConfig>(() => loadPlanningDashboardConfig());
@@ -506,16 +516,43 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
     }
     const targetDate = dateOverride ?? selectedDate;
     try {
-      const result = await api.applyPlanningRotation(token, rotation.id, {
+      const payload = {
         employeeId: selectedEmployee.id,
         siteId: siteFilter || undefined,
         startDate: weekStart(targetDate),
         endDate: weekEnd(targetDate),
-        replaceExisting: true,
-      });
-      setNotice(`${result.appliedAssignments?.length ?? 0} affectation(s) appliquée(s) sur la semaine du ${formatShort(weekStart(targetDate))}.`);
-      await loadContext({ showLoading: false });
+      };
+      const preview = await api.previewPlanningRotation(token, rotation.id, payload);
+      if (preview.crossSiteReplacements?.length) {
+        setSiteReplacementConfirmation({ rotation, targetDate, employeeId: selectedEmployee.id, siteId: siteFilter, replacements: preview.crossSiteReplacements });
+        return;
+      }
+      await applyRotationConfirmed(rotation, targetDate, selectedEmployee.id, siteFilter);
     } catch (err) {
+      setError(err instanceof Error ? err.message : 'Application du roulement impossible');
+    }
+  }
+
+  async function applyRotationConfirmed(rotation: PlanningRotationOption, targetDate: string, employeeId: string, targetSiteId: string) {
+    const result = await api.applyPlanningRotation(token, rotation.id, {
+      employeeId,
+      siteId: targetSiteId || undefined,
+      startDate: weekStart(targetDate),
+      endDate: weekEnd(targetDate),
+      replaceExisting: true,
+    });
+    setNotice(`${result.appliedAssignments?.length ?? 0} affectation(s) appliquée(s) sur la semaine du ${formatShort(weekStart(targetDate))}.`);
+    await loadContext({ showLoading: false });
+  }
+
+  async function confirmSiteReplacement() {
+    if (!siteReplacementConfirmation) return;
+    setSiteReplacementConfirmation({ ...siteReplacementConfirmation, busy: true });
+    try {
+      await applyRotationConfirmed(siteReplacementConfirmation.rotation, siteReplacementConfirmation.targetDate, siteReplacementConfirmation.employeeId, siteReplacementConfirmation.siteId);
+      setSiteReplacementConfirmation(null);
+    } catch (err) {
+      setSiteReplacementConfirmation({ ...siteReplacementConfirmation, busy: false });
       setError(err instanceof Error ? err.message : 'Application du roulement impossible');
     }
   }
@@ -713,6 +750,14 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
           onDeleteWeeklyRotation={deleteWeeklyRotation}
           onClose={() => initialSetupCompleted ? setShowInitialSetup(false) : openInitialSetup('services')}
           onComplete={completeInitialSetup}
+        />
+      ) : null}
+      {siteReplacementConfirmation ? (
+        <PlanningSiteReplacementModal
+          confirmation={siteReplacementConfirmation}
+          sites={effectiveSites}
+          onCancel={() => setSiteReplacementConfirmation(null)}
+          onConfirm={confirmSiteReplacement}
         />
       ) : null}
       {editingAssignment ? (
@@ -1696,6 +1741,43 @@ function QuickAssignmentPanel(props: { selectedDate: string; siteFilter: string;
   );
 }
 
+function PlanningSiteReplacementModal({ confirmation, sites, onCancel, onConfirm }: { confirmation: PendingSiteReplacementConfirmation; sites: Site[]; onCancel: () => void; onConfirm: () => void }) {
+  const targetSiteName = sites.find((site) => site.id === confirmation.siteId)?.name ?? 'le site sélectionné';
+  const firstReplacement = confirmation.replacements[0];
+  const existingSiteName = firstReplacement?.existingSiteName || 'un autre site';
+  return (
+    <div className="modal-overlay planning-edit-overlay" onClick={confirmation.busy ? undefined : onCancel}>
+      <div className="card-modern planning-edit-modal planning-replace-modal" onClick={(event) => event.stopPropagation()}>
+        <div className="section-header-modern">
+          <div>
+            <span className="card-title"><AlertTriangle size={18} /> Remplacer des horaires ?</span>
+            <span className="section-tagline">Une affectation existe déjà sur un autre site pour cette semaine.</span>
+          </div>
+          <span className="status-pill status-other">Confirmation</span>
+        </div>
+        <div className="planning-replace-warning">
+          <strong>L’employé est déjà attribué sur le site : {existingSiteName}.</strong>
+          <span>Souhaitez-vous remplacer ces horaires par ceux sélectionnés sur {targetSiteName} ?</span>
+        </div>
+        <div className="planning-replace-list">
+          {confirmation.replacements.map((replacement, index) => (
+            <div key={replacement.assignmentId ?? `${replacement.date}-${index}`} className="planning-replace-item">
+              <div>
+                <strong>{formatShort(replacement.date)} · {replacement.existingSiteName ?? 'Autre site'}</strong>
+                <span>{timeWindowLabel(replacement.existingStartTime, replacement.existingEndTime)} sera remplacé par {timeWindowLabel(replacement.targetStartTime, replacement.targetEndTime)}.</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="setup-actions planning-replace-actions">
+          <button className="btn btn-secondary" type="button" disabled={confirmation.busy} onClick={onCancel}>Non, ne pas modifier</button>
+          <button className="btn btn-primary" type="button" disabled={confirmation.busy} onClick={onConfirm}>{confirmation.busy ? 'Modification...' : 'Oui, modifier'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AssignmentEditModal({ assignment, collaborators, departments, positions, sites, canWrite, onClose, onSave, onDelete }: { assignment: PlanningAssignment; collaborators: HrCollaborator[]; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; canWrite: boolean; onClose: () => void; onSave: (assignment: PlanningAssignment, patch: Partial<PlanningAssignment> & { businessStatus?: string }) => Promise<void>; onDelete: (assignment: PlanningAssignment) => Promise<void> }) {
   const [form, setForm] = useState(() => ({
     employeeId: assignment.employeeId ?? assignment.collaboratorId ?? '',
@@ -2451,6 +2533,7 @@ function assignmentHours(assignment: PlanningAssignment) {
   return Math.max(0, (adjustedEnd - start - Number(assignment.breakMinutes ?? 0)) / 60);
 }
 function timeRange(assignment: PlanningAssignment) { return `${timeLabel(assignment.startTime)} - ${timeLabel(assignment.endTime)}`; }
+function timeWindowLabel(start?: string | null, end?: string | null) { return `${timeLabel(start)} - ${timeLabel(end)}`; }
 function timeLabel(value?: string | null) {
   if (!value) return '--:--';
   const raw = String(value);

@@ -59,6 +59,7 @@ import type {
   PlanningCodeDictionaryEntry,
   PlanningCounterAccount,
   PlanningCountersResponse,
+  PlanningCrossSiteReplacement,
   PlanningDashboardResponse,
   PlanningDayPresetPayload,
   PlanningDayStatus,
@@ -898,10 +899,10 @@ export const api = {
     return request<PlanningGenerationResult>('/planning/generate', { method: 'POST', body: JSON.stringify(payload) }, token);
   },
   previewPlanningRotation(token: string, rotationId: string, payload: { startDate: string; endDate: string; employeeId?: string; siteId?: string }) {
-    return request<{ assignments?: PlanningAssignment[]; applied?: boolean; temporarySource?: string }>(`/planning/rotations/${rotationId}/preview`, { method: 'POST', body: JSON.stringify(payload) }, token);
+    return request<{ assignments?: PlanningAssignment[]; crossSiteReplacements?: PlanningCrossSiteReplacement[]; applied?: boolean; temporarySource?: string }>(`/planning/rotations/${rotationId}/preview`, { method: 'POST', body: JSON.stringify(payload) }, token);
   },
   applyPlanningRotation(token: string, rotationId: string, payload: { startDate: string; endDate: string; employeeId?: string; siteId?: string; replaceExisting?: boolean }) {
-    return request<{ appliedAssignments?: PlanningAssignment[]; skipped?: unknown[]; applied?: boolean; temporarySource?: string }>(`/planning/rotations/${rotationId}/apply`, { method: 'POST', body: JSON.stringify(payload) }, token);
+    return request<{ appliedAssignments?: PlanningAssignment[]; skipped?: unknown[]; crossSiteReplacements?: PlanningCrossSiteReplacement[]; applied?: boolean; temporarySource?: string }>(`/planning/rotations/${rotationId}/apply`, { method: 'POST', body: JSON.stringify(payload) }, token);
   },
   prefillStocks(token: string, payload: { categories?: boolean; units?: boolean; sites?: boolean; locations?: boolean; examples?: boolean }) {
     return request<DashboardSummary | { ok: boolean }>('/auth/apps/stocks/prefill', { method: 'POST', body: JSON.stringify(payload) }, token);
