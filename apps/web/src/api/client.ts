@@ -486,6 +486,12 @@ export const api = {
   haccpTemperatureAlerts(token: string) {
     return request<any>('/haccp/sensors/alerts/temperature', {}, token);
   },
+  haccpSensorAlertNotificationSettings(token: string) {
+    return request<any>('/haccp/sensors/alerts/notification-settings', {}, token);
+  },
+  haccpUpdateSensorAlertNotificationSettings(token: string, payload: Record<string, unknown>) {
+    return request<any>('/haccp/sensors/alerts/notification-settings', { method: 'PATCH', body: JSON.stringify(payload) }, token);
+  },
   haccpTestSensorAlertPush(token: string, alertId: string) {
     return request<any>(`/haccp/sensors/alerts/${encodeURIComponent(alertId)}/test-push`, { method: 'POST' }, token);
   },

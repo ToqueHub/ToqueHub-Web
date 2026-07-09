@@ -166,6 +166,10 @@ type HaccpTemperatureAlertData = {
   }>;
   alerts: HaccpItem[];
   recentReadings: HaccpItem[];
+  notificationSettings?: {
+    repeatEnabled: boolean;
+    repeatIntervalMinutes: number;
+  };
 };
 type HaccpPairingSession = HaccpItem & { id: string; status: string; startedAt: string; expiresAt: string; discoveredIds?: string[]; sensors?: HaccpSensor[] };
 type HaccpSensorReading = HaccpItem & {
@@ -2734,11 +2738,32 @@ function TemperatureAlertsView({
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [pushTestingAlertId, setPushTestingAlertId] = useState<string | null>(null);
   const [pushTestMessage, setPushTestMessage] = useState<string | null>(null);
+  const [notificationModalOpen, setNotificationModalOpen] = useState(false);
+  const [notificationSaving, setNotificationSaving] = useState(false);
+  const [notificationRepeatEnabled, setNotificationRepeatEnabled] = useState(true);
+  const [notificationIntervalValue, setNotificationIntervalValue] = useState('1');
+  const [notificationIntervalUnit, setNotificationIntervalUnit] = useState<'minutes' | 'hours'>('hours');
+  const [notificationSettingsOverride, setNotificationSettingsOverride] = useState<HaccpTemperatureAlertData['notificationSettings'] | null>(null);
   const fallbackData = useMemo<HaccpTemperatureAlertData>(() => buildLocalTemperatureAlertData(sensors), [sensors]);
   const current = data ?? fallbackData;
   const query = searchQuery.trim().toLowerCase();
   const visibleSensors = current.sensors.filter((sensor) => !query || JSON.stringify(sensor).toLowerCase().includes(query));
   const mostRecent = current.recentReadings.slice(0, 8);
+  const notificationSettings = notificationSettingsOverride ?? current.notificationSettings ?? { repeatEnabled: true, repeatIntervalMinutes: 60 };
+  const notificationIntervalLabel = notificationSettings.repeatEnabled
+    ? `Rappel toutes les ${formatNotificationInterval(notificationSettings.repeatIntervalMinutes)} tant qu'une alerte reste ouverte`
+    : 'Rappels automatiques désactivés';
+
+  useEffect(() => {
+    setNotificationRepeatEnabled(notificationSettings.repeatEnabled);
+    if (notificationSettings.repeatIntervalMinutes >= 60 && notificationSettings.repeatIntervalMinutes % 60 === 0) {
+      setNotificationIntervalValue(String(notificationSettings.repeatIntervalMinutes / 60));
+      setNotificationIntervalUnit('hours');
+    } else {
+      setNotificationIntervalValue(String(notificationSettings.repeatIntervalMinutes));
+      setNotificationIntervalUnit('minutes');
+    }
+  }, [notificationSettings.repeatEnabled, notificationSettings.repeatIntervalMinutes]);
 
   async function openSensorHistory(sensor: HaccpSensor) {
     setHistorySensor(sensor);
@@ -2778,6 +2803,36 @@ function TemperatureAlertsView({
     }
   }
 
+  async function saveNotificationSettings() {
+    const rawValue = Number(notificationIntervalValue);
+    if (!Number.isFinite(rawValue) || rawValue <= 0) {
+      setPushTestMessage('Intervalle de notification invalide.');
+      return;
+    }
+    const minutes = notificationIntervalUnit === 'hours' ? rawValue * 60 : rawValue;
+    const repeatIntervalMinutes = Math.round(minutes);
+    if (repeatIntervalMinutes < 5 || repeatIntervalMinutes > 1440) {
+      setPushTestMessage('Choisissez un intervalle entre 5 minutes et 24 heures.');
+      return;
+    }
+    setNotificationSaving(true);
+    setPushTestMessage(null);
+    try {
+      const updated = await api.haccpUpdateSensorAlertNotificationSettings(token, {
+        repeatEnabled: notificationRepeatEnabled,
+        repeatIntervalMinutes,
+      });
+      setNotificationSettingsOverride(updated);
+      setPushTestMessage('Réglage des notifications téléphone enregistré.');
+      setNotificationModalOpen(false);
+    } catch (error) {
+      console.warn('[HACCP] Sauvegarde notifications alertes impossible', error);
+      setPushTestMessage(error instanceof Error ? error.message : 'Sauvegarde impossible.');
+    } finally {
+      setNotificationSaving(false);
+    }
+  }
+
   return (
     <div className="haccp-sensors-page">
       <div className="haccp-sensors-toolbar">
@@ -2786,6 +2841,10 @@ function TemperatureAlertsView({
           <Search size={14} />
           <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Rechercher une enceinte, un capteur..." />
         </div>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setNotificationModalOpen(true)}>
+          <Bell size={14} />
+          Notifications alertes téléphone
+        </button>
       </div>
 
       <div className="haccp-sensors-kpis">
@@ -2797,7 +2856,7 @@ function TemperatureAlertsView({
 
       <div className="alert-modern info" style={{ margin: '1rem 0' }}>
         <Bell size={17} />
-        Les seuils de température affichés ici sont ceux utilisés pour envoyer les notifications sur l’app mobile en cas d’alerte.
+        Les seuils de température affichés ici sont ceux utilisés pour envoyer les notifications sur l’app mobile en cas d’alerte. {notificationIntervalLabel}.
       </div>
 
       {current.alerts.length ? (
@@ -2938,6 +2997,52 @@ function TemperatureAlertsView({
           onClose={() => setHistorySensor(null)}
           onRefresh={() => void openSensorHistory(historySensor)}
         />
+      ) : null}
+
+      {notificationModalOpen ? (
+        <div className="modal-overlay haccp-modal-overlay" onClick={() => setNotificationModalOpen(false)}>
+          <div className="modal-content-wrapper modal-md" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Notifications alertes téléphone</h2>
+              <button type="button" className="modal-close-btn" onClick={() => setNotificationModalOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="alert-modern info" style={{ marginBottom: '1rem' }}>
+                <Bell size={16} />
+                Ce réglage renvoie une push tant qu’une alerte capteur reste ouverte. L’ouverture de l’alerte envoie toujours une première notification.
+              </div>
+              <div className="haccp-custom-form-grid" style={{ alignItems: 'end' }}>
+                <div className="haccp-custom-field">
+                  <label>Rappels automatiques</label>
+                  <select value={notificationRepeatEnabled ? 'on' : 'off'} onChange={(event) => setNotificationRepeatEnabled(event.target.value === 'on')}>
+                    <option value="on">Activés</option>
+                    <option value="off">Désactivés</option>
+                  </select>
+                </div>
+                <div className="haccp-custom-field">
+                  <label>Toutes les</label>
+                  <input type="number" min={1} step={1} value={notificationIntervalValue} onChange={(event) => setNotificationIntervalValue(event.target.value)} disabled={!notificationRepeatEnabled} />
+                </div>
+                <div className="haccp-custom-field">
+                  <label>Unité</label>
+                  <select value={notificationIntervalUnit} onChange={(event) => setNotificationIntervalUnit(event.target.value as 'minutes' | 'hours')} disabled={!notificationRepeatEnabled}>
+                    <option value="minutes">Minutes</option>
+                    <option value="hours">Heures</option>
+                  </select>
+                </div>
+              </div>
+              <p className="muted" style={{ marginTop: '0.85rem' }}>Minimum 5 minutes, maximum 24 heures. Pour éviter le bruit, garde une valeur assez large en production.</p>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-secondary" onClick={() => setNotificationModalOpen(false)}>Annuler</button>
+              <button type="button" className="btn btn-primary" onClick={() => void saveNotificationSettings()} disabled={notificationSaving}>
+                {notificationSaving ? 'Sauvegarde...' : 'Enregistrer'}
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );
@@ -5421,7 +5526,19 @@ function buildLocalTemperatureAlertData(sensors: HaccpSensor[]): HaccpTemperatur
     sensors: monitored,
     alerts,
     recentReadings,
+    notificationSettings: {
+      repeatEnabled: true,
+      repeatIntervalMinutes: 60,
+    },
   };
+}
+
+function formatNotificationInterval(minutes: number) {
+  if (minutes >= 60 && minutes % 60 === 0) {
+    const hours = minutes / 60;
+    return `${hours} heure${hours > 1 ? 's' : ''}`;
+  }
+  return `${minutes} minute${minutes > 1 ? 's' : ''}`;
 }
 
 function localTemperatureThreshold(equipment?: { name?: string | null; temperatureRange?: { min: number | null; max: number | null } | null } | null) {

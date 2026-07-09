@@ -1,5 +1,5 @@
-import { Type } from 'class-transformer';
-import { IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsBoolean, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class ListSensorReadingsDto {
   @IsOptional()
@@ -59,4 +59,18 @@ export class PairingStartDto {
   @Min(30)
   @Max(900)
   durationSeconds?: number;
+}
+
+export class UpdateSensorNotificationSettingsDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(5)
+  @Max(1440)
+  repeatIntervalMinutes?: number;
+
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  repeatEnabled?: boolean;
 }

@@ -8,7 +8,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { MqttJsonMessage, MqttService } from './mqtt.service';
 import { inferSensorType, ProviderDevice } from './sensor-provider.interface';
 import { HaccpSensorsGateway } from './haccp-sensors.gateway';
-import { AssignSensorDto, PairingStartDto, RenameSensorDto, UpdateSensorDto } from './dto/haccp-sensors.dto';
+import { AssignSensorDto, PairingStartDto, RenameSensorDto, UpdateSensorDto, UpdateSensorNotificationSettingsDto } from './dto/haccp-sensors.dto';
 import { Zigbee2MqttProvider } from './zigbee2mqtt.provider';
 import { MobilePushService } from '../../mobile/mobile-push.service';
 
@@ -26,7 +26,7 @@ type TemperatureThreshold = { min: number; max: number; label?: string };
 const HACCP_TEMPERATURE_READING_HOURS = [5, 15, 23];
 const HACCP_TEMPERATURE_READING_WINDOW_MINUTES = 10;
 const HACCP_TEMPERATURE_TIME_ZONE = 'Europe/Paris';
-const HACCP_CRITICAL_ALERT_REPEAT_MS = 60 * 60 * 1000;
+const DEFAULT_HACCP_ALERT_REPEAT_MINUTES = 60;
 
 @Injectable()
 export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
@@ -157,7 +157,7 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
 
   async temperatureAlerts(organizationId: string) {
     await this.markOfflineSensors(organizationId);
-    const [sensors, openAlerts, recentReadings] = await Promise.all([
+    const [sensors, openAlerts, recentReadings, notificationSettings] = await Promise.all([
       this.prisma.iotSensor.findMany({
         where: { organizationId, isRemoved: false },
         include: this.sensorInclude(),
@@ -175,6 +175,7 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
         orderBy: { measuredAt: 'desc' },
         take: 100,
       }),
+      this.notificationSettings(organizationId),
     ]);
     const monitoredSensors = sensors.map((sensor) => {
       const serialized = this.serializeSensor(sensor);
@@ -210,6 +211,37 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
         battery: this.numberOrNull(reading.battery),
         sensor: reading.sensor ? this.serializeSensor(reading.sensor) : null,
       })),
+      notificationSettings,
+    };
+  }
+
+  async notificationSettings(organizationId: string) {
+    const settings = await this.prisma.haccpSensorNotificationSettings.findUnique({ where: { organizationId } });
+    return {
+      repeatEnabled: settings?.repeatEnabled ?? true,
+      repeatIntervalMinutes: settings?.repeatIntervalMinutes ?? DEFAULT_HACCP_ALERT_REPEAT_MINUTES,
+    };
+  }
+
+  async updateNotificationSettings(organizationId: string, dto: UpdateSensorNotificationSettingsDto) {
+    const repeatIntervalMinutes = dto.repeatIntervalMinutes == null
+      ? undefined
+      : Math.min(1440, Math.max(5, Math.round(dto.repeatIntervalMinutes)));
+    const settings = await this.prisma.haccpSensorNotificationSettings.upsert({
+      where: { organizationId },
+      create: {
+        organizationId,
+        repeatEnabled: dto.repeatEnabled ?? true,
+        repeatIntervalMinutes: repeatIntervalMinutes ?? DEFAULT_HACCP_ALERT_REPEAT_MINUTES,
+      },
+      update: {
+        repeatEnabled: dto.repeatEnabled,
+        repeatIntervalMinutes,
+      },
+    });
+    return {
+      repeatEnabled: settings.repeatEnabled,
+      repeatIntervalMinutes: settings.repeatIntervalMinutes,
     };
   }
 
@@ -629,7 +661,8 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
     const payload = this.json({ temperature, threshold, equipmentId: equipment?.id ?? null, equipmentName: equipment?.name ?? null });
     const severity = status.status === 'critical' ? 'CRITICAL' : 'WARNING';
     if (openAlert) {
-      const shouldNotify = this.shouldSendTemperatureAlertNotification(openAlert, severity, measuredAt);
+      const settings = await this.notificationSettings(sensor.organizationId);
+      const shouldNotify = this.shouldSendTemperatureAlertNotification(openAlert, severity, measuredAt, settings);
       const updated = await tx.iotAlertEvent.update({
         where: { id: openAlert.id },
         data: {
@@ -664,10 +697,11 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
     return this.temperatureAlertNotification(created, sensor, equipment, title, message, severity);
   }
 
-  private shouldSendTemperatureAlertNotification(openAlert: any, severity: 'CRITICAL' | 'WARNING', measuredAt: Date) {
-    if (severity !== 'CRITICAL') return false;
+  private shouldSendTemperatureAlertNotification(openAlert: any, severity: 'CRITICAL' | 'WARNING', measuredAt: Date, settings: { repeatEnabled: boolean; repeatIntervalMinutes: number }) {
+    if (!settings.repeatEnabled) return false;
     const lastSent = openAlert.notificationLastSentAt ? new Date(openAlert.notificationLastSentAt) : null;
-    return !lastSent || Number.isNaN(lastSent.getTime()) || measuredAt.getTime() - lastSent.getTime() >= HACCP_CRITICAL_ALERT_REPEAT_MS;
+    const intervalMs = Math.max(5, settings.repeatIntervalMinutes || DEFAULT_HACCP_ALERT_REPEAT_MINUTES) * 60 * 1000;
+    return !lastSent || Number.isNaN(lastSent.getTime()) || measuredAt.getTime() - lastSent.getTime() >= intervalMs;
   }
 
   private temperatureAlertNotification(alert: any, sensor: any, equipment: any, title: string, body: string, severity: 'CRITICAL' | 'WARNING'): TemperatureAlertNotification {

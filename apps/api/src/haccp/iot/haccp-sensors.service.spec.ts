@@ -29,6 +29,7 @@ function createPrismaMock() {
     haccpTemperatureEquipment: { findFirst: jest.fn() },
     haccpTemperatureReading: { create: jest.fn(), findFirst: jest.fn() },
     iotAlertEvent: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
+    haccpSensorNotificationSettings: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn() },
     auditLog: { create: jest.fn() },
   };
   return prisma;

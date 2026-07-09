@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedUser } from '../../auth/authenticated-user';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { AssignSensorDto, ListSensorReadingsDto, PairingStartDto, RenameSensorDto, UpdateSensorDto } from './dto/haccp-sensors.dto';
+import { AssignSensorDto, ListSensorReadingsDto, PairingStartDto, RenameSensorDto, UpdateSensorDto, UpdateSensorNotificationSettingsDto } from './dto/haccp-sensors.dto';
 import { HaccpSensorsService } from './haccp-sensors.service';
 
 @ApiTags('haccp-sensors')
@@ -31,6 +31,16 @@ export class HaccpSensorsController {
   @Get('alerts/temperature')
   temperatureAlerts(@CurrentUser() user: AuthenticatedUser) {
     return this.service.temperatureAlerts(this.org(user));
+  }
+
+  @Get('alerts/notification-settings')
+  notificationSettings(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.notificationSettings(this.org(user));
+  }
+
+  @Patch('alerts/notification-settings')
+  updateNotificationSettings(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateSensorNotificationSettingsDto) {
+    return this.service.updateNotificationSettings(this.org(user), dto);
   }
 
   @Post('alerts/:alertId/test-push')
