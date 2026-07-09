@@ -7970,6 +7970,12 @@ function DevSwitch({ users, currentUserId, onSwitch, onCreate }: { users: CoreUs
   );
 }
 
+const RESTORE_CONFIRMATION_PHRASE = 'RESTAURER TOQUEHUB';
+
+function normalizeRestorePhrase(value: string) {
+  return value.trim().replace(/\s+/g, ' ').toUpperCase();
+}
+
 function BackupRestorePage({ token, onRestoreComplete }: { token: string; onRestoreComplete: () => void }) {
   const [state, setState] = useState<BackupListResponse>();
   const [schedule, setSchedule] = useState<BackupSchedule>();
@@ -8039,12 +8045,20 @@ function BackupRestorePage({ token, onRestoreComplete }: { token: string; onRest
 
   async function inspectFile(file?: File) {
     if (!file) return;
-    await run(async () => {
+    setBusy(true);
+    setError(undefined);
+    setMessage(undefined);
+    try {
       const next = await api.inspectBackupUpload(token, file);
       setInspection(next);
       setSelectedBackup(null);
-      return next;
-    }, 'Archive inspectée.');
+      setConfirmationPhrase('');
+      setMessage('Archive inspectée.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Inspection de la sauvegarde impossible.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function saveSchedule() {
@@ -8094,8 +8108,9 @@ function BackupRestorePage({ token, onRestoreComplete }: { token: string; onRest
     setMessage('URI de redirection copiée.');
   }
 
-  const localRestoreReady = Boolean(selectedBackup && confirmationPhrase === 'RESTAURER TOQUEHUB');
-  const uploadRestoreReady = Boolean(inspection && confirmationPhrase === 'RESTAURER TOQUEHUB');
+  const normalizedConfirmationPhrase = normalizeRestorePhrase(confirmationPhrase);
+  const localRestoreReady = Boolean(selectedBackup && normalizedConfirmationPhrase === RESTORE_CONFIRMATION_PHRASE);
+  const uploadRestoreReady = Boolean(inspection && normalizedConfirmationPhrase === RESTORE_CONFIRMATION_PHRASE);
   const googleDrive = cloudStatus?.googleDrive;
   const googleDriveConfigured = Boolean(googleDrive?.configured);
   const googleDriveConnected = Boolean(googleDrive?.connected);
@@ -8314,8 +8329,8 @@ function BackupRestorePage({ token, onRestoreComplete }: { token: string; onRest
         <div className="card-modern" style={{ padding: '1.25rem', borderColor: selectedBackup || inspection ? 'rgba(239,68,68,0.35)' : undefined }}>
           <span className="card-title"><ShieldCheck size={18} /> Restauration destructive</span>
           <p className="muted">La restauration remplace la base et les fichiers uploadés. Saisissez la phrase exacte pour déverrouiller l’action.</p>
-          <input placeholder="RESTAURER TOQUEHUB" value={confirmationPhrase} onChange={(event) => setConfirmationPhrase(event.target.value)} disabled={busy || (!selectedBackup && !inspection)} />
-          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}><button className="btn btn-danger" disabled={busy || !localRestoreReady} onClick={() => selectedBackup && void run(() => api.restoreBackup(token, selectedBackup.id, confirmationPhrase), 'Restauration terminée.', true)}>Restaurer la sauvegarde locale</button><button className="btn btn-danger" disabled={busy || !uploadRestoreReady} onClick={() => inspection && void run(() => api.restoreBackupUpload(token, inspection.uploadId, confirmationPhrase), 'Restauration terminée.', true)}>Restaurer l’archive importée</button></div>
+          <input placeholder={RESTORE_CONFIRMATION_PHRASE} value={confirmationPhrase} onChange={(event) => setConfirmationPhrase(event.target.value)} disabled={busy || (!selectedBackup && !inspection)} />
+          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}><button className="btn btn-danger" disabled={busy || !localRestoreReady} onClick={() => selectedBackup && void run(() => api.restoreBackup(token, selectedBackup.id, normalizedConfirmationPhrase), 'Restauration terminée.', true)}>Restaurer la sauvegarde locale</button><button className="btn btn-danger" disabled={busy || !uploadRestoreReady} onClick={() => inspection && void run(() => api.restoreBackupUpload(token, inspection.uploadId, normalizedConfirmationPhrase), 'Restauration terminée.', true)}>Restaurer l’archive importée</button></div>
           {selectedBackup ? <p className="muted" style={{ marginTop: '0.75rem' }}>Cible locale: {selectedBackup.filename}</p> : null}
         </div>
       </div>

@@ -13,9 +13,11 @@ mmdebstrap:
     - jq
     - libnss-mdns
     - openssl
+    - python3
     - rsync
     - udev
   customize-hooks:
     - $BDEBSTRAP_HOOKS/enable-units "$1" docker
     - $BDEBSTRAP_HOOKS/enable-units "$1" avahi-daemon
+    - $BDEBSTRAP_HOOKS/enable-units "$1" toquehub-remote-agent
     - $BDEBSTRAP_HOOKS/enable-units "$1" toquehub-firstboot

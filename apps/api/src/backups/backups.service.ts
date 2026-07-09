@@ -24,6 +24,10 @@ const DEFAULT_SCHEDULE: BackupSchedule = {
   lastRunAt: null,
 };
 
+function normalizeRestorePhrase(value?: string) {
+  return value?.trim().replace(/\s+/g, ' ').toUpperCase();
+}
+
 type BackupMode = 'manual' | 'scheduled';
 type BackupOperation = 'backup' | 'restore' | null;
 
@@ -478,7 +482,7 @@ export class BackupsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private assertConfirmation(value?: string) {
-    if (value !== CONFIRMATION_PHRASE) {
+    if (normalizeRestorePhrase(value) !== CONFIRMATION_PHRASE) {
       throw new BadRequestException(`Saisissez exactement "${CONFIRMATION_PHRASE}" pour confirmer la restauration.`);
     }
   }

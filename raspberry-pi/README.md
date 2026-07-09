@@ -62,6 +62,9 @@ After flashing with Raspberry Pi Imager, set Wi-Fi, SSH and hostname in Imager.
 On first boot:
 
 - secrets are generated in `/etc/toquehub/toquehub.env`
+- Tailscale is installed/enabled for private remote access when
+  `TOQUEHUB_TAILSCALE_ENABLED=true`
+- the ToqueHub remote access agent starts automatically
 - Docker Compose pulls the published ToqueHub images
 - ToqueHub starts automatically
 - Zigbee2MQTT is enabled only when a Zigbee USB adapter is detected
@@ -74,6 +77,8 @@ toquehub logs
 toquehub update
 toquehub backup
 toquehub restart
+toquehub remote-status
+toquehub remote-up
 ```
 
 First boot validation:
@@ -81,6 +86,8 @@ First boot validation:
 ```bash
 systemctl status toquehub-firstboot.service --no-pager
 systemctl status toquehub.service --no-pager
+systemctl status toquehub-remote-agent.service --no-pager
+command -v tailscale && tailscale status
 docker compose --env-file /etc/toquehub/toquehub.env -f /opt/toquehub/docker-compose.pi.yml ps
 curl -fsS http://localhost:8080/api/system/status
 ```

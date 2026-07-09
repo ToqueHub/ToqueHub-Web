@@ -321,7 +321,7 @@ export function FirstStartLanding({
     setRestoreError(undefined);
     setRestoreMessage(undefined);
     try {
-      const result = await api.restoreBootstrapBackup(restoreInspection.uploadId, restorePhrase);
+      const result = await api.restoreBootstrapBackup(restoreInspection.uploadId, normalizeRestorePhrase(restorePhrase));
       setRestoreMessage(result.message || 'Restauration terminée. Vous pouvez vous connecter.');
       setRestoreDone(true);
       await onRefreshStatus();
@@ -578,6 +578,12 @@ function AlertCircleIcon() {
   return <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />;
 }
 
+const RESTORE_CONFIRMATION_PHRASE = 'RESTAURER TOQUEHUB';
+
+function normalizeRestorePhrase(value: string) {
+  return value.trim().replace(/\s+/g, ' ').toUpperCase();
+}
+
 function BootstrapRestorePanel({
   inspection,
   phrase,
@@ -606,7 +612,8 @@ function BootstrapRestorePanel({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
 
-  const isValidated = phrase === 'RESTAURER TOQUEHUB';
+  const normalizedPhrase = normalizeRestorePhrase(phrase);
+  const isValidated = normalizedPhrase === RESTORE_CONFIRMATION_PHRASE;
   const isTyping = phrase.length > 0 && !isValidated;
 
   function handleDragOver(e: DragEvent<HTMLDivElement>) {

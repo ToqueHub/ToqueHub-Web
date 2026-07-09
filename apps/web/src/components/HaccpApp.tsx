@@ -3009,13 +3009,45 @@ function TemperatureAlertsView({
               </button>
             </div>
             <div className="modal-body">
-              <div className="alert-modern info" style={{ marginBottom: '1rem' }}>
-                <Bell size={16} />
-                Ce réglage renvoie une push tant qu’une alerte capteur reste ouverte. L’ouverture de l’alerte envoie toujours une première notification.
+              <div style={{ display: 'grid', gap: '0.9rem' }}>
+                <div
+                  style={{
+                    alignItems: 'center',
+                    background: 'linear-gradient(135deg, rgba(15, 118, 110, 0.08), rgba(16, 185, 129, 0.08))',
+                    border: '1px solid rgba(15, 118, 110, 0.18)',
+                    borderRadius: 12,
+                    display: 'flex',
+                    gap: '0.85rem',
+                    padding: '0.9rem 1rem',
+                  }}
+                >
+                  <div className="haccp-card-icon-badge positive">
+                    <Bell size={18} />
+                  </div>
+                  <div>
+                    <strong style={{ display: 'block', color: 'var(--text-main)' }}>Rappels push des alertes capteurs</strong>
+                    <span className="muted">Une première notification est envoyée à l’ouverture. Ce réglage définit les rappels tant que l’alerte reste ouverte.</span>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    alignItems: 'center',
+                    border: '1px solid var(--border-light)',
+                    borderRadius: 10,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    padding: '0.75rem 0.9rem',
+                  }}
+                >
+                  <span className="muted">Réglage actuel</span>
+                  <strong>{notificationIntervalLabel}</strong>
+                </div>
               </div>
-              <div className="haccp-custom-form-grid" style={{ alignItems: 'end' }}>
+
+              <div className="haccp-custom-form-grid" style={{ alignItems: 'end', marginTop: '1.1rem' }}>
                 <div className="haccp-custom-field">
-                  <label>Rappels automatiques</label>
+                  <label>État des rappels</label>
                   <select value={notificationRepeatEnabled ? 'on' : 'off'} onChange={(event) => setNotificationRepeatEnabled(event.target.value === 'on')}>
                     <option value="on">Activés</option>
                     <option value="off">Désactivés</option>
@@ -3033,7 +3065,7 @@ function TemperatureAlertsView({
                   </select>
                 </div>
               </div>
-              <p className="muted" style={{ marginTop: '0.85rem' }}>Minimum 5 minutes, maximum 24 heures. Pour éviter le bruit, garde une valeur assez large en production.</p>
+              <p className="muted" style={{ marginTop: '0.85rem' }}>Intervalle autorisé: 5 minutes à 24 heures.</p>
             </div>
             <div className="modal-footer">
               <button type="button" className="btn btn-secondary" onClick={() => setNotificationModalOpen(false)}>Annuler</button>

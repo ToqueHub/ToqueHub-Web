@@ -79,10 +79,15 @@ mkdir -p \
 cp "$ROOT_DIR/docker-compose.pi.yml" "$PROJECT_DIR/layer/toquehub-appliance.rootfs-overlay/opt/toquehub/docker-compose.pi.yml"
 cp "$ROOT_DIR/.env.raspberry.example" "$PROJECT_DIR/layer/toquehub-appliance.rootfs-overlay/opt/toquehub/toquehub.env.example"
 cp "$ROOT_DIR/docker/iot/mosquitto.conf" "$PROJECT_DIR/layer/toquehub-appliance.rootfs-overlay/opt/toquehub/mosquitto.conf"
+cp "$ROOT_DIR/scripts/toquehub-remote-agent.py" "$PROJECT_DIR/layer/toquehub-appliance.rootfs-overlay/usr/local/sbin/toquehub-remote-agent"
 
 chmod +x \
   "$PROJECT_DIR/layer/toquehub-appliance.rootfs-overlay/usr/local/bin/toquehub" \
+  "$PROJECT_DIR/layer/toquehub-appliance.rootfs-overlay/usr/local/bin/toquehub-addresses" \
+  "$PROJECT_DIR/layer/toquehub-appliance.rootfs-overlay/usr/local/sbin/toquehub-remote-agent" \
   "$PROJECT_DIR/layer/toquehub-appliance.rootfs-overlay/usr/local/sbin/toquehub-firstboot"
+
+test -x "$PROJECT_DIR/layer/toquehub-appliance.rootfs-overlay/usr/local/sbin/toquehub-remote-agent"
 
 cat <<MSG
 
