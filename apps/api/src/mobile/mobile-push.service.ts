@@ -10,8 +10,16 @@ type PushPayload = {
 
 type ExpoPushTicket = {
   status?: string;
+  id?: string;
   message?: string;
   details?: { error?: string };
+};
+
+type PushSendResult = {
+  sent: number;
+  activeTokens: number;
+  errors: Array<{ token: string; error: string; message?: string }>;
+  ticketIds: string[];
 };
 
 @Injectable()
@@ -91,18 +99,23 @@ export class MobilePushService {
     const uniqueTokens = [...new Set(tokens.map((item) => item.token).filter((token) => this.isExpoPushToken(token)))];
     if (!uniqueTokens.length) {
       this.logger.warn(`No active Expo push tokens for organization ${organizationId}`);
-      return { sent: 0, activeTokens: 0 };
+      return { sent: 0, activeTokens: 0, errors: [], ticketIds: [] };
     }
 
     let sent = 0;
+    const errors: PushSendResult['errors'] = [];
+    const ticketIds: string[] = [];
     for (let index = 0; index < uniqueTokens.length; index += 100) {
       const chunk = uniqueTokens.slice(index, index + 100);
-      sent += await this.sendChunk(organizationId, chunk, payload);
+      const result = await this.sendChunk(organizationId, chunk, payload);
+      sent += result.sent;
+      errors.push(...result.errors);
+      ticketIds.push(...result.ticketIds);
     }
-    return { sent, activeTokens: uniqueTokens.length };
+    return { sent, activeTokens: uniqueTokens.length, errors, ticketIds };
   }
 
-  private async sendChunk(organizationId: string, tokens: string[], payload: PushPayload) {
+  private async sendChunk(organizationId: string, tokens: string[], payload: PushPayload): Promise<Omit<PushSendResult, 'activeTokens'>> {
     try {
       const response = await fetch(this.expoPushUrl, {
         method: 'POST',
@@ -123,6 +136,14 @@ export class MobilePushService {
       });
       const json = await response.json().catch(() => null) as { data?: ExpoPushTicket[] } | null;
       const tickets = Array.isArray(json?.data) ? json.data : [];
+      const errors = tickets
+        .map((ticket, index) => ({ ticket, token: tokens[index] }))
+        .filter(({ ticket }) => ticket.status === 'error')
+        .map(({ ticket, token }) => ({
+          token,
+          error: ticket.details?.error ?? 'ExpoPushError',
+          message: ticket.message,
+        }));
       const invalidTokens = tickets
         .map((ticket, index) => ({ ticket, token: tokens[index] }))
         .filter(({ ticket }) => ticket.status === 'error' && ticket.details?.error === 'DeviceNotRegistered')
@@ -135,12 +156,19 @@ export class MobilePushService {
       }
       if (!response.ok) {
         this.logger.warn(`Expo push failed with HTTP ${response.status}`);
-        return 0;
+        return { sent: 0, errors: [{ token: '*', error: `HTTP_${response.status}` }], ticketIds: [] };
       }
-      return tokens.length - invalidTokens.length;
+      if (errors.length) {
+        this.logger.warn(`Expo push ticket errors: ${errors.map((item) => `${item.error}${item.message ? ` (${item.message})` : ''}`).join(', ')}`);
+      }
+      const ticketIds = tickets
+        .map((ticket) => ticket.status === 'ok' && ticket.id ? ticket.id : null)
+        .filter((id): id is string => Boolean(id));
+      const okTickets = tickets.length ? tickets.filter((ticket) => ticket.status === 'ok').length : tokens.length;
+      return { sent: okTickets, errors, ticketIds };
     } catch (error: any) {
       this.logger.warn(`Expo push skipped: ${error?.message ?? 'unknown error'}`);
-      return 0;
+      return { sent: 0, errors: [{ token: '*', error: 'NETWORK_ERROR', message: error?.message }], ticketIds: [] };
     }
   }
 

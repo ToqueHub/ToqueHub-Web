@@ -247,6 +247,8 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
       alertId: alert.id,
       sent: result.sent,
       activeTokens: result.activeTokens ?? result.sent,
+      errors: result.errors ?? [],
+      ticketIds: result.ticketIds ?? [],
     };
   }
 

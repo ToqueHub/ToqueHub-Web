@@ -2764,9 +2764,12 @@ function TemperatureAlertsView({
       const result = await api.haccpTestSensorAlertPush(token, String(alert.id));
       const sent = Number(result?.sent ?? 0);
       const activeTokens = Number(result?.activeTokens ?? sent);
+      const firstError = Array.isArray(result?.errors) ? result.errors[0] : null;
       setPushTestMessage(sent > 0
         ? `Push test envoyée (${sent}/${activeTokens} mobile(s)).`
-        : `Aucune push envoyée: ${activeTokens} token mobile actif trouvé.`);
+        : firstError
+          ? `Aucune push envoyée: ${firstError.error}${firstError.message ? ` - ${firstError.message}` : ''}.`
+          : `Aucune push envoyée: ${activeTokens} token mobile actif trouvé.`);
     } catch (error) {
       console.warn('[HACCP] Test push alerte impossible', error);
       setPushTestMessage(error instanceof Error ? error.message : 'Test push impossible.');

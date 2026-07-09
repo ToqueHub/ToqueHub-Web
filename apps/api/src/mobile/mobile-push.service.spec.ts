@@ -30,7 +30,7 @@ describe('MobilePushService', () => {
       ok: true,
       json: jest.fn().mockResolvedValue({
         data: [
-          { status: 'ok' },
+          { status: 'ok', id: 'ticket-1' },
           { status: 'error', details: { error: 'DeviceNotRegistered' } },
         ],
       }),
@@ -39,7 +39,12 @@ describe('MobilePushService', () => {
     const service = new MobilePushService(prisma);
     const result = await service.sendToOrganization(orgId, { title: 'Alerte', body: 'Température critique' });
 
-    expect(result).toEqual({ sent: 1, activeTokens: 2 });
+    expect(result).toEqual({
+      sent: 1,
+      activeTokens: 2,
+      errors: [{ token: 'ExpoPushToken[invalid-1]', error: 'DeviceNotRegistered', message: undefined }],
+      ticketIds: ['ticket-1'],
+    });
     expect(prisma.mobilePushToken.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { organizationId: orgId, token: { in: ['ExpoPushToken[invalid-1]'] } },
       data: expect.objectContaining({ isActive: false }),
@@ -52,6 +57,11 @@ describe('MobilePushService', () => {
     global.fetch = jest.fn().mockRejectedValue(new Error('network down')) as any;
 
     const service = new MobilePushService(prisma);
-    await expect(service.sendToOrganization(orgId, { title: 'Alerte', body: 'Température critique' })).resolves.toEqual({ sent: 0, activeTokens: 1 });
+    await expect(service.sendToOrganization(orgId, { title: 'Alerte', body: 'Température critique' })).resolves.toEqual({
+      sent: 0,
+      activeTokens: 1,
+      errors: [{ token: '*', error: 'NETWORK_ERROR', message: 'network down' }],
+      ticketIds: [],
+    });
   });
 });
