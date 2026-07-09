@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Param, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -32,9 +32,14 @@ export class MobileController {
     return this.pushService.disableToken(this.org(user), decodeURIComponent(token));
   }
 
+  @Get('push-tokens/status')
+  @ApiOkResponse({ description: 'Returns active Expo push token counts for diagnostics.' })
+  pushTokenStatus(@CurrentUser() user: AuthenticatedUser) {
+    return this.pushService.status(this.org(user), user.id);
+  }
+
   private org(user: AuthenticatedUser) {
     if (!user.organizationId) throw new BadRequestException('Organization setup is required before registering mobile push tokens');
     return user.organizationId;
   }
 }
-

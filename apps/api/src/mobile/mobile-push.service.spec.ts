@@ -39,7 +39,7 @@ describe('MobilePushService', () => {
     const service = new MobilePushService(prisma);
     const result = await service.sendToOrganization(orgId, { title: 'Alerte', body: 'Température critique' });
 
-    expect(result).toEqual({ sent: 1 });
+    expect(result).toEqual({ sent: 1, activeTokens: 2 });
     expect(prisma.mobilePushToken.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { organizationId: orgId, token: { in: ['ExpoPushToken[invalid-1]'] } },
       data: expect.objectContaining({ isActive: false }),
@@ -52,7 +52,6 @@ describe('MobilePushService', () => {
     global.fetch = jest.fn().mockRejectedValue(new Error('network down')) as any;
 
     const service = new MobilePushService(prisma);
-    await expect(service.sendToOrganization(orgId, { title: 'Alerte', body: 'Température critique' })).resolves.toEqual({ sent: 0 });
+    await expect(service.sendToOrganization(orgId, { title: 'Alerte', body: 'Température critique' })).resolves.toEqual({ sent: 0, activeTokens: 1 });
   });
 });
-

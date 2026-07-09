@@ -2732,6 +2732,8 @@ function TemperatureAlertsView({
   const [historyReadings, setHistoryReadings] = useState<HaccpSensorReading[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [pushTestingAlertId, setPushTestingAlertId] = useState<string | null>(null);
+  const [pushTestMessage, setPushTestMessage] = useState<string | null>(null);
   const fallbackData = useMemo<HaccpTemperatureAlertData>(() => buildLocalTemperatureAlertData(sensors), [sensors]);
   const current = data ?? fallbackData;
   const query = searchQuery.trim().toLowerCase();
@@ -2751,6 +2753,25 @@ function TemperatureAlertsView({
       setHistoryError('Impossible de charger l’historique du capteur.');
     } finally {
       setHistoryLoading(false);
+    }
+  }
+
+  async function testAlertPush(alert: HaccpItem) {
+    if (!alert.id) return;
+    setPushTestingAlertId(String(alert.id));
+    setPushTestMessage(null);
+    try {
+      const result = await api.haccpTestSensorAlertPush(token, String(alert.id));
+      const sent = Number(result?.sent ?? 0);
+      const activeTokens = Number(result?.activeTokens ?? sent);
+      setPushTestMessage(sent > 0
+        ? `Push test envoyée (${sent}/${activeTokens} mobile(s)).`
+        : `Aucune push envoyée: ${activeTokens} token mobile actif trouvé.`);
+    } catch (error) {
+      console.warn('[HACCP] Test push alerte impossible', error);
+      setPushTestMessage(error instanceof Error ? error.message : 'Test push impossible.');
+    } finally {
+      setPushTestingAlertId(null);
     }
   }
 
@@ -2787,6 +2808,51 @@ function TemperatureAlertsView({
           Aucune alerte température ouverte. Les capteurs affectés alimentent automatiquement la traçabilité HACCP.
         </div>
       )}
+
+      {current.alerts.length ? (
+        <div className="card-modern" style={{ marginTop: '1rem' }}>
+          <div className="haccp-list-header">
+            <div>
+              <span className="card-title">Alertes ouvertes</span>
+              <p className="muted" style={{ margin: '0.25rem 0 0' }}>Utilisez le test push pour vérifier les notifications mobiles sans attendre l’anti-spam automatique.</p>
+            </div>
+          </div>
+          {pushTestMessage ? (
+            <div className={`alert-modern ${pushTestMessage.startsWith('Push test envoyée') ? 'success' : 'warning'}`} style={{ margin: '0.75rem 0' }}>
+              <Bell size={16} />
+              {pushTestMessage}
+            </div>
+          ) : null}
+          <div className="haccp-equipment-list" style={{ marginTop: '0.75rem' }}>
+            {current.alerts.map((alert) => (
+              <div key={alert.id ?? alert.detectedAt} className="haccp-equipment-row active">
+                <div className="haccp-equipment-row-main">
+                  <div className="haccp-equipment-row-info">
+                    <div className={`haccp-card-icon-badge ${alert.severity === 'CRITICAL' ? 'hot' : 'cleaning'}`}>
+                      <AlertTriangle size={18} />
+                    </div>
+                    <div>
+                      <strong className="haccp-equipment-title">{alert.title ?? 'Alerte température'}</strong>
+                      <span className="haccp-equipment-desc">
+                        {alert.message ?? 'Alerte capteur ouverte'} • {alert.detectedAt ? new Date(alert.detectedAt).toLocaleString('fr-FR') : '-'}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={!alert.id || pushTestingAlertId === String(alert.id)}
+                    onClick={() => void testAlertPush(alert)}
+                  >
+                    <Smartphone size={14} />
+                    {pushTestingAlertId === String(alert.id) ? 'Envoi...' : 'Tester push'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="haccp-equipment-list" style={{ marginTop: '1rem' }}>
         {visibleSensors.map((sensor) => {

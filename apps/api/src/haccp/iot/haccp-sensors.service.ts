@@ -213,6 +213,43 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  async testTemperatureAlertPush(organizationId: string, alertId: string) {
+    const alert = await this.prisma.iotAlertEvent.findFirst({
+      where: {
+        id: alertId,
+        organizationId,
+        type: 'TEMPERATURE_OUT_OF_RANGE',
+        status: 'OPEN',
+      },
+      include: { sensor: { include: this.sensorInclude() } },
+    });
+    if (!alert) throw new NotFoundException('Alerte température ouverte introuvable');
+
+    const sensor = alert.sensor ? this.serializeSensor(alert.sensor) : null;
+    const result = await this.mobilePushService.sendToOrganization(organizationId, {
+      title: alert.title || 'Température à surveiller',
+      body: alert.message || 'Une alerte température est ouverte sur un capteur HACCP.',
+      channelId: 'haccp-sensor-alerts',
+      data: {
+        type: 'haccp_sensor_temperature_alert',
+        alertId: alert.id,
+        sensorId: alert.sensorId,
+        equipmentId: sensor?.assignedEquipment?.id ?? (alert.payload as any)?.equipmentId ?? null,
+        severity: alert.severity,
+        manualTest: true,
+      },
+    });
+    if (!result.sent) {
+      this.logger.warn(`Manual HACCP alert push test sent 0 notifications for alert ${alert.id}`);
+    }
+    return {
+      ok: true,
+      alertId: alert.id,
+      sent: result.sent,
+      activeTokens: result.activeTokens ?? result.sent,
+    };
+  }
+
   async update(organizationId: string, id: string, dto: UpdateSensorDto) {
     const current = await this.ensureSensor(organizationId, id);
     const type = dto.type ? this.normalizeType(dto.type) : undefined;
@@ -645,7 +682,7 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
 
   private async sendTemperatureAlertNotification(notification: TemperatureAlertNotification) {
     if (!notification.alertId) return;
-    await this.mobilePushService.sendToOrganization(notification.organizationId, {
+    const result = await this.mobilePushService.sendToOrganization(notification.organizationId, {
       title: notification.title,
       body: notification.body,
       channelId: 'haccp-sensor-alerts',
@@ -657,6 +694,9 @@ export class HaccpSensorsService implements OnModuleInit, OnModuleDestroy {
         severity: notification.severity,
       },
     });
+    if (!result.sent) {
+      this.logger.warn(`No mobile push sent for HACCP sensor alert ${notification.alertId}`);
+    }
   }
 
   private async recordScheduledHaccpTemperatureReading(tx: any, params: { sensor: any; equipment?: any; equipmentId: string; temperature: number; measuredAt: Date }) {

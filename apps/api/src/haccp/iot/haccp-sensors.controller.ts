@@ -33,6 +33,11 @@ export class HaccpSensorsController {
     return this.service.temperatureAlerts(this.org(user));
   }
 
+  @Post('alerts/:alertId/test-push')
+  testAlertPush(@CurrentUser() user: AuthenticatedUser, @Param('alertId') alertId: string) {
+    return this.service.testTemperatureAlertPush(this.org(user), alertId);
+  }
+
   @Post('pairing/start')
   startPairing(@CurrentUser() user: AuthenticatedUser, @Body() dto: PairingStartDto) {
     return this.service.startPairing(this.org(user), this.actor(user), dto);

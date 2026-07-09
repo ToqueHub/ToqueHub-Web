@@ -59,6 +59,26 @@ export class MobilePushService {
     return { ok: true };
   }
 
+  async status(organizationId: string, userId: string) {
+    const [organizationActiveTokens, userActiveTokens] = await Promise.all([
+      this.prisma.mobilePushToken.count({
+        where: {
+          organizationId,
+          isActive: true,
+          user: { isActive: true, organizationId },
+        },
+      }),
+      this.prisma.mobilePushToken.count({
+        where: {
+          organizationId,
+          userId,
+          isActive: true,
+        },
+      }),
+    ]);
+    return { organizationActiveTokens, userActiveTokens };
+  }
+
   async sendToOrganization(organizationId: string, payload: PushPayload) {
     const tokens = await this.prisma.mobilePushToken.findMany({
       where: {
@@ -69,14 +89,17 @@ export class MobilePushService {
       select: { token: true },
     });
     const uniqueTokens = [...new Set(tokens.map((item) => item.token).filter((token) => this.isExpoPushToken(token)))];
-    if (!uniqueTokens.length) return { sent: 0 };
+    if (!uniqueTokens.length) {
+      this.logger.warn(`No active Expo push tokens for organization ${organizationId}`);
+      return { sent: 0, activeTokens: 0 };
+    }
 
     let sent = 0;
     for (let index = 0; index < uniqueTokens.length; index += 100) {
       const chunk = uniqueTokens.slice(index, index + 100);
       sent += await this.sendChunk(organizationId, chunk, payload);
     }
-    return { sent };
+    return { sent, activeTokens: uniqueTokens.length };
   }
 
   private async sendChunk(organizationId: string, tokens: string[], payload: PushPayload) {

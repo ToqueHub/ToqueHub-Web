@@ -486,6 +486,9 @@ export const api = {
   haccpTemperatureAlerts(token: string) {
     return request<any>('/haccp/sensors/alerts/temperature', {}, token);
   },
+  haccpTestSensorAlertPush(token: string, alertId: string) {
+    return request<any>(`/haccp/sensors/alerts/${encodeURIComponent(alertId)}/test-push`, { method: 'POST' }, token);
+  },
   haccpSensor(token: string, id: string) {
     return request<any>(`/haccp/sensors/${id}`, {}, token);
   },
