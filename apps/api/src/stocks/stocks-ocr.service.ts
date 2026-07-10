@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { extname, join, resolve } from 'path';
 import {
@@ -13,6 +13,7 @@ import {
   StockReceptionStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { MistralClientService } from '../mistral/mistral-client.service';
 import { SaveOcrCorrectionDto } from './dto/stocks-ocr.dto';
 import { StocksMarginsService } from './stocks-margins.service';
 
@@ -187,7 +188,7 @@ interface BusinessExtraction {
 export class StocksOcrService {
   private readonly logger = new Logger(StocksOcrService.name);
 
-  constructor(private readonly prisma: PrismaService, private readonly marginsService: StocksMarginsService) {}
+  constructor(private readonly prisma: PrismaService, private readonly marginsService: StocksMarginsService, private readonly mistralClient: MistralClientService) {}
 
   private assertOcr(actor: Actor) {
     if (!OCR_ROLES.includes(actor.role)) throw new ForbiddenException('Droits OCR Stocks insuffisants');
@@ -232,6 +233,7 @@ export class StocksOcrService {
           mimeType: file.mimetype,
           sizeBytes: file.size,
           storagePath: relativePath,
+          contentSha256: createHash('sha256').update(file.buffer).digest('hex'),
           sourceModule: 'stocks',
           sourceType: 'ocr-reception',
           status: DocumentStatus.UPLOADED,
@@ -383,6 +385,8 @@ export class StocksOcrService {
       include: { ocrDocument: { include: { document: true } } },
     });
     if (!extraction) throw new NotFoundException('Extraction introuvable');
+    const alreadyValidated = await this.prisma.stockReception.findFirst({ where: { organizationId, extractionId } });
+    if (alreadyValidated) throw new BadRequestException('Cette extraction OCR a déjà été validée en réception.');
     if (dto.supplierId) await this.ensureSupplier(organizationId, dto.supplierId);
     if (dto.siteId) await this.ensureSite(organizationId, dto.siteId);
     if (dto.locationId) await this.ensureLocation(organizationId, dto.locationId);
@@ -390,11 +394,13 @@ export class StocksOcrService {
     const lines = corrected.lines.filter((line) => !line.ignored);
     if (!lines.length) throw new BadRequestException('Aucune ligne à réceptionner');
     for (const line of lines) {
-      if (!line.productId) throw new BadRequestException('Chaque ligne validée doit être associée à un produit.');
+      if (!line.productId && !line.createProduct) throw new BadRequestException('Chaque ligne validée doit être associée à un produit ou marquée à créer.');
       if (line.quantity == null || line.quantity <= 0) throw new BadRequestException('Chaque ligne validée doit avoir une quantité strictement positive.');
       if (!line.unitId && !line.unit) throw new BadRequestException('Chaque ligne validée doit avoir une unité.');
     }
     const reception = await this.prisma.$transaction(async (tx) => {
+      const duplicateReception = await tx.stockReception.findFirst({ where: { organizationId, extractionId } });
+      if (duplicateReception) throw new BadRequestException('Cette extraction OCR a déjà été validée en réception.');
       const created = await tx.stockReception.create({
         data: {
           organizationId,
@@ -418,7 +424,9 @@ export class StocksOcrService {
         },
       });
       for (const line of lines) {
-        const product = await tx.product.findFirst({ where: { id: line.productId!, organizationId, isArchived: false }, include: { unit: true } });
+        const product = line.productId
+          ? await tx.product.findFirst({ where: { id: line.productId, organizationId, isArchived: false }, include: { unit: true } })
+          : await this.createProductForReceptionLineTx(tx, organizationId, corrected.supplierId, line);
         if (!product) throw new BadRequestException('Produit introuvable sur une ligne de réception.');
         const unit = line.unitId ? await tx.unit.findFirst({ where: { id: line.unitId, organizationId } }) : product.unit;
         if (!unit) throw new BadRequestException('Unité introuvable sur une ligne de réception.');
@@ -444,8 +452,8 @@ export class StocksOcrService {
             vatRate: this.decimalOrNull(line.vatRate),
             lotNumber: line.lotNumber,
             bestBeforeDate: line.bestBeforeDate ? new Date(line.bestBeforeDate) : null,
-            matchingStatus: line.matchingStatus,
-            matchingScore: this.decimalOrNull(line.matchingScore),
+            matchingStatus: line.productId || line.createProduct ? StockReceptionLineMatchingStatus.RECOGNIZED : line.matchingStatus,
+            matchingScore: line.productId || line.createProduct ? new Prisma.Decimal(1) : this.decimalOrNull(line.matchingScore),
             userCorrection: line as Prisma.InputJsonValue,
             lotId: lot?.id,
           },
@@ -483,6 +491,42 @@ export class StocksOcrService {
       });
     });
     return reception;
+  }
+
+  private async createProductForReceptionLineTx(tx: Tx, organizationId: string, supplierId: string | null, line: ReturnType<StocksOcrService['normalizeCorrectionPayload']>['lines'][number]) {
+    if (!line.createProduct) return null;
+    const name = String(line.nameOriginal || line.ocrLabel || '').trim();
+    if (!name) throw new BadRequestException('Le produit à créer doit avoir un nom.');
+    if (!line.unitId) throw new BadRequestException(`Le produit « ${name} » doit avoir une unité ToqueHub sélectionnée.`);
+    const unit = await tx.unit.findFirst({ where: { id: line.unitId, organizationId, isArchived: false } });
+    if (!unit) throw new BadRequestException(`Unité introuvable pour le produit « ${name} ».`);
+    if (line.categoryId) {
+      const category = await tx.category.findFirst({ where: { id: line.categoryId, organizationId, isArchived: false } });
+      if (!category) throw new BadRequestException(`Catégorie introuvable pour le produit « ${name} ».`);
+    }
+    const sku = line.reference?.trim() || null;
+    const existing = await tx.product.findFirst({
+      where: {
+        organizationId,
+        isArchived: false,
+        OR: [{ name: { equals: name, mode: 'insensitive' } }, ...(sku ? [{ sku }] : [])],
+      },
+      include: { unit: true },
+    });
+    if (existing) return existing;
+    return tx.product.create({
+      data: {
+        organizationId,
+        name,
+        sku,
+        description: line.descriptionOriginal || null,
+        unitId: unit.id,
+        categoryId: line.categoryId || null,
+        primarySupplierId: supplierId || null,
+        averagePrice: this.decimalOrNull(line.unitPrice) ?? new Prisma.Decimal(0),
+      },
+      include: { unit: true },
+    });
   }
 
   private async processOcr(organizationId: string, actor: Actor, documentId: string, ocrDocumentId: string) {
@@ -646,13 +690,10 @@ export class StocksOcrService {
   }
 
   private async analyzeOcrWithMistralAi(organizationId: string, markdown: string, rawJson: any, fallback: BusinessExtraction): Promise<Partial<BusinessExtraction>> {
-    const apiKey = await this.resolveMistralApiKey(organizationId);
-    if (!apiKey) return this.aiFallback(fallback, 'Clé Mistral absente');
     const references = await this.ocrReferenceContext(organizationId);
     const prompt = this.invoiceUnderstandingInstructions();
-    const payload = {
-      model: OCR_AI_MODEL,
-      messages: [
+    try {
+      const parsed = await this.mistralClient.chatJson<any>(organizationId, [
         { role: 'system', content: prompt },
         {
           role: 'user',
@@ -663,27 +704,9 @@ export class StocksOcrService {
             ocrPages: Array.isArray(rawJson?.pages) ? rawJson.pages.slice(0, 6).map((page: any) => ({ markdown: page.markdown, text: page.text })).filter(Boolean) : [],
           }),
         },
-      ],
-      temperature: 0,
-      response_format: this.aiResponseFormat('toquehub_stock_ocr_analysis'),
-    };
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), Number(process.env.OCR_AI_TIMEOUT_MS ?? 60_000));
-    try {
-      const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-      const json: any = await response.json().catch(() => ({}));
-      if (!response.ok) throw new BadRequestException(`Analyse IA Mistral refusée (${response.status}).`);
-      const content = json?.choices?.[0]?.message?.content;
-      const parsed = this.parseAiJsonContent(content);
+      ], 'toquehub_stock_ocr_analysis', this.aiAnalysisSchema());
       return this.normalizeAiExtraction(parsed, fallback);
-    } finally {
-      clearTimeout(timeout);
-    }
+    } catch (error: any) { return this.aiFallback(fallback, error?.message || 'Analyse IA indisponible'); }
   }
 
   private extractMistralOcrDocumentAnnotation(rawJson: any, fallback: BusinessExtraction): Partial<BusinessExtraction> | null {
@@ -1994,6 +2017,7 @@ export class StocksOcrService {
       lines: (dto.lines || []).map((line) => ({
         ...line,
         productId: line.productId || null,
+        createProduct: Boolean(line.createProduct && !line.productId),
         unitId: line.unitId || null,
         quantity: line.quantity ?? null,
         unitPrice: line.unitPrice ?? null,

@@ -21,6 +21,10 @@ export class CorrectedReceptionLineDto {
   productId?: string;
 
   @IsOptional()
+  @IsBoolean()
+  createProduct?: boolean;
+
+  @IsOptional()
   @IsUUID()
   unitId?: string;
 

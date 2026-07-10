@@ -105,6 +105,7 @@ import { TechnicalSheetsApp } from './TechnicalSheetsApp';
 import { ProductionApp } from './ProductionApp';
 import { MenusApp } from './MenusApp';
 import { HaccpApp } from './HaccpApp';
+import { StockAssistantPanel } from './StockAssistantPanel';
 
 import { ApiError, api } from '../api/client';
 import type {
@@ -119,6 +120,8 @@ import type {
   Inventory,
   Location,
   Product,
+  Article,
+  ArticlesResponse,
   ProductImportCommitResult,
   ProductImportField,
   ProductImportPreview,
@@ -179,6 +182,10 @@ const movementLabels: Record<StockMovementType, string> = {
   INVENTORY: 'Inventaire',
   TRANSFER: 'Transfert',
 };
+const movementOptions: Array<[StockMovementType, string]> = [
+  ['RECEPTION', 'Réception'], ['IN', 'Entrée'], ['OUT', 'Sortie'], ['PRODUCTION', 'Production'],
+  ['LOSS', 'Perte'], ['CORRECTION', 'Correction'], ['INVENTORY', 'Inventaire'], ['TRANSFER', 'Transfert'],
+];
 
 const apps = [
   {
@@ -363,15 +370,13 @@ const apps = [
   },
 ];
 
-type ActiveTab = 'overview' | 'applications' | 'settings' | 'organization-general' | 'organization-documents' | 'users' | 'architecture' | 'stocks-dashboard' | 'stocks-margins' | 'inventory' | 'movements' | 'products' | 'categories' | 'units' | 'suppliers' | 'inventories' | 'locations' | 'audit' | 'rnm-dashboard' | 'rnm-history' | 'rnm-favorites' | 'rnm-about' | 'hr-dashboard' | 'hr-collaborators' | 'hr-departments' | 'hr-positions' | 'hr-rotations' | 'hr-orgchart' | 'planning-dashboard' | 'planning-planning' | 'planning-settings' | 'planning-attendance' | 'planning-day' | 'planning-week' | 'planning-month' | 'planning-assignments' | 'planning-absences' | 'planning-replacements' | 'planning-templates' | 'planning-requirements' | 'technical-sheets-dashboard' | 'technical-sheets-recipes' | 'technical-sheets-categories' | 'technical-sheets-costs' | 'technical-sheets-allergens' | 'technical-sheets-production' | 'production-dashboard' | 'production-orders' | 'production-calendar' | 'production-today' | 'production-assignments' | 'production-materials' | 'production-exports' | 'production-history' | 'menus-dashboard' | 'menus-list' | 'menus-calendar' | 'menus-cycles' | 'menus-diets' | 'menus-guests' | 'menus-exports' | 'menus-history' | 'haccp-dashboard' | 'haccp-setup' | 'haccp-sensors' | 'haccp-alerts' | 'haccp-temperatures' | 'haccp-cleaning' | 'haccp-traceability' | 'haccp-receptions' | 'haccp-process' | 'haccp-oil' | 'haccp-production' | 'haccp-products' | 'haccp-labels' | 'haccp-reports';
+type ActiveTab = 'overview' | 'applications' | 'settings' | 'organization-general' | 'organization-documents' | 'users' | 'architecture' | 'stocks-dashboard' | 'stocks-margins' | 'articles' | 'inventory' | 'movements' | 'products' | 'categories' | 'units' | 'suppliers' | 'inventories' | 'locations' | 'audit' | 'rnm-dashboard' | 'rnm-history' | 'rnm-favorites' | 'rnm-about' | 'hr-dashboard' | 'hr-collaborators' | 'hr-departments' | 'hr-positions' | 'hr-rotations' | 'hr-orgchart' | 'planning-dashboard' | 'planning-planning' | 'planning-settings' | 'planning-attendance' | 'planning-day' | 'planning-week' | 'planning-month' | 'planning-assignments' | 'planning-absences' | 'planning-replacements' | 'planning-templates' | 'planning-requirements' | 'technical-sheets-dashboard' | 'technical-sheets-recipes' | 'technical-sheets-categories' | 'technical-sheets-costs' | 'technical-sheets-allergens' | 'technical-sheets-production' | 'production-dashboard' | 'production-orders' | 'production-calendar' | 'production-today' | 'production-assignments' | 'production-materials' | 'production-exports' | 'production-history' | 'menus-dashboard' | 'menus-list' | 'menus-calendar' | 'menus-cycles' | 'menus-diets' | 'menus-guests' | 'menus-exports' | 'menus-history' | 'haccp-dashboard' | 'haccp-setup' | 'haccp-sensors' | 'haccp-alerts' | 'haccp-temperatures' | 'haccp-cleaning' | 'haccp-traceability' | 'haccp-receptions' | 'haccp-process' | 'haccp-oil' | 'haccp-production' | 'haccp-products' | 'haccp-labels' | 'haccp-reports';
 type StocksSettingsTab = 'categories' | 'units' | 'movements' | 'locations' | 'audit';
 
 const STOCKS_ALL_TABS: ActiveTab[] = [
   'stocks-dashboard',
+  'articles',
   'stocks-margins',
-  'inventory',
-  'movements',
-  'products',
   'categories',
   'units',
   'suppliers',
@@ -384,9 +389,8 @@ const STOCKS_SETTINGS_TABS: StocksSettingsTab[] = ['categories', 'units', 'movem
 const isStocksSettingsRoute = (tab: ActiveTab): tab is StocksSettingsTab => STOCKS_SETTINGS_TABS.includes(tab as StocksSettingsTab);
 const STOCKS_NAV_TABS: Array<{ tab: ActiveTab; label: string }> = [
   { tab: 'stocks-dashboard', label: 'Tableau de bord' },
+  { tab: 'articles', label: 'Produits' },
   { tab: 'suppliers', label: 'Fournisseur' },
-  { tab: 'products', label: 'Produits' },
-  { tab: 'inventory', label: 'Stocks' },
   { tab: 'inventories', label: 'Inventaire' },
   { tab: 'categories', label: 'Réglage' },
 ];
@@ -421,6 +425,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [categories, setCategories] = useState<Category[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [articles, setArticles] = useState<ArticlesResponse | null>(null);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [stocks, setStocks] = useState<Stock[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
@@ -476,6 +481,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showUnitModal, setShowUnitModal] = useState(false);
   const [showProductModal, setShowProductModal] = useState(false);
+  const [showAddImportModal, setShowAddImportModal] = useState(false);
   const [showProductImportModal, setShowProductImportModal] = useState(false);
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const [showMovementModal, setShowMovementModal] = useState(false);
@@ -502,6 +508,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [supplierPrefillName, setSupplierPrefillName] = useState('');
   const [apiKeysPanelHint, setApiKeysPanelHint] = useState(false);
   const [showStocksOnboarding, setShowStocksOnboarding] = useState(false);
+  const [showStockAssistant, setShowStockAssistant] = useState(false);
   const [confirmation, setConfirmation] = useState<Confirmation>(null);
   const [appActionLoading, setAppActionLoading] = useState(false);
   const [selectedStoreApp, setSelectedStoreApp] = useState<AppDefinition | null>(null);
@@ -585,13 +592,14 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     setLoading(true);
     setError(undefined);
     try {
-      const [summaryResult, modularDashboardResult, nextCategories, nextUnits, nextProducts, nextSuppliers, nextStocks, nextMovements, nextSites, nextLocations, nextInventories, nextAuditEntries, usersResult, rolesResult, devConfig, hrData] =
+      const [summaryResult, modularDashboardResult, nextCategories, nextUnits, nextProducts, nextArticles, nextSuppliers, nextStocks, nextMovements, nextSites, nextLocations, nextInventories, nextAuditEntries, usersResult, rolesResult, devConfig, hrData] =
         await Promise.all([
           api.dashboardSummary(token).catch(() => undefined),
           api.modularDashboard(token).catch(() => undefined),
           api.categories(token),
           api.units(token),
           api.products(token),
+          api.articles(token).catch(() => ({ items: [], summary: { articleCount: 0, articlesWithStock: 0, articlesWithoutStock: 0, stockValue: 0, lowStockCount: 0 } })),
           api.suppliers(token),
           api.stocks(token),
           api.movements(token),
@@ -616,6 +624,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       setCategories(nextCategories);
       setUnits(nextUnits);
       setProducts(nextProducts);
+      setArticles(nextArticles);
       setSuppliers(nextSuppliers);
       setStocks(nextStocks);
       setMovements(nextMovements);
@@ -968,9 +977,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       defaultTab: 'stocks-dashboard',
       submenu: [
         { tab: 'stocks-dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
+        { tab: 'articles', label: 'Produits', icon: Package },
         { tab: 'suppliers', label: 'Fournisseur', icon: UsersRound },
-        { tab: 'products', label: 'Produits', icon: ChefHat },
-        { tab: 'inventory', label: 'Stocks', icon: Package },
         { tab: 'inventories', label: 'Inventaire', icon: ClipboardList },
         { tab: 'categories', label: 'Réglage', icon: Settings, matches: STOCKS_SETTINGS_TABS },
       ]
@@ -1450,7 +1458,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     setProductSearch('');
     setProductSupplierFilter('');
     setProductCategoryFilter(categoryId);
-    goToTab('products');
+    goToTab('articles');
   }
 
   function manageApplications() {
@@ -1880,6 +1888,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     users: 'Utilisateurs',
     architecture: 'Architecture',
     'stocks-dashboard': 'Stocks',
+    'articles': 'Produits',
     'stocks-margins': 'Marges',
     inventory: 'Stocks',
     movements: 'Mouvements',
@@ -2438,7 +2447,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                             <div className="card-modern dashboard-widget-card">
                               <div className="card-title-container">
                                 <span className="card-title"><History size={18}/> Derniers mouvements</span>
-                                <button className="btn btn-secondary btn-sm" onClick={() => setActiveTab('inventory')}>Détails</button>
+                                <button className="btn btn-secondary btn-sm" onClick={() => setActiveTab('articles')}>Détails</button>
                               </div>
                               <MiniMovements movements={recentMovements} />
                             </div>
@@ -2747,12 +2756,26 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   ocrStatuses={ocrStatuses}
                   readiness={stocksReadiness}
                   onCreateMovement={() => setShowMovementModal(true)}
-                  onImportOcr={() => setShowOcrImportModal(true)}
+                  onImportOcr={() => setShowAddImportModal(true)}
                   onOpenExtraction={handleOpenOcrExtraction}
-                  onOpenStocks={() => setActiveTab('inventory')}
+                  onOpenStocks={() => setActiveTab('articles')}
                   onNavigate={goToTab}
                   onStartOnboarding={() => setShowStocksOnboarding(true)}
-                  onCreateProduct={() => setShowProductModal(true)}
+                  onCreateProduct={() => setShowAddImportModal(true)}
+                  onOpenAssistant={() => setShowStockAssistant(true)}
+                />
+              )}
+
+              {activeTab === 'articles' && (
+                <ArticlesPage
+                  data={articles ?? { items: [], summary: { articleCount: 0, articlesWithStock: 0, articlesWithoutStock: 0, stockValue: 0, lowStockCount: 0 } }}
+                  categories={categories}
+                  suppliers={suppliers}
+                  onAdd={() => setShowAddImportModal(true)}
+                  onMovement={() => setShowMovementModal(true)}
+                  onInventory={() => setShowInventoryModal(true)}
+                  onEdit={(article) => setSelectedProductId(article.product.id)}
+                  onRefresh={refresh}
                 />
               )}
 
@@ -2814,8 +2837,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   <div className="card-modern">
                     <div className="section-header-modern">
                       <div className="section-info">
-                        <span className="card-title">Inventaire des Stocks</span>
-                        <span className="section-tagline">Quantités actuelles en stock par produit.</span>
+                        <span className="card-title">Stock physique</span>
+                        <span className="section-tagline">Quantités réellement disponibles par produit, lot, site et emplacement.</span>
                       </div>
                       <button className="btn btn-primary" onClick={() => setShowMovementModal(true)}>
                         <Plus size={16} /> Enregistrer un mouvement
@@ -2866,7 +2889,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                                 <div className="empty-state">
                                   <div className="empty-state-icon">📦</div>
                                   <span className="empty-state-title">Aucun produit en stock</span>
-                                  <span className="empty-state-desc">Aucun produit ne correspond à vos filtres ou aucun mouvement de stock n'a été enregistré.</span>
+                                  <span className="empty-state-desc">Aucun mouvement n’a encore créé de quantité. Les produits du catalogue sans stock restent visibles dans « Catalogue produits ».</span>
                                   <button className="btn btn-primary" onClick={() => setShowMovementModal(true)}>
                                     <Plus size={16} /> Ajouter un mouvement
                                   </button>
@@ -2937,7 +2960,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                         style={{ maxWidth: '200px' }}
                       >
                         <option value="">Tous les types</option>
-                        {Object.entries(movementLabels).map(([value, label]) => (
+                        {movementOptions.map(([value, label]) => (
                           <option key={value} value={value}>{label}</option>
                         ))}
                       </select>
@@ -3020,15 +3043,12 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   <div className="card-modern">
                     <div className="section-header-modern">
                       <div className="section-info">
-                        <span className="card-title">Catalogue des Produits</span>
-                        <span className="section-tagline">Liste globale des produits référencés dans votre cuisine.</span>
+                        <span className="card-title">Catalogue produits</span>
+                        <span className="section-tagline">Références utilisées ou achetées, même sans quantité en stock.</span>
                       </div>
                       <div className="row-actions">
-                        <button className="btn btn-secondary" onClick={() => setShowProductImportModal(true)}>
-                          <UploadCloud size={16} /> Importer produits
-                        </button>
-                        <button className="btn btn-primary" onClick={() => setShowProductModal(true)}>
-                          <Plus size={16} /> Nouveau Produit
+                        <button className="btn btn-primary" onClick={() => setShowAddImportModal(true)}>
+                          <Plus size={16} /> Ajouter / importer
                         </button>
                       </div>
                     </div>
@@ -3080,11 +3100,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                                   <div className="empty-state-icon">🍳</div>
                                   <span className="empty-state-title">Aucun produit trouvé</span>
                                   <span className="empty-state-desc">Ajustez la recherche ou les filtres fournisseur/catégorie.</span>
-                                  <button className="btn btn-primary" onClick={() => setShowProductModal(true)}>
-                                    <Plus size={16} /> Ajouter un produit
-                                  </button>
-                                  <button className="btn btn-secondary" onClick={() => setShowProductImportModal(true)}>
-                                    <UploadCloud size={16} /> Importer un CSV
+                                  <button className="btn btn-primary" onClick={() => setShowAddImportModal(true)}>
+                                    <Plus size={16} /> Ajouter / importer
                                   </button>
                                 </div>
                               </td>
@@ -3262,6 +3279,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       </Modal>
 
       {/* Product Modal */}
+      {showAddImportModal ? <div className="drawer-backdrop" onClick={() => setShowAddImportModal(false)}><aside className="side-drawer" onClick={(event) => event.stopPropagation()}><div className="side-drawer-header"><div><span className="stocks-onboarding-kicker">Articles</span><h2>Ajouter / importer</h2><span>Ajoutez une référence ou réceptionnez vos achats.</span></div><button className="icon-btn" onClick={() => setShowAddImportModal(false)}><X size={18} /></button></div><div className="side-drawer-body"><AddImportChooser onManual={() => { setShowAddImportModal(false); setShowProductModal(true); }} onCsv={() => { setShowAddImportModal(false); setShowProductImportModal(true); }} onOcr={() => { setShowAddImportModal(false); setShowOcrImportModal(true); }} /></div></aside></div> : null}
+
       {showProductImportModal ? (
         <ProductImportWizard
           onClose={() => setShowProductImportModal(false)}
@@ -3348,6 +3367,34 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           />
         )}
       </Modal>
+      <StockAssistantPanel
+        isOpen={showStockAssistant}
+        onClose={() => setShowStockAssistant(false)}
+        token={token}
+        products={products}
+        units={units}
+        suppliers={suppliers}
+        locations={locations}
+        onApplied={() => { void refresh(); }}
+      />
+
+      <button
+        className="stock-assistant-fab"
+        onClick={() => setShowStockAssistant(true)}
+        title="Discuter avec Kokki"
+      >
+        <img 
+          src="/kokkimini-transparent.png" 
+          alt="Kokki" 
+          style={{ 
+            width: '100%', 
+            height: '100%', 
+            objectFit: 'contain',
+            transform: 'scale(3.3) translateY(-2px)',
+            filter: 'drop-shadow(0 3px 6px rgba(0, 0, 0, 0.16))'
+          }} 
+        />
+      </button>
 
       <Modal isOpen={showSiteModal} onClose={() => setShowSiteModal(false)} title="Créer un site">
         <SiteForm onSubmit={handleCreateSite} onClose={() => setShowSiteModal(false)} />
@@ -3402,7 +3449,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           }}
           onOpenStocks={() => {
             setShowStocksOnboarding(false);
-            setActiveTab('inventory');
+            setActiveTab('articles');
           }}
           onOpenOcr={() => {
             setShowStocksOnboarding(false);
@@ -5891,6 +5938,168 @@ const PRODUCT_IMPORT_FIELD_LABELS: Record<ProductImportField, string> = {
   preparationInstructions: 'Préparation',
 };
 
+function AddImportChooser({ onManual, onCsv, onOcr }: { onManual: () => void; onCsv: () => void; onOcr: () => void }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%', padding: '0.25rem 0' }}>
+      <p style={{ 
+        margin: '0 0 0.5rem 0', 
+        color: '#475569', 
+        fontSize: '0.85rem', 
+        lineHeight: '1.5',
+        background: '#f8fafc',
+        border: '1px solid #e2e8f0',
+        padding: '0.85rem 1rem',
+        borderRadius: '12px',
+        fontWeight: 500
+      }}>
+        Choisissez votre source. Le catalogue peut contenir des produits sans stock ; seuls les réceptions et mouvements modifient le stock physique.
+      </p>
+
+      {/* Button 1: Créer manuellement */}
+      <button 
+        type="button" 
+        onClick={onManual} 
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1rem',
+          padding: '1.2rem 1.25rem',
+          background: '#ffffff',
+          border: '1.5px solid #e2e8f0',
+          borderRadius: '16px',
+          cursor: 'pointer',
+          textAlign: 'left',
+          width: '100%',
+          transition: 'all 0.2s ease',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+        }}
+        onMouseOver={(e) => {
+          e.currentTarget.style.borderColor = '#10b981';
+          e.currentTarget.style.transform = 'translateY(-1.5px)';
+          e.currentTarget.style.boxShadow = '0 6px 15px rgba(16, 185, 129, 0.08)';
+        }}
+        onMouseOut={(e) => {
+          e.currentTarget.style.borderColor = '#e2e8f0';
+          e.currentTarget.style.transform = 'none';
+          e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.02)';
+        }}
+      >
+        <div style={{
+          width: '40px',
+          height: '40px',
+          borderRadius: '12px',
+          background: 'rgba(16, 185, 129, 0.08)',
+          color: '#10b981',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0
+        }}>
+          <Plus size={20} />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0f172a' }}>Créer manuellement</span>
+          <small style={{ fontSize: '0.78rem', color: '#64748b', lineHeight: 1.3 }}>Ajouter une référence au catalogue, sans créer de stock.</small>
+        </div>
+      </button>
+
+      {/* Button 2: Importer un CSV */}
+      <button 
+        type="button" 
+        onClick={onCsv} 
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1rem',
+          padding: '1.2rem 1.25rem',
+          background: '#ffffff',
+          border: '1.5px solid #e2e8f0',
+          borderRadius: '16px',
+          cursor: 'pointer',
+          textAlign: 'left',
+          width: '100%',
+          transition: 'all 0.2s ease',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+        }}
+        onMouseOver={(e) => {
+          e.currentTarget.style.borderColor = '#3b82f6';
+          e.currentTarget.style.transform = 'translateY(-1.5px)';
+          e.currentTarget.style.boxShadow = '0 6px 15px rgba(59, 130, 246, 0.08)';
+        }}
+        onMouseOut={(e) => {
+          e.currentTarget.style.borderColor = '#e2e8f0';
+          e.currentTarget.style.transform = 'none';
+          e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.02)';
+        }}
+      >
+        <div style={{
+          width: '40px',
+          height: '40px',
+          borderRadius: '12px',
+          background: 'rgba(59, 130, 246, 0.08)',
+          color: '#3b82f6',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0
+        }}>
+          <UploadCloud size={20} />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0f172a' }}>Importer un CSV</span>
+          <small style={{ fontSize: '0.78rem', color: '#64748b', lineHeight: 1.3 }}>Contrôler les colonnes et les doublons avant d’enrichir le catalogue.</small>
+        </div>
+      </button>
+
+      {/* Button 3: Analyser un document OCR (Gradient premium style) */}
+      <button 
+        type="button" 
+        onClick={onOcr} 
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1rem',
+          padding: '1.25rem 1.25rem',
+          background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+          border: 'none',
+          borderRadius: '16px',
+          cursor: 'pointer',
+          textAlign: 'left',
+          width: '100%',
+          transition: 'all 0.2s ease',
+          boxShadow: '0 4px 15px rgba(16, 185, 129, 0.2)'
+        }}
+        onMouseOver={(e) => {
+          e.currentTarget.style.transform = 'translateY(-1.5px)';
+          e.currentTarget.style.boxShadow = '0 8px 25px rgba(16, 185, 129, 0.35)';
+        }}
+        onMouseOut={(e) => {
+          e.currentTarget.style.transform = 'none';
+          e.currentTarget.style.boxShadow = '0 4px 15px rgba(16, 185, 129, 0.2)';
+        }}
+      >
+        <div style={{
+          width: '40px',
+          height: '40px',
+          borderRadius: '12px',
+          background: 'rgba(255, 255, 255, 0.15)',
+          color: '#ffffff',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0
+        }}>
+          <FileText size={20} />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <span style={{ fontSize: '0.95rem', fontWeight: 850, color: '#ffffff' }}>Analyser un document OCR</span>
+          <small style={{ fontSize: '0.78rem', color: 'rgba(255, 255, 255, 0.85)', lineHeight: 1.3 }}>Lire une facture, un BL ou une commande, puis valider la réception.</small>
+        </div>
+      </button>
+    </div>
+  );
+}
+
 function ProductImportWizard({
   onClose,
   onDownloadTemplate,
@@ -6396,7 +6605,299 @@ function StocksModuleTabs({ activeTab, onNavigate }: { activeTab: ActiveTab; onN
   );
 }
 
-function StocksDashboardPage({ activeTab, products, suppliers, sites, locations, stocks, movements, ocrStatuses, readiness, onCreateMovement, onImportOcr, onOpenExtraction, onOpenStocks, onNavigate, onStartOnboarding, onCreateProduct }: { activeTab: ActiveTab; products: Product[]; suppliers: Supplier[]; sites: Site[]; locations: Location[]; stocks: Stock[]; movements: StockMovement[]; ocrStatuses: StocksOcrStatus[]; readiness: StocksReadiness; onCreateMovement: () => void; onImportOcr: () => void; onOpenExtraction: (extractionId: string) => Promise<void>; onOpenStocks: () => void; onNavigate: (tab: ActiveTab) => void; onStartOnboarding: () => void; onCreateProduct: () => void }) {
+function ArticlesPage({ data, categories, suppliers, onAdd, onMovement, onInventory, onEdit, onRefresh }: { data: ArticlesResponse; categories: Category[]; suppliers: Supplier[]; onAdd: () => void; onMovement: () => void; onInventory: () => void; onEdit: (article: Article) => void; onRefresh: () => Promise<void> }) {
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('');
+  const [supplier, setSupplier] = useState('');
+  const [status, setStatus] = useState('');
+  const [selected, setSelected] = useState<Article | null>(null);
+  const items = data.items.filter((article) => {
+    const product = article.product;
+    const haystack = `${product.name} ${product.sku ?? ''} ${product.category?.name ?? ''} ${product.primarySupplier?.name ?? ''}`.toLowerCase();
+    return (!search || haystack.includes(search.toLowerCase()))
+      && (!category || product.categoryId === category)
+      && (!supplier || product.primarySupplierId === supplier)
+      && (!status || article.stock.status === status);
+  });
+  const statusLabels: Record<string, string> = { NORMAL: 'En stock', LOW: 'Stock faible', OUT: 'Rupture', NEGATIVE: 'Négatif', NO_STOCK: 'Aucun stock' };
+  const statusClass: Record<string, string> = { NORMAL: 'badge-reception', LOW: 'badge-correction', OUT: 'badge-loss', NEGATIVE: 'badge-loss', NO_STOCK: 'badge-inventory' };
+  return (
+    <div className="stocks-dashboard-grid articles-page">
+      <div className="section-header-modern" style={{ marginBottom: 0 }}>
+        <div className="section-info">
+          <span className="card-title" style={{ fontSize: '1.55rem' }}>Produits</span>
+          <span className="section-tagline">Catalogue et stock physique réunis dans une seule vue.</span>
+        </div>
+        <div className="row-actions">
+          <button className="btn btn-secondary" onClick={onInventory}><ClipboardList size={15} /> Inventaire</button>
+          <button className="btn btn-secondary" onClick={onMovement}><ArrowRight size={15} /> Mouvement</button>
+          <button className="btn btn-primary" onClick={onAdd}><Plus size={15} /> Ajouter / importer</button>
+        </div>
+      </div>
+
+      <div className="stocks-metrics-strip">
+        <div className="stocks-metric-item orange" onClick={() => setStatus('')} title="Afficher tous les produits">
+          <div className="metric-icon-wrapper"><Package size={15} /></div>
+          <span className="stocks-metric-value">{data.summary.articleCount}</span>
+          <span className="stocks-metric-label">Produits</span>
+        </div>
+        <div className="stocks-metric-divider"></div>
+        <div className="stocks-metric-item emerald" onClick={() => setStatus('NORMAL')} title="Filtrer : En stock">
+          <div className="metric-icon-wrapper"><Boxes size={15} /></div>
+          <span className="stocks-metric-value">{data.summary.articlesWithStock}</span>
+          <span className="stocks-metric-label">Avec stock</span>
+        </div>
+        <div className="stocks-metric-divider"></div>
+        <div className="stocks-metric-item blue" onClick={() => setStatus('NO_STOCK')} title="Filtrer : Sans stock">
+          <div className="metric-icon-wrapper"><Archive size={15} /></div>
+          <span className="stocks-metric-value">{data.summary.articlesWithoutStock}</span>
+          <span className="stocks-metric-label">Sans stock</span>
+        </div>
+        <div className="stocks-metric-divider"></div>
+        <div className="stocks-metric-item purple">
+          <div className="metric-icon-wrapper"><TrendingUp size={15} /></div>
+          <span className="stocks-metric-value">{Number(data.summary.stockValue).toFixed(2)} €</span>
+          <span className="stocks-metric-label">Valeur stock</span>
+        </div>
+        <div className="stocks-metric-divider"></div>
+        <div className="stocks-metric-item orange" onClick={() => setStatus('LOW')} title="Filtrer : Seuils à surveiller">
+          <div className="metric-icon-wrapper"><AlertTriangle size={15} /></div>
+          <span className="stocks-metric-value">{data.summary.lowStockCount}</span>
+          <span className="stocks-metric-label">Seuils à surveiller</span>
+        </div>
+      </div>
+
+      <div className="articles-page-layout">
+        <div className="articles-table-card">
+          <div className="stocks-filter-bar">
+            <div className="search-input-wrapper">
+              <Search size={16} />
+              <input
+                className="search-input"
+                placeholder="Rechercher un produit, SKU, fournisseur…"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </div>
+            <div className="filter-selects">
+              <select value={category} onChange={(event) => setCategory(event.target.value)}>
+                <option value="">Toutes catégories</option>
+                {categories.filter((item) => !item.isArchived).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select>
+              <select value={supplier} onChange={(event) => setSupplier(event.target.value)}>
+                <option value="">Tous fournisseurs</option>
+                {suppliers.filter((item) => !item.isArchived).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select>
+              <select value={status} onChange={(event) => setStatus(event.target.value)}>
+                <option value="">Tous les statuts</option>
+                <option value="NORMAL">En stock</option>
+                <option value="LOW">Stock faible</option>
+                <option value="OUT">Rupture</option>
+                <option value="NO_STOCK">Aucun stock</option>
+              </select>
+              {(search || category || supplier || status) ? (
+                <button type="button" className="btn-clear-filters" onClick={() => { setSearch(''); setCategory(''); setSupplier(''); setStatus(''); }} title="Réinitialiser les filtres">
+                  <X size={16} />
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="table-wrapper">
+            <table className="table-modern articles-table">
+              <thead>
+                <tr>
+                  <th>Produit</th>
+                  <th>Référence</th>
+                  <th>Fournisseur</th>
+                  <th>Catégorie</th>
+                  <th style={{ textAlign: 'right' }}>Stock actuel</th>
+                  <th style={{ textAlign: 'right' }}>Valeur</th>
+                  <th>Dernier mouvement</th>
+                  <th>Statut</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.length ? items.map((article) => {
+                  const product = article.product;
+                  const movement = article.lastMovement;
+                  const isSelected = selected?.product.id === product.id;
+                  return (
+                    <tr
+                      key={product.id}
+                      className={`clickable-row ${isSelected ? 'active-row' : ''}`}
+                      onClick={() => setSelected(article)}
+                    >
+                      <td>
+                        <strong>{product.name}</strong>
+                        <small style={{ display: 'block', color: 'var(--text-muted)' }}>{product.unit?.symbol ?? 'Unité non définie'}</small>
+                      </td>
+                      <td style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>{product.sku || '—'}</td>
+                      <td>{product.primarySupplier?.name || '—'}</td>
+                      <td>{product.category?.name || 'Sans catégorie'}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 750 }}>{numeric(article.stock.quantity).toFixed(3)} {product.unit?.symbol ?? ''}</td>
+                      <td style={{ textAlign: 'right' }}>{numeric(article.stock.value).toFixed(2)} €</td>
+                      <td>{movement ? new Date(movement.movementDate ?? movement.createdAt).toLocaleDateString('fr-FR') : 'Jamais'}</td>
+                      <td>
+                        <span className={`badge ${statusClass[article.stock.status] ?? 'badge-inventory'}`}>
+                          {statusLabels[article.stock.status] ?? article.stock.status}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                }) : (
+                  <tr>
+                    <td colSpan={8}>
+                      <EmptyMini title="Aucun produit trouvé" text="Les produits sans stock sont inclus dans cette vue." icon="📦" />
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {selected ? (
+          <ArticleDrawer
+            article={selected}
+            onClose={() => setSelected(null)}
+            onEdit={() => onEdit(selected)}
+            onMovement={onMovement}
+            onRefresh={async () => {
+              await onRefresh();
+              setSelected(null);
+            }}
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ArticleDrawer({ article, onClose, onEdit, onMovement, onRefresh }: { article: Article; onClose: () => void; onEdit: () => void; onMovement: () => void; onRefresh: () => Promise<void> }) {
+  const product = article.product;
+  return (
+    <div className="article-drawer-backdrop" onClick={onClose}>
+      <aside className="article-side-panel" onClick={(event) => event.stopPropagation()}>
+        <div className="side-drawer-header">
+          <div>
+            <span className="stocks-onboarding-kicker">Produit</span>
+            <h2>{product.name}</h2>
+            <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+              {product.sku || 'Sans référence'} · {product.unit?.symbol || 'unité non définie'}
+            </span>
+          </div>
+          <button className="close-panel-btn" onClick={onClose} title="Fermer le panneau">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="side-drawer-body">
+          <div className="article-drawer-stock-premium">
+            <span className="stock-label">Stock disponible</span>
+            <strong className="stock-value">
+              {numeric(article.stock.quantity).toFixed(3)} {product.unit?.symbol ?? ''}
+            </strong>
+            <span className="stock-valuation">
+              {article.stock.status === 'NO_STOCK'
+                ? 'Aucun mouvement enregistré pour cet article.'
+                : `Valeur estimée : ${numeric(article.stock.value).toFixed(2)} €`}
+            </span>
+          </div>
+          <div className="article-drawer-actions">
+            <button className="btn btn-primary btn-sm-premium" onClick={onMovement}>
+              <Plus size={14} /> Mouvement
+            </button>
+            <button className="btn btn-secondary btn-sm-premium" onClick={onEdit}>
+              <Edit3 size={14} /> Modifier la fiche
+            </button>
+          </div>
+          <div className="article-drawer-section">
+            <h3>Répartition par site</h3>
+            {article.stockBySite.length ? (
+              <div className="article-detail-list">
+                {article.stockBySite.map((site) => (
+                  <div className="article-detail-row-premium" key={site.siteId ?? 'all'}>
+                    <span className="row-label">{site.siteName || 'Tous sites'}</span>
+                    <strong className="row-value">
+                      {numeric(site.quantity).toFixed(3)} {product.unit?.symbol ?? ''}
+                    </strong>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-muted-premium">Aucune quantité enregistrée.</p>
+            )}
+          </div>
+          <div className="article-drawer-section">
+            <h3>Lots et DLC</h3>
+            {article.lots?.length ? (
+              <div className="article-detail-list">
+                {article.lots.map((lot, index) => (
+                  <div className="article-detail-row-premium lot-row" key={`${lot.lotNumber ?? 'lot'}-${index}`}>
+                    <div className="lot-info">
+                      <span className="lot-number">{lot.lotNumber || 'Lot sans numéro'}</span>
+                      <span className="lot-subtext">
+                        {lot.siteName || 'Tous sites'} · {lot.locationName || 'Tous emplacements'}
+                      </span>
+                    </div>
+                    <div className="lot-qty-expiry">
+                      <strong className="lot-qty">
+                        {numeric(lot.quantity).toFixed(3)} {product.unit?.symbol ?? ''}
+                      </strong>
+                      <span className="lot-expiry">
+                        {lot.expiresAt ? `DLC ${new Date(lot.expiresAt).toLocaleDateString('fr-FR')}` : 'DLC non renseignée'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-muted-premium">Aucun lot renseigné.</p>
+            )}
+          </div>
+          <div className="article-drawer-section">
+            <h3>Informations produit</h3>
+            <div className="article-detail-list">
+              <div className="article-detail-row-premium">
+                <span className="row-label">Fournisseur</span>
+                <strong className="row-value">{product.primarySupplier?.name || '—'}</strong>
+              </div>
+              <div className="article-detail-row-premium">
+                <span className="row-label">Catégorie</span>
+                <strong className="row-value">{product.category?.name || 'Sans catégorie'}</strong>
+              </div>
+              <div className="article-detail-row-premium">
+                <span className="row-label">Seuil minimum</span>
+                <strong className="row-value">
+                  {numeric(product.minimumStock).toFixed(3)} {product.unit?.symbol ?? ''}
+                </strong>
+              </div>
+              <div className="article-detail-row-premium">
+                <span className="row-label">Prix moyen</span>
+                <strong className="row-value">{numeric(product.averagePrice).toFixed(2)} €</strong>
+              </div>
+            </div>
+          </div>
+          <div className="article-drawer-section">
+            <h3>Dernier mouvement</h3>
+            {article.lastMovement ? (
+              <div className="article-detail-row-premium">
+                <span className="row-label">{movementLabels[article.lastMovement.type] || article.lastMovement.type}</span>
+                <strong className="row-value">
+                  {new Date(article.lastMovement.movementDate ?? article.lastMovement.createdAt).toLocaleString('fr-FR')}
+                </strong>
+              </div>
+            ) : (
+              <p className="text-muted-premium">Aucun mouvement pour le moment.</p>
+            )}
+          </div>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function StocksDashboardPage({ activeTab, products, suppliers, sites, locations, stocks, movements, ocrStatuses, readiness, onCreateMovement, onImportOcr, onOpenAssistant, onOpenExtraction, onOpenStocks, onNavigate, onStartOnboarding, onCreateProduct }: { activeTab: ActiveTab; products: Product[]; suppliers: Supplier[]; sites: Site[]; locations: Location[]; stocks: Stock[]; movements: StockMovement[]; ocrStatuses: StocksOcrStatus[]; readiness: StocksReadiness; onCreateMovement: () => void; onImportOcr: () => void; onOpenAssistant: () => void; onOpenExtraction: (extractionId: string) => Promise<void>; onOpenStocks: () => void; onNavigate: (tab: ActiveTab) => void; onStartOnboarding: () => void; onCreateProduct: () => void }) {
   const [hideSetupCard, setHideSetupCard] = useState(() => {
     try {
       return localStorage.getItem('toquehub_stocks_hide_setup_card') === 'true';
@@ -6434,14 +6935,14 @@ function StocksDashboardPage({ activeTab, products, suppliers, sites, locations,
         <span className="welcome-tag"><Package size={14} /> Stocks</span>
         <h1 className="welcome-title">Stocks</h1>
         <p className="welcome-desc">
-          Vue d’ensemble de votre stock. Toute variation passe par un mouvement tracé ; la page Stocks reste en lecture seule.
+          Vue d’ensemble du stock physique. Toute variation passe par un mouvement tracé ; le catalogue produit reste indépendant des quantités.
         </p>
         <div className="stocks-reception-actions">
           <button className="btn btn-primary" onClick={onImportOcr}>
-            <FileText size={16} /> Analyser un bon / facture / BL
+            <Plus size={16} /> Ajouter / importer
           </button>
-          <button className="btn btn-secondary" onClick={onCreateProduct}>
-            <Plus size={16} /> Nouveau Produit
+          <button className="btn btn-secondary" onClick={onOpenAssistant}>
+            <Sparkles size={16} /> Kokki IA
           </button>
         </div>
       </motion.section>
@@ -11229,6 +11730,8 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
   const activeLines = draft.lines.filter((line) => !line.ignored);
   const ignoredLines = draft.lines.filter((line) => line.ignored);
   const missingProducts = activeLines.filter((line) => !line.productId).length;
+  const productsToCreate = activeLines.filter((line) => !line.productId && line.createProduct).length;
+  const blockingMissingProducts = activeLines.filter((line) => !line.productId && !line.createProduct).length;
   const invalidQuantities = activeLines.filter((line) => numeric(line.quantity) <= 0).length;
   const recognized = activeLines.filter((line) => line.matchingStatus === 'RECOGNIZED').length;
   const needsReview = activeLines.filter((line) => line.matchingStatus === 'NEEDS_REVIEW').length;
@@ -11264,12 +11767,22 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
   function assignProductToLine(index: number, product: Product, score = 1) {
     updateLine(index, {
       productId: product.id,
+      createProduct: false,
       productName: product.name,
       unitId: product.unitId,
       matchedUnitSymbol: productUnitSymbol(product) || null,
       matchingStatus: 'RECOGNIZED',
       matchingScore: score,
     });
+  }
+
+  function markAllMissingProductsForCreation() {
+    setDraft((current) => ({
+      ...current,
+      lines: current.lines.map((line) => !line.ignored && !line.productId
+        ? { ...line, createProduct: true, matchingStatus: 'NEEDS_REVIEW', matchingScore: 0 }
+        : line),
+    }));
   }
 
   async function submit(kind: 'draft' | 'create') {
@@ -11529,18 +12042,17 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
               <Info size={13} /> {needsReview} à vérifier
             </span>
             <span className="badge badge-loss" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}>
-              <AlertCircle size={13} /> {missingProducts} non reconnus
+              <AlertCircle size={13} /> {blockingMissingProducts} à décider
             </span>
 
             <button
               type="button"
               className="btn btn-secondary btn-sm"
-              disabled={!missingProducts || creatingAllProducts || creatingProductLineId !== null}
-              onClick={() => void createAllMissingProducts()}
+              disabled={!blockingMissingProducts}
+              onClick={markAllMissingProductsForCreation}
               style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginLeft: 'auto', borderRadius: '8px', padding: '0.4rem 0.8rem', fontSize: '0.8rem', fontWeight: 650 }}
             >
-              <Package size={13} />
-              {creatingAllProducts ? 'Création des produits…' : `Créer ${missingProducts === 1 ? 'le produit' : `les ${missingProducts} produits`}`}
+              <Package size={13} /> {blockingMissingProducts === 1 ? 'Prévoir la création du produit' : `Prévoir la création des ${blockingMissingProducts} produits`}
             </button>
           </div>
         </div>
@@ -11687,12 +12199,11 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
                       {!line.productId ? (
                         <button
                           className="btn btn-secondary btn-sm"
-                          disabled={creatingProductLineId === (line.id ?? `ocr-${index}`)}
-                          onClick={() => void createProductFromLine(line, index)}
+                          onClick={() => updateLine(index, { createProduct: !line.createProduct, matchingStatus: line.createProduct ? 'NOT_FOUND' : 'NEEDS_REVIEW', matchingScore: 0 })}
                           style={{ padding: '0.25rem 0.5rem', flexShrink: 0, borderRadius: '6px' }}
-                          title="Créer un nouveau produit"
+                          title="Le produit sera créé uniquement à la validation de la réception"
                         >
-                          {creatingProductLineId === (line.id ?? `ocr-${index}`) ? '…' : '+'}
+                          {line.createProduct ? 'À créer' : '+ Créer'}
                         </button>
                       ) : null}
                     </div>
@@ -11768,7 +12279,8 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
           <div className="alert-modern error" style={{ margin: '0' }}>
             <AlertCircle size={16} />
             <span>
-              {missingProducts ? `${missingProducts} produit(s) non reconnu(s) dans ToqueHub. ` : ''}
+              {blockingMissingProducts ? `${blockingMissingProducts} produit(s) non reconnu(s) dans ToqueHub. Associez-les ou marquez-les à créer. ` : ''}
+              {productsToCreate ? `${productsToCreate} produit(s) seront créés à la validation de la réception. ` : ''}
               {invalidQuantities ? `${invalidQuantities} quantité(s) invalides.` : ''}
             </span>
           </div>
@@ -11779,7 +12291,7 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
           <button className="btn btn-secondary" disabled={submitting !== null} onClick={() => void submit('draft')} style={{ borderRadius: '10px' }}>
             {submitting === 'draft' ? 'Enregistrement…' : 'Enregistrer le brouillon'}
           </button>
-          <button className="btn btn-primary" disabled={submitting !== null || missingProducts > 0 || invalidQuantities > 0} onClick={() => void submit('create')} style={{ borderRadius: '10px' }}>
+          <button className="btn btn-primary" disabled={submitting !== null || blockingMissingProducts > 0 || invalidQuantities > 0} onClick={() => void submit('create')} style={{ borderRadius: '10px' }}>
             {submitting === 'create' ? 'Création de la réception…' : 'Valider la réception'}
           </button>
         </div>
@@ -12184,12 +12696,15 @@ function hasOcrPriceMismatch(line: StocksOcrLine) {
 }
 
 function isOcrLineReady(line: StocksOcrLine) {
-  return !line.ignored && Boolean(line.productId) && numeric(line.quantity) > 0 && !hasOcrPriceMismatch(line) && !['needs_review', 'missing_product', 'price_mismatch', 'quantity_suspicious'].includes(ocrLineStatus(line));
+  const blockingStatuses = ['needs_review', 'price_mismatch', 'quantity_suspicious'];
+  const status = ocrLineStatus(line);
+  return !line.ignored && Boolean(line.productId || line.createProduct) && numeric(line.quantity) > 0 && !hasOcrPriceMismatch(line) && !blockingStatuses.includes(status) && !(status === 'missing_product' && !line.createProduct);
 }
 
 function ocrLineStatusLabel(line: StocksOcrLine) {
   const status = ocrLineStatus(line);
   if (line.ignored || status === 'non_product_line') return 'Ignorée';
+  if (line.createProduct && !line.productId) return 'À créer';
   if (status === 'price_mismatch') return 'Prix';
   if (status === 'quantity_suspicious') return 'Qté';
   if (status === 'missing_product') return 'Produit';
@@ -12414,7 +12929,7 @@ function MovementForm({ products, suppliers, units, sites, locations, onSubmit, 
               <label>
                 Type de mouvement *
                 <select value={type} onChange={(e) => setType(e.target.value as StockMovementType)} required>
-                  {Object.entries(movementLabels).map(([value, label]) => (
+                  {movementOptions.map(([value, label]) => (
                     <option key={value} value={value}>{label}</option>
                   ))}
                 </select>

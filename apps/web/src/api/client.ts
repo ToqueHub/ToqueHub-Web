@@ -20,6 +20,8 @@ import type {
   Site,
   Stock,
   StockReception,
+  StockProposal,
+  StockConversation,
   StocksDashboard,
   MarginsDashboard,
   MarginProductDetail,
@@ -28,6 +30,7 @@ import type {
   MarginReport,
   MarginSettings,
   StockMovement,
+  ArticlesResponse,
   StockMovementType,
   StocksOcrConfig,
   StocksOcrExtraction,
@@ -276,6 +279,7 @@ function normalizeOcrCorrectionPayload(payload: StocksOcrExtraction['data']) {
       id: line.id,
       ignored: Boolean(line.ignored),
       productId: line.productId || undefined,
+      createProduct: Boolean(line.createProduct && !line.productId),
       unitId: line.unitId || undefined,
       categoryId: line.categoryId || undefined,
       categoryName: line.categoryName || undefined,
@@ -986,6 +990,13 @@ export const api = {
   products(token: string) {
     return request<Product[]>('/products', {}, token);
   },
+  articles(token: string, params?: { search?: string; page?: number; pageSize?: number }) {
+    const query = new URLSearchParams();
+    if (params?.search) query.set('search', params.search);
+    if (params?.page) query.set('page', String(params.page));
+    if (params?.pageSize) query.set('pageSize', String(params.pageSize));
+    return request<ArticlesResponse>(`/articles${query.toString() ? `?${query}` : ''}`, {}, token);
+  },
   createProduct(
     token: string,
     payload: ProductMutationPayload & { name: string; unitId: string },
@@ -1188,6 +1199,23 @@ export const api = {
   },
   createStockReceptionFromOcr(token: string, extractionId: string, payload: StocksOcrExtraction['data']) {
     return request<StockReception>(`/stocks/ocr/extractions/${extractionId}/reception`, { method: 'POST', body: JSON.stringify(normalizeOcrCorrectionPayload(payload)) }, token);
+  },
+  createStockAssistantConversation(token: string, locationId?: string) { return request<StockConversation>('/stock-assistant/conversations', { method: 'POST', body: JSON.stringify({ locationId }) }, token); },
+  stockAssistantConversation(token: string, conversationId: string) { return request<StockConversation>(`/stock-assistant/conversations/${conversationId}`, {}, token); },
+  stockAssistantMessage(token: string, conversationId: string, content: string, locationId?: string) { return request<{ proposalId?: string; assistantMessage: string; state?: Record<string, unknown>; suggestions?: string[]; choices?: import('../types').StockAssistantChoice[]; toolResults?: unknown[]; confidence?: number | null; needsReview?: boolean }> (`/stock-assistant/conversations/${conversationId}/messages`, { method: 'POST', body: JSON.stringify({ content, locationId }) }, token); },
+  stockAssistantProposal(token: string, proposalId: string) { return request<StockProposal>(`/stock-assistant/proposals/${proposalId}`, {}, token); },
+  updateStockAssistantProposal(token: string, proposalId: string, payload: Omit<Partial<StockProposal>, 'lines'> & { version: number; lines: Array<Pick<StockProposal['lines'][number], 'id' | 'productId' | 'rawLabel' | 'supplierSku' | 'quantity' | 'purchaseUnit' | 'inputUnitId' | 'unitPriceExVat' | 'lotNumber' | 'expiryDate' | 'notes'>> }) { return request<StockProposal>(`/stock-assistant/proposals/${proposalId}`, { method: 'PATCH', body: JSON.stringify(payload) }, token); },
+  applyStockAssistantProposal(token: string, proposalId: string, version: number) { return request<StockProposal>(`/stock-assistant/proposals/${proposalId}/apply`, { method: 'POST', body: JSON.stringify({ version }) }, token); },
+  rejectStockAssistantProposal(token: string, proposalId: string) { return request<StockProposal>(`/stock-assistant/proposals/${proposalId}/reject`, { method: 'POST' }, token); },
+  createStockAssistantInvoiceProposal(token: string, documentId: string, locationId?: string) { return request<StockProposal>(`/stock-assistant/documents/${documentId}/proposals`, { method: 'POST', body: JSON.stringify({ locationId }) }, token); },
+  async createStockAssistantInvoiceAttachmentProposal(token: string, file: File, locationId?: string, conversationId?: string) {
+    const body = new FormData();
+    body.append('file', file);
+    if (locationId) body.append('locationId', locationId);
+    if (conversationId) body.append('conversationId', conversationId);
+    const response = await fetch(`${API_URL}/api/stock-assistant/invoice-attachments`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body });
+    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
+    return response.json() as Promise<StockProposal | { status: 'PROCESSING'; documentId: string; message: string }>;
   },
   async viewStocksDocument(token: string, documentId: string) {
     const response = await fetch(`${API_URL}/api/stocks/documents/${documentId}/download`, { headers: { Authorization: `Bearer ${token}` } });

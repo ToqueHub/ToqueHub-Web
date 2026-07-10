@@ -37,6 +37,12 @@ import {
   Store,
   Network,
   MapPin,
+  Key,
+  Lock,
+  Package,
+  BarChart3,
+  MessageSquare,
+  ScanLine,
 } from 'lucide-react';
 import { api } from '../api/client';
 import type { BackupInspection, EstablishmentType, RegulatoryCountryCode, SystemStatus, TeamSize, UserSession } from '../types';
@@ -531,6 +537,7 @@ export function FirstStartLanding({
                         value={mistralApiKey}
                         onChange={setMistralApiKey}
                         onSkip={createEnvironment}
+                        submitting={submitting}
                       />
                     )}
                     {step === 6 && <CreationStep completed={completedCreationSteps} />}
@@ -1778,213 +1785,405 @@ interface MistralKeyStepProps {
   value: string;
   onChange: (value: string) => void;
   onSkip: () => void;
+  submitting: boolean;
 }
 
-function MistralKeyStep({ value, onChange, onSkip }: MistralKeyStepProps) {
+interface MistralKeyStepProps {
+  value: string;
+  onChange: (value: string) => void;
+  onSkip: () => void;
+  submitting: boolean;
+}
+
+function MistralKeyStep({ value, onChange, onSkip, submitting }: MistralKeyStepProps) {
   const [showKey, setShowKey] = useState(false);
+  
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '1.25rem', maxWidth: '580px', margin: '0 auto', padding: '0.5rem 0' }}>
-      {/* Header Badges */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-        <span
-          style={{
+    <div style={{
+      width: '100%',
+      maxWidth: '620px',
+      margin: '0 auto',
+      background: 'linear-gradient(135deg, #ffffff 0%, #f4fbf7 100%)',
+      border: '1px solid #d1fae5',
+      borderRadius: '24px',
+      padding: '2.5rem 2rem',
+      color: '#0f172a',
+      boxShadow: '0 20px 40px rgba(16, 185, 129, 0.05), 0 1px 3px rgba(0, 0, 0, 0.02)',
+      position: 'relative',
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '1.75rem',
+      textAlign: 'left'
+    }}>
+      {/* Glowing background accent behind the robot */}
+      <div style={{
+        position: 'absolute',
+        width: '320px',
+        height: '320px',
+        borderRadius: '50%',
+        background: 'radial-gradient(circle, rgba(16, 185, 129, 0.12) 0%, transparent 70%)',
+        filter: 'blur(30px)',
+        right: '-60px',
+        top: '-60px',
+        zIndex: 1,
+        pointerEvents: 'none'
+      }} />
+
+      {/* Top Header Section (Badge + Titles on left, Robot on right) */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '1.2fr 1fr',
+        gap: '1.5rem',
+        alignItems: 'center',
+        position: 'relative',
+        zIndex: 2
+      }}>
+        {/* Left text column */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+          {/* Badge */}
+          <span style={{
             display: 'inline-flex',
             alignItems: 'center',
-            gap: '0.4rem',
-            background: 'rgba(59, 130, 246, 0.06)',
-            color: '#2563eb',
-            border: '1px solid rgba(59, 130, 246, 0.12)',
+            gap: '4px',
+            background: 'rgba(16, 185, 129, 0.08)',
+            color: '#047857',
+            border: '1px solid rgba(16, 185, 129, 0.2)',
             fontSize: '0.72rem',
-            fontWeight: 700,
-            padding: '0.25rem 0.6rem',
+            fontWeight: 800,
+            padding: '0.25rem 0.65rem',
             borderRadius: '20px',
-          }}
-        >
-          <span style={{ display: 'inline-flex', borderRadius: '1.5px', overflow: 'hidden', width: '13px', height: '8px', boxShadow: '0 1px 1px rgba(0,0,0,0.1)' }}>
-            <span style={{ width: '33.3%', background: '#002395', height: '100%' }}></span>
-            <span style={{ width: '33.3%', background: '#FFFFFF', height: '100%' }}></span>
-            <span style={{ width: '33.3%', background: '#ED2939', height: '100%' }}></span>
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+            marginBottom: '0.75rem',
+            boxShadow: '0 2px 8px rgba(16, 185, 129, 0.05)'
+          }}>
+            Kokki ✦
           </span>
-          Souveraineté Française
-        </span>
-        <span
-          style={{
-            display: 'inline-flex',
+
+          <h2 style={{
+            fontSize: '1.75rem',
+            fontWeight: 900,
+            letterSpacing: '-0.03em',
+            lineHeight: 1.15,
+            margin: 0,
+            color: '#0f172a'
+          }}>
+            Découvrez <span style={{
+              background: 'linear-gradient(90deg, #10b981, #047857)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              fontWeight: 950
+            }}>Kokki</span>
+          </h2>
+
+          <p style={{
+            color: '#475569',
+            fontSize: '0.82rem',
+            lineHeight: 1.45,
+            margin: '0.5rem 0 0',
+            fontWeight: 500
+          }}>
+            L'assistant <span style={{ color: '#10b981', fontWeight: 700 }}>intelligent</span> de ToqueHub. Optimisez vos stocks, analysez vos documents et gagnez un temps précieux au quotidien.
+          </p>
+        </div>
+
+        {/* Right floating robot column (Kokki Image LARGER) */}
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+          <motion.div
+            animate={{ y: [0, -10, 0] }}
+            transition={{ repeat: Infinity, duration: 4.5, ease: "easeInOut" }}
+            style={{ width: '100%', display: 'flex', justifyContent: 'center' }}
+          >
+            <img
+              src="/kokki-transparent.png"
+              alt="Kokki Chatbot"
+              style={{
+                width: '100%',
+                maxHeight: '230px',
+                objectFit: 'contain',
+                filter: 'drop-shadow(0 15px 35px rgba(16, 185, 129, 0.25))'
+              }}
+            />
+          </motion.div>
+        </div>
+      </div>
+
+      {/* Bullet features list */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(2, 1fr)',
+        gap: '1.25rem',
+        position: 'relative',
+        zIndex: 2
+      }}>
+        {/* Bullet 1 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{
+            width: '36px',
+            height: '36px',
+            borderRadius: '10px',
+            background: 'rgba(16, 185, 129, 0.08)',
+            border: '1px solid rgba(16, 185, 129, 0.15)',
+            display: 'flex',
             alignItems: 'center',
-            gap: '0.3rem',
-            background: 'rgba(249, 115, 22, 0.06)',
-            color: '#ea580c',
-            border: '1px solid rgba(249, 115, 22, 0.12)',
-            fontSize: '0.72rem',
-            fontWeight: 700,
-            padding: '0.25rem 0.6rem',
-            borderRadius: '20px',
-          }}
-        >
-          <Sparkles size={11} /> IA 100% Française
-        </span>
-      </div>
+            justifyContent: 'center',
+            color: '#10b981',
+            flexShrink: 0
+          }}>
+            <ScanLine size={18} />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.05rem' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1e293b' }}>Analyse intelligente</span>
+            <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Factures, bons de livraison...</span>
+          </div>
+        </div>
 
-      {/* Animated Mistral Logo (centered) */}
-      <div style={{ position: 'relative', width: '180px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0.25rem 0' }}>
-        <motion.div
-          style={{
-            position: 'absolute',
-            width: '180px',
-            height: '40px',
-            borderRadius: '12px',
-            background: 'radial-gradient(circle, rgba(249, 115, 22, 0.12) 0%, transparent 70%)',
-            filter: 'blur(8px)',
-          }}
-          animate={{ scale: [1, 1.15, 1] }}
-          transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
-        />
-        <img
-          src="/mistral-logo.png"
-          alt="Mistral AI"
-          style={{
-            height: '32px',
-            objectFit: 'contain',
-            filter: 'drop-shadow(0 4px 10px rgba(249, 115, 22, 0.15))',
-            zIndex: 2,
-          }}
-        />
-      </div>
+        {/* Bullet 2 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{
+            width: '36px',
+            height: '36px',
+            borderRadius: '10px',
+            background: 'rgba(16, 185, 129, 0.08)',
+            border: '1px solid rgba(16, 185, 129, 0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#10b981',
+            flexShrink: 0
+          }}>
+            <Package size={18} />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.05rem' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1e293b' }}>Gestion des stocks</span>
+            <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Suivi, alertes et prévisions</span>
+          </div>
+        </div>
 
-      {/* Title & Desc */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem' }}>
-        <h2 style={{ fontSize: '1.6rem', fontWeight: 900, letterSpacing: '-0.04em', lineHeight: 1.2, margin: 0, color: 'var(--text-main)' }}>
-          Intelligence Artificielle <span style={{ background: 'linear-gradient(90deg, #f97316, #ea580c)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Mistral AI</span>
-        </h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', lineHeight: 1.45, maxWidth: '500px', margin: 0 }}>
-          ToqueHub intègre nativement Mistral AI, le fleuron de l'IA française. Toutes vos requêtes restent sécurisées, localisées et traitées sur des serveurs en France (conformité RGPD totale).
-        </p>
+        {/* Bullet 3 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{
+            width: '36px',
+            height: '36px',
+            borderRadius: '10px',
+            background: 'rgba(16, 185, 129, 0.08)',
+            border: '1px solid rgba(16, 185, 129, 0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#10b981',
+            flexShrink: 0
+          }}>
+            <BarChart3 size={18} />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.05rem' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1e293b' }}>Insights puissants</span>
+            <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Tableaux de bord et rapports</span>
+          </div>
+        </div>
+
+        {/* Bullet 4 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{
+            width: '36px',
+            height: '36px',
+            borderRadius: '10px',
+            background: 'rgba(16, 185, 129, 0.08)',
+            border: '1px solid rgba(16, 185, 129, 0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#10b981',
+            flexShrink: 0
+          }}>
+            <MessageSquare size={18} />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.05rem' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1e293b' }}>À vos côtés 24/7</span>
+            <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Posez vos questions à Kokki</span>
+          </div>
+        </div>
       </div>
 
       {/* Input Box Card */}
       <div style={{
-        width: '100%',
-        padding: '1.5rem',
-        borderRadius: '20px',
         background: '#ffffff',
-        border: '1px solid var(--light-border)',
-        boxShadow: '0 4px 25px rgba(0, 0, 0, 0.03)',
+        border: '1px solid #e2e8f0',
+        borderRadius: '16px',
+        padding: '1.5rem',
         display: 'flex',
         flexDirection: 'column',
         gap: '1rem',
-        alignItems: 'stretch',
-        textAlign: 'left'
+        position: 'relative',
+        zIndex: 2,
+        boxShadow: '0 4px 20px rgba(16, 185, 129, 0.02)'
       }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-          <h3 style={{ fontSize: '0.85rem', fontWeight: 800, margin: 0, color: 'var(--text-main)' }}>Activer l'assistant IA</h3>
-          <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-            Saisissez votre clé API ci-dessous. Vous pouvez en obtenir une gratuitement sur <a href="https://console.mistral.ai" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', fontWeight: 700, textDecoration: 'underline' }}>console.mistral.ai</a>
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#047857', fontSize: '0.85rem', fontWeight: 800 }}>
+          <Key size={14} />
+          <span>Connectez votre clé API</span>
         </div>
 
-        {/* Input */}
+        {/* Mistral AI Info Banner */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+          background: 'rgba(16, 185, 129, 0.04)',
+          border: '1px solid rgba(16, 185, 129, 0.12)',
+          borderRadius: '12px',
+          padding: '0.65rem 0.85rem',
+          fontSize: '0.76rem',
+          lineHeight: 1.4,
+          color: '#374151'
+        }}>
+          <img 
+            src="/mistral-logo.png" 
+            alt="Mistral AI" 
+            style={{ height: '18px', objectFit: 'contain', flexShrink: 0 }} 
+          />
+          <div>
+            Propulsé par <strong>Mistral AI</strong>, le fleuron de l’IA française. Toutes vos requêtes restent sécurisées et vos données sont <strong>hébergées en Europe</strong> (conformité RGPD totale).
+          </div>
+        </div>
+
+        {/* Input field */}
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+          <div style={{ position: 'absolute', left: '0.85rem', display: 'flex', alignItems: 'center', color: '#94a3b8' }}>
+            <Key size={15} />
+          </div>
           <input
             type={showKey ? 'text' : 'password'}
-            placeholder="Clé API Mistral (ex: mistral-...)"
+            placeholder="Entrez votre clé API ToqueHub"
             value={value}
             onChange={(event) => onChange(event.target.value)}
             style={{
               width: '100%',
+              paddingLeft: '2.5rem',
               paddingRight: '2.5rem',
-              paddingLeft: '1rem',
               height: '44px',
-              borderRadius: '12px',
-              border: '1.5px solid var(--light-border)',
+              borderRadius: '10px',
+              border: '1.5px solid #cbd5e1',
               background: '#f8fafc',
-              fontSize: '0.9rem',
+              color: '#0f172a',
+              fontSize: '0.88rem',
               outline: 'none',
               transition: 'all 0.2s',
             }}
             onFocus={(e) => {
-              e.target.style.borderColor = 'var(--primary)';
+              e.target.style.borderColor = '#10b981';
               e.target.style.background = '#ffffff';
+              e.target.style.boxShadow = '0 0 0 2px rgba(16, 185, 129, 0.15)';
             }}
             onBlur={(e) => {
-              e.target.style.borderColor = 'var(--light-border)';
+              e.target.style.borderColor = '#cbd5e1';
               e.target.style.background = '#f8fafc';
+              e.target.style.boxShadow = 'none';
             }}
-            autoFocus
           />
           <button
             type="button"
             onClick={() => setShowKey(!showKey)}
             style={{
               position: 'absolute',
-              right: '0.75rem',
+              right: '0.85rem',
               background: 'transparent',
               border: 'none',
               cursor: 'pointer',
-              color: 'var(--text-muted)',
+              color: '#94a3b8',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               padding: 0,
             }}
           >
-            {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+            {showKey ? <EyeOff size={15} /> : <Eye size={15} />}
           </button>
         </div>
-      </div>
 
-      {/* Horizontal Highlights Row */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        width: '100%',
-        gap: '0.75rem',
-        marginTop: '0.25rem',
-        flexWrap: 'wrap'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: '1 1 150px', background: '#f8fafc', padding: '0.6rem 0.85rem', borderRadius: '12px', border: '1px solid var(--light-border)', justifyContent: 'center' }}>
-          <Server size={14} color="#2563eb" />
-          <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-main)' }}>Hébergement France</span>
+        {/* Info label secure */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#94a3b8', fontSize: '0.74rem', fontWeight: 500 }}>
+          <Lock size={12} />
+          <span>Vos données sont chiffrées et sécurisées.</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: '1 1 150px', background: '#f8fafc', padding: '0.6rem 0.85rem', borderRadius: '12px', border: '1px solid var(--light-border)', justifyContent: 'center' }}>
-          <Sparkles size={14} color="#10b981" />
-          <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-main)' }}>IA 100% Souveraine</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: '1 1 150px', background: '#f8fafc', padding: '0.6rem 0.85rem', borderRadius: '12px', border: '1px solid var(--light-border)', justifyContent: 'center' }}>
-          <ShieldCheck size={14} color="#f59e0b" />
-          <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-main)' }}>Zéro saisie manuelle</span>
-        </div>
-      </div>
 
-      {/* Skip option */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.25rem', width: '100%' }}>
+        {/* Action Connect button */}
         <button
           type="button"
+          disabled={submitting}
           onClick={onSkip}
           style={{
-            height: '42px',
-            borderRadius: '12px',
-            background: 'transparent',
-            border: '1.5px solid var(--light-border)',
-            color: 'var(--text-main)',
-            fontWeight: 700,
-            fontSize: '0.85rem',
-            cursor: 'pointer',
+            width: '100%',
+            height: '44px',
+            borderRadius: '10px',
+            background: submitting 
+              ? '#94a3b8' 
+              : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            color: '#ffffff',
+            fontWeight: 800,
+            fontSize: '0.9rem',
+            border: 'none',
+            cursor: submitting ? 'not-allowed' : 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.5rem',
+            boxShadow: '0 4px 15px rgba(16, 185, 129, 0.25)',
             transition: 'all 0.2s',
-            width: '100%'
           }}
           onMouseOver={(e) => {
-            e.currentTarget.style.background = '#f1f5f9';
-            e.currentTarget.style.borderColor = '#cbd5e1';
+            if (!submitting) {
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = '0 6px 18px rgba(16, 185, 129, 0.35)';
+            }
           }}
           onMouseOut={(e) => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.borderColor = 'var(--light-border)';
+            if (!submitting) {
+              e.currentTarget.style.transform = 'none';
+              e.currentTarget.style.boxShadow = '0 4px 15px rgba(16, 185, 129, 0.25)';
+            }
           }}
         >
-          Passer cette étape
+          {submitting ? 'Création de l\'instance...' : 'Connecter Kokki'} <ArrowRight size={14} />
         </button>
-        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-          L'IA est optionnelle. Vous pourrez configurer ou modifier votre clé plus tard dans vos paramètres.
+
+        {/* Link and skip */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          fontSize: '0.76rem',
+          color: '#64748b',
+          marginTop: '0.25rem'
+        }}>
+          <span>Vous n'avez pas encore de clé API ? </span>
+          <a
+            href="https://console.mistral.ai"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: '#059669', fontWeight: 700, marginLeft: '4px', textDecoration: 'underline' }}
+          >
+            Obtenir ma clé
+          </a>
+        </div>
+      </div>
+
+      {/* Skip configuration link */}
+      <div style={{ textAlign: 'center', position: 'relative', zIndex: 2 }}>
+        <span 
+          onClick={onSkip}
+          style={{
+            fontSize: '0.78rem',
+            color: '#64748b',
+            cursor: 'pointer',
+            textDecoration: 'underline',
+            fontWeight: 600,
+            transition: 'color 0.2s'
+          }}
+          onMouseOver={(e) => e.currentTarget.style.color = '#0f172a'}
+          onMouseOut={(e) => e.currentTarget.style.color = '#64748b'}
+        >
+          Configurer plus tard (Passer cette étape)
         </span>
       </div>
     </div>

@@ -108,6 +108,7 @@ export class StocksController {
   @Post('suppliers/:id/archive') archiveSupplier(@CurrentUser() u: AuthenticatedUser, @Param('id') id: string) { return this.stocksService.archiveSupplier(this.org(u), this.actor(u), id); }
 
   @Get('products') listProducts(@CurrentUser() u: AuthenticatedUser, @Query() q: ListQueryDto) { return this.stocksService.listProducts(this.org(u), q); }
+  @Get('articles') listArticles(@CurrentUser() u: AuthenticatedUser, @Query() q: ListQueryDto) { return this.stocksService.listArticles(this.org(u), q); }
   @Post('products') createProduct(@CurrentUser() u: AuthenticatedUser, @Body() d: UpsertProductDto) { return this.stocksService.createProduct(this.org(u), this.actor(u), d); }
   @Patch('products/:id') updateProduct(@CurrentUser() u: AuthenticatedUser, @Param('id') id: string, @Body() d: UpsertProductDto) { return this.stocksService.updateProduct(this.org(u), this.actor(u), id, d); }
   @Post('products/:id/archive') archiveProduct(@CurrentUser() u: AuthenticatedUser, @Param('id') id: string) { return this.stocksService.archiveProduct(this.org(u), this.actor(u), id); }

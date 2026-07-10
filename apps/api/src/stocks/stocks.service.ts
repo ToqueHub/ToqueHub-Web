@@ -139,6 +139,52 @@ export class StocksService {
   archiveSupplier(organizationId: string, actor: Actor, id: string) { return this.archive('supplier', organizationId, actor, id, AuditAction.SUPPLIER_ARCHIVED, 'Supplier'); }
 
   listProducts(organizationId: string, q: ListQueryDto = {}) { return this.prisma.product.findMany({ where: { organizationId, ...(q.includeArchived ? {} : { isArchived: false }), OR: q.search ? [{ name: { contains: q.search, mode: 'insensitive' } }, { sku: { contains: q.search, mode: 'insensitive' } }, { gtin: { contains: q.search, mode: 'insensitive' } }, { originCountry: { contains: q.search, mode: 'insensitive' } }, { primarySupplier: { name: { contains: q.search, mode: 'insensitive' } } }, { category: { name: { contains: q.search, mode: 'insensitive' } } }] : undefined }, include: { category: true, unit: true, primarySupplier: true, stocks: true }, orderBy: { name: 'asc' }, ...this.page(q) }); }
+
+  async listArticles(organizationId: string, q: ListQueryDto = {}) {
+    const where: Prisma.ProductWhereInput = {
+      organizationId,
+      ...(q.includeArchived ? {} : { isArchived: false }),
+      OR: q.search ? [
+        { name: { contains: q.search, mode: 'insensitive' } },
+        { sku: { contains: q.search, mode: 'insensitive' } },
+        { gtin: { contains: q.search, mode: 'insensitive' } },
+        { category: { name: { contains: q.search, mode: 'insensitive' } } },
+        { primarySupplier: { name: { contains: q.search, mode: 'insensitive' } } },
+      ] : undefined,
+    };
+    const [products, total] = await Promise.all([
+      this.prisma.product.findMany({ where, include: { category: true, unit: true, primarySupplier: true, stocks: { include: { site: true, location: true, lot: true } } }, orderBy: { name: 'asc' }, ...this.page(q) }),
+      this.prisma.product.count({ where }),
+    ]);
+    const productIds = products.map((product) => product.id);
+    const movements = productIds.length ? await this.prisma.stockMovement.findMany({ where: { organizationId, productId: { in: productIds } }, include: { product: { include: { unit: true } }, supplier: true, sourceSite: true, sourceLocation: true, destinationSite: true, destinationLocation: true }, orderBy: [{ movementDate: 'desc' }, { createdAt: 'desc' }] }) : [];
+    const latestByProduct = new Map<string, (typeof movements)[number]>();
+    for (const movement of movements) if (!latestByProduct.has(movement.productId)) latestByProduct.set(movement.productId, movement);
+    const items = products.map((product) => {
+      const quantity = product.stocks.reduce((sum, stock) => sum.add(stock.quantity), new Prisma.Decimal(0));
+      const stockBySite = [...product.stocks.reduce((bySite, stock) => {
+        const key = stock.siteId ?? 'all';
+        const current = bySite.get(key) ?? { siteId: stock.siteId, siteName: stock.site?.name ?? null, quantity: new Prisma.Decimal(0) };
+        current.quantity = current.quantity.add(stock.quantity);
+        bySite.set(key, current);
+        return bySite;
+      }, new Map<string, { siteId: string | null; siteName: string | null; quantity: Prisma.Decimal }>()).values()].map((site) => ({ ...site, quantity: site.quantity }));
+      return {
+        product,
+        stock: { quantity, value: quantity.mul(product.averagePrice), status: product.stocks.length ? this.stockStatus(quantity, product.minimumStock) : 'NO_STOCK' },
+        stockBySite,
+        lots: product.stocks.filter((stock) => stock.lot).map((stock) => ({ lotNumber: stock.lot?.lotNumber ?? null, expiresAt: stock.lot?.expiresAt ?? null, quantity: stock.quantity, siteName: stock.site?.name ?? null, locationName: stock.location?.name ?? null })),
+        lastMovement: latestByProduct.get(product.id) ?? null,
+      };
+    });
+    const articlesWithStock = items.filter((item) => item.stock.status !== 'NO_STOCK').length;
+    const lowStockCount = items.filter((item) => item.stock.status === 'LOW').length;
+    return {
+      items,
+      summary: { articleCount: total, articlesWithStock, articlesWithoutStock: total - articlesWithStock, stockValue: items.reduce((sum, item) => sum + Number(item.stock.value), 0), lowStockCount },
+      pagination: { page: q.page ?? 1, pageSize: q.pageSize ?? 50, total },
+    };
+  }
   async createProduct(organizationId: string, actor: Actor, dto: UpsertProductDto) { this.assertWrite(actor); await this.ensureUnit(organizationId, dto.unitId); if (dto.categoryId) await this.ensureCategory(organizationId, dto.categoryId); if (dto.primarySupplierId) await this.ensureSupplier(organizationId, dto.primarySupplierId); const item = await this.prisma.product.create({ data: { ...dto, organizationId }, include: { category: true, unit: true, primarySupplier: true, stocks: true } }); await this.log(organizationId, actor.id, AuditAction.PRODUCT_CREATED, 'Product', item.id, item.name); return item; }
   async updateProduct(organizationId: string, actor: Actor, id: string, dto: UpsertProductDto) { this.assertWrite(actor); await this.ensureProduct(organizationId, id, false); if (dto.unitId) await this.ensureUnit(organizationId, dto.unitId); if (dto.categoryId) await this.ensureCategory(organizationId, dto.categoryId); if (dto.primarySupplierId) await this.ensureSupplier(organizationId, dto.primarySupplierId); const item = await this.prisma.product.update({ where: { id, organizationId }, data: dto, include: { category: true, unit: true, primarySupplier: true, stocks: true } }); await this.log(organizationId, actor.id, AuditAction.PRODUCT_UPDATED, 'Product', item.id, item.name); return item; }
   archiveProduct(organizationId: string, actor: Actor, id: string) { return this.archive('product', organizationId, actor, id, AuditAction.PRODUCT_ARCHIVED, 'Product'); }
@@ -184,6 +230,24 @@ export class StocksService {
       }
       const movement = await tx.stockMovement.create({ data: { organizationId, productId: product.id, lotId: dto.lotId, supplierId: dto.supplierId, type: dto.type, quantity: dto.type === StockMovementType.TRANSFER ? quantity : this.signedQuantity(dto.type, quantity), inputQuantity: dto.quantity, unitId: inputUnit.id, unitSymbolSnapshot: inputUnit.symbol, reason: dto.reason, sourceSiteId: dto.sourceSiteId, sourceLocationId: dto.sourceLocationId, destinationSiteId: dto.destinationSiteId, destinationLocationId: dto.destinationLocationId, movementDate: date, createdById: actor.id }, include: { product: { include: { unit: true } }, lot: true, supplier: true } });
       await this.audit(tx, organizationId, actor.id, dto.type === StockMovementType.TRANSFER ? AuditAction.TRANSFER_CREATED : AuditAction.MOVEMENT_CREATED, 'StockMovement', movement.id, product.name, { type: dto.type });
+      return movement;
+    });
+  }
+
+  /** Used by reviewed Assistant Stock counts; the caller supplies the signed delta. */
+  async createAssistantInventoryAdjustment(organizationId: string, actor: Actor, input: { productId: string; unitId: string; quantity: number; locationId: string; reason: string }) {
+    this.assertWrite(actor);
+    if (!input.quantity) throw new BadRequestException('Écart inventaire nul');
+    const product = await this.ensureProduct(organizationId, input.productId, true);
+    const unit = await this.ensureUnit(organizationId, input.unitId);
+    const location = await this.prisma.location.findFirst({ where: { id: input.locationId, organizationId }, include: { site: true } });
+    if (!location) throw new BadRequestException('Emplacement invalide');
+    const absolute = await this.convertToProductUnit(organizationId, unit.id, product.unitId, Math.abs(input.quantity));
+    const delta = input.quantity < 0 ? absolute.neg() : absolute;
+    return this.prisma.$transaction(async (tx) => {
+      await this.applyStock(tx, organizationId, product.id, null, location.siteId, location.id, delta);
+      const movement = await tx.stockMovement.create({ data: { organizationId, productId: product.id, type: StockMovementType.INVENTORY, quantity: delta, inputQuantity: absolute, unitId: unit.id, unitSymbolSnapshot: unit.symbol, reason: input.reason, destinationSiteId: location.siteId, destinationLocationId: location.id, createdById: actor.id } });
+      await this.audit(tx, organizationId, actor.id, AuditAction.MOVEMENT_CREATED, 'StockMovement', movement.id, product.name, { type: StockMovementType.INVENTORY, assistant: true });
       return movement;
     });
   }

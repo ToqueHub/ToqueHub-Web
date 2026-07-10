@@ -10,6 +10,6 @@ import { StocksService } from './stocks.service';
   imports: [RnmPricesModule],
   controllers: [StocksController],
   providers: [StocksService, StocksOcrService, StocksMarginsService, StocksProductImportService],
-  exports: [StocksService, StocksMarginsService],
+  exports: [StocksService, StocksOcrService, StocksMarginsService],
 })
 export class StocksModule {}

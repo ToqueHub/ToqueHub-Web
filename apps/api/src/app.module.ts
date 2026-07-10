@@ -18,6 +18,8 @@ import { DocumentsModule } from './documents/documents.module';
 import { HaccpModule } from './haccp/haccp.module';
 import { DiscoveryModule } from './discovery/discovery.module';
 import { MobileModule } from './mobile/mobile.module';
+import { MistralModule } from './mistral/mistral.module';
+import { StockAssistantModule } from './stock-assistant/stock-assistant.module';
 
 @Module({
   imports: [
@@ -43,6 +45,8 @@ import { MobileModule } from './mobile/mobile.module';
     HaccpModule,
     DiscoveryModule,
     MobileModule,
+    MistralModule,
+    StockAssistantModule,
   ],
 })
 export class AppModule {}

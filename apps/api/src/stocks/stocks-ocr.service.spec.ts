@@ -30,8 +30,12 @@ function mockMarginsService(): any {
   return { analyzeReceptionForAlertsTx: jest.fn().mockResolvedValue(undefined) };
 }
 
+function mockMistralClient(): any {
+  return { chatJson: jest.fn() };
+}
+
 async function extract(text: string) {
-  const service = new StocksOcrService(mockPrisma(), mockMarginsService());
+  const service = new StocksOcrService(mockPrisma(), mockMarginsService(), mockMistralClient());
   jest.spyOn(service as any, 'analyzeOcrWithMistralAi').mockImplementation((_organizationId, _markdown, _rawJson, fallback) => {
     return Promise.resolve((service as any).aiFallback(fallback, 'Analyse IA désactivée en test.'));
   });
@@ -687,13 +691,13 @@ Total 103,25 €
   });
 
   it('extracts the Kespro order number from the English order header', () => {
-    const service = new StocksOcrService(mockPrisma(), mockMarginsService());
+    const service = new StocksOcrService(mockPrisma(), mockMarginsService(), mockMistralClient());
     expect((service as any).extractPurchaseOrderNumber('Order number 23371013 Delivery address Kitkantie 2')).toBe('23371013');
     expect((service as any).extractPurchaseOrderNumber('23371013 - Tilauksen tiedot - Tilaushistoria')).toBe('23371013');
   });
 
   it('uses Mistral OCR document annotation before the chat fallback', async () => {
-    const service = new StocksOcrService(mockPrisma(), mockMarginsService());
+    const service = new StocksOcrService(mockPrisma(), mockMarginsService(), mockMistralClient());
     const chatFallback = jest.spyOn(service as any, 'analyzeOcrWithMistralAi').mockRejectedValue(new Error('chat fallback should not run'));
     const extraction = await (service as any).extractBusinessData('org-1', 'Facture fournisseur\nTotal TTC: 12,00', {
       document_annotation: JSON.stringify({
@@ -771,5 +775,26 @@ Total TTC: 9,90
     expect(extraction.document.invoiceNumber).toBe('FAC-2026-001');
     expect(extraction.totals.totalIncludingTax).toBeCloseTo(9.9, 2);
     expect(extraction.lines.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('StocksOcrService reception safeguards', () => {
+  it('preserves the deferred product-creation choice in a corrected OCR line', () => {
+    const service = new StocksOcrService(mockPrisma(), mockMarginsService(), mockMistralClient());
+    const corrected = (service as any).normalizeCorrectionPayload({
+      lines: [{ ocrLabel: 'Farine T45', quantity: 2, unit: 'kg', unitId: '2bc2ee6f-11be-4e8f-a298-fcf2d0af9171', createProduct: true }],
+    });
+
+    expect(corrected.lines[0]).toMatchObject({ productId: null, createProduct: true, ocrLabel: 'Farine T45' });
+  });
+
+  it('rejects a second validation for the same OCR extraction before creating stock', async () => {
+    const prisma: any = mockPrisma();
+    prisma.ocrBusinessExtraction = { findFirst: jest.fn().mockResolvedValue({ id: 'extraction-1' }) };
+    prisma.stockReception = { findFirst: jest.fn().mockResolvedValue({ id: 'reception-1' }) };
+    const service = new StocksOcrService(prisma, mockMarginsService(), mockMistralClient());
+
+    await expect(service.createReceptionFromExtraction('org-1', { id: 'user-1', role: 'Manager' }, 'extraction-1', { lines: [] }))
+      .rejects.toThrow('déjà été validée');
   });
 });

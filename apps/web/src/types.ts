@@ -429,6 +429,18 @@ export interface StocksOcrConfig {
   source?: 'environment' | 'organization' | string | null;
 }
 
+export interface StockProposalLine { id: string; productId?: string | null; rawLabel: string; supplierSku?: string | null; quantity: string | number; purchaseUnit?: string | null; inputUnitId?: string | null; unitPriceExVat?: string | number | null; lotNumber?: string | null; expiryDate?: string | null; matchStatus: 'MATCHED' | 'AMBIGUOUS' | 'UNMATCHED'; matchConfidence?: string | number | null; notes?: string | null; metadata?: { candidates?: Array<{ id: string; name: string; unitId: string; score: number }> }; }
+export interface StockProposal { id: string; type: string; status: string; version: number; locationId?: string | null; sourceLocationId?: string | null; destinationLocationId?: string | null; supplierId?: string | null; duplicateWarning?: unknown; duplicateOverrideReason?: string | null; sourceType?: string | null; sourceDocumentId?: string | null; metadata?: { supplierName?: string | null; ocrResult?: { supplierName?: string | null; supplier?: { name?: string | null; supplierName?: string | null } } } | null; lines: StockProposalLine[]; }
+export interface StockConversation {
+  id: string;
+  locationId?: string | null;
+  state?: Record<string, unknown> | null;
+  summary?: Record<string, unknown> | null;
+  messages?: Array<{ id: string; role: string; content: string; createdAt: string; metadata?: { proposalId?: string | null; state?: Record<string, unknown>; choices?: StockAssistantChoice[] } | null }>;
+}
+
+export type StockAssistantChoice = { type: 'product_select' | 'location_select' | 'supplier_select' | 'proposal_review' | 'confirm_duplicate' | 'clarification'; label: string; value?: string; description?: string; payload?: Record<string, unknown> };
+
 export interface MyDocument {
   id: string;
   originalName: string;
@@ -1944,6 +1956,20 @@ export interface StockMovement {
   destinationLocation?: Location | null;
 }
 
+export type ArticleStockStatus = 'NORMAL' | 'LOW' | 'OUT' | 'NEGATIVE' | 'NO_STOCK';
+export interface Article {
+  product: Product;
+  stock: { quantity: string | number; value: string | number; status: ArticleStockStatus };
+  stockBySite: Array<{ siteId?: string | null; siteName?: string | null; quantity: string | number }>;
+  lots?: Array<{ lotNumber?: string | null; expiresAt?: string | null; quantity: string | number; siteName?: string | null; locationName?: string | null }>;
+  lastMovement?: StockMovement | null;
+}
+export interface ArticlesResponse {
+  items: Article[];
+  summary: { articleCount: number; articlesWithStock: number; articlesWithoutStock: number; stockValue: number; lowStockCount: number };
+  pagination?: { page: number; pageSize: number; total: number };
+}
+
 export type OcrMatchingStatus = 'RECOGNIZED' | 'NEEDS_REVIEW' | 'NOT_FOUND';
 export type StocksOcrLineStatus = 'ready' | 'needs_review' | 'missing_product' | 'price_mismatch' | 'quantity_suspicious' | 'non_product_line' | 'duplicate_line' | string;
 
@@ -1974,6 +2000,8 @@ export interface StocksOcrLine {
   suggestedCategoryId?: string | null;
   suggestedCategoryName?: string | null;
   productId?: string | null;
+  /** Create this catalog product only when the OCR reception is validated. */
+  createProduct?: boolean;
   productName?: string | null;
   matchedUnitSymbol?: string | null;
   unitPrice?: number | string | null;
