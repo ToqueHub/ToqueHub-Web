@@ -1,6 +1,8 @@
-import { BadRequestException, Body, Controller, Get, Header, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { TechnicalSheetExportFormat } from '@prisma/client';
+import type { Response } from 'express';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -32,6 +34,9 @@ export class TechnicalSheetsController {
 
   @Get('recipes') listRecipes(@CurrentUser() user: AuthenticatedUser, @Query() q: TechnicalSheetListQueryDto) { return this.service.listRecipes(this.org(user), q); }
   @Post('recipes') createRecipe(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertTechnicalSheetDto) { return this.service.createRecipe(this.org(user), this.actor(user), dto); }
+  @Post('recipes/import-pdf')
+  @UseInterceptors(FileInterceptor('file', { limits: { files: 1, fileSize: 20 * 1024 * 1024 } }))
+  importRecipePdf(@CurrentUser() user: AuthenticatedUser, @UploadedFile() file: any) { return this.service.importRecipePdf(this.org(user), file); }
   @Get('recipes/:id') getRecipe(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.service.getRecipe(this.org(user), id); }
   @Patch('recipes/:id') updateRecipe(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpsertTechnicalSheetDto) { return this.service.updateRecipe(this.org(user), this.actor(user), id, dto); }
   @Post('recipes/:id/archive') archiveRecipe(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.service.archiveRecipe(this.org(user), this.actor(user), id); }
@@ -41,6 +46,20 @@ export class TechnicalSheetsController {
 
   @Get('costs') costs(@CurrentUser() user: AuthenticatedUser, @Query() q: TechnicalSheetListQueryDto) { return this.service.costs(this.org(user), q); }
   @Post('production/simulate') simulate(@CurrentUser() user: AuthenticatedUser, @Body() dto: ProductionSimulationDto) { return this.service.simulate(this.org(user), this.actor(user), dto); }
-  @Get('production/:id/export.csv') @Header('Content-Type', 'text/csv; charset=utf-8') exportCsv(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.service.exportSimulation(this.org(user), this.actor(user), id, TechnicalSheetExportFormat.CSV); }
-  @Get('production/:id/export.pdf') @Header('Content-Type', 'application/pdf; charset=utf-8') exportPdf(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.service.exportSimulation(this.org(user), this.actor(user), id, TechnicalSheetExportFormat.PDF); }
+  @Get('production/:id/export.csv')
+  async exportCsv(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Res() res: Response) {
+    const file = await this.service.exportSimulation(this.org(user), this.actor(user), id, TechnicalSheetExportFormat.CSV);
+    this.sendExport(res, file);
+  }
+  @Get('production/:id/export.pdf')
+  async exportPdf(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Res() res: Response) {
+    const file = await this.service.exportSimulation(this.org(user), this.actor(user), id, TechnicalSheetExportFormat.PDF);
+    this.sendExport(res, file);
+  }
+
+  private sendExport(res: Response, file: { filename: string; contentType: string; body: string | Buffer }) {
+    res.setHeader('Content-Type', file.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${file.filename}"; filename*=UTF-8''${encodeURIComponent(file.filename)}`);
+    res.send(file.body);
+  }
 }

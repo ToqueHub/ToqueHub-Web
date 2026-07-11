@@ -24,6 +24,7 @@ async function bootstrap() {
       'http://127.0.0.1:19006',
     ],
     credentials: true,
+    exposedHeaders: ['Content-Disposition'],
   });
   app.setGlobalPrefix('api');
   app.useGlobalPipes(
