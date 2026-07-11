@@ -381,11 +381,10 @@ const STOCKS_ALL_TABS: ActiveTab[] = [
   'units',
   'suppliers',
   'inventories',
-  'locations',
   'audit',
 ];
 
-const STOCKS_SETTINGS_TABS: StocksSettingsTab[] = ['categories', 'units', 'movements', 'locations', 'audit'];
+const STOCKS_SETTINGS_TABS: StocksSettingsTab[] = ['categories', 'units', 'movements', 'audit'];
 const isStocksSettingsRoute = (tab: ActiveTab): tab is StocksSettingsTab => STOCKS_SETTINGS_TABS.includes(tab as StocksSettingsTab);
 const STOCKS_NAV_TABS: Array<{ tab: ActiveTab; label: string }> = [
   { tab: 'stocks-dashboard', label: 'Tableau de bord' },
@@ -403,7 +402,7 @@ type AppNotification = {
   createdAt: Date;
   read: boolean;
 };
-type StocksOnboardingStep = 'welcome' | 'foundation' | 'catalog' | 'reception' | 'review';
+type StocksOnboardingStep = 'welcome' | 'foundation' | 'reception' | 'review';
 type StocksReadiness = {
   foundationReady: boolean;
   catalogReady: boolean;
@@ -483,6 +482,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [showProductModal, setShowProductModal] = useState(false);
   const [showAddImportModal, setShowAddImportModal] = useState(false);
   const [showProductImportModal, setShowProductImportModal] = useState(false);
+  const [showProductCreatorModal, setShowProductCreatorModal] = useState(false);
+  const [productImportReturnToStocksOnboarding, setProductImportReturnToStocksOnboarding] = useState(false);
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const [showMovementModal, setShowMovementModal] = useState(false);
   const [showSiteModal, setShowSiteModal] = useState(false);
@@ -948,6 +949,21 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   function closeStocksOnboardingToDashboard() {
     setShowStocksOnboarding(false);
     setActiveTab('stocks-dashboard');
+  }
+
+  function closeProductImportModal() {
+    setShowProductImportModal(false);
+    if (productImportReturnToStocksOnboarding) {
+      setProductImportReturnToStocksOnboarding(false);
+      setShowStocksOnboarding(true);
+      setActiveTab('stocks-dashboard');
+    }
+  }
+
+  function openProductImportFromStocksOnboarding() {
+    setProductImportReturnToStocksOnboarding(true);
+    setShowStocksOnboarding(false);
+    setShowProductImportModal(true);
   }
 
   const userInitials = useMemo(() => {
@@ -1779,7 +1795,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   }
 
   async function handleCreateLocation(payload: { name: string; siteId: string; description?: string }) {
-    await submit(() => api.createLocation(token, payload), 'Emplacement créé avec succès.');
+    await submit(() => api.createLocation(token, payload), 'Site configuré avec succès.');
     setShowLocationModal(false);
   }
 
@@ -1897,7 +1913,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     units: 'Unités',
     suppliers: 'Fournisseurs',
     inventories: 'Inventaires',
-    locations: 'Sites & emplacements',
+    locations: 'Sites',
     audit: 'Audit',
     'rnm-dashboard': 'Cours des Produits',
     'rnm-history': 'Historique RNM',
@@ -1964,7 +1980,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     { tab: 'categories', label: 'Catégories', icon: Layers },
     { tab: 'units', label: 'Unités', icon: Scale },
     { tab: 'movements', label: 'Mouvements', icon: ArrowRight },
-    { tab: 'locations', label: 'Sites et emplacements', icon: MapPin },
     { tab: 'audit', label: 'Audit', icon: ShieldCheck },
   ] as const;
 
@@ -2767,16 +2782,19 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               )}
 
               {activeTab === 'articles' && (
-                <ArticlesPage
-                  data={articles ?? { items: [], summary: { articleCount: 0, articlesWithStock: 0, articlesWithoutStock: 0, stockValue: 0, lowStockCount: 0 } }}
-                  categories={categories}
-                  suppliers={suppliers}
-                  onAdd={() => setShowAddImportModal(true)}
-                  onMovement={() => setShowMovementModal(true)}
-                  onInventory={() => setShowInventoryModal(true)}
-                  onEdit={(article) => setSelectedProductId(article.product.id)}
-                  onRefresh={refresh}
-                />
+                <>
+                  {renderStocksModuleNav()}
+                  <ArticlesPage
+                    data={articles ?? { items: [], summary: { articleCount: 0, articlesWithStock: 0, articlesWithoutStock: 0, stockValue: 0, lowStockCount: 0 } }}
+                    categories={categories}
+                    suppliers={suppliers}
+                    onAdd={() => setShowAddImportModal(true)}
+                    onMovement={() => setShowMovementModal(true)}
+                    onInventory={() => setShowInventoryModal(true)}
+                    onEdit={(article) => setSelectedProductId(article.product.id)}
+                    onRefresh={refresh}
+                  />
+                </>
               )}
 
               {activeTab === 'stocks-margins' && (
@@ -2838,7 +2856,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                     <div className="section-header-modern">
                       <div className="section-info">
                         <span className="card-title">Stock physique</span>
-                        <span className="section-tagline">Quantités réellement disponibles par produit, lot, site et emplacement.</span>
+                        <span className="section-tagline">Quantités réellement disponibles par produit, lot et site.</span>
                       </div>
                       <button className="btn btn-primary" onClick={() => setShowMovementModal(true)}>
                         <Plus size={16} /> Enregistrer un mouvement
@@ -2874,7 +2892,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                           <tr>
                              <th>Produit</th>
                              <th>Catégorie</th>
-                             <th>Site / emplacement</th>
+                             <th>Site</th>
                              <th>Lot / DLC</th>
                              <th style={{ textAlign: 'right' }}>Stock actuel</th>
                              <th style={{ textAlign: 'right' }}>Valeur</th>
@@ -2909,7 +2927,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                                     <span style={{ color: 'var(--text-muted)' }}>Non classé</span>
                                   )}
                                 </td>
-                                <td>{stock.site?.name ?? 'Tous sites'} / {stock.location?.name ?? 'Tous emplacements'}</td>
+                                <td>{stock.site?.name ?? 'Tous sites'}</td>
                                 <td>{stock.lot?.lotNumber ?? '—'} {stock.lot?.expiresAt || stock.lot?.expirationDate ? <span className="badge badge-correction">DLC {new Date((stock.lot.expiresAt ?? stock.lot.expirationDate) as string).toLocaleDateString('fr-FR')}</span> : null}</td>
                                 <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '0.95rem', color: Number(stock.quantity) < 0 ? 'var(--danger)' : 'var(--text-main)' }}>
                                   {stock.currentQuantity ?? stock.quantity} {stock.product.unit?.symbol ?? ''}
@@ -3279,16 +3297,25 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       </Modal>
 
       {/* Product Modal */}
-      {showAddImportModal ? <div className="drawer-backdrop" onClick={() => setShowAddImportModal(false)}><aside className="side-drawer" onClick={(event) => event.stopPropagation()}><div className="side-drawer-header"><div><span className="stocks-onboarding-kicker">Articles</span><h2>Ajouter / importer</h2><span>Ajoutez une référence ou réceptionnez vos achats.</span></div><button className="icon-btn" onClick={() => setShowAddImportModal(false)}><X size={18} /></button></div><div className="side-drawer-body"><AddImportChooser onManual={() => { setShowAddImportModal(false); setShowProductModal(true); }} onCsv={() => { setShowAddImportModal(false); setShowProductImportModal(true); }} onOcr={() => { setShowAddImportModal(false); setShowOcrImportModal(true); }} /></div></aside></div> : null}
+      {showAddImportModal ? <div className="drawer-backdrop" onClick={() => setShowAddImportModal(false)}><aside className="side-drawer" onClick={(event) => event.stopPropagation()}><div className="side-drawer-header"><div><span className="stocks-onboarding-kicker">Articles</span><h2>Ajouter / importer</h2><span>Ajoutez une référence ou réceptionnez vos achats.</span></div><button className="icon-btn" onClick={() => setShowAddImportModal(false)}><X size={18} /></button></div><div className="side-drawer-body"><AddImportChooser onManual={() => { setShowAddImportModal(false); setShowProductModal(true); }} onCsv={() => { setProductImportReturnToStocksOnboarding(false); setShowAddImportModal(false); setShowProductImportModal(true); }} onCreator={() => { setShowAddImportModal(false); setShowProductCreatorModal(true); }} onOcr={() => { setShowAddImportModal(false); setShowOcrImportModal(true); }} /></div></aside></div> : null}
 
       {showProductImportModal ? (
         <ProductImportWizard
-          onClose={() => setShowProductImportModal(false)}
+          onClose={closeProductImportModal}
           onDownloadTemplate={() => api.downloadProductImportTemplate(token)}
           onAnalyze={(file) => api.analyzeProductImport(token, file)}
           onCommit={handleCommitProductImport}
+          onCreateFromDocuments={() => { setShowProductImportModal(false); setShowProductCreatorModal(true); }}
         />
       ) : null}
+      {showProductCreatorModal ? <ProductCsvCreator
+        units={units} categories={categories} suppliers={suppliers}
+        onClose={() => setShowProductCreatorModal(false)}
+        onPreview={(rows) => api.previewProductCreator(token, rows)}
+        onAnalyze={(files) => api.analyzeProductCreatorOcr(token, files)}
+        onDownload={(rows) => api.downloadProductCreatorCsv(token, rows)}
+        onCommit={handleCommitProductImport}
+      /> : null}
 
       <Modal isOpen={showProductModal} onClose={() => setShowProductModal(false)} title="Créer un produit" size="product">
         <ProductForm
@@ -3374,6 +3401,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         products={products}
         units={units}
         suppliers={suppliers}
+        sites={sites}
         locations={locations}
         onApplied={() => { void refresh(); }}
       />
@@ -3400,7 +3428,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         <SiteForm onSubmit={handleCreateSite} onClose={() => setShowSiteModal(false)} />
       </Modal>
 
-      <Modal isOpen={showLocationModal} onClose={() => setShowLocationModal(false)} title="Créer un emplacement">
+      <Modal isOpen={showLocationModal} onClose={() => setShowLocationModal(false)} title="Configurer le site">
         <LocationForm sites={sites} onSubmit={handleCreateLocation} onClose={() => setShowLocationModal(false)} />
       </Modal>
 
@@ -3429,7 +3457,11 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           ocrConfigured={ocrConfigured}
           onPrefill={handlePrefillStocks}
           onCreateSupplier={(payload) => submit(() => api.createSupplier(token, payload), 'Fournisseur créé.')}
-          onCreateProduct={(payload) => submit(() => api.createProduct(token, payload), 'Produit créé.')}
+          onImportCsv={openProductImportFromStocksOnboarding}
+          onImportCreator={() => {
+            setShowStocksOnboarding(false);
+            setShowProductCreatorModal(true);
+          }}
           onImportOcr={() => {
             setShowStocksOnboarding(false);
             setShowOcrImportModal(true);
@@ -4842,7 +4874,7 @@ function computeStocksReadiness(categories: Category[], units: Unit[], products:
   const supplierReady = Boolean(activeSuppliers.length);
   const productReady = Boolean(activeProducts.length);
   const completed = [foundationReady, supplierReady, productReady, flowReady].filter(Boolean).length;
-  const nextStep: StocksOnboardingStep = !foundationReady || !supplierReady ? 'foundation' : !productReady ? 'catalog' : !flowReady ? 'reception' : 'review';
+  const nextStep: StocksOnboardingStep = !foundationReady || !supplierReady ? 'foundation' : !flowReady ? 'reception' : 'review';
   return { foundationReady, catalogReady, flowReady, progress: Math.round((completed / 4) * 100), nextStep };
 }
 
@@ -4854,7 +4886,7 @@ function StocksSetupCard({ readiness, products, suppliers, sites, locations, onS
   const activeLocations = locations.filter((item) => !isArchived(item)).length;
   const label = readiness.flowReady ? 'Configuration terminée' : activeSuppliers === 0 ? 'Premier fournisseur à créer' : activeProducts === 0 ? 'Premiers produits à ajouter' : 'Bon de commande à analyser';
   const steps = [
-    { title: 'Socle auto', text: `${activeSites} site(s), ${activeLocations} emplacement(s)`, done: readiness.foundationReady },
+    { title: 'Socle auto', text: `${activeSites} site(s)`, done: readiness.foundationReady },
     { title: 'Fournisseurs', text: `${activeSuppliers} fournisseur(s)`, done: activeSuppliers > 0 },
     { title: 'Catalogue', text: `${activeProducts} produit(s)`, done: activeProducts > 0 },
     { title: 'Analyse', text: 'Bon de commande, facture ou BL', done: readiness.flowReady },
@@ -4991,8 +5023,7 @@ function StocksOnboardingAside({
   const steps = [
     { key: 'welcome', label: 'Bienvenue' },
     { key: 'foundation', label: 'Premier fournisseur' },
-    { key: 'catalog', label: 'Catalogue produits' },
-    { key: 'reception', label: 'Bon à analyser' },
+    { key: 'reception', label: 'Importer & analyser' },
     { key: 'review', label: 'Résumé & Validation' },
   ] as Array<{ key: StocksOnboardingStep; label: string }>;
   const currentIdx = steps.findIndex((s) => s.key === step);
@@ -5090,7 +5121,8 @@ function StocksOnboardingWizard({
   ocrConfigured,
   onPrefill,
   onCreateSupplier,
-  onCreateProduct,
+  onImportCsv,
+  onImportCreator,
   onImportOcr,
   onCreateMovement,
   onOpenApiKeys,
@@ -5111,7 +5143,8 @@ function StocksOnboardingWizard({
   ocrConfigured: boolean;
   onPrefill: (payload: { categories?: boolean; units?: boolean; sites?: boolean; locations?: boolean; examples?: boolean }) => Promise<void>;
   onCreateSupplier: (payload: { name: string }) => Promise<unknown>;
-  onCreateProduct: (payload: ProductFormPayload) => Promise<unknown>;
+  onImportCsv: () => void;
+  onImportCreator: () => void;
   onImportOcr: () => void;
   onCreateMovement: () => void;
   onOpenApiKeys: () => void;
@@ -5121,7 +5154,7 @@ function StocksOnboardingWizard({
   onClose: () => void;
 }) {
   const [step, setStep] = useState<StocksOnboardingStep>(() => readiness.progress ? readiness.nextStep : 'welcome');
-  const stepOrder: StocksOnboardingStep[] = ['welcome', 'foundation', 'catalog', 'reception', 'review'];
+  const stepOrder: StocksOnboardingStep[] = ['welcome', 'foundation', 'reception', 'review'];
   const stepIndex = stepOrder.indexOf(step) + 1;
   const progress = Math.round((stepIndex / stepOrder.length) * 100);
   const activeCategories = categories.filter((item) => !isArchived(item));
@@ -5256,19 +5289,6 @@ function StocksOnboardingWizard({
                         foundationReady={readiness.foundationReady}
                         onBack={goBack}
                         onCreateSupplier={onCreateSupplier}
-                        onNext={() => setStep('catalog')}
-                      />
-                    ) : null}
-                    {step === 'catalog' ? (
-                      <StocksCatalogStep
-                        categories={activeCategories}
-                        units={activeUnits}
-                        suppliers={activeSuppliers}
-                        products={activeProducts}
-                        onBack={goBack}
-                        onCreateSupplier={onCreateSupplier}
-                        onCreateProduct={onCreateProduct}
-                        onOpenProducts={onOpenProducts}
                         onNext={() => setStep('reception')}
                       />
                     ) : null}
@@ -5277,6 +5297,8 @@ function StocksOnboardingWizard({
                         ocrConfigured={ocrConfigured}
                         ocrStatuses={ocrStatuses}
                         onBack={goBack}
+                        onImportCsv={onImportCsv}
+                        onImportCreator={onImportCreator}
                         onImportOcr={onImportOcr}
                         onCreateMovement={onCreateMovement}
                         onOpenApiKeys={onOpenApiKeys}
@@ -5349,16 +5371,16 @@ function StocksOnboardingWelcome({ onNext, onClose }: { onNext: () => void; onCl
           Bienvenue sur le module <span style={{ color: '#10b981' }}>Stocks & Réceptions</span>
         </h1>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.98rem', lineHeight: 1.6, marginBottom: '2rem' }}>
-          Le socle de catégories et d’emplacements est préparé automatiquement. On crée ensuite votre premier fournisseur, quelques produits réels, puis on analyse un bon de commande, une facture ou un BL.
+          Le socle de catégories, unités et sites est préparé automatiquement. On crée ensuite votre premier fournisseur, puis vous importez votre catalogue CSV ou analysez un bon de commande, une facture ou un BL.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '2rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', flexShrink: 0 }}><Warehouse size={16} /></div>
-            <span>Socle créé automatiquement (catégories, unités, emplacements)</span>
+            <span>Socle créé automatiquement (catégories, unités, sites)</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', flexShrink: 0 }}><Package size={16} /></div>
-            <span>Créer le premier fournisseur puis les premiers produits</span>
+            <span>Créer le premier fournisseur puis importer le catalogue CSV</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', flexShrink: 0 }}><FileText size={16} /></div>
@@ -5416,7 +5438,7 @@ function StocksFoundationStep({
     { title: 'Catégories', value: categories.length, icon: Layers },
     { title: 'Unités', value: units.length, icon: Scale },
     { title: 'Sites', value: sites.length, icon: Warehouse },
-    { title: 'Emplacements', value: locations.length, icon: MapPin },
+    { title: 'Sites', value: sites.length, icon: MapPin },
   ];
 
   async function createSupplierAndContinue() {
@@ -5443,7 +5465,7 @@ function StocksFoundationStep({
         <div>
           <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>Créer le premier fournisseur</h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginTop: '0.35rem', lineHeight: 1.5 }}>
-            Les catégories, unités et emplacements de base sont préparés automatiquement. Commencez par le fournisseur que vous utilisez réellement.
+            Les catégories, unités et sites de base sont préparés automatiquement. Commencez par le fournisseur que vous utilisez réellement.
           </p>
         </div>
         {error ? <div className="alert-modern error" style={{ margin: 0 }}><AlertCircle size={16} /> {error}</div> : null}
@@ -5722,14 +5744,14 @@ function StocksCatalogStep({ categories, units, suppliers, products, onBack, onC
   );
 }
 
-function StocksReceptionStep({ ocrConfigured, ocrStatuses, onBack, onImportOcr, onCreateMovement, onOpenApiKeys, onNext }: { ocrConfigured: boolean; ocrStatuses: StocksOcrStatus[]; onBack: () => void; onImportOcr: () => void; onCreateMovement: () => void; onOpenApiKeys: () => void; onNext: () => void }) {
+function StocksReceptionStep({ ocrConfigured, ocrStatuses, onBack, onImportCsv, onImportCreator, onImportOcr, onCreateMovement, onOpenApiKeys, onNext }: { ocrConfigured: boolean; ocrStatuses: StocksOcrStatus[]; onBack: () => void; onImportCsv: () => void; onImportCreator: () => void; onImportOcr: () => void; onCreateMovement: () => void; onOpenApiKeys: () => void; onNext: () => void }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', height: '100%', minHeight: 0, justifyContent: 'space-between' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
         <div>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>Analyser un bon de commande</h2>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>Importer vos produits ou analyser un document</h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginTop: '0.35rem', lineHeight: 1.5 }}>
-            Déposez un bon de commande, une facture ou un bon de livraison. L’analyse prépare les lignes, vous corrigez si besoin, puis seulement la validation crée la réception et les mouvements de stock.
+            Ajoutez votre catalogue via CSV, ou déposez un bon de commande, une facture ou un bon de livraison. L’analyse prépare les lignes, vous corrigez si besoin, puis seulement la validation crée la réception et les mouvements de stock.
           </p>
         </div>
         {!ocrConfigured ? (
@@ -5739,84 +5761,46 @@ function StocksReceptionStep({ ocrConfigured, ocrStatuses, onBack, onImportOcr, 
           </div>
         ) : null}
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem', marginBottom: '0.5rem' }}>
-          <button
-            type="button"
-            onClick={onImportOcr}
-            style={{
-              border: '2px solid #10b981',
-              borderRadius: '20px',
-              padding: '2rem 1.5rem',
-              background: 'linear-gradient(135deg, rgba(16,185,129,0.06) 0%, rgba(255,255,255,1) 100%)',
-              boxShadow: '0 12px 30px rgba(16,185,129,0.08)',
-              transition: 'all 0.2s',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.75rem',
-              alignItems: 'center',
-              textAlign: 'center',
-              cursor: 'pointer',
-            }}
-            onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 16px 36px rgba(16,185,129,0.12)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 12px 30px rgba(16,185,129,0.08)'; }}
-          >
-            <div
-              style={{
-                width: '52px',
-                height: '52px',
-                borderRadius: '14px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: 'rgba(16, 185, 129, 0.1)',
-                color: '#10b981',
-                marginBottom: '0.5rem',
-              }}
-            >
-              <FileText size={28} />
+        <div className="onboarding-options-grid">
+          <div className="onboarding-option-card blue" onClick={onImportCsv}>
+            <div className="onboarding-option-icon">
+              <Download size={18} />
             </div>
-            <strong style={{ fontSize: '1.1rem', color: 'var(--text-main)', fontWeight: 800 }}>Mettre un bon à analyser</strong>
-            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>Bon de commande, facture ou BL : l’IA lit le document, propose les produits et garde la réception en brouillon jusqu’à votre validation.</span>
-          </button>
+            <div className="onboarding-option-content">
+              <span className="onboarding-option-title">Importer un CSV produits</span>
+              <span className="onboarding-option-desc">L’assistant CSV importe votre catalogue puis revient ici pour continuer l’onboarding.</span>
+            </div>
+          </div>
 
-          <button
-            type="button"
-            onClick={onCreateMovement}
-            style={{
-              border: '1px solid #e2e8f0',
-              borderRadius: '20px',
-              padding: '2rem 1.5rem',
-              background: 'white',
-              boxShadow: '0 4px 6px rgba(0,0,0,0.01)',
-              transition: 'all 0.2s',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.75rem',
-              alignItems: 'center',
-              textAlign: 'center',
-              cursor: 'pointer',
-            }}
-            onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 10px 20px rgba(0,0,0,0.04)'; e.currentTarget.style.borderColor = '#cbd5e1'; }}
-            onMouseOut={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.01)'; e.currentTarget.style.borderColor = '#e2e8f0'; }}
-          >
-            <div
-              style={{
-                width: '52px',
-                height: '52px',
-                borderRadius: '14px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: '#f1f5f9',
-                color: '#64748b',
-                marginBottom: '0.5rem',
-              }}
-            >
-              <Plus size={28} />
+          <div className="onboarding-option-card orange" onClick={onImportCreator}>
+            <div className="onboarding-option-icon">
+              <Sparkles size={18} />
             </div>
-            <strong style={{ fontSize: '1.1rem', color: 'var(--text-main)', fontWeight: 800 }}>Saisie manuelle</strong>
-            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>Alternative ponctuelle si aucun document n’est disponible.</span>
-          </button>
+            <div className="onboarding-option-content">
+              <span className="onboarding-option-title">Créer mon CSV à partir de documents</span>
+              <span className="onboarding-option-desc">Déposez vos factures, BL ou fiches fournisseur : l’IA prépare votre catalogue produits.</span>
+            </div>
+          </div>
+
+          <div className="onboarding-option-card emerald" onClick={onImportOcr}>
+            <div className="onboarding-option-icon">
+              <FileText size={18} />
+            </div>
+            <div className="onboarding-option-content">
+              <span className="onboarding-option-title">Mettre un bon à analyser</span>
+              <span className="onboarding-option-desc">Facture, BL ou commande : l'IA lit le document et crée la réception en brouillon.</span>
+            </div>
+          </div>
+
+          <div className="onboarding-option-card" onClick={onCreateMovement}>
+            <div className="onboarding-option-icon">
+              <Plus size={18} />
+            </div>
+            <div className="onboarding-option-content">
+              <span className="onboarding-option-title">Saisie manuelle</span>
+              <span className="onboarding-option-desc">Alternative ponctuelle rapide si aucun document physique n’est disponible.</span>
+            </div>
+          </div>
         </div>
         {ocrStatuses.length ? <StocksOcrDashboardStatusBar statuses={ocrStatuses} onOpenExtraction={async () => undefined} onImportOcr={onImportOcr} /> : null}
       </div>
@@ -5833,7 +5817,7 @@ function StocksReviewStep({ readiness, categories, units, products, suppliers, s
     { label: 'Catégories', value: categories.length, done: categories.length > 0 },
     { label: 'Unités', value: units.length, done: units.length > 0 },
     { label: 'Sites', value: sites.length, done: sites.length > 0 },
-    { label: 'Emplacements', value: locations.length, done: locations.length > 0 },
+    { label: 'Sites', value: sites.length, done: sites.length > 0 },
     { label: 'Fournisseurs', value: suppliers.length, done: suppliers.length > 0 },
     { label: 'Produits', value: products.length, done: products.length > 0 },
     { label: 'Mouvements', value: movements.length, done: readiness.flowReady },
@@ -5893,6 +5877,330 @@ function StocksReviewStep({ readiness, categories, units, products, suppliers, s
   );
 }
 
+function ProductCsvCreator({ units, categories, suppliers, onClose, onPreview, onAnalyze, onDownload, onCommit }: {
+  units: Unit[]; categories: Category[]; suppliers: Supplier[]; onClose: () => void;
+  onPreview: (rows: Array<{ rowNumber: number; fields: ProductImportPreviewFields; selected?: boolean }>) => Promise<ProductImportPreview>;
+  onAnalyze: (files: File[]) => Promise<{ documents: unknown[]; preview: ProductImportPreview }>;
+  onDownload: (rows: Array<{ rowNumber: number; fields: ProductImportPreviewFields; selected?: boolean }>) => Promise<void>;
+  onCommit: (payload: { rows: Array<{ rowNumber: number; fields: ProductImportPreviewFields; selected?: boolean }>; options?: { createMissingCategories?: boolean; createMissingSuppliers?: boolean } }) => Promise<ProductImportCommitResult>;
+}) {
+  const empty = (): ProductImportPreviewRow => ({ rowNumber: Date.now(), source: {}, fields: { name: '', unit: '' }, status: 'needs_review', selected: true, warnings: [], errors: [] });
+  const [rows, setRows] = useState<ProductImportPreviewRow[]>([empty()]);
+  const [files, setFiles] = useState<File[]>([]);
+  const [busy, setBusy] = useState<'preview' | 'ocr' | 'download' | 'import' | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [error, setError] = useState<string>();
+  const [message, setMessage] = useState<string>();
+
+  useEffect(() => {
+    if (busy === null) {
+      setProgress(0);
+      return;
+    }
+    setProgress(5);
+    const interval = setInterval(() => {
+      setProgress((prev) => {
+        if (prev >= 95) return prev;
+        const diff = 95 - prev;
+        const step = Math.max(1, Math.floor(Math.random() * Math.min(8, diff)));
+        return prev + step;
+      });
+    }, 200 + Math.random() * 200);
+
+    return () => clearInterval(interval);
+  }, [busy]);
+
+  const payload = (items = rows) => items.map((row, index) => ({ rowNumber: index + 2, fields: row.fields, selected: row.selected }));
+  const patch = (index: number, key: keyof ProductImportPreviewFields, value: string) => setRows((current) => current.map((row, i) => i === index ? { ...row, fields: { ...row.fields, [key]: value } } : row));
+  
+  const review = async (nextRows = rows) => { 
+    setBusy('preview'); 
+    setError(undefined); 
+    try { 
+      const preview = await onPreview(payload(nextRows)); 
+      setProgress(100);
+      await new Promise((r) => setTimeout(r, 220));
+      setRows(preview.rows); 
+      setMessage(`${preview.summary.selected} ligne(s) prête(s) à vérifier.`); 
+    } catch (err) { 
+      setError(err instanceof Error ? err.message : 'Vérification impossible.'); 
+    } finally { 
+      setBusy(null); 
+    } 
+  };
+
+  const analyze = async () => { 
+    if (!files.length) return; 
+    setBusy('ocr'); 
+    setError(undefined); 
+    try { 
+      const result = await onAnalyze(files); 
+      const combined = [...rows.filter((row) => String(row.fields.name ?? '').trim()), ...result.preview.rows]; 
+      setProgress(100);
+      await new Promise((r) => setTimeout(r, 220));
+      await review(combined); 
+      setMessage(`${result.preview.rows.length} ligne(s) détectée(s) par l’OCR.`); 
+    } catch (err) { 
+      setError(err instanceof Error ? err.message : 'Analyse OCR impossible.'); 
+    } finally { 
+      setBusy(null); 
+    } 
+  };
+
+  const download = async () => { 
+    setBusy('download'); 
+    setError(undefined); 
+    try { 
+      await onDownload(payload()); 
+      setProgress(100);
+      await new Promise((r) => setTimeout(r, 220));
+      setMessage('CSV compatible téléchargé.'); 
+    } catch (err) { 
+      setError(err instanceof Error ? err.message : 'Export impossible.'); 
+    } finally { 
+      setBusy(null); 
+    } 
+  };
+
+  const commit = async () => { 
+    setBusy('import'); 
+    setError(undefined); 
+    try { 
+      const result = await onCommit({ rows: payload(), options: { createMissingCategories: true, createMissingSuppliers: true } }); 
+      setProgress(100);
+      await new Promise((r) => setTimeout(r, 220));
+      setMessage(`${result.created} produit(s) importé(s).`); 
+    } catch (err) { 
+      setError(err instanceof Error ? err.message : 'Import impossible.'); 
+    } finally { 
+      setBusy(null); 
+    } 
+  };
+  
+  return (
+    <div className="modal-overlay hr-wizard-overlay">
+      <div className="modal-card product-csv-creator-modal">
+        {busy !== null && (
+          <div className="product-csv-loader-overlay">
+            <div className="loader-spinner-wrapper">
+              <div className="loader-spinner-pulse" />
+              <div className="loader-spinner-ring" />
+              <div className="loader-percentage">{progress}%</div>
+            </div>
+            <span className="loader-text">
+              {busy === 'ocr' && "Analyse des documents par l'OCR en cours..."}
+              {busy === 'preview' && "Vérification et validation de la grille..."}
+              {busy === 'import' && "Importation des produits en cours..."}
+              {busy === 'download' && "Génération et export du fichier CSV..."}
+            </span>
+            <span className="loader-subtext">Veuillez patienter quelques instants...</span>
+          </div>
+        )}
+        <div className="product-csv-header">
+          <div>
+            <span className="stocks-onboarding-kicker">Catalogue assisté</span>
+            <h2>Créer un CSV produits</h2>
+            <p style={{ margin: 0, color: 'var(--text-muted)' }}>
+              Ajoutez des lignes, ou déposez vos catalogues, fiches et étiquettes. Rien n’est créé avant validation.
+            </p>
+          </div>
+          <button className="icon-btn close-panel-btn" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </div>
+
+        {error ? (
+          <div className="product-csv-toast error">
+            <AlertCircle size={14} />
+            <span>{error}</span>
+            <button className="toast-close-btn" onClick={() => setError(undefined)}>×</button>
+          </div>
+        ) : null}
+        {message ? (
+          <div className="product-csv-toast success">
+            <CheckCircle2 size={14} />
+            <span>{message}</span>
+            <button className="toast-close-btn" onClick={() => setMessage(undefined)}>×</button>
+          </div>
+        ) : null}
+
+        <div className="product-csv-actions-row">
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="btn btn-secondary btn-sm-premium" style={{ position: 'relative' }}>
+              <UploadCloud size={15} /> Choisir des fichiers ({files.length})
+              <input
+                type="file"
+                multiple
+                accept="application/pdf,image/png,image/jpeg,image/webp,image/heic,image/heif,image/avif"
+                onChange={(e) => setFiles(Array.from(e.target.files ?? []).slice(0, 8))}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  opacity: 0,
+                  cursor: 'pointer',
+                  width: '100%',
+                  height: '100%'
+                }}
+              />
+            </button>
+
+            {files.length > 0 && (
+              <button className="btn btn-secondary btn-sm-premium" disabled={busy !== null} onClick={() => void analyze()}>
+                <Sparkles size={15} /> {busy === 'ocr' ? 'Analyse OCR…' : 'Analyser'}
+              </button>
+            )}
+
+            <button className="btn btn-secondary btn-sm-premium" disabled={busy !== null} onClick={() => void review()}>
+              <ShieldCheck size={15} /> {busy === 'preview' ? 'Vérification…' : 'Vérifier les lignes'}
+            </button>
+
+            {files.length > 0 && (
+              <span 
+                style={{ fontSize: '0.75rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '220px', marginLeft: '0.25rem' }} 
+                title={files.map((file) => file.name).join(' · ')}
+              >
+                {files.map((file) => file.name).join(' · ')}
+              </span>
+            )}
+          </div>
+          
+          <button className="btn btn-secondary btn-sm-premium" onClick={() => setRows((current) => [...current, empty()])}>
+            <Plus size={15} /> Ajouter une ligne
+          </button>
+        </div>
+
+        <div className="product-csv-table-wrapper">
+          <table className="product-csv-table">
+            <thead>
+              <tr>
+                <th className="col-include">Inclure</th>
+                <th className="col-name">Nom *</th>
+                <th className="col-unit">Unité *</th>
+                <th className="col-sku">SKU / réf.</th>
+                <th className="col-gtin">GTIN</th>
+                <th className="col-supplier">Fournisseur</th>
+                <th className="col-category">Catégorie</th>
+                <th className="col-price">Prix HT</th>
+                <th className="col-pkg">Conditionnement</th>
+                <th className="col-actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => {
+                const hasError = row.errors.length > 0;
+                const hasWarning = row.warnings.length > 0 && !hasError;
+                return (
+                  <tr key={`${row.rowNumber}-${index}`} className={`${hasError ? 'row-has-error' : ''} ${hasWarning ? 'row-has-warning' : ''}`}>
+                    <td className="col-include">
+                      <input
+                        type="checkbox"
+                        checked={row.selected}
+                        onChange={(e) => setRows((current) => current.map((item, i) => i === index ? { ...item, selected: e.target.checked } : item))}
+                      />
+                    </td>
+                    <td className="col-name">
+                      <input
+                        value={String(row.fields.name ?? '')}
+                        onChange={(e) => patch(index, 'name', e.target.value)}
+                        placeholder="Nom du produit"
+                      />
+                      {row.errors[0] ? (
+                        <div className="cell-validation-info">
+                          <AlertCircle size={12} className="validation-error-text" />
+                          <span className="validation-error-text">{row.errors[0]}</span>
+                        </div>
+                      ) : row.warnings[0] ? (
+                        <div className="cell-validation-info">
+                          <AlertCircle size={12} className="validation-warning-text" />
+                          <span className="validation-warning-text">{row.warnings[0]}</span>
+                        </div>
+                      ) : null}
+                    </td>
+                    <td className="col-unit">
+                      <select
+                        value={String(row.fields.unit ?? '')}
+                        onChange={(e) => patch(index, 'unit', e.target.value)}
+                      >
+                        <option value="">—</option>
+                        {units.map((unit) => <option key={unit.id} value={unit.symbol}>{unit.name} ({unit.symbol})</option>)}
+                      </select>
+                    </td>
+                    <td className="col-sku">
+                      <input
+                        value={String(row.fields.sku ?? '')}
+                        onChange={(e) => patch(index, 'sku', e.target.value)}
+                        placeholder="ex. SKU-123"
+                      />
+                    </td>
+                    <td className="col-gtin">
+                      <input
+                        value={String(row.fields.gtin ?? '')}
+                        onChange={(e) => patch(index, 'gtin', e.target.value)}
+                        placeholder="Code barre"
+                      />
+                    </td>
+                    <td className="col-supplier">
+                      <select
+                        value={String(row.fields.supplier ?? '')}
+                        onChange={(e) => patch(index, 'supplier', e.target.value)}
+                      >
+                        <option value="">—</option>
+                        {suppliers.filter((s) => !s.isArchived).map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
+                      </select>
+                    </td>
+                    <td className="col-category">
+                      <select
+                        value={String(row.fields.category ?? '')}
+                        onChange={(e) => patch(index, 'category', e.target.value)}
+                      >
+                        <option value="">—</option>
+                        {categories.filter((c) => !c.isArchived).map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+                      </select>
+                    </td>
+                    <td className="col-price">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={String(row.fields.averagePrice ?? '')}
+                        onChange={(e) => patch(index, 'averagePrice', e.target.value)}
+                        placeholder="0.00"
+                      />
+                    </td>
+                    <td className="col-pkg">
+                      <input
+                        value={String(row.fields.packageLabel ?? '')}
+                        onChange={(e) => patch(index, 'packageLabel', e.target.value)}
+                        placeholder="ex. Colis de 6"
+                      />
+                    </td>
+                    <td className="col-actions">
+                      <button className="close-panel-btn" onClick={() => setRows((current) => current.filter((_, i) => i !== index))} title="Supprimer la ligne">
+                        <Trash2 size={15} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="hr-catalog-actions sticky" style={{ marginTop: '0.5rem', borderTop: '1px solid #e8edf3', paddingTop: '1rem' }}>
+          <button className="btn btn-secondary" onClick={onClose}>Fermer</button>
+          <div className="row-actions">
+            <button className="btn btn-secondary btn-sm-premium" disabled={busy !== null} onClick={() => void download()}>
+              <Download size={15} /> {busy === 'download' ? 'Export…' : 'Télécharger le CSV'}
+            </button>
+            <button className="btn btn-primary btn-sm-premium" disabled={busy !== null || !rows.some((row) => row.selected)} onClick={() => void commit()}>
+              <CheckCircle2 size={15} /> {busy === 'import' ? 'Import…' : 'Importer les produits'}
+            </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  );
+}
+
 type ProductImportStep = 'welcome' | 'structure' | 'upload' | 'mapping' | 'review' | 'done';
 
 const PRODUCT_IMPORT_STEPS: Array<{ key: ProductImportStep; label: string }> = [
@@ -5938,7 +6246,7 @@ const PRODUCT_IMPORT_FIELD_LABELS: Record<ProductImportField, string> = {
   preparationInstructions: 'Préparation',
 };
 
-function AddImportChooser({ onManual, onCsv, onOcr }: { onManual: () => void; onCsv: () => void; onOcr: () => void }) {
+function AddImportChooser({ onManual, onCsv, onCreator, onOcr }: { onManual: () => void; onCsv: () => void; onCreator: () => void; onOcr: () => void }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%', padding: '0.25rem 0' }}>
       <p style={{ 
@@ -6051,6 +6359,14 @@ function AddImportChooser({ onManual, onCsv, onOcr }: { onManual: () => void; on
         </div>
       </button>
 
+      <button type="button" onClick={onCreator} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1.2rem 1.25rem', background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: '16px', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
+        <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: '#fef3c7', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Sparkles size={20} /></div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0f172a' }}>Créer un CSV produits</span>
+          <small style={{ fontSize: '0.78rem', color: '#64748b', lineHeight: 1.3 }}>Saisir des lignes ou lire des photos de catalogue avec l’IA.</small>
+        </div>
+      </button>
+
       {/* Button 3: Analyser un document OCR (Gradient premium style) */}
       <button 
         type="button" 
@@ -6105,11 +6421,13 @@ function ProductImportWizard({
   onDownloadTemplate,
   onAnalyze,
   onCommit,
+  onCreateFromDocuments,
 }: {
   onClose: () => void;
   onDownloadTemplate: () => Promise<void>;
   onAnalyze: (file: File) => Promise<ProductImportPreview>;
   onCommit: (payload: { rows: Array<{ rowNumber: number; fields: ProductImportPreviewFields; selected?: boolean }>; mapping?: Record<string, ProductImportField>; options?: { createMissingCategories?: boolean; createMissingSuppliers?: boolean } }) => Promise<ProductImportCommitResult>;
+  onCreateFromDocuments: () => void;
 }) {
   const [step, setStep] = useState<ProductImportStep>('welcome');
   const [preview, setPreview] = useState<ProductImportPreview | null>(null);
@@ -6213,7 +6531,7 @@ function ProductImportWizard({
               {error ? <div className="alert-modern error product-import-error"><AlertCircle size={16} /> {error}</div> : null}
               <AnimatePresence mode="wait">
                 <motion.div key={step} className="product-import-panel" initial={{ opacity: 0, x: 18 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -18 }} transition={{ duration: 0.16 }}>
-                  {step === 'structure' ? <ProductImportStructureStep onBack={goBack} onNext={goNext} onDownload={downloadTemplate} downloading={busy === 'download'} /> : null}
+                  {step === 'structure' ? <ProductImportStructureStep onBack={goBack} onNext={goNext} onDownload={downloadTemplate} onCreateFromDocuments={onCreateFromDocuments} downloading={busy === 'download'} /> : null}
                   {step === 'upload' ? <ProductImportUploadStep onBack={goBack} onAnalyze={analyzeFile} busy={busy === 'analyze'} /> : null}
                   {step === 'mapping' ? <ProductImportMappingStep preview={preview} onBack={goBack} onNext={() => setStep('review')} onUploadAgain={() => setStep('upload')} /> : null}
                   {step === 'review' ? (
@@ -6301,7 +6619,7 @@ function ProductImportAside({ step, summary, result }: { step: ProductImportStep
   );
 }
 
-function ProductImportStructureStep({ onBack, onNext, onDownload, downloading }: { onBack: () => void; onNext: () => void; onDownload: () => void; downloading: boolean }) {
+function ProductImportStructureStep({ onBack, onNext, onDownload, onCreateFromDocuments, downloading }: { onBack: () => void; onNext: () => void; onDownload: () => void; onCreateFromDocuments: () => void; downloading: boolean }) {
   const columns = ['nom', 'unite', 'sku', 'gtin', 'fournisseur', 'categorie', 'prix_achat_ht', 'seuil_minimum'];
   return (
     <div className="product-import-step">
@@ -6325,6 +6643,9 @@ function ProductImportStructureStep({ onBack, onNext, onDownload, downloading }:
         <div className="row-actions">
           <button type="button" className="btn btn-secondary" onClick={onDownload} disabled={downloading}>
             <Download size={15} /> {downloading ? 'Téléchargement…' : 'Modèle CSV'}
+          </button>
+          <button type="button" className="btn btn-secondary" onClick={onCreateFromDocuments}>
+            <Sparkles size={15} /> Créer mon CSV à partir de documents
           </button>
           <button type="button" className="btn btn-primary" onClick={onNext}>Continuer</button>
         </div>
@@ -6637,33 +6958,43 @@ function ArticlesPage({ data, categories, suppliers, onAdd, onMovement, onInvent
 
       <div className="stocks-metrics-strip">
         <div className="stocks-metric-item orange" onClick={() => setStatus('')} title="Afficher tous les produits">
-          <div className="metric-icon-wrapper"><Package size={15} /></div>
-          <span className="stocks-metric-value">{data.summary.articleCount}</span>
-          <span className="stocks-metric-label">Produits</span>
+          <div className="metric-icon-wrapper"><Package size={16} /></div>
+          <div className="metric-text-wrapper">
+            <span className="stocks-metric-value">{data.summary.articleCount}</span>
+            <span className="stocks-metric-label">Produits</span>
+          </div>
         </div>
         <div className="stocks-metric-divider"></div>
         <div className="stocks-metric-item emerald" onClick={() => setStatus('NORMAL')} title="Filtrer : En stock">
-          <div className="metric-icon-wrapper"><Boxes size={15} /></div>
-          <span className="stocks-metric-value">{data.summary.articlesWithStock}</span>
-          <span className="stocks-metric-label">Avec stock</span>
+          <div className="metric-icon-wrapper"><Boxes size={16} /></div>
+          <div className="metric-text-wrapper">
+            <span className="stocks-metric-value">{data.summary.articlesWithStock}</span>
+            <span className="stocks-metric-label">Avec stock</span>
+          </div>
         </div>
         <div className="stocks-metric-divider"></div>
         <div className="stocks-metric-item blue" onClick={() => setStatus('NO_STOCK')} title="Filtrer : Sans stock">
-          <div className="metric-icon-wrapper"><Archive size={15} /></div>
-          <span className="stocks-metric-value">{data.summary.articlesWithoutStock}</span>
-          <span className="stocks-metric-label">Sans stock</span>
+          <div className="metric-icon-wrapper"><Archive size={16} /></div>
+          <div className="metric-text-wrapper">
+            <span className="stocks-metric-value">{data.summary.articlesWithoutStock}</span>
+            <span className="stocks-metric-label">Sans stock</span>
+          </div>
         </div>
         <div className="stocks-metric-divider"></div>
         <div className="stocks-metric-item purple">
-          <div className="metric-icon-wrapper"><TrendingUp size={15} /></div>
-          <span className="stocks-metric-value">{Number(data.summary.stockValue).toFixed(2)} €</span>
-          <span className="stocks-metric-label">Valeur stock</span>
+          <div className="metric-icon-wrapper"><TrendingUp size={16} /></div>
+          <div className="metric-text-wrapper">
+            <span className="stocks-metric-value">{Number(data.summary.stockValue).toFixed(2)} €</span>
+            <span className="stocks-metric-label">Valeur stock</span>
+          </div>
         </div>
         <div className="stocks-metric-divider"></div>
         <div className="stocks-metric-item orange" onClick={() => setStatus('LOW')} title="Filtrer : Seuils à surveiller">
-          <div className="metric-icon-wrapper"><AlertTriangle size={15} /></div>
-          <span className="stocks-metric-value">{data.summary.lowStockCount}</span>
-          <span className="stocks-metric-label">Seuils à surveiller</span>
+          <div className="metric-icon-wrapper"><AlertTriangle size={16} /></div>
+          <div className="metric-text-wrapper">
+            <span className="stocks-metric-value">{data.summary.lowStockCount}</span>
+            <span className="stocks-metric-label">Seuils à surveiller</span>
+          </div>
         </div>
       </div>
 
@@ -6837,7 +7168,7 @@ function ArticleDrawer({ article, onClose, onEdit, onMovement, onRefresh }: { ar
                     <div className="lot-info">
                       <span className="lot-number">{lot.lotNumber || 'Lot sans numéro'}</span>
                       <span className="lot-subtext">
-                        {lot.siteName || 'Tous sites'} · {lot.locationName || 'Tous emplacements'}
+                        {lot.siteName || 'Tous sites'}
                       </span>
                     </div>
                     <div className="lot-qty-expiry">
@@ -7852,7 +8183,7 @@ function InventoriesPage({ inventories, products, search, setSearch, onCreate, o
                   <td style={{ fontWeight: 700 }}>{inventory.name}</td>
                   <td>{inventory.inventoryDate || inventory.date ? new Date((inventory.inventoryDate ?? inventory.date) as string).toLocaleDateString('fr-FR') : '—'}</td>
                   <td><span className={`badge ${inventory.status === 'VALIDATED' ? 'badge-reception' : 'badge-inventory'}`}>{inventory.status === 'VALIDATED' ? 'Validé' : 'Brouillon'}</span></td>
-                  <td>{inventory.site?.name ?? 'Tous sites'} / {inventory.location?.name ?? 'Tous emplacements'}</td>
+                  <td>{inventory.site?.name ?? 'Tous sites'}</td>
                   <td>{lines.length || products.length}</td>
                   <td>{counted}/{lines.length || products.length}</td>
                 </tr>
@@ -7959,7 +8290,7 @@ function InventoryDetailModal({
           {error ? <div className="alert-modern error"><AlertCircle size={16} /> {error}</div> : null}
           <div className="alert-modern info" style={{ margin: 0, background: '#f8fafc', borderColor: '#dbe4ef', color: '#334155' }}>
             <ClipboardList size={16} />
-            <span>{inventory.site?.name ?? 'Tous sites'} / {inventory.location?.name ?? 'Tous emplacements'} · {lines.length} produit(s) à compter.</span>
+            <span>{inventory.site?.name ?? 'Tous sites'} · {lines.length} produit(s) à compter.</span>
           </div>
           <div className="filter-bar" style={{ margin: 0 }}>
             <div className="search-input-wrapper" style={{ maxWidth: '100%' }}>
@@ -8045,7 +8376,7 @@ function formatStockNumber(value: number) {
   return Number.isInteger(value) ? String(value) : parseFloat(value.toFixed(3)).toString();
 }
 
-function LocationsPage({ sites, locations, search, setSearch, showArchived, setShowArchived, onCreateSite, onCreateLocation }: { sites: Site[]; locations: Location[]; search: string; setSearch: (v: string) => void; showArchived: boolean; setShowArchived: (v: boolean) => void; onCreateSite: () => void; onCreateLocation: () => void }) { return <ReferencePage title="Sites & emplacements" subtitle="Deux niveaux pour transferts: site physique puis emplacement interne." search={search} setSearch={setSearch} showArchived={showArchived} setShowArchived={setShowArchived} onCreate={onCreateLocation} createLabel="Ajouter un emplacement" secondaryAction={<button className="btn btn-secondary" onClick={onCreateSite}><Warehouse size={16}/> Nouveau site</button>}><div className="apps-grid compact-grid">{sites.map(s => <div className="app-card compact-card" key={s.id}><div className="app-card-icon"><Warehouse size={20}/></div><h3>{s.name}</h3><p>{locations.filter(l => l.siteId === s.id || l.site?.id === s.id).length} emplacements · {isArchived(s) ? 'Archivé' : 'Actif'}</p></div>)}</div><div className="table-wrapper"><table className="table-modern"><thead><tr><th>Emplacement</th><th>Site</th><th>Statut</th></tr></thead><tbody>{locations.map(l => <tr key={l.id}><td>{l.name}</td><td>{l.site?.name ?? sites.find(s => s.id === l.siteId)?.name ?? '—'}</td><td>{isArchived(l) ? 'Archivé' : 'Actif'}</td></tr>)}</tbody></table></div>{!sites.length && <EmptyMini title="Aucun site" text="Ajoutez Restaurant principal, Cuisine centrale, Réserve sèche ou chambres froides." />}</ReferencePage>; }
+function LocationsPage({ sites, locations, search, setSearch, showArchived, setShowArchived, onCreateSite, onCreateLocation }: { sites: Site[]; locations: Location[]; search: string; setSearch: (v: string) => void; showArchived: boolean; setShowArchived: (v: boolean) => void; onCreateSite: () => void; onCreateLocation: () => void }) { return <ReferencePage title="Sites" subtitle="Choisissez le site de stock. Les détails internes sont masqués pour la V1." search={search} setSearch={setSearch} showArchived={showArchived} setShowArchived={setShowArchived} onCreate={onCreateLocation} createLabel="Configurer un site" secondaryAction={<button className="btn btn-secondary" onClick={onCreateSite}><Warehouse size={16}/> Nouveau site</button>}><div className="apps-grid compact-grid">{sites.map(s => <div className="app-card compact-card" key={s.id}><div className="app-card-icon"><Warehouse size={20}/></div><h3>{s.name}</h3><p>{isArchived(s) ? 'Archivé' : 'Actif'}</p></div>)}</div><div className="table-wrapper"><table className="table-modern"><thead><tr><th>Site</th><th>Statut</th></tr></thead><tbody>{sites.map(s => <tr key={s.id}><td>{s.name}</td><td>{isArchived(s) ? 'Archivé' : 'Actif'}</td></tr>)}</tbody></table></div>{!sites.length && <EmptyMini title="Aucun site" text="Ajoutez Restaurant principal ou Cuisine centrale." />}</ReferencePage>; }
 
 function AuditPage({ entries, search, setSearch, onExport }: { entries: AuditEntry[]; search: string; setSearch: (v: string) => void; onExport: () => void }) { return <ReferencePage title="Audit" subtitle="Journal métier consultable par administrateurs et managers, exportable en CSV." search={search} setSearch={setSearch} onCreate={onExport} createLabel="Exporter CSV"><div className="table-wrapper"><table className="table-modern"><thead><tr><th>Date</th><th>Action</th><th>Entité</th><th>Utilisateur</th></tr></thead><tbody>{entries.map(e => <tr key={e.id}><td>{new Date(e.createdAt).toLocaleString('fr-FR')}</td><td>{e.action}</td><td>{e.entityType ?? '—'}</td><td>{e.user?.email ?? 'Système'}</td></tr>)}</tbody></table></div>{!entries.length && <EmptyMini title="Audit vide" text="Les créations, modifications, archivages, mouvements, inventaires et transferts seront historisés ici." />}</ReferencePage>; }
 
@@ -10905,7 +11236,7 @@ function ProductForm({ categories, units, suppliers, initialName = '', initialPr
             </label>
             <label className="product-sheet-wide">
               Instructions de conservation
-              <textarea rows={4} placeholder="Température, zone de stockage, précautions après ouverture..." value={storageInstructions} onChange={(e) => setStorageInstructions(e.target.value)} />
+              <textarea rows={4} placeholder="Température, conditions de stockage, précautions après ouverture..." value={storageInstructions} onChange={(e) => setStorageInstructions(e.target.value)} />
             </label>
             <label className="product-sheet-wide">
               Préparation / utilisation
@@ -11138,12 +11469,12 @@ function ProductDetailModal({
                   </dl>
                 </div>
                 <div>
-                  <span className="product-detail-section-title">Stock par emplacement</span>
+                  <span className="product-detail-section-title">Stock par site</span>
                   {productStocks.length ? (
                     <div className="product-detail-mini-table">
                       {productStocks.map((stock) => (
                         <div key={stock.id}>
-                          <span>{stock.site?.name ?? 'Site'} / {stock.location?.name ?? 'Emplacement'}</span>
+                          <span>{stock.site?.name ?? 'Site'}</span>
                           <strong>{productNumberDisplay(stock.currentQuantity ?? stock.quantity, product.unit?.symbol ?? '')}</strong>
                         </div>
                       ))}
@@ -11456,22 +11787,21 @@ function SiteForm({ onSubmit, onClose }: { onSubmit: (payload: { name: string; d
 }
 
 function LocationForm({ sites, onSubmit, onClose }: { sites: Site[]; onSubmit: (payload: { name: string; siteId: string; description?: string }) => Promise<void>; onClose: () => void }) {
-  const [name, setName] = useState('');
+  const [name, setName] = useState('Stock général');
   const [siteId, setSiteId] = useState(sites[0]?.id ?? '');
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   async function submitForm(e: FormEvent) { e.preventDefault(); setSubmitting(true); try { await onSubmit({ name: name.trim(), siteId, description: description.trim() || undefined }); } finally { setSubmitting(false); } }
-  return <form onSubmit={submitForm} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>{sites.length === 0 && <div className="alert-modern error"><Info size={16}/>Créez d’abord un site.</div>}<label>Nom de l’emplacement *<input value={name} onChange={e => setName(e.target.value)} placeholder="Réserve sèche, Chambre froide positive…" required autoFocus /></label><label>Site *<select value={siteId} onChange={e => setSiteId(e.target.value)} required><option value="">Choisir…</option>{sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label><label>Description<textarea rows={3} value={description} onChange={e => setDescription(e.target.value)} /></label><div className="modal-footer" style={{ margin: '1rem -1.75rem -1.75rem' }}><button type="button" className="btn btn-secondary" onClick={onClose}>Annuler</button><button className="btn btn-primary" disabled={!name.trim() || !siteId || submitting}>{submitting ? 'Création…' : 'Créer l’emplacement'}</button></div></form>;
+  return <form onSubmit={submitForm} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>{sites.length === 0 && <div className="alert-modern error"><Info size={16}/>Créez d’abord un site.</div>}<label>Site *<select value={siteId} onChange={e => setSiteId(e.target.value)} required autoFocus><option value="">Choisir…</option>{sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label><input type="hidden" value={name} onChange={e => setName(e.target.value)} /><label>Description<textarea rows={3} value={description} onChange={e => setDescription(e.target.value)} /></label><div className="modal-footer" style={{ margin: '1rem -1.75rem -1.75rem' }}><button type="button" className="btn btn-secondary" onClick={onClose}>Annuler</button><button className="btn btn-primary" disabled={!name.trim() || !siteId || submitting}>{submitting ? 'Configuration…' : 'Configurer le site'}</button></div></form>;
 }
 
-function InventoryForm({ sites, locations, onSubmit, onClose }: { sites: Site[]; locations: Location[]; onSubmit: (payload: { name: string; date?: string; comment?: string; siteId?: string; locationId?: string }) => Promise<void>; onClose: () => void }) {
+function InventoryForm({ sites, onSubmit, onClose }: { sites: Site[]; locations: Location[]; onSubmit: (payload: { name: string; date?: string; comment?: string; siteId?: string; locationId?: string }) => Promise<void>; onClose: () => void }) {
   const [name, setName] = useState(`Inventaire ${new Date().toLocaleDateString('fr-FR')}`);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [comment, setComment] = useState('');
   const [siteId, setSiteId] = useState('');
-  const [locationId, setLocationId] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  async function submitForm(e: FormEvent) { e.preventDefault(); setSubmitting(true); try { await onSubmit({ name: name.trim(), date, comment: comment.trim() || undefined, siteId: siteId || undefined, locationId: locationId || undefined }); } finally { setSubmitting(false); } }
+  async function submitForm(e: FormEvent) { e.preventDefault(); setSubmitting(true); try { await onSubmit({ name: name.trim(), date, comment: comment.trim() || undefined, siteId: siteId || undefined }); } finally { setSubmitting(false); } }
   return (
     <form onSubmit={submitForm} className="product-sheet-form">
       <div className="product-sheet-form-body product-sheet-form-body-single">
@@ -11490,13 +11820,6 @@ function InventoryForm({ sites, locations, onSubmit, onClose }: { sites: Site[];
               <select value={siteId} onChange={e => setSiteId(e.target.value)}>
                 <option value="">Tous</option>
                 {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </label>
-            <label>
-              Emplacement
-              <select value={locationId} onChange={e => setLocationId(e.target.value)}>
-                <option value="">Tous</option>
-                {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
             </label>
             <label className="product-sheet-wide">
@@ -12134,16 +12457,9 @@ function StocksOcrReviewPanel({ extraction, products, categories, suppliers, uni
           <div className="form-row">
             <label style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-main)' }}>
               Site destination
-              <select value={draft.siteId || ''} onChange={(e) => setDraft({ ...draft, siteId: e.target.value || null })}>
+              <select value={draft.siteId || ''} onChange={(e) => setDraft({ ...draft, siteId: e.target.value || null, locationId: null })}>
                 <option value="">Non précisé</option>
                 {sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
-              </select>
-            </label>
-            <label style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-main)' }}>
-              Emplacement destination
-              <select value={draft.locationId || ''} onChange={(e) => setDraft({ ...draft, locationId: e.target.value || null })}>
-                <option value="">Non précisé</option>
-                {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
               </select>
             </label>
           </div>
@@ -12853,15 +13169,13 @@ interface MovementFormProps {
   onClose: () => void;
 }
 
-function MovementForm({ products, suppliers, units, sites, locations, onSubmit, onClose }: MovementFormProps) {
+function MovementForm({ products, suppliers, units, sites, onSubmit, onClose }: MovementFormProps) {
   const [productId, setProductId] = useState(products[0]?.id || '');
   const [type, setType] = useState<StockMovementType>('RECEPTION');
   const [supplierId, setSupplierId] = useState('');
   const [unitId, setUnitId] = useState('');
   const [sourceSiteId, setSourceSiteId] = useState('');
-  const [sourceLocationId, setSourceLocationId] = useState('');
   const [destinationSiteId, setDestinationSiteId] = useState('');
-  const [destinationLocationId, setDestinationLocationId] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [quantity, setQuantity] = useState('');
   const [reason, setReason] = useState('');
@@ -12881,9 +13195,7 @@ function MovementForm({ products, suppliers, units, sites, locations, onSubmit, 
         quantity: Number(quantity),
         unitId: unitId || undefined,
         sourceSiteId: sourceSiteId || undefined,
-        sourceLocationId: sourceLocationId || undefined,
         destinationSiteId: destinationSiteId || undefined,
-        destinationLocationId: destinationLocationId || undefined,
         date: date || undefined,
         reason: reason.trim() || undefined,
       });
@@ -12968,13 +13280,6 @@ function MovementForm({ products, suppliers, units, sites, locations, onSubmit, 
                       {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
                   </label>
-                  <label>
-                    Emplacement source
-                    <select value={sourceLocationId} onChange={(e) => setSourceLocationId(e.target.value)}>
-                      <option value="">Non précisé</option>
-                      {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                    </select>
-                  </label>
                 </>
               )}
 
@@ -12985,13 +13290,6 @@ function MovementForm({ products, suppliers, units, sites, locations, onSubmit, 
                     <select value={destinationSiteId} onChange={(e) => setDestinationSiteId(e.target.value)}>
                       <option value="">Non précisé</option>
                       {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                  </label>
-                  <label>
-                    Emplacement destination
-                    <select value={destinationLocationId} onChange={(e) => setDestinationLocationId(e.target.value)}>
-                      <option value="">Non précisé</option>
-                      {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                     </select>
                   </label>
                 </>

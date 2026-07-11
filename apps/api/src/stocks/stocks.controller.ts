@@ -9,7 +9,7 @@ import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
 import { CreateInventoryDto, UpdateInventoryCountsDto } from './dto/inventory.dto';
 import { GenerateMarginReportDto, MarginsQueryDto, UpdateMarginSettingsDto } from './dto/stocks-margins.dto';
 import { AnalyzeBatchDto, SaveOcrCorrectionDto } from './dto/stocks-ocr.dto';
-import { CommitProductImportDto } from './dto/stocks-product-import.dto';
+import { CommitProductImportDto, ProductCreatorRowsDto } from './dto/stocks-product-import.dto';
 import { ListQueryDto, UpsertCategoryDto, UpsertLocationDto, UpsertLotDto, UpsertProductDto, UpsertSiteDto, UpsertSupplierDto, UpsertUnitConversionDto, UpsertUnitDto } from './dto/stocks-reference.dto';
 import { StocksMarginsService } from './stocks-margins.service';
 import { StocksOcrService } from './stocks-ocr.service';
@@ -121,6 +121,19 @@ export class StocksController {
   analyzeProductImport(@CurrentUser() u: AuthenticatedUser, @UploadedFile() file: any) { return this.stocksProductImportService.analyzeProductImport(this.org(u), this.actor(u), file); }
   @Post('products/import/commit')
   commitProductImport(@CurrentUser() u: AuthenticatedUser, @Body() dto: CommitProductImportDto) { return this.stocksProductImportService.commitProductImport(this.org(u), this.actor(u), dto); }
+  @Post('products/csv-creator/preview')
+  previewProductCreator(@CurrentUser() u: AuthenticatedUser, @Body() dto: ProductCreatorRowsDto) { return this.stocksProductImportService.previewProductRows(this.org(u), this.actor(u), dto.rows); }
+  @Post('products/csv-creator/ocr')
+  @UseInterceptors(FilesInterceptor('files', 8, { limits: { files: 8, fileSize: 20 * 1024 * 1024 } }))
+  async analyzeProductCreatorOcr(@CurrentUser() u: AuthenticatedUser, @UploadedFiles() files: any[]) {
+    const result = await this.stocksOcrService.uploadCatalogDocuments(this.org(u), this.actor(u), files);
+    const preview = await this.stocksProductImportService.previewProductRows(this.org(u), this.actor(u), result.items.map((fields, index) => ({ rowNumber: index + 2, fields })));
+    return { documents: result.documents, preview };
+  }
+  @Post('products/csv-creator/export')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  @Header('Content-Disposition', 'attachment; filename="produits-crees.csv"')
+  exportProductCreator(@CurrentUser() u: AuthenticatedUser, @Body() dto: ProductCreatorRowsDto) { this.org(u); return this.stocksProductImportService.creatorCsv(dto.rows); }
 
   @Get('sites') listSites(@CurrentUser() u: AuthenticatedUser, @Query() q: ListQueryDto) { return this.stocksService.listSites(this.org(u), q); }
   @Post('sites') createSite(@CurrentUser() u: AuthenticatedUser, @Body() d: UpsertSiteDto) { return this.stocksService.createSite(this.org(u), this.actor(u), d); }

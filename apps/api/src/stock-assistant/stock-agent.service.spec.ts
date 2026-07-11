@@ -42,6 +42,14 @@ describe('StockAgentService', () => {
     expect(call.args?.productId).toBe('p-cafe');
   });
 
+  it('routes natural stock questions with a product to stock lookup', async () => {
+    const agent = service();
+    const call = await agent.decideToolCall('org-1', 'conv-1', "j'ai du café en stock ?", {});
+
+    expect(call.tool).toBe('get_product_stock');
+    expect(call.args?.query).toBe('café');
+  });
+
   it('falls back gracefully when Mistral is unavailable', async () => {
     const agent = service({ mistral: { chatJson: jest.fn(async () => { throw new Error('down'); }) } });
     const call = await agent.decideToolCall('org-1', 'conv-1', 'bonjour', {});

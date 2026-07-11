@@ -439,7 +439,7 @@ export interface StockConversation {
   messages?: Array<{ id: string; role: string; content: string; createdAt: string; metadata?: { proposalId?: string | null; state?: Record<string, unknown>; choices?: StockAssistantChoice[] } | null }>;
 }
 
-export type StockAssistantChoice = { type: 'product_select' | 'location_select' | 'supplier_select' | 'proposal_review' | 'confirm_duplicate' | 'clarification'; label: string; value?: string; description?: string; payload?: Record<string, unknown> };
+export type StockAssistantChoice = { type: 'product_select' | 'product_create' | 'location_select' | 'supplier_select' | 'proposal_review' | 'confirm_duplicate' | 'clarification'; label: string; value?: string; description?: string; payload?: Record<string, unknown> };
 
 export interface MyDocument {
   id: string;

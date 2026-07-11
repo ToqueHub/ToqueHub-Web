@@ -134,7 +134,34 @@ export class StocksService {
   async upsertConversion(organizationId: string, actor: Actor, dto: UpsertUnitConversionDto) { this.assertWrite(actor); await this.ensureUnit(organizationId, dto.fromUnitId); await this.ensureUnit(organizationId, dto.toUnitId); return this.prisma.unitConversion.upsert({ where: { organizationId_fromUnitId_toUnitId: { organizationId, fromUnitId: dto.fromUnitId, toUnitId: dto.toUnitId } }, update: { factor: dto.factor }, create: { organizationId, ...dto } }); }
 
   listSuppliers(organizationId: string, q: ListQueryDto = {}) { return this.prisma.supplier.findMany({ where: { organizationId, ...(q.includeArchived ? {} : { isArchived: false }), OR: q.search ? [{ name: { contains: q.search, mode: 'insensitive' } }, { contactName: { contains: q.search, mode: 'insensitive' } }, { email: { contains: q.search, mode: 'insensitive' } }] : undefined }, orderBy: { name: 'asc' }, ...this.page(q) }); }
-  async createSupplier(organizationId: string, actor: Actor, dto: UpsertSupplierDto) { this.assertWrite(actor); const item = await this.prisma.supplier.create({ data: { ...dto, organizationId } }); await this.log(organizationId, actor.id, AuditAction.SUPPLIER_CREATED, 'Supplier', item.id, item.name); return item; }
+  async createSupplier(organizationId: string, actor: Actor, dto: UpsertSupplierDto) {
+    this.assertWrite(actor);
+    const name = dto.name?.trim();
+    if (!name) throw new BadRequestException('Le nom du fournisseur est obligatoire.');
+
+    const existing = await this.prisma.supplier.findUnique({
+      where: { organizationId_name: { organizationId, name } },
+    });
+
+    if (existing) {
+      if (!existing.isArchived) return existing;
+      const restored = await this.prisma.supplier.update({
+        where: { id: existing.id },
+        data: {
+          ...dto,
+          name,
+          isArchived: false,
+          archivedAt: null,
+        },
+      });
+      await this.log(organizationId, actor.id, AuditAction.SUPPLIER_UPDATED, 'Supplier', restored.id, restored.name);
+      return restored;
+    }
+
+    const item = await this.prisma.supplier.create({ data: { ...dto, name, organizationId } });
+    await this.log(organizationId, actor.id, AuditAction.SUPPLIER_CREATED, 'Supplier', item.id, item.name);
+    return item;
+  }
   async updateSupplier(organizationId: string, actor: Actor, id: string, dto: UpsertSupplierDto) { this.assertWrite(actor); const item = await this.prisma.supplier.update({ where: { id, organizationId }, data: dto }); await this.log(organizationId, actor.id, AuditAction.SUPPLIER_UPDATED, 'Supplier', item.id, item.name); return item; }
   archiveSupplier(organizationId: string, actor: Actor, id: string) { return this.archive('supplier', organizationId, actor, id, AuditAction.SUPPLIER_ARCHIVED, 'Supplier'); }
 

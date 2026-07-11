@@ -20,7 +20,7 @@ import {
   ArrowLeftRight
 } from 'lucide-react';
 import { api } from '../api/client';
-import type { Location, Product, StockAssistantChoice, StockConversation, StockProposal, Supplier, Unit } from '../types';
+import type { Location, Product, Site, StockAssistantChoice, StockConversation, StockProposal, Supplier, Unit } from '../types';
 
 type ChatItem = { id: string; role: 'user' | 'assistant' | 'system'; text: string; fileName?: string; proposalId?: string; action?: 'location_select'; choices?: StockAssistantChoice[] };
 type QuickCard = { id: string; title: string; subtitle: string; prompt?: string; action?: 'attach_invoice' };
@@ -43,6 +43,7 @@ export function StockAssistantPanel({
   products, 
   units, 
   suppliers,
+  sites,
   locations, 
   initialProposalId, 
   onApplied 
@@ -53,6 +54,7 @@ export function StockAssistantPanel({
   products: Product[]; 
   units: Unit[]; 
   suppliers: Supplier[];
+  sites: Site[];
   locations: Location[]; 
   initialProposalId?: string; 
   onApplied: () => void; 
@@ -68,6 +70,20 @@ export function StockAssistantPanel({
   const [items, setItems] = useState<ChatItem[]>(greetingItems);
   const showQuickCards = items.filter((item) => item.role === 'user').length === 0 && !busy;
   const proposalSupplierName = proposal ? suppliers.find((supplier) => supplier.id === proposal.supplierId)?.name || proposal.metadata?.supplierName || proposal.metadata?.ocrResult?.supplierName || proposal.metadata?.ocrResult?.supplier?.supplierName || proposal.metadata?.ocrResult?.supplier?.name || null : null;
+  const siteChoices = sites
+    .filter((site) => !site.isArchived)
+    .map((site) => {
+      const siteLocations = locations.filter((location) => (location.siteId === site.id || location.site?.id === site.id) && !location.isArchived);
+      const technical = siteLocations.find((location) => location.name.toLowerCase() === 'stock général');
+      return { site, location: technical || siteLocations[0] || null };
+    })
+    .filter((item) => item.location);
+  const onlySiteLocationId = siteChoices.length === 1 ? siteChoices[0].location!.id : '';
+  const locationLabel = (locationId?: string | null) => {
+    const location = locations.find((item) => item.id === locationId);
+    return location?.site?.name || sites.find((site) => site.id === location?.siteId)?.name || location?.name || '';
+  };
+  const visibleChoices = (choices?: StockAssistantChoice[]) => (choices || []).filter((choice) => choice.type !== 'location_select');
 
   // Auto-scroll chat feed
   useEffect(() => {
@@ -100,6 +116,11 @@ export function StockAssistantPanel({
     void loadConversation(conversationId);
   }, [isOpen, conversationId]);
 
+  useEffect(() => {
+    if (!proposal || proposal.locationId || !onlySiteLocationId) return;
+    setProposal({ ...proposal, locationId: onlySiteLocationId });
+  }, [proposal?.id, proposal?.locationId, onlySiteLocationId]);
+
   function mapConversationMessages(messages: NonNullable<StockConversation['messages']>): ChatItem[] {
     if (!messages.length) return greetingItems;
     return messages.map((item) => ({
@@ -108,7 +129,7 @@ export function StockAssistantPanel({
       text: item.content,
       proposalId: item.metadata?.proposalId || undefined,
       choices: item.metadata?.choices || undefined,
-      action: item.role === 'ASSISTANT' && ((item.metadata?.state as any)?.pendingProposal || /emplacement/i.test(item.content)) ? 'location_select' : undefined,
+      action: undefined,
     }));
   }
 
@@ -197,7 +218,7 @@ export function StockAssistantPanel({
           text: result.assistantMessage || 'J’ai préparé la proposition correspondante pour vos stocks.',
           proposalId: result.proposalId,
           choices: result.choices,
-          action: (result.suggestions?.includes('location_select') || (result.state as any)?.pendingProposal || /emplacement/i.test(result.assistantMessage || '')) ? 'location_select' : undefined,
+          action: undefined,
         }
       ]);
       
@@ -214,13 +235,14 @@ export function StockAssistantPanel({
     }
   }
 
-  async function sendLocationChoice(location: Location) {
+  async function sendLocationChoice(location: Location, label?: string) {
     setBusy(true);
     setError(undefined);
     try {
       const id = await ensureConversation();
-      setItems((current) => [...current, { id: `${Date.now()}-user-location`, role: 'user', text: location.name }]);
-      const result = await api.stockAssistantMessage(token, id, location.name, location.id);
+      const siteLabel = label || locationLabel(location.id) || location.name;
+      setItems((current) => [...current, { id: `${Date.now()}-user-location`, role: 'user', text: siteLabel }]);
+      const result = await api.stockAssistantMessage(token, id, siteLabel, location.id);
       setItems((current) => [
         ...current,
         {
@@ -229,14 +251,14 @@ export function StockAssistantPanel({
           text: result.assistantMessage || 'J’ai préparé la proposition correspondante pour vos stocks.',
           proposalId: result.proposalId,
           choices: result.choices,
-          action: (result.suggestions?.includes('location_select') || (result.state as any)?.pendingProposal || /emplacement/i.test(result.assistantMessage || '')) ? 'location_select' : undefined,
+          action: undefined,
         },
       ]);
       if (result.proposalId) setProposal(await api.stockAssistantProposal(token, result.proposalId));
       void loadConversation(id);
     } catch (e: any) {
       setError(e.message || 'Une erreur est survenue');
-      setItems((current) => [...current, { id: `${Date.now()}-error-location`, role: 'assistant', text: 'Je n’ai pas pu traiter cet emplacement.' }]);
+      setItems((current) => [...current, { id: `${Date.now()}-error-location`, role: 'assistant', text: 'Je n’ai pas pu traiter ce site.' }]);
     } finally {
       setBusy(false);
     }
@@ -288,7 +310,7 @@ export function StockAssistantPanel({
     if (choice.type === 'location_select' && choice.value) {
       const location = locations.find((item) => item.id === choice.value);
       if (location) {
-        void sendLocationChoice(location);
+        void sendLocationChoice(location, choice.label);
         return;
       }
     }
@@ -303,7 +325,7 @@ export function StockAssistantPanel({
     try {
       const id = await ensureConversation();
       const result = await api.stockAssistantMessage(token, id, text, proposal?.locationId || undefined);
-      setItems((current) => [...current, { id: `${Date.now()}-assistant-choice`, role: 'assistant', text: result.assistantMessage || 'J’ai traité votre choix.', proposalId: result.proposalId, choices: result.choices, action: (result.suggestions?.includes('location_select') || (result.state as any)?.pendingProposal || /emplacement/i.test(result.assistantMessage || '')) ? 'location_select' : undefined }]);
+      setItems((current) => [...current, { id: `${Date.now()}-assistant-choice`, role: 'assistant', text: result.assistantMessage || 'J’ai traité votre choix.', proposalId: result.proposalId, choices: result.choices, action: undefined }]);
       if (result.proposalId) setProposal(await api.stockAssistantProposal(token, result.proposalId));
       void loadConversation(id);
     } catch (e: any) {
@@ -477,57 +499,48 @@ export function StockAssistantPanel({
                       <div className="stock-chat-bubble-meta">
                         {item.role === 'user' ? 'Vous' : 'Kokki'}
                       </div>
-                    </div>
 
-                    {item.proposalId && (
-                      <div className="stock-chat-proposal-card">
-                        <div className="stock-chat-proposal-card-header">
-                          <FileText size={16} />
-                          <span>Proposition de Stock</span>
-                          <span className={`stock-proposal-badge ${proposal?.status === 'APPLIED' ? 'status-applied' : 'status-needs-review'}`}>
-                            {proposal?.id === item.proposalId && proposal?.status === 'APPLIED' ? 'Appliqué' : 'À vérifier'}
-                          </span>
+                      {item.proposalId && (
+                        <div className="stock-chat-proposal-card">
+                          <div className="stock-chat-proposal-card-header">
+                            <FileText size={16} />
+                            <span>Proposition de Stock</span>
+                            <span className={`stock-proposal-badge ${proposal?.status === 'APPLIED' ? 'status-applied' : 'status-needs-review'}`}>
+                              {proposal?.id === item.proposalId && proposal?.status === 'APPLIED' ? 'Appliqué' : 'À vérifier'}
+                            </span>
+                          </div>
+                          <div className="stock-chat-proposal-card-body">
+                            Générée automatiquement par l'IA. Prête pour révision et validation.
+                          </div>
+                          <div className="stock-chat-proposal-card-actions">
+                            <button 
+                              className="btn-review"
+                              onClick={async () => {
+                                setError(undefined);
+                                try {
+                                  const prop = await api.stockAssistantProposal(token, item.proposalId!);
+                                  setProposal(prop);
+                                } catch (e: any) {
+                                  setError(e.message || 'Impossible de charger la proposition');
+                                }
+                              }}
+                            >
+                              Vérifier & Appliquer <ArrowRight size={14} />
+                            </button>
+                          </div>
                         </div>
-                        <div className="stock-chat-proposal-card-body">
-                          Générée automatiquement par l'IA. Prête pour révision et validation.
+                      )}
+                      {visibleChoices(item.choices).length ? (
+                        <div className="stock-chat-choice-list">
+                          {visibleChoices(item.choices).map((choice, index) => (
+                            <button key={`${choice.type}-${choice.value || choice.label}-${index}`} disabled={busy} onClick={() => void sendChoice(choice)}>
+                              <span>{choice.label}</span>
+                              {choice.description ? <small>{choice.description}</small> : null}
+                            </button>
+                          ))}
                         </div>
-                        <div className="stock-chat-proposal-card-actions">
-                          <button 
-                            className="btn-review"
-                            onClick={async () => {
-                              setError(undefined);
-                              try {
-                                const prop = await api.stockAssistantProposal(token, item.proposalId!);
-                                setProposal(prop);
-                              } catch (e: any) {
-                                setError(e.message || 'Impossible de charger la proposition');
-                              }
-                            }}
-                          >
-                            Vérifier & Appliquer <ArrowRight size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                    {item.choices?.length ? (
-                      <div className="stock-chat-choice-list">
-                        {item.choices.map((choice, index) => (
-                          <button key={`${choice.type}-${choice.value || choice.label}-${index}`} disabled={busy} onClick={() => void sendChoice(choice)}>
-                            <span>{choice.label}</span>
-                            {choice.description ? <small>{choice.description}</small> : null}
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-                    {item.action === 'location_select' && item.role === 'assistant' && (
-                      <div className="stock-chat-inline-control">
-                        <label>Répondre avec un emplacement</label>
-                        <select defaultValue="" disabled={busy} onChange={(event) => { const location = locations.find((item) => item.id === event.target.value); if (location) void sendLocationChoice(location); }}>
-                          <option value="">Choisir un emplacement...</option>
-                          {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
-                        </select>
-                      </div>
-                    )}
+                      ) : null}
+                    </div>
                   </motion.div>
                 ))}
 
@@ -674,14 +687,14 @@ export function StockAssistantPanel({
                       <input value={proposalSupplierName || 'Non identifié'} disabled />
                     </div>
                     <div className="stock-proposal-field">
-                      <label>Emplacement de stockage</label>
+                      <label>Site de stockage</label>
                       <select 
                         value={proposal.locationId || ''} 
                         onChange={e => setProposal({ ...proposal, locationId: e.target.value || null })}
                       >
-                        <option value="">Sélectionner un emplacement</option>
-                        {locations.map(l => (
-                          <option key={l.id} value={l.id}>{l.name}</option>
+                        <option value="">Sélectionner un site</option>
+                        {siteChoices.map(({ site, location }) => (
+                          <option key={site.id} value={location!.id}>{site.name}</option>
                         ))}
                       </select>
                     </div>
@@ -689,26 +702,26 @@ export function StockAssistantPanel({
                     {proposal.type === 'TRANSFER' && (
                       <>
                         <div className="stock-proposal-field">
-                          <label>Emplacement Source</label>
+                          <label>Site source</label>
                           <select 
                             value={proposal.sourceLocationId || ''} 
                             onChange={e => setProposal({ ...proposal, sourceLocationId: e.target.value || null })}
                           >
                             <option value="">Sélectionner source</option>
-                            {locations.map(l => (
-                              <option key={l.id} value={l.id}>{l.name}</option>
+                            {siteChoices.map(({ site, location }) => (
+                              <option key={site.id} value={location!.id}>{site.name}</option>
                             ))}
                           </select>
                         </div>
                         <div className="stock-proposal-field">
-                          <label>Emplacement Destination</label>
+                          <label>Site destination</label>
                           <select 
                             value={proposal.destinationLocationId || ''} 
                             onChange={e => setProposal({ ...proposal, destinationLocationId: e.target.value || null })}
                           >
                             <option value="">Sélectionner destination</option>
-                            {locations.map(l => (
-                              <option key={l.id} value={l.id}>{l.name}</option>
+                            {siteChoices.map(({ site, location }) => (
+                              <option key={site.id} value={location!.id}>{site.name}</option>
                             ))}
                           </select>
                         </div>

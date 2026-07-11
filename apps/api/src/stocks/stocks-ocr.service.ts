@@ -82,6 +82,51 @@ interface ExtractedLine {
   sourceText?: string | null;
 }
 
+/** Makes invoice OCR output immediately compatible with the stock unit catalogue. */
+function normalizeCatalogProduct(input: Record<string, unknown>) {
+  const name = String(input.name ?? '').replace(/\s+/g, ' ').trim();
+  const rawUnit = String(input.unit ?? '').trim();
+  const unit = catalogStockUnit(rawUnit, name);
+  const packageLabel = String(input.packageLabel ?? '').trim() || catalogPackageLabel(name, rawUnit);
+  const price = typeof input.averagePrice === 'number' && Number.isFinite(input.averagePrice) && input.averagePrice >= 0 ? input.averagePrice : null;
+  return {
+    ...input,
+    name,
+    unit,
+    averagePrice: price,
+    packageLabel: packageLabel || null,
+  };
+}
+
+function catalogStockUnit(value: string, name: string) {
+  const raw = value.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim();
+  if (/\b(kg|kilo|kilogramme)\b/.test(raw)) return 'kg';
+  if (/\b(ml|millilitre)\b/.test(raw)) return 'mL';
+  if (/\b(l|litre)\b/.test(raw)) return 'L';
+  if (/\b(g|gr|gramme)\b/.test(raw)) return 'g';
+  if (/\b(barquette|barq)\b/.test(raw)) return 'barquette';
+  if (/\b(caisse|case)\b/.test(raw)) return 'caisse';
+  if (/\b(bac)\b/.test(raw)) return 'bac';
+  if (/\b(col|colis|carton|paq|paquet|bte|boite)\b/.test(raw)) return 'carton';
+  if (/\b(pu|pi|piece|un|unite)\b/.test(raw)) return 'pièce';
+  const unit = name.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+  if (/\b(kg|kilo|kilogramme)\b/.test(unit)) return 'kg';
+  if (/\b(ml|millilitre)\b/.test(unit)) return 'mL';
+  if (/\b(litre|\d+l\b)/.test(unit)) return 'L';
+  if (/\b(gr|gramme|g\b)/.test(unit)) return 'g';
+  if (/\b(barquette|barq)\b/.test(unit)) return 'barquette';
+  if (/\b(caisse|case)\b/.test(unit)) return 'caisse';
+  if (/\b(bac)\b/.test(unit)) return 'bac';
+  if (/\b(col|colis|carton|paq|paquet|bte|boite)\b/.test(unit)) return 'carton';
+  return 'pièce';
+}
+
+function catalogPackageLabel(name: string, rawUnit: string) {
+  const format = name.match(/(?:\d+(?:[,.]\d+)?\s?(?:kg|g|l|ml)\s?[x×]\s?\d+|\d+\s?[x×]\s?\d+(?:[,.]\d+)?\s?(?:kg|g|l|ml))/i)?.[0];
+  if (format) return `${rawUnit ? `${rawUnit} — ` : ''}${format}`;
+  return rawUnit ? `Unité fournisseur: ${rawUnit}` : '';
+}
+
 interface ExtractedLineRow {
   source: string;
   labelSource?: string;
@@ -212,6 +257,22 @@ export class StocksOcrService {
   }
 
   async uploadDocuments(organizationId: string, actor: Actor, files: UploadedFile[]) {
+    return this.uploadDocumentsForSource(organizationId, actor, files, 'ocr-reception');
+  }
+
+  async uploadCatalogDocuments(organizationId: string, actor: Actor, files: UploadedFile[]) {
+    const uploaded = await this.uploadDocumentsForSource(organizationId, actor, files, 'product-csv-creator');
+    const items: Array<Record<string, unknown>> = [];
+    const documents = [];
+    for (const document of uploaded.documents) {
+      const result = await this.processCatalogOcr(organizationId, actor, document.id);
+      documents.push(result.document);
+      items.push(...result.items);
+    }
+    return { documents, items };
+  }
+
+  private async uploadDocumentsForSource(organizationId: string, actor: Actor, files: UploadedFile[], sourceType: 'ocr-reception' | 'product-csv-creator') {
     this.assertOcr(actor);
     if (!files?.length) throw new BadRequestException('Aucun fichier fourni');
     if (files.length > MAX_FILES) throw new BadRequestException(`Vous pouvez importer ${MAX_FILES} fichiers maximum.`);
@@ -235,13 +296,76 @@ export class StocksOcrService {
           storagePath: relativePath,
           contentSha256: createHash('sha256').update(file.buffer).digest('hex'),
           sourceModule: 'stocks',
-          sourceType: 'ocr-reception',
+          sourceType,
           status: DocumentStatus.UPLOADED,
         },
       });
       documents.push(document);
     }
     return { documents };
+  }
+
+  private async processCatalogOcr(organizationId: string, actor: Actor, documentId: string) {
+    await this.assertOcrConfigured(organizationId);
+    const document = await this.prisma.document.findFirst({ where: { id: documentId, organizationId, sourceModule: 'stocks', sourceType: 'product-csv-creator' } });
+    if (!document) throw new NotFoundException('Document catalogue introuvable');
+    const started = Date.now();
+    const ocr = await this.prisma.ocrDocument.upsert({
+      where: { documentId },
+      update: { status: OcrProcessingStatus.PROCESSING, errorCode: null, errorMessage: null },
+      create: { organizationId, documentId, provider: OCR_PROVIDER, model: OCR_MODEL, status: OcrProcessingStatus.PROCESSING },
+    });
+    await this.prisma.document.update({ where: { id: document.id }, data: { status: DocumentStatus.PROCESSING } });
+    try {
+      const result = await this.callMistral(organizationId, document);
+      const rawText = this.rawTextFromOcr(result.rawJson);
+      const updatedOcr = await this.prisma.ocrDocument.update({ where: { id: ocr.id }, data: {
+        status: OcrProcessingStatus.COMPLETED, rawText, rawMarkdown: result.markdown, rawJson: result.rawJson as Prisma.InputJsonValue,
+        pageCount: result.pageCount, processingDurationMs: result.durationMs,
+      } });
+      const items = await this.extractCatalogProducts(organizationId, result.markdown || rawText);
+      const extraction = await this.prisma.ocrBusinessExtraction.create({ data: {
+        organizationId, ocrDocumentId: updatedOcr.id, type: OcrExtractionType.UNKNOWN,
+        extractedJson: { documentType: 'product_catalog', items } as Prisma.InputJsonValue,
+        confidenceScore: new Prisma.Decimal(items.length ? 0.8 : 0.2),
+      } });
+      const updatedDocument = await this.prisma.document.update({ where: { id: document.id }, data: { status: DocumentStatus.PROCESSED, sourceId: extraction.id } });
+      this.logger.log(`OCR catalogue terminé document=${document.id} org=${organizationId} user=${actor.id} lignes=${items.length} durée=${Date.now() - started}ms`);
+      return { document: updatedDocument, items };
+    } catch (error: any) {
+      const message = error?.message || 'Erreur OCR catalogue';
+      await this.prisma.ocrDocument.update({ where: { id: ocr.id }, data: { status: OcrProcessingStatus.FAILED, errorCode: error?.code || 'OCR_CATALOG_FAILED', errorMessage: message, processingDurationMs: Date.now() - started } }).catch(() => undefined);
+      await this.prisma.document.update({ where: { id: document.id }, data: { status: DocumentStatus.FAILED } }).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private async extractCatalogProducts(organizationId: string, markdown: string): Promise<Array<Record<string, unknown>>> {
+    const schema = {
+      type: 'object', additionalProperties: false, required: ['items'], properties: {
+        items: { type: 'array', maxItems: 100, items: { type: 'object', additionalProperties: false,
+          required: ['name', 'unit', 'sku', 'gtin', 'supplier', 'category', 'averagePrice', 'packageLabel'],
+          properties: {
+            name: { type: ['string', 'null'] }, unit: { type: ['string', 'null'] }, sku: { type: ['string', 'null'] }, gtin: { type: ['string', 'null'] },
+            supplier: { type: ['string', 'null'] }, category: { type: ['string', 'null'] }, averagePrice: { type: ['number', 'null'] }, packageLabel: { type: ['string', 'null'] },
+          },
+        } },
+      },
+    } as Record<string, unknown>;
+    try {
+      const response = await this.mistralClient.chatJson<{ items: Array<Record<string, unknown>> }>(organizationId, [
+        { role: 'system', content: 'Extrais les produits de catalogues, fiches produit, factures et bons de livraison fournisseur. Retourne une ligne par produit, jamais les totaux, frais, remises ou consignes. Ne jamais inventer une valeur. Pour l’unité de stock et le prix HT, utilise l’unité FACTURÉE : si la facture livre 1 COL mais facture 36 PU à 0,213, retourne unité « pièce », prix 0,213 et conditionnement « Colis de 36 ». Utilise seulement kg, g, L, mL, pièce, carton, barquette, caisse ou bac. Les codes COL/PAQ/BTE correspondent à « carton » seulement si le prix est aussi celui du colis/paquet ; PU/PI/UN correspondent à « pièce ». Conserve tous les formats vus (ex. 120 mL x 36) dans conditionnement. Le prix doit être le prix d’une seule unité de stock sélectionnée ; laisse-le vide si ce calcul est impossible.' },
+        { role: 'user', content: markdown.slice(0, 120000) },
+      ], 'toquehub_product_catalog', schema);
+      return (response.items ?? []).map(normalizeCatalogProduct).filter((item) => String(item.name ?? '').trim());
+    } catch (error) {
+      this.logger.warn(`Analyse IA catalogue indisponible, repli OCR: ${error instanceof Error ? error.message : error}`);
+      const fallback = await this.extractBusinessData(organizationId, markdown);
+      return fallback.lines.filter((line) => !line.ignored && line.label).map((line) => normalizeCatalogProduct({
+        name: line.nameOriginal || line.label, unit: line.unit, sku: line.reference, gtin: null, supplier: fallback.supplierName || fallback.supplier?.name || null,
+        category: line.categoryName || null, averagePrice: line.unitPrice, packageLabel: line.packageDescription || null,
+      }));
+    }
   }
 
   async getDocumentForDownload(organizationId: string, actor: Actor, documentId: string) {

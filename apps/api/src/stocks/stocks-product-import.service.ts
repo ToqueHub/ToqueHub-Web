@@ -226,6 +226,43 @@ export class StocksProductImportService {
     return `${TEMPLATE_HEADERS.join(';')}\n${sample.map(csvEscape).join(';')}\n`;
   }
 
+  /** Reuse the exact CSV import validation pipeline for manually entered or OCR catalog rows. */
+  async previewProductRows(organizationId: string, actor: Actor, inputRows: Array<{ rowNumber?: number; fields?: Record<string, unknown>; selected?: boolean }>) {
+    this.assertWrite(actor);
+    if (!inputRows?.length) throw new BadRequestException('Aucune ligne produit fournie.');
+    if (inputRows.length > MAX_IMPORT_ROWS) throw new BadRequestException(`Le créateur contient trop de lignes. Maximum: ${MAX_IMPORT_ROWS}.`);
+    const references = await this.referenceContext(organizationId);
+    const seen = this.emptySeen();
+    const rows = inputRows.map((input, index) => {
+      const row = this.previewImportedFields(input.rowNumber ?? index + 2, input.fields ?? {}, references, seen);
+      return input.selected === false ? { ...row, selected: false } : row;
+    });
+    return {
+      filename: 'createur-csv-produits.csv',
+      headers: TEMPLATE_HEADERS,
+      delimiter: ';',
+      mapping: Object.fromEntries(TEMPLATE_HEADERS.map((header) => [header, detectColumnMapping([header])[header]]).filter(([, field]) => Boolean(field))) as Record<string, ProductImportField>,
+      localMapping: {},
+      templateColumns: TEMPLATE_HEADERS,
+      rows,
+      summary: summarizeRows(rows),
+      options: { createMissingCategories: false, createMissingSuppliers: false },
+      ai: { status: 'catalog_creator', provider: 'mistral', warnings: [] },
+    };
+  }
+
+  /** Serializes reviewed creator rows with the same header order as the official template. */
+  creatorCsv(rows: Array<{ fields?: Record<string, unknown>; selected?: boolean }>) {
+    const fieldsByHeader: Record<string, ProductImportField> = {
+      nom: 'name', unite: 'unit', sku: 'sku', gtin: 'gtin', fournisseur: 'supplier', categorie: 'category', prix_achat_ht: 'averagePrice', seuil_minimum: 'minimumStock', description: 'description', origine: 'originCountry', conditionnement: 'packageLabel', unites_par_colis: 'unitsPerPackage', poids_unitaire_g: 'unitWeightGrams', poids_net_g: 'netWeightGrams', ingredients: 'ingredients', allergenes: 'allergensPresent', traces_possibles: 'possibleTraces', tags_alimentaires: 'dietaryTags', energie_kj: 'energyKj', energie_kcal: 'energyKcal', matieres_grasses_g: 'fatGrams', acides_gras_satures_g: 'saturatedFatGrams', glucides_g: 'carbohydratesGrams', sucres_g: 'sugarsGrams', fibres_g: 'fiberGrams', proteines_g: 'proteinGrams', sel_g: 'saltGrams', type_conservation: 'storageType', duree_apres_ouverture: 'shelfLifeAfterOpening', instructions_conservation: 'storageInstructions', instructions_preparation: 'preparationInstructions',
+    };
+    const data = rows.filter((row) => row.selected !== false).map((row) => TEMPLATE_HEADERS.map((header) => {
+      const value = row.fields?.[fieldsByHeader[header]];
+      return csvEscape(Array.isArray(value) ? value.join('|') : value == null ? '' : String(value));
+    }).join(';'));
+    return `\uFEFF${TEMPLATE_HEADERS.join(';')}\n${data.join('\n')}${data.length ? '\n' : ''}`;
+  }
+
   async analyzeProductImport(organizationId: string, actor: Actor, file: UploadedFile) {
     this.assertWrite(actor);
     this.validateCsvFile(file);
@@ -759,6 +796,15 @@ function unitAlias(lookup: string) {
     unite: 'piece',
     unit: 'piece',
     units: 'piece',
+    pu: 'piece',
+    pi: 'piece',
+    un: 'piece',
+    col: 'carton',
+    colis: 'carton',
+    paq: 'carton',
+    paquet: 'carton',
+    bte: 'carton',
+    boite: 'carton',
   };
   return aliases[lookup] ?? lookup;
 }

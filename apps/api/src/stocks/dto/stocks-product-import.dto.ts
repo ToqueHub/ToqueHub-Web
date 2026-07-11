@@ -40,3 +40,10 @@ export class CommitProductImportDto {
   @Type(() => ProductImportOptionsDto)
   options?: ProductImportOptionsDto;
 }
+
+export class ProductCreatorRowsDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProductImportRowDto)
+  rows!: ProductImportRowDto[];
+}

@@ -1042,6 +1042,22 @@ export const api = {
   commitProductImport(token: string, payload: { rows: Array<{ rowNumber: number; fields: ProductImportPreviewFields; selected?: boolean }>; mapping?: Record<string, ProductImportField>; options?: { createMissingCategories?: boolean; createMissingSuppliers?: boolean } }) {
     return request<ProductImportCommitResult>('/products/import/commit', { method: 'POST', body: JSON.stringify(payload) }, token);
   },
+  previewProductCreator(token: string, rows: Array<{ rowNumber: number; fields: ProductImportPreviewFields; selected?: boolean }>) {
+    return request<ProductImportPreview>('/products/csv-creator/preview', { method: 'POST', body: JSON.stringify({ rows }) }, token);
+  },
+  async analyzeProductCreatorOcr(token: string, files: File[]) {
+    const body = new FormData();
+    files.forEach((file) => body.append('files', file));
+    const response = await fetch(`${API_URL}/api/products/csv-creator/ocr`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body });
+    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
+    return response.json() as Promise<{ documents: unknown[]; preview: ProductImportPreview }>;
+  },
+  async downloadProductCreatorCsv(token: string, rows: Array<{ rowNumber: number; fields: ProductImportPreviewFields; selected?: boolean }>) {
+    const response = await fetch(`${API_URL}/api/products/csv-creator/export`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ rows }) });
+    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
+    const url = URL.createObjectURL(await response.blob());
+    const link = globalThis.document.createElement('a'); link.href = url; link.download = 'produits-crees.csv'; link.click(); URL.revokeObjectURL(url);
+  },
   suppliers(token: string) {
     return request<Supplier[]>('/suppliers', {}, token);
   },

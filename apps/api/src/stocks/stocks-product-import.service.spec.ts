@@ -121,4 +121,24 @@ describe('StocksProductImportService', () => {
       options: {},
     })).rejects.toThrow('Certaines lignes ne peuvent pas être importées.');
   });
+
+  it('previews catalog creator rows with the same validation and duplicate checks as CSV', async () => {
+    const prisma = mockPrisma({ products: [{ id: 'existing-1', name: 'Farine T55', sku: 'FAR55', gtin: null }] });
+    const service = new StocksProductImportService(prisma);
+    const result = await service.previewProductRows('org-1', actor, [
+      { fields: { name: 'Farine T55', unit: 'kg', sku: 'FAR55' } },
+      { fields: { name: 'Crème', unit: 'L', supplier: 'Kespro' } },
+    ]);
+    expect(result.rows[0].status).toBe('duplicate');
+    expect(result.rows[1].status).toBe('ready');
+    expect(result.rows[1].fields.unitId).toBe('unit-l');
+  });
+
+  it('exports creator rows using the official CSV header and escaping', () => {
+    const service = new StocksProductImportService(mockPrisma());
+    const csv = service.creatorCsv([{ selected: true, fields: { name: 'Sauce; tomate', unit: 'kg', supplier: 'Kespro' } }]);
+    expect(csv.startsWith('\uFEFFnom;unite;sku;gtin;fournisseur;')).toBe(true);
+    expect(csv).toContain('"Sauce; tomate";kg');
+    expect(csv).toContain(';Kespro;');
+  });
 });

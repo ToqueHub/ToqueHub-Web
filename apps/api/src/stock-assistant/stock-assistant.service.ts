@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StocksOcrService } from '../stocks/stocks-ocr.service';
 import { StocksService } from '../stocks/stocks.service';
 import { ProductMatchingService, normalizeStockText } from './product-matching.service';
+import { StockAgentHarnessService } from './stock-agent-harness.service';
 import { AgentResult, AgentState, AgentToolCall, Actor, StockAgentChoice, StockAgentService } from './stock-agent.service';
 import { CreateAliasDto, ProposalLineDto, UpdateProposalDto } from './dto/stock-assistant.dto';
 
@@ -15,7 +16,7 @@ const AGENT_SCHEMA = { type: 'object', additionalProperties: false, required: ['
 
 @Injectable()
 export class StockAssistantService {
-  constructor(private readonly prisma: PrismaService, private readonly mistral: MistralClientService, private readonly matching: ProductMatchingService, private readonly stocks: StocksService, private readonly stocksOcr: StocksOcrService, private readonly agent: StockAgentService) {}
+  constructor(private readonly prisma: PrismaService, private readonly mistral: MistralClientService, private readonly matching: ProductMatchingService, private readonly stocks: StocksService, private readonly stocksOcr: StocksOcrService, private readonly agent: StockAgentService, private readonly harness: StockAgentHarnessService) {}
 
   async createConversation(organizationId: string, actor: Actor, locationId?: string) { return (this.prisma as any).stockConversation.create({ data: { organizationId, userId: actor.id, locationId, state: locationId ? { activeLocationId: locationId } : {} } }); }
   async getConversation(organizationId: string, actor: Actor, id: string) {
@@ -33,7 +34,7 @@ export class StockAssistantService {
     if (locationId) state.activeLocationId = locationId;
     const result = await this.runAgentTurn(organizationId, actor, { ...conversation, state }, content);
     const assistant = await (this.prisma as any).stockAssistantMessage.create({ data: { conversationId, role: 'ASSISTANT', content: result.message, metadata: { intent: result.type || 'agent', proposalId: result.proposalId || null, state: result.state, toolResults: result.toolResults || [], choices: result.choices || [], confidence: result.confidence ?? null, needsReview: result.needsReview ?? false } } });
-    await (this.prisma as any).stockConversation.update({ where: { id: conversationId }, data: { state: result.state, summary: this.agent.summaryFromState(result.state) } });
+    await (this.prisma as any).stockConversation.update({ where: { id: conversationId }, data: { state: result.state, summary: this.harness.summaryFromState(result.state) } });
     return { messageId: assistant.id, assistantMessage: result.message, proposalId: result.proposalId, type: result.type || 'agent', status: result.status || null, lines: result.lines || [], questions: result.questions || [], state: result.state, suggestions: result.suggestions || [], choices: result.choices || [], toolResults: result.toolResults || [], confidence: result.confidence ?? null, needsReview: result.needsReview ?? false };
   }
 
@@ -50,6 +51,7 @@ export class StockAssistantService {
     const supplierName = data?.supplierName || data?.supplier?.supplierName || data?.supplier?.name || null;
     const invoiceNumber = data?.invoiceNumber || data?.document?.invoiceNumber || data?.invoice?.invoiceNumber || null;
     const total = data?.totalIncludingTax || data?.totals?.totalIncludingTax || data?.invoice?.grandTotal || null;
+    if (!locationId) locationId = (await this.singleSiteDefaultLocation(organizationId))?.id;
     const duplicate = await (this.prisma as any).stockProposal.findFirst({ where: { organizationId, sourceType: 'INVOICE', OR: [{ sourceDocumentId: documentId }, ...(invoiceNumber ? [{ metadata: { path: ['invoiceNumber'], equals: invoiceNumber } }] : [])], status: { in: ['NEEDS_REVIEW', 'APPROVED', 'APPLIED'] } } });
     const lines = (data?.lines || data?.items || []).filter((line: any) => !line.ignored && line.label).map((line: any) => ({ rawLabel: line.label || line.ocrLabel, quantity: Number(line.quantity || 0), unit: line.unit || null, supplierSku: line.reference || line.supplierProductCode || null, lotNumber: line.lotNumber || null, expiryDate: line.bestBeforeDate || null, unitPriceExVat: line.unitPrice || null }));
     if (!lines.length) throw new BadRequestException('Aucune ligne stockable trouvée dans l’extraction OCR');
@@ -75,7 +77,7 @@ export class StockAssistantService {
           const documentNote = 'Le fichier a bien été ajouté à vos documents Stocks.';
           const supplierNote = supplier ? `Fournisseur détecté : ${supplier}.` : 'Je n’ai pas identifié le fournisseur avec certitude.';
           await (this.prisma as any).stockAssistantMessage.create({ data: { conversationId: conversation.id, role: 'ASSISTANT', content: `Facture analysée.\n\n${supplierNote}\n${documentNote}\n\nJ’ai préparé une proposition de réception à vérifier.`, metadata: { intent: 'receipt', proposalId: proposal.id, state, supplierName: supplier, sourceDocumentId: documentId } } });
-          await (this.prisma as any).stockConversation.update({ where: { id: conversation.id }, data: { state, summary: this.agent.summaryFromState(state) } });
+          await (this.prisma as any).stockConversation.update({ where: { id: conversation.id }, data: { state, summary: this.harness.summaryFromState(state) } });
         }
         return proposal;
       }
@@ -85,7 +87,7 @@ export class StockAssistantService {
     if (conversation) {
       const state = this.agent.normalizeState(conversation.state);
       await (this.prisma as any).stockAssistantMessage.create({ data: { conversationId: conversation.id, role: 'ASSISTANT', content: 'Facture reçue.\n\nLe fichier a bien été ajouté à vos documents Stocks.\n\nL’analyse OCR est encore en cours. Je préparerai la proposition dès que l’extraction sera terminée.', metadata: { intent: 'invoice_processing', sourceDocumentId: documentId, state } } });
-      await (this.prisma as any).stockConversation.update({ where: { id: conversation.id }, data: { state, summary: this.agent.summaryFromState(state) } });
+      await (this.prisma as any).stockConversation.update({ where: { id: conversation.id }, data: { state, summary: this.harness.summaryFromState(state) } });
     }
     return { status: 'PROCESSING', documentId, message: 'Analyse OCR en cours. Le document a bien été ajouté à vos documents Stocks.' };
   }
@@ -102,7 +104,7 @@ export class StockAssistantService {
   async applyProposal(organizationId: string, actor: Actor, id: string, version: number) {
     this.assertWrite(actor);
     const proposal = await this.getProposal(organizationId, id); if (proposal.status === 'APPLIED') return proposal; if (proposal.status !== 'APPROVED' || proposal.version !== version) throw new BadRequestException('Proposition non validée ou obsolète'); if (proposal.duplicateWarning && !proposal.duplicateOverrideReason) throw new BadRequestException('Doublon potentiel : une confirmation motivée est requise');
-    const locationId = proposal.type === 'TRANSFER' ? proposal.destinationLocationId : proposal.locationId; if (!locationId) throw new BadRequestException('Un emplacement est obligatoire');
+    const locationId = proposal.type === 'TRANSFER' ? proposal.destinationLocationId : proposal.locationId; if (!locationId) throw new BadRequestException('Un site est obligatoire');
     const movements: any[] = [];
     for (const line of proposal.lines) {
       if (!line.productId || !line.inputUnitId) throw new BadRequestException(`Ligne non associée ou unité inconnue : ${line.rawLabel}`);
@@ -135,11 +137,12 @@ export class StockAssistantService {
   }
 
   private async runAgentTurn(organizationId: string, actor: Actor, conversation: any, content: string): Promise<AgentResult> {
-    const state = this.agent.normalizeState(conversation.state);
-    const toolCall = await this.agent.decideToolCall(organizationId, conversation.id, content, state);
-    const result = await this.executeAgentTool(organizationId, actor, conversation.id, state, toolCall);
-    const toolResults = [{ tool: 'agent_decision', result: { tool: toolCall.tool, args: toolCall.args || {}, decision: toolCall.decision || 'legacy', confidence: toolCall.confidence ?? null } }, ...(result.toolResults || [])];
-    return { ...result, state: this.agent.normalizeState(result.state), toolResults, confidence: result.confidence ?? toolCall.confidence };
+    const state = this.harness.normalizeState(conversation.state);
+    const toolCall = await this.harness.decideToolCall(organizationId, conversation.id, content, state);
+    const toolResult = await this.executeAgentTool(organizationId, actor, conversation.id, state, toolCall);
+    const toolResults = [{ tool: 'agent_tool_decision', result: { tool: toolCall.tool, args: toolCall.args || {}, decision: toolCall.decision || 'mistral', confidence: toolCall.confidence ?? null, note: toolCall.message || null } }, ...(toolResult.toolResults || [])];
+    const resultWithAudit = { ...toolResult, state: this.harness.normalizeState(toolResult.state), toolResults, confidence: toolResult.confidence ?? toolCall.confidence };
+    return this.harness.finalizeTurn(organizationId, conversation.id, content, state, toolCall, resultWithAudit);
   }
 
   private inferToolCall(content: string, state: AgentState): AgentToolCall | null {
@@ -184,7 +187,7 @@ export class StockAssistantService {
         { role: 'user', content: JSON.stringify({ message: content, state, recentMessages: recent.reverse().map((m: any) => ({ role: m.role, content: m.content, metadata: m.metadata })), availableTools: ['search_products', 'get_product_stock', 'list_low_stock', 'search_locations', 'search_suppliers', 'create_stock_proposal', 'clarification'], context }) },
       ], 'toquehub_stock_agent', AGENT_SCHEMA);
       if (parsed?.mode === 'tool_call' && parsed.tool) return { tool: parsed.tool, args: parsed.args || {}, message: parsed.message };
-      return { tool: 'clarification', message: parsed?.message || 'Je peux vous aider sur les produits, stocks, emplacements, fournisseurs, propositions et factures. Que voulez-vous faire ?', args: {} };
+      return { tool: 'clarification', message: parsed?.message || 'Je peux vous aider sur les produits, stocks, sites, fournisseurs, propositions et factures. Que voulez-vous faire ?', args: {} };
     } catch {
       return { tool: 'clarification', message: 'Je n’ai pas compris la demande. Donnez-moi un produit, une quantité ou une question de stock précise.', args: {} };
     }
@@ -202,8 +205,22 @@ export class StockAssistantService {
         return { message: `Oui, j’ai trouvé ${result.selected.name}${result.selected.unitSymbol ? ` (${result.selected.unitSymbol})` : ''}.`, state: nextState, toolResults, type: 'question' };
       }
       const nextState = { ...state, candidates: result.candidates.map((item: any) => ({ id: item.id, name: item.name, kind: 'product' as const, score: item.score })) };
-      return { message: result.candidates.length ? `J’ai trouvé plusieurs produits possibles. Lequel voulez-vous utiliser ?` : `Je n’ai trouvé aucun produit correspondant à “${query}”.`, state: nextState, toolResults, type: 'clarification_needed', questions: ['Quel produit voulez-vous utiliser ?'], choices: this.productChoices(result.candidates), confidence: result.candidates.length ? 0.55 : 0.2 };
+      if (!result.candidates.length) {
+        const pending = this.productCreationDraftFromText(query, state);
+        return {
+          message: `Je n’ai trouvé aucun produit correspondant à “${query}”.\n\nVoulez-vous créer une nouvelle fiche produit ?`,
+          state: { ...nextState, pendingProductCreation: pending },
+          toolResults,
+          type: 'clarification_needed',
+          questions: ['Créer le produit ?'],
+          choices: [this.productCreateChoice(pending)],
+          confidence: 0.35,
+          needsReview: true,
+        };
+      }
+      return { message: `J’ai trouvé plusieurs produits possibles. Lequel voulez-vous utiliser ?`, state: nextState, toolResults, type: 'clarification_needed', questions: ['Quel produit voulez-vous utiliser ?'], choices: this.productChoices(result.candidates), confidence: 0.55 };
     }
+    if (call.tool === 'create_product') return this.createProductFromAgentTool(organizationId, actor, conversationId, state, call.args || {});
     if (call.tool === 'get_product_stock') {
       const resolved = await this.resolveProduct(organizationId, call.args?.productId || state.activeProductId, call.args?.query);
       toolResults.push({ tool: call.tool, result: resolved });
@@ -220,9 +237,9 @@ export class StockAssistantService {
       if (locations.length === 1) {
         const nextState = { ...state, activeLocationId: locations[0].id, activeLocationName: locations[0].name };
         if (state.pendingProposal) return this.createProposalFromAgentTool(organizationId, actor, conversationId, nextState, { ...state.pendingProposal, locationId: locations[0].id });
-        return { message: `Emplacement actif : ${locations[0].name}.`, state: nextState, toolResults: [{ tool: call.tool, result: locations }], type: 'question' };
+        return { message: `Site actif : ${locations[0].name}.`, state: nextState, toolResults: [{ tool: call.tool, result: locations }], type: 'question' };
       }
-      return { message: locations.length ? `J’ai trouvé plusieurs emplacements possibles. Choisissez celui à utiliser.` : 'Je n’ai trouvé aucun emplacement correspondant.', state, toolResults: [{ tool: call.tool, result: locations }], type: 'clarification_needed', suggestions: ['location_select'], choices: this.locationChoices(locations), confidence: locations.length ? 0.55 : 0.2 };
+      return { message: locations.length ? `Quel site voulez-vous utiliser ?` : 'Je n’ai trouvé aucun site correspondant.', state, toolResults: [{ tool: call.tool, result: locations }], type: 'clarification_needed', suggestions: ['location_select'], choices: this.locationChoices(locations), confidence: locations.length ? 0.55 : 0.2 };
     }
     if (call.tool === 'search_suppliers') {
       const suppliers = await this.prisma.supplier.findMany({ where: { organizationId, isArchived: false, name: call.args?.query ? { contains: String(call.args.query), mode: 'insensitive' } : undefined }, orderBy: { name: 'asc' }, take: 8 });
@@ -230,7 +247,7 @@ export class StockAssistantService {
       return { message: suppliers.length ? `J’ai trouvé plusieurs fournisseurs possibles. Choisissez celui à utiliser.` : 'Je n’ai trouvé aucun fournisseur correspondant.', state, toolResults: [{ tool: call.tool, result: suppliers }], type: 'clarification_needed', choices: this.supplierChoices(suppliers), confidence: suppliers.length ? 0.55 : 0.2 };
     }
     if (call.tool === 'create_stock_proposal') return this.createProposalFromAgentTool(organizationId, actor, conversationId, state, call.args || {});
-    return this.agentClarification({ ...state, pendingIntent: call.args?.pendingIntent || state.pendingIntent || null }, call.message || 'Précisez le produit, la quantité ou l’action stock à réaliser.');
+    return this.agentClarification({ ...state, pendingIntent: call.args?.pendingIntent || state.pendingIntent || null }, call.args?.message || call.message || 'Précisez le produit, la quantité ou l’action stock à réaliser.');
   }
 
   private async createProposalFromAgentTool(organizationId: string, actor: Actor, conversationId: string, state: AgentState, args: Record<string, any>): Promise<AgentResult> {
@@ -254,13 +271,82 @@ export class StockAssistantService {
       }
     }
     if (!locationId && ['RECEIPT', 'WASTE', 'ADJUSTMENT', 'INVENTORY_COUNT'].includes(intent)) {
-      const pendingProposal = { intent: intent.toLowerCase(), lines: prepared.map((line) => ({ productId: line.productId, rawLabel: line.rawLabel, quantity: line.quantity, unit: line.unit || null })), supplierId: args.supplierId || state.activeSupplierId || null };
-      return { message: this.agent.locationQuestion(intent), state: { ...state, pendingIntent: intent.toLowerCase(), pendingProposal, activeProductId: prepared[0]?.productId || state.activeProductId, activeProductName: prepared[0]?.rawLabel || state.activeProductName }, type: 'clarification_needed', questions: ['Choisissez un emplacement.'], suggestions: ['location_select'], choices: [{ type: 'location_select', label: 'Choisir un emplacement' }], confidence: 0.8, needsReview: true };
+      const defaultLocation = await this.singleSiteDefaultLocation(organizationId);
+      if (defaultLocation) {
+        locationId = defaultLocation.id;
+        locationName = defaultLocation.name;
+      }
     }
     const proposal = await this.createProposal(organizationId, actor, { type: intent, sourceType: 'CHAT', conversationId, locationId, sourceLocationId: args.sourceLocationId || null, destinationLocationId: args.destinationLocationId || locationId, supplierId: args.supplierId || state.activeSupplierId || null, confidence: 0.9, lines: prepared });
     const first = proposal.lines[0];
     const nextState: AgentState = { ...state, activeProductId: first?.productId || state.activeProductId, activeProductName: first?.rawLabel || state.activeProductName, activeLocationId: locationId || state.activeLocationId, activeLocationName: locationName || state.activeLocationName, pendingIntent: null, pendingProposal: null, lastProposalId: proposal.id };
-    return { message: `J’ai préparé une proposition ${this.intentLabel(intent)} : ${prepared.map((line) => `${line.quantity} ${line.unit || ''} de ${line.rawLabel}`.trim()).join(', ')}. Vérifiez-la puis validez pour appliquer le stock.`, state: nextState, proposalId: proposal.id, status: proposal.status, lines: proposal.lines, type: intent.toLowerCase(), toolResults: [{ tool: 'create_stock_proposal', result: { proposalId: proposal.id } }], suggestions: ['proposal_review'], choices: [{ type: 'proposal_review', label: 'Vérifier & appliquer', value: proposal.id }], confidence: 0.9, needsReview: true };
+    return { message: `J’ai préparé une proposition ${this.intentLabel(intent)} : ${prepared.map((line) => `${line.quantity} ${line.unit || ''} de ${line.rawLabel}`.trim()).join(', ')}. Vérifiez-la puis validez pour choisir le site et appliquer le stock.`, state: nextState, proposalId: proposal.id, status: proposal.status, lines: proposal.lines, type: intent.toLowerCase(), toolResults: [{ tool: 'create_stock_proposal', result: { proposalId: proposal.id } }], suggestions: ['proposal_review'], choices: [{ type: 'proposal_review', label: 'Vérifier & appliquer', value: proposal.id }], confidence: 0.9, needsReview: true };
+  }
+
+  private async createProductFromAgentTool(organizationId: string, actor: Actor, conversationId: string, state: AgentState, args: Record<string, any>): Promise<AgentResult> {
+    const draft = this.productCreationDraftFromArgs(args, state);
+    if (!draft.name) {
+      return {
+        message: 'Quel nom exact voulez-vous donner au produit ?',
+        state: { ...state, pendingProductCreation: draft },
+        type: 'clarification_needed',
+        questions: ['Nom du produit ?'],
+        confidence: 0.45,
+      };
+    }
+
+    const existing = await this.findExactProductByName(organizationId, draft.name);
+    if (existing) {
+      const nextState: AgentState = { ...state, activeProductId: existing.id, activeProductName: existing.name, pendingProductCreation: null };
+      return {
+        message: `Ce produit existe déjà : ${existing.name}${existing.unit?.symbol ? ` (${existing.unit.symbol})` : ''}.`,
+        state: nextState,
+        type: 'question',
+        toolResults: [{ tool: 'create_product', result: { existingProductId: existing.id } }],
+        confidence: 0.9,
+      };
+    }
+
+    const unit = draft.unitSymbol ? await this.findUnitBySymbolOrName(organizationId, draft.unitSymbol) : null;
+    if (!unit) {
+      const units = await this.prisma.unit.findMany({ where: { organizationId, isArchived: false }, orderBy: { symbol: 'asc' }, take: 10 });
+      return {
+        message: `Pour créer **${draft.name}**, j’ai besoin de l’unité de mesure.\n\nExemple : kg, L, pièce.`,
+        state: { ...state, pendingProductCreation: draft },
+        type: 'clarification_needed',
+        questions: ['Quelle unité ?'],
+        choices: units.slice(0, 6).map((item) => ({ type: 'clarification', label: item.symbol, description: item.name })),
+        confidence: 0.65,
+        needsReview: true,
+      };
+    }
+
+    const product = await this.stocks.createProduct(organizationId, actor, {
+      name: this.cleanProductName(draft.name),
+      unitId: unit.id,
+    });
+    const nextState: AgentState = { ...state, activeProductId: product.id, activeProductName: product.name, pendingProductCreation: null };
+    const quantity = Number(draft.initialQuantity || 0);
+    if (Number.isFinite(quantity) && quantity > 0) {
+      const proposalResult = await this.createProposalFromAgentTool(organizationId, actor, conversationId, nextState, {
+        intent: 'receipt',
+        lines: [{ productId: product.id, rawLabel: product.name, quantity, unit: unit.symbol }],
+      });
+      return {
+        ...proposalResult,
+        message: `Produit créé : ${product.name} (${unit.symbol}).\n\n${proposalResult.message}`,
+        state: { ...proposalResult.state, activeProductId: product.id, activeProductName: product.name, pendingProductCreation: null },
+        toolResults: [{ tool: 'create_product', result: { productId: product.id, name: product.name, unit: unit.symbol } }, ...(proposalResult.toolResults || [])],
+      };
+    }
+
+    return {
+      message: `Produit créé : ${product.name} (${unit.symbol}).\n\nVous pouvez maintenant me dire par exemple : “ajoute 10 ${unit.symbol} de ${product.name}”.`,
+      state: nextState,
+      type: 'product_create',
+      toolResults: [{ tool: 'create_product', result: { productId: product.id, name: product.name, unit: unit.symbol } }],
+      confidence: 0.95,
+    };
   }
 
   private async searchProductsTool(organizationId: string, query: string) {
@@ -277,8 +363,18 @@ export class StockAssistantService {
     return candidates.slice(0, 6).map((item) => ({ type: 'product_select', label: item.name, value: item.id, description: item.score != null ? `Confiance ${(Number(item.score) * 100).toFixed(0)}%` : undefined }));
   }
 
+  private productCreateChoice(draft: { name?: string | null; unitSymbol?: string | null; initialQuantity?: number | null }): StockAgentChoice {
+    const name = this.cleanProductName(draft.name || 'ce produit');
+    return {
+      type: 'product_create',
+      label: `Créer le produit ${name}`,
+      description: draft.unitSymbol ? `Unité ${draft.unitSymbol}${draft.initialQuantity ? ` · stock initial ${draft.initialQuantity} ${draft.unitSymbol}` : ''}` : 'Préciser le nom et l’unité',
+      payload: { name: draft.name || null, unitSymbol: draft.unitSymbol || null, initialQuantity: draft.initialQuantity || null },
+    };
+  }
+
   private locationChoices(locations: any[] = []): StockAgentChoice[] {
-    return locations.slice(0, 8).map((item) => ({ type: 'location_select', label: item.name, value: item.id, description: item.site?.name ? `Site : ${item.site.name}` : undefined }));
+    return locations.slice(0, 8).map((item) => ({ type: 'location_select', label: item.name, value: item.id, description: 'Site' }));
   }
 
   private supplierChoices(suppliers: any[] = []): StockAgentChoice[] {
@@ -286,7 +382,8 @@ export class StockAssistantService {
   }
 
   private async findLocations(organizationId: string, query?: string | null) {
-    const locations = await this.prisma.location.findMany({ where: { organizationId, isArchived: false }, include: { site: true }, orderBy: { name: 'asc' }, take: 200 });
+    const sites = await this.prisma.site.findMany({ where: { organizationId, isArchived: false }, include: { locations: { where: { isArchived: false }, orderBy: { name: 'asc' } } }, orderBy: { name: 'asc' }, take: 100 });
+    const locations = await Promise.all(sites.map((site) => this.defaultLocationForSite(organizationId, site)));
     const normalizedQuery = normalizeStockText(String(query || ''));
     if (!normalizedQuery) return locations.slice(0, 8);
     return locations
@@ -295,6 +392,20 @@ export class StockAssistantService {
       .sort((a, b) => b.score - a.score || a.location.name.localeCompare(b.location.name))
       .slice(0, 8)
       .map((item) => item.location);
+  }
+
+  private async singleSiteDefaultLocation(organizationId: string) {
+    const sites = await this.prisma.site.findMany({ where: { organizationId, isArchived: false }, include: { locations: { where: { isArchived: false }, orderBy: { name: 'asc' } } }, orderBy: { name: 'asc' }, take: 2 });
+    if (sites.length !== 1) return null;
+    return this.defaultLocationForSite(organizationId, sites[0]);
+  }
+
+  private async defaultLocationForSite(organizationId: string, site: any) {
+    const technicalName = 'Stock général';
+    const existing = (site.locations || []).find((location: any) => normalizeStockText(location.name) === normalizeStockText(technicalName)) || (site.locations || [])[0];
+    if (existing) return { ...existing, name: site.name, site };
+    const created = await this.prisma.location.create({ data: { organizationId, siteId: site.id, name: technicalName } });
+    return { ...created, name: site.name, site };
   }
 
   private async resolveProduct(organizationId: string, productId?: string | null, query?: string | null) {
@@ -318,7 +429,7 @@ export class StockAssistantService {
     const rows = await this.prisma.stock.findMany({ where: { organizationId, productId }, include: { location: true, site: true, lot: true }, orderBy: [{ location: { name: 'asc' } }] });
     const total = rows.reduce((sum, row) => sum + Number(row.quantity), 0);
     if (!rows.length || total === 0) return { message: `Stock actuel\n\n${product.name}\n0 ${product.unit?.symbol || ''}`.trim(), rows };
-    const detail = rows.filter((row) => Number(row.quantity) !== 0).slice(0, 6).map((row) => `• ${Number(row.quantity).toLocaleString('fr-FR')} ${product.unit?.symbol || ''}${row.location?.name ? ` — ${row.location.name}` : ''}`).join('\n');
+    const detail = rows.filter((row) => Number(row.quantity) !== 0).slice(0, 6).map((row) => `• ${Number(row.quantity).toLocaleString('fr-FR')} ${product.unit?.symbol || ''}${row.site?.name ? ` — ${row.site.name}` : ''}`).join('\n');
     return { message: `Stock actuel\n\n${product.name}\nTotal : ${total.toLocaleString('fr-FR')} ${product.unit?.symbol || ''}${detail ? `\n\nDétail :\n${detail}` : ''}`.trim(), rows };
   }
 
@@ -348,10 +459,55 @@ export class StockAssistantService {
     return null;
   }
   private locationQuestion(intent: string) {
-    if (intent === 'WASTE') return 'Depuis quel emplacement souhaitez-vous retirer ce stock ?';
-    if (intent === 'TRANSFER') return 'Quel est l’emplacement de départ et la destination du transfert ?';
-    if (intent === 'INVENTORY_COUNT') return 'Dans quel emplacement souhaitez-vous enregistrer ce comptage ?';
-    return `Dans quel emplacement souhaitez-vous ${intent === 'RECEIPT' ? 'ajouter' : 'enregistrer'} ce stock ?`;
+    if (intent === 'WASTE') return 'Depuis quel site souhaitez-vous retirer ce stock ?';
+    if (intent === 'TRANSFER') return 'Quel est le site de départ et le site de destination du transfert ?';
+    if (intent === 'INVENTORY_COUNT') return 'Sur quel site souhaitez-vous enregistrer ce comptage ?';
+    return `Sur quel site souhaitez-vous ${intent === 'RECEIPT' ? 'ajouter' : 'enregistrer'} ce stock ?`;
+  }
+
+  private productCreationDraftFromArgs(args: Record<string, any>, state: AgentState) {
+    const fromText = this.productCreationDraftFromText(String(args.name || args.productName || args.rawLabel || ''), state);
+    return {
+      name: this.cleanProductName(String(args.name || args.productName || args.rawLabel || fromText.name || state.pendingProductCreation?.name || '').trim()) || null,
+      unitSymbol: String(args.unitSymbol || args.unit || fromText.unitSymbol || state.pendingProductCreation?.unitSymbol || '').trim() || null,
+      initialQuantity: Number(args.initialQuantity ?? args.quantity ?? fromText.initialQuantity ?? state.pendingProductCreation?.initialQuantity ?? 0) || null,
+    };
+  }
+
+  private productCreationDraftFromText(text: string, state: AgentState) {
+    const raw = String(text || '').trim();
+    const quantityMatch = raw.match(/(\d+(?:[,.]\d+)?)\s*([a-zA-ZÀ-ÿ]{1,12})/);
+    const left = raw.split(/-{1,2}>|→/)[0]?.trim() || raw;
+    const name = this.cleanProductName(left
+      .replace(/\*/g, '')
+      .replace(/^cr[ée]er\s+(?:le\s+)?produits?\s*/i, '')
+      .replace(/^cr[ée]er\s+un\s+nouveau\s+produit\s*/i, '')
+      .replace(/\b(produits|produit|articles|article|nouveau|nouvelle|creer|créer|cree|crée|creation|ajouter|ajoute|le|la|un|une)\b/ig, ' ')
+      .replace(/(\d+(?:[,.]\d+)?)\s*[a-zA-ZÀ-ÿ]{1,12}/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim());
+    const pending = state.pendingProductCreation || {};
+    return {
+      name: name || pending.name || null,
+      unitSymbol: quantityMatch?.[2] || pending.unitSymbol || null,
+      initialQuantity: quantityMatch ? Number(quantityMatch[1].replace(',', '.')) : pending.initialQuantity || null,
+    };
+  }
+
+  private cleanProductName(value: string) {
+    return String(value || '').replace(/[“”"]/g, '').replace(/\s+/g, ' ').trim();
+  }
+
+  private async findExactProductByName(organizationId: string, name: string) {
+    const products = await this.prisma.product.findMany({ where: { organizationId, isArchived: false }, include: { unit: true }, take: 500 });
+    const normalized = normalizeStockText(name);
+    return products.find((product) => normalizeStockText(product.name) === normalized) || null;
+  }
+
+  private async findUnitBySymbolOrName(organizationId: string, value: string) {
+    const normalized = normalizeStockText(value);
+    const units = await this.prisma.unit.findMany({ where: { organizationId, isArchived: false }, orderBy: { symbol: 'asc' }, take: 200 });
+    return units.find((unit) => normalizeStockText(unit.symbol) === normalized || normalizeStockText(unit.name) === normalized) || null;
   }
   private shouldUseActiveProduct(query: string, normalized: string, state: AgentState) { return Boolean(state.activeProductId && (!query || this.isGenericReference(query) || this.isPronounStockFollowUp(query) || this.refersToPreviousProduct(normalized))); }
   private extractProductCatalogQuery(content: string) { return content.replace(/[?!.]+$/g, '').replace(/^(est ce que|j ai|as tu|avez vous|on a|y a t il|il y a)\s+/i, '').replace(/\b(dans|mes|les|produits|produit|catalogue|articles|article|du|de|des|d')\b/ig, ' ').trim(); }
@@ -483,7 +639,7 @@ export class StockAssistantService {
     const hasQuantity = /\d+(?:[,.]\d+)?/.test(content);
     if (/\b(reception|receptionner|ajoute|rajoute|recu|entree)\b/.test(normalized) && (genericProduct || !hasQuantity)) return 'D’accord. Indiquez la quantité, l’unité et le produit, par exemple : “J’ai reçu 10 kg de café”. Vous pouvez aussi joindre une facture.';
     if (/\b(perte|perdu|casse|gaspillage|jete|retire|retirer|retrait|enleve|enlever|sort|sors|sortie|destocke|destocker)\b/.test(normalized) && (genericProduct || !hasQuantity)) return 'Pour retirer du stock, indiquez la quantité et le produit, par exemple : “Retire 2 kg de tomates”.';
-    if (/\b(transfert|transferer|deplacer)\b/.test(normalized) && (genericProduct || !hasQuantity)) return 'Pour un transfert, indiquez le produit, la quantité, l’emplacement source et la destination.';
+    if (/\b(transfert|transferer|deplacer)\b/.test(normalized) && (genericProduct || !hasQuantity)) return 'Pour un transfert, indiquez le produit, la quantité, le site source et le site de destination.';
     return null;
   }
   private async conversationMemory(organizationId: string, conversationId: string) {
