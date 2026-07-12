@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Archive,
@@ -17,7 +17,7 @@ import {
   Sparkles,
   Trash2,
   Utensils,
-  Wheat,
+  Upload,
   X,
   AlertCircle,
   Clock,
@@ -30,7 +30,6 @@ import {
 import { api } from '../api/client';
 import type {
   Product,
-  TechnicalSheetAllergen,
   TechnicalSheetCategory,
   TechnicalSheetDashboard,
   TechnicalSheetHistoryEntry,
@@ -41,7 +40,7 @@ import type {
   Unit,
 } from '../types';
 
-type TechnicalSheetsTab = 'dashboard' | 'recipes' | 'categories' | 'costs' | 'allergens' | 'production';
+type TechnicalSheetsTab = 'dashboard' | 'recipes' | 'categories' | 'costs' | 'production';
 
 type TechnicalSheetsAppProps = {
   token: string;
@@ -532,130 +531,22 @@ function ProductSelect({
   );
 }
 
-// Multi-select custom allergen component
-function AllergenMultiSelect({
-  allergens,
-  selectedIds,
-  onChange
-}: {
-  allergens: TechnicalSheetAllergen[];
-  selectedIds: string[];
-  onChange: (ids: string[]) => void;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-
-  const toggleAllergen = (id: string) => {
-    if (selectedIds.includes(id)) {
-      onChange(selectedIds.filter(x => x !== id));
-    } else {
-      onChange([...selectedIds, id]);
-    }
-  };
-
-  const selectedNames = allergens
-    .filter(a => selectedIds.includes(a.id))
-    .map(a => a.name)
-    .join(', ');
-
-  return (
-    <div className="custom-multiselect-wrapper" style={{ position: 'relative', width: '100%' }}>
-      <div
-        className="custom-multiselect-trigger"
-        onClick={() => setIsOpen(!isOpen)}
-        style={{
-          padding: '0.55rem 0.85rem',
-          border: '1.5px solid var(--light-border)',
-          borderRadius: '12px',
-          background: 'white',
-          fontSize: '0.88rem',
-          cursor: 'pointer',
-          minHeight: '38px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          userSelect: 'none'
-        }}
-      >
-        <span style={{
-          color: selectedIds.length > 0 ? 'var(--text-main)' : 'var(--text-muted)',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          maxWidth: '150px',
-          fontSize: '0.82rem'
-        }}>
-          {selectedIds.length > 0 ? selectedNames : "Allergènes..."}
-        </span>
-        <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>▼</span>
-      </div>
-
-      {isOpen && (
-        <>
-          <div
-            onClick={() => setIsOpen(false)}
-            style={{ position: 'fixed', inset: 0, zIndex: 1199 }}
-          />
-          <div style={{
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            right: 0,
-            background: 'white',
-            border: '1px solid var(--light-border)',
-            borderRadius: '12px',
-            boxShadow: 'var(--shadow-lg)',
-            maxHeight: '180px',
-            overflowY: 'auto',
-            zIndex: 1200,
-            marginTop: '4px',
-            padding: '0.5rem',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.25rem'
-          }}>
-            {allergens.map(a => {
-              const isChecked = selectedIds.includes(a.id);
-              return (
-                <label
-                  key={a.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    padding: '0.4rem 0.6rem',
-                    cursor: 'pointer',
-                    fontSize: '0.82rem',
-                    borderRadius: '6px',
-                    background: isChecked ? '#f1f5f9' : 'transparent',
-                    userSelect: 'none',
-                    margin: 0,
-                    fontWeight: 500,
-                    color: 'var(--text-main)'
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={isChecked}
-                    onChange={() => toggleAllergen(a.id)}
-                    style={{ margin: 0, width: 'auto' }}
-                  />
-                  <span>{a.icon} {a.name}</span>
-                </label>
-              );
-            })}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
 // Reusable Metric card matching Stocks dashboard
-function MetricCard({ label, value, icon, tone = 'emerald' }: { label: string; value: string | number; icon: React.ReactNode; tone?: string }) {
+function MetricCard({ label, value, icon, tone = 'emerald', onClick }: { label: string; value: string | number; icon: React.ReactNode; tone?: string; onClick?: () => void }) {
   return (
     <motion.div
       className={`metric-card-modern tone-${tone}`}
       whileHover={{ y: -4, boxShadow: '0 12px 24px rgba(9, 13, 22, 0.05)' }}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={(event) => {
+        if (onClick && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault();
+          onClick();
+        }
+      }}
+      style={onClick ? { cursor: 'pointer' } : undefined}
     >
       <div className="metric-header">
         <div className={`metric-icon-wrapper-modern tone-${tone}`}>
@@ -679,7 +570,6 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
   const [dashboard, setDashboard] = useState<TechnicalSheetDashboard>();
   const [recipes, setRecipes] = useState<TechnicalSheetRecipe[]>([]);
   const [categories, setCategories] = useState<TechnicalSheetCategory[]>([]);
-  const [allergens, setAllergens] = useState<TechnicalSheetAllergen[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [recipeDialog, setRecipeDialog] = useState(false);
@@ -687,29 +577,27 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
   const [form, setForm] = useState<TechnicalSheetRecipePayload>(emptyRecipe);
   const [categoryName, setCategoryName] = useState('');
   const [categoryDescription, setCategoryDescription] = useState('');
-  const [allergenName, setAllergenName] = useState('');
-  const [allergenIcon, setAllergenIcon] = useState('');
   const [selectedRecipeId, setSelectedRecipeId] = useState('');
   const [requestedPortions, setRequestedPortions] = useState(50);
   const [simulation, setSimulation] = useState<TechnicalSheetSimulation>();
   const [history, setHistory] = useState<TechnicalSheetHistoryEntry[]>([]);
   const [duplicateOpen, setDuplicateOpen] = useState<TechnicalSheetRecipe | null>(null);
   const [duplicateName, setDuplicateName] = useState('');
+  const [availableProducts, setAvailableProducts] = useState<Product[]>(products);
+  const recipePdfInputRef = useRef<HTMLInputElement | null>(null);
 
   async function load() {
     if (!stocksInstalled) return;
     setLoading(true);
     setError(undefined);
     try {
-      const [dash, cats, alls, recipeList] = await Promise.all([
+      const [dash, cats, recipeList] = await Promise.all([
         api.technicalSheetsDashboard(token).catch(() => undefined),
         api.technicalSheetCategories(token),
-        api.technicalSheetAllergens(token),
         api.technicalSheetRecipes(token, { includeArchived: true, search: search || undefined, status: statusFilter || undefined }),
       ]);
       setDashboard(dash);
       setCategories(cats);
-      setAllergens(alls);
       setRecipes(recipeList.items ?? recipeList);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Chargement des fiches techniques impossible.');
@@ -719,9 +607,10 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
   }
 
   useEffect(() => { void load(); }, [stocksInstalled, search, statusFilter]);
+  useEffect(() => { setAvailableProducts(products); }, [products]);
 
   const selectedRecipe = useMemo(() => recipes.find((recipe) => recipe.id === selectedRecipeId) ?? recipes[0], [recipes, selectedRecipeId]);
-  const activeProducts = useMemo(() => products.filter((product) => !isArchived(product)), [products]);
+  const activeProducts = useMemo(() => availableProducts.filter((product) => !isArchived(product)), [availableProducts]);
   const averageCost = dashboard?.averageMaterialCost ?? (recipes.length ? recipes.reduce((sum, recipe) => sum + Number(recipe.costTotal ?? recipe.totalCost ?? 0), 0) / recipes.length : 0);
 
   function openRecipe(recipe?: TechnicalSheetRecipe) {
@@ -741,7 +630,6 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
         unitId: line.unitId,
         quantity: Number(line.quantity),
         comment: line.comment ?? '',
-        allergenIds: line.allergens?.map((allergen) => allergen.id) ?? line.allergenIds ?? [],
       })),
       steps: (recipe.steps ?? []).map((step, index) => ({ id: step.id, order: step.order ?? index + 1, title: step.title ?? '', description: step.description ?? '', estimatedTimeMinutes: Number(step.estimatedTimeMinutes ?? 0) })),
     } : { ...emptyRecipe, categoryId: categories.find((cat) => !isArchived(cat))?.id ?? '', ingredients: [], steps: [] });
@@ -752,11 +640,16 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
     if (!form.name.trim()) return setError('Le nom de la fiche est requis.');
     if (!form.categoryId) return setError('Choisissez une catégorie recette.');
     if (!form.referencePortions || form.referencePortions <= 0) return setError('Les portions de référence doivent être positives.');
+    if ((form.ingredients ?? []).some((line) => !line.productId && !(line.createProduct && line.productName?.trim()))) {
+      return setError('Chaque ingrédient doit être associé à un produit Stocks ou défini comme nouveau produit.');
+    }
     setLoading(true);
     setError(undefined);
     try {
       if (editingRecipe) await api.updateTechnicalSheetRecipe(token, editingRecipe.id, form);
       else await api.createTechnicalSheetRecipe(token, form);
+      const refreshedProducts = await api.products(token).catch(() => undefined);
+      if (refreshedProducts) setAvailableProducts(refreshedProducts);
       setRecipeDialog(false);
       setSuccess(editingRecipe ? 'Fiche technique mise à jour.' : 'Fiche technique créée.');
       await load();
@@ -773,7 +666,7 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
     try {
       const summary = await api.installTechnicalSheets(token);
       onInstalled?.(summary.installedApplications);
-      setSuccess('Fiches Techniques installé : catégories recettes et allergènes standards préchargés.');
+      setSuccess('Fiches Techniques installé : catégories recettes préchargées.');
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Installation impossible. Stocks doit être installé auparavant.');
@@ -787,14 +680,6 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
     await api.createTechnicalSheetCategory(token, { name: categoryName.trim(), description: categoryDescription.trim() || undefined });
     setCategoryName('');
     setCategoryDescription('');
-    await load();
-  }
-
-  async function createAllergen() {
-    if (!allergenName.trim()) return;
-    await api.createTechnicalSheetAllergen(token, { name: allergenName.trim(), icon: allergenIcon.trim() || undefined });
-    setAllergenName('');
-    setAllergenIcon('');
     await load();
   }
 
@@ -813,9 +698,7 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
       copyPhoto: true,
       copyIngredients: true,
       copySteps: true,
-      copyAllergens: true,
       copyCategory: true,
-      resetToDraft: true,
     });
     setDuplicateOpen(null);
     setDuplicateName('');
@@ -846,13 +729,38 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
 
   async function downloadSimulation(format: 'csv' | 'pdf') {
     if (!simulation?.id) return;
-    const blob = await (format === 'csv' ? api.exportTechnicalSheetProductionCsv(token, simulation.id) : api.exportTechnicalSheetProductionPdf(token, simulation.id));
-    const url = URL.createObjectURL(blob);
+    const file = await (format === 'csv' ? api.exportTechnicalSheetProductionCsv(token, simulation.id) : api.exportTechnicalSheetProductionPdf(token, simulation.id));
+    const url = URL.createObjectURL(file.blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `production-${simulation.id}.${format}`;
+    a.download = file.filename;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function importRecipePdf(file?: File | null) {
+    if (!file) return;
+    setLoading(true);
+    setError(undefined);
+    try {
+      const result = await api.importTechnicalSheetRecipePdf(token, file);
+      setEditingRecipe(null);
+      setForm({
+        ...emptyRecipe,
+        ...result.payload,
+        categoryId: result.payload.categoryId || categories.find((cat) => !isArchived(cat))?.id || '',
+        ingredients: result.payload.ingredients ?? [],
+        steps: result.payload.steps ?? [],
+      });
+      setRecipeDialog(true);
+      const created = result.newProductsCount ? ` ${result.newProductsCount} nouveau(x) produit(s) Stocks seront créés avec la fiche.` : '';
+      const skipped = result.skippedIngredientsCount ? ` ${result.skippedIngredientsCount} ingrédient(s) restent à saisir.` : '';
+      setSuccess(`PDF importé : ${result.matchedIngredientsCount} ingrédient(s) rapproché(s) avec Stocks.${created}${skipped}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Import PDF impossible.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   if (!stocksInstalled) {
@@ -895,7 +803,6 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
           ['recipes', 'Fiches techniques'],
           ['categories', 'Catégories recettes'],
           ['costs', 'Coûts'],
-          ['allergens', 'Allergènes'],
           ['production', 'Production théorique'],
         ] as const).map(([value, label]) => (
           <button
@@ -924,6 +831,9 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
               averageCost={averageCost}
               onInstall={installModule}
               onOpenRecipes={() => onNavigate('recipes')}
+              onOpenCategories={() => onNavigate('categories')}
+              onOpenCosts={() => onNavigate('costs')}
+              onOpenProduction={() => onNavigate('production')}
               loading={loading}
             />
           )}
@@ -935,6 +845,7 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
               onSearch={setSearch}
               onStatusFilter={setStatusFilter}
               onCreate={() => openRecipe()}
+              onImportPdf={() => recipePdfInputRef.current?.click()}
               onEdit={openRecipe}
               onArchive={archiveRecipe}
               onDuplicate={(recipe) => { setDuplicateOpen(recipe); setDuplicateName(`${recipe.name} – variante`); }}
@@ -956,21 +867,9 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
               onArchive={(id) => api.archiveTechnicalSheetCategory(token, id).then(load)}
             />
           )}
-          {tab === 'allergens' && (
-            <AllergensTab
-              allergens={allergens}
-              name={allergenName}
-              icon={allergenIcon}
-              onName={setAllergenName}
-              onIcon={setAllergenIcon}
-              onCreate={createAllergen}
-              onArchive={(id) => api.archiveTechnicalSheetAllergen(token, id).then(load)}
-            />
-          )}
           {tab === 'costs' && (
             <CostsTab
               recipes={recipes}
-              onRecalculate={recalculate}
             />
           )}
           {tab === 'production' && (
@@ -997,11 +896,22 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
         products={activeProducts}
         units={units}
         categories={categories.filter((cat) => !isArchived(cat))}
-        allergens={allergens.filter((allergen) => !isArchived(allergen))}
         editing={Boolean(editingRecipe)}
         onClose={() => setRecipeDialog(false)}
         onSave={saveRecipe}
         loading={loading}
+      />
+
+      <input
+        ref={recipePdfInputRef}
+        type="file"
+        accept="application/pdf,.pdf"
+        hidden
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.currentTarget.value = '';
+          void importRecipePdf(file);
+        }}
       />
 
       {/* Duplicate Dialog Component */}
@@ -1017,7 +927,7 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
             />
           </label>
           <div className="alert-modern info" style={{ fontSize: '0.82rem', margin: 0, borderRadius: '8px' }}>
-            La copie reprend les informations générales, la photo, les ingrédients, les étapes, la catégorie et les allergènes, puis repart à l'état de brouillon.
+            La copie reprend les informations générales, la photo, les ingrédients, les étapes et la catégorie, puis repart à l'état de brouillon.
           </div>
           <div className="modal-footer" style={{ margin: '1rem -1.5rem -1.5rem', padding: '1rem 1.5rem', background: '#f8fafc', borderTop: '1px solid #f1f5f9', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
             <button type="button" className="btn btn-secondary" onClick={() => setDuplicateOpen(null)}>
@@ -1048,17 +958,17 @@ function BlockingState({ onInstallStocks }: { onInstallStocks: () => void }) {
   );
 }
 
-function DashboardTab({ dashboard, recipes, categories, averageCost, onInstall, onOpenRecipes, loading }: { dashboard?: TechnicalSheetDashboard; recipes: TechnicalSheetRecipe[]; categories: TechnicalSheetCategory[]; averageCost: number; onInstall: () => void; onOpenRecipes: () => void; loading: boolean }) {
+function DashboardTab({ dashboard, recipes, categories, averageCost, onInstall, onOpenRecipes, onOpenCategories, onOpenCosts, onOpenProduction, loading }: { dashboard?: TechnicalSheetDashboard; recipes: TechnicalSheetRecipe[]; categories: TechnicalSheetCategory[]; averageCost: number; onInstall: () => void; onOpenRecipes: () => void; onOpenCategories: () => void; onOpenCosts: () => void; onOpenProduction: () => void; loading: boolean }) {
   const latest = dashboard?.latestRecipes ?? recipes.slice(0, 5);
   const topProducts = dashboard?.topProducts ?? [];
   
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       <div className="stats-grid">
-        <MetricCard label="Fiches techniques" value={dashboard?.recipeCount ?? recipes.length} icon={<FileText size={20} />} tone="emerald" />
-        <MetricCard label="Catégories recettes" value={dashboard?.categoryCount ?? categories.filter((c) => !isArchived(c)).length} icon={<ClipboardList size={20} />} tone="blue" />
-        <MetricCard label="Coût matière moyen" value={money(averageCost)} icon={<Calculator size={20} />} tone="orange" />
-        <MetricCard label="Produits Stocks utilisés" value={dashboard?.usedStockProductsCount ?? '—'} icon={<Utensils size={20} />} tone="purple" />
+        <MetricCard label="Fiches techniques" value={dashboard?.recipeCount ?? recipes.length} icon={<FileText size={20} />} tone="emerald" onClick={onOpenRecipes} />
+        <MetricCard label="Catégories recettes" value={dashboard?.categoryCount ?? categories.filter((c) => !isArchived(c)).length} icon={<ClipboardList size={20} />} tone="blue" onClick={onOpenCategories} />
+        <MetricCard label="Coût matière moyen" value={money(averageCost)} icon={<Calculator size={20} />} tone="orange" onClick={onOpenCosts} />
+        <MetricCard label="Produits Stocks utilisés" value={dashboard?.usedStockProductsCount ?? '—'} icon={<Utensils size={20} />} tone="purple" onClick={onOpenProduction} />
       </div>
       
       <div className="double-panel">
@@ -1149,6 +1059,7 @@ function RecipesTab(props: {
   onSearch: (v: string) => void;
   onStatusFilter: (v: string) => void;
   onCreate: () => void;
+  onImportPdf: () => void;
   onEdit: (r: TechnicalSheetRecipe) => void;
   onArchive: (r: TechnicalSheetRecipe) => void;
   onDuplicate: (r: TechnicalSheetRecipe) => void;
@@ -1189,6 +1100,9 @@ function RecipesTab(props: {
         </select>
         <button className="btn btn-primary" onClick={props.onCreate}>
           <Plus size={16} /> Créer une fiche
+        </button>
+        <button className="btn btn-secondary" onClick={props.onImportPdf}>
+          <Upload size={16} /> Importer PDF
         </button>
       </div>
       
@@ -1373,79 +1287,10 @@ function ReferencesTab({
   );
 }
 
-function AllergensTab({
-  allergens,
-  name,
-  icon,
-  onName,
-  onIcon,
-  onCreate,
-  onArchive
-}: {
-  allergens: TechnicalSheetAllergen[];
-  name: string;
-  icon: string;
-  onName: (v: string) => void;
-  onIcon: (v: string) => void;
-  onCreate: () => void;
-  onArchive: (id: string) => void;
-}) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <div className="card-modern">
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <label style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.85rem', fontWeight: 600 }}>
-            Nom de l'allergène
-            <input value={name} onChange={(e) => onName(e.target.value)} placeholder="ex: Gluten, Lactose, Arachides..." />
-          </label>
-          <label style={{ width: '150px', display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.85rem', fontWeight: 600 }}>
-            Icône / Code
-            <input value={icon} onChange={(e) => onIcon(e.target.value)} placeholder="ex: 🌾, 🥛, 🥜" />
-          </label>
-          <button className="btn btn-primary" onClick={onCreate} disabled={!name.trim()} style={{ height: '38px' }}>
-            <Plus size={16} /> Ajouter
-          </button>
-        </div>
-      </div>
-      
-      <div className="recipe-grid">
-        {allergens.map((allergen) => (
-          <div
-            key={allergen.id}
-            className="card-modern reference-item-card"
-            style={{
-              padding: '1rem',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              opacity: isArchived(allergen) ? 0.55 : 1
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ fontSize: '1.25rem' }}>{allergen.icon || '⚠️'}</span>
-              <strong style={{ fontSize: '0.92rem', color: 'var(--text-main)' }}>{allergen.name}</strong>
-            </div>
-            <button
-              className="icon-btn danger"
-              style={{ padding: '0.4rem' }}
-              onClick={() => onArchive(allergen.id)}
-              title="Archiver"
-            >
-              <Archive size={15} />
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function CostsTab({
-  recipes,
-  onRecalculate
+  recipes
 }: {
   recipes: TechnicalSheetRecipe[];
-  onRecalculate: (r: TechnicalSheetRecipe) => void;
 }) {
   const sorted = [...recipes].sort((a, b) => Number(b.costTotal ?? b.totalCost ?? 0) - Number(a.costTotal ?? a.totalCost ?? 0));
 
@@ -1454,7 +1299,7 @@ function CostsTab({
       <div className="section-header-modern" style={{ marginBottom: '1.5rem' }}>
         <div className="section-info">
           <span className="card-title">Comparaison des coûts</span>
-          <span className="section-tagline">Recalculer les coûts théoriques des recettes à partir des derniers prix d'achat Stocks.</span>
+          <span className="section-tagline">Les coûts suivent automatiquement les prix d'achat des produits Stocks.</span>
         </div>
       </div>
       
@@ -1467,7 +1312,6 @@ function CostsTab({
               <th>Lignes non calculables</th>
               <th style={{ textAlign: 'right' }}>Coût total</th>
               <th style={{ textAlign: 'right' }}>Coût / portion</th>
-              <th style={{ textAlign: 'center' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -1486,15 +1330,6 @@ function CostsTab({
                 </td>
                 <td style={{ textAlign: 'right', fontWeight: 700 }}>{money(recipe.costTotal ?? recipe.totalCost)}</td>
                 <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--primary)' }}>{money(recipe.costPerPortion)}</td>
-                <td style={{ textAlign: 'center' }}>
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => onRecalculate(recipe)}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
-                  >
-                    <RefreshCw size={12} /> Recalculer
-                  </button>
-                </td>
               </tr>
             ))}
           </tbody>
@@ -1657,7 +1492,7 @@ function ProductionTab({
                       className="badge badge-loss"
                       style={{ background: 'rgba(239, 68, 68, 0.08)', color: 'var(--danger)', border: '1px solid rgba(239, 68, 68, 0.15)', fontWeight: 600 }}
                     >
-                      {allergen.icon} {allergen.name}
+                      {allergen.icon ? `${allergen.icon} ` : ''}{allergen.name}
                     </span>
                   ))}
                 </div>
@@ -1674,7 +1509,7 @@ function ProductionTab({
   );
 }
 
-function RecipeDialog({ open, form, setForm, products, units, categories, allergens, editing, onClose, onSave, loading }: { open: boolean; form: TechnicalSheetRecipePayload; setForm: (f: TechnicalSheetRecipePayload) => void; products: Product[]; units: Unit[]; categories: TechnicalSheetCategory[]; allergens: TechnicalSheetAllergen[]; editing: boolean; onClose: () => void; onSave: () => void; loading: boolean }) {
+function RecipeDialog({ open, form, setForm, products, units, categories, editing, onClose, onSave, loading }: { open: boolean; form: TechnicalSheetRecipePayload; setForm: (f: TechnicalSheetRecipePayload) => void; products: Product[]; units: Unit[]; categories: TechnicalSheetCategory[]; editing: boolean; onClose: () => void; onSave: () => void; loading: boolean }) {
   const ingredients = form.ingredients ?? [];
   const steps = form.steps ?? [];
   
@@ -2061,7 +1896,7 @@ function RecipeDialog({ open, form, setForm, products, units, categories, allerg
                     type="button"
                     className="btn btn-secondary btn-sm"
                     style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', borderRadius: '8px', padding: '0.4rem 0.8rem' }}
-                    onClick={() => setForm({ ...form, ingredients: [...ingredients, { productId: '', unitId: units[0]?.id ?? '', quantity: 1, comment: '', allergenIds: [] }] })}
+                    onClick={() => setForm({ ...form, ingredients: [...ingredients, { productId: '', unitId: units[0]?.id ?? '', quantity: 1, comment: '' }] })}
                   >
                     <Plus size={14} /> Ajouter un ingrédient
                   </button>
@@ -2088,15 +1923,34 @@ function RecipeDialog({ open, form, setForm, products, units, categories, allerg
                           onMouseEnter={(e) => e.currentTarget.style.borderColor = '#cbd5e1'}
                           onMouseLeave={(e) => e.currentTarget.style.borderColor = '#e2e8f0'}
                         >
-                          <div style={{ display: 'grid', gridTemplateColumns: '2.5fr 1fr 1fr 1.5fr auto', gap: '0.75rem', alignItems: 'end' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '2.5fr 1fr 1fr auto', gap: '0.75rem', alignItems: 'end' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>
                               Produit Stocks
+                              {line.createProduct && !line.productId ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', padding: '0.65rem', border: '1px solid #a7f3d0', borderRadius: '8px', background: '#ecfdf5' }}>
+                                  <span style={{ color: '#047857', fontSize: '0.72rem', fontWeight: 700 }}>Nouveau produit Stocks à créer</span>
+                                  <input
+                                    value={line.productName ?? ''}
+                                    onChange={(event) => patchIngredient(index, { productName: event.target.value })}
+                                    aria-label="Nom du nouveau produit Stocks"
+                                    style={{ margin: 0, background: '#ffffff' }}
+                                  />
+                                  {line.productSku || line.productGtin ? (
+                                    <span style={{ color: '#64748b', fontSize: '0.7rem', fontWeight: 500 }}>
+                                      {[line.productSku ? `SAP ${line.productSku}` : '', line.productGtin ? `GTIN ${line.productGtin}` : ''].filter(Boolean).join(' · ')}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              ) : null}
                               <ProductSelect
                                 products={products}
-                                value={line.productId}
+                                value={line.productId ?? ''}
+                                placeholder={line.createProduct ? 'Ou associer à un produit existant...' : undefined}
                                 onChange={(productId) => {
                                   const product = products.find(p => p.id === productId);
-                                  patchIngredient(index, { productId, unitId: product?.unitId ?? line.unitId });
+                                  patchIngredient(index, productId
+                                    ? { productId, unitId: product?.unitId ?? line.unitId, createProduct: false }
+                                    : { productId });
                                 }}
                               />
                             </div>
@@ -2135,14 +1989,6 @@ function RecipeDialog({ open, form, setForm, products, units, categories, allerg
                                 {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name} ({unit.symbol})</option>)}
                               </select>
                             </label>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>
-                              Allergènes
-                              <AllergenMultiSelect
-                                allergens={allergens}
-                                selectedIds={line.allergenIds ?? []}
-                                onChange={(ids) => patchIngredient(index, { allergenIds: ids })}
-                              />
-                            </div>
                             <button
                               type="button"
                               className="icon-btn danger"
