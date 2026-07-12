@@ -1,4 +1,5 @@
 import { TechnicalSheetsService } from './technical-sheets.service';
+import AdmZip from 'adm-zip';
 
 const baseImport = {
   name: null,
@@ -134,5 +135,53 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
     expect(tx.product.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ name: 'Stab2000', unitId: 'unit-g' }) }));
     expect(tx.technicalSheetIngredient.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ productId: 'product-new', quantity: 2 }) }));
     expect(tx.auditLog.create).toHaveBeenCalled();
+  });
+
+  it.each(['Fiche.pages', 'Recette.numbers'])('extracts the embedded Apple preview before OCR for %s', (originalname) => {
+    const archive = new AdmZip();
+    archive.addFile('preview.jpg', Buffer.from('jpeg-preview'));
+
+    const input = (service as any).recipeOcrInput({
+      originalname,
+      mimetype: 'application/zip',
+      size: archive.toBuffer().length,
+      buffer: archive.toBuffer(),
+    });
+
+    expect(input.mimeType).toBe('image/jpeg');
+    expect(input.buffer.toString()).toBe('jpeg-preview');
+  });
+
+  it('keeps recipe import progress derived from persisted document and OCR states', () => {
+    const baseDocument = { id: 'doc-1', originalName: 'Madeleine.pages', mimeType: 'application/zip', sizeBytes: 12, createdAt: new Date(), updatedAt: new Date() };
+
+    expect((service as any).recipeImportStatus({ ...baseDocument, status: 'UPLOADED' }, { status: 'PENDING' }, null)).toEqual(expect.objectContaining({ state: 'en attente', progress: 12 }));
+    expect((service as any).recipeImportStatus({ ...baseDocument, status: 'PROCESSING' }, { status: 'PROCESSING' }, null)).toEqual(expect.objectContaining({ state: 'analyse', progress: 55 }));
+    expect((service as any).recipeImportStatus({ ...baseDocument, status: 'PROCESSED' }, { status: 'COMPLETED' }, { extractedJson: baseImport })).toEqual(expect.objectContaining({ state: 'vérifier', progress: 100, result: baseImport }));
+  });
+
+  it('retries only the structured recipe extraction when Mistral briefly rate-limits a batch', async () => {
+    const mistral = { chatJson: jest.fn().mockRejectedValueOnce(new Error('Mistral a refusé la demande (429)')).mockResolvedValue(baseImport) };
+    const retryingService = new TechnicalSheetsService({} as any, mistral as any);
+    jest.spyOn(retryingService as any, 'waitRecipeImportRetry').mockResolvedValue(undefined);
+
+    await expect((retryingService as any).extractRecipeFromOcr('org-1', '# Recette', 'recette.pages')).resolves.toEqual(baseImport);
+    expect(mistral.chatJson).toHaveBeenCalledTimes(2);
+  });
+
+  it('marks the exact import as reviewed inside the recipe creation transaction', async () => {
+    const tx = {
+      document: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'document-1', sourceId: 'extraction-1' }),
+        update: jest.fn(),
+      },
+      ocrBusinessExtraction: { updateMany: jest.fn() },
+    };
+
+    await (service as any).markRecipeImportReviewedTx(tx, 'org-1', 'document-1');
+
+    expect(tx.document.findFirst).toHaveBeenCalledWith({ where: { id: 'document-1', organizationId: 'org-1', sourceModule: 'technical-sheets', sourceType: 'recipe-import' } });
+    expect(tx.ocrBusinessExtraction.updateMany).toHaveBeenCalledWith({ where: { id: 'extraction-1', organizationId: 'org-1' }, data: { status: 'REVIEWED' } });
+    expect(tx.document.update).toHaveBeenCalledWith({ where: { id: 'document-1' }, data: { sourceType: 'recipe-import-reviewed' } });
   });
 });

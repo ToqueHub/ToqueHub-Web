@@ -13039,6 +13039,49 @@ input:checked + .slider-round:before {
   margin: 0 auto;
 }
 
+.technical-sheets-filter-card {
+  width: 100%;
+  padding: 1.5rem;
+  background: #ffffff;
+  border: 1px solid #e8edf3;
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.technical-sheets-filter-card .stocks-filter-bar {
+  margin-bottom: 0;
+}
+
+.technical-sheets-list-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 760px) {
+  .technical-sheets-filter-card {
+    padding: 1rem;
+  }
+
+  .technical-sheets-shell .technical-sheets-filter-card .stocks-filter-bar,
+  .technical-sheets-shell .technical-sheets-filter-card .filter-selects {
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .technical-sheets-shell .technical-sheets-filter-card .search-input-wrapper,
+  .technical-sheets-shell .technical-sheets-filter-card .filter-selects select {
+    min-width: 100%;
+    max-width: none;
+  }
+
+  .technical-sheets-list-actions .btn {
+    flex: 1;
+  }
+}
+
 /* Scoped Premium Hero for Fiches Techniques */
 .technical-sheets-shell .welcome-hero.theme-emerald {
   position: relative;

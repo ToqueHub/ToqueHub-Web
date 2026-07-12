@@ -43,6 +43,7 @@ export class UpsertStepDto {
 }
 
 export class UpsertTechnicalSheetDto {
+  @IsOptional() @IsUUID() importDocumentId?: string;
   @IsString() @MaxLength(220) name!: string;
   @IsOptional() @IsString() @MaxLength(5000) description?: string;
   @IsOptional() @IsUUID() categoryId?: string;

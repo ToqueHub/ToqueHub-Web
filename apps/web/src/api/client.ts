@@ -79,6 +79,7 @@ import type {
   TechnicalSheetDashboard,
   TechnicalSheetHistoryEntry,
   TechnicalSheetRecipeImportResult,
+  TechnicalSheetRecipeImportStatus,
   TechnicalSheetRecipe,
   TechnicalSheetRecipePayload,
   TechnicalSheetRecipesResponse,
@@ -709,7 +710,7 @@ export const api = {
   archiveTechnicalSheetAllergen(token: string, id: string) {
     return request<TechnicalSheetAllergen>(`/technical-sheets/allergens/${id}/archive`, { method: 'POST' }, token);
   },
-  technicalSheetRecipes(token: string, params: { search?: string; status?: string; includeArchived?: boolean; page?: number; pageSize?: number } = {}) {
+  technicalSheetRecipes(token: string, params: { search?: string; categoryId?: string; status?: string; includeArchived?: boolean; page?: number; pageSize?: number } = {}) {
     const qs = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => { if (value !== undefined && value !== '') qs.set(key, String(value)); });
     return request<TechnicalSheetRecipesResponse>(`/technical-sheets/recipes${qs.toString() ? `?${qs.toString()}` : ''}`, {}, token);
@@ -723,6 +724,19 @@ export const api = {
     const response = await fetch(`${API_URL}/api/technical-sheets/recipes/import-pdf`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form });
     if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
     return response.json() as Promise<TechnicalSheetRecipeImportResult>;
+  },
+  async uploadTechnicalSheetRecipeImports(token: string, files: File[]) {
+    const form = new FormData();
+    files.forEach((file) => form.append('files', file));
+    const response = await fetch(`${API_URL}/api/technical-sheets/recipes/imports`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form });
+    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
+    return response.json() as Promise<{ statuses: TechnicalSheetRecipeImportStatus[] }>;
+  },
+  technicalSheetRecipeImportStatuses(token: string) {
+    return request<{ statuses: TechnicalSheetRecipeImportStatus[] }>('/technical-sheets/recipes/imports/statuses', {}, token);
+  },
+  reviewTechnicalSheetRecipeImport(token: string, documentId: string) {
+    return request<{ reviewed: boolean }>(`/technical-sheets/recipes/imports/${documentId}/reviewed`, { method: 'POST' }, token);
   },
   updateTechnicalSheetRecipe(token: string, id: string, payload: Partial<TechnicalSheetRecipePayload>) {
     return request<TechnicalSheetRecipe>(`/technical-sheets/recipes/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }, token);

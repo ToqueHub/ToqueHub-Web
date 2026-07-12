@@ -1,5 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { AuditAction, Prisma, TechnicalSheetExportFormat, TechnicalSheetHistoryAction, TechnicalSheetStatus } from '@prisma/client';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { AuditAction, DocumentStatus, OcrBusinessExtractionStatus, OcrExtractionType, OcrProcessingStatus, Prisma, TechnicalSheetExportFormat, TechnicalSheetHistoryAction, TechnicalSheetStatus } from '@prisma/client';
+import AdmZip from 'adm-zip';
+import { createHash, randomUUID } from 'crypto';
+import { mkdir, readFile, writeFile } from 'fs/promises';
+import { extname, join, resolve } from 'path';
 import PDFDocument from 'pdfkit';
 import { MistralClientService } from '../mistral/mistral-client.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -14,9 +18,28 @@ type PreparedImportedIngredient = { productId?: string; productName?: string; pr
 
 const DEFAULT_CATEGORIES = ['Entrées', 'Plats', 'Desserts', 'Sauces', 'Accompagnements', 'Petit-déjeuner', 'Pâtisserie', 'Boulangerie', 'Boissons'];
 const MAX_RECIPE_PDF_BYTES = 20 * 1024 * 1024;
+const MAX_RECIPE_IMPORT_FILES = 8;
+const TECHNICAL_SHEETS_UPLOAD_ROOT = resolve(process.env.UPLOAD_DIR || 'uploads', 'technical-sheets');
+const RECIPE_IMPORT_SOURCE = 'recipe-import';
+const RECIPE_IMPORT_ACCEPTED_EXTENSIONS = new Set(['.pdf', '.png', '.jpg', '.jpeg', '.webp', '.heic', '.heif', '.avif', '.pages', '.numbers']);
+const RECIPE_IMPORT_ACCEPTED_MIME = new Set([
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+  'image/avif',
+  'application/vnd.apple.pages',
+  'application/vnd.apple.numbers',
+  'application/zip',
+  'application/octet-stream',
+]);
 
 @Injectable()
 export class TechnicalSheetsService {
+  private readonly logger = new Logger(TechnicalSheetsService.name);
+
   constructor(private readonly prisma: PrismaService, private readonly mistralClient: MistralClientService) {}
 
   private page(q?: TechnicalSheetListQueryDto) { const take = Math.min(q?.pageSize ?? 50, 200); const skip = ((q?.page ?? 1) - 1) * take; return { take, skip }; }
@@ -81,7 +104,14 @@ export class TechnicalSheetsService {
 
   async createRecipe(organizationId: string, actor: Actor, dto: UpsertTechnicalSheetDto) {
     await this.assertInstalled(organizationId); if (dto.categoryId) await this.ensureCategory(organizationId, dto.categoryId);
-    return this.prisma.$transaction(async (tx) => { const created = await tx.technicalSheet.create({ data: this.recipeCreateData(organizationId, dto) }); await this.replaceChildren(tx, organizationId, created.id, dto, actor.id); await this.history(tx, organizationId, created.id, actor.id, TechnicalSheetHistoryAction.CREATED, 'Création de la fiche technique'); await this.recalculateCostTx(tx, organizationId, created.id, actor.id, false); return this.serializeRecipe(await tx.technicalSheet.findUnique({ where: { id: created.id }, include: this.recipeInclude(true) })); });
+    return this.prisma.$transaction(async (tx) => {
+      const created = await tx.technicalSheet.create({ data: this.recipeCreateData(organizationId, dto) });
+      await this.replaceChildren(tx, organizationId, created.id, dto, actor.id);
+      if (dto.importDocumentId) await this.markRecipeImportReviewedTx(tx, organizationId, dto.importDocumentId);
+      await this.history(tx, organizationId, created.id, actor.id, TechnicalSheetHistoryAction.CREATED, 'Création de la fiche technique', dto.importDocumentId ? { importDocumentId: dto.importDocumentId } : undefined);
+      await this.recalculateCostTx(tx, organizationId, created.id, actor.id, false);
+      return this.serializeRecipe(await tx.technicalSheet.findUnique({ where: { id: created.id }, include: this.recipeInclude(true) }));
+    });
   }
 
   async updateRecipe(organizationId: string, actor: Actor, id: string, dto: UpsertTechnicalSheetDto) {
@@ -103,13 +133,155 @@ export class TechnicalSheetsService {
   async importRecipePdf(organizationId: string, file: UploadedRecipePdf) {
     await this.assertInstalled(organizationId);
     this.validateRecipePdf(file);
+    return (await this.analyzeRecipeFile(organizationId, file)).result;
+  }
+
+  async uploadRecipeImports(organizationId: string, actor: Actor, files: UploadedRecipePdf[]) {
+    await this.assertInstalled(organizationId);
+    if (!files?.length) throw new BadRequestException('Aucune fiche technique fournie.');
+    if (files.length > MAX_RECIPE_IMPORT_FILES) throw new BadRequestException(`Vous pouvez importer ${MAX_RECIPE_IMPORT_FILES} fiches techniques maximum.`);
+
+    await mkdir(join(TECHNICAL_SHEETS_UPLOAD_ROOT, organizationId), { recursive: true });
+    const documents: any[] = [];
+    for (const file of files) {
+      this.validateRecipeFile(file);
+      const id = randomUUID();
+      const extension = this.safeRecipeExtension(file);
+      const internalFilename = `${id}${extension}`;
+      const storagePath = join(organizationId, internalFilename);
+      await writeFile(join(TECHNICAL_SHEETS_UPLOAD_ROOT, storagePath), file.buffer);
+      const document = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.document.create({
+          data: {
+            organizationId,
+            uploadedById: actor.id,
+            internalFilename,
+            originalName: file.originalname,
+            mimeType: file.mimetype || 'application/octet-stream',
+            sizeBytes: file.size ?? file.buffer.length,
+            storagePath,
+            contentSha256: createHash('sha256').update(file.buffer).digest('hex'),
+            sourceModule: 'technical-sheets',
+            sourceType: RECIPE_IMPORT_SOURCE,
+            status: DocumentStatus.UPLOADED,
+          },
+        });
+        await tx.ocrDocument.create({
+          data: {
+            organizationId,
+            documentId: created.id,
+            provider: 'mistral',
+            model: process.env.OCR_MISTRAL_MODEL || 'mistral-ocr-latest',
+            status: OcrProcessingStatus.PENDING,
+          },
+        });
+        return created;
+      });
+      documents.push(document);
+    }
+
+    setImmediate(() => {
+      void this.processRecipeImportBatch(organizationId, documents.map((document) => document.id));
+    });
+    return { statuses: documents.map((document) => this.recipeImportStatus(document, null, null)) };
+  }
+
+  async listRecipeImportStatuses(organizationId: string) {
+    await this.assertInstalled(organizationId);
+    const documents = await this.prisma.document.findMany({
+      where: { organizationId, sourceModule: 'technical-sheets', sourceType: RECIPE_IMPORT_SOURCE },
+      include: { ocrDocuments: { include: { extractions: { orderBy: { updatedAt: 'desc' }, take: 1 } }, orderBy: { createdAt: 'desc' }, take: 1 } },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+    return {
+      statuses: documents.map((document) => {
+        const ocr = document.ocrDocuments[0] ?? null;
+        return this.recipeImportStatus(document, ocr, ocr?.extractions[0] ?? null);
+      }),
+    };
+  }
+
+  async reviewRecipeImport(organizationId: string, documentId: string) {
+    await this.assertInstalled(organizationId);
+    await this.prisma.$transaction((tx) => this.markRecipeImportReviewedTx(tx, organizationId, documentId));
+    return { reviewed: true };
+  }
+
+  private async markRecipeImportReviewedTx(tx: Tx, organizationId: string, documentId: string) {
+    const document = await tx.document.findFirst({ where: { id: documentId, organizationId, sourceModule: 'technical-sheets', sourceType: RECIPE_IMPORT_SOURCE } });
+    if (!document) throw new NotFoundException('Import de fiche technique introuvable.');
+    if (document.sourceId) await tx.ocrBusinessExtraction.updateMany({ where: { id: document.sourceId, organizationId }, data: { status: OcrBusinessExtractionStatus.REVIEWED } });
+    await tx.document.update({ where: { id: document.id }, data: { sourceType: `${RECIPE_IMPORT_SOURCE}-reviewed` } });
+  }
+
+  private async processRecipeImportBatch(organizationId: string, documentIds: string[]) {
+    for (const documentId of documentIds) {
+      await this.processRecipeImport(organizationId, documentId).catch((error) => {
+        this.logger.warn(`Import de fiche technique échoué document=${documentId}: ${error instanceof Error ? error.message : error}`);
+      });
+    }
+  }
+
+  private async processRecipeImport(organizationId: string, documentId: string) {
+    const document = await this.prisma.document.findFirst({
+      where: { id: documentId, organizationId, sourceModule: 'technical-sheets', sourceType: RECIPE_IMPORT_SOURCE },
+      include: { ocrDocuments: { orderBy: { createdAt: 'desc' }, take: 1 } },
+    });
+    if (!document) throw new NotFoundException('Import de fiche technique introuvable.');
+    const ocrDocument = document.ocrDocuments[0] ?? await this.prisma.ocrDocument.create({ data: { organizationId, documentId, provider: 'mistral', model: process.env.OCR_MISTRAL_MODEL || 'mistral-ocr-latest', status: OcrProcessingStatus.PENDING } });
+    const started = Date.now();
+    await this.prisma.$transaction([
+      this.prisma.document.update({ where: { id: document.id }, data: { status: DocumentStatus.PROCESSING } }),
+      this.prisma.ocrDocument.update({ where: { id: ocrDocument.id }, data: { status: OcrProcessingStatus.PROCESSING, errorCode: null, errorMessage: null } }),
+    ]);
+    try {
+      const buffer = await readFile(join(TECHNICAL_SHEETS_UPLOAD_ROOT, document.storagePath));
+      const analyzed = await this.analyzeRecipeFile(organizationId, { originalname: document.originalName, mimetype: document.mimeType, size: document.sizeBytes, buffer });
+      await this.prisma.$transaction(async (tx) => {
+        await tx.ocrDocument.update({
+          where: { id: ocrDocument.id },
+          data: {
+            status: OcrProcessingStatus.COMPLETED,
+            rawText: analyzed.ocr.markdown,
+            rawMarkdown: analyzed.ocr.markdown,
+            rawJson: this.jsonValue(analyzed.ocr.rawJson),
+            pageCount: analyzed.ocr.pageCount,
+            processingDurationMs: analyzed.ocr.durationMs ?? Date.now() - started,
+          },
+        });
+        await tx.ocrBusinessExtraction.deleteMany({ where: { ocrDocumentId: ocrDocument.id } });
+        const extraction = await tx.ocrBusinessExtraction.create({
+          data: {
+            organizationId,
+            ocrDocumentId: ocrDocument.id,
+            type: OcrExtractionType.UNKNOWN,
+            status: OcrBusinessExtractionStatus.DRAFT,
+            extractedJson: this.jsonValue(analyzed.result),
+          },
+        });
+        await tx.document.update({ where: { id: document.id }, data: { status: DocumentStatus.PROCESSED, sourceId: extraction.id } });
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Import OCR impossible.';
+      await this.prisma.$transaction([
+        this.prisma.document.update({ where: { id: document.id }, data: { status: DocumentStatus.FAILED } }),
+        this.prisma.ocrDocument.update({ where: { id: ocrDocument.id }, data: { status: OcrProcessingStatus.FAILED, errorCode: 'RECIPE_IMPORT_FAILED', errorMessage: message, processingDurationMs: Date.now() - started } }),
+      ]).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private async analyzeRecipeFile(organizationId: string, file: UploadedRecipePdf) {
+    this.validateRecipeFile(file);
     const [products, units, categories] = await Promise.all([
       this.prisma.product.findMany({ where: { organizationId, isArchived: false }, include: { unit: true, category: true }, orderBy: { name: 'asc' } }),
       this.prisma.unit.findMany({ where: { organizationId, isArchived: false }, orderBy: { name: 'asc' } }),
       this.prisma.technicalSheetCategory.findMany({ where: { organizationId, isArchived: false }, orderBy: { name: 'asc' } }),
     ]);
     if (!units.length) throw new BadRequestException('Aucune unité Stocks active disponible.');
-    const ocr = await this.mistralClient.ocrMarkdown(organizationId, { buffer: file.buffer, mimeType: this.recipePdfMime(file), withAnnotation: true });
+    const ocrInput = this.recipeOcrInput(file);
+    const ocr = await this.mistralClient.ocrMarkdown(organizationId, { buffer: ocrInput.buffer, mimeType: ocrInput.mimeType, withAnnotation: true });
     const aiImported = await this.extractRecipeFromOcr(organizationId, ocr.markdown, file.originalname);
     const imported = this.applyKesproRecipeData(ocr.markdown, aiImported);
     const warnings = [...(imported.warnings ?? [])];
@@ -142,7 +314,7 @@ export class TechnicalSheetsService {
         createProduct: true,
       };
     }).filter((ingredient: PreparedImportedIngredient | null): ingredient is PreparedImportedIngredient => Boolean(ingredient));
-    return {
+    const result = {
       filename: file.originalname,
       pageCount: ocr.pageCount,
       matchedIngredientsCount,
@@ -166,6 +338,7 @@ export class TechnicalSheetsService {
         })),
       },
     };
+    return { result, ocr };
   }
 
   async simulate(organizationId: string, actor: Actor, dto: ProductionSimulationDto) {
@@ -333,13 +506,84 @@ export class TechnicalSheetsService {
     if (file.mimetype !== 'application/pdf' && !name.endsWith('.pdf')) throw new BadRequestException('Seuls les fichiers PDF sont acceptés pour importer une recette.');
   }
 
-  private recipePdfMime(file: UploadedRecipePdf) {
-    return file.mimetype === 'application/pdf' || file.originalname?.toLowerCase().endsWith('.pdf') ? 'application/pdf' : file.mimetype;
+  private validateRecipeFile(file: UploadedRecipePdf) {
+    if (!file?.buffer?.length) throw new BadRequestException('Une fiche technique importée est vide.');
+    const size = file.size ?? file.buffer.length;
+    if (size > MAX_RECIPE_PDF_BYTES) throw new BadRequestException(`« ${file.originalname} » dépasse la taille maximale de 20 Mo.`);
+    const extension = extname(file.originalname || '').toLowerCase();
+    const mimeType = (file.mimetype || '').toLowerCase();
+    const specificMimeAccepted = RECIPE_IMPORT_ACCEPTED_MIME.has(mimeType) && !['application/zip', 'application/octet-stream'].includes(mimeType);
+    if (!RECIPE_IMPORT_ACCEPTED_EXTENSIONS.has(extension) && !specificMimeAccepted) {
+      throw new BadRequestException(`Format non pris en charge pour « ${file.originalname} ». Utilisez PDF, image, Pages ou Numbers.`);
+    }
+  }
+
+  private safeRecipeExtension(file: UploadedRecipePdf) {
+    const extension = extname(file.originalname || '').toLowerCase();
+    if (RECIPE_IMPORT_ACCEPTED_EXTENSIONS.has(extension)) return extension;
+    const byMime: Record<string, string> = { 'application/pdf': '.pdf', 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/heic': '.heic', 'image/heif': '.heif', 'image/avif': '.avif' };
+    return byMime[file.mimetype] ?? '.bin';
+  }
+
+  private recipeOcrInput(file: UploadedRecipePdf) {
+    const extension = extname(file.originalname || '').toLowerCase();
+    if (extension !== '.pages' && extension !== '.numbers') {
+      return { buffer: file.buffer, mimeType: this.recipeDocumentMime(file) };
+    }
+    try {
+      const archive = new AdmZip(file.buffer);
+      const entries = archive.getEntries();
+      const preview = [
+        'preview.jpg',
+        'preview.jpeg',
+        'preview.png',
+        'quicklook/preview.pdf',
+        'quicklook/thumbnail.jpg',
+      ].map((name) => entries.find((entry) => entry.entryName.toLowerCase() === name)).find(Boolean);
+      if (!preview || preview.isDirectory) throw new Error('aperçu absent');
+      if (preview.header.size > MAX_RECIPE_PDF_BYTES) throw new Error('aperçu trop volumineux');
+      const previewExtension = extname(preview.entryName).toLowerCase();
+      const mimeType = previewExtension === '.pdf' ? 'application/pdf' : previewExtension === '.png' ? 'image/png' : 'image/jpeg';
+      return { buffer: preview.getData(), mimeType };
+    } catch {
+      throw new BadRequestException(`« ${file.originalname} » ne contient pas d’aperçu exploitable. Exportez le document en PDF puis réessayez.`);
+    }
+  }
+
+  private recipeDocumentMime(file: UploadedRecipePdf) {
+    const extension = extname(file.originalname || '').toLowerCase();
+    const byExtension: Record<string, string> = { '.pdf': 'application/pdf', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.heic': 'image/heic', '.heif': 'image/heif', '.avif': 'image/avif' };
+    return byExtension[extension] ?? file.mimetype ?? 'application/octet-stream';
+  }
+
+  private recipeImportStatus(document: any, ocr: any, extraction: any) {
+    const failed = document.status === DocumentStatus.FAILED || ocr?.status === OcrProcessingStatus.FAILED;
+    const ready = Boolean(extraction) && document.status === DocumentStatus.PROCESSED;
+    const processing = document.status === DocumentStatus.PROCESSING || ocr?.status === OcrProcessingStatus.PROCESSING;
+    return {
+      document: {
+        id: document.id,
+        originalName: document.originalName,
+        mimeType: document.mimeType,
+        sizeBytes: document.sizeBytes,
+        status: document.status,
+        createdAt: document.createdAt,
+        updatedAt: document.updatedAt,
+      },
+      state: failed ? 'erreur' : ready ? 'vérifier' : processing ? 'analyse' : 'en attente',
+      progress: failed || ready ? 100 : processing ? 55 : 12,
+      result: ready ? extraction.extractedJson : null,
+      errorMessage: failed ? ocr?.errorMessage || 'Import OCR impossible.' : null,
+    };
+  }
+
+  private jsonValue(value: unknown): Prisma.InputJsonValue {
+    return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
   }
 
   private async extractRecipeFromOcr(organizationId: string, markdown: string, filename: string) {
-    if (!markdown.trim()) throw new BadRequestException('Le PDF ne contient pas de texte exploitable après OCR.');
-    return this.mistralClient.chatJson<any>(organizationId, [
+    if (!markdown.trim()) throw new BadRequestException('Le document ne contient pas de texte exploitable après OCR.');
+    const messages = [
       {
         role: 'system',
         content: [
@@ -348,11 +592,29 @@ export class TechnicalSheetsService {
           'Objectif: extraire les informations utiles a la creation d une fiche technique.',
           'Les ingredients doivent rester dans la langue du document, avec quantite numerique et unite courte si disponible.',
           'Les etapes doivent etre ordonnees et redigees en francais si le document est francais, sinon conserve la langue source.',
+          'Dans les tableaux DENREES / Unites / Poids / PUHT / PTHT, utilise seulement le nom, l unite et le poids. Ignore les prix, couts, totaux et lignes de section sans quantite.',
+          'Dans les tableaux Ingredients / Unite / Quantites / *2 / *3, utilise la colonne Quantites comme recette de base. Ignore les colonnes multiplicatrices et la ligne Masse total.',
+          'Une ligne telle que Bechamel, Garniture, La pate, Farce ou Assaisonnement sans quantite est un titre de section, pas un ingredient.',
+          'Conserve exactement l unite affichee meme si la valeur semble inhabituelle; signale une incoherence dans warnings au lieu de la corriger par supposition.',
           'N invente pas d ingredient manquant et signale les incertitudes dans warnings.',
         ].join('\n'),
       },
       { role: 'user', content: JSON.stringify({ filename, ocrMarkdown: markdown.slice(0, 45_000) }) },
-    ], 'toquehub_recipe_pdf_import', this.recipeImportSchema());
+    ] as Array<{ role: 'system' | 'user'; content: string }>;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await this.mistralClient.chatJson<any>(organizationId, messages, 'toquehub_recipe_pdf_import', this.recipeImportSchema());
+      } catch (error) {
+        const rateLimited = error instanceof Error && /\b429\b|rate.?limit|trop de requ/i.test(error.message);
+        if (!rateLimited || attempt === 2) throw error;
+        await this.waitRecipeImportRetry(Number(process.env.RECIPE_IMPORT_RETRY_DELAY_MS ?? 12_000) * (attempt + 1));
+      }
+    }
+    throw new BadRequestException('Extraction de la fiche technique impossible.');
+  }
+
+  private waitRecipeImportRetry(delayMs: number) {
+    return new Promise<void>((resolve) => setTimeout(resolve, Math.max(0, delayMs)));
   }
 
   private recipeImportSchema() {

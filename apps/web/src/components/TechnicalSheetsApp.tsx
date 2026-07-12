@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Archive,
@@ -25,7 +25,8 @@ import {
   CheckCircle2,
   MapPin,
   ArrowLeft,
-  Camera
+  Camera,
+  ArrowRight,
 } from 'lucide-react';
 import { api } from '../api/client';
 import type {
@@ -34,6 +35,7 @@ import type {
   TechnicalSheetDashboard,
   TechnicalSheetHistoryEntry,
   TechnicalSheetRecipe,
+  TechnicalSheetRecipeImportStatus,
   TechnicalSheetRecipePayload,
   TechnicalSheetSimulation,
   TechnicalSheetSimulationPayload,
@@ -75,6 +77,19 @@ const emptyRecipe: TechnicalSheetRecipePayload = {
 const money = (value?: number | string | null) => `${Number(value ?? 0).toFixed(2)} €`;
 const date = (value?: string | null) => (value ? new Date(value).toLocaleDateString('fr-FR') : '—');
 const isArchived = (item?: { isArchived?: boolean; archivedAt?: string | null }) => Boolean(item?.isArchived || item?.archivedAt);
+const recipeImportWorking = (status: TechnicalSheetRecipeImportStatus) => !['vérifier', 'erreur'].includes(status.state);
+const formatImportBytes = (value: number) => value >= 1024 * 1024 ? `${(value / (1024 * 1024)).toFixed(1)} Mo` : `${Math.max(1, Math.round(value / 1024))} Ko`;
+
+function recipePayloadForSave(form: TechnicalSheetRecipePayload, importDocumentId: string | null): TechnicalSheetRecipePayload {
+  const payload: TechnicalSheetRecipePayload = {
+    ...form,
+    ingredients: (form.ingredients ?? []).map(({ id: _id, ...ingredient }) => ingredient),
+    steps: (form.steps ?? []).map(({ id: _id, ...step }) => step),
+  };
+  if (importDocumentId) payload.importDocumentId = importDocumentId;
+  else delete payload.importDocumentId;
+  return payload;
+}
 
 // Component Local Modal Container with Framer Motion
 interface ModalProps {
@@ -571,6 +586,7 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
   const [recipes, setRecipes] = useState<TechnicalSheetRecipe[]>([]);
   const [categories, setCategories] = useState<TechnicalSheetCategory[]>([]);
   const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [recipeDialog, setRecipeDialog] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState<TechnicalSheetRecipe | null>(null);
@@ -584,7 +600,11 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
   const [duplicateOpen, setDuplicateOpen] = useState<TechnicalSheetRecipe | null>(null);
   const [duplicateName, setDuplicateName] = useState('');
   const [availableProducts, setAvailableProducts] = useState<Product[]>(products);
-  const recipePdfInputRef = useRef<HTMLInputElement | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFiles, setImportFiles] = useState<File[]>([]);
+  const [importStatuses, setImportStatuses] = useState<TechnicalSheetRecipeImportStatus[]>([]);
+  const [importSubmitting, setImportSubmitting] = useState(false);
+  const [reviewingImportDocumentId, setReviewingImportDocumentId] = useState<string | null>(null);
 
   async function load() {
     if (!stocksInstalled) return;
@@ -594,7 +614,7 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
       const [dash, cats, recipeList] = await Promise.all([
         api.technicalSheetsDashboard(token).catch(() => undefined),
         api.technicalSheetCategories(token),
-        api.technicalSheetRecipes(token, { includeArchived: true, search: search || undefined, status: statusFilter || undefined }),
+        api.technicalSheetRecipes(token, { includeArchived: true, search: search || undefined, categoryId: categoryFilter || undefined, status: statusFilter || undefined }),
       ]);
       setDashboard(dash);
       setCategories(cats);
@@ -606,14 +626,38 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
     }
   }
 
-  useEffect(() => { void load(); }, [stocksInstalled, search, statusFilter]);
+  useEffect(() => { void load(); }, [stocksInstalled, search, categoryFilter, statusFilter]);
   useEffect(() => { setAvailableProducts(products); }, [products]);
+
+  async function refreshImportStatuses() {
+    try {
+      const response = await api.technicalSheetRecipeImportStatuses(token);
+      const nextStatuses = response.statuses ?? [];
+      setImportStatuses(nextStatuses);
+      return nextStatuses;
+    } catch {
+      // Le chargement principal reste utilisable si le suivi d'import est momentanément indisponible.
+      return importStatuses;
+    }
+  }
+
+  useEffect(() => {
+    if (!stocksInstalled) return;
+    void refreshImportStatuses();
+  }, [stocksInstalled, token]);
+
+  useEffect(() => {
+    if (!importStatuses.some(recipeImportWorking)) return undefined;
+    const timer = window.setInterval(() => void refreshImportStatuses(), 2500);
+    return () => window.clearInterval(timer);
+  }, [token, importStatuses.some(recipeImportWorking)]);
 
   const selectedRecipe = useMemo(() => recipes.find((recipe) => recipe.id === selectedRecipeId) ?? recipes[0], [recipes, selectedRecipeId]);
   const activeProducts = useMemo(() => availableProducts.filter((product) => !isArchived(product)), [availableProducts]);
   const averageCost = dashboard?.averageMaterialCost ?? (recipes.length ? recipes.reduce((sum, recipe) => sum + Number(recipe.costTotal ?? recipe.totalCost ?? 0), 0) / recipes.length : 0);
 
   function openRecipe(recipe?: TechnicalSheetRecipe) {
+    setReviewingImportDocumentId(null);
     setEditingRecipe(recipe ?? null);
     setForm(recipe ? {
       name: recipe.name,
@@ -646,13 +690,31 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
     setLoading(true);
     setError(undefined);
     try {
-      if (editingRecipe) await api.updateTechnicalSheetRecipe(token, editingRecipe.id, form);
-      else await api.createTechnicalSheetRecipe(token, form);
+      const payload = recipePayloadForSave(form, !editingRecipe ? reviewingImportDocumentId : null);
+      const savedRecipeName = form.name.trim();
+      if (editingRecipe) await api.updateTechnicalSheetRecipe(token, editingRecipe.id, payload);
+      else await api.createTechnicalSheetRecipe(token, payload);
+      let nextImport: TechnicalSheetRecipeImportStatus | undefined;
+      let remainingReadyCount = 0;
+      if (reviewingImportDocumentId) {
+        const completedDocumentId = reviewingImportDocumentId;
+        setReviewingImportDocumentId(null);
+        const refreshedStatuses = (await refreshImportStatuses()).filter((status) => status.document.id !== completedDocumentId);
+        setImportStatuses(refreshedStatuses);
+        const remainingReady = refreshedStatuses.filter((status) => status.state === 'vérifier' && status.result);
+        nextImport = remainingReady[0];
+        remainingReadyCount = remainingReady.length;
+      }
       const refreshedProducts = await api.products(token).catch(() => undefined);
       if (refreshedProducts) setAvailableProducts(refreshedProducts);
-      setRecipeDialog(false);
-      setSuccess(editingRecipe ? 'Fiche technique mise à jour.' : 'Fiche technique créée.');
       await load();
+      if (nextImport) {
+        showImportedRecipe(nextImport, false);
+        setSuccess(`Fiche « ${savedRecipeName} » créée. La fiche suivante est prête à être vérifiée (${remainingReadyCount} restante${remainingReadyCount > 1 ? 's' : ''}).`);
+      } else {
+        setRecipeDialog(false);
+        setSuccess(editingRecipe ? 'Fiche technique mise à jour.' : 'Fiche technique créée.');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Enregistrement impossible.');
     } finally {
@@ -738,29 +800,46 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
     URL.revokeObjectURL(url);
   }
 
-  async function importRecipePdf(file?: File | null) {
-    if (!file) return;
-    setLoading(true);
+  async function submitRecipeImports() {
+    if (!importFiles.length) return;
+    setImportSubmitting(true);
     setError(undefined);
     try {
-      const result = await api.importTechnicalSheetRecipePdf(token, file);
-      setEditingRecipe(null);
-      setForm({
-        ...emptyRecipe,
-        ...result.payload,
-        categoryId: result.payload.categoryId || categories.find((cat) => !isArchived(cat))?.id || '',
-        ingredients: result.payload.ingredients ?? [],
-        steps: result.payload.steps ?? [],
-      });
-      setRecipeDialog(true);
+      const response = await api.uploadTechnicalSheetRecipeImports(token, importFiles);
+      setImportStatuses(response.statuses ?? []);
+      setImportFiles([]);
+      setSuccess(`${response.statuses.length} fiche${response.statuses.length > 1 ? 's' : ''} envoyée${response.statuses.length > 1 ? 's' : ''} en analyse. Le traitement continue pendant votre navigation.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Import des fiches techniques impossible.');
+    } finally {
+      setImportSubmitting(false);
+    }
+  }
+
+  function showImportedRecipe(status: TechnicalSheetRecipeImportStatus, announce = true) {
+    const result = status.result;
+    if (!result) return;
+    setEditingRecipe(null);
+    setReviewingImportDocumentId(status.document.id);
+    setForm({
+      ...emptyRecipe,
+      ...result.payload,
+      importDocumentId: status.document.id,
+      categoryId: result.payload.categoryId || categories.find((category) => !isArchived(category))?.id || '',
+      ingredients: result.payload.ingredients ?? [],
+      steps: result.payload.steps ?? [],
+    });
+    setImportOpen(false);
+    setRecipeDialog(true);
+    if (announce) {
       const created = result.newProductsCount ? ` ${result.newProductsCount} nouveau(x) produit(s) Stocks seront créés avec la fiche.` : '';
       const skipped = result.skippedIngredientsCount ? ` ${result.skippedIngredientsCount} ingrédient(s) restent à saisir.` : '';
-      setSuccess(`PDF importé : ${result.matchedIngredientsCount} ingrédient(s) rapproché(s) avec Stocks.${created}${skipped}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Import PDF impossible.');
-    } finally {
-      setLoading(false);
+      setSuccess(`Analyse prête : ${result.matchedIngredientsCount} ingrédient(s) rapproché(s) avec Stocks.${created}${skipped}`);
     }
+  }
+
+  function openImportedRecipe(status: TechnicalSheetRecipeImportStatus) {
+    showImportedRecipe(status, true);
   }
 
   if (!stocksInstalled) {
@@ -840,12 +919,18 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
           {tab === 'recipes' && (
             <RecipesTab
               recipes={recipes}
+              categories={categories.filter((category) => !isArchived(category))}
               search={search}
+              categoryFilter={categoryFilter}
               statusFilter={statusFilter}
               onSearch={setSearch}
+              onCategoryFilter={setCategoryFilter}
               onStatusFilter={setStatusFilter}
+              onClearFilters={() => { setSearch(''); setCategoryFilter(''); setStatusFilter(''); }}
               onCreate={() => openRecipe()}
-              onImportPdf={() => recipePdfInputRef.current?.click()}
+              importStatuses={importStatuses}
+              onImport={() => setImportOpen(true)}
+              onOpenImportedRecipe={openImportedRecipe}
               onEdit={openRecipe}
               onArchive={archiveRecipe}
               onDuplicate={(recipe) => { setDuplicateOpen(recipe); setDuplicateName(`${recipe.name} – variante`); }}
@@ -897,22 +982,21 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
         units={units}
         categories={categories.filter((cat) => !isArchived(cat))}
         editing={Boolean(editingRecipe)}
-        onClose={() => setRecipeDialog(false)}
+        onClose={() => { setRecipeDialog(false); setReviewingImportDocumentId(null); }}
         onSave={saveRecipe}
         loading={loading}
       />
 
-      <input
-        ref={recipePdfInputRef}
-        type="file"
-        accept="application/pdf,.pdf"
-        hidden
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          event.currentTarget.value = '';
-          void importRecipePdf(file);
-        }}
-      />
+      <Modal isOpen={importOpen} onClose={() => setImportOpen(false)} title="Importer une ou plusieurs fiches techniques">
+        <RecipeImportPanel
+          files={importFiles}
+          statuses={importStatuses}
+          submitting={importSubmitting}
+          onFiles={setImportFiles}
+          onSubmit={submitRecipeImports}
+          onOpenResult={openImportedRecipe}
+        />
+      </Modal>
 
       {/* Duplicate Dialog Component */}
       <Modal isOpen={Boolean(duplicateOpen)} onClose={() => setDuplicateOpen(null)} title="Dupliquer une fiche technique">
@@ -1052,14 +1136,127 @@ function DashboardTab({ dashboard, recipes, categories, averageCost, onInstall, 
   );
 }
 
+function RecipeImportStatusBar({ statuses, onOpenTracking, onOpenResult }: { statuses: TechnicalSheetRecipeImportStatus[]; onOpenTracking: () => void; onOpenResult: (status: TechnicalSheetRecipeImportStatus) => void }) {
+  const readyStatuses = statuses.filter((status) => status.state === 'vérifier' && status.result);
+  const errors = statuses.filter((status) => status.state === 'erreur');
+  const working = statuses.filter(recipeImportWorking);
+  const featured = readyStatuses[0] ?? working[0] ?? statuses[0];
+  const tone = readyStatuses.length ? 'ready' : errors.length && !working.length ? 'error' : 'working';
+  const label = readyStatuses.length
+    ? `${readyStatuses.length} fiche${readyStatuses.length > 1 ? 's' : ''} prête${readyStatuses.length > 1 ? 's' : ''} à vérifier`
+    : errors.length && !working.length
+      ? `${errors.length} import${errors.length > 1 ? 's' : ''} en erreur`
+      : `${working.length} fiche${working.length > 1 ? 's' : ''} en cours d’analyse`;
+  const progressClass = featured.state === 'vérifier' ? 'success' : featured.state === 'erreur' ? 'error' : featured.state === 'analyse' ? 'analyzing' : 'pending';
+  return (
+    <motion.section className={`stocks-ocr-dashboard-status ${tone}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+      <div className="stocks-ocr-dashboard-status-main">
+        <div className="stocks-ocr-dashboard-status-icon">
+          {readyStatuses.length ? <CheckCircle2 size={18} /> : errors.length && !working.length ? <AlertCircle size={18} /> : <Clock size={18} />}
+        </div>
+        <div className="stocks-ocr-dashboard-status-copy">
+          <span>{label}</span>
+          <small>{statuses.length} fichier{statuses.length > 1 ? 's' : ''} suivi{statuses.length > 1 ? 's' : ''} · le traitement continue pendant la navigation</small>
+          <div className="ocr-status-progress-bar">
+            <div className={`ocr-status-progress-fill ${progressClass}`} style={{ width: `${featured.progress}%` }} />
+          </div>
+        </div>
+      </div>
+      <div className="stocks-ocr-dashboard-status-actions">
+        {readyStatuses[0] ? (
+          <button className="btn btn-primary btn-sm" onClick={() => onOpenResult(readyStatuses[0])}>
+            Vérifier <ArrowRight size={13} />
+          </button>
+        ) : null}
+        <button className="btn btn-secondary btn-sm" onClick={onOpenTracking}>Suivi des imports</button>
+      </div>
+    </motion.section>
+  );
+}
+
+function RecipeImportPanel({ files, statuses, submitting, onFiles, onSubmit, onOpenResult }: { files: File[]; statuses: TechnicalSheetRecipeImportStatus[]; submitting: boolean; onFiles: (files: File[]) => void; onSubmit: () => Promise<void>; onOpenResult: (status: TechnicalSheetRecipeImportStatus) => void }) {
+  const addFiles = (next: File[]) => {
+    const unique = [...files, ...next].filter((file, index, all) => all.findIndex((candidate) => candidate.name === file.name && candidate.size === file.size && candidate.lastModified === file.lastModified) === index).slice(0, 8);
+    onFiles(unique);
+  };
+  return (
+    <div>
+      <label
+        className="stocks-ocr-dropzone"
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => { event.preventDefault(); addFiles(Array.from(event.dataTransfer.files ?? [])); }}
+      >
+        <FileText size={32} />
+        <span>Déposer vos fiches techniques ici ou cliquer pour parcourir</span>
+        <small>PDF, images, Pages et Numbers · jusqu’à 8 fichiers simultanés · 20 Mo par fichier</small>
+        <input
+          type="file"
+          accept="application/pdf,image/png,image/jpeg,image/webp,image/heic,image/heif,image/avif,.pdf,.png,.jpg,.jpeg,.webp,.heic,.heif,.avif,.pages,.numbers"
+          multiple
+          onChange={(event) => { addFiles(Array.from(event.target.files ?? [])); event.currentTarget.value = ''; }}
+        />
+      </label>
+
+      {files.length ? (
+        <div style={{ marginTop: '1rem' }}>
+          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>Fichiers prêts pour l’analyse ({files.length})</div>
+          <div className="stocks-ocr-file-list">
+            {files.map((file, index) => (
+              <div className="stocks-ocr-file-row" key={`${file.name}-${file.size}-${file.lastModified}`}>
+                <FileText size={18} />
+                <div className="stocks-ocr-file-row-details"><span>{file.name}</span><small>{formatImportBytes(file.size)}</small></div>
+                <button type="button" className="stocks-ocr-file-remove" onClick={() => onFiles(files.filter((_, itemIndex) => itemIndex !== index))}><X size={14} /></button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="modal-footer" style={{ margin: '1rem -1.5rem 0', padding: '1.1rem 1.5rem', background: '#fafbfe', borderTop: '1px solid var(--light-border)' }}>
+        <button className="btn btn-primary" disabled={!files.length || submitting} onClick={() => void onSubmit()}>
+          {submitting ? 'Préparation de l’import…' : `Lancer l’analyse OCR${files.length > 1 ? ` (${files.length})` : ''}`}
+        </button>
+      </div>
+
+      {statuses.length ? (
+        <div style={{ marginTop: '1.5rem' }}>
+          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem' }}>Suivi des analyses ({statuses.length})</div>
+          <div className="ocr-statuses-list">
+            {statuses.map((status) => {
+              const progressClass = status.state === 'vérifier' ? 'success' : status.state === 'erreur' ? 'error' : status.state === 'analyse' ? 'analyzing' : 'pending';
+              const stateLabel = status.state === 'vérifier' ? 'Prête à vérifier' : status.state === 'erreur' ? status.errorMessage || 'Erreur d’analyse' : status.state === 'analyse' ? 'Extraction et rapprochement Stocks…' : 'Dans la file d’attente';
+              return (
+                <div className="ocr-status-card" key={status.document.id} style={status.state === 'vérifier' ? { borderLeft: '3px solid #10b981' } : undefined}>
+                  <div className="ocr-status-card-info">
+                    <span className="ocr-status-card-title">{status.document.originalName}</span>
+                    <div className="ocr-status-card-meta"><span>{formatImportBytes(status.document.sizeBytes)}</span><span>•</span><span>{stateLabel}</span></div>
+                    <div className="ocr-status-progress-bar"><div className={`ocr-status-progress-fill ${progressClass}`} style={{ width: `${status.progress}%` }} /></div>
+                  </div>
+                  {status.result ? <div className="ocr-status-card-actions"><button className="btn btn-primary btn-sm" onClick={() => onOpenResult(status)}>Vérifier <ArrowRight size={12} /></button></div> : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function RecipesTab(props: {
   recipes: TechnicalSheetRecipe[];
+  categories: TechnicalSheetCategory[];
   search: string;
+  categoryFilter: string;
   statusFilter: string;
   onSearch: (v: string) => void;
+  onCategoryFilter: (v: string) => void;
   onStatusFilter: (v: string) => void;
+  onClearFilters: () => void;
   onCreate: () => void;
-  onImportPdf: () => void;
+  importStatuses: TechnicalSheetRecipeImportStatus[];
+  onImport: () => void;
+  onOpenImportedRecipe: (status: TechnicalSheetRecipeImportStatus) => void;
   onEdit: (r: TechnicalSheetRecipe) => void;
   onArchive: (r: TechnicalSheetRecipe) => void;
   onDuplicate: (r: TechnicalSheetRecipe) => void;
@@ -1067,42 +1264,52 @@ function RecipesTab(props: {
   onHistory: (r: TechnicalSheetRecipe) => void;
   selectedHistory: TechnicalSheetHistoryEntry[];
 }) {
+  const hasActiveFilters = Boolean(props.search || props.categoryFilter || props.statusFilter);
   const filtered = props.recipes.filter(recipe => {
     const haystack = [recipe.name, recipe.description, recipe.category?.name].filter(Boolean).join(' ').toLowerCase();
     const matchesSearch = haystack.includes(props.search.toLowerCase());
+    const matchesCategory = !props.categoryFilter || recipe.categoryId === props.categoryFilter || recipe.category?.id === props.categoryFilter;
     const matchesStatus = !props.statusFilter || recipe.status === props.statusFilter;
-    return matchesSearch && matchesStatus;
+    return matchesSearch && matchesCategory && matchesStatus;
   });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <div className="filter-bar" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-        <div className="search-input-wrapper" style={{ flexGrow: 1 }}>
-          <Search size={18} />
-          <input
-            className="search-input"
-            placeholder="Recherche nom, description, catégorie..."
-            value={props.search}
-            onChange={(e) => props.onSearch(e.target.value)}
-          />
+      {props.importStatuses.length ? (
+        <RecipeImportStatusBar statuses={props.importStatuses} onOpenTracking={props.onImport} onOpenResult={props.onOpenImportedRecipe} />
+      ) : null}
+      <div className="technical-sheets-filter-card">
+        <div className="stocks-filter-bar">
+          <div className="search-input-wrapper">
+            <Search size={16} />
+            <input
+              className="search-input"
+              placeholder="Rechercher une fiche, un ingrédient, une catégorie…"
+              value={props.search}
+              onChange={(event) => props.onSearch(event.target.value)}
+            />
+          </div>
+          <div className="filter-selects">
+            <select value={props.categoryFilter} onChange={(event) => props.onCategoryFilter(event.target.value)}>
+              <option value="">Toutes catégories</option>
+              {props.categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+            </select>
+            <select value={props.statusFilter} onChange={(event) => props.onStatusFilter(event.target.value)}>
+              <option value="">Tous les statuts</option>
+              {statuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+            </select>
+            {(props.search || props.categoryFilter || props.statusFilter) ? (
+              <button type="button" className="btn-clear-filters" onClick={props.onClearFilters} title="Réinitialiser les filtres"><X size={16} /></button>
+            ) : null}
+          </div>
         </div>
-        <select
-          value={props.statusFilter}
-          onChange={(e) => props.onStatusFilter(e.target.value)}
-          style={{ minWidth: '150px' }}
-        >
-          <option value="">Tous les statuts</option>
-          {statuses.map((status) => (
-            <option key={status.value} value={status.value}>
-              {status.label}
-            </option>
-          ))}
-        </select>
+      </div>
+      <div className="technical-sheets-list-actions">
         <button className="btn btn-primary" onClick={props.onCreate}>
           <Plus size={16} /> Créer une fiche
         </button>
-        <button className="btn btn-secondary" onClick={props.onImportPdf}>
-          <Upload size={16} /> Importer PDF
+        <button className="btn btn-secondary" onClick={props.onImport}>
+          <Upload size={16} /> Importer des fiches
         </button>
       </div>
       
@@ -1165,12 +1372,12 @@ function RecipesTab(props: {
         </div>
       ) : (
         <div className="card-modern" style={{ padding: '3rem 2rem', textAlign: 'center' }}>
-          <h3 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '0.5rem' }}>Aucune fiche technique</h3>
+          <h3 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '0.5rem' }}>{hasActiveFilters ? 'Aucune fiche ne correspond aux filtres' : 'Aucune fiche technique'}</h3>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
-            Créez une première fiche en sélectionnant uniquement des produits Stocks.
+            {hasActiveFilters ? 'Modifiez la recherche, la catégorie ou le statut pour élargir les résultats.' : 'Créez une première fiche en sélectionnant uniquement des produits Stocks.'}
           </p>
-          <button className="btn btn-primary" onClick={props.onCreate}>
-            Créer une fiche
+          <button className={hasActiveFilters ? 'btn btn-secondary' : 'btn btn-primary'} onClick={hasActiveFilters ? props.onClearFilters : props.onCreate}>
+            {hasActiveFilters ? 'Réinitialiser les filtres' : 'Créer une fiche'}
           </button>
         </div>
       )}

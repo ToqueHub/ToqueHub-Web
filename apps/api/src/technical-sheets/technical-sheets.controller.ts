@@ -1,5 +1,5 @@
-import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Res, UploadedFile, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { TechnicalSheetExportFormat } from '@prisma/client';
 import type { Response } from 'express';
@@ -37,6 +37,13 @@ export class TechnicalSheetsController {
   @Post('recipes/import-pdf')
   @UseInterceptors(FileInterceptor('file', { limits: { files: 1, fileSize: 20 * 1024 * 1024 } }))
   importRecipePdf(@CurrentUser() user: AuthenticatedUser, @UploadedFile() file: any) { return this.service.importRecipePdf(this.org(user), file); }
+  @Post('recipes/imports')
+  @UseInterceptors(FilesInterceptor('files', 8, { limits: { files: 8, fileSize: 20 * 1024 * 1024 } }))
+  uploadRecipeImports(@CurrentUser() user: AuthenticatedUser, @UploadedFiles() files: any[]) { return this.service.uploadRecipeImports(this.org(user), this.actor(user), files); }
+  @Get('recipes/imports/statuses')
+  listRecipeImportStatuses(@CurrentUser() user: AuthenticatedUser) { return this.service.listRecipeImportStatuses(this.org(user)); }
+  @Post('recipes/imports/:documentId/reviewed')
+  reviewRecipeImport(@CurrentUser() user: AuthenticatedUser, @Param('documentId') documentId: string) { return this.service.reviewRecipeImport(this.org(user), documentId); }
   @Get('recipes/:id') getRecipe(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.service.getRecipe(this.org(user), id); }
   @Patch('recipes/:id') updateRecipe(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpsertTechnicalSheetDto) { return this.service.updateRecipe(this.org(user), this.actor(user), id, dto); }
   @Post('recipes/:id/archive') archiveRecipe(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.service.archiveRecipe(this.org(user), this.actor(user), id); }

@@ -1608,6 +1608,7 @@ export interface TechnicalSheetRecipe {
 }
 
 export interface TechnicalSheetRecipePayload {
+  importDocumentId?: string;
   name: string;
   description?: string;
   categoryId?: string;
@@ -1646,6 +1647,22 @@ export interface TechnicalSheetRecipeImportResult {
   skippedIngredientsCount: number;
   warnings: string[];
   payload: TechnicalSheetRecipePayload;
+}
+
+export interface TechnicalSheetRecipeImportStatus {
+  document: {
+    id: string;
+    originalName: string;
+    mimeType: string;
+    sizeBytes: number;
+    status: string;
+    createdAt?: string;
+    updatedAt?: string;
+  };
+  state: 'en attente' | 'analyse' | 'vérifier' | 'erreur' | string;
+  progress: number;
+  result?: TechnicalSheetRecipeImportResult | null;
+  errorMessage?: string | null;
 }
 
 export interface TechnicalSheetRecipesResponse {
