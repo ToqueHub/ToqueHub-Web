@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Paperclip, 
@@ -20,7 +20,7 @@ import {
   ArrowLeftRight
 } from 'lucide-react';
 import { api } from '../api/client';
-import type { Location, Product, Site, StockAssistantChoice, StockConversation, StockProposal, Supplier, Unit } from '../types';
+import type { Category, Location, Product, Site, StockAssistantChoice, StockConversation, StockProposal, Supplier, Unit } from '../types';
 
 type ChatItem = { id: string; role: 'user' | 'assistant' | 'system'; text: string; fileName?: string; proposalId?: string; action?: 'location_select'; choices?: StockAssistantChoice[] };
 type QuickCard = { id: string; title: string; subtitle: string; prompt?: string; action?: 'attach_invoice' };
@@ -41,6 +41,7 @@ export function StockAssistantPanel({
   onClose, 
   token, 
   products, 
+  categories,
   units, 
   suppliers,
   sites,
@@ -52,6 +53,7 @@ export function StockAssistantPanel({
   onClose: () => void; 
   token: string; 
   products: Product[]; 
+  categories: Category[];
   units: Unit[]; 
   suppliers: Supplier[];
   sites: Site[];
@@ -68,6 +70,12 @@ export function StockAssistantPanel({
   const [error, setError] = useState<string>();
   const [attachedFile, setAttachedFile] = useState<File>();
   const [items, setItems] = useState<ChatItem[]>(greetingItems);
+  const [productPickerLineIndex, setProductPickerLineIndex] = useState<number | null>(null);
+  const [productSearch, setProductSearch] = useState('');
+  const [productCategoryFilter, setProductCategoryFilter] = useState('');
+  const [productSupplierFilter, setProductSupplierFilter] = useState('');
+  const [productUnitFilter, setProductUnitFilter] = useState('');
+  const [creatingProduct, setCreatingProduct] = useState(false);
   const showQuickCards = items.filter((item) => item.role === 'user').length === 0 && !busy;
   const proposalSupplierName = proposal ? suppliers.find((supplier) => supplier.id === proposal.supplierId)?.name || proposal.metadata?.supplierName || proposal.metadata?.ocrResult?.supplierName || proposal.metadata?.ocrResult?.supplier?.supplierName || proposal.metadata?.ocrResult?.supplier?.name || null : null;
   const siteChoices = sites
@@ -84,6 +92,31 @@ export function StockAssistantPanel({
     return location?.site?.name || sites.find((site) => site.id === location?.siteId)?.name || location?.name || '';
   };
   const visibleChoices = (choices?: StockAssistantChoice[]) => (choices || []).filter((choice) => choice.type !== 'location_select');
+  const pickerLine = productPickerLineIndex !== null ? proposal?.lines[productPickerLineIndex] : null;
+  const filteredProducts = useMemo(() => {
+    const query = normalizeAssistantSearch(productSearch || pickerLine?.rawLabel || '');
+    return products
+      .filter((product) => !product.isArchived)
+      .filter((product) => {
+        if (productCategoryFilter && (product.categoryId ?? product.category?.id) !== productCategoryFilter) return false;
+        const supplierId = product.primarySupplierId ?? product.supplierId ?? product.primarySupplier?.id ?? product.supplier?.id ?? '';
+        if (productSupplierFilter && supplierId !== productSupplierFilter) return false;
+        if (productUnitFilter && product.unitId !== productUnitFilter) return false;
+        if (!query) return true;
+        const haystack = normalizeAssistantSearch([
+          product.name,
+          product.sku,
+          product.reference,
+          product.category?.name,
+          product.primarySupplier?.name,
+          product.supplier?.name,
+          product.unit?.symbol,
+        ].filter(Boolean).join(' '));
+        return query.split(' ').every((part) => haystack.includes(part));
+      })
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(0, 80);
+  }, [products, productSearch, pickerLine?.rawLabel, productCategoryFilter, productSupplierFilter, productUnitFilter]);
 
   // Auto-scroll chat feed
   useEffect(() => {
@@ -369,6 +402,56 @@ export function StockAssistantPanel({
     });
   }
 
+  function openProductPicker(index: number) {
+    const line = proposal?.lines[index];
+    setProductPickerLineIndex(index);
+    setProductSearch(line?.rawLabel || '');
+    setProductCategoryFilter('');
+    setProductSupplierFilter(proposal?.supplierId || '');
+    setProductUnitFilter(line?.inputUnitId || '');
+  }
+
+  function selectProductForLine(product: Product) {
+    if (productPickerLineIndex === null) return;
+    patchLine(productPickerLineIndex, {
+      productId: product.id,
+      inputUnitId: product.unitId || null,
+    });
+    setProductPickerLineIndex(null);
+  }
+
+  async function createProductForLine(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (productPickerLineIndex === null || !pickerLine) return;
+    const form = new FormData(event.currentTarget);
+    const name = String(form.get('name') || '').trim();
+    const unitId = String(form.get('unitId') || '').trim();
+    const categoryId = String(form.get('categoryId') || '').trim();
+    const primarySupplierId = String(form.get('primarySupplierId') || '').trim();
+    if (!name || !unitId) return;
+    setCreatingProduct(true);
+    setError(undefined);
+    try {
+      const product = await api.createProduct(token, {
+        name,
+        unitId,
+        categoryId: categoryId || undefined,
+        primarySupplierId: primarySupplierId || undefined,
+        description: `Créé depuis Kokki pour la ligne facture : ${pickerLine.rawLabel}`,
+      });
+      patchLine(productPickerLineIndex, {
+        productId: product.id,
+        inputUnitId: product.unitId || unitId,
+      });
+      setProductPickerLineIndex(null);
+      onApplied();
+    } catch (e: any) {
+      setError(e.message || 'Impossible de créer le produit');
+    } finally {
+      setCreatingProduct(false);
+    }
+  }
+
   function editableProposalLines(lines: StockProposal['lines']) {
     return lines.map((line) => ({
       id: line.id,
@@ -408,7 +491,7 @@ export function StockAssistantPanel({
             <div className="stock-assistant-chat-pane">
               <div className="stock-chat-header">
                 <div className="stock-chat-header-info">
-                  <div className="stock-chat-header-avatar" style={{ background: '#ffffff', borderRadius: '50%', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div className="stock-chat-header-avatar">
                     <img 
                       src="/kokki-transparent.png" 
                       alt="Kokki" 
@@ -422,24 +505,9 @@ export function StockAssistantPanel({
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center' }}>
                   <button 
+                    className="stock-chat-header-btn-new"
                     onClick={handleNewConversation}
                     title="Nouvelle conversation"
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.1)',
-                      border: 'none',
-                      width: '32px',
-                      height: '32px',
-                      borderRadius: '16px',
-                      color: 'white',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      marginRight: '8px'
-                    }}
-                    onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)'}
-                    onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'}
                   >
                     <Plus size={18} />
                   </button>
@@ -466,20 +534,7 @@ export function StockAssistantPanel({
                     }}
                   >
                     {item.role === 'assistant' && (
-                      <div style={{
-                        width: '28px',
-                        height: '28px',
-                        borderRadius: '50%',
-                        background: '#ffffff',
-                        border: '1px solid #cbd5e1',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                        padding: '2px',
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.04)',
-                        marginTop: '4px'
-                      }}>
+                      <div className="stock-chat-feed-avatar">
                         <img 
                           src="/kokki-transparent.png" 
                           alt="Kokki" 
@@ -546,19 +601,7 @@ export function StockAssistantPanel({
 
                 {busy && (
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center', alignSelf: 'flex-start', marginLeft: '0.25rem' }}>
-                    <div style={{
-                      width: '28px',
-                      height: '28px',
-                      borderRadius: '50%',
-                      background: '#ffffff',
-                      border: '1px solid #cbd5e1',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0,
-                      padding: '2px',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.04)'
-                    }}>
+                    <div className="stock-chat-feed-avatar" style={{ marginTop: 0 }}>
                       <img 
                         src="/kokki-transparent.png" 
                         alt="Kokki" 
@@ -662,21 +705,29 @@ export function StockAssistantPanel({
               <div className="stock-assistant-proposal-pane">
                 <div className="stock-proposal-header">
                   <div className="stock-proposal-header-title">
-                    <h3>Proposition de mouvement</h3>
-                    <span>Type: {proposal.type} • Source: {proposal.sourceType}{proposalSupplierName ? ` • Fournisseur: ${proposalSupplierName}` : ''}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <h3>Proposition de mouvement</h3>
+                      <span className={`stock-proposal-type-badge ${proposal.type.toLowerCase()}`}>
+                        {proposal.type === 'RECEIPT' ? 'Réception' : proposal.type === 'TRANSFER' ? 'Transfert' : proposal.type === 'WASTE' ? 'Perte' : proposal.type}
+                      </span>
+                    </div>
+                    <span className="stock-proposal-header-subtitle">
+                      Source : <strong>{proposal.sourceType}</strong>
+                      {proposalSupplierName && <> • Fournisseur : <strong>{proposalSupplierName}</strong></>}
+                    </span>
                   </div>
-                  <button className="stock-chat-header-close" style={{ background: '#f1f5f9', color: '#64748b' }} onClick={() => setProposal(undefined)}>
+                  <button className="stock-proposal-header-close" onClick={() => setProposal(undefined)}>
                     <X size={18} />
                   </button>
                 </div>
 
                 <div className="stock-proposal-body">
                   {Boolean(proposal.duplicateWarning) && (
-                    <div style={{ display: 'flex', gap: 8, padding: '0.85rem', background: '#fffbeb', border: '1px solid #fef3c7', borderRadius: 12, color: '#b45309', fontSize: '0.85rem' }}>
-                      <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+                    <div style={{ display: 'flex', gap: 10, padding: '1rem', background: '#fffbeb', border: '1px solid #fef3c7', borderRadius: 16, color: '#b45309', fontSize: '0.85rem', boxShadow: '0 4px 12px rgba(217, 119, 6, 0.05)' }}>
+                      <AlertTriangle size={20} style={{ flexShrink: 0, color: '#d97706' }} />
                       <div>
-                        <strong>Attention : doublon potentiel</strong>
-                        <p style={{ margin: '0.2rem 0 0' }}>Ce document semble avoir déjà été traité. Un motif de confirmation est requis.</p>
+                        <strong style={{ fontSize: '0.9rem' }}>Attention : doublon potentiel</strong>
+                        <p style={{ margin: '0.25rem 0 0', lineHeight: 1.4, color: '#92400e' }}>Ce document semble avoir déjà été traité. Un motif de confirmation est requis.</p>
                       </div>
                     </div>
                   )}
@@ -740,64 +791,72 @@ export function StockAssistantPanel({
                     </div>
                   )}
 
-                  <div className="stock-proposal-lines-card">
-                    <div className="stock-proposal-lines-header">Articles à enregistrer ({proposal.lines.length})</div>
-                    <div style={{ maxHeight: '340px', overflowY: 'auto' }}>
+                  <div className="stock-proposal-lines-container">
+                    <div className="stock-proposal-lines-header">
+                      <span>Articles à enregistrer</span>
+                      <span className="stock-proposal-lines-count">{proposal.lines.length} articles</span>
+                    </div>
+                    <div className="stock-proposal-lines-list">
                       {proposal.lines.map((line, i) => {
-                        const status = line.productId ? 'matched' : 'unmatched';
+                        const isMatched = Boolean(line.productId);
+                        const statusClass = isMatched ? 'matched' : 'unmatched';
                         return (
-                          <div key={line.id || i} className="stock-proposal-line-item">
-                            <div className="stock-proposal-line-product-select">
-                              <span style={{ display: 'flex', alignItems: 'center', fontWeight: 600, fontSize: '0.85rem', color: '#1f2937' }}>
-                                <span className={`stock-proposal-line-status-dot ${status}`} />
+                          <div key={line.id || i} className={`stock-proposal-line-card ${statusClass}`}>
+                            <div className="stock-proposal-line-card-header">
+                              <span className="stock-proposal-line-title">
+                                <span className={`stock-proposal-line-status-dot-large ${statusClass}`} />
                                 {line.rawLabel}
                               </span>
-                              <select 
-                                value={line.productId || ''} 
-                                onChange={e => { 
-                                  const product = products.find(p => p.id === e.target.value); 
-                                  patchLine(i, { 
-                                    productId: e.target.value || null, 
-                                    inputUnitId: product?.unitId || null 
-                                  }); 
-                                }}
-                              >
-                                <option value="">Associer à un produit...</option>
-                                {products.map(p => (
-                                  <option key={p.id} value={p.id}>{p.name}</option>
-                                ))}
-                              </select>
+                              <span className={`stock-proposal-line-status-badge ${statusClass}`}>
+                                {isMatched ? 'Prêt' : 'À associer'}
+                              </span>
                             </div>
 
-                            <div className="stock-proposal-line-qty">
-                              <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 650, display: 'block', marginBottom: '0.2rem' }}>Qté</span>
-                              <input 
-                                type="number" 
-                                value={line.quantity} 
-                                onChange={e => patchLine(i, { quantity: Number(e.target.value) })} 
-                              />
-                            </div>
+                            <div className="stock-proposal-line-card-body">
+                              <div className="stock-proposal-line-association-row">
+                                <label className="stock-proposal-field-label">Produit ToqueHub associé</label>
+                                <button
+                                  type="button"
+                                  className={`stock-proposal-product-picker-trigger ${statusClass}`}
+                                  onClick={() => openProductPicker(i)}
+                                >
+                                  <Search size={14} />
+                                  <span>{isMatched ? products.find((product) => product.id === line.productId)?.name || 'Produit associé' : 'Associer à un produit...'}</span>
+                                </button>
+                              </div>
 
-                            <div className="stock-proposal-line-unit">
-                              <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 650, display: 'block', marginBottom: '0.2rem' }}>Unité</span>
-                              <select 
-                                value={line.inputUnitId || ''} 
-                                onChange={e => patchLine(i, { inputUnitId: e.target.value || null })}
-                              >
-                                <option value="">Unité</option>
-                                {units.map(u => (
-                                  <option key={u.id} value={u.id}>{u.symbol}</option>
-                                ))}
-                              </select>
-                            </div>
+                              <div className="stock-proposal-line-inputs-grid">
+                                <div className="stock-proposal-input-group">
+                                  <label>Quantité</label>
+                                  <input 
+                                    type="number" 
+                                    value={line.quantity} 
+                                    onChange={e => patchLine(i, { quantity: Number(e.target.value) })} 
+                                  />
+                                </div>
 
-                            <div className="stock-proposal-line-lot">
-                              <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 650, display: 'block', marginBottom: '0.2rem' }}>Lot</span>
-                              <input 
-                                value={line.lotNumber || ''} 
-                                placeholder="N° Lot" 
-                                onChange={e => patchLine(i, { lotNumber: e.target.value || null })} 
-                              />
+                                <div className="stock-proposal-input-group">
+                                  <label>Unité</label>
+                                  <select 
+                                    value={line.inputUnitId || ''} 
+                                    onChange={e => patchLine(i, { inputUnitId: e.target.value || null })}
+                                  >
+                                    <option value="">Unité</option>
+                                    {units.map(u => (
+                                      <option key={u.id} value={u.id}>{u.symbol}</option>
+                                    ))}
+                                  </select>
+                                </div>
+
+                                <div className="stock-proposal-input-group">
+                                  <label>N° Lot</label>
+                                  <input 
+                                    value={line.lotNumber || ''} 
+                                    placeholder="—" 
+                                    onChange={e => patchLine(i, { lotNumber: e.target.value || null })} 
+                                  />
+                                </div>
+                              </div>
                             </div>
                           </div>
                         );
@@ -828,9 +887,116 @@ export function StockAssistantPanel({
                 </div>
               </div>
             )}
+
+            {productPickerLineIndex !== null && pickerLine && (
+              <div className="stock-assistant-product-modal-backdrop" onClick={() => setProductPickerLineIndex(null)}>
+                <div className="stock-assistant-product-modal" onClick={(event) => event.stopPropagation()}>
+                  <div className="stock-assistant-product-modal-header">
+                    <div>
+                      <span className="stock-assistant-product-modal-kicker">Association de produit</span>
+                      <h3>{pickerLine.rawLabel}</h3>
+                    </div>
+                    <button type="button" className="stock-assistant-product-modal-close" onClick={() => setProductPickerLineIndex(null)}><X size={20} /></button>
+                  </div>
+
+                  <div className="stock-assistant-product-modal-toolbar">
+                    <div className="stock-assistant-product-modal-search">
+                      <Search size={18} />
+                      <input value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder="Rechercher par nom, référence, fournisseur..." autoFocus />
+                    </div>
+                    <div className="stock-assistant-product-modal-filters">
+                      <select value={productCategoryFilter} onChange={(event) => setProductCategoryFilter(event.target.value)}>
+                        <option value="">Toutes catégories</option>
+                        {categories.filter((category) => !category.isArchived).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                      </select>
+                      <select value={productSupplierFilter} onChange={(event) => setProductSupplierFilter(event.target.value)}>
+                        <option value="">Tous fournisseurs</option>
+                        {suppliers.filter((supplier) => !supplier.isArchived).map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+                      </select>
+                      <select value={productUnitFilter} onChange={(event) => setProductUnitFilter(event.target.value)}>
+                        <option value="">Toutes unités</option>
+                        {units.filter((unit) => !unit.isArchived).map((unit) => <option key={unit.id} value={unit.id}>{unit.name} ({unit.symbol})</option>)}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="stock-assistant-product-modal-body">
+                    <div className="stock-assistant-product-results-pane">
+                      <span className="stock-assistant-product-pane-title">Résultats de recherche ({filteredProducts.length})</span>
+                      <div className="stock-assistant-product-results">
+                        {filteredProducts.map((product) => (
+                          <button key={product.id} type="button" className="stock-assistant-product-result" onClick={() => selectProductForLine(product)}>
+                            <span className="stock-assistant-product-result-name">{product.name}</span>
+                            <span className="stock-assistant-product-result-meta">
+                              {product.sku || product.reference ? `Réf. ${product.sku ?? product.reference} · ` : ''}
+                              {product.category?.name || categories.find((category) => category.id === product.categoryId)?.name || 'Sans catégorie'} · {product.primarySupplier?.name || product.supplier?.name || suppliers.find((supplier) => supplier.id === (product.primarySupplierId ?? product.supplierId))?.name || 'Sans fournisseur'} · {product.unit?.symbol || units.find((unit) => unit.id === product.unitId)?.symbol || '—'}
+                            </span>
+                          </button>
+                        ))}
+                        {!filteredProducts.length && (
+                          <div className="stock-assistant-product-empty">
+                            <PlusCircle size={28} />
+                            <strong>Aucun produit trouvé</strong>
+                            <span>Créez le produit ci-contre pour l'associer directement à cette ligne.</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <form className="stock-assistant-product-create-pane" onSubmit={createProductForLine}>
+                      <div className="stock-assistant-product-create-header">
+                        <span className="stock-assistant-product-modal-kicker">Nouveau produit</span>
+                        <strong>Création rapide & association</strong>
+                      </div>
+                      <div className="stock-assistant-product-create-form">
+                        <label className="stock-assistant-input-label">
+                          Nom du produit
+                          <input name="name" defaultValue={pickerLine.rawLabel || productSearch} required />
+                        </label>
+                        <div className="stock-assistant-product-create-grid">
+                          <label className="stock-assistant-input-label">
+                            Unité
+                            <select name="unitId" defaultValue={pickerLine.inputUnitId || ''} required>
+                              <option value="">Choisir...</option>
+                              {units.filter((unit) => !unit.isArchived).map((unit) => <option key={unit.id} value={unit.id}>{unit.name} ({unit.symbol})</option>)}
+                            </select>
+                          </label>
+                          <label className="stock-assistant-input-label">
+                            Catégorie
+                            <select name="categoryId" defaultValue={productCategoryFilter}>
+                              <option value="">Aucune</option>
+                              {categories.filter((category) => !category.isArchived).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                            </select>
+                          </label>
+                          <label className="stock-assistant-input-label">
+                            Fournisseur
+                            <select name="primarySupplierId" defaultValue={proposal?.supplierId || productSupplierFilter}>
+                              <option value="">Aucun</option>
+                              {suppliers.filter((supplier) => !supplier.isArchived).map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+                            </select>
+                          </label>
+                        </div>
+                        <button type="submit" className="btn-create-associate" disabled={creatingProduct}>
+                          {creatingProduct ? 'Création...' : 'Créer et associer'}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            )}
           </motion.div>
         </motion.div>
       )}
     </AnimatePresence>
   );
+}
+
+function normalizeAssistantSearch(value: string) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 }

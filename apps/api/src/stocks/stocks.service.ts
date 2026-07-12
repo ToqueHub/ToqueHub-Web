@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { AuditAction, InventoryStatus, Prisma, StockMovementType, TechnicalSheetHistoryAction, UnitType } from '@prisma/client';
+import { AuditAction, InventoryStatus, Prisma, StockMovementType, UnitType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
 import { CreateInventoryDto, UpdateInventoryCountsDto } from './dto/inventory.dto';
@@ -213,21 +213,7 @@ export class StocksService {
     };
   }
   async createProduct(organizationId: string, actor: Actor, dto: UpsertProductDto) { this.assertWrite(actor); await this.ensureUnit(organizationId, dto.unitId); if (dto.categoryId) await this.ensureCategory(organizationId, dto.categoryId); if (dto.primarySupplierId) await this.ensureSupplier(organizationId, dto.primarySupplierId); const item = await this.prisma.product.create({ data: { ...dto, organizationId }, include: { category: true, unit: true, primarySupplier: true, stocks: true } }); await this.log(organizationId, actor.id, AuditAction.PRODUCT_CREATED, 'Product', item.id, item.name); return item; }
-  async updateProduct(organizationId: string, actor: Actor, id: string, dto: UpsertProductDto) {
-    this.assertWrite(actor);
-    const before = await this.ensureProduct(organizationId, id, false);
-    if (dto.unitId) await this.ensureUnit(organizationId, dto.unitId);
-    if (dto.categoryId) await this.ensureCategory(organizationId, dto.categoryId);
-    if (dto.primarySupplierId) await this.ensureSupplier(organizationId, dto.primarySupplierId);
-    return this.prisma.$transaction(async (tx) => {
-      const item = await tx.product.update({ where: { id, organizationId }, data: dto, include: { category: true, unit: true, primarySupplier: true, stocks: true } });
-      await this.audit(tx, organizationId, actor.id, AuditAction.PRODUCT_UPDATED, 'Product', item.id, item.name);
-      if (dto.averagePrice !== undefined && !new Prisma.Decimal(dto.averagePrice).equals(before.averagePrice)) {
-        await this.recalculateTechnicalSheetsForProductTx(tx, organizationId, item.id, actor.id);
-      }
-      return item;
-    });
-  }
+  async updateProduct(organizationId: string, actor: Actor, id: string, dto: UpsertProductDto) { this.assertWrite(actor); await this.ensureProduct(organizationId, id, false); if (dto.unitId) await this.ensureUnit(organizationId, dto.unitId); if (dto.categoryId) await this.ensureCategory(organizationId, dto.categoryId); if (dto.primarySupplierId) await this.ensureSupplier(organizationId, dto.primarySupplierId); const item = await this.prisma.product.update({ where: { id, organizationId }, data: dto, include: { category: true, unit: true, primarySupplier: true, stocks: true } }); await this.log(organizationId, actor.id, AuditAction.PRODUCT_UPDATED, 'Product', item.id, item.name); return item; }
   archiveProduct(organizationId: string, actor: Actor, id: string) { return this.archive('product', organizationId, actor, id, AuditAction.PRODUCT_ARCHIVED, 'Product'); }
 
   listSites(organizationId: string, q: ListQueryDto = {}) { return this.prisma.site.findMany({ where: { organizationId, ...(q.includeArchived ? {} : { isArchived: false }), name: q.search ? { contains: q.search, mode: 'insensitive' } : undefined }, include: { locations: true }, orderBy: { name: 'asc' }, ...this.page(q) }); }
@@ -359,59 +345,6 @@ export class StocksService {
 
   listAudit(organizationId: string, q: ListQueryDto = {}) { return this.prisma.auditLog.findMany({ where: { organizationId, OR: q.search ? [{ entityName: { contains: q.search, mode: 'insensitive' } }, { entityType: { contains: q.search, mode: 'insensitive' } }] : undefined }, include: { user: { select: { email: true, firstName: true, lastName: true } } }, orderBy: { createdAt: 'desc' }, ...this.page(q) }); }
   async auditCsv(organizationId: string) { const rows = await this.listAudit(organizationId, { pageSize: 1000 }); return ['date,user,action,entityType,entityName', ...rows.map((r) => [r.createdAt.toISOString(), r.user?.email ?? '', r.action, r.entityType, r.entityName ?? ''].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))].join('\n'); }
-
-  async recalculateTechnicalSheetsForProductTx(tx: Tx, organizationId: string, productId: string, userId: string | null) {
-    const links = await tx.technicalSheetIngredient.findMany({ where: { organizationId, productId }, select: { technicalSheetId: true }, distinct: ['technicalSheetId'] });
-    for (const link of links) await this.recalculateTechnicalSheetCost(tx, organizationId, link.technicalSheetId, userId, productId);
-  }
-
-  private async recalculateTechnicalSheetCost(tx: Tx, organizationId: string, technicalSheetId: string, userId: string | null, triggerProductId: string) {
-    const recipe = await tx.technicalSheet.findUnique({ where: { id: technicalSheetId }, include: { ingredients: { include: { product: true, unit: true } } } });
-    if (!recipe) return;
-    let total = new Prisma.Decimal(0);
-    let hasNonCalculable = false;
-    for (const line of recipe.ingredients) {
-      const calc = await this.calculateTechnicalSheetLineCost(tx, organizationId, line);
-      hasNonCalculable ||= !calc.isCalculable;
-      if (calc.cost) total = total.add(calc.cost);
-      await tx.technicalSheetIngredient.update({
-        where: { id: line.id },
-        data: {
-          cost: calc.cost,
-          unitPriceSnapshot: line.product.averagePrice,
-          isCalculable: calc.isCalculable,
-          nonCalculableReason: calc.reason,
-          productArchivedSnapshot: line.product.isArchived,
-        },
-      });
-    }
-    const costPerPortion = recipe.referencePortions.isZero() ? new Prisma.Decimal(0) : total.div(recipe.referencePortions);
-    await tx.technicalSheet.update({
-      where: { id: recipe.id },
-      data: { totalCost: total, costPerPortion, hasNonCalculableLines: hasNonCalculable, lastCostCalculationAt: new Date() },
-    });
-    await tx.technicalSheetHistory.create({
-      data: {
-        organizationId,
-        technicalSheetId: recipe.id,
-        userId,
-        action: TechnicalSheetHistoryAction.COST_RECALCULATED,
-        summary: 'Recalcul automatique après modification du prix produit Stocks',
-        details: { source: 'stocks-product-price-update', productId: triggerProductId, totalCost: total.toString(), hasNonCalculableLines: hasNonCalculable },
-      },
-    });
-  }
-
-  private async calculateTechnicalSheetLineCost(tx: Tx, organizationId: string, line: any) {
-    if (line.product.isArchived) return { isCalculable: false, cost: null, reason: 'Produit Stocks archivé' };
-    let quantity = new Prisma.Decimal(line.quantity);
-    if (line.unitId !== line.product.unitId) {
-      const conversion = await tx.unitConversion.findFirst({ where: { organizationId, fromUnitId: line.unitId, toUnitId: line.product.unitId } });
-      if (!conversion) return { isCalculable: false, cost: null, reason: 'Conversion unité indisponible dans Stocks' };
-      quantity = quantity.mul(conversion.factor);
-    }
-    return { isCalculable: true, cost: quantity.mul(line.product.averagePrice), reason: null };
-  }
 
   private async applyStock(tx: Tx, organizationId: string, productId: string, lotId: string | undefined | null, siteId: string | undefined | null, locationId: string | undefined | null, delta: Prisma.Decimal) {
     const existing = await tx.stock.findFirst({ where: { organizationId, productId, lotId: lotId ?? null, siteId: siteId ?? null, locationId: locationId ?? null } });

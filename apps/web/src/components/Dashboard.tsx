@@ -241,9 +241,9 @@ const apps = [
     ageLimit: '3+',
     size: '2.4 Mo',
     tagline: 'Référentiel culinaire central connecté aux produits, unités et prix d’achat Stocks.',
-    description: 'Fiches Techniques centralise vos préparations professionnelles sans créer de référentiel produit parallèle. Les lignes d’ingrédients pointent exclusivement vers les produits Stocks, les allergènes viennent des fiches produits, les coûts utilisent les prix d’achat Stocks, et la V1 couvre catégories recettes, étapes, historique, duplication, archivage, production théorique et exports PDF/CSV.\n\nDépendance stricte : le module Stocks doit être installé avant Fiches Techniques.',
+    description: 'Fiches Techniques centralise vos préparations professionnelles sans créer de référentiel produit parallèle. Les lignes d’ingrédients pointent exclusivement vers les produits Stocks, les coûts utilisent les prix d’achat Stocks, et la V1 couvre catégories recettes, allergènes par ligne, étapes, historique, duplication, archivage, production théorique et exports PDF/CSV.\n\nDépendance stricte : le module Stocks doit être installé avant Fiches Techniques.',
     screenshots: ['Tableau de bord', 'Fiche technique', 'Production théorique'],
-    changelog: 'Lancement V1 avec préchargement catégories recettes, coûts Stocks et production théorique.',
+    changelog: 'Lancement V1 avec préchargement catégories recettes et allergènes standards.',
     version: 'v1.0.0',
     compatibility: 'ToqueHub Core v0.1.0+ + Stocks obligatoire',
     status: 'Disponible',
@@ -370,7 +370,7 @@ const apps = [
   },
 ];
 
-type ActiveTab = 'overview' | 'applications' | 'settings' | 'organization-general' | 'organization-documents' | 'users' | 'architecture' | 'stocks-dashboard' | 'stocks-margins' | 'articles' | 'inventory' | 'movements' | 'products' | 'categories' | 'units' | 'suppliers' | 'inventories' | 'locations' | 'audit' | 'rnm-dashboard' | 'rnm-history' | 'rnm-favorites' | 'rnm-about' | 'hr-dashboard' | 'hr-collaborators' | 'hr-departments' | 'hr-positions' | 'hr-rotations' | 'hr-orgchart' | 'planning-dashboard' | 'planning-planning' | 'planning-settings' | 'planning-attendance' | 'planning-day' | 'planning-week' | 'planning-month' | 'planning-assignments' | 'planning-absences' | 'planning-replacements' | 'planning-templates' | 'planning-requirements' | 'technical-sheets-dashboard' | 'technical-sheets-recipes' | 'technical-sheets-categories' | 'technical-sheets-costs' | 'technical-sheets-production' | 'production-dashboard' | 'production-orders' | 'production-calendar' | 'production-today' | 'production-assignments' | 'production-materials' | 'production-exports' | 'production-history' | 'menus-dashboard' | 'menus-list' | 'menus-calendar' | 'menus-cycles' | 'menus-diets' | 'menus-guests' | 'menus-exports' | 'menus-history' | 'haccp-dashboard' | 'haccp-setup' | 'haccp-sensors' | 'haccp-alerts' | 'haccp-temperatures' | 'haccp-cleaning' | 'haccp-traceability' | 'haccp-receptions' | 'haccp-process' | 'haccp-oil' | 'haccp-production' | 'haccp-products' | 'haccp-labels' | 'haccp-reports';
+type ActiveTab = 'overview' | 'applications' | 'settings' | 'organization-general' | 'organization-documents' | 'users' | 'architecture' | 'stocks-dashboard' | 'stocks-margins' | 'articles' | 'inventory' | 'movements' | 'products' | 'categories' | 'units' | 'suppliers' | 'inventories' | 'locations' | 'audit' | 'rnm-dashboard' | 'rnm-history' | 'rnm-favorites' | 'rnm-about' | 'hr-dashboard' | 'hr-collaborators' | 'hr-departments' | 'hr-positions' | 'hr-rotations' | 'hr-orgchart' | 'planning-dashboard' | 'planning-planning' | 'planning-settings' | 'planning-attendance' | 'planning-day' | 'planning-week' | 'planning-month' | 'planning-assignments' | 'planning-absences' | 'planning-replacements' | 'planning-templates' | 'planning-requirements' | 'technical-sheets-dashboard' | 'technical-sheets-recipes' | 'technical-sheets-categories' | 'technical-sheets-costs' | 'technical-sheets-allergens' | 'technical-sheets-production' | 'production-dashboard' | 'production-orders' | 'production-calendar' | 'production-today' | 'production-assignments' | 'production-materials' | 'production-exports' | 'production-history' | 'menus-dashboard' | 'menus-list' | 'menus-calendar' | 'menus-cycles' | 'menus-diets' | 'menus-guests' | 'menus-exports' | 'menus-history' | 'haccp-dashboard' | 'haccp-setup' | 'haccp-sensors' | 'haccp-alerts' | 'haccp-temperatures' | 'haccp-cleaning' | 'haccp-traceability' | 'haccp-receptions' | 'haccp-process' | 'haccp-oil' | 'haccp-production' | 'haccp-products' | 'haccp-labels' | 'haccp-reports';
 type StocksSettingsTab = 'categories' | 'units' | 'movements' | 'locations' | 'audit';
 
 const STOCKS_ALL_TABS: ActiveTab[] = [
@@ -859,7 +859,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const isRnmTab = useMemo(() => ['rnm-dashboard', 'rnm-history', 'rnm-favorites', 'rnm-about'].includes(activeTab), [activeTab]);
   const isHrTab = useMemo(() => ['hr-dashboard', 'hr-collaborators', 'hr-departments', 'hr-positions', 'hr-orgchart'].includes(activeTab), [activeTab]);
   const isPlanningTab = useMemo(() => ['planning-dashboard', 'planning-planning', 'planning-settings', 'planning-attendance', 'planning-day', 'planning-week', 'planning-month', 'planning-assignments', 'planning-absences', 'planning-replacements', 'planning-templates', 'planning-requirements'].includes(activeTab), [activeTab]);
-  const isTechnicalSheetsTab = useMemo(() => ['technical-sheets-dashboard', 'technical-sheets-recipes', 'technical-sheets-categories', 'technical-sheets-costs', 'technical-sheets-production'].includes(activeTab), [activeTab]);
+  const isTechnicalSheetsTab = useMemo(() => ['technical-sheets-dashboard', 'technical-sheets-recipes', 'technical-sheets-categories', 'technical-sheets-costs', 'technical-sheets-allergens', 'technical-sheets-production'].includes(activeTab), [activeTab]);
   const isProductionTab = useMemo(() => ['production-dashboard', 'production-orders', 'production-calendar', 'production-today', 'production-assignments', 'production-materials', 'production-exports', 'production-history'].includes(activeTab), [activeTab]);
   const isMenusTab = useMemo(() => ['menus-dashboard', 'menus-list', 'menus-calendar', 'menus-cycles', 'menus-diets', 'menus-guests', 'menus-exports', 'menus-history'].includes(activeTab), [activeTab]);
   const isHaccpTab = useMemo(() => ['haccp-dashboard', 'haccp-setup', 'haccp-sensors', 'haccp-alerts', 'haccp-temperatures', 'haccp-cleaning', 'haccp-traceability', 'haccp-receptions', 'haccp-process', 'haccp-oil', 'haccp-production', 'haccp-products', 'haccp-labels', 'haccp-reports'].includes(activeTab), [activeTab]);
@@ -1048,6 +1048,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         { tab: 'technical-sheets-recipes', label: 'Fiches techniques', icon: FileText },
         { tab: 'technical-sheets-categories', label: 'Catégories recettes', icon: ClipboardList },
         { tab: 'technical-sheets-costs', label: 'Coûts', icon: Calculator },
+        { tab: 'technical-sheets-allergens', label: 'Allergènes', icon: AlertCircle },
         { tab: 'technical-sheets-production', label: 'Production théorique', icon: ChefHat },
       ]
     },
@@ -1440,7 +1441,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         const summary = appId === 'rnm-prices' ? await api.installRnmPrices(token) : appId === 'hr' ? await api.installHr(token) : appId === 'planning' ? await api.installPlanning(token) : appId === 'technical-sheets' ? await api.installTechnicalSheets(token) : appId === 'production' ? await api.installProduction(token) : appId === 'menus' ? await api.installMenus(token) : appId === 'haccp' ? await api.installHaccp(token) : await api.installStocks(token);
         setDashboardSummary((prev) => ({ ...prev, ...summary } as DashboardSummary));
         setInstalledApps(summary.installedApplications ?? Array.from(new Set([...installedApps, appId])));
-        setSuccess(appId === 'rnm-prices' ? 'L’application Cours des Produits a été installée. La navigation RNM est maintenant visible.' : appId === 'hr' ? 'L’application RH a été installée. Services et postes de départ sont disponibles.' : appId === 'planning' ? 'L’application Planning a été installée. Les vues opérationnelles consomment désormais le référentiel RH.' : appId === 'technical-sheets' ? 'L’application Fiches Techniques a été installée. Les catégories recettes sont disponibles.' : appId === 'production' ? 'L’application Production a été installée. Les ordres peuvent être créés depuis les fiches techniques sans dupliquer les référentiels.' : appId === 'menus' ? 'L’application Menus a été installée. Planification, cycles, convives et génération Production sont disponibles.' : appId === 'haccp' ? 'L’application HACCP a été installée. Dashboard conformité, contrôles et rapports sont disponibles.' : 'L’application Stocks a été installée avec succès. Le référentiel de base est prêt, vous pouvez créer le premier fournisseur.');
+        setSuccess(appId === 'rnm-prices' ? 'L’application Cours des Produits a été installée. La navigation RNM est maintenant visible.' : appId === 'hr' ? 'L’application RH a été installée. Services et postes de départ sont disponibles.' : appId === 'planning' ? 'L’application Planning a été installée. Les vues opérationnelles consomment désormais le référentiel RH.' : appId === 'technical-sheets' ? 'L’application Fiches Techniques a été installée. Catégories recettes et allergènes standards sont disponibles.' : appId === 'production' ? 'L’application Production a été installée. Les ordres peuvent être créés depuis les fiches techniques sans dupliquer les référentiels.' : appId === 'menus' ? 'L’application Menus a été installée. Planification, cycles, convives et génération Production sont disponibles.' : appId === 'haccp' ? 'L’application HACCP a été installée. Dashboard conformité, contrôles et rapports sont disponibles.' : 'L’application Stocks a été installée avec succès. Le référentiel de base est prêt, vous pouvez créer le premier fournisseur.');
         if (appId === 'stocks') {
           setActiveTab('stocks-dashboard');
           setShowStocksOnboarding(true);
@@ -1940,6 +1941,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     'technical-sheets-recipes': 'Fiches techniques',
     'technical-sheets-categories': 'Catégories recettes',
     'technical-sheets-costs': 'Coûts fiches techniques',
+    'technical-sheets-allergens': 'Allergènes',
     'technical-sheets-production': 'Production théorique',
     'production-dashboard': 'Production',
     'production-orders': 'Ordres de production',
@@ -2658,11 +2660,11 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               {isTechnicalSheetsTab && technicalSheetsInstalled && (
                 <TechnicalSheetsApp
                   token={token}
-                  tab={activeTab === 'technical-sheets-recipes' ? 'recipes' : activeTab === 'technical-sheets-categories' ? 'categories' : activeTab === 'technical-sheets-costs' ? 'costs' : activeTab === 'technical-sheets-production' ? 'production' : 'dashboard'}
+                  tab={activeTab === 'technical-sheets-recipes' ? 'recipes' : activeTab === 'technical-sheets-categories' ? 'categories' : activeTab === 'technical-sheets-costs' ? 'costs' : activeTab === 'technical-sheets-allergens' ? 'allergens' : activeTab === 'technical-sheets-production' ? 'production' : 'dashboard'}
                   stocksInstalled={stocksInstalled}
                   products={products}
                   units={units}
-                  onNavigate={(next) => setActiveTab(next === 'recipes' ? 'technical-sheets-recipes' : next === 'categories' ? 'technical-sheets-categories' : next === 'costs' ? 'technical-sheets-costs' : next === 'production' ? 'technical-sheets-production' : 'technical-sheets-dashboard')}
+                  onNavigate={(next) => setActiveTab(next === 'recipes' ? 'technical-sheets-recipes' : next === 'categories' ? 'technical-sheets-categories' : next === 'costs' ? 'technical-sheets-costs' : next === 'allergens' ? 'technical-sheets-allergens' : next === 'production' ? 'technical-sheets-production' : 'technical-sheets-dashboard')}
                   onInstalled={(apps) => {
                     if (apps) setInstalledApps(apps);
                     void refresh();
@@ -3397,6 +3399,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         onClose={() => setShowStockAssistant(false)}
         token={token}
         products={products}
+        categories={categories}
         units={units}
         suppliers={suppliers}
         sites={sites}

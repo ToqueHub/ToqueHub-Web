@@ -16,7 +16,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MistralClientService } from '../mistral/mistral-client.service';
 import { SaveOcrCorrectionDto } from './dto/stocks-ocr.dto';
 import { StocksMarginsService } from './stocks-margins.service';
-import { StocksService } from './stocks.service';
 
 const OCR_ROLES = ['SUPER_ADMIN', 'Administrateur', 'ADMIN', 'Manager', 'MANAGER', 'Chef', 'Second', 'Magasinier'];
 const MAX_FILES = Number(process.env.OCR_MAX_FILES ?? 8);
@@ -234,7 +233,7 @@ interface BusinessExtraction {
 export class StocksOcrService {
   private readonly logger = new Logger(StocksOcrService.name);
 
-  constructor(private readonly prisma: PrismaService, private readonly marginsService: StocksMarginsService, private readonly mistralClient: MistralClientService, private readonly stocksService: StocksService) {}
+  constructor(private readonly prisma: PrismaService, private readonly marginsService: StocksMarginsService, private readonly mistralClient: MistralClientService) {}
 
   private assertOcr(actor: Actor) {
     if (!OCR_ROLES.includes(actor.role)) throw new ForbiddenException('Droits OCR Stocks insuffisants');
@@ -584,7 +583,7 @@ export class StocksOcrService {
           },
         });
         await this.applyStock(tx, organizationId, product.id, lot?.id, corrected.siteId, corrected.locationId, quantity);
-        await this.updateProductAveragePriceFromReceptionLineTx(tx, organizationId, actor.id, product.id, quantity, line);
+        await this.updateProductAveragePriceFromReceptionLineTx(tx, product.id, quantity, line);
         await tx.stockMovement.create({
           data: {
             organizationId,
@@ -2203,7 +2202,7 @@ export class StocksOcrService {
     return new Prisma.Decimal(quantity).mul(conversion.factor);
   }
 
-  private async updateProductAveragePriceFromReceptionLineTx(tx: Tx, organizationId: string, userId: string | null, productId: string, convertedQuantity: Prisma.Decimal, line: any) {
+  private async updateProductAveragePriceFromReceptionLineTx(tx: Tx, productId: string, convertedQuantity: Prisma.Decimal, line: any) {
     let nextPrice: Prisma.Decimal | null = null;
     if (line.lineTotal != null && !convertedQuantity.isZero()) {
       nextPrice = new Prisma.Decimal(line.lineTotal).div(convertedQuantity);
@@ -2211,11 +2210,7 @@ export class StocksOcrService {
       nextPrice = new Prisma.Decimal(line.unitPrice);
     }
     if (nextPrice && nextPrice.greaterThanOrEqualTo(0)) {
-      const previous = await tx.product.findUnique({ where: { id: productId }, select: { averagePrice: true } });
       await tx.product.update({ where: { id: productId }, data: { averagePrice: nextPrice } });
-      if (!previous?.averagePrice.equals(nextPrice)) {
-        await this.stocksService.recalculateTechnicalSheetsForProductTx(tx, organizationId, productId, userId);
-      }
     }
   }
 

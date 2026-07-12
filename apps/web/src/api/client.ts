@@ -78,7 +78,6 @@ import type {
   TechnicalSheetCategory,
   TechnicalSheetDashboard,
   TechnicalSheetHistoryEntry,
-  TechnicalSheetRecipeImportResult,
   TechnicalSheetRecipe,
   TechnicalSheetRecipePayload,
   TechnicalSheetRecipesResponse,
@@ -212,14 +211,6 @@ async function readApiErrorMessage(response: Response, fallback = `Erreur API ${
     // Keep the raw response below.
   }
   return raw;
-}
-
-function filenameFromContentDisposition(disposition: string | null, fallback: string) {
-  if (!disposition) return fallback;
-  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
-  if (encoded) return decodeURIComponent(encoded);
-  const quoted = disposition.match(/filename="([^"]+)"/i)?.[1];
-  return quoted || fallback;
 }
 
 async function request<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
@@ -717,20 +708,13 @@ export const api = {
   createTechnicalSheetRecipe(token: string, payload: TechnicalSheetRecipePayload) {
     return request<TechnicalSheetRecipe>('/technical-sheets/recipes', { method: 'POST', body: JSON.stringify(payload) }, token);
   },
-  async importTechnicalSheetRecipePdf(token: string, file: File) {
-    const form = new FormData();
-    form.append('file', file);
-    const response = await fetch(`${API_URL}/api/technical-sheets/recipes/import-pdf`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form });
-    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
-    return response.json() as Promise<TechnicalSheetRecipeImportResult>;
-  },
   updateTechnicalSheetRecipe(token: string, id: string, payload: Partial<TechnicalSheetRecipePayload>) {
     return request<TechnicalSheetRecipe>(`/technical-sheets/recipes/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
   },
   archiveTechnicalSheetRecipe(token: string, id: string) {
     return request<TechnicalSheetRecipe>(`/technical-sheets/recipes/${id}/archive`, { method: 'POST' }, token);
   },
-  duplicateTechnicalSheetRecipe(token: string, id: string, payload: { name?: string; copyGeneral?: boolean; copyPhoto?: boolean; copyIngredients?: boolean; copySteps?: boolean; copyCategory?: boolean }) {
+  duplicateTechnicalSheetRecipe(token: string, id: string, payload: { name?: string; copyGeneral?: boolean; copyPhoto?: boolean; copyIngredients?: boolean; copySteps?: boolean; copyAllergens?: boolean; copyCategory?: boolean; resetToDraft?: boolean }) {
     return request<TechnicalSheetRecipe>(`/technical-sheets/recipes/${id}/duplicate`, { method: 'POST', body: JSON.stringify(payload) }, token);
   },
   recalculateTechnicalSheetRecipe(token: string, id: string) {
@@ -747,19 +731,13 @@ export const api = {
   },
   async exportTechnicalSheetProductionCsv(token: string, id: string) {
     const response = await fetch(`${API_URL}/api/technical-sheets/production/${id}/export.csv`, { headers: { Authorization: `Bearer ${token}` } });
-    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
-    return {
-      blob: await response.blob(),
-      filename: filenameFromContentDisposition(response.headers.get('Content-Disposition'), `production-theorique-${id}.csv`),
-    };
+    if (!response.ok) throw new ApiError(await response.text(), response.status);
+    return response.blob();
   },
   async exportTechnicalSheetProductionPdf(token: string, id: string) {
     const response = await fetch(`${API_URL}/api/technical-sheets/production/${id}/export.pdf`, { headers: { Authorization: `Bearer ${token}` } });
-    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
-    return {
-      blob: await response.blob(),
-      filename: filenameFromContentDisposition(response.headers.get('Content-Disposition'), `production-theorique-${id}.pdf`),
-    };
+    if (!response.ok) throw new ApiError(await response.text(), response.status);
+    return response.blob();
   },
   planningBootstrap(token: string, params: PlanningRangeParams = {}) {
     const search = new URLSearchParams();

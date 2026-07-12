@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsEnum, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsEnum, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min, ValidateNested } from 'class-validator';
 import { TechnicalSheetStatus } from '@prisma/client';
 
 export class TechnicalSheetListQueryDto {
@@ -23,15 +23,12 @@ export class UpsertAllergenDto {
 }
 
 export class UpsertIngredientDto {
-  @IsOptional() @IsUUID() productId?: string;
-  @IsOptional() @IsString() @MaxLength(180) productName?: string;
-  @IsOptional() @IsString() @MaxLength(80) productSku?: string;
-  @IsOptional() @IsString() @MaxLength(32) productGtin?: string;
-  @IsOptional() @IsBoolean() createProduct?: boolean;
+  @IsUUID() productId!: string;
   @IsUUID() unitId!: string;
   @Type(() => Number) @IsNumber({ maxDecimalPlaces: 3 }) @Min(0.001) quantity!: number;
   @IsOptional() @IsString() @MaxLength(2000) comment?: string;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) order?: number;
+  @IsOptional() @IsArray() @IsUUID('4', { each: true }) allergenIds?: string[];
 }
 
 export class UpsertStepDto {
@@ -65,6 +62,7 @@ export class DuplicateTechnicalSheetDto {
   @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() copyPhoto?: boolean;
   @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() copyIngredients?: boolean;
   @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() copySteps?: boolean;
+  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() copyAllergens?: boolean;
   @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() copyCategory?: boolean;
 }
 

@@ -1559,6 +1559,7 @@ export interface TechnicalSheetIngredientLine {
   quantity: number | string;
   comment?: string | null;
   allergens?: TechnicalSheetAllergen[];
+  allergenIds?: string[];
   cost?: number | string | null;
   costTotal?: number | string | null;
   isCalculable?: boolean;
@@ -1619,15 +1620,11 @@ export interface TechnicalSheetRecipePayload {
   status?: TechnicalSheetRecipeStatus;
   ingredients?: Array<{
     id?: string;
-    productId?: string;
-    productName?: string;
-    productSku?: string;
-    productGtin?: string;
-    createProduct?: boolean;
+    productId: string;
     quantity: number;
     unitId: string;
     comment?: string;
-    order?: number;
+    allergenIds?: string[];
   }>;
   steps?: Array<{
     id?: string;
@@ -1636,16 +1633,6 @@ export interface TechnicalSheetRecipePayload {
     description?: string;
     estimatedTimeMinutes?: number;
   }>;
-}
-
-export interface TechnicalSheetRecipeImportResult {
-  filename: string;
-  pageCount?: number | null;
-  matchedIngredientsCount: number;
-  newProductsCount: number;
-  skippedIngredientsCount: number;
-  warnings: string[];
-  payload: TechnicalSheetRecipePayload;
 }
 
 export interface TechnicalSheetRecipesResponse {
