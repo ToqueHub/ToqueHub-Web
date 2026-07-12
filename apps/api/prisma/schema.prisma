@@ -3182,6 +3182,7 @@ model TechnicalSheet {
   costPerPortion         Decimal              @default(0) @db.Decimal(12, 4)
   costPerKg              Decimal?             @db.Decimal(12, 4)
   costPerLiter           Decimal?             @db.Decimal(12, 4)
+  targetSellingPriceHtPerPortion Decimal?      @db.Decimal(12, 4)
   hasNonCalculableLines  Boolean              @default(false)
   lastCostCalculationAt  DateTime?
   isArchived             Boolean              @default(false)

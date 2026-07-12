@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Archive,
@@ -37,6 +37,7 @@ import type {
   TechnicalSheetRecipe,
   TechnicalSheetRecipeImportStatus,
   TechnicalSheetRecipePayload,
+  TechnicalSheetSalesTaxPolicy,
   TechnicalSheetSimulation,
   TechnicalSheetSimulationPayload,
   Unit,
@@ -585,6 +586,7 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
   const [dashboard, setDashboard] = useState<TechnicalSheetDashboard>();
   const [recipes, setRecipes] = useState<TechnicalSheetRecipe[]>([]);
   const [categories, setCategories] = useState<TechnicalSheetCategory[]>([]);
+  const [salesTaxPolicy, setSalesTaxPolicy] = useState<TechnicalSheetSalesTaxPolicy>();
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -611,14 +613,18 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
     setLoading(true);
     setError(undefined);
     try {
+      const recipeQuery = tab === 'recipes'
+        ? { includeArchived: true, search: search || undefined, categoryId: categoryFilter || undefined, status: statusFilter || undefined, pageSize: 200 }
+        : { includeArchived: true, pageSize: 200 };
       const [dash, cats, recipeList] = await Promise.all([
         api.technicalSheetsDashboard(token).catch(() => undefined),
         api.technicalSheetCategories(token),
-        api.technicalSheetRecipes(token, { includeArchived: true, search: search || undefined, categoryId: categoryFilter || undefined, status: statusFilter || undefined }),
+        api.technicalSheetRecipes(token, recipeQuery),
       ]);
       setDashboard(dash);
       setCategories(cats);
       setRecipes(recipeList.items ?? recipeList);
+      setSalesTaxPolicy(recipeList.salesTaxPolicy);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Chargement des fiches techniques impossible.');
     } finally {
@@ -626,7 +632,7 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
     }
   }
 
-  useEffect(() => { void load(); }, [stocksInstalled, search, categoryFilter, statusFilter]);
+  useEffect(() => { void load(); }, [stocksInstalled, tab, search, categoryFilter, statusFilter]);
   useEffect(() => { setAvailableProducts(products); }, [products]);
 
   async function refreshImportStatuses() {
@@ -772,6 +778,13 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
     await api.recalculateTechnicalSheetRecipe(token, recipe.id);
     setSuccess('Coûts recalculés depuis les prix d’achat Stocks et instantané enregistré.');
     await load();
+  }
+
+  async function updateRecipePricing(recipeId: string, payload: { targetSellingPriceExclTax?: number | null; targetSellingPriceInclTax?: number | null }) {
+    setError(undefined);
+    const updated = await api.updateTechnicalSheetRecipePricing(token, recipeId, payload);
+    setRecipes((current) => current.map((recipe) => recipe.id === recipeId ? updated : recipe));
+    return updated;
   }
 
   async function showHistory(recipe: TechnicalSheetRecipe) {
@@ -955,6 +968,9 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
           {tab === 'costs' && (
             <CostsTab
               recipes={recipes}
+              categories={categories.filter((category) => !isArchived(category))}
+              salesTaxPolicy={salesTaxPolicy}
+              onSavePricing={updateRecipePricing}
             />
           )}
           {tab === 'production' && (
@@ -1495,54 +1511,210 @@ function ReferencesTab({
 }
 
 function CostsTab({
-  recipes
+  recipes,
+  categories,
+  salesTaxPolicy,
+  onSavePricing,
 }: {
   recipes: TechnicalSheetRecipe[];
+  categories: TechnicalSheetCategory[];
+  salesTaxPolicy?: TechnicalSheetSalesTaxPolicy;
+  onSavePricing: (recipeId: string, payload: { targetSellingPriceExclTax?: number | null; targetSellingPriceInclTax?: number | null }) => Promise<TechnicalSheetRecipe>;
 }) {
-  const sorted = [...recipes].sort((a, b) => Number(b.costTotal ?? b.totalCost ?? 0) - Number(a.costTotal ?? a.totalCost ?? 0));
+  const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const filtered = recipes.filter((recipe) => {
+    const haystack = [recipe.name, recipe.description, recipe.category?.name, ...(recipe.ingredients ?? []).map((line) => line.product?.name)].filter(Boolean).join(' ').toLowerCase();
+    const matchesSearch = haystack.includes(search.trim().toLowerCase());
+    const matchesCategory = !categoryFilter || recipe.categoryId === categoryFilter || recipe.category?.id === categoryFilter;
+    return matchesSearch && matchesCategory;
+  });
+  const sorted = [...filtered].sort((a, b) => Number(b.costTotal ?? b.totalCost ?? 0) - Number(a.costTotal ?? a.totalCost ?? 0));
 
   return (
-    <div className="card-modern">
-      <div className="section-header-modern" style={{ marginBottom: '1.5rem' }}>
-        <div className="section-info">
-          <span className="card-title">Comparaison des coûts</span>
-          <span className="section-tagline">Les coûts suivent automatiquement les prix d'achat des produits Stocks.</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      <div className="technical-sheets-filter-card">
+        <div className="stocks-filter-bar">
+          <div className="search-input-wrapper">
+            <Search size={16} />
+            <input className="search-input" placeholder="Rechercher une fiche, un ingrédient, une catégorie…" value={search} onChange={(event) => setSearch(event.target.value)} />
+          </div>
+          <div className="filter-selects">
+            <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+              <option value="">Toutes catégories</option>
+              {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+            </select>
+            {(search || categoryFilter) ? <button type="button" className="btn-clear-filters" onClick={() => { setSearch(''); setCategoryFilter(''); }} title="Réinitialiser les filtres"><X size={16} /></button> : null}
+          </div>
         </div>
       </div>
+
+      <div className={`technical-sheets-tax-policy ${salesTaxPolicy?.configured ? 'configured' : 'missing'}`}>
+        <div>
+          <strong>{salesTaxPolicy?.configured ? `TVA vente restauration : ${salesTaxPolicy.rate}% · ${salesTaxPolicy.countryLabel}` : 'Pays de réglementation non configuré'}</strong>
+          <span>{salesTaxPolicy?.configured ? salesTaxPolicy.scopeLabel : 'Configurez le pays réglementaire de l’organisation pour calculer les prix TTC.'}</span>
+        </div>
+        <span className={`badge ${salesTaxPolicy?.configured ? 'badge-reception' : 'badge-correction'}`}>{salesTaxPolicy?.configured ? 'Onboarding réglementaire' : 'TTC indisponible'}</span>
+      </div>
+
+      <div className="card-modern">
+        <div className="section-header-modern" style={{ marginBottom: '1.5rem' }}>
+        <div className="section-info">
+          <span className="card-title">Coûts, prix de vente visés et marge brute</span>
+          <span className="section-tagline">Le coût HT vient des produits Stocks. Les objectifs de vente sont exprimés par portion.</span>
+        </div>
+        </div>
       
-      <div className="table-wrapper">
-        <table className="table-modern">
-          <thead>
-            <tr>
-              <th>Recette / Fiche Technique</th>
-              <th>Dernier calcul</th>
-              <th>Lignes non calculables</th>
-              <th style={{ textAlign: 'right' }}>Coût total</th>
-              <th style={{ textAlign: 'right' }}>Coût / portion</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((recipe) => (
-              <tr key={recipe.id} style={{ transition: 'all 0.2s' }}>
-                <td style={{ fontWeight: 600 }}>{recipe.name}</td>
-                <td style={{ color: 'var(--text-muted)' }}>{date(recipe.lastCostCalculationAt)}</td>
-                <td>
-                  {recipe.nonCalculableLinesCount ?? 0 > 0 ? (
-                    <span className="badge badge-loss" style={{ fontSize: '0.8rem' }}>
-                      {recipe.nonCalculableLinesCount} ligne(s)
-                    </span>
-                  ) : (
-                    <span className="badge badge-reception" style={{ fontSize: '0.8rem' }}>0</span>
-                  )}
-                </td>
-                <td style={{ textAlign: 'right', fontWeight: 700 }}>{money(recipe.costTotal ?? recipe.totalCost)}</td>
-                <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--primary)' }}>{money(recipe.costPerPortion)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {sorted.length ? (
+          <div className="table-wrapper technical-sheets-cost-table-wrapper">
+            <table className="table-modern technical-sheets-cost-table">
+              <colgroup>
+                <col className="technical-sheets-cost-col-recipe" />
+                <col className="technical-sheets-cost-col-total" />
+                <col className="technical-sheets-cost-col-portion" />
+                <col className="technical-sheets-cost-col-price" />
+                <col className="technical-sheets-cost-col-price" />
+                <col className="technical-sheets-cost-col-margin" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>Recette / Fiche technique</th>
+                  <th style={{ textAlign: 'right' }}>Coût HT recette</th>
+                  <th style={{ textAlign: 'right' }}>Coût HT / portion</th>
+                  <th>Prix de vente HT visé</th>
+                  <th>Prix de vente TTC visé</th>
+                  <th>Marge brute</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((recipe) => <CostPricingRow key={recipe.id} recipe={recipe} salesTaxPolicy={salesTaxPolicy} onSave={onSavePricing} />)}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="technical-sheets-cost-empty">
+            <strong>Aucune fiche ne correspond à la recherche</strong>
+            <span>Modifiez le texte recherché ou la catégorie sélectionnée.</span>
+            <button className="btn btn-secondary" onClick={() => { setSearch(''); setCategoryFilter(''); }}>Réinitialiser les filtres</button>
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+function CostPricingRow({ recipe, salesTaxPolicy, onSave }: { recipe: TechnicalSheetRecipe; salesTaxPolicy?: TechnicalSheetSalesTaxPolicy; onSave: (recipeId: string, payload: { targetSellingPriceExclTax?: number | null; targetSellingPriceInclTax?: number | null }) => Promise<TechnicalSheetRecipe> }) {
+  const rate = salesTaxPolicy?.rate ?? null;
+  const initialHt = recipe.targetSellingPriceExclTax == null ? '' : Number(recipe.targetSellingPriceExclTax).toFixed(2);
+  const initialTtc = recipe.targetSellingPriceInclTax == null ? '' : Number(recipe.targetSellingPriceInclTax).toFixed(2);
+  const [ht, setHt] = useState(initialHt);
+  const [ttc, setTtc] = useState(initialTtc);
+  const [savedHt, setSavedHt] = useState(initialHt);
+  const [savedTtc, setSavedTtc] = useState(initialTtc);
+  const [lastEdited, setLastEdited] = useState<'ht' | 'ttc'>('ht');
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [error, setError] = useState<string>();
+  const onSaveRef = useRef(onSave);
+  const latestValuesRef = useRef({ ht, ttc, lastEdited });
+  const saveRevisionRef = useRef(0);
+  const dirtyRef = useRef(false);
+
+  onSaveRef.current = onSave;
+  latestValuesRef.current = { ht, ttc, lastEdited };
+
+  useEffect(() => {
+    const nextHt = recipe.targetSellingPriceExclTax == null ? '' : Number(recipe.targetSellingPriceExclTax).toFixed(2);
+    const nextTtc = recipe.targetSellingPriceInclTax == null ? '' : Number(recipe.targetSellingPriceInclTax).toFixed(2);
+    setSavedHt(nextHt);
+    setSavedTtc(nextTtc);
+    if (!dirtyRef.current) {
+      setHt(nextHt);
+      setTtc(nextTtc);
+    }
+  }, [recipe.targetSellingPriceExclTax, recipe.targetSellingPriceInclTax]);
+
+  const currentHt = ht === '' ? null : Number(ht);
+  const costPerPortion = Number(recipe.costPerPortion ?? 0);
+  const marginAmount = currentHt == null || !Number.isFinite(currentHt) ? null : currentHt - costPerPortion;
+  const marginRate = marginAmount == null || !currentHt ? null : marginAmount / currentHt * 100;
+  const dirty = ht !== savedHt || ttc !== savedTtc;
+  dirtyRef.current = dirty;
+
+  function changeHt(value: string) {
+    setHt(value);
+    setLastEdited('ht');
+    setError(undefined);
+    setSaveState('idle');
+    const number = Number(value);
+    setTtc(value === '' || !Number.isFinite(number) || rate == null ? '' : (number * (1 + rate / 100)).toFixed(2));
+  }
+
+  function changeTtc(value: string) {
+    setTtc(value);
+    setLastEdited('ttc');
+    setError(undefined);
+    setSaveState('idle');
+    const number = Number(value);
+    setHt(value === '' || !Number.isFinite(number) || rate == null ? '' : (number / (1 + rate / 100)).toFixed(2));
+  }
+
+  useEffect(() => {
+    if (!dirty) return;
+    const value = lastEdited === 'ttc' ? ttc : ht;
+    if (value !== '' && (!Number.isFinite(Number(value)) || Number(value) < 0)) return;
+
+    const timer = window.setTimeout(async () => {
+      const submitted = { ...latestValuesRef.current };
+      const revision = ++saveRevisionRef.current;
+      setSaveState('saving');
+      setError(undefined);
+      try {
+        const updated = await onSaveRef.current(recipe.id, submitted.lastEdited === 'ttc'
+          ? { targetSellingPriceInclTax: submitted.ttc === '' ? null : Number(submitted.ttc) }
+          : { targetSellingPriceExclTax: submitted.ht === '' ? null : Number(submitted.ht) });
+        if (revision !== saveRevisionRef.current) return;
+        const nextHt = updated.targetSellingPriceExclTax == null ? '' : Number(updated.targetSellingPriceExclTax).toFixed(2);
+        const nextTtc = updated.targetSellingPriceInclTax == null ? '' : Number(updated.targetSellingPriceInclTax).toFixed(2);
+        setSavedHt(nextHt);
+        setSavedTtc(nextTtc);
+        const submittedValueIsStillCurrent = latestValuesRef.current.ht === submitted.ht && latestValuesRef.current.ttc === submitted.ttc;
+        if (submittedValueIsStillCurrent) {
+          setHt(nextHt);
+          setTtc(nextTtc);
+        }
+        setSaveState(submittedValueIsStillCurrent ? 'saved' : 'idle');
+        window.setTimeout(() => {
+          if (saveRevisionRef.current === revision) setSaveState('idle');
+        }, 1800);
+      } catch (err) {
+        if (revision !== saveRevisionRef.current) return;
+        setError(err instanceof Error ? err.message : 'Enregistrement impossible.');
+        setSaveState('error');
+      }
+    }, 650);
+
+    return () => window.clearTimeout(timer);
+  }, [dirty, ht, lastEdited, recipe.id, ttc]);
+
+  return (
+    <tr>
+      <td data-label="Recette">
+        <strong className="technical-sheets-cost-name">{recipe.name}</strong>
+        <span className="technical-sheets-cost-meta">{recipe.category?.name ?? 'Sans catégorie'} · {Number(recipe.referencePortions ?? 1)} portion(s) · calculé le {date(recipe.lastCostCalculationAt)}</span>
+        {(recipe.nonCalculableLinesCount ?? 0) > 0 ? <span className="badge badge-loss">{recipe.nonCalculableLinesCount} ligne(s) non calculable(s)</span> : null}
+      </td>
+      <td data-label="Coût HT recette" className="technical-sheets-cost-money">{money(recipe.costTotal ?? recipe.totalCost)}</td>
+      <td data-label="Coût HT / portion" className="technical-sheets-cost-money primary">{money(recipe.costPerPortion)}</td>
+      <td data-label="Prix HT visé">
+        <div className="technical-sheets-price-input"><input type="number" min="0" step="0.01" value={ht} onChange={(event) => changeHt(event.target.value)} placeholder="0,00" /><span>€ HT</span></div>
+        {saveState !== 'idle' ? <small className={`technical-sheets-pricing-status ${saveState}`}>{saveState === 'saving' ? 'Enregistrement…' : saveState === 'saved' ? 'Enregistré' : 'Échec de l’enregistrement'}</small> : null}
+        {error ? <small className="technical-sheets-pricing-error">{error}</small> : null}
+      </td>
+      <td data-label="Prix TTC visé"><div className="technical-sheets-price-input"><input type="number" min="0" step="0.01" value={ttc} onChange={(event) => changeTtc(event.target.value)} placeholder={rate == null ? 'Pays requis' : '0,00'} disabled={rate == null} /><span>€ TTC</span></div><small className="technical-sheets-tax-rate">{rate == null ? 'Taux indisponible' : `TVA ${rate}%`}</small></td>
+      <td data-label="Marge brute">
+        {marginAmount == null ? <span className="technical-sheets-margin-empty">Prix visé requis</span> : <div className={`technical-sheets-margin ${marginAmount >= 0 ? 'positive' : 'negative'}`}><strong>{money(marginAmount)}</strong><span>{marginRate == null ? '—' : `${marginRate.toFixed(1)} % du prix HT`}</span></div>}
+      </td>
+    </tr>
   );
 }
 

@@ -741,6 +741,9 @@ export const api = {
   updateTechnicalSheetRecipe(token: string, id: string, payload: Partial<TechnicalSheetRecipePayload>) {
     return request<TechnicalSheetRecipe>(`/technical-sheets/recipes/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
   },
+  updateTechnicalSheetRecipePricing(token: string, id: string, payload: { targetSellingPriceExclTax?: number | null; targetSellingPriceInclTax?: number | null }) {
+    return request<TechnicalSheetRecipe>(`/technical-sheets/recipes/${id}/pricing`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
+  },
   archiveTechnicalSheetRecipe(token: string, id: string) {
     return request<TechnicalSheetRecipe>(`/technical-sheets/recipes/${id}/archive`, { method: 'POST' }, token);
   },

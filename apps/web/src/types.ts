@@ -1595,6 +1595,13 @@ export interface TechnicalSheetRecipe {
   costPerPortion?: number | string | null;
   costPerKg?: number | string | null;
   costPerLiter?: number | string | null;
+  targetSellingPriceHtPerPortion?: number | string | null;
+  targetSellingPriceExclTax?: number | string | null;
+  targetSellingPriceInclTax?: number | string | null;
+  grossMarginAmount?: number | string | null;
+  grossMarginRate?: number | string | null;
+  salesTaxRate?: number | null;
+  regulatoryCountryCode?: RegulatoryCountryCode | null;
   lastCostCalculationAt?: string | null;
   hasNonCalculableLines?: boolean;
   nonCalculableLinesCount?: number;
@@ -1670,6 +1677,16 @@ export interface TechnicalSheetRecipesResponse {
   total?: number;
   page?: number;
   pageSize?: number;
+  salesTaxPolicy?: TechnicalSheetSalesTaxPolicy;
+}
+
+export interface TechnicalSheetSalesTaxPolicy {
+  countryCode: RegulatoryCountryCode | string | null;
+  countryLabel: string | null;
+  rate: number | null;
+  configured: boolean;
+  scopeLabel: string;
+  effectiveFrom: string | null;
 }
 
 export interface TechnicalSheetDashboard {

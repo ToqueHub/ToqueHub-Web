@@ -13060,6 +13060,204 @@ input:checked + .slider-round:before {
   flex-wrap: wrap;
 }
 
+.technical-sheets-tax-policy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-radius: 14px;
+  border: 1px solid #d1fae5;
+  background: #f0fdf8;
+}
+
+.technical-sheets-tax-policy.missing {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.technical-sheets-tax-policy > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.technical-sheets-tax-policy strong {
+  color: var(--text-main);
+  font-size: 0.9rem;
+}
+
+.technical-sheets-tax-policy span:not(.badge) {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.technical-sheets-cost-table {
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.technical-sheets-cost-table-wrapper {
+  overflow-x: hidden;
+}
+
+.technical-sheets-cost-col-recipe { width: 29%; }
+.technical-sheets-cost-col-total { width: 11%; }
+.technical-sheets-cost-col-portion { width: 12%; }
+.technical-sheets-cost-col-price { width: 15%; }
+.technical-sheets-cost-col-margin { width: 18%; }
+
+.technical-sheets-cost-table th,
+.technical-sheets-cost-table td {
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+}
+
+.technical-sheets-cost-table th {
+  font-size: 0.68rem;
+  letter-spacing: 0.035em;
+  white-space: normal;
+  line-height: 1.3;
+}
+
+.technical-sheets-cost-table td {
+  vertical-align: middle;
+}
+
+.technical-sheets-cost-name,
+.technical-sheets-cost-meta {
+  display: block;
+}
+
+.technical-sheets-cost-name {
+  color: var(--text-main);
+  font-size: 0.9rem;
+  margin-bottom: 0.25rem;
+}
+
+.technical-sheets-cost-meta {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  margin-bottom: 0.45rem;
+  line-height: 1.35;
+}
+
+.technical-sheets-cost-money {
+  text-align: right;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.technical-sheets-cost-money.primary {
+  color: var(--primary);
+}
+
+.technical-sheets-price-input {
+  position: relative;
+  min-width: 0;
+}
+
+.technical-sheets-price-input input {
+  width: 100%;
+  min-width: 0;
+  padding: 0.55rem 2.65rem 0.55rem 0.6rem;
+  border-radius: 10px;
+  box-shadow: none;
+  background: #f8fafc;
+  font-weight: 700;
+}
+
+.technical-sheets-price-input input:focus {
+  background: #fff;
+}
+
+.technical-sheets-price-input span {
+  position: absolute;
+  top: 50%;
+  right: 0.65rem;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.technical-sheets-tax-rate {
+  display: block;
+  margin-top: 0.3rem;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+}
+
+.technical-sheets-margin {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 115px;
+}
+
+.technical-sheets-margin strong {
+  font-size: 0.9rem;
+}
+
+.technical-sheets-margin span,
+.technical-sheets-margin-empty {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.technical-sheets-margin.positive strong {
+  color: #059669;
+}
+
+.technical-sheets-margin.negative strong {
+  color: var(--danger);
+}
+
+.technical-sheets-pricing-error {
+  display: block;
+  max-width: 150px;
+  margin-top: 0.35rem;
+  color: var(--danger);
+  font-size: 0.68rem;
+}
+
+.technical-sheets-pricing-status {
+  display: block;
+  min-height: 1em;
+  margin-top: 0.3rem;
+  color: var(--text-muted);
+  font-size: 0.64rem;
+}
+
+.technical-sheets-pricing-status.saving {
+  color: #0369a1;
+}
+
+.technical-sheets-pricing-status.saved {
+  color: #059669;
+  font-weight: 700;
+}
+
+.technical-sheets-pricing-status.error {
+  color: var(--danger);
+}
+
+.technical-sheets-cost-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 3rem 1.5rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.technical-sheets-cost-empty strong {
+  color: var(--text-main);
+}
+
 @media (max-width: 760px) {
   .technical-sheets-filter-card {
     padding: 1rem;
@@ -13079,6 +13277,71 @@ input:checked + .slider-round:before {
 
   .technical-sheets-list-actions .btn {
     flex: 1;
+  }
+
+  .technical-sheets-tax-policy {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 980px) {
+  .technical-sheets-cost-table-wrapper {
+    border: 0;
+    overflow: visible;
+  }
+
+  .technical-sheets-cost-table,
+  .technical-sheets-cost-table tbody,
+  .technical-sheets-cost-table tr,
+  .technical-sheets-cost-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .technical-sheets-cost-table colgroup,
+  .technical-sheets-cost-table thead {
+    display: none;
+  }
+
+  .technical-sheets-cost-table tbody {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .technical-sheets-cost-table tr {
+    overflow: hidden;
+    border: 1px solid var(--light-border);
+    border-radius: 14px;
+    background: #fff;
+  }
+
+  .technical-sheets-cost-table td {
+    position: relative;
+    min-height: 3.25rem;
+    padding: 0.85rem 1rem 0.85rem 48%;
+    text-align: left;
+  }
+
+  .technical-sheets-cost-table td::before {
+    content: attr(data-label);
+    position: absolute;
+    top: 0.95rem;
+    left: 1rem;
+    width: 42%;
+    color: var(--text-muted);
+    font-size: 0.68rem;
+    font-weight: 750;
+    letter-spacing: 0.035em;
+    text-transform: uppercase;
+  }
+
+  .technical-sheets-cost-table td:first-child {
+    padding-left: 1rem;
+  }
+
+  .technical-sheets-cost-table td:first-child::before {
+    display: none;
   }
 }
 

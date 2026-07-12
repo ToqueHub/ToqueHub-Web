@@ -184,4 +184,24 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
     expect(tx.ocrBusinessExtraction.updateMany).toHaveBeenCalledWith({ where: { id: 'extraction-1', organizationId: 'org-1' }, data: { status: 'REVIEWED' } });
     expect(tx.document.update).toHaveBeenCalledWith({ where: { id: 'document-1' }, data: { sourceType: 'recipe-import-reviewed' } });
   });
+
+  it('derives the HT target and gross margin from a TTC target using the organization regulatory country', async () => {
+    const updatedRecipe = { id: 'sheet-1', referencePortions: 1, totalCost: 4, costPerPortion: 4, targetSellingPriceHtPerPortion: 10, ingredients: [], steps: [] };
+    const tx = {
+      technicalSheet: { update: jest.fn(), findUnique: jest.fn().mockResolvedValue(updatedRecipe) },
+      technicalSheetHistory: { create: jest.fn() },
+    };
+    const prisma = {
+      organization: { findUnique: jest.fn().mockResolvedValueOnce({ stocksInstalledAt: new Date(), technicalSheetsInstalledAt: new Date() }).mockResolvedValueOnce({ regulatoryCountryCode: 'FR' }) },
+      technicalSheet: { findFirst: jest.fn().mockResolvedValue({ id: 'sheet-1' }) },
+      $transaction: jest.fn(async (callback: any) => callback(tx)),
+    };
+    const pricingService = new TechnicalSheetsService(prisma as any, {} as any);
+
+    const result = await pricingService.updateRecipePricing('org-1', { id: 'user-1', role: 'ADMIN' }, 'sheet-1', { targetSellingPriceInclTax: 11 });
+
+    expect(tx.technicalSheet.update).toHaveBeenCalledWith({ where: { id: 'sheet-1', organizationId: 'org-1' }, data: { targetSellingPriceHtPerPortion: expect.objectContaining({}) } });
+    expect(Number(tx.technicalSheet.update.mock.calls[0][0].data.targetSellingPriceHtPerPortion)).toBe(10);
+    expect(result).toEqual(expect.objectContaining({ targetSellingPriceExclTax: 10, targetSellingPriceInclTax: 11, grossMarginAmount: 6, grossMarginRate: 60, salesTaxRate: 10, regulatoryCountryCode: 'FR' }));
+  });
 });

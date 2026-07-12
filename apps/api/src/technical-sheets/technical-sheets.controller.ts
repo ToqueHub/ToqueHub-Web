@@ -6,7 +6,7 @@ import type { Response } from 'express';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { DuplicateTechnicalSheetDto, ProductionSimulationDto, TechnicalSheetListQueryDto, UpsertAllergenDto, UpsertRecipeCategoryDto, UpsertTechnicalSheetDto } from './dto/technical-sheets.dto';
+import { DuplicateTechnicalSheetDto, ProductionSimulationDto, TechnicalSheetListQueryDto, UpdateTechnicalSheetPricingDto, UpsertAllergenDto, UpsertRecipeCategoryDto, UpsertTechnicalSheetDto } from './dto/technical-sheets.dto';
 import { TechnicalSheetsService } from './technical-sheets.service';
 
 @ApiTags('technical-sheets')
@@ -46,6 +46,7 @@ export class TechnicalSheetsController {
   reviewRecipeImport(@CurrentUser() user: AuthenticatedUser, @Param('documentId') documentId: string) { return this.service.reviewRecipeImport(this.org(user), documentId); }
   @Get('recipes/:id') getRecipe(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.service.getRecipe(this.org(user), id); }
   @Patch('recipes/:id') updateRecipe(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpsertTechnicalSheetDto) { return this.service.updateRecipe(this.org(user), this.actor(user), id, dto); }
+  @Patch('recipes/:id/pricing') updateRecipePricing(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpdateTechnicalSheetPricingDto) { return this.service.updateRecipePricing(this.org(user), this.actor(user), id, dto); }
   @Post('recipes/:id/archive') archiveRecipe(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.service.archiveRecipe(this.org(user), this.actor(user), id); }
   @Post('recipes/:id/duplicate') duplicateRecipe(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: DuplicateTechnicalSheetDto) { return this.service.duplicateRecipe(this.org(user), this.actor(user), id, dto); }
   @Post('recipes/:id/recalculate-cost') recalculate(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.service.recalculateCost(this.org(user), this.actor(user), id); }

@@ -60,6 +60,11 @@ export class UpsertTechnicalSheetDto {
   @IsOptional() @ValidateNested({ each: true }) @Type(() => UpsertStepDto) steps?: UpsertStepDto[];
 }
 
+export class UpdateTechnicalSheetPricingDto {
+  @IsOptional() @Type(() => Number) @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) targetSellingPriceExclTax?: number | null;
+  @IsOptional() @Type(() => Number) @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) targetSellingPriceInclTax?: number | null;
+}
+
 export class DuplicateTechnicalSheetDto {
   @IsOptional() @IsString() @MaxLength(220) name?: string;
   @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() copyGeneral?: boolean;
