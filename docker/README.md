@@ -58,7 +58,7 @@ Dans ToqueHub:
 Organisation > General > Version et mise a jour
 ```
 
-L'onglet admin affiche la version installee, la derniere release GitHub, les images Docker courantes et les logs de l'operation. Le bouton de mise a jour appelle le service `updater`, seul conteneur autorise a utiliser le socket Docker. Avant update, il cree un backup PostgreSQL local, tire les nouvelles images, redemarre API/Web et tente un rollback si le healthcheck echoue.
+L'onglet admin affiche la version installee, la derniere release GitHub, les images Docker courantes et les logs de l'operation. Le bouton de mise a jour appelle le service `updater`, seul conteneur autorise a utiliser le socket Docker. Avant update, il demarre automatiquement les services ToqueHub qui seraient arretes, attend que PostgreSQL soit disponible, cree un backup PostgreSQL local, tire les nouvelles images, redemarre API/Web et tente un rollback si le healthcheck echoue.
 
 Sur Raspberry Pi, l'image SD sert aux nouvelles installations et aux changements systeme. Les mises a jour applicatives normales tirent seulement les nouvelles images Docker `arm64`.
 

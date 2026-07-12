@@ -134,7 +134,7 @@ async function githubLoginFromToken(operation, token) {
 
 async function ensureServiceRunning(operation, service) {
   operationLog(operation, `Précontrôle service: ${service}`);
-  const running = await new Promise((resolve, reject) => {
+  const isRunning = () => new Promise((resolve, reject) => {
     const child = spawn('docker', composeArgs('ps', '--status', 'running', '--services', service), {
       cwd: WORKDIR,
       env: process.env,
@@ -149,16 +149,46 @@ async function ensureServiceRunning(operation, service) {
       else resolve(output.split(/\r?\n/).map((line) => line.trim()).includes(service));
     });
   });
-  if (!running) {
-    throw new Error(`Service "${service}" non démarré. Démarrez la stack ToqueHub complète avant la mise à jour.`);
+
+  for (let attempt = 1; attempt <= 30; attempt += 1) {
+    if (await isRunning()) return;
+    if (attempt === 1) operationLog(operation, `Attente du démarrage du service ${service}.`);
+    await new Promise((resolve) => setTimeout(resolve, 2000));
   }
+
+  throw new Error(`Le service "${service}" ne démarre pas. Consultez les logs Docker de ToqueHub.`);
+}
+
+async function ensurePostgresReady(operation) {
+  operationLog(operation, 'Attente de PostgreSQL prêt.');
+  for (let attempt = 1; attempt <= 30; attempt += 1) {
+    const ready = await new Promise((resolve, reject) => {
+      const child = spawn('docker', composeArgs('exec', '-T', 'postgres', 'pg_isready', '-U', process.env.POSTGRES_USER || 'toquehub', '-d', process.env.POSTGRES_DB || 'toquehub'), {
+        cwd: WORKDIR,
+        env: process.env,
+        shell: false,
+      });
+      child.on('error', reject);
+      child.on('close', (code) => resolve(code === 0));
+    });
+    if (ready) {
+      operationLog(operation, 'PostgreSQL prêt.');
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+
+  throw new Error('PostgreSQL ne devient pas disponible. Consultez les logs Docker de ToqueHub.');
 }
 
 async function preflight(operation, targetImageTag, githubToken) {
   operationLog(operation, 'Précontrôle avant mise à jour.');
   if (!existsSync(COMPOSE_FILE)) throw new Error(`Compose introuvable: ${COMPOSE_FILE}`);
   if (!existsSync(ENV_FILE)) throw new Error(`Fichier env introuvable: ${ENV_FILE}`);
+  operationLog(operation, 'Démarrage des services ToqueHub requis si nécessaire.');
+  await dockerCompose(operation, ['up', '-d']);
   await ensureServiceRunning(operation, 'postgres');
+  await ensurePostgresReady(operation);
   await ensureServiceRunning(operation, 'api');
   await githubLoginFromToken(operation, githubToken);
   operationLog(operation, `Vérification accès images Docker: ${targetImageTag}`);
