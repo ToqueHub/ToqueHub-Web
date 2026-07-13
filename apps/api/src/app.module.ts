@@ -20,6 +20,8 @@ import { DiscoveryModule } from './discovery/discovery.module';
 import { MobileModule } from './mobile/mobile.module';
 import { MistralModule } from './mistral/mistral.module';
 import { StockAssistantModule } from './stock-assistant/stock-assistant.module';
+import { TechnicalSheetAssistantModule } from './technical-sheet-assistant/technical-sheet-assistant.module';
+import { HaccpAssistantModule } from './haccp-assistant/haccp-assistant.module';
 
 @Module({
   imports: [
@@ -47,6 +49,8 @@ import { StockAssistantModule } from './stock-assistant/stock-assistant.module';
     MobileModule,
     MistralModule,
     StockAssistantModule,
+    TechnicalSheetAssistantModule,
+    HaccpAssistantModule,
   ],
 })
 export class AppModule {}

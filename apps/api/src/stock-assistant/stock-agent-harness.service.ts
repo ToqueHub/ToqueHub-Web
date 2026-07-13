@@ -108,6 +108,14 @@ export class StockAgentHarnessService {
 
   async finalizeTurn(organizationId: string, conversationId: string, content: string, previousState: AgentState, toolCall: AgentToolCall, toolResult: AgentResult): Promise<AgentResult> {
     const baseState = this.normalizeState(toolResult.state || previousState);
+    // Les garde-fous déterministes portent une règle métier/sécurité : Mistral ne doit pas les reformuler.
+    if (toolCall.decision === 'deterministic') {
+      return {
+        ...toolResult,
+        state: baseState,
+        toolResults: [...(toolResult.toolResults || []), { tool: 'agent_final_response', result: { provider: 'deterministic_guardrail' } }],
+      };
+    }
     const recentMessages = await this.recentMessages(conversationId);
     const audit = {
       calledTool: toolCall.tool,
@@ -155,6 +163,14 @@ export class StockAgentHarnessService {
   }
 
   private structuredGuardrail(content: string, state: AgentState): AgentToolCall | null {
+    if (/\b(fiche\s+technique|recette|ingredients?|préparation|preparation|portion[s]?)\b/i.test(content)) {
+      return {
+        tool: 'clarification',
+        args: { message: 'Je peux vous aider pour les Stocks dans cet espace. Pour créer une recette ou une fiche technique, ouvrez le module « Fiches Techniques » puis cliquez sur « Demander à Kokki ».' },
+        decision: 'deterministic',
+        confidence: 0.99,
+      };
+    }
     const productCreation = this.parseProductCreationIntent(content, state);
     if (productCreation) {
       return { tool: 'create_product', args: productCreation, decision: 'deterministic', confidence: 0.98 };
@@ -363,6 +379,7 @@ export class StockAgentHarnessService {
       'Tu dois utiliser l’historique et state pour comprendre les pronoms: le, la, en, ça, celui-là, pardon, non je parle de.',
       'Tu ne modifies jamais réellement le stock: pour toute écriture, choisis un outil prepare_* qui crée seulement une proposition à valider.',
       'Exception: si l’utilisateur demande explicitement de créer une fiche produit, choisis create_product. Si une quantité initiale est donnée, elle doit devenir une proposition de réception à valider, pas un mouvement direct.',
+      'Une demande de recette, d’ingrédients ou de fiche technique est hors périmètre : choisis clarify et indique le module Fiches Techniques. Ne cherche jamais à créer un produit pour cette demande.',
       'Si l’utilisateur pose une question de stock, choisis get_product_stock, même avec une formulation naturelle.',
       'Pour le lieu de stock, raisonne en SITE uniquement. Ne parle jamais de sous-lieu interne, réserve ou chambre froide.',
       'Si plusieurs sites sont possibles, choisis search_locations: cet outil affichera des sites à l’utilisateur.',

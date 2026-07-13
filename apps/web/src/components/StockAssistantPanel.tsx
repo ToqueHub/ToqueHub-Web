@@ -1,13 +1,13 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Paperclip, 
-  Send, 
-  X, 
-  Sparkles, 
-  FileText, 
-  Check, 
-  Trash2, 
+import {
+  Paperclip,
+  Send,
+  X,
+  Sparkles,
+  FileText,
+  Check,
+  Trash2,
   AlertTriangle,
   AlertCircle,
   ArrowRight,
@@ -17,53 +17,60 @@ import {
   Search,
   PlusCircle,
   MinusCircle,
-  ArrowLeftRight
+  Calculator,
+  ClipboardCheck,
+  Thermometer
 } from 'lucide-react';
 import { api } from '../api/client';
-import type { Category, Location, Product, Site, StockAssistantChoice, StockConversation, StockProposal, Supplier, Unit } from '../types';
+import type { Category, HaccpAssistantChoice, Location, Product, Site, StockAssistantChoice, StockConversation, StockProposal, Supplier, TechnicalSheetAssistantChoice, Unit } from '../types';
 
-type ChatItem = { id: string; role: 'user' | 'assistant' | 'system'; text: string; fileName?: string; proposalId?: string; action?: 'location_select'; choices?: StockAssistantChoice[] };
-type QuickCard = { id: string; title: string; subtitle: string; prompt?: string; action?: 'attach_invoice' };
+type ChatItem = { id: string; role: 'user' | 'assistant' | 'system'; text: string; fileName?: string; proposalId?: string; action?: 'location_select'; choices?: Array<StockAssistantChoice | TechnicalSheetAssistantChoice | HaccpAssistantChoice> };
+type QuickCard = { id: string; title: string; subtitle: string; prompt: string };
 const greetingItems: ChatItem[] = [
-  { id: 'hello', role: 'assistant', text: 'Bonjour ! Je suis Kokki, votre assistant de stock intelligent. Décrivez-moi un mouvement (ex : “j’ai reçu 10 kg de café”) ou joignez une facture PDF/photo ici.' }
+  { id: 'hello', role: 'assistant', text: 'Bonjour ! Je suis Kokki, votre assistant IA. Je peux vous aider avec les stocks, les fiches techniques et la production. Dites-moi simplement ce que vous voulez faire.' }
 ];
 const quickCards: QuickCard[] = [
-  { id: 'stock', title: 'Consulter un stock', subtitle: 'Choisir un produit', prompt: 'Y a-t-il du stock de ?' },
-  { id: 'receipt', title: 'Ajouter du stock', subtitle: 'Produit, quantité, lieu', prompt: 'Ajouter du stock' },
-  { id: 'waste', title: 'Retirer une perte', subtitle: 'Produit, quantité, lieu', prompt: 'Retirer une perte' },
-  { id: 'transfer', title: 'Transférer', subtitle: 'Source et destination', prompt: 'Transférer du stock' },
-  { id: 'low', title: 'Stocks faibles', subtitle: 'Voir les alertes', prompt: 'Quels sont les produits en faible stock ?' },
-  { id: 'invoice', title: 'Joindre facture', subtitle: 'PDF ou photo', action: 'attach_invoice' },
+  { id: 'stock', title: 'Consulter un stock', subtitle: 'Stocks', prompt: 'Je veux consulter le stock d’un produit' },
+  { id: 'receipt', title: 'Ajouter du stock', subtitle: 'Stocks', prompt: 'Je veux ajouter du stock' },
+  { id: 'recipe', title: 'Créer une fiche', subtitle: 'Fiches techniques', prompt: 'Créer une nouvelle fiche technique' },
+  { id: 'cost', title: 'Calculer un coût', subtitle: 'Fiches techniques', prompt: 'Je veux calculer le coût d’une fiche technique' },
+  { id: 'haccp', title: 'Contrôles du jour', subtitle: 'HACCP', prompt: 'Quel est le statut des contrôles HACCP du jour ?' },
+  { id: 'temperature', title: 'Relevé température', subtitle: 'HACCP', prompt: 'Je veux préparer un relevé de température HACCP' },
 ];
 
-export function StockAssistantPanel({ 
-  isOpen, 
-  onClose, 
-  token, 
-  products, 
+export function StockAssistantPanel({
+  isOpen,
+  onClose,
+  token,
+  products,
   categories,
-  units, 
+  units,
   suppliers,
   sites,
-  locations, 
-  initialProposalId, 
-  onApplied 
-}: { 
-  isOpen: boolean; 
-  onClose: () => void; 
-  token: string; 
-  products: Product[]; 
+  locations,
+  initialProposalId,
+  onApplied,
+  onOpenTechnicalSheets,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  token: string;
+  products: Product[];
   categories: Category[];
-  units: Unit[]; 
+  units: Unit[];
   suppliers: Supplier[];
   sites: Site[];
-  locations: Location[]; 
-  initialProposalId?: string; 
-  onApplied: () => void; 
+  locations: Location[];
+  initialProposalId?: string;
+  onApplied: () => void;
+  onOpenTechnicalSheets?: () => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const feedRef = useRef<HTMLDivElement>(null);
   const [conversationId, setConversationId] = useState<string>();
+  const [technicalConversationId, setTechnicalConversationId] = useState<string>();
+  const [haccpConversationId, setHaccpConversationId] = useState<string>();
+  const [assistantDomain, setAssistantDomain] = useState<'stock' | 'technical' | 'haccp'>('stock');
   const [message, setMessage] = useState('');
   const [proposal, setProposal] = useState<StockProposal>();
   const [busy, setBusy] = useState(false);
@@ -91,7 +98,7 @@ export function StockAssistantPanel({
     const location = locations.find((item) => item.id === locationId);
     return location?.site?.name || sites.find((site) => site.id === location?.siteId)?.name || location?.name || '';
   };
-  const visibleChoices = (choices?: StockAssistantChoice[]) => (choices || []).filter((choice) => choice.type !== 'location_select');
+  const visibleChoices = (choices?: Array<StockAssistantChoice | TechnicalSheetAssistantChoice | HaccpAssistantChoice>) => (choices || []).filter((choice) => choice.type !== 'location_select');
   const pickerLine = productPickerLineIndex !== null ? proposal?.lines[productPickerLineIndex] : null;
   const filteredProducts = useMemo(() => {
     const query = normalizeAssistantSearch(productSearch || pickerLine?.rawLabel || '');
@@ -188,6 +195,9 @@ export function StockAssistantPanel({
     try {
       const conversation = await api.createStockAssistantConversation(token, proposal?.locationId || undefined);
       setConversationId(conversation.id);
+      setTechnicalConversationId(undefined);
+      setHaccpConversationId(undefined);
+      setAssistantDomain('stock');
       setItems(greetingItems);
       setProposal(undefined);
     } catch (e: any) {
@@ -195,6 +205,33 @@ export function StockAssistantPanel({
     } finally {
       setBusy(false);
     }
+  }
+
+  // Le point d’entrée Kokki est global : la détection accepte les formulations brèves et fautes usuelles (« foche technique »).
+  const isTechnicalIntent = (text: string) => /\b(fiche|foche|fiche?\s+tech|recette|ingr[ée]dient|portion|co[uû]t|marge|prix\s+de\s+vente|pr[ée]paration)\b/i.test(text);
+  const isHaccpIntent = (text: string) => /\b(haccp|temp[ée]rature|frigo|enceinte|nettoyage|surface|d[ée]sinfect|alerte|capteur|conformit[ée])\b/i.test(text);
+  const isStockIntent = (text: string) => /\b(stock|produit|livraison|r[ée]ception|perte|inventaire|transfert|fournisseur|facture)\b/i.test(text);
+  const shouldUseTechnical = (text: string) => isTechnicalIntent(text) || (assistantDomain === 'technical' && !isStockIntent(text));
+  const shouldUseHaccp = (text: string) => isHaccpIntent(text) || (assistantDomain === 'haccp' && !isStockIntent(text) && !isTechnicalIntent(text));
+  async function ensureTechnicalConversation() {
+    if (technicalConversationId) return technicalConversationId;
+    const conversation = await api.createTechnicalSheetAssistantConversation(token);
+    setTechnicalConversationId(conversation.id);
+    return conversation.id;
+  }
+  async function sendTechnical(text: string) {
+    const id = await ensureTechnicalConversation();
+    const normalizedText = text.replace(/\bfoche\b/gi, 'fiche');
+    const result = await api.technicalSheetAssistantMessage(token, id, normalizedText);
+    setAssistantDomain('technical');
+    setItems((current) => [...current, { id: `${Date.now()}-technical`, role: 'assistant', text: result.assistantMessage, choices: result.choices }]);
+  }
+  async function sendHaccp(text: string) {
+    const id = haccpConversationId || (await api.createHaccpAssistantConversation(token)).id;
+    setHaccpConversationId(id);
+    const result = await api.haccpAssistantMessage(token, id, text);
+    setAssistantDomain('haccp');
+    setItems((current) => [...current, { id: `${Date.now()}-haccp`, role: 'assistant', text: result.assistantMessage, choices: result.choices }]);
   }
 
   async function send() {
@@ -206,7 +243,7 @@ export function StockAssistantPanel({
     setItems((current) => [...current, { id: `${Date.now()}-user`, role: 'user', text, fileName: file?.name }]);
     setMessage('');
     setAttachedFile(undefined);
-    
+
     try {
       if (file) {
         const id = await ensureConversation();
@@ -228,33 +265,38 @@ export function StockAssistantPanel({
         setProposal(nextProposal);
         const supplierName = suppliers.find((supplier) => supplier.id === nextProposal.supplierId)?.name || nextProposal.metadata?.supplierName || nextProposal.metadata?.ocrResult?.supplierName || nextProposal.metadata?.ocrResult?.supplier?.supplierName || nextProposal.metadata?.ocrResult?.supplier?.name || null;
         setItems((current) => [
-          ...current, 
-          { 
-            id: `${Date.now()}-assistant`, 
-            role: 'assistant', 
+          ...current,
+          {
+            id: `${Date.now()}-assistant`,
+            role: 'assistant',
             text: `Facture analysée.\n\n${supplierName ? `Fournisseur détecté : ${supplierName}.` : 'Je n’ai pas identifié le fournisseur avec certitude.'}\nLe fichier a bien été ajouté à vos documents Stocks.\n\nVeuillez réviser et valider la proposition de réception.`,
-            proposalId: nextProposal.id 
+            proposalId: nextProposal.id
           }
         ]);
         void loadConversation(id);
         return;
       }
-      
+
+      if (shouldUseHaccp(text)) { await sendHaccp(text); return; }
+      if (shouldUseTechnical(text)) {
+        await sendTechnical(text);
+        return;
+      }
       const id = await ensureConversation();
       const result = await api.stockAssistantMessage(token, id, text, proposal?.locationId || undefined);
-      
+
       setItems((current) => [
-        ...current, 
-        { 
-          id: `${Date.now()}-assistant`, 
-          role: 'assistant', 
+        ...current,
+        {
+          id: `${Date.now()}-assistant`,
+          role: 'assistant',
           text: result.assistantMessage || 'J’ai préparé la proposition correspondante pour vos stocks.',
           proposalId: result.proposalId,
           choices: result.choices,
           action: undefined,
         }
       ]);
-      
+
       if (result.proposalId) {
         const nextProposal = await api.stockAssistantProposal(token, result.proposalId);
         setProposal(nextProposal);
@@ -313,14 +355,14 @@ export function StockAssistantPanel({
       });
       const applied = await api.applyStockAssistantProposal(token, saved.id, saved.version);
       setProposal(applied);
-      
+
       // Update item in feed to reflect status
       setItems((current) => [
         ...current,
         { id: `${Date.now()}-applied`, role: 'assistant', text: 'Parfait ! Les mouvements de stock ont été validés et appliqués en base de données.' }
       ]);
       onApplied();
-      
+
       // Auto close proposal panel after success
       setTimeout(() => setProposal(undefined), 2000);
     } catch (e: any) {
@@ -330,7 +372,23 @@ export function StockAssistantPanel({
     }
   }
 
-  async function sendChoice(choice: StockAssistantChoice) {
+  async function sendChoice(choice: StockAssistantChoice | TechnicalSheetAssistantChoice | HaccpAssistantChoice) {
+    if (choice.type === 'haccp_draft_review' && choice.value) {
+      setBusy(true); setError(undefined);
+      try { await api.applyHaccpAssistantDraft(token, choice.value); setItems((current) => [...current, { id: `${Date.now()}-haccp-applied`, role: 'assistant', text: 'Contrôle HACCP validé et enregistré.' }]); }
+      catch (e: any) { setError(e.message || 'Validation HACCP impossible.'); }
+      finally { setBusy(false); }
+      return;
+    }
+    if (choice.type === 'haccp_equipment') {
+      setTimeout(() => void sendText(`Enregistrer un relevé de température pour ${choice.label}`), 0);
+      return;
+    }
+    if (choice.type === 'draft_review' && choice.value) {
+      localStorage.setItem('toquehub_open_kokki_draft', choice.value);
+      onOpenTechnicalSheets?.();
+      return;
+    }
     if (choice.type === 'proposal_review' && choice.value) {
       setError(undefined);
       try {
@@ -356,6 +414,11 @@ export function StockAssistantPanel({
     setError(undefined);
     setItems((current) => [...current, { id: `${Date.now()}-user-choice`, role: 'user', text }]);
     try {
+      if (shouldUseHaccp(text)) { await sendHaccp(text); return; }
+      if (shouldUseTechnical(text)) {
+        await sendTechnical(text);
+        return;
+      }
       const id = await ensureConversation();
       const result = await api.stockAssistantMessage(token, id, text, proposal?.locationId || undefined);
       setItems((current) => [...current, { id: `${Date.now()}-assistant-choice`, role: 'assistant', text: result.assistantMessage || 'J’ai traité votre choix.', proposalId: result.proposalId, choices: result.choices, action: undefined }]);
@@ -369,11 +432,7 @@ export function StockAssistantPanel({
   }
 
   function handleQuickCard(card: QuickCard) {
-    if (card.action === 'attach_invoice') {
-      fileInputRef.current?.click();
-      return;
-    }
-    if (card.prompt) setMessage(card.prompt);
+    void sendText(card.prompt);
   }
 
   async function rejectProposal() {
@@ -396,9 +455,9 @@ export function StockAssistantPanel({
 
   function patchLine(index: number, patch: Partial<StockProposal['lines'][number]>) {
     if (!proposal) return;
-    setProposal({ 
-      ...proposal, 
-      lines: proposal.lines.map((line, i) => i === index ? { ...line, ...patch } as any : line) 
+    setProposal({
+      ...proposal,
+      lines: proposal.lines.map((line, i) => i === index ? { ...line, ...patch } as any : line)
     });
   }
 
@@ -471,7 +530,7 @@ export function StockAssistantPanel({
   return (
     <AnimatePresence>
       {isOpen && (
-        <motion.div 
+        <motion.div
           className="stock-assistant-backdrop"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -492,19 +551,19 @@ export function StockAssistantPanel({
               <div className="stock-chat-header">
                 <div className="stock-chat-header-info">
                   <div className="stock-chat-header-avatar">
-                    <img 
-                      src="/kokki-transparent.png" 
-                      alt="Kokki" 
-                      style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
+                    <img
+                      src="/kokki-transparent.png"
+                      alt="Kokki"
+                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                     />
                   </div>
                   <div className="stock-chat-status">
-                    <span className="stock-chat-status-title">Kokki</span>
+                    <span className="stock-chat-status-title">Kokki · Assistant IA</span>
                     <span className="stock-chat-status-dot">En ligne</span>
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <button 
+                  <button
                     className="stock-chat-header-btn-new"
                     onClick={handleNewConversation}
                     title="Nouvelle conversation"
@@ -519,26 +578,26 @@ export function StockAssistantPanel({
 
               <div ref={feedRef} className="stock-chat-feed">
                 {items.map((item) => (
-                  <motion.div 
+                  <motion.div
                     key={item.id}
                     initial={{ scale: 0.95, opacity: 0, y: 12 }}
                     animate={{ scale: 1, opacity: 1, y: 0 }}
                     transition={{ duration: 0.2 }}
                     className={`stock-chat-feed-item ${item.role === 'user' ? 'user' : 'assistant'}`}
-                    style={{ 
-                      display: 'flex', 
-                      gap: '8px', 
-                      alignItems: 'flex-start', 
-                      alignSelf: item.role === 'user' ? 'flex-end' : 'flex-start', 
-                      maxWidth: '85%' 
+                    style={{
+                      display: 'flex',
+                      gap: '8px',
+                      alignItems: 'flex-start',
+                      alignSelf: item.role === 'user' ? 'flex-end' : 'flex-start',
+                      maxWidth: '85%'
                     }}
                   >
                     {item.role === 'assistant' && (
                       <div className="stock-chat-feed-avatar">
-                        <img 
-                          src="/kokki-transparent.png" 
-                          alt="Kokki" 
-                          style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
+                        <img
+                          src="/kokki-transparent.png"
+                          alt="Kokki"
+                          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                         />
                       </div>
                     )}
@@ -568,7 +627,7 @@ export function StockAssistantPanel({
                             Générée automatiquement par l'IA. Prête pour révision et validation.
                           </div>
                           <div className="stock-chat-proposal-card-actions">
-                            <button 
+                            <button
                               className="btn-review"
                               onClick={async () => {
                                 setError(undefined);
@@ -602,10 +661,10 @@ export function StockAssistantPanel({
                 {busy && (
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center', alignSelf: 'flex-start', marginLeft: '0.25rem' }}>
                     <div className="stock-chat-feed-avatar" style={{ marginTop: 0 }}>
-                      <img 
-                        src="/kokki-transparent.png" 
-                        alt="Kokki" 
-                        style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
+                      <img
+                        src="/kokki-transparent.png"
+                        alt="Kokki"
+                        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                       />
                     </div>
                     <div className="typing-indicator" style={{ margin: 0 }}>
@@ -623,19 +682,19 @@ export function StockAssistantPanel({
                     </div>
                     <div className="stock-chat-quick-cards-grid">
                       {quickCards.map((card) => (
-                        <button 
-                          key={card.id} 
-                          disabled={busy} 
+                        <button
+                          key={card.id}
+                          disabled={busy}
                           onClick={() => handleQuickCard(card)}
                           className={`stock-chat-quick-card-btn ${card.id}`}
                         >
                           <div className={`quick-card-icon-wrapper ${card.id}`}>
                             {card.id === 'stock' && <Search size={15} />}
                             {card.id === 'receipt' && <PlusCircle size={15} />}
-                            {card.id === 'waste' && <MinusCircle size={15} />}
-                            {card.id === 'transfer' && <ArrowLeftRight size={15} />}
-                            {card.id === 'low' && <AlertTriangle size={15} />}
-                            {card.id === 'invoice' && <Paperclip size={15} />}
+                            {card.id === 'recipe' && <FileText size={15} />}
+                            {card.id === 'cost' && <Calculator size={15} />}
+                            {card.id === 'haccp' && <ClipboardCheck size={15} />}
+                            {card.id === 'temperature' && <Thermometer size={15} />}
                           </div>
                           <div className="stock-chat-quick-card-text">
                             <span>{card.title}</span>
@@ -664,33 +723,33 @@ export function StockAssistantPanel({
                     <button onClick={() => setAttachedFile(undefined)}><X size={14} /></button>
                   </div>
                 )}
-                
+
                 <div className="stock-chat-input-row">
-                  <input 
-                    ref={fileInputRef} 
-                    type="file" 
-                    accept="application/pdf,image/*" 
-                    style={{ display: 'none' }} 
-                    onChange={(event) => setAttachedFile(event.target.files?.[0] || undefined)} 
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="application/pdf,image/*"
+                    style={{ display: 'none' }}
+                    onChange={(event) => setAttachedFile(event.target.files?.[0] || undefined)}
                   />
-                  <button 
-                    className="btn btn-secondary btn-icon-only" 
-                    title="Joindre une facture (PDF, Image)" 
-                    disabled={busy} 
+                  <button
+                    className="btn btn-secondary btn-icon-only"
+                    title="Joindre une facture (PDF, Image)"
+                    disabled={busy}
                     onClick={() => fileInputRef.current?.click()}
                   >
                     <Paperclip size={18} />
                   </button>
-                  <input 
-                    value={message} 
-                    onChange={e => setMessage(e.target.value)} 
-                    placeholder={attachedFile ? `Envoyer avec ${attachedFile.name}...` : "Message à Kokki (ex : réception, perte...)"} 
+                  <input
+                    value={message}
+                    onChange={e => setMessage(e.target.value)}
+                    placeholder={attachedFile ? `Envoyer avec ${attachedFile.name}...` : "Message à l’assistant IA (ex : réception, perte...)"}
                     onKeyDown={e => e.key === 'Enter' && send()}
                     disabled={busy}
                   />
-                  <button 
-                    className="btn btn-primary btn-icon-only" 
-                    disabled={busy || (!message.trim() && !attachedFile)} 
+                  <button
+                    className="btn btn-primary btn-icon-only"
+                    disabled={busy || (!message.trim() && !attachedFile)}
                     onClick={send}
                     style={{ background: '#0f766e', border: 'none' }}
                   >
@@ -739,8 +798,8 @@ export function StockAssistantPanel({
                     </div>
                     <div className="stock-proposal-field">
                       <label>Site de stockage</label>
-                      <select 
-                        value={proposal.locationId || ''} 
+                      <select
+                        value={proposal.locationId || ''}
                         onChange={e => setProposal({ ...proposal, locationId: e.target.value || null })}
                       >
                         <option value="">Sélectionner un site</option>
@@ -754,8 +813,8 @@ export function StockAssistantPanel({
                       <>
                         <div className="stock-proposal-field">
                           <label>Site source</label>
-                          <select 
-                            value={proposal.sourceLocationId || ''} 
+                          <select
+                            value={proposal.sourceLocationId || ''}
                             onChange={e => setProposal({ ...proposal, sourceLocationId: e.target.value || null })}
                           >
                             <option value="">Sélectionner source</option>
@@ -766,8 +825,8 @@ export function StockAssistantPanel({
                         </div>
                         <div className="stock-proposal-field">
                           <label>Site destination</label>
-                          <select 
-                            value={proposal.destinationLocationId || ''} 
+                          <select
+                            value={proposal.destinationLocationId || ''}
                             onChange={e => setProposal({ ...proposal, destinationLocationId: e.target.value || null })}
                           >
                             <option value="">Sélectionner destination</option>
@@ -783,10 +842,10 @@ export function StockAssistantPanel({
                   {Boolean(proposal.duplicateWarning) && (
                     <div className="stock-proposal-field">
                       <label>Motif de confirmation du doublon</label>
-                      <input 
-                        placeholder="Raison du double enregistrement (ex: facture rectificative...)" 
-                        value={proposal.duplicateOverrideReason || ''} 
-                        onChange={e => setProposal({ ...proposal, duplicateOverrideReason: e.target.value })} 
+                      <input
+                        placeholder="Raison du double enregistrement (ex: facture rectificative...)"
+                        value={proposal.duplicateOverrideReason || ''}
+                        onChange={e => setProposal({ ...proposal, duplicateOverrideReason: e.target.value })}
                       />
                     </div>
                   )}
@@ -828,17 +887,17 @@ export function StockAssistantPanel({
                               <div className="stock-proposal-line-inputs-grid">
                                 <div className="stock-proposal-input-group">
                                   <label>Quantité</label>
-                                  <input 
-                                    type="number" 
-                                    value={line.quantity} 
-                                    onChange={e => patchLine(i, { quantity: Number(e.target.value) })} 
+                                  <input
+                                    type="number"
+                                    value={line.quantity}
+                                    onChange={e => patchLine(i, { quantity: Number(e.target.value) })}
                                   />
                                 </div>
 
                                 <div className="stock-proposal-input-group">
                                   <label>Unité</label>
-                                  <select 
-                                    value={line.inputUnitId || ''} 
+                                  <select
+                                    value={line.inputUnitId || ''}
                                     onChange={e => patchLine(i, { inputUnitId: e.target.value || null })}
                                   >
                                     <option value="">Unité</option>
@@ -850,10 +909,10 @@ export function StockAssistantPanel({
 
                                 <div className="stock-proposal-input-group">
                                   <label>N° Lot</label>
-                                  <input 
-                                    value={line.lotNumber || ''} 
-                                    placeholder="—" 
-                                    onChange={e => patchLine(i, { lotNumber: e.target.value || null })} 
+                                  <input
+                                    value={line.lotNumber || ''}
+                                    placeholder="—"
+                                    onChange={e => patchLine(i, { lotNumber: e.target.value || null })}
                                   />
                                 </div>
                               </div>
@@ -869,9 +928,9 @@ export function StockAssistantPanel({
                   <button className="btn-reject" disabled={busy} onClick={rejectProposal}>
                     <Trash2 size={16} /> Rejeter
                   </button>
-                  <button 
-                    className="btn-apply" 
-                    disabled={busy || proposal.status === 'APPLIED' || !proposal.locationId || (Boolean(proposal.duplicateWarning) && !proposal.duplicateOverrideReason)} 
+                  <button
+                    className="btn-apply"
+                    disabled={busy || proposal.status === 'APPLIED' || !proposal.locationId || (Boolean(proposal.duplicateWarning) && !proposal.duplicateOverrideReason)}
                     onClick={saveAndApply}
                   >
                     {busy ? (

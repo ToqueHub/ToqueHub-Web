@@ -306,6 +306,31 @@ export class UpsertSiteDto {
   @IsString()
   @MaxLength(500)
   description?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  address?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(180)
+  responsibleName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  responsiblePhone?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(180)
+  responsibleEmail?: string;
 }
 
 export class UpsertLocationDto extends UpsertSiteDto {

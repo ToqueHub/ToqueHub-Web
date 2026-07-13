@@ -28,8 +28,10 @@ import {
   Camera,
   Check,
   ArrowRight,
+  ShieldCheck,
 } from 'lucide-react';
 import { api } from '../api/client';
+import { TechnicalSheetAssistantPanel } from './TechnicalSheetAssistantPanel';
 import type {
   Product,
   TechnicalSheetCategory,
@@ -615,6 +617,9 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
   const [importStatuses, setImportStatuses] = useState<TechnicalSheetRecipeImportStatus[]>([]);
   const [importSubmitting, setImportSubmitting] = useState(false);
   const [reviewingImportDocumentId, setReviewingImportDocumentId] = useState<string | null>(null);
+  const [kokkiOpen, setKokkiOpen] = useState(false);
+  const [reviewingKokkiDraftId, setReviewingKokkiDraftId] = useState<string | null>(null);
+  const [reviewingKokkiPricing, setReviewingKokkiPricing] = useState<{ targetSellingPriceExclTax?: number | null; targetSellingPriceInclTax?: number | null } | null>(null);
 
   async function load() {
     if (!stocksInstalled) return;
@@ -645,6 +650,12 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
   useEffect(() => { void load(); }, [stocksInstalled, tab, search, categoryFilter, statusFilter]);
   useEffect(() => { setAvailableProducts(products); }, [products]);
   useEffect(() => { if (onboardingOpen) setOnboardingVisible(true); }, [onboardingOpen]);
+  useEffect(() => {
+    const draftId = localStorage.getItem('toquehub_open_kokki_draft');
+    if (!draftId || !stocksInstalled) return;
+    localStorage.removeItem('toquehub_open_kokki_draft');
+    void api.technicalSheetAssistantDraft(token, draftId).then(openKokkiDraft).catch((err) => setError(err instanceof Error ? err.message : 'Brouillon Kokki introuvable.'));
+  }, [token, stocksInstalled, tab]);
   useEffect(() => {
     if (tab !== 'recipes' || !pendingFirstRecipeAction) return undefined;
     const frame = window.requestAnimationFrame(() => {
@@ -684,6 +695,8 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
 
   function openRecipe(recipe?: TechnicalSheetRecipe) {
     setReviewingImportDocumentId(null);
+    setReviewingKokkiDraftId(null);
+    setReviewingKokkiPricing(null);
     setEditingRecipe(recipe ?? null);
     setForm(recipe ? {
       name: recipe.name,
@@ -718,8 +731,15 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
     try {
       const payload = recipePayloadForSave(form, !editingRecipe ? reviewingImportDocumentId : null);
       const savedRecipeName = form.name.trim();
-      if (editingRecipe) await api.updateTechnicalSheetRecipe(token, editingRecipe.id, payload);
-      else await api.createTechnicalSheetRecipe(token, payload);
+      const savedRecipe = editingRecipe ? await api.updateTechnicalSheetRecipe(token, editingRecipe.id, payload) : await api.createTechnicalSheetRecipe(token, payload);
+      if (reviewingKokkiPricing && (reviewingKokkiPricing.targetSellingPriceExclTax != null || reviewingKokkiPricing.targetSellingPriceInclTax != null)) {
+        await api.updateTechnicalSheetRecipePricing(token, savedRecipe.id, reviewingKokkiPricing);
+        setReviewingKokkiPricing(null);
+      }
+      if (reviewingKokkiDraftId) {
+        await api.markTechnicalSheetAssistantDraftApplied(token, reviewingKokkiDraftId).catch(() => undefined);
+        setReviewingKokkiDraftId(null);
+      }
       let nextImport: TechnicalSheetRecipeImportStatus | undefined;
       let remainingReadyCount = 0;
       if (reviewingImportDocumentId) {
@@ -865,6 +885,8 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
     if (!result) return;
     setEditingRecipe(null);
     setReviewingImportDocumentId(status.document.id);
+    setReviewingKokkiDraftId(null);
+    setReviewingKokkiPricing(null);
     setForm({
       ...emptyRecipe,
       ...result.payload,
@@ -886,6 +908,20 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
     showImportedRecipe(status, true);
   }
 
+  function openKokkiDraft(draft: any) {
+    const target = draft.targetTechnicalSheetId ? recipes.find((recipe) => recipe.id === draft.targetTechnicalSheetId) ?? null : null;
+    setReviewingImportDocumentId(null);
+    setReviewingKokkiDraftId(draft.id);
+    setReviewingKokkiPricing({
+      targetSellingPriceExclTax: draft.payload?.targetSellingPriceExclTax ?? null,
+      targetSellingPriceInclTax: draft.payload?.targetSellingPriceInclTax ?? null,
+    });
+    setEditingRecipe(target);
+    setForm({ ...emptyRecipe, ...draft.payload, ingredients: draft.payload?.ingredients ?? [], steps: draft.payload?.steps ?? [] });
+    setKokkiOpen(false);
+    setRecipeDialog(true);
+  }
+
   if (!stocksInstalled) {
     return <BlockingState onInstallStocks={() => onNavigate('dashboard')} />;
   }
@@ -904,6 +940,8 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
         </p>
       </motion.section>
 
+      <TechnicalSheetAssistantPanel token={token} isOpen={kokkiOpen} onClose={() => setKokkiOpen(false)} onOpenDraft={openKokkiDraft} />
+
       {error ? (
         <div className="alert-modern error">
           <AlertCircle size={18} />
@@ -911,7 +949,7 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
           <button className="alert-dismiss" onClick={() => setError(undefined)}><X size={16} /></button>
         </div>
       ) : null}
-      
+
       {success ? (
         <div className="alert-modern success">
           <CheckCircle2 size={18} />
@@ -1097,6 +1135,221 @@ const TECHNICAL_SHEET_CATEGORY_DESCRIPTIONS: Record<string, string> = {
   'Boissons': 'Boissons préparées et recettes liquides.',
 };
 
+function TechnicalSheetsIllustration() {
+  return (
+    <div style={{ position: 'relative', width: '100%', maxWidth: '340px' }}>
+      <div
+        className="card-modern"
+        style={{
+          background: '#0f172a',
+          color: 'white',
+          border: '1px solid rgba(255, 255, 255, 0.05)',
+          boxShadow: '0 30px 60px rgba(9, 13, 22, 0.25)',
+          padding: '1.5rem',
+          borderRadius: '20px',
+          textAlign: 'left',
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>Structure des Recettes</span>
+            <span className="badge badge-reception" style={{ fontSize: '0.72rem', textTransform: 'none', background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', borderColor: 'transparent' }}>Prêt</span>
+          </div>
+
+          {[
+            { label: 'Catégories de recettes', val: 100, color: '#10b981' },
+            { label: 'Coût matière & Ingrédients', val: 100, color: '#3b82f6' },
+            { label: 'Fiches techniques créées', val: 100, color: '#f59e0b' },
+          ].map((item, idx) => (
+            <div
+              key={idx}
+              style={{
+                padding: '0.85rem 1rem',
+                borderRadius: '12px',
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid rgba(255, 255, 255, 0.03)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <span style={{ fontWeight: 700, fontSize: '0.8rem' }}>{item.label}</span>
+                <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Actif</span>
+              </div>
+              <div className="progress-bar-bg" style={{ height: '5px', background: 'rgba(255, 255, 255, 0.1)' }}>
+                <div className="progress-bar-fill" style={{ width: `${item.val}%`, background: item.color }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TechnicalSheetsOnboardingWelcome({ onNext, onClose }: { onNext: () => void; onClose?: () => void }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '3rem', alignItems: 'center', padding: '3.5rem 3rem', height: '100%', flexGrow: 1, position: 'relative' }}>
+      {onClose && (
+        <button
+          type="button"
+          onClick={onClose}
+          style={{
+            position: 'absolute',
+            top: '1.5rem',
+            right: '1.5rem',
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            color: 'var(--text-muted)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '0.5rem',
+            borderRadius: '50%',
+            transition: 'background 0.2s',
+            zIndex: 10,
+          }}
+          onMouseOver={(e) => e.currentTarget.style.background = '#f1f5f9'}
+          onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+          aria-label="Fermer"
+        >
+          <X size={20} />
+        </button>
+      )}
+      <div>
+        <span className="badge badge-reception" style={{ marginBottom: '1.25rem', display: 'inline-flex', fontSize: '0.8rem', gap: '0.35rem', border: '1px solid var(--light-border)', background: 'rgba(255,255,255,0.7)', textTransform: 'none' }}>
+          <Sparkles size={14} color="#10b981" /> Configuration Guidée
+        </span>
+        <h1 style={{ fontSize: '2.5rem', fontWeight: 900, lineHeight: 1.1, letterSpacing: '-0.04em', marginBottom: '1.5rem', color: 'var(--text-main)' }}>
+          Bienvenue sur le module <span style={{ color: '#10b981' }}>Fiches Techniques</span>
+        </h1>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.98rem', lineHeight: 1.6, marginBottom: '2rem' }}>
+          Sélectionnez les catégories adaptées à votre établissement, puis créez votre première recette manuellement ou à partir de l’import OCR déjà intégré.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '2rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', flexShrink: 0 }}><ClipboardList size={16} /></div>
+            <span>Choisir vos catégories recettes</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', flexShrink: 0 }}><Upload size={16} /></div>
+            <span>Importer une ou plusieurs fiches par OCR</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', flexShrink: 0 }}><FileText size={16} /></div>
+            <span>Créer votre première fiche manuellement</span>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" onClick={onNext} style={{ padding: '0.8rem 1.5rem', fontSize: '0.92rem' }}>
+            Démarrer la configuration <ArrowRight size={18} />
+          </button>
+          {onClose && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={onClose}
+              style={{ padding: '0.8rem 1.5rem', fontSize: '0.92rem' }}
+            >
+              Faire plus tard
+            </button>
+          )}
+        </div>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
+        <TechnicalSheetsIllustration />
+      </div>
+    </div>
+  );
+}
+
+function TechnicalSheetsOnboardingAside({ step, categoryCount, recipeCount }: { step: 'categories' | 'recipe'; categoryCount: number; recipeCount: number }) {
+  const steps = [
+    { key: 'welcome', label: 'Bienvenue' },
+    { key: 'categories', label: 'Catégories recettes' },
+    { key: 'recipe', label: 'Première recette' },
+  ];
+  const currentIdx = steps.findIndex((s) => s.key === step);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', height: '100%', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+          <ChefHat size={28} color="#10b981" />
+          <span style={{ fontWeight: 850, fontSize: '1.2rem', color: 'white', letterSpacing: '-0.03em' }}>
+            TOQUE<span style={{ color: '#10b981' }}>HUB</span> RECETTES
+          </span>
+        </div>
+
+        <div>
+          <span style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', color: '#10b981', letterSpacing: '0.15em' }}>
+            Installation guidée
+          </span>
+          <h3 style={{ color: 'white', fontSize: '1.35rem', marginTop: '0.3rem', fontWeight: 800, lineHeight: 1.25 }}>
+            Assistant Fiches Techniques
+          </h3>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {steps.map((item, idx) => {
+            const isPast = idx < currentIdx;
+            const isCurrent = idx === currentIdx;
+            return (
+              <div
+                key={item.key}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.85rem',
+                  color: isPast || isCurrent ? 'white' : 'rgba(255, 255, 255, 0.35)',
+                  fontWeight: isCurrent ? 700 : 500,
+                  fontSize: '0.9rem',
+                }}
+              >
+                <div
+                  style={{
+                    width: '26px',
+                    height: '26px',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: isPast ? '#10b981' : isCurrent ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+                    border: isCurrent ? '1.5px solid #10b981' : '1px solid transparent',
+                    color: isPast ? 'white' : isCurrent ? '#10b981' : 'inherit',
+                    fontWeight: 800,
+                    fontSize: '0.78rem',
+                  }}
+                >
+                  {isPast ? '✓' : idx + 1}
+                </div>
+                <span>{item.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div style={{ padding: '1rem', borderRadius: '16px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <span style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.05em' }}>Statut initial</span>
+          <div style={{ color: 'white', fontSize: '1rem', fontWeight: 800, marginTop: '0.2rem' }}>Prêt pour démarrer</div>
+          <p style={{ color: '#94a3b8', fontSize: '0.75rem', marginTop: '0.25rem', lineHeight: 1.4 }}>
+            {categoryCount} catégorie(s), {recipeCount} recette(s)
+          </p>
+        </div>
+
+        <div style={{ padding: '1.25rem', borderRadius: '16px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <ShieldCheck size={20} color="#10b981" style={{ marginBottom: '0.4rem' }} />
+          <h4 style={{ color: 'white', fontSize: '0.85rem', fontWeight: 700 }}>Référentiel partagé</h4>
+          <p style={{ color: '#94a3b8', fontSize: '0.75rem', marginTop: '0.25rem', lineHeight: 1.45 }}>
+            Les ingrédients, unités et prix d’achat viennent toujours du module Stocks.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TechnicalSheetsOnboardingWizard({ onboarding, categories, onCreateCategories, onImport, onManual, onClose }: {
   onboarding?: TechnicalSheetOnboarding;
   categories: TechnicalSheetCategory[];
@@ -1154,99 +1407,279 @@ function TechnicalSheetsOnboardingWizard({ onboarding, categories, onCreateCateg
   }
 
   return (
-    <div className="modal-overlay hr-wizard-overlay technical-sheets-onboarding-overlay">
-      <motion.div className="modal-card hr-wizard-modal technical-sheets-onboarding-modal" initial={{ opacity: 0, y: 18, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: 'spring', damping: 24, stiffness: 220 }}>
+    <div
+      className="modal-overlay hr-wizard-overlay technical-sheets-onboarding-overlay"
+      style={{
+        background: 'radial-gradient(circle at 10% 20%, rgba(16, 185, 129, 0.15) 0%, transparent 55%), radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.1) 0%, transparent 50%), rgba(15, 23, 42, 0.55)',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 9999,
+        padding: '2rem 1.5rem',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+      }}
+    >
+      {/* Decorative Blur Spheres */}
+      <div style={{ position: 'absolute', width: '560px', height: '560px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.05)', filter: 'blur(100px)', right: '-180px', top: '-180px', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', width: '420px', height: '420px', borderRadius: '50%', background: 'rgba(59, 130, 246, 0.05)', filter: 'blur(80px)', left: '-160px', bottom: '20px', pointerEvents: 'none' }} />
+
+      <motion.div
+        className="modal-card hr-wizard-modal technical-sheets-onboarding-modal"
+        initial={{ opacity: 0, y: 18, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ type: 'spring', damping: 24, stiffness: 220 }}
+        style={{
+          width: '100%',
+          maxWidth: step === 'welcome' ? '920px' : '1080px',
+          height: 'min(720px, calc(100vh - 4rem))',
+          padding: 0,
+          borderRadius: '24px',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          background: 'white',
+          boxShadow: '0 30px 80px rgba(9, 13, 22, 0.08)',
+          border: 'none',
+          zIndex: 10,
+        }}
+      >
         {step === 'welcome' ? (
-          <div className="technical-sheets-onboarding-welcome">
-            <button type="button" className="technical-sheets-onboarding-close" onClick={onClose} aria-label="Fermer"><X size={20} /></button>
-            <div>
-              <span className="badge badge-reception technical-sheets-onboarding-badge"><Sparkles size={14} /> Configuration guidée</span>
-              <h1>Bienvenue sur le module <span>Fiches Techniques</span></h1>
-              <p>Sélectionnez les catégories adaptées à votre établissement, puis créez votre première recette manuellement ou à partir de l’import OCR déjà intégré.</p>
-              <div className="technical-sheets-onboarding-benefits">
-                <div><ClipboardList size={17} /><span>Choisir vos catégories recettes</span></div>
-                <div><Upload size={17} /><span>Importer une ou plusieurs fiches par OCR</span></div>
-                <div><FileText size={17} /><span>Créer votre première fiche manuellement</span></div>
-              </div>
-              <div className="row-actions">
-                <button className="btn btn-primary" onClick={() => setStep('categories')}>Démarrer la configuration <ArrowRight size={17} /></button>
-                <button className="btn btn-secondary" onClick={onClose}>Faire plus tard</button>
-              </div>
-            </div>
-            <div className="technical-sheets-onboarding-illustration">
-              <div><ChefHat size={72} /></div>
-              <strong>De la recette au coût matière</strong>
-              <span>Produits et unités restent synchronisés avec Stocks.</span>
-            </div>
-          </div>
+          <TechnicalSheetsOnboardingWelcome onNext={() => setStep('categories')} onClose={onClose} />
         ) : (
-          <div className="technical-sheets-onboarding-layout">
-            <aside className="technical-sheets-onboarding-aside">
-              <div>
-                <div className="technical-sheets-onboarding-brand"><ChefHat size={28} /><span>TOQUE<strong>HUB</strong></span></div>
-                <span className="technical-sheets-onboarding-kicker">Installation guidée</span>
-                <h3>Assistant Fiches Techniques</h3>
-                <div className="technical-sheets-onboarding-steps">
-                  {[
-                    ['welcome', 'Bienvenue'],
-                    ['categories', 'Catégories recettes'],
-                    ['recipe', 'Première recette'],
-                  ].map(([key, label], index) => {
-                    const current = index + 1 === stepIndex;
-                    const done = index + 1 < stepIndex;
-                    return <div key={key} className={current ? 'current' : done ? 'done' : ''}><span>{done ? '✓' : index + 1}</span><strong>{label}</strong></div>;
-                  })}
+          <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 2fr', height: '100%', width: '100%', minHeight: 0, flexGrow: 1 }}>
+            {/* Sidebar */}
+            <div style={{ background: '#0f172a', color: 'white', padding: '2.5rem 2rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%', minHeight: 0 }}>
+              <TechnicalSheetsOnboardingAside step={step} categoryCount={categories.length} recipeCount={onboarding?.completed ? 1 : 0} />
+            </div>
+
+            {/* Main Content Area */}
+            <div style={{ padding: '2.5rem', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto', minHeight: 0, justifyContent: 'space-between' }}>
+              {/* Stepper Progress bar */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexShrink: 0, position: 'relative' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', flexDirection: 'column', flexGrow: 1 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span className="badge badge-reception" style={{ background: 'rgba(16, 185, 129, 0.08)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.15)', textTransform: 'none', fontSize: '0.8rem' }}>
+                      Étape {stepIndex} / 3
+                    </span>
+                    <span style={{ fontWeight: 800, fontSize: '0.85rem', color: 'var(--text-muted)', marginRight: '2.5rem' }}>{Math.round(progress)}%</span>
+                  </div>
+                  <div className="progress-bar-bg" style={{ height: '6px', background: '#f1f5f9', borderRadius: '3px', overflow: 'hidden', marginRight: '2.5rem' }}>
+                    <div className="progress-bar-fill" style={{ width: `${progress}%`, height: '100%', background: '#10b981', borderRadius: '3px' }}></div>
+                  </div>
                 </div>
-              </div>
-              <div className="technical-sheets-onboarding-note"><CheckCircle2 size={19} /><strong>Référentiel partagé</strong><p>Les ingrédients, unités et prix d’achat viennent toujours du module Stocks.</p></div>
-            </aside>
-            <main className={`technical-sheets-onboarding-main ${step === 'categories' ? 'technical-sheets-onboarding-main--categories' : ''}`}>
-              <div className="technical-sheets-onboarding-progress">
-                <div><span className="badge badge-reception">Étape {stepIndex} / 3</span><strong>{progress}%</strong></div>
-                <div className="progress-bar-bg"><div className="progress-bar-fill" style={{ width: `${progress}%` }} /></div>
-                <button type="button" onClick={onClose} aria-label="Fermer"><X size={20} /></button>
+
+                <button
+                  type="button"
+                  onClick={onClose}
+                  style={{
+                    position: 'absolute',
+                    right: 0,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'var(--text-muted)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0.5rem',
+                    borderRadius: '50%',
+                    transition: 'background 0.2s',
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.background = '#f1f5f9'}
+                  onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                  aria-label="Fermer"
+                >
+                  <X size={20} />
+                </button>
               </div>
 
-              {step === 'categories' ? (
-                <div className="hr-catalog technical-sheets-category-step">
-                  <div className="hr-catalog-scroll">
-                    <h2>Choisissez vos catégories recettes</h2>
-                    <p className="muted">Cochez uniquement les familles utiles. Elles resteront modifiables depuis l’onglet Catégories recettes.</p>
-                    {localError ? <div className="alert-modern error"><AlertCircle size={16} /> {localError}</div> : null}
-                    <div className="hr-catalog-grid">
-                      {suggestions.map((name) => {
-                        const isSelected = selected.has(name) || [...selected].some((selectedName) => selectedName.toLowerCase() === name.toLowerCase());
-                        const exists = existingNames.has(name.toLowerCase());
-                        return (
-                          <button type="button" key={name} className={`hr-catalog-card ${isSelected ? 'selected' : ''}`} onClick={() => toggle(name)} aria-pressed={isSelected}>
-                            <div className={isSelected ? 'hr-catalog-check' : 'hr-catalog-check-empty'}>{isSelected ? <Check size={14} strokeWidth={3} /> : null}</div>
-                            <div className="hr-catalog-body"><strong>{name}</strong><span>{TECHNICAL_SHEET_CATEGORY_DESCRIPTIONS[name] ?? 'Catégorie personnalisable pour vos recettes.'}</span>{exists ? <small>Déjà créée</small> : null}</div>
+              {/* Step rendering with AnimatePresence */}
+              <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minHeight: 0, justifyContent: 'space-between' }}>
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={step}
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    transition={{ duration: 0.16 }}
+                    style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minHeight: 0, justifyContent: 'space-between' }}
+                  >
+                    {step === 'categories' ? (
+                      <div className="hr-catalog technical-sheets-category-step" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, justifyContent: 'space-between' }}>
+                        <div className="hr-catalog-scroll" style={{ overflow: 'auto', flex: 1, paddingRight: '0.25rem' }}>
+                          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', margin: '0 0 0.35rem' }}>Choisissez vos catégories recettes</h2>
+                          <p className="muted" style={{ marginBottom: 16, fontSize: '0.9rem' }}>Cochez uniquement les familles utiles. Elles resteront modifiables depuis l’onglet Catégories recettes.</p>
+                          {localError ? <div className="alert-modern error" style={{ marginBottom: '1rem' }}><AlertCircle size={16} /> {localError}</div> : null}
+
+                          <div className="hr-catalog-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                            {suggestions.map((name) => {
+                              const isSelected = selected.has(name) || [...selected].some((selectedName) => selectedName.toLowerCase() === name.toLowerCase());
+                              const exists = existingNames.has(name.toLowerCase());
+                              return (
+                                <button
+                                  type="button"
+                                  key={name}
+                                  className={`hr-catalog-card ${isSelected ? 'selected' : ''}`}
+                                  onClick={() => toggle(name)}
+                                  aria-pressed={isSelected}
+                                  style={{
+                                    border: isSelected ? '2px solid #10b981' : '1px solid #e2e8f0',
+                                    borderRadius: '16px',
+                                    padding: '1.25rem',
+                                    background: isSelected ? 'rgba(16, 185, 129, 0.04)' : 'white',
+                                    boxShadow: isSelected ? '0 10px 25px rgba(16,185,129,0.06)' : '0 2px 4px rgba(0,0,0,0.02)',
+                                    transition: 'all 0.2s',
+                                    display: 'flex',
+                                    alignItems: 'flex-start',
+                                    gap: '0.75rem',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  <div
+                                    className="hr-catalog-check"
+                                    style={{
+                                      background: isSelected ? '#10b981' : '#f1f5f9',
+                                      color: isSelected ? 'white' : 'transparent',
+                                      borderRadius: '8px',
+                                      width: '24px',
+                                      height: '24px',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      border: isSelected ? 'none' : '2px solid #cbd5e1',
+                                      flexShrink: 0,
+                                      marginTop: '2px',
+                                    }}
+                                  >
+                                    {isSelected ? <Check size={14} strokeWidth={3} /> : null}
+                                  </div>
+                                  <div className="hr-catalog-body" style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                    <strong style={{ fontSize: '0.95rem', color: '#1e293b', fontWeight: 700 }}>{name}</strong>
+                                    <span style={{ fontSize: '0.82rem', color: '#64748b', lineHeight: 1.35 }}>{TECHNICAL_SHEET_CATEGORY_DESCRIPTIONS[name] ?? 'Catégorie personnalisable pour vos recettes.'}</span>
+                                    {exists ? <small style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.25rem' }}>Déjà créée</small> : null}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          <div className="hr-catalog-custom" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', marginTop: '1.25rem' }}>
+                            <input
+                              placeholder="Ajouter une catégorie personnalisée…"
+                              value={customName}
+                              onChange={(event) => setCustomName(event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter') {
+                                  event.preventDefault();
+                                  addCustom();
+                                }
+                              }}
+                              style={{ borderRadius: '10px', height: '44px', border: '1px solid #cbd5e1', padding: '0 0.75rem', flex: 1 }}
+                            />
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              disabled={!canAddCustom}
+                              onClick={addCustom}
+                              style={{ height: '44px', borderRadius: '10px' }}
+                            >
+                              Ajouter
+                            </button>
+                          </div>
+
+                          {customSelections.length ? (
+                            <div className="hr-catalog-tags" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '1.25rem' }}>
+                              {customSelections.map((name) => (
+                                <span key={name} className="badge badge-reception" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.35rem 0.65rem' }}>
+                                  {name}
+                                  <button
+                                    type="button"
+                                    className="icon-btn"
+                                    onClick={() => toggle(name)}
+                                    style={{ border: 'none', background: 'transparent', display: 'inline-flex', padding: 0, cursor: 'pointer', color: '#ef4444' }}
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="hr-catalog-actions" style={{ borderTop: '1px solid #eef2f7', background: 'rgba(255,255,255,0.9)', padding: '1rem 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+                          <span style={{ fontSize: '0.88rem', color: '#64748b', fontWeight: 500 }}>
+                            {selected.size} catégorie{selected.size > 1 ? 's' : ''} sélectionnée{selected.size > 1 ? 's' : ''}
+                          </span>
+                          <div className="row-actions" style={{ display: 'flex', gap: '0.75rem' }}>
+                            <button type="button" className="btn btn-secondary" onClick={() => setStep('welcome')} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Retour</button>
+                            <button
+                              className="btn btn-primary"
+                              disabled={!selected.size || submitting}
+                              onClick={() => void submitCategories()}
+                              style={{ borderRadius: '10px', padding: '0.5rem 1.5rem' }}
+                            >
+                              {submitting ? 'Création…' : 'Valider les catégories'} <ArrowRight size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', height: '100%', minHeight: 0, justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                          <div>
+                            <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
+                              {onboarding?.completed ? 'Votre référentiel contient déjà une recette' : 'Créez votre première recette'}
+                            </h2>
+                            <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginTop: '0.35rem', lineHeight: 1.5 }}>
+                              Choisissez le parcours adapté. Les deux utilisent exactement les écrans et contrôles déjà présents dans le module.
+                            </p>
+                          </div>
+
+                          <div className="onboarding-options-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '2rem' }}>
+                            <div className="onboarding-option-card blue" onClick={onImport}>
+                              <div className="onboarding-option-icon">
+                                <Upload size={18} />
+                              </div>
+                              <div className="onboarding-option-content">
+                                <span className="onboarding-option-title">Importer avec l'OCR</span>
+                                <span className="onboarding-option-desc">Déposez PDF, images, Pages ou Numbers. Jusqu'à {MAX_RECIPE_IMPORT_FILES} fiches peuvent être analysées ensemble.</span>
+                                <small style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.75rem', color: '#2563eb', fontSize: '0.78rem', fontWeight: 750 }}>Ouvrir l’import existant <ArrowRight size={14} /></small>
+                              </div>
+                            </div>
+
+                            <div className="onboarding-option-card emerald" onClick={onManual}>
+                              <div className="onboarding-option-icon">
+                                <FileText size={18} />
+                              </div>
+                              <div className="onboarding-option-content">
+                                <span className="onboarding-option-title">Créer manuellement</span>
+                                <span className="onboarding-option-desc">Renseignez les informations, ingrédients Stocks, quantités et étapes de préparation.</span>
+                                <small style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.75rem', color: '#10b981', fontSize: '0.78rem', fontWeight: 750 }}>Créer une fiche <ArrowRight size={14} /></small>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="hr-catalog-actions sticky" style={{ borderTop: '1px solid #eef2f7', background: 'rgba(255,255,255,0.9)', padding: '1rem 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+                          <button type="button" className="btn btn-secondary" onClick={() => setStep('categories')} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Retour</button>
+                          <button type="button" className="btn btn-secondary" onClick={onClose} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>
+                            {onboarding?.completed ? 'Terminer' : 'Faire plus tard'}
                           </button>
-                        );
-                      })}
-                    </div>
-                    <div className="hr-catalog-custom">
-                      <input value={customName} onChange={(event) => setCustomName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addCustom(); } }} placeholder="Ajouter une catégorie personnalisée…" />
-                      <button type="button" className="btn btn-secondary" disabled={!canAddCustom} onClick={addCustom}>Ajouter</button>
-                    </div>
-                    {customSelections.length ? <div className="hr-catalog-tags">{customSelections.map((name) => <span key={name} className="badge badge-reception">{name}<button type="button" onClick={() => toggle(name)}><X size={12} /></button></span>)}</div> : null}
-                  </div>
-                  <div className="hr-catalog-actions sticky">
-                    <span>{selected.size} catégorie{selected.size > 1 ? 's' : ''} sélectionnée{selected.size > 1 ? 's' : ''}</span>
-                    <div className="row-actions"><button className="btn btn-secondary" onClick={() => setStep('welcome')}>Retour</button><button className="btn btn-primary" disabled={!selected.size || submitting} onClick={() => void submitCategories()}>{submitting ? 'Création…' : 'Valider les catégories'} <ArrowRight size={16} /></button></div>
-                  </div>
-                </div>
-              ) : (
-                <div className="technical-sheets-first-recipe-step">
-                  <div><h2>{onboarding?.completed ? 'Votre référentiel contient déjà une recette' : 'Créez votre première recette'}</h2><p>Choisissez le parcours adapté. Les deux utilisent exactement les écrans et contrôles déjà présents dans le module.</p></div>
-                  <div className="technical-sheets-onboarding-choices">
-                    <button type="button" onClick={onImport}><div><Upload size={25} /></div><strong>Importer avec l’OCR</strong><span>Déposez PDF, images, Pages ou Numbers. Jusqu’à {MAX_RECIPE_IMPORT_FILES} fiches peuvent être analysées ensemble.</span><small>Ouvrir l’import existant <ArrowRight size={14} /></small></button>
-                    <button type="button" onClick={onManual}><div><FileText size={25} /></div><strong>Créer manuellement</strong><span>Renseignez les informations, ingrédients Stocks, quantités et étapes de préparation.</span><small>Créer une fiche <ArrowRight size={14} /></small></button>
-                  </div>
-                  <div className="hr-catalog-actions sticky"><button className="btn btn-secondary" onClick={() => setStep('categories')}>Retour</button><button className="btn btn-secondary" onClick={onClose}>{onboarding?.completed ? 'Terminer' : 'Faire plus tard'}</button></div>
-                </div>
-              )}
-            </main>
+                        </div>
+                      </div>
+                    )}
+                  </motion.div>
+                </AnimatePresence>
+              </div>
+            </div>
           </div>
         )}
       </motion.div>
@@ -1272,7 +1705,7 @@ function BlockingState({ onInstallStocks }: { onInstallStocks: () => void }) {
 function DashboardTab({ dashboard, recipes, categories, averageCost, onStartOnboarding, onOpenRecipes, onOpenCategories, onOpenCosts, onOpenProduction, loading }: { dashboard?: TechnicalSheetDashboard; recipes: TechnicalSheetRecipe[]; categories: TechnicalSheetCategory[]; averageCost: number; onStartOnboarding: () => void; onOpenRecipes: () => void; onOpenCategories: () => void; onOpenCosts: () => void; onOpenProduction: () => void; loading: boolean }) {
   const latest = dashboard?.latestRecipes ?? recipes.slice(0, 5);
   const topProducts = dashboard?.topProducts ?? [];
-  
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       <div className="stats-grid">
@@ -1281,7 +1714,7 @@ function DashboardTab({ dashboard, recipes, categories, averageCost, onStartOnbo
         <MetricCard label="Coût matière moyen" value={money(averageCost)} icon={<Calculator size={20} />} tone="orange" onClick={onOpenCosts} />
         <MetricCard label="Produits Stocks utilisés" value={dashboard?.usedStockProductsCount ?? '—'} icon={<Utensils size={20} />} tone="purple" onClick={onOpenProduction} />
       </div>
-      
+
       <div className="double-panel">
         <div className="card-modern">
           <div className="section-header-modern" style={{ marginBottom: '1.5rem' }}>
@@ -1319,7 +1752,7 @@ function DashboardTab({ dashboard, recipes, categories, averageCost, onStartOnbo
             )}
           </div>
         </div>
-        
+
         <div className="card-modern">
           <span className="card-title" style={{ marginBottom: '1.5rem', display: 'block' }}>Produits les plus utilisés</span>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
@@ -1539,7 +1972,7 @@ function RecipesTab(props: {
           <Upload size={16} /> Importer des fiches
         </button>
       </div>
-      
+
       {filtered.length ? (
         <div className="recipe-grid">
           {filtered.map((recipe) => (
@@ -1567,7 +2000,7 @@ function RecipesTab(props: {
                     {statuses.find((s) => s.value === recipe.status)?.label ?? recipe.status}
                   </span>
                 </div>
-                
+
                 <div className="recipe-chips-row">
                   <span className="badge badge-production" style={{ background: 'rgba(16, 185, 129, 0.06)', color: 'var(--primary)', border: '1px solid rgba(16, 185, 129, 0.15)', fontWeight: 600 }}>
                     Total {money(recipe.costTotal ?? recipe.totalCost)}
@@ -1579,13 +2012,13 @@ function RecipesTab(props: {
                     {date(recipe.updatedAt)}
                   </span>
                 </div>
-                
+
                 {recipe.hasNonCalculableLines || recipe.nonCalculableLinesCount ? (
                   <div className="alert-modern error" style={{ padding: '0.4rem 0.6rem', fontSize: '0.78rem', margin: 0, borderRadius: '8px' }}>
                     Non calculable : conversion ou prix Stocks manquant.
                   </div>
                 ) : null}
-                
+
                 <div className="recipe-actions-row" style={{ marginTop: 'auto', display: 'flex', gap: '0.25rem', flexWrap: 'wrap', paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9' }}>
                   <button className="icon-btn" onClick={() => props.onEdit(recipe)} title="Modifier"><Edit3 size={15} /></button>
                   <button className="icon-btn" onClick={() => props.onDuplicate(recipe)} title="Dupliquer"><Copy size={15} /></button>
@@ -1608,7 +2041,7 @@ function RecipesTab(props: {
           </button>
         </div>
       )}
-      
+
       {props.selectedHistory.length ? (
         <div className="card-modern" style={{ marginTop: '1.5rem' }}>
           <span className="card-title" style={{ display: 'block', marginBottom: '1rem' }}>Historique</span>
@@ -1682,7 +2115,7 @@ function ReferencesTab({
           </button>
         </div>
       </div>
-      
+
       <div className="card-modern" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
         <span className="card-title">Catégories actives</span>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '400px', overflowY: 'auto', paddingRight: '4px' }}>
@@ -1775,7 +2208,7 @@ function CostsTab({
           <span className="section-tagline">Le coût HT vient des produits Stocks. Les objectifs de vente sont exprimés par portion.</span>
         </div>
         </div>
-      
+
         {sorted.length ? (
           <div className="table-wrapper technical-sheets-cost-table-wrapper">
             <table className="table-modern technical-sheets-cost-table">
@@ -1955,7 +2388,7 @@ function ProductionTab({
       <div className="card-modern">
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           <span className="card-title">Simulation proportionnelle</span>
-          
+
           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.85rem', fontWeight: 600 }}>
             Sélectionner une fiche technique
             <select
@@ -1970,7 +2403,7 @@ function ProductionTab({
               ))}
             </select>
           </label>
-          
+
           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.85rem', fontWeight: 600 }}>
             Portions demandées
             <input
@@ -1980,7 +2413,7 @@ function ProductionTab({
               onChange={(e) => onPortions(Number(e.target.value))}
             />
           </label>
-          
+
           <button
             className="btn btn-primary"
             onClick={onSimulate}
@@ -1988,13 +2421,13 @@ function ProductionTab({
           >
             Simuler la production
           </button>
-          
+
           <div className="alert-modern info" style={{ fontSize: '0.8rem', borderRadius: '8px' }}>
             La simulation ne déclenche aucun mouvement de stock physique en V1.
           </div>
         </div>
       </div>
-      
+
       <div className="card-modern" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span className="card-title">Résultats de simulation</span>
@@ -2017,7 +2450,7 @@ function ProductionTab({
             </button>
           </div>
         </div>
-        
+
         {simulation ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             <div
@@ -2044,7 +2477,7 @@ function ProductionTab({
                 <strong style={{ fontSize: '1.1rem', color: 'var(--primary)' }}>{money(simulation.estimatedCost)}</strong>
               </div>
             </div>
-            
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>
                 Ingrédients requis :
@@ -2069,7 +2502,7 @@ function ProductionTab({
                 </div>
               ))}
             </div>
-            
+
             {simulation.allergens?.length ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
                 <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)' }}>
@@ -2102,13 +2535,13 @@ function ProductionTab({
 function RecipeDialog({ open, form, setForm, products, units, categories, editing, onClose, onSave, loading }: { open: boolean; form: TechnicalSheetRecipePayload; setForm: (f: TechnicalSheetRecipePayload) => void; products: Product[]; units: Unit[]; categories: TechnicalSheetCategory[]; editing: boolean; onClose: () => void; onSave: () => void; loading: boolean }) {
   const ingredients = form.ingredients ?? [];
   const steps = form.steps ?? [];
-  
+
   const patchIngredient = (index: number, patch: Partial<(typeof ingredients)[number]>) => {
     const next = [...ingredients];
     next[index] = { ...next[index], ...patch };
     setForm({ ...form, ingredients: next });
   };
-  
+
   const patchStep = (index: number, patch: Partial<(typeof steps)[number]>) => {
     const next = [...steps];
     next[index] = { ...next[index], ...patch };
@@ -2601,7 +3034,7 @@ function RecipeDialog({ open, form, setForm, products, units, categories, editin
                               <Trash2 size={15} />
                             </button>
                           </div>
-                          
+
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                             <input
                               placeholder="Commentaire de préparation (ex: émincé finement, réserver le jus...)"

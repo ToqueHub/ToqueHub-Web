@@ -82,6 +82,28 @@ describe('StockAgentHarnessService', () => {
     });
   });
 
+  it('does not mistake a technical-sheet request for a product creation', async () => {
+    const { harness, mistral } = service({ mistral: { chatJson: jest.fn() } });
+
+    const call = await harness.decideToolCall('org-1', 'conv-1', 'Créer moi une fiche technique de flan abricot', {});
+
+    expect(mistral.chatJson).not.toHaveBeenCalled();
+    expect(call).toMatchObject({ tool: 'clarification', decision: 'deterministic' });
+    expect(call.args?.message).toContain('Fiches Techniques');
+  });
+
+  it('does not let Mistral rewrite a deterministic technical-sheet redirect', async () => {
+    const { harness, mistral } = service({ mistral: { chatJson: jest.fn() } });
+    const call = await harness.decideToolCall('org-1', 'conv-1', 'Créer une fiche technique', {});
+    const result = await harness.finalizeTurn('org-1', 'conv-1', 'Créer une fiche technique', {}, call, {
+      message: call.args?.message || '', state: {}, type: 'clarification_needed', questions: [call.args?.message || ''],
+    });
+
+    expect(mistral.chatJson).not.toHaveBeenCalled();
+    expect(result.message).toContain('ouvrez le module « Fiches Techniques »');
+    expect(result.toolResults?.at(-1)?.result).toEqual({ provider: 'deterministic_guardrail' });
+  });
+
   it('uses pending product creation details for name plus initial quantity', async () => {
     const { harness, mistral } = service({ mistral: { chatJson: jest.fn() } });
 

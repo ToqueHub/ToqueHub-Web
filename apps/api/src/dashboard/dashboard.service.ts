@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma, ProductionAlertSeverity, ProductionDestockingStatus, ProductionOrderStatus, UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { DashboardExternalService } from './dashboard-external.service';
 
 type Zone = 'kpi' | 'activity' | 'analytics' | 'alerts';
 type WidgetSize = 'sm' | 'md' | 'lg' | 'xl';
@@ -36,6 +37,9 @@ type DashboardPreferences = {
 };
 
 type OrganizationInstallState = {
+  name: string;
+  mainSiteName: string | null;
+  primarySiteId: string | null;
   stocksInstalledAt: Date | null;
   rnmPricesInstalledAt: Date | null;
   hrInstalledAt: Date | null;
@@ -114,14 +118,55 @@ const REGISTRY: RegistryWidget[] = [
 
 @Injectable()
 export class DashboardService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly external: DashboardExternalService) {}
 
   async getDashboard(userId: string, organizationId: string) {
     const context = await this.getContext(userId, organizationId);
     const preferences = await this.getOrCreatePreferences(userId, organizationId);
     const visibleRegistry = REGISTRY.filter((widget) => this.canSeeWidget(widget, context));
     const widgets = await Promise.all(visibleRegistry.map((widget) => this.hydrateWidget(widget, organizationId, context, preferences)));
-    return this.serializeDashboard(widgets, preferences, context);
+    return { ...this.serializeDashboard(widgets, preferences, context), cockpit: await this.cockpit(organizationId, context, preferences) };
+  }
+
+  private async cockpit(organizationId: string, context: Awaited<ReturnType<DashboardService['getContext']>>, preferences: DashboardPreferences) {
+    const has = (appId: AppId) => appId === 'core' || this.canSeeWidget({ id: `cockpit.${appId}`, appId, moduleLabel: appId, title: appId, description: '', zone: 'kpi', defaultOrder: 0, size: 'md' }, context);
+    const primarySite = context.organization.primarySiteId
+      ? await this.prisma.site.findFirst({ where: { id: context.organization.primarySiteId, organizationId, isArchived: false } })
+      : await this.prisma.site.findFirst({ where: { organizationId, isArchived: false }, orderBy: { createdAt: 'asc' } });
+    const external = await this.external.get(primarySite?.address, primarySite?.name ?? context.organization.mainSiteName);
+    const [stockValue, stockAlerts, movements, consumed, headcount, employees, planning, planningAlerts, coverage, recipes, latestRecipes, topProducts, haccp, haccpAlerts, haccpToday] = await Promise.all([
+      has('stocks') ? this.stockValue(organizationId) : null, has('stocks') ? this.stockAlerts(organizationId) : null, has('stocks') ? this.latestMovements(organizationId) : null, has('stocks') ? this.topConsumed(organizationId) : null,
+      has('hr') ? this.hrHeadcount(organizationId) : null, has('hr') ? this.latestEmployees(organizationId) : null,
+      has('planning') ? this.planningToday(organizationId) : null, has('planning') ? this.planningAlerts(organizationId) : null, has('planning') ? this.planningCoverage(organizationId) : null,
+      has('technical-sheets') ? this.recipeStats(organizationId) : null, has('technical-sheets') ? this.latestRecipes(organizationId) : null, has('technical-sheets') ? this.recipeTopProducts(organizationId) : null,
+      has('haccp') ? this.haccpScore(organizationId) : null, has('haccp') ? this.haccpAlerts(organizationId) : null, has('haccp') ? this.haccpToday(organizationId) : null,
+    ]);
+    const card = (id: string, module: string, title: string, value: string | number, description: string, href: string, tone = 'emerald', items?: any[], progress?: number, critical = false) => ({ id, module, title, value, description, href, tone, items, progress, critical });
+    const urgent = [
+      ...(stockAlerts?.alerts ?? []).map((a: any) => card(`stock-alert-${a.productId}`, 'stocks', a.productName, `${a.quantity} ${a.unit}`, a.severity === 'critical' ? 'Stock négatif — action immédiate' : `Seuil minimum : ${a.minimumStock}`, '/stocks', a.severity === 'critical' ? 'rose' : 'amber', undefined, undefined, true)),
+      ...(planningAlerts?.alerts ?? []).map((a: any) => card(`planning-alert-${a.id}`, 'planning', 'Conflit planning', a.level === 'critical' ? 'Critique' : 'À traiter', a.message ?? a.title ?? 'Conflit non résolu', '/planning', a.level === 'critical' ? 'rose' : 'amber', undefined, undefined, true)),
+      ...(haccpAlerts?.alerts ?? []).map((a: any, index: number) => card(`haccp-alert-${index}`, 'haccp', 'HACCP', a.level === 'critical' ? 'Critique' : 'À traiter', a.message, '/haccp', a.level === 'critical' ? 'rose' : 'amber', undefined, undefined, true)),
+    ];
+    const overview = [
+      ...(haccp ? [card('haccp.score', 'haccp', 'Conformité HACCP', `${haccp.score}%`, `Grade ${haccp.grade} · ${haccpToday?.total ?? 0} contrôles aujourd’hui`, '/haccp', haccp.score < 75 ? 'rose' : haccp.score < 90 ? 'amber' : 'emerald', undefined, haccp.score)] : []),
+      ...(planning ? [card('planning.today', 'planning', 'Équipe aujourd’hui', planning.presentToday, `${planning.absentToday} absent(s) · ${planning.replacementsNeeded} remplacement(s)`, '/planning', 'blue')]: []),
+      ...(headcount ? [card('hr.headcount', 'hr', 'Effectif actif', headcount.employees, `${headcount.departments} service(s) · ${headcount.linked} compte(s) lié(s)`, '/hr', 'violet')]: []),
+      ...(stockValue ? [card('stocks.stock-value', 'stocks', 'Valeur de stock', `${stockValue.value.toFixed(0)} €`, `${stockValue.products} produits · ${stockValue.suppliers} fournisseurs`, '/stocks', 'emerald')]: []),
+      ...(recipes ? [card('technical-sheets.recipes', 'technical-sheets', 'Fiches techniques', recipes.recipeCount, `${recipes.categoryCount} catégories · coût moyen ${recipes.averageMaterialCost.toFixed(2)} €`, '/technical-sheets', 'orange')]: []),
+    ];
+    const activity = [
+      ...(movements ? [card('stocks.latest-movements', 'stocks', 'Derniers mouvements', movements.length, 'Flux stock récents', '/stocks', 'emerald', movements.map((m: any) => ({ title: m.product?.name ?? 'Produit', detail: `${m.type} · ${Math.abs(Number(m.quantity))} ${m.unit?.symbol ?? ''}` })))] : []),
+      ...(employees ? [card('hr.latest-employees', 'hr', 'Collaborateurs récents', employees.length, 'Derniers profils ajoutés', '/hr', 'violet', employees.map((e: any) => ({ title: [e.firstName, e.lastName].filter(Boolean).join(' '), detail: e.department?.name ?? 'Sans service' })))] : []),
+      ...(latestRecipes ? [card('technical-sheets.latest', 'technical-sheets', 'Fiches modifiées', latestRecipes.length, 'Dernières modifications', '/technical-sheets', 'orange', latestRecipes.map((r: any) => ({ title: r.name, detail: r.category?.name ?? 'Sans catégorie' })))] : []),
+    ];
+    const insights = [
+      ...(coverage ? [card('planning.coverage', 'planning', 'Couverture services', `${coverage.coveredDepartments}/${coverage.totalDepartments}`, coverage.uncoveredDepartments.length ? `À couvrir : ${coverage.uncoveredDepartments.join(', ')}` : 'Tous les services sont couverts', '/planning', coverage.uncoveredDepartments.length ? 'amber' : 'blue', undefined, coverage.totalDepartments ? Math.round(coverage.coveredDepartments / coverage.totalDepartments * 100) : 100)] : []),
+      ...(consumed ? [card('stocks.top-consumed', 'stocks', 'Produits consommés', consumed.items.length, 'Principaux produits sortis du stock', '/stocks', 'emerald', consumed.items.map((i: any) => ({ title: i.product?.name ?? 'Produit', detail: `${i.quantity} ${i.product?.unit?.symbol ?? ''}` })))] : []),
+      ...(topProducts ? [card('technical-sheets.top-products', 'technical-sheets', 'Ingrédients clés', topProducts.items.length, 'Les plus utilisés dans les fiches', '/technical-sheets', 'orange', topProducts.items.map((i: any) => ({ title: i.product?.name ?? 'Produit', detail: `${i.count} fiche(s)` })))] : []),
+    ];
+    const hidden = new Set(preferences.hiddenWidgetIds);
+    const visible = (cards: any[], force = false) => cards.filter((item) => force || !hidden.has(item.id));
+    return { version: 2, generatedAt: new Date().toISOString(), refreshIntervalMs: REFRESH_INTERVAL_MS, organizationName: context.organization.name, primarySite: primarySite ? { id: primarySite.id, name: primarySite.name, address: primarySite.address } : null, weather: external.weather, urgent: visible(urgent, true), overview: visible(overview), activity: visible(activity), insights: visible(insights), news: { local: external.localNews, industry: external.industryNews } };
   }
 
   async updatePreferences(userId: string, organizationId: string, body: unknown) {
@@ -138,6 +183,10 @@ export class DashboardService {
   async resetPreferences(userId: string, organizationId: string) {
     await (this.prisma as any).dashboardPreference.deleteMany({ where: { userId, organizationId } });
     return this.getDashboard(userId, organizationId);
+  }
+
+  async addressSuggestions(query: string, country: string) {
+    return this.external.addressSuggestions(query, country);
   }
 
   private async getContext(userId: string, organizationId: string) {

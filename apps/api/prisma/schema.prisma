@@ -34,6 +34,32 @@ enum TechnicalSheetExportFormat {
   PRINT
 }
 
+enum TechnicalSheetAssistantMessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum TechnicalSheetAssistantDraftStatus {
+  PENDING_REVIEW
+  APPLIED
+  DISCARDED
+  EXPIRED
+}
+
+enum HaccpAssistantMessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum HaccpAssistantDraftStatus {
+  PENDING_REVIEW
+  APPLIED
+  DISCARDED
+  EXPIRED
+}
+
 enum ProductionOrderStatus {
   PLANNED
   VALIDATED
@@ -3386,6 +3412,103 @@ model TechnicalSheetHistory {
   @@index([action])
   @@index([createdAt])
   @@map("technical_sheet_history")
+}
+
+model TechnicalSheetAssistantConversation {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  userId         String   @db.Uuid
+  state          Json?
+  summary        Json?
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  messages TechnicalSheetAssistantMessage[]
+  drafts   TechnicalSheetAssistantDraft[]
+
+  @@index([organizationId, userId])
+  @@index([expiresAt])
+  @@map("technical_sheet_assistant_conversations")
+}
+
+model TechnicalSheetAssistantMessage {
+  id             String                           @id @default(uuid()) @db.Uuid
+  conversationId String                           @db.Uuid
+  role           TechnicalSheetAssistantMessageRole
+  content        String                           @db.Text
+  metadata       Json?
+  createdAt      DateTime                         @default(now())
+
+  conversation TechnicalSheetAssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("technical_sheet_assistant_messages")
+}
+
+model TechnicalSheetAssistantDraft {
+  id                    String                           @id @default(uuid()) @db.Uuid
+  organizationId        String                           @db.Uuid
+  conversationId        String                           @db.Uuid
+  targetTechnicalSheetId String?                         @db.Uuid
+  status                TechnicalSheetAssistantDraftStatus @default(PENDING_REVIEW)
+  payload               Json
+  metadata              Json?
+  expiresAt             DateTime
+  createdAt             DateTime                         @default(now())
+  updatedAt             DateTime                         @updatedAt
+
+  conversation TechnicalSheetAssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status])
+  @@index([conversationId])
+  @@index([expiresAt])
+  @@map("technical_sheet_assistant_drafts")
+}
+
+model HaccpAssistantConversation {
+  id String @id @default(uuid()) @db.Uuid
+  organizationId String @db.Uuid
+  userId String @db.Uuid
+  state Json?
+  summary Json?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  messages HaccpAssistantMessage[]
+  drafts HaccpAssistantDraft[]
+  @@index([organizationId, userId])
+  @@index([expiresAt])
+  @@map("haccp_assistant_conversations")
+}
+
+model HaccpAssistantMessage {
+  id String @id @default(uuid()) @db.Uuid
+  conversationId String @db.Uuid
+  role HaccpAssistantMessageRole
+  content String @db.Text
+  metadata Json?
+  createdAt DateTime @default(now())
+  conversation HaccpAssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  @@index([conversationId, createdAt])
+  @@map("haccp_assistant_messages")
+}
+
+model HaccpAssistantDraft {
+  id String @id @default(uuid()) @db.Uuid
+  organizationId String @db.Uuid
+  conversationId String @db.Uuid
+  kind String
+  status HaccpAssistantDraftStatus @default(PENDING_REVIEW)
+  payload Json
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  conversation HaccpAssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  @@index([organizationId, status])
+  @@index([conversationId])
+  @@index([expiresAt])
+  @@map("haccp_assistant_drafts")
 }
 
 model ProductionOrder {
