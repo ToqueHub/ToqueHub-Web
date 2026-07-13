@@ -441,6 +441,11 @@ export interface StockConversation {
 
 export type StockAssistantChoice = { type: 'product_select' | 'product_create' | 'location_select' | 'supplier_select' | 'proposal_review' | 'confirm_duplicate' | 'clarification'; label: string; value?: string; description?: string; payload?: Record<string, unknown> };
 
+export type TechnicalSheetAssistantChoice = { type: 'recipe_select' | 'product_select' | 'category_select' | 'draft_review' | 'clarification'; label: string; value?: string; description?: string };
+export type HaccpAssistantChoice = { type: 'haccp_draft_review' | 'haccp_equipment' | 'haccp_surface' | 'clarification'; label: string; value?: string; description?: string; payload?: Record<string, unknown> };
+export interface TechnicalSheetAssistantDraft { id: string; targetTechnicalSheetId?: string | null; status: 'PENDING_REVIEW' | 'APPLIED' | 'DISCARDED' | 'EXPIRED' | string; payload: TechnicalSheetRecipePayload; metadata?: Record<string, unknown> | null; expiresAt: string; }
+export interface TechnicalSheetAssistantConversation { id: string; state?: Record<string, unknown> | null; summary?: Record<string, unknown> | null; messages?: Array<{ id: string; role: string; content: string; createdAt: string; metadata?: { draftId?: string | null; choices?: TechnicalSheetAssistantChoice[]; needsReview?: boolean } | null }>; drafts?: TechnicalSheetAssistantDraft[]; }
+
 export interface MyDocument {
   id: string;
   originalName: string;
@@ -510,6 +515,34 @@ export interface ModularDashboard {
   preferences: ModularDashboardPreferences;
   refreshIntervalMs: number;
   generatedAt: string;
+  cockpit?: DashboardCockpit;
+}
+
+export interface DashboardCockpitCard {
+  id: string;
+  module: string;
+  title: string;
+  value: string | number;
+  description: string;
+  href: string;
+  tone: 'emerald' | 'blue' | 'violet' | 'orange' | 'amber' | 'rose' | string;
+  items?: Array<{ title: string; detail: string }>;
+  progress?: number;
+  critical?: boolean;
+}
+
+export interface DashboardCockpit {
+  version: 2;
+  generatedAt: string;
+  refreshIntervalMs: number;
+  organizationName: string;
+  primarySite: { id: string; name: string; address?: string | null } | null;
+  weather: { status: 'ready' | 'needs_location' | 'unavailable'; city?: string; temperature?: number; apparentTemperature?: number; weatherCode?: number; label?: string; cityImage?: string };
+  urgent: DashboardCockpitCard[];
+  overview: DashboardCockpitCard[];
+  activity: DashboardCockpitCard[];
+  insights: DashboardCockpitCard[];
+  news: { local: Array<{ title: string; url: string; source: string; publishedAt?: string }>; industry: Array<{ title: string; url: string; source: string; publishedAt?: string }> };
 }
 
 export type HrCollaboratorStatus = 'ACTIVE' | 'ABSENT' | 'SUSPENDED' | 'DEPARTED';

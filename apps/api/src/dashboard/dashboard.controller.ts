@@ -1,4 +1,4 @@
-import { Body, BadRequestException, Controller, Get, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, BadRequestException, Controller, Get, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -20,6 +20,11 @@ export class DashboardController {
   @Get()
   getDashboard(@CurrentUser() user: AuthenticatedUser) {
     return this.dashboardService.getDashboard(user.id, this.org(user));
+  }
+
+  @Get('address-suggestions')
+  addressSuggestions(@Query('q') query = '', @Query('country') country = 'FR') {
+    return this.dashboardService.addressSuggestions(query, country);
   }
 
   @Patch('preferences')

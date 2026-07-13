@@ -1858,7 +1858,7 @@ function MistralKeyStep({ value, onChange, onSkip, submitting }: MistralKeyStepP
             marginBottom: '0.75rem',
             boxShadow: '0 2px 8px rgba(16, 185, 129, 0.05)'
           }}>
-            Kokki ✦
+            Kokki · Assistant IA ✦
           </span>
 
           <h2 style={{
@@ -1884,7 +1884,7 @@ function MistralKeyStep({ value, onChange, onSkip, submitting }: MistralKeyStepP
             margin: '0.5rem 0 0',
             fontWeight: 500
           }}>
-            L'assistant <span style={{ color: '#10b981', fontWeight: 700 }}>intelligent</span> de ToqueHub. Optimisez vos stocks, analysez vos documents et gagnez un temps précieux au quotidien.
+            L'<span style={{ color: '#10b981', fontWeight: 700 }}>assistant IA</span> de ToqueHub. Il vous accompagne dans vos stocks, vos documents et vos fiches techniques pour vous faire gagner du temps au quotidien.
           </p>
         </div>
 
@@ -2001,7 +2001,7 @@ function MistralKeyStep({ value, onChange, onSkip, submitting }: MistralKeyStepP
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.05rem' }}>
             <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1e293b' }}>À vos côtés 24/7</span>
-            <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Posez vos questions à Kokki</span>
+            <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Posez vos questions à votre assistant IA</span>
           </div>
         </div>
       </div>
@@ -2144,7 +2144,7 @@ function MistralKeyStep({ value, onChange, onSkip, submitting }: MistralKeyStepP
             }
           }}
         >
-          {submitting ? 'Création de l\'instance...' : 'Connecter Kokki'} <ArrowRight size={14} />
+          {submitting ? 'Création de l\'instance...' : 'Connecter l’assistant IA'} <ArrowRight size={14} />
         </button>
 
         {/* Link and skip */}

@@ -199,6 +199,13 @@ export class TechnicalSheetsService {
     return (await this.analyzeRecipeFile(organizationId, file)).result;
   }
 
+  /** Analyse synchrone utilisée par Kokki pour les PDF et images ajoutés au chat. */
+  async analyzeRecipeAttachment(organizationId: string, file: UploadedRecipePdf) {
+    await this.assertInstalled(organizationId);
+    this.validateRecipeFile(file);
+    return (await this.analyzeRecipeFile(organizationId, file)).result;
+  }
+
   async uploadRecipeImports(organizationId: string, actor: Actor, files: UploadedRecipePdf[]) {
     await this.assertInstalled(organizationId);
     if (!files?.length) throw new BadRequestException('Aucune fiche technique fournie.');

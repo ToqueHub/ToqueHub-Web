@@ -419,6 +419,10 @@ export const api = {
   modularDashboard(token: string) {
     return request<ModularDashboard>('/dashboard', {}, token);
   },
+  addressSuggestions(token: string, query: string, country: 'FR' | 'FI') {
+    const params = new URLSearchParams({ q: query, country });
+    return request<Array<{ label: string; address: string; postalCode?: string; city?: string; country: 'FR' | 'FI' }>>(`/dashboard/address-suggestions?${params.toString()}`, {}, token);
+  },
   updateDashboardPreferences(token: string, preferences: Partial<ModularDashboardPreferences>) {
     return request<ModularDashboard>('/dashboard/preferences', { method: 'PATCH', body: JSON.stringify(preferences) }, token);
   },
@@ -1266,6 +1270,21 @@ export const api = {
     return request<StockReception>(`/stocks/ocr/extractions/${extractionId}/reception`, { method: 'POST', body: JSON.stringify(normalizeOcrCorrectionPayload(payload)) }, token);
   },
   createStockAssistantConversation(token: string, locationId?: string) { return request<StockConversation>('/stock-assistant/conversations', { method: 'POST', body: JSON.stringify({ locationId }) }, token); },
+  createTechnicalSheetAssistantConversation(token: string) { return request<import('../types').TechnicalSheetAssistantConversation>('/technical-sheet-assistant/conversations', { method: 'POST' }, token); },
+  createHaccpAssistantConversation(token: string) { return request<any>('/haccp-assistant/conversations', { method: 'POST' }, token); },
+  haccpAssistantMessage(token: string, conversationId: string, content: string) { return request<any>(`/haccp-assistant/conversations/${conversationId}/messages`, { method: 'POST', body: JSON.stringify({ content }) }, token); },
+  applyHaccpAssistantDraft(token: string, draftId: string) { return request<any>(`/haccp-assistant/drafts/${draftId}/apply`, { method: 'POST' }, token); },
+  technicalSheetAssistantConversation(token: string, conversationId: string) { return request<import('../types').TechnicalSheetAssistantConversation>(`/technical-sheet-assistant/conversations/${conversationId}`, {}, token); },
+  technicalSheetAssistantMessage(token: string, conversationId: string, content: string) { return request<{ assistantMessage: string; draftId?: string; draft?: import('../types').TechnicalSheetAssistantDraft; choices?: import('../types').TechnicalSheetAssistantChoice[]; state?: Record<string, unknown>; confidence?: number; needsReview?: boolean }>(`/technical-sheet-assistant/conversations/${conversationId}/messages`, { method: 'POST', body: JSON.stringify({ content }) }, token); },
+  technicalSheetAssistantDraft(token: string, draftId: string) { return request<import('../types').TechnicalSheetAssistantDraft>(`/technical-sheet-assistant/drafts/${draftId}`, {}, token); },
+  markTechnicalSheetAssistantDraftApplied(token: string, draftId: string) { return request<import('../types').TechnicalSheetAssistantDraft>(`/technical-sheet-assistant/drafts/${draftId}/applied`, { method: 'POST' }, token); },
+  discardTechnicalSheetAssistantDraft(token: string, draftId: string) { return request<import('../types').TechnicalSheetAssistantDraft>(`/technical-sheet-assistant/drafts/${draftId}/discard`, { method: 'POST' }, token); },
+  async uploadTechnicalSheetAssistantAttachment(token: string, conversationId: string, file: File) {
+    const body = new FormData(); body.append('file', file);
+    const response = await fetch(`${API_URL}/api/technical-sheet-assistant/conversations/${conversationId}/attachments`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body });
+    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
+    return response.json() as Promise<{ assistantMessage: string; draftId: string; draft: import('../types').TechnicalSheetAssistantDraft; needsReview: boolean }>;
+  },
   stockAssistantConversation(token: string, conversationId: string) { return request<StockConversation>(`/stock-assistant/conversations/${conversationId}`, {}, token); },
   stockAssistantMessage(token: string, conversationId: string, content: string, locationId?: string) { return request<{ proposalId?: string; assistantMessage: string; state?: Record<string, unknown>; suggestions?: string[]; choices?: import('../types').StockAssistantChoice[]; toolResults?: unknown[]; confidence?: number | null; needsReview?: boolean }> (`/stock-assistant/conversations/${conversationId}/messages`, { method: 'POST', body: JSON.stringify({ content, locationId }) }, token); },
   stockAssistantProposal(token: string, proposalId: string) { return request<StockProposal>(`/stock-assistant/proposals/${proposalId}`, {}, token); },
