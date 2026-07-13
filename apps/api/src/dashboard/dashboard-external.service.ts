@@ -14,6 +14,11 @@ type Weather = {
 type NewsItem = { title: string; url: string; source: string; publishedAt?: string };
 type ExternalDashboard = { weather: Weather; localNews: NewsItem[]; industryNews: NewsItem[] };
 export type AddressSuggestion = { label: string; address: string; postalCode?: string; city?: string; country: 'FR' | 'FI' };
+type FrenchGeocodingResponse = {
+  features?: Array<{ properties?: { housenumber?: string; name?: string; label?: string; postcode?: string; city?: string } }>;
+};
+type NominatimAddress = { house_number?: string; road?: string; postcode?: string; city?: string; town?: string; village?: string; municipality?: string };
+type NominatimResult = { address?: NominatimAddress; display_name?: string; lat?: string; lon?: string };
 
 const TTL = 15 * 60 * 1000;
 const NEWS_TTL = 24 * 60 * 60 * 1000;
@@ -53,10 +58,10 @@ export class DashboardExternalService {
   private async frenchAddresses(query: string): Promise<AddressSuggestion[]> {
     const response = await fetch(`https://data.geopf.fr/geocodage/search/?q=${encodeURIComponent(query)}&limit=6`, { signal: AbortSignal.timeout(3500), headers: { Accept: 'application/json' } });
     if (!response.ok) return [];
-    const data = await response.json();
-    return (data.features ?? []).map((feature: any) => {
+    const data = await response.json() as FrenchGeocodingResponse;
+    return (data.features ?? []).map((feature) => {
       const p = feature.properties ?? {};
-      const address = [p.housenumber, p.name].filter(Boolean).join(' ') || p.label;
+      const address = [p.housenumber, p.name].filter(Boolean).join(' ') || p.label || '';
       return { label: p.label ?? address, address, postalCode: p.postcode, city: p.city, country: 'FR' as const };
     }).filter((item: AddressSuggestion) => Boolean(item.address));
   }
@@ -65,11 +70,11 @@ export class DashboardExternalService {
     // Nominatim is queried server-side so the browser never contacts a third party directly.
     const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=fi&limit=6&q=${encodeURIComponent(query)}`, { signal: AbortSignal.timeout(3500), headers: { Accept: 'application/json', 'User-Agent': 'ToqueHub address autocomplete' } });
     if (!response.ok) return [];
-    const rows = await response.json();
-    return (rows ?? []).map((row: any) => {
+    const rows = await response.json() as NominatimResult[];
+    return rows.map((row) => {
       const a = row.address ?? {};
-      const address = [a.house_number, a.road].filter(Boolean).join(' ') || row.display_name?.split(',')[0];
-      return { label: row.display_name, address, postalCode: a.postcode, city: a.city ?? a.town ?? a.village ?? a.municipality, country: 'FI' as const };
+      const address = [a.house_number, a.road].filter(Boolean).join(' ') || row.display_name?.split(',')[0] || '';
+      return { label: row.display_name ?? address, address, postalCode: a.postcode, city: a.city ?? a.town ?? a.village ?? a.municipality, country: 'FI' as const };
     }).filter((item: AddressSuggestion) => Boolean(item.address));
   }
 
@@ -106,8 +111,8 @@ export class DashboardExternalService {
     // Finnish saved addresses contain the locality and are resolved with the Finnish-only search.
     try {
       const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=fi&limit=1&q=${encodeURIComponent(query)}`, { signal: AbortSignal.timeout(4500), headers: { Accept: 'application/json', 'User-Agent': 'ToqueHub weather lookup' } });
-      const rows = response.ok ? await response.json() : [];
-      const row = rows?.[0];
+      const rows: NominatimResult[] = response.ok ? await response.json() as NominatimResult[] : [];
+      const row = rows[0];
       if (row?.lat && row?.lon) {
         const a = row.address ?? {};
         return { latitude: Number(row.lat), longitude: Number(row.lon), city: a.city ?? a.town ?? a.village ?? a.municipality ?? row.display_name?.split(',')[0] ?? query };
