@@ -66,6 +66,7 @@ describe('StocksProductImportService', () => {
     expect(result.rows[0].fields.primarySupplierId).toBe('supplier-kespro');
     expect(result.rows[0].fields.categoryId).toBe('category-epicerie');
     expect(result.rows[0].fields.averagePrice).toBe(1.25);
+    expect(result.options).toEqual({ createMissingCategories: true, createMissingSuppliers: true });
   });
 
   it('marks existing SKU duplicates before commit', async () => {
@@ -132,6 +133,7 @@ describe('StocksProductImportService', () => {
     expect(result.rows[0].status).toBe('duplicate');
     expect(result.rows[1].status).toBe('ready');
     expect(result.rows[1].fields.unitId).toBe('unit-l');
+    expect(result.options).toEqual({ createMissingCategories: true, createMissingSuppliers: true });
   });
 
   it('exports creator rows using the official CSV header and escaping', () => {

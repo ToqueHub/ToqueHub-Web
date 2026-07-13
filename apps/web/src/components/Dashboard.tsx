@@ -1,5 +1,5 @@
 import type { FormEvent, ReactNode } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Avatar,
@@ -183,8 +183,7 @@ const movementLabels: Record<StockMovementType, string> = {
   TRANSFER: 'Transfert',
 };
 const movementOptions: Array<[StockMovementType, string]> = [
-  ['RECEPTION', 'Réception'], ['IN', 'Entrée'], ['OUT', 'Sortie'], ['PRODUCTION', 'Production'],
-  ['LOSS', 'Perte'], ['CORRECTION', 'Correction'], ['INVENTORY', 'Inventaire'], ['TRANSFER', 'Transfert'],
+  ['IN', 'Entrée'], ['OUT', 'Sortie'], ['LOSS', 'Perte'], ['TRANSFER', 'Transfert'],
 ];
 
 const apps = [
@@ -402,7 +401,7 @@ type AppNotification = {
   createdAt: Date;
   read: boolean;
 };
-type StocksOnboardingStep = 'welcome' | 'foundation' | 'reception' | 'review';
+type StocksOnboardingStep = 'welcome' | 'reception' | 'review';
 type StocksReadiness = {
   foundationReady: boolean;
   catalogReady: boolean;
@@ -509,6 +508,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [supplierPrefillName, setSupplierPrefillName] = useState('');
   const [apiKeysPanelHint, setApiKeysPanelHint] = useState(false);
   const [showStocksOnboarding, setShowStocksOnboarding] = useState(false);
+  const [showTechnicalSheetsOnboarding, setShowTechnicalSheetsOnboarding] = useState(false);
   const [showStockAssistant, setShowStockAssistant] = useState(false);
   const [confirmation, setConfirmation] = useState<Confirmation>(null);
   const [appActionLoading, setAppActionLoading] = useState(false);
@@ -600,7 +600,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           api.categories(token),
           api.units(token),
           api.products(token),
-          api.articles(token).catch(() => ({ items: [], summary: { articleCount: 0, articlesWithStock: 0, articlesWithoutStock: 0, stockValue: 0, lowStockCount: 0 } })),
+          api.articles(token, { page: 1, pageSize: 25 }).catch(() => ({ items: [], summary: { articleCount: 0, articlesWithStock: 0, articlesWithoutStock: 0, stockValue: 0, lowStockCount: 0 } })),
           api.suppliers(token),
           api.stocks(token),
           api.movements(token),
@@ -1365,6 +1365,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       setDashboardSummary((prev) => ({ ...prev, ...summary } as DashboardSummary));
       setInstalledApps(summary.installedApplications ?? installedApps.filter((app) => app !== 'technical-sheets'));
       if (isTechnicalSheetsTab) setActiveTab('applications');
+      setShowTechnicalSheetsOnboarding(false);
       setSuccess('L’application Fiches Techniques a été retirée de l’interface. Les fiches, historiques, coûts et simulations sont conservés.');
       await refresh();
     } catch (err) {
@@ -1440,7 +1441,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         const summary = appId === 'rnm-prices' ? await api.installRnmPrices(token) : appId === 'hr' ? await api.installHr(token) : appId === 'planning' ? await api.installPlanning(token) : appId === 'technical-sheets' ? await api.installTechnicalSheets(token) : appId === 'production' ? await api.installProduction(token) : appId === 'menus' ? await api.installMenus(token) : appId === 'haccp' ? await api.installHaccp(token) : await api.installStocks(token);
         setDashboardSummary((prev) => ({ ...prev, ...summary } as DashboardSummary));
         setInstalledApps(summary.installedApplications ?? Array.from(new Set([...installedApps, appId])));
-        setSuccess(appId === 'rnm-prices' ? 'L’application Cours des Produits a été installée. La navigation RNM est maintenant visible.' : appId === 'hr' ? 'L’application RH a été installée. Services et postes de départ sont disponibles.' : appId === 'planning' ? 'L’application Planning a été installée. Les vues opérationnelles consomment désormais le référentiel RH.' : appId === 'technical-sheets' ? 'L’application Fiches Techniques a été installée. Les catégories recettes sont disponibles.' : appId === 'production' ? 'L’application Production a été installée. Les ordres peuvent être créés depuis les fiches techniques sans dupliquer les référentiels.' : appId === 'menus' ? 'L’application Menus a été installée. Planification, cycles, convives et génération Production sont disponibles.' : appId === 'haccp' ? 'L’application HACCP a été installée. Dashboard conformité, contrôles et rapports sont disponibles.' : 'L’application Stocks a été installée avec succès. Le référentiel de base est prêt, vous pouvez créer le premier fournisseur.');
+        setSuccess(appId === 'rnm-prices' ? 'L’application Cours des Produits a été installée. La navigation RNM est maintenant visible.' : appId === 'hr' ? 'L’application RH a été installée. Services et postes de départ sont disponibles.' : appId === 'planning' ? 'L’application Planning a été installée. Les vues opérationnelles consomment désormais le référentiel RH.' : appId === 'technical-sheets' ? 'L’application Fiches Techniques a été installée. La configuration guidée est prête.' : appId === 'production' ? 'L’application Production a été installée. Les ordres peuvent être créés depuis les fiches techniques sans dupliquer les référentiels.' : appId === 'menus' ? 'L’application Menus a été installée. Planification, cycles, convives et génération Production sont disponibles.' : appId === 'haccp' ? 'L’application HACCP a été installée. Dashboard conformité, contrôles et rapports sont disponibles.' : 'L’application Stocks a été installée avec succès. Le référentiel de base est prêt : importez vos produits ou analysez un document.');
         if (appId === 'stocks') {
           setActiveTab('stocks-dashboard');
           setShowStocksOnboarding(true);
@@ -1448,7 +1449,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         if (appId === 'rnm-prices') setActiveTab('rnm-dashboard');
         if (appId === 'hr') setActiveTab('hr-dashboard');
         if (appId === 'planning') setActiveTab('planning-dashboard');
-        if (appId === 'technical-sheets') setActiveTab('technical-sheets-dashboard');
+        if (appId === 'technical-sheets') {
+          setActiveTab('technical-sheets-dashboard');
+          setShowTechnicalSheetsOnboarding(true);
+        }
         if (appId === 'production') setActiveTab('production-dashboard');
         if (appId === 'menus') setActiveTab('menus-dashboard');
         if (appId === 'haccp') setActiveTab('haccp-dashboard');
@@ -1824,8 +1828,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const activeSites = useMemo(() => sites.filter(s => showArchived || !isArchived(s)), [sites, showArchived]);
   const activeLocations = useMemo(() => locations.filter(l => showArchived || !isArchived(l)), [locations, showArchived]);
   const stocksReadiness = useMemo(
-    () => computeStocksReadiness(categories, units, products, suppliers, sites, locations, movements, ocrStatuses),
-    [categories, units, products, suppliers, sites, locations, movements, ocrStatuses],
+    () => computeStocksReadiness(categories, units, products, sites, locations, movements, ocrStatuses),
+    [categories, units, products, sites, locations, movements, ocrStatuses],
   );
   const ocrConfigured = Boolean(dashboardSummary?.organization?.apiKeys?.mistral.configured ?? session.user.apiKeys?.mistral.configured);
 
@@ -2662,11 +2666,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   stocksInstalled={stocksInstalled}
                   products={products}
                   units={units}
+                  onboardingOpen={showTechnicalSheetsOnboarding}
+                  onOnboardingClose={() => setShowTechnicalSheetsOnboarding(false)}
                   onNavigate={(next) => setActiveTab(next === 'recipes' ? 'technical-sheets-recipes' : next === 'categories' ? 'technical-sheets-categories' : next === 'costs' ? 'technical-sheets-costs' : next === 'production' ? 'technical-sheets-production' : 'technical-sheets-dashboard')}
-                  onInstalled={(apps) => {
-                    if (apps) setInstalledApps(apps);
-                    void refresh();
-                  }}
                 />
               )}
 
@@ -2790,6 +2792,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                     onMovement={() => setShowMovementModal(true)}
                     onInventory={() => setShowInventoryModal(true)}
                     onEdit={(article) => setSelectedProductId(article.product.id)}
+                    onQuery={(params) => api.articles(token, params)}
                     onRefresh={refresh}
                   />
                 </>
@@ -3455,7 +3458,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           ocrStatuses={ocrStatuses}
           ocrConfigured={ocrConfigured}
           onPrefill={handlePrefillStocks}
-          onCreateSupplier={(payload) => submit(() => api.createSupplier(token, payload), 'Fournisseur créé.')}
           onImportCsv={openProductImportFromStocksOnboarding}
           onImportCreator={() => {
             setShowStocksOnboarding(false);
@@ -4856,37 +4858,31 @@ function MyDocumentsPage({ data, loading, search, supplierFilter, typeFilter, da
   );
 }
 
-function computeStocksReadiness(categories: Category[], units: Unit[], products: Product[], suppliers: Supplier[], sites: Site[], locations: Location[], movements: StockMovement[], ocrStatuses: StocksOcrStatus[]): StocksReadiness {
+function computeStocksReadiness(categories: Category[], units: Unit[], products: Product[], sites: Site[], locations: Location[], movements: StockMovement[], ocrStatuses: StocksOcrStatus[]): StocksReadiness {
   const activeCategories = categories.filter((item) => !isArchived(item));
   const activeUnits = units.filter((item) => !isArchived(item));
   const activeProducts = products.filter((item) => !isArchived(item));
-  const activeSuppliers = suppliers.filter((item) => !isArchived(item));
   const activeSites = sites.filter((item) => !isArchived(item));
   const activeLocations = locations.filter((item) => !isArchived(item));
   const foundationReady = Boolean(activeCategories.length && activeUnits.length && activeSites.length && activeLocations.length);
-  const catalogReady = Boolean(activeProducts.length && activeSuppliers.length);
+  const catalogReady = Boolean(activeProducts.length);
   const hasValidatedOcr = ocrStatuses.some((status) => {
     const document = status.document as unknown as { receptionId?: string | null; receptionStatus?: string | null } | undefined;
     return Boolean(document?.receptionId || document?.receptionStatus === 'VALIDATED' || (status as any).reception?.status === 'VALIDATED');
   });
   const flowReady = Boolean(movements.length || hasValidatedOcr);
-  const supplierReady = Boolean(activeSuppliers.length);
-  const productReady = Boolean(activeProducts.length);
-  const completed = [foundationReady, supplierReady, productReady, flowReady].filter(Boolean).length;
-  const nextStep: StocksOnboardingStep = !foundationReady || !supplierReady ? 'foundation' : !flowReady ? 'reception' : 'review';
-  return { foundationReady, catalogReady, flowReady, progress: Math.round((completed / 4) * 100), nextStep };
+  const completed = [foundationReady, catalogReady, flowReady].filter(Boolean).length;
+  const nextStep: StocksOnboardingStep = !flowReady ? 'reception' : 'review';
+  return { foundationReady, catalogReady, flowReady, progress: Math.round((completed / 3) * 100), nextStep };
 }
 
-function StocksSetupCard({ readiness, products, suppliers, sites, locations, onStart, onDismiss }: { readiness: StocksReadiness; products: Product[]; suppliers: Supplier[]; sites: Site[]; locations: Location[]; onStart: () => void; onDismiss?: () => void }) {
+function StocksSetupCard({ readiness, products, sites, onStart, onDismiss }: { readiness: StocksReadiness; products: Product[]; sites: Site[]; onStart: () => void; onDismiss?: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const activeProducts = products.filter((item) => !isArchived(item)).length;
-  const activeSuppliers = suppliers.filter((item) => !isArchived(item)).length;
   const activeSites = sites.filter((item) => !isArchived(item)).length;
-  const activeLocations = locations.filter((item) => !isArchived(item)).length;
-  const label = readiness.flowReady ? 'Configuration terminée' : activeSuppliers === 0 ? 'Premier fournisseur à créer' : activeProducts === 0 ? 'Premiers produits à ajouter' : 'Bon de commande à analyser';
+  const label = readiness.flowReady ? 'Configuration terminée' : activeProducts === 0 ? 'Produits à importer ou document à analyser' : 'Bon de commande à analyser';
   const steps = [
     { title: 'Socle auto', text: `${activeSites} site(s)`, done: readiness.foundationReady },
-    { title: 'Fournisseurs', text: `${activeSuppliers} fournisseur(s)`, done: activeSuppliers > 0 },
     { title: 'Catalogue', text: `${activeProducts} produit(s)`, done: activeProducts > 0 },
     { title: 'Analyse', text: 'Bon de commande, facture ou BL', done: readiness.flowReady },
   ];
@@ -5006,14 +5002,12 @@ function StocksIllustration() {
 
 function StocksOnboardingAside({
   step,
-  stepOrder,
   readiness,
   activeProducts,
   activeSuppliers,
   movements,
 }: {
   step: StocksOnboardingStep;
-  stepOrder: StocksOnboardingStep[];
   readiness: StocksReadiness;
   activeProducts: any[];
   activeSuppliers: any[];
@@ -5021,7 +5015,6 @@ function StocksOnboardingAside({
 }) {
   const steps = [
     { key: 'welcome', label: 'Bienvenue' },
-    { key: 'foundation', label: 'Premier fournisseur' },
     { key: 'reception', label: 'Importer & analyser' },
     { key: 'review', label: 'Résumé & Validation' },
   ] as Array<{ key: StocksOnboardingStep; label: string }>;
@@ -5119,7 +5112,6 @@ function StocksOnboardingWizard({
   ocrStatuses,
   ocrConfigured,
   onPrefill,
-  onCreateSupplier,
   onImportCsv,
   onImportCreator,
   onImportOcr,
@@ -5141,7 +5133,6 @@ function StocksOnboardingWizard({
   ocrStatuses: StocksOcrStatus[];
   ocrConfigured: boolean;
   onPrefill: (payload: { categories?: boolean; units?: boolean; sites?: boolean; locations?: boolean; examples?: boolean }) => Promise<void>;
-  onCreateSupplier: (payload: { name: string }) => Promise<unknown>;
   onImportCsv: () => void;
   onImportCreator: () => void;
   onImportOcr: () => void;
@@ -5153,7 +5144,7 @@ function StocksOnboardingWizard({
   onClose: () => void;
 }) {
   const [step, setStep] = useState<StocksOnboardingStep>(() => readiness.progress ? readiness.nextStep : 'welcome');
-  const stepOrder: StocksOnboardingStep[] = ['welcome', 'foundation', 'reception', 'review'];
+  const stepOrder: StocksOnboardingStep[] = ['welcome', 'reception', 'review'];
   const stepIndex = stepOrder.indexOf(step) + 1;
   const progress = Math.round((stepIndex / stepOrder.length) * 100);
   const activeCategories = categories.filter((item) => !isArchived(item));
@@ -5216,12 +5207,12 @@ function StocksOnboardingWizard({
         }}
       >
         {step === 'welcome' ? (
-          <StocksOnboardingWelcome onNext={() => setStep('foundation')} onClose={onClose} />
+          <StocksOnboardingWelcome onNext={() => setStep('reception')} onClose={onClose} />
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 2fr', height: '100%', width: '100%', minHeight: 0, flexGrow: 1 }}>
             {/* Sidebar */}
             <div style={{ background: '#0f172a', color: 'white', padding: '2.5rem 2rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%', minHeight: 0 }}>
-              <StocksOnboardingAside step={step} stepOrder={stepOrder} readiness={readiness} activeProducts={activeProducts} activeSuppliers={activeSuppliers} movements={movements} />
+              <StocksOnboardingAside step={step} readiness={readiness} activeProducts={activeProducts} activeSuppliers={activeSuppliers} movements={movements} />
             </div>
 
             {/* Main Content Area */}
@@ -5278,19 +5269,6 @@ function StocksOnboardingWizard({
                     transition={{ duration: 0.16 }}
                     style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minHeight: 0, justifyContent: 'space-between' }}
                   >
-                    {step === 'foundation' ? (
-                      <StocksFoundationStep
-                        categories={activeCategories}
-                        units={activeUnits}
-                        suppliers={activeSuppliers}
-                        sites={activeSites}
-                        locations={activeLocations}
-                        foundationReady={readiness.foundationReady}
-                        onBack={goBack}
-                        onCreateSupplier={onCreateSupplier}
-                        onNext={() => setStep('reception')}
-                      />
-                    ) : null}
                     {step === 'reception' ? (
                       <StocksReceptionStep
                         ocrConfigured={ocrConfigured}
@@ -5370,7 +5348,7 @@ function StocksOnboardingWelcome({ onNext, onClose }: { onNext: () => void; onCl
           Bienvenue sur le module <span style={{ color: '#10b981' }}>Stocks & Réceptions</span>
         </h1>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.98rem', lineHeight: 1.6, marginBottom: '2rem' }}>
-          Le socle de catégories, unités et sites est préparé automatiquement. On crée ensuite votre premier fournisseur, puis vous importez votre catalogue CSV ou analysez un bon de commande, une facture ou un BL.
+          Le socle de catégories, unités et sites est préparé automatiquement. Importez ensuite votre catalogue CSV ou analysez un bon de commande, une facture ou un BL.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '2rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
@@ -5379,7 +5357,7 @@ function StocksOnboardingWelcome({ onNext, onClose }: { onNext: () => void; onCl
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', flexShrink: 0 }}><Package size={16} /></div>
-            <span>Créer le premier fournisseur puis importer le catalogue CSV</span>
+            <span>Importer le catalogue CSV et créer automatiquement les références manquantes</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', flexShrink: 0 }}><FileText size={16} /></div>
@@ -5404,138 +5382,6 @@ function StocksOnboardingWelcome({ onNext, onClose }: { onNext: () => void; onCl
       </div>
       <div style={{ display: 'flex', justifyContent: 'center' }}>
         <StocksIllustration />
-      </div>
-    </div>
-  );
-}
-
-function StocksFoundationStep({
-  categories,
-  units,
-  suppliers,
-  sites,
-  locations,
-  foundationReady,
-  onBack,
-  onCreateSupplier,
-  onNext,
-}: {
-  categories: Category[];
-  units: Unit[];
-  suppliers: Supplier[];
-  sites: Site[];
-  locations: Location[];
-  foundationReady: boolean;
-  onBack: () => void;
-  onCreateSupplier: (payload: { name: string }) => Promise<unknown>;
-  onNext: () => void;
-}) {
-  const [supplierName, setSupplierName] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string>();
-  const items = [
-    { title: 'Catégories', value: categories.length, icon: Layers },
-    { title: 'Unités', value: units.length, icon: Scale },
-    { title: 'Sites', value: sites.length, icon: Warehouse },
-    { title: 'Sites', value: sites.length, icon: MapPin },
-  ];
-
-  async function createSupplierAndContinue() {
-    if (!supplierName.trim()) {
-      onNext();
-      return;
-    }
-    setSubmitting(true);
-    setError(undefined);
-    try {
-      await onCreateSupplier({ name: supplierName.trim() });
-      setSupplierName('');
-      onNext();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Le fournisseur n’a pas pu être créé.');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', height: '100%', minHeight: 0, justifyContent: 'space-between' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-        <div>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>Créer le premier fournisseur</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginTop: '0.35rem', lineHeight: 1.5 }}>
-            Les catégories, unités et sites de base sont préparés automatiquement. Commencez par le fournisseur que vous utilisez réellement.
-          </p>
-        </div>
-        {error ? <div className="alert-modern error" style={{ margin: 0 }}><AlertCircle size={16} /> {error}</div> : null}
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: '0.75rem', background: '#f8fafc', padding: '0.9rem', borderRadius: '14px', border: '1px solid #e2e8f0', alignItems: 'center' }}>
-          <input
-            value={supplierName}
-            onChange={(event) => setSupplierName(event.target.value)}
-            placeholder={suppliers.length ? 'Ajouter un autre fournisseur' : 'Nom du fournisseur, ex. Kespro'}
-            style={{ minWidth: 0, border: '1px solid #cbd5e1', borderRadius: '10px', padding: '0.65rem 0.75rem', background: 'white' }}
-            autoFocus
-          />
-          <button type="button" className="btn btn-primary" disabled={!supplierName.trim() || submitting} onClick={() => void createSupplierAndContinue()} style={{ borderRadius: '10px', whiteSpace: 'nowrap' }}>
-            <Plus size={15} /> Créer
-          </button>
-        </div>
-        {suppliers.length ? (
-          <div className="alert-modern success" style={{ margin: 0 }}>
-            <CheckCircle2 size={16} /> {suppliers.length} fournisseur{suppliers.length > 1 ? 's' : ''} déjà prêt{suppliers.length > 1 ? 's' : ''}.
-          </div>
-        ) : null}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: '0.75rem', marginBottom: '0.5rem' }}>
-          {items.map(({ title, value, icon: Icon }) => {
-            const isReady = value > 0;
-            return (
-              <div
-                key={title}
-                style={{
-                  border: isReady ? '1px solid rgba(16,185,129,0.35)' : '1px solid #e2e8f0',
-                  borderRadius: '12px',
-                  padding: '0.85rem',
-                  background: isReady ? 'rgba(16, 185, 129, 0.04)' : 'white',
-                  transition: 'all 0.2s',
-                  display: 'flex',
-                  gap: '0.65rem',
-                  alignItems: 'center',
-                }}
-              >
-                <div
-                  style={{
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: '9px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    background: isReady ? 'rgba(16, 185, 129, 0.1)' : '#f1f5f9',
-                    color: isReady ? '#10b981' : '#64748b',
-                  }}
-                >
-                  <Icon size={20} />
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                  <span style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)', lineHeight: 1 }}>{value}</span>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>{title}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        <div className="alert-modern" style={{ margin: 0 }}>
-          <Info size={16} /> {foundationReady ? 'Socle de stockage prêt automatiquement.' : 'Initialisation automatique du socle en cours.'} Aucun produit de démonstration ne sera créé.
-        </div>
-      </div>
-      <div className="hr-catalog-actions sticky" style={{ borderTop: '1px solid #eef2f7', background: 'rgba(255,255,255,0.9)', padding: '1rem 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-        <button type="button" className="btn btn-secondary" onClick={onBack} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Retour</button>
-        <div className="row-actions" style={{ display: 'flex', gap: '0.75rem' }}>
-          <button type="button" className="btn btn-secondary" onClick={onNext} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Passer</button>
-          <button type="button" className="btn btn-primary" disabled={submitting || (!supplierName.trim() && !suppliers.length)} onClick={() => void createSupplierAndContinue()} style={{ borderRadius: '10px', padding: '0.5rem 1.5rem' }}>
-            {submitting ? 'Création…' : supplierName.trim() ? 'Créer et continuer' : 'Continuer'}
-          </button>
-        </div>
       </div>
     </div>
   );
@@ -5613,7 +5459,7 @@ function StocksCatalogStep({ categories, units, suppliers, products, onBack, onC
           <input
             value={supplierName}
             onChange={(event) => setSupplierName(event.target.value)}
-            placeholder={localSuppliers.length ? 'Ajouter un fournisseur rapide (ex. Transgourmet)' : 'Créer le premier fournisseur'}
+            placeholder={localSuppliers.length ? 'Ajouter un fournisseur rapide (ex. Transgourmet)' : 'Ajouter un fournisseur'}
             style={{ flex: 1, border: 'none', background: 'transparent', boxShadow: 'none', padding: '0 0.5rem', height: '36px', fontSize: '0.9rem' }}
           />
           <button
@@ -6430,7 +6276,7 @@ function ProductImportWizard({
 }) {
   const [step, setStep] = useState<ProductImportStep>('welcome');
   const [preview, setPreview] = useState<ProductImportPreview | null>(null);
-  const [options, setOptions] = useState({ createMissingCategories: false, createMissingSuppliers: false });
+  const [options, setOptions] = useState({ createMissingCategories: true, createMissingSuppliers: true });
   const [result, setResult] = useState<ProductImportCommitResult | null>(null);
   const [busy, setBusy] = useState<'download' | 'analyze' | 'commit' | null>(null);
   const [error, setError] = useState<string>();
@@ -6457,7 +6303,7 @@ function ProductImportWizard({
     try {
       const next = await onAnalyze(file);
       setPreview(next);
-      setOptions(next.options ?? { createMissingCategories: false, createMissingSuppliers: false });
+      setOptions(next.options ?? { createMissingCategories: true, createMissingSuppliers: true });
       setStep('mapping');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Analyse du CSV impossible.');
@@ -6925,20 +6771,45 @@ function StocksModuleTabs({ activeTab, onNavigate }: { activeTab: ActiveTab; onN
   );
 }
 
-function ArticlesPage({ data, categories, suppliers, onAdd, onMovement, onInventory, onEdit, onRefresh }: { data: ArticlesResponse; categories: Category[]; suppliers: Supplier[]; onAdd: () => void; onMovement: () => void; onInventory: () => void; onEdit: (article: Article) => void; onRefresh: () => Promise<void> }) {
+function ArticlesPage({ data, categories, suppliers, onAdd, onMovement, onInventory, onEdit, onQuery, onRefresh }: { data: ArticlesResponse; categories: Category[]; suppliers: Supplier[]; onAdd: () => void; onMovement: () => void; onInventory: () => void; onEdit: (article: Article) => void; onQuery: (params: { search?: string; categoryId?: string; supplierId?: string; status?: string; page: number; pageSize: number }) => Promise<ArticlesResponse>; onRefresh: () => Promise<void> }) {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
   const [supplier, setSupplier] = useState('');
   const [status, setStatus] = useState('');
+  const [page, setPage] = useState(data.pagination?.page ?? 1);
+  const [result, setResult] = useState(data);
+  const [loading, setLoading] = useState(false);
+  const [queryError, setQueryError] = useState<string>();
   const [selected, setSelected] = useState<Article | null>(null);
-  const items = data.items.filter((article) => {
-    const product = article.product;
-    const haystack = `${product.name} ${product.sku ?? ''} ${product.category?.name ?? ''} ${product.primarySupplier?.name ?? ''}`.toLowerCase();
-    return (!search || haystack.includes(search.toLowerCase()))
-      && (!category || product.categoryId === category)
-      && (!supplier || product.primarySupplierId === supplier)
-      && (!status || article.stock.status === status);
-  });
+  const onQueryRef = useRef(onQuery);
+  onQueryRef.current = onQuery;
+  const items = result.items;
+  const totalPages = result.pagination?.pages ?? Math.max(1, Math.ceil((result.pagination?.total ?? items.length) / 25));
+  const totalFiltered = result.pagination?.total ?? items.length;
+
+  useEffect(() => {
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      setLoading(true);
+      setQueryError(undefined);
+      try {
+        const response = await onQueryRef.current({ search: search.trim() || undefined, categoryId: category || undefined, supplierId: supplier || undefined, status: status || undefined, page, pageSize: 25 });
+        if (!active) return;
+        setResult(response);
+        if (response.pagination?.page && response.pagination.page !== page) setPage(response.pagination.page);
+      } catch (err) {
+        if (active) setQueryError(err instanceof Error ? err.message : 'Chargement des produits impossible.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    }, search ? 250 : 0);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [category, page, search, status, supplier]);
+
+  const resetPage = () => setPage(1);
   const statusLabels: Record<string, string> = { NORMAL: 'En stock', LOW: 'Stock faible', OUT: 'Rupture', NEGATIVE: 'Négatif', NO_STOCK: 'Aucun stock' };
   const statusClass: Record<string, string> = { NORMAL: 'badge-reception', LOW: 'badge-correction', OUT: 'badge-loss', NEGATIVE: 'badge-loss', NO_STOCK: 'badge-inventory' };
   return (
@@ -6956,26 +6827,26 @@ function ArticlesPage({ data, categories, suppliers, onAdd, onMovement, onInvent
       </div>
 
       <div className="stocks-metrics-strip">
-        <div className="stocks-metric-item orange" onClick={() => setStatus('')} title="Afficher tous les produits">
+        <div className="stocks-metric-item orange" onClick={() => { setStatus(''); resetPage(); }} title="Afficher tous les produits">
           <div className="metric-icon-wrapper"><Package size={16} /></div>
           <div className="metric-text-wrapper">
-            <span className="stocks-metric-value">{data.summary.articleCount}</span>
+            <span className="stocks-metric-value">{result.summary.articleCount}</span>
             <span className="stocks-metric-label">Produits</span>
           </div>
         </div>
         <div className="stocks-metric-divider"></div>
-        <div className="stocks-metric-item emerald" onClick={() => setStatus('NORMAL')} title="Filtrer : En stock">
+        <div className="stocks-metric-item emerald" onClick={() => { setStatus('NORMAL'); resetPage(); }} title="Filtrer : En stock">
           <div className="metric-icon-wrapper"><Boxes size={16} /></div>
           <div className="metric-text-wrapper">
-            <span className="stocks-metric-value">{data.summary.articlesWithStock}</span>
+            <span className="stocks-metric-value">{result.summary.articlesWithStock}</span>
             <span className="stocks-metric-label">Avec stock</span>
           </div>
         </div>
         <div className="stocks-metric-divider"></div>
-        <div className="stocks-metric-item blue" onClick={() => setStatus('NO_STOCK')} title="Filtrer : Sans stock">
+        <div className="stocks-metric-item blue" onClick={() => { setStatus('NO_STOCK'); resetPage(); }} title="Filtrer : Sans stock">
           <div className="metric-icon-wrapper"><Archive size={16} /></div>
           <div className="metric-text-wrapper">
-            <span className="stocks-metric-value">{data.summary.articlesWithoutStock}</span>
+            <span className="stocks-metric-value">{result.summary.articlesWithoutStock}</span>
             <span className="stocks-metric-label">Sans stock</span>
           </div>
         </div>
@@ -6983,15 +6854,15 @@ function ArticlesPage({ data, categories, suppliers, onAdd, onMovement, onInvent
         <div className="stocks-metric-item purple">
           <div className="metric-icon-wrapper"><TrendingUp size={16} /></div>
           <div className="metric-text-wrapper">
-            <span className="stocks-metric-value">{Number(data.summary.stockValue).toFixed(2)} €</span>
+            <span className="stocks-metric-value">{Number(result.summary.stockValue).toFixed(2)} €</span>
             <span className="stocks-metric-label">Valeur stock</span>
           </div>
         </div>
         <div className="stocks-metric-divider"></div>
-        <div className="stocks-metric-item orange" onClick={() => setStatus('LOW')} title="Filtrer : Seuils à surveiller">
+        <div className="stocks-metric-item orange" onClick={() => { setStatus('LOW'); resetPage(); }} title="Filtrer : Seuils à surveiller">
           <div className="metric-icon-wrapper"><AlertTriangle size={16} /></div>
           <div className="metric-text-wrapper">
-            <span className="stocks-metric-value">{data.summary.lowStockCount}</span>
+            <span className="stocks-metric-value">{result.summary.lowStockCount}</span>
             <span className="stocks-metric-label">Seuils à surveiller</span>
           </div>
         </div>
@@ -7006,19 +6877,19 @@ function ArticlesPage({ data, categories, suppliers, onAdd, onMovement, onInvent
                 className="search-input"
                 placeholder="Rechercher un produit, SKU, fournisseur…"
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => { setSearch(event.target.value); resetPage(); }}
               />
             </div>
             <div className="filter-selects">
-              <select value={category} onChange={(event) => setCategory(event.target.value)}>
+              <select value={category} onChange={(event) => { setCategory(event.target.value); resetPage(); }}>
                 <option value="">Toutes catégories</option>
                 {categories.filter((item) => !item.isArchived).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
               </select>
-              <select value={supplier} onChange={(event) => setSupplier(event.target.value)}>
+              <select value={supplier} onChange={(event) => { setSupplier(event.target.value); resetPage(); }}>
                 <option value="">Tous fournisseurs</option>
                 {suppliers.filter((item) => !item.isArchived).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
               </select>
-              <select value={status} onChange={(event) => setStatus(event.target.value)}>
+              <select value={status} onChange={(event) => { setStatus(event.target.value); resetPage(); }}>
                 <option value="">Tous les statuts</option>
                 <option value="NORMAL">En stock</option>
                 <option value="LOW">Stock faible</option>
@@ -7026,14 +6897,15 @@ function ArticlesPage({ data, categories, suppliers, onAdd, onMovement, onInvent
                 <option value="NO_STOCK">Aucun stock</option>
               </select>
               {(search || category || supplier || status) ? (
-                <button type="button" className="btn-clear-filters" onClick={() => { setSearch(''); setCategory(''); setSupplier(''); setStatus(''); }} title="Réinitialiser les filtres">
+                <button type="button" className="btn-clear-filters" onClick={() => { setSearch(''); setCategory(''); setSupplier(''); setStatus(''); resetPage(); }} title="Réinitialiser les filtres">
                   <X size={16} />
                 </button>
               ) : null}
             </div>
           </div>
 
-          <div className="table-wrapper">
+          {queryError ? <div className="alert-modern error" style={{ margin: '0 1.25rem 1rem' }}><AlertCircle size={16} /> {queryError}</div> : null}
+          <div className="table-wrapper" style={{ opacity: loading ? 0.62 : 1, transition: 'opacity 0.15s' }} aria-busy={loading}>
             <table className="table-modern articles-table">
               <thead>
                 <tr>
@@ -7085,6 +6957,16 @@ function ArticlesPage({ data, categories, suppliers, onAdd, onMovement, onInvent
               </tbody>
             </table>
           </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', padding: '1rem 1.25rem', borderTop: '1px solid var(--light-border)', flexWrap: 'wrap' }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+              {totalFiltered ? `${(page - 1) * 25 + 1}–${Math.min(page * 25, totalFiltered)} sur ${totalFiltered} produit${totalFiltered > 1 ? 's' : ''}` : 'Aucun produit'}
+            </span>
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+              <button className="btn btn-secondary" disabled={page <= 1 || loading} onClick={() => setPage((current) => Math.max(1, current - 1))} style={{ padding: '0.45rem 0.85rem', fontSize: '0.82rem' }}>Précédent</button>
+              <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text-main)' }}>Page {page} sur {totalPages}</span>
+              <button className="btn btn-secondary" disabled={page >= totalPages || loading} onClick={() => setPage((current) => Math.min(totalPages, current + 1))} style={{ padding: '0.45rem 0.85rem', fontSize: '0.82rem' }}>Suivant</button>
+            </div>
+          </div>
         </div>
 
         {selected ? (
@@ -7095,6 +6977,8 @@ function ArticlesPage({ data, categories, suppliers, onAdd, onMovement, onInvent
             onMovement={onMovement}
             onRefresh={async () => {
               await onRefresh();
+              const response = await onQueryRef.current({ search: search.trim() || undefined, categoryId: category || undefined, supplierId: supplier || undefined, status: status || undefined, page, pageSize: 25 });
+              setResult(response);
               setSelected(null);
             }}
           />
@@ -7285,9 +7169,7 @@ function StocksDashboardPage({ activeTab, products, suppliers, sites, locations,
             <StocksSetupCard
               readiness={readiness}
               products={products}
-              suppliers={suppliers}
               sites={sites}
-              locations={locations}
               onStart={onStartOnboarding}
               onDismiss={() => {
                 setHideSetupCard(true);
@@ -13170,7 +13052,7 @@ interface MovementFormProps {
 
 function MovementForm({ products, suppliers, units, sites, onSubmit, onClose }: MovementFormProps) {
   const [productId, setProductId] = useState(products[0]?.id || '');
-  const [type, setType] = useState<StockMovementType>('RECEPTION');
+  const [type, setType] = useState<StockMovementType>('IN');
   const [supplierId, setSupplierId] = useState('');
   const [unitId, setUnitId] = useState('');
   const [sourceSiteId, setSourceSiteId] = useState('');
@@ -13189,7 +13071,7 @@ function MovementForm({ products, suppliers, units, sites, onSubmit, onClose }: 
     try {
       await onSubmit({
         productId,
-        supplierId: type === 'RECEPTION' && supplierId ? supplierId : undefined,
+        supplierId: type === 'IN' && supplierId ? supplierId : undefined,
         type,
         quantity: Number(quantity),
         unitId: unitId || undefined,
@@ -13282,7 +13164,7 @@ function MovementForm({ products, suppliers, units, sites, onSubmit, onClose }: 
                 </>
               )}
 
-              {(type === 'RECEPTION' || type === 'ENTRY' || type === 'TRANSFER') && (
+              {(type === 'IN' || type === 'ENTRY' || type === 'TRANSFER') && (
                 <>
                   <label>
                     Site destination
@@ -13294,7 +13176,7 @@ function MovementForm({ products, suppliers, units, sites, onSubmit, onClose }: 
                 </>
               )}
 
-              {type === 'RECEPTION' && (
+              {type === 'IN' && (
                 <label>
                   Fournisseur concerné
                   <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>

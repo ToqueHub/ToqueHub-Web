@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsEnum, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsEnum, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min, ValidateNested } from 'class-validator';
 import { TechnicalSheetStatus } from '@prisma/client';
 
 export class TechnicalSheetListQueryDto {
@@ -15,6 +15,15 @@ export class UpsertRecipeCategoryDto {
   @IsString() @MaxLength(160) name!: string;
   @IsOptional() @IsString() @MaxLength(2000) description?: string;
   @IsOptional() @IsString() @MaxLength(32) color?: string;
+}
+
+export class CompleteTechnicalSheetOnboardingCategoriesDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(30)
+  @IsString({ each: true })
+  @MaxLength(160, { each: true })
+  names!: string[];
 }
 
 export class UpsertAllergenDto {

@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsEmail, IsEnum, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsEmail, IsEnum, IsIn, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
 import { UnitType } from '@prisma/client';
 
 export class ListQueryDto {
@@ -28,6 +28,23 @@ export class ListQueryDto {
   @IsNumber()
   @Min(1)
   pageSize?: number;
+}
+
+export class ListArticlesQueryDto extends ListQueryDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  categoryId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  supplierId?: string;
+
+  @ApiPropertyOptional({ enum: ['NORMAL', 'LOW', 'OUT', 'NEGATIVE', 'NO_STOCK'] })
+  @IsOptional()
+  @IsIn(['NORMAL', 'LOW', 'OUT', 'NEGATIVE', 'NO_STOCK'])
+  status?: 'NORMAL' | 'LOW' | 'OUT' | 'NEGATIVE' | 'NO_STOCK';
 }
 
 export class UpsertCategoryDto {

@@ -13052,6 +13052,235 @@ input:checked + .slider-round:before {
   margin-bottom: 0;
 }
 
+.technical-sheets-onboarding-overlay {
+  z-index: 9999;
+  padding: 2rem 1.5rem;
+  background: radial-gradient(circle at 10% 20%, rgba(16, 185, 129, 0.15) 0%, transparent 55%), radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.1) 0%, transparent 50%), rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(12px);
+}
+
+.hr-wizard-modal.technical-sheets-onboarding-modal {
+  width: min(1080px, calc(100vw - 3rem));
+  height: min(720px, calc(100vh - 4rem));
+  padding: 0;
+  border: 0;
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 30px 80px rgba(9, 13, 22, 0.18);
+}
+
+.technical-sheets-onboarding-welcome {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+  align-items: center;
+  gap: 3rem;
+  width: 100%;
+  height: 100%;
+  padding: 3.5rem 3rem;
+}
+
+.technical-sheets-onboarding-close {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.5rem;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.technical-sheets-onboarding-close:hover { background: #f1f5f9; }
+
+.technical-sheets-onboarding-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 1.25rem;
+  border: 1px solid var(--light-border);
+  text-transform: none;
+}
+
+.technical-sheets-onboarding-welcome h1 {
+  margin: 0 0 1.5rem;
+  color: var(--text-main);
+  font-size: 2.5rem;
+  font-weight: 900;
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+}
+
+.technical-sheets-onboarding-welcome h1 span { color: var(--primary); }
+
+.technical-sheets-onboarding-welcome > div > p {
+  margin: 0 0 1.75rem;
+  color: var(--text-muted);
+  font-size: 0.98rem;
+  line-height: 1.6;
+}
+
+.technical-sheets-onboarding-benefits {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 2rem;
+}
+
+.technical-sheets-onboarding-benefits > div {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--text-main);
+  font-size: 0.9rem;
+}
+
+.technical-sheets-onboarding-benefits svg {
+  width: 28px;
+  height: 28px;
+  padding: 6px;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--primary);
+}
+
+.technical-sheets-onboarding-illustration {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2.5rem 2rem;
+  border: 1px solid rgba(16, 185, 129, 0.18);
+  border-radius: 24px;
+  text-align: center;
+  background: radial-gradient(circle at 50% 30%, rgba(16, 185, 129, 0.15), transparent 55%), #f8fafc;
+}
+
+.technical-sheets-onboarding-illustration > div {
+  display: grid;
+  place-items: center;
+  width: 132px;
+  height: 132px;
+  margin-bottom: 1.5rem;
+  border-radius: 32px;
+  background: linear-gradient(135deg, #0f172a, #111827);
+  color: var(--primary);
+  box-shadow: 0 22px 45px rgba(15, 23, 42, 0.18);
+}
+
+.technical-sheets-onboarding-illustration strong { color: var(--text-main); font-size: 1rem; }
+.technical-sheets-onboarding-illustration span { margin-top: 0.45rem; color: var(--text-muted); font-size: 0.8rem; line-height: 1.45; }
+
+.technical-sheets-onboarding-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.1fr) minmax(0, 2fr);
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.technical-sheets-onboarding-aside {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 0;
+  padding: 2.5rem 2rem;
+  background: #0f172a;
+  color: #fff;
+}
+
+.technical-sheets-onboarding-brand { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 2rem; }
+.technical-sheets-onboarding-brand span { font-size: 1.15rem; font-weight: 850; letter-spacing: -0.03em; }
+.technical-sheets-onboarding-brand strong { color: var(--primary); }
+.technical-sheets-onboarding-brand svg { color: var(--primary); }
+.technical-sheets-onboarding-kicker { color: var(--primary); font-size: 0.68rem; font-weight: 800; letter-spacing: 0.15em; text-transform: uppercase; }
+.technical-sheets-onboarding-aside h3 { margin: 0.35rem 0 2rem; color: #fff; font-size: 1.35rem; line-height: 1.25; }
+
+.technical-sheets-onboarding-steps { display: flex; flex-direction: column; gap: 1rem; }
+.technical-sheets-onboarding-steps > div { display: flex; align-items: center; gap: 0.85rem; color: rgba(255, 255, 255, 0.35); }
+.technical-sheets-onboarding-steps > div > span { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; border: 1px solid transparent; background: rgba(255, 255, 255, 0.05); font-size: 0.78rem; }
+.technical-sheets-onboarding-steps > div > strong { font-size: 0.9rem; font-weight: 500; }
+.technical-sheets-onboarding-steps > div.current { color: #fff; }
+.technical-sheets-onboarding-steps > div.current > span { border-color: var(--primary); background: rgba(255, 255, 255, 0.1); color: var(--primary); }
+.technical-sheets-onboarding-steps > div.current > strong { font-weight: 700; }
+.technical-sheets-onboarding-steps > div.done { color: #fff; }
+.technical-sheets-onboarding-steps > div.done > span { background: var(--primary); }
+
+.technical-sheets-onboarding-note { padding: 1.25rem; border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 16px; background: rgba(255, 255, 255, 0.03); }
+.technical-sheets-onboarding-note svg { margin-bottom: 0.4rem; color: var(--primary); }
+.technical-sheets-onboarding-note strong { display: block; color: #fff; font-size: 0.85rem; }
+.technical-sheets-onboarding-note p { margin: 0.25rem 0 0; color: #94a3b8; font-size: 0.75rem; line-height: 1.45; }
+
+.technical-sheets-onboarding-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 2.5rem; overflow: hidden; }
+.technical-sheets-onboarding-main--categories { padding-bottom: 0; }
+.technical-sheets-onboarding-progress { position: relative; flex-shrink: 0; margin-bottom: 1.5rem; padding-right: 2.5rem; }
+.technical-sheets-onboarding-progress > div:first-child { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+.technical-sheets-onboarding-progress > div:first-child > strong { color: var(--text-muted); font-size: 0.85rem; }
+.technical-sheets-onboarding-progress .badge { text-transform: none; }
+.technical-sheets-onboarding-progress .progress-bar-bg { height: 6px; overflow: hidden; border-radius: 3px; background: #f1f5f9; }
+.technical-sheets-onboarding-progress .progress-bar-fill { height: 100%; border-radius: 3px; background: var(--primary); }
+.technical-sheets-onboarding-progress > button { position: absolute; top: 50%; right: 0; display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 50%; transform: translateY(-50%); background: transparent; color: var(--text-muted); cursor: pointer; }
+.technical-sheets-onboarding-progress > button:hover { background: #f1f5f9; }
+
+.technical-sheets-category-step {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+.technical-sheets-category-step > .hr-catalog-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+}
+.technical-sheets-category-step > .hr-catalog-actions.sticky {
+  position: static;
+  flex: 0 0 auto;
+  margin: 0 -2.5rem;
+  padding: 0.9rem 2.5rem;
+}
+.technical-sheets-category-step h2,
+.technical-sheets-first-recipe-step h2 { margin: 0 0 0.4rem; color: var(--text-main); font-size: 1.5rem; }
+.technical-sheets-category-step .muted { margin: 0 0 1.25rem; font-size: 0.9rem; }
+.technical-sheets-category-step .hr-catalog-tags .badge { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.35rem 0.65rem; }
+.technical-sheets-category-step .hr-catalog-tags button { display: inline-flex; padding: 0; border: 0; background: transparent; color: var(--danger); cursor: pointer; }
+
+.technical-sheets-first-recipe-step { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+.technical-sheets-first-recipe-step > div:first-child > p { margin: 0; color: var(--text-muted); font-size: 0.9rem; line-height: 1.5; }
+.technical-sheets-onboarding-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 2rem; }
+.technical-sheets-onboarding-choices > button { display: flex; min-height: 235px; flex-direction: column; align-items: flex-start; padding: 1.5rem; border: 1px solid var(--light-border); border-radius: 18px; background: #fff; text-align: left; cursor: pointer; transition: all 0.18s ease; }
+.technical-sheets-onboarding-choices > button:hover { border-color: var(--primary); box-shadow: 0 14px 34px rgba(16, 185, 129, 0.1); transform: translateY(-2px); }
+.technical-sheets-onboarding-choices > button > div { display: grid; place-items: center; width: 48px; height: 48px; margin-bottom: 1rem; border-radius: 13px; background: rgba(16, 185, 129, 0.1); color: var(--primary); }
+.technical-sheets-onboarding-choices strong { color: var(--text-main); font-size: 1rem; }
+.technical-sheets-onboarding-choices span { flex: 1; margin-top: 0.55rem; color: var(--text-muted); font-size: 0.82rem; line-height: 1.5; }
+.technical-sheets-onboarding-choices small { display: inline-flex; align-items: center; gap: 0.35rem; margin-top: 1rem; color: var(--primary); font-size: 0.78rem; font-weight: 750; }
+.technical-sheets-first-recipe-step > .hr-catalog-actions { margin-top: auto; }
+
+@media (max-width: 850px) {
+  .technical-sheets-onboarding-welcome { grid-template-columns: 1fr; overflow: auto; padding: 2.5rem 2rem; }
+  .technical-sheets-onboarding-illustration { display: none; }
+  .technical-sheets-onboarding-layout { grid-template-columns: 1fr; }
+  .technical-sheets-onboarding-aside { display: none; }
+}
+
+@media (max-width: 640px) {
+  .technical-sheets-onboarding-overlay { padding: 0; }
+  .technical-sheets-onboarding-modal { width: 100vw; height: 100vh; max-height: 100vh; border-radius: 0; }
+  .technical-sheets-onboarding-main { padding: 1.25rem; }
+  .technical-sheets-category-step > .hr-catalog-actions.sticky { margin: 0 -1.25rem; padding: 0.9rem 1.25rem; }
+  .technical-sheets-onboarding-welcome h1 { font-size: 2rem; }
+  .technical-sheets-onboarding-choices { grid-template-columns: 1fr; overflow: auto; }
+  .technical-sheets-onboarding-choices > button { min-height: 190px; }
+}
+
 .technical-sheets-list-actions {
   display: flex;
   justify-content: flex-end;

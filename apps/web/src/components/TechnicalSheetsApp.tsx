@@ -26,6 +26,7 @@ import {
   MapPin,
   ArrowLeft,
   Camera,
+  Check,
   ArrowRight,
 } from 'lucide-react';
 import { api } from '../api/client';
@@ -34,6 +35,7 @@ import type {
   TechnicalSheetCategory,
   TechnicalSheetDashboard,
   TechnicalSheetHistoryEntry,
+  TechnicalSheetOnboarding,
   TechnicalSheetRecipe,
   TechnicalSheetRecipeImportStatus,
   TechnicalSheetRecipePayload,
@@ -51,8 +53,9 @@ type TechnicalSheetsAppProps = {
   stocksInstalled: boolean;
   products: Product[];
   units: Unit[];
+  onboardingOpen?: boolean;
+  onOnboardingClose?: () => void;
   onNavigate: (tab: TechnicalSheetsTab) => void;
-  onInstalled?: (installedApps?: string[]) => void;
 };
 
 const statuses = [
@@ -61,6 +64,8 @@ const statuses = [
   { value: 'VALIDATED', label: 'Validé' },
   { value: 'ARCHIVED', label: 'Archivé' },
 ];
+
+const MAX_RECIPE_IMPORT_FILES = 10;
 
 const emptyRecipe: TechnicalSheetRecipePayload = {
   name: '',
@@ -579,11 +584,14 @@ function MetricCard({ label, value, icon, tone = 'emerald', onClick }: { label: 
   );
 }
 
-export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, units, onNavigate, onInstalled }: TechnicalSheetsAppProps) {
+export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, units, onboardingOpen = false, onOnboardingClose, onNavigate }: TechnicalSheetsAppProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
   const [success, setSuccess] = useState<string>();
   const [dashboard, setDashboard] = useState<TechnicalSheetDashboard>();
+  const [onboarding, setOnboarding] = useState<TechnicalSheetOnboarding>();
+  const [onboardingVisible, setOnboardingVisible] = useState(onboardingOpen);
+  const [pendingFirstRecipeAction, setPendingFirstRecipeAction] = useState<'ocr' | 'manual' | null>(null);
   const [recipes, setRecipes] = useState<TechnicalSheetRecipe[]>([]);
   const [categories, setCategories] = useState<TechnicalSheetCategory[]>([]);
   const [salesTaxPolicy, setSalesTaxPolicy] = useState<TechnicalSheetSalesTaxPolicy>();
@@ -616,12 +624,14 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
       const recipeQuery = tab === 'recipes'
         ? { includeArchived: true, search: search || undefined, categoryId: categoryFilter || undefined, status: statusFilter || undefined, pageSize: 200 }
         : { includeArchived: true, pageSize: 200 };
-      const [dash, cats, recipeList] = await Promise.all([
+      const [dash, cats, recipeList, onboardingState] = await Promise.all([
         api.technicalSheetsDashboard(token).catch(() => undefined),
         api.technicalSheetCategories(token),
         api.technicalSheetRecipes(token, recipeQuery),
+        api.technicalSheetsOnboarding(token).catch(() => undefined),
       ]);
       setDashboard(dash);
+      setOnboarding(onboardingState);
       setCategories(cats);
       setRecipes(recipeList.items ?? recipeList);
       setSalesTaxPolicy(recipeList.salesTaxPolicy);
@@ -634,6 +644,16 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
 
   useEffect(() => { void load(); }, [stocksInstalled, tab, search, categoryFilter, statusFilter]);
   useEffect(() => { setAvailableProducts(products); }, [products]);
+  useEffect(() => { if (onboardingOpen) setOnboardingVisible(true); }, [onboardingOpen]);
+  useEffect(() => {
+    if (tab !== 'recipes' || !pendingFirstRecipeAction) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      if (pendingFirstRecipeAction === 'ocr') setImportOpen(true);
+      else openRecipe();
+      setPendingFirstRecipeAction(null);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [pendingFirstRecipeAction, tab]);
 
   async function refreshImportStatuses() {
     try {
@@ -728,19 +748,30 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
     }
   }
 
-  async function installModule() {
+  function closeOnboarding() {
+    setOnboardingVisible(false);
+    onOnboardingClose?.();
+  }
+
+  async function completeOnboardingCategories(names: string[]) {
     setLoading(true);
     setError(undefined);
     try {
-      const summary = await api.installTechnicalSheets(token);
-      onInstalled?.(summary.installedApplications);
-      setSuccess('Fiches Techniques installé : catégories recettes préchargées.');
+      const next = await api.completeTechnicalSheetsOnboardingCategories(token, names);
+      setOnboarding(next);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Installation impossible. Stocks doit être installé auparavant.');
+      setError(err instanceof Error ? err.message : 'Création des catégories recettes impossible.');
+      throw err;
     } finally {
       setLoading(false);
     }
+  }
+
+  function startFirstRecipe(mode: 'ocr' | 'manual') {
+    setPendingFirstRecipeAction(mode);
+    closeOnboarding();
+    onNavigate('recipes');
   }
 
   async function createCategory() {
@@ -921,7 +952,7 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
               recipes={recipes}
               categories={categories}
               averageCost={averageCost}
-              onInstall={installModule}
+              onStartOnboarding={() => setOnboardingVisible(true)}
               onOpenRecipes={() => onNavigate('recipes')}
               onOpenCategories={() => onNavigate('categories')}
               onOpenCosts={() => onNavigate('costs')}
@@ -989,6 +1020,17 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
         </motion.div>
       </AnimatePresence>
 
+      {onboardingVisible ? (
+        <TechnicalSheetsOnboardingWizard
+          onboarding={onboarding}
+          categories={categories.filter((category) => !isArchived(category))}
+          onCreateCategories={completeOnboardingCategories}
+          onImport={() => startFirstRecipe('ocr')}
+          onManual={() => startFirstRecipe('manual')}
+          onClose={closeOnboarding}
+        />
+      ) : null}
+
       {/* Create / Edit Dialog Component */}
       <RecipeDialog
         open={recipeDialog}
@@ -1043,6 +1085,175 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
   );
 }
 
+const TECHNICAL_SHEET_CATEGORY_DESCRIPTIONS: Record<string, string> = {
+  'Entrées': 'Préparations servies en début de repas.',
+  'Plats': 'Recettes principales et plats complets.',
+  'Desserts': 'Desserts à l’assiette et préparations sucrées.',
+  'Sauces': 'Sauces, jus, coulis et bases d’accompagnement.',
+  'Accompagnements': 'Garnitures et préparations complémentaires.',
+  'Petit-déjeuner': 'Préparations pour le service du matin.',
+  'Pâtisserie': 'Gâteaux, entremets et préparations pâtissières.',
+  'Boulangerie': 'Pains, viennoiseries et pâtes levées.',
+  'Boissons': 'Boissons préparées et recettes liquides.',
+};
+
+function TechnicalSheetsOnboardingWizard({ onboarding, categories, onCreateCategories, onImport, onManual, onClose }: {
+  onboarding?: TechnicalSheetOnboarding;
+  categories: TechnicalSheetCategory[];
+  onCreateCategories: (names: string[]) => Promise<void>;
+  onImport: () => void;
+  onManual: () => void;
+  onClose: () => void;
+}) {
+  const [step, setStep] = useState<'welcome' | 'categories' | 'recipe'>('welcome');
+  const existingNames = useMemo(() => new Set(categories.map((category) => category.name.trim().toLowerCase())), [categories]);
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(onboarding?.selectedCategoryNames ?? categories.map((category) => category.name)));
+  const [customName, setCustomName] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [localError, setLocalError] = useState<string>();
+  const suggestions = onboarding?.suggestedCategories?.length ? onboarding.suggestedCategories : Object.keys(TECHNICAL_SHEET_CATEGORY_DESCRIPTIONS);
+  const customSelections = [...selected].filter((name) => !suggestions.some((suggestion) => suggestion.toLowerCase() === name.toLowerCase()));
+  const canAddCustom = Boolean(customName.trim()) && ![...selected, ...suggestions].some((candidate) => candidate.toLowerCase() === customName.trim().toLowerCase());
+  const stepIndex = step === 'welcome' ? 1 : step === 'categories' ? 2 : 3;
+  const progress = Math.round(stepIndex / 3 * 100);
+
+  useEffect(() => {
+    if (!onboarding?.selectedCategoryNames?.length) return;
+    setSelected((current) => new Set([...current, ...onboarding.selectedCategoryNames]));
+  }, [onboarding?.selectedCategoryNames?.join('|')]);
+
+  function toggle(name: string) {
+    if (existingNames.has(name.toLowerCase())) return;
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  }
+
+  function addCustom() {
+    const name = customName.trim();
+    if (!name) return;
+    if ([...selected, ...suggestions].some((candidate) => candidate.toLowerCase() === name.toLowerCase())) return;
+    setSelected((current) => new Set([...current, name]));
+    setCustomName('');
+  }
+
+  async function submitCategories() {
+    if (!selected.size) return;
+    setSubmitting(true);
+    setLocalError(undefined);
+    try {
+      await onCreateCategories([...selected]);
+      setStep('recipe');
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'Création des catégories impossible.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="modal-overlay hr-wizard-overlay technical-sheets-onboarding-overlay">
+      <motion.div className="modal-card hr-wizard-modal technical-sheets-onboarding-modal" initial={{ opacity: 0, y: 18, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: 'spring', damping: 24, stiffness: 220 }}>
+        {step === 'welcome' ? (
+          <div className="technical-sheets-onboarding-welcome">
+            <button type="button" className="technical-sheets-onboarding-close" onClick={onClose} aria-label="Fermer"><X size={20} /></button>
+            <div>
+              <span className="badge badge-reception technical-sheets-onboarding-badge"><Sparkles size={14} /> Configuration guidée</span>
+              <h1>Bienvenue sur le module <span>Fiches Techniques</span></h1>
+              <p>Sélectionnez les catégories adaptées à votre établissement, puis créez votre première recette manuellement ou à partir de l’import OCR déjà intégré.</p>
+              <div className="technical-sheets-onboarding-benefits">
+                <div><ClipboardList size={17} /><span>Choisir vos catégories recettes</span></div>
+                <div><Upload size={17} /><span>Importer une ou plusieurs fiches par OCR</span></div>
+                <div><FileText size={17} /><span>Créer votre première fiche manuellement</span></div>
+              </div>
+              <div className="row-actions">
+                <button className="btn btn-primary" onClick={() => setStep('categories')}>Démarrer la configuration <ArrowRight size={17} /></button>
+                <button className="btn btn-secondary" onClick={onClose}>Faire plus tard</button>
+              </div>
+            </div>
+            <div className="technical-sheets-onboarding-illustration">
+              <div><ChefHat size={72} /></div>
+              <strong>De la recette au coût matière</strong>
+              <span>Produits et unités restent synchronisés avec Stocks.</span>
+            </div>
+          </div>
+        ) : (
+          <div className="technical-sheets-onboarding-layout">
+            <aside className="technical-sheets-onboarding-aside">
+              <div>
+                <div className="technical-sheets-onboarding-brand"><ChefHat size={28} /><span>TOQUE<strong>HUB</strong></span></div>
+                <span className="technical-sheets-onboarding-kicker">Installation guidée</span>
+                <h3>Assistant Fiches Techniques</h3>
+                <div className="technical-sheets-onboarding-steps">
+                  {[
+                    ['welcome', 'Bienvenue'],
+                    ['categories', 'Catégories recettes'],
+                    ['recipe', 'Première recette'],
+                  ].map(([key, label], index) => {
+                    const current = index + 1 === stepIndex;
+                    const done = index + 1 < stepIndex;
+                    return <div key={key} className={current ? 'current' : done ? 'done' : ''}><span>{done ? '✓' : index + 1}</span><strong>{label}</strong></div>;
+                  })}
+                </div>
+              </div>
+              <div className="technical-sheets-onboarding-note"><CheckCircle2 size={19} /><strong>Référentiel partagé</strong><p>Les ingrédients, unités et prix d’achat viennent toujours du module Stocks.</p></div>
+            </aside>
+            <main className={`technical-sheets-onboarding-main ${step === 'categories' ? 'technical-sheets-onboarding-main--categories' : ''}`}>
+              <div className="technical-sheets-onboarding-progress">
+                <div><span className="badge badge-reception">Étape {stepIndex} / 3</span><strong>{progress}%</strong></div>
+                <div className="progress-bar-bg"><div className="progress-bar-fill" style={{ width: `${progress}%` }} /></div>
+                <button type="button" onClick={onClose} aria-label="Fermer"><X size={20} /></button>
+              </div>
+
+              {step === 'categories' ? (
+                <div className="hr-catalog technical-sheets-category-step">
+                  <div className="hr-catalog-scroll">
+                    <h2>Choisissez vos catégories recettes</h2>
+                    <p className="muted">Cochez uniquement les familles utiles. Elles resteront modifiables depuis l’onglet Catégories recettes.</p>
+                    {localError ? <div className="alert-modern error"><AlertCircle size={16} /> {localError}</div> : null}
+                    <div className="hr-catalog-grid">
+                      {suggestions.map((name) => {
+                        const isSelected = selected.has(name) || [...selected].some((selectedName) => selectedName.toLowerCase() === name.toLowerCase());
+                        const exists = existingNames.has(name.toLowerCase());
+                        return (
+                          <button type="button" key={name} className={`hr-catalog-card ${isSelected ? 'selected' : ''}`} onClick={() => toggle(name)} aria-pressed={isSelected}>
+                            <div className={isSelected ? 'hr-catalog-check' : 'hr-catalog-check-empty'}>{isSelected ? <Check size={14} strokeWidth={3} /> : null}</div>
+                            <div className="hr-catalog-body"><strong>{name}</strong><span>{TECHNICAL_SHEET_CATEGORY_DESCRIPTIONS[name] ?? 'Catégorie personnalisable pour vos recettes.'}</span>{exists ? <small>Déjà créée</small> : null}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="hr-catalog-custom">
+                      <input value={customName} onChange={(event) => setCustomName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addCustom(); } }} placeholder="Ajouter une catégorie personnalisée…" />
+                      <button type="button" className="btn btn-secondary" disabled={!canAddCustom} onClick={addCustom}>Ajouter</button>
+                    </div>
+                    {customSelections.length ? <div className="hr-catalog-tags">{customSelections.map((name) => <span key={name} className="badge badge-reception">{name}<button type="button" onClick={() => toggle(name)}><X size={12} /></button></span>)}</div> : null}
+                  </div>
+                  <div className="hr-catalog-actions sticky">
+                    <span>{selected.size} catégorie{selected.size > 1 ? 's' : ''} sélectionnée{selected.size > 1 ? 's' : ''}</span>
+                    <div className="row-actions"><button className="btn btn-secondary" onClick={() => setStep('welcome')}>Retour</button><button className="btn btn-primary" disabled={!selected.size || submitting} onClick={() => void submitCategories()}>{submitting ? 'Création…' : 'Valider les catégories'} <ArrowRight size={16} /></button></div>
+                  </div>
+                </div>
+              ) : (
+                <div className="technical-sheets-first-recipe-step">
+                  <div><h2>{onboarding?.completed ? 'Votre référentiel contient déjà une recette' : 'Créez votre première recette'}</h2><p>Choisissez le parcours adapté. Les deux utilisent exactement les écrans et contrôles déjà présents dans le module.</p></div>
+                  <div className="technical-sheets-onboarding-choices">
+                    <button type="button" onClick={onImport}><div><Upload size={25} /></div><strong>Importer avec l’OCR</strong><span>Déposez PDF, images, Pages ou Numbers. Jusqu’à {MAX_RECIPE_IMPORT_FILES} fiches peuvent être analysées ensemble.</span><small>Ouvrir l’import existant <ArrowRight size={14} /></small></button>
+                    <button type="button" onClick={onManual}><div><FileText size={25} /></div><strong>Créer manuellement</strong><span>Renseignez les informations, ingrédients Stocks, quantités et étapes de préparation.</span><small>Créer une fiche <ArrowRight size={14} /></small></button>
+                  </div>
+                  <div className="hr-catalog-actions sticky"><button className="btn btn-secondary" onClick={() => setStep('categories')}>Retour</button><button className="btn btn-secondary" onClick={onClose}>{onboarding?.completed ? 'Terminer' : 'Faire plus tard'}</button></div>
+                </div>
+              )}
+            </main>
+          </div>
+        )}
+      </motion.div>
+    </div>
+  );
+}
+
 function BlockingState({ onInstallStocks }: { onInstallStocks: () => void }) {
   return (
     <div className="card-modern" style={{ textAlign: 'center', padding: '3rem 2rem', maxWidth: '720px', margin: '2rem auto' }}>
@@ -1058,7 +1269,7 @@ function BlockingState({ onInstallStocks }: { onInstallStocks: () => void }) {
   );
 }
 
-function DashboardTab({ dashboard, recipes, categories, averageCost, onInstall, onOpenRecipes, onOpenCategories, onOpenCosts, onOpenProduction, loading }: { dashboard?: TechnicalSheetDashboard; recipes: TechnicalSheetRecipe[]; categories: TechnicalSheetCategory[]; averageCost: number; onInstall: () => void; onOpenRecipes: () => void; onOpenCategories: () => void; onOpenCosts: () => void; onOpenProduction: () => void; loading: boolean }) {
+function DashboardTab({ dashboard, recipes, categories, averageCost, onStartOnboarding, onOpenRecipes, onOpenCategories, onOpenCosts, onOpenProduction, loading }: { dashboard?: TechnicalSheetDashboard; recipes: TechnicalSheetRecipe[]; categories: TechnicalSheetCategory[]; averageCost: number; onStartOnboarding: () => void; onOpenRecipes: () => void; onOpenCategories: () => void; onOpenCosts: () => void; onOpenProduction: () => void; loading: boolean }) {
   const latest = dashboard?.latestRecipes ?? recipes.slice(0, 5);
   const topProducts = dashboard?.topProducts ?? [];
   
@@ -1142,9 +1353,9 @@ function DashboardTab({ dashboard, recipes, categories, averageCost, onInstall, 
             className="btn btn-primary"
             style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
             disabled={loading}
-            onClick={onInstall}
+            onClick={onStartOnboarding}
           >
-            <Sparkles size={16} /> Installer / précharger Fiches Techniques
+            <Sparkles size={16} /> Configuration guidée Fiches Techniques
           </button>
         </div>
       </div>
@@ -1192,7 +1403,7 @@ function RecipeImportStatusBar({ statuses, onOpenTracking, onOpenResult }: { sta
 
 function RecipeImportPanel({ files, statuses, submitting, onFiles, onSubmit, onOpenResult }: { files: File[]; statuses: TechnicalSheetRecipeImportStatus[]; submitting: boolean; onFiles: (files: File[]) => void; onSubmit: () => Promise<void>; onOpenResult: (status: TechnicalSheetRecipeImportStatus) => void }) {
   const addFiles = (next: File[]) => {
-    const unique = [...files, ...next].filter((file, index, all) => all.findIndex((candidate) => candidate.name === file.name && candidate.size === file.size && candidate.lastModified === file.lastModified) === index).slice(0, 8);
+    const unique = [...files, ...next].filter((file, index, all) => all.findIndex((candidate) => candidate.name === file.name && candidate.size === file.size && candidate.lastModified === file.lastModified) === index).slice(0, MAX_RECIPE_IMPORT_FILES);
     onFiles(unique);
   };
   return (
@@ -1204,7 +1415,7 @@ function RecipeImportPanel({ files, statuses, submitting, onFiles, onSubmit, onO
       >
         <FileText size={32} />
         <span>Déposer vos fiches techniques ici ou cliquer pour parcourir</span>
-        <small>PDF, images, Pages et Numbers · jusqu’à 8 fichiers simultanés · 20 Mo par fichier</small>
+        <small>PDF, images, Pages et Numbers · jusqu’à {MAX_RECIPE_IMPORT_FILES} fichiers simultanés · 20 Mo par fichier</small>
         <input
           type="file"
           accept="application/pdf,image/png,image/jpeg,image/webp,image/heic,image/heif,image/avif,.pdf,.png,.jpg,.jpeg,.webp,.heic,.heif,.avif,.pages,.numbers"

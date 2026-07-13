@@ -1689,6 +1689,15 @@ export interface TechnicalSheetSalesTaxPolicy {
   effectiveFrom: string | null;
 }
 
+export interface TechnicalSheetOnboarding {
+  categoryCount: number;
+  recipeCount: number;
+  completed: boolean;
+  nextStep: 'categories' | 'recipe';
+  suggestedCategories: string[];
+  selectedCategoryNames: string[];
+}
+
 export interface TechnicalSheetDashboard {
   recipeCount: number;
   categoryCount: number;
@@ -2014,7 +2023,7 @@ export interface Article {
 export interface ArticlesResponse {
   items: Article[];
   summary: { articleCount: number; articlesWithStock: number; articlesWithoutStock: number; stockValue: number; lowStockCount: number };
-  pagination?: { page: number; pageSize: number; total: number };
+  pagination?: { page: number; pageSize: number; total: number; pages?: number };
 }
 
 export type OcrMatchingStatus = 'RECOGNIZED' | 'NEEDS_REVIEW' | 'NOT_FOUND';

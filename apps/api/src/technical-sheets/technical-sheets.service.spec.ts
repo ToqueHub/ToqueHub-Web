@@ -160,6 +160,16 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
     expect((service as any).recipeImportStatus({ ...baseDocument, status: 'PROCESSED' }, { status: 'COMPLETED' }, { extractedJson: baseImport })).toEqual(expect.objectContaining({ state: 'vérifier', progress: 100, result: baseImport }));
   });
 
+  it('limits a recipe OCR batch to ten files', async () => {
+    const prisma = {
+      organization: { findUnique: jest.fn().mockResolvedValue({ stocksInstalledAt: new Date(), technicalSheetsInstalledAt: new Date() }) },
+    };
+    const importService = new TechnicalSheetsService(prisma as any, {} as any);
+    const files = Array.from({ length: 11 }, (_, index) => ({ originalname: `recette-${index + 1}.pdf`, mimetype: 'application/pdf', size: 3, buffer: Buffer.from('pdf') }));
+
+    await expect(importService.uploadRecipeImports('org-1', { id: 'user-1', role: 'ADMIN' }, files)).rejects.toThrow('Vous pouvez importer 10 fiches techniques maximum.');
+  });
+
   it('retries only the structured recipe extraction when Mistral briefly rate-limits a batch', async () => {
     const mistral = { chatJson: jest.fn().mockRejectedValueOnce(new Error('Mistral a refusé la demande (429)')).mockResolvedValue(baseImport) };
     const retryingService = new TechnicalSheetsService({} as any, mistral as any);
@@ -203,5 +213,61 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
     expect(tx.technicalSheet.update).toHaveBeenCalledWith({ where: { id: 'sheet-1', organizationId: 'org-1' }, data: { targetSellingPriceHtPerPortion: expect.objectContaining({}) } });
     expect(Number(tx.technicalSheet.update.mock.calls[0][0].data.targetSellingPriceHtPerPortion)).toBe(10);
     expect(result).toEqual(expect.objectContaining({ targetSellingPriceExclTax: 10, targetSellingPriceInclTax: 11, grossMarginAmount: 6, grossMarginRate: 60, salesTaxRate: 10, regulatoryCountryCode: 'FR' }));
+  });
+
+  it('does not pre-create recipe categories during module installation', async () => {
+    const tx = {
+      organization: { update: jest.fn() },
+      auditLog: { create: jest.fn() },
+    };
+    const prisma = {
+      organization: { findUnique: jest.fn().mockResolvedValue({ stocksInstalledAt: new Date(), rnmPricesInstalledAt: null, hrInstalledAt: null, planningInstalledAt: null }) },
+      $transaction: jest.fn(async (callback: any) => callback(tx)),
+    };
+    const onboardingService = new TechnicalSheetsService(prisma as any, {} as any);
+
+    await onboardingService.install('org-1', { id: 'user-1', role: 'ADMIN' });
+
+    expect(tx.organization.update).toHaveBeenCalled();
+    expect(tx.auditLog.create).toHaveBeenCalled();
+    expect((tx as any).technicalSheetCategory).toBeUndefined();
+  });
+
+  it('derives the technical-sheets onboarding step from real categories and recipes', async () => {
+    const prisma = {
+      organization: { findUnique: jest.fn().mockResolvedValue({ stocksInstalledAt: new Date(), technicalSheetsInstalledAt: new Date() }) },
+      technicalSheetCategory: { findMany: jest.fn().mockResolvedValue([{ name: 'Pâtisserie' }]) },
+      technicalSheet: { count: jest.fn().mockResolvedValue(0) },
+    };
+    const onboardingService = new TechnicalSheetsService(prisma as any, {} as any);
+
+    const result = await onboardingService.onboarding('org-1');
+
+    expect(result).toEqual(expect.objectContaining({ categoryCount: 1, recipeCount: 0, completed: false, nextStep: 'recipe', selectedCategoryNames: ['Pâtisserie'] }));
+    expect(result.suggestedCategories).toContain('Pâtisserie');
+  });
+
+  it('restores archived categories and avoids case-insensitive duplicates during onboarding', async () => {
+    const tx = {
+      technicalSheetCategory: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'cat-1', name: 'Pâtisserie', isArchived: true }]),
+        updateMany: jest.fn(),
+        createMany: jest.fn(),
+      },
+      auditLog: { create: jest.fn() },
+    };
+    const prisma = {
+      organization: { findUnique: jest.fn().mockResolvedValue({ stocksInstalledAt: new Date(), technicalSheetsInstalledAt: new Date() }) },
+      technicalSheetCategory: { findMany: jest.fn().mockResolvedValue([{ name: 'Pâtisserie' }, { name: 'Desserts' }]) },
+      technicalSheet: { count: jest.fn().mockResolvedValue(0) },
+      $transaction: jest.fn(async (callback: any) => callback(tx)),
+    };
+    const onboardingService = new TechnicalSheetsService(prisma as any, {} as any);
+
+    await onboardingService.completeOnboardingCategories('org-1', { id: 'user-1', role: 'ADMIN' }, ['Pâtisserie', 'pâtisserie', ' Desserts ']);
+
+    expect(tx.technicalSheetCategory.updateMany).toHaveBeenCalledWith({ where: { id: { in: ['cat-1'] }, organizationId: 'org-1' }, data: { isArchived: false, archivedAt: null } });
+    expect(tx.technicalSheetCategory.createMany).toHaveBeenCalledWith({ data: [{ organizationId: 'org-1', name: 'Desserts' }], skipDuplicates: true });
+    expect(tx.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ details: { names: ['Pâtisserie', 'Desserts'] } }) }));
   });
 });

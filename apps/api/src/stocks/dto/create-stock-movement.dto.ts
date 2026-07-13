@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { StockMovementType } from '@prisma/client';
 import { Type } from 'class-transformer';
-import { IsEnum, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
+import { IsEnum, IsIn, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
 
 export class CreateStockMovementDto {
   @ApiProperty({ example: 'uuid-produit' })
@@ -18,8 +18,9 @@ export class CreateStockMovementDto {
   @IsUUID()
   supplierId?: string;
 
-  @ApiProperty({ enum: StockMovementType, example: StockMovementType.RECEPTION })
+  @ApiProperty({ enum: [StockMovementType.IN, StockMovementType.OUT, StockMovementType.LOSS, StockMovementType.TRANSFER], example: StockMovementType.IN })
   @IsEnum(StockMovementType)
+  @IsIn([StockMovementType.IN, StockMovementType.OUT, StockMovementType.LOSS, StockMovementType.TRANSFER], { message: 'La saisie manuelle accepte uniquement Entrée, Sortie, Perte ou Transfert.' })
   type!: StockMovementType;
 
   @ApiProperty({ example: 25 })

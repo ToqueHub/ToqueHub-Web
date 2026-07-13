@@ -246,7 +246,7 @@ export class StocksProductImportService {
       templateColumns: TEMPLATE_HEADERS,
       rows,
       summary: summarizeRows(rows),
-      options: { createMissingCategories: false, createMissingSuppliers: false },
+      options: { createMissingCategories: true, createMissingSuppliers: true },
       ai: { status: 'catalog_creator', provider: 'mistral', warnings: [] },
     };
   }
@@ -290,7 +290,7 @@ export class StocksProductImportService {
       templateColumns: TEMPLATE_HEADERS,
       rows,
       summary: summarizeRows(rows),
-      options: { createMissingCategories: false, createMissingSuppliers: false },
+      options: { createMissingCategories: true, createMissingSuppliers: true },
       ai,
     };
   }

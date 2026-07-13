@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
 import { CreateInventoryDto, UpdateInventoryCountsDto } from './dto/inventory.dto';
 import {
+  ListArticlesQueryDto,
   ListQueryDto,
   UpsertCategoryDto,
   UpsertLocationDto,
@@ -167,10 +168,12 @@ export class StocksService {
 
   listProducts(organizationId: string, q: ListQueryDto = {}) { return this.prisma.product.findMany({ where: { organizationId, ...(q.includeArchived ? {} : { isArchived: false }), OR: q.search ? [{ name: { contains: q.search, mode: 'insensitive' } }, { sku: { contains: q.search, mode: 'insensitive' } }, { gtin: { contains: q.search, mode: 'insensitive' } }, { originCountry: { contains: q.search, mode: 'insensitive' } }, { primarySupplier: { name: { contains: q.search, mode: 'insensitive' } } }, { category: { name: { contains: q.search, mode: 'insensitive' } } }] : undefined }, include: { category: true, unit: true, primarySupplier: true, stocks: true }, orderBy: { name: 'asc' }, ...this.page(q) }); }
 
-  async listArticles(organizationId: string, q: ListQueryDto = {}) {
+  async listArticles(organizationId: string, q: ListArticlesQueryDto = {}) {
     const where: Prisma.ProductWhereInput = {
       organizationId,
       ...(q.includeArchived ? {} : { isArchived: false }),
+      categoryId: q.categoryId,
+      primarySupplierId: q.supplierId,
       OR: q.search ? [
         { name: { contains: q.search, mode: 'insensitive' } },
         { sku: { contains: q.search, mode: 'insensitive' } },
@@ -179,15 +182,8 @@ export class StocksService {
         { primarySupplier: { name: { contains: q.search, mode: 'insensitive' } } },
       ] : undefined,
     };
-    const [products, total] = await Promise.all([
-      this.prisma.product.findMany({ where, include: { category: true, unit: true, primarySupplier: true, stocks: { include: { site: true, location: true, lot: true } } }, orderBy: { name: 'asc' }, ...this.page(q) }),
-      this.prisma.product.count({ where }),
-    ]);
-    const productIds = products.map((product) => product.id);
-    const movements = productIds.length ? await this.prisma.stockMovement.findMany({ where: { organizationId, productId: { in: productIds } }, include: { product: { include: { unit: true } }, supplier: true, sourceSite: true, sourceLocation: true, destinationSite: true, destinationLocation: true }, orderBy: [{ movementDate: 'desc' }, { createdAt: 'desc' }] }) : [];
-    const latestByProduct = new Map<string, (typeof movements)[number]>();
-    for (const movement of movements) if (!latestByProduct.has(movement.productId)) latestByProduct.set(movement.productId, movement);
-    const items = products.map((product) => {
+    const products = await this.prisma.product.findMany({ where, include: { category: true, unit: true, primarySupplier: true, stocks: { include: { site: true, location: true, lot: true } } }, orderBy: { name: 'asc' } });
+    const allItems = products.map((product) => {
       const quantity = product.stocks.reduce((sum, stock) => sum.add(stock.quantity), new Prisma.Decimal(0));
       const stockBySite = [...product.stocks.reduce((bySite, stock) => {
         const key = stock.siteId ?? 'all';
@@ -201,15 +197,24 @@ export class StocksService {
         stock: { quantity, value: quantity.mul(product.averagePrice), status: product.stocks.length ? this.stockStatus(quantity, product.minimumStock) : 'NO_STOCK' },
         stockBySite,
         lots: product.stocks.filter((stock) => stock.lot).map((stock) => ({ lotNumber: stock.lot?.lotNumber ?? null, expiresAt: stock.lot?.expiresAt ?? null, quantity: stock.quantity, siteName: stock.site?.name ?? null, locationName: stock.location?.name ?? null })),
-        lastMovement: latestByProduct.get(product.id) ?? null,
       };
     });
-    const articlesWithStock = items.filter((item) => item.stock.status !== 'NO_STOCK').length;
-    const lowStockCount = items.filter((item) => item.stock.status === 'LOW').length;
+    const filteredItems = q.status ? allItems.filter((item) => item.stock.status === q.status) : allItems;
+    const pageSize = Math.min(q.pageSize ?? 25, 100);
+    const pageCount = Math.max(1, Math.ceil(filteredItems.length / pageSize));
+    const page = Math.min(Math.max(q.page ?? 1, 1), pageCount);
+    const pageItems = filteredItems.slice((page - 1) * pageSize, page * pageSize);
+    const productIds = pageItems.map((item) => item.product.id);
+    const movements = productIds.length ? await this.prisma.stockMovement.findMany({ where: { organizationId, productId: { in: productIds } }, include: { product: { include: { unit: true } }, supplier: true, sourceSite: true, sourceLocation: true, destinationSite: true, destinationLocation: true }, orderBy: [{ movementDate: 'desc' }, { createdAt: 'desc' }] }) : [];
+    const latestByProduct = new Map<string, (typeof movements)[number]>();
+    for (const movement of movements) if (!latestByProduct.has(movement.productId)) latestByProduct.set(movement.productId, movement);
+    const items = pageItems.map((item) => ({ ...item, lastMovement: latestByProduct.get(item.product.id) ?? null }));
+    const articlesWithStock = allItems.filter((item) => item.stock.status !== 'NO_STOCK').length;
+    const lowStockCount = allItems.filter((item) => item.stock.status === 'LOW').length;
     return {
       items,
-      summary: { articleCount: total, articlesWithStock, articlesWithoutStock: total - articlesWithStock, stockValue: items.reduce((sum, item) => sum + Number(item.stock.value), 0), lowStockCount },
-      pagination: { page: q.page ?? 1, pageSize: q.pageSize ?? 50, total },
+      summary: { articleCount: allItems.length, articlesWithStock, articlesWithoutStock: allItems.length - articlesWithStock, stockValue: allItems.reduce((sum, item) => sum + Number(item.stock.value), 0), lowStockCount },
+      pagination: { page, pageSize, total: filteredItems.length, pages: pageCount },
     };
   }
   async createProduct(organizationId: string, actor: Actor, dto: UpsertProductDto) { this.assertWrite(actor); await this.ensureUnit(organizationId, dto.unitId); if (dto.categoryId) await this.ensureCategory(organizationId, dto.categoryId); if (dto.primarySupplierId) await this.ensureSupplier(organizationId, dto.primarySupplierId); const item = await this.prisma.product.create({ data: { ...dto, organizationId }, include: { category: true, unit: true, primarySupplier: true, stocks: true } }); await this.log(organizationId, actor.id, AuditAction.PRODUCT_CREATED, 'Product', item.id, item.name); return item; }

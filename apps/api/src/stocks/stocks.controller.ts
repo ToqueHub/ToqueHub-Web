@@ -10,7 +10,7 @@ import { CreateInventoryDto, UpdateInventoryCountsDto } from './dto/inventory.dt
 import { GenerateMarginReportDto, MarginsQueryDto, UpdateMarginSettingsDto } from './dto/stocks-margins.dto';
 import { AnalyzeBatchDto, SaveOcrCorrectionDto } from './dto/stocks-ocr.dto';
 import { CommitProductImportDto, ProductCreatorRowsDto } from './dto/stocks-product-import.dto';
-import { ListQueryDto, UpsertCategoryDto, UpsertLocationDto, UpsertLotDto, UpsertProductDto, UpsertSiteDto, UpsertSupplierDto, UpsertUnitConversionDto, UpsertUnitDto } from './dto/stocks-reference.dto';
+import { ListArticlesQueryDto, ListQueryDto, UpsertCategoryDto, UpsertLocationDto, UpsertLotDto, UpsertProductDto, UpsertSiteDto, UpsertSupplierDto, UpsertUnitConversionDto, UpsertUnitDto } from './dto/stocks-reference.dto';
 import { StocksMarginsService } from './stocks-margins.service';
 import { StocksOcrService } from './stocks-ocr.service';
 import { StocksProductImportService } from './stocks-product-import.service';
@@ -108,7 +108,7 @@ export class StocksController {
   @Post('suppliers/:id/archive') archiveSupplier(@CurrentUser() u: AuthenticatedUser, @Param('id') id: string) { return this.stocksService.archiveSupplier(this.org(u), this.actor(u), id); }
 
   @Get('products') listProducts(@CurrentUser() u: AuthenticatedUser, @Query() q: ListQueryDto) { return this.stocksService.listProducts(this.org(u), q); }
-  @Get('articles') listArticles(@CurrentUser() u: AuthenticatedUser, @Query() q: ListQueryDto) { return this.stocksService.listArticles(this.org(u), q); }
+  @Get('articles') listArticles(@CurrentUser() u: AuthenticatedUser, @Query() q: ListArticlesQueryDto) { return this.stocksService.listArticles(this.org(u), q); }
   @Post('products') createProduct(@CurrentUser() u: AuthenticatedUser, @Body() d: UpsertProductDto) { return this.stocksService.createProduct(this.org(u), this.actor(u), d); }
   @Patch('products/:id') updateProduct(@CurrentUser() u: AuthenticatedUser, @Param('id') id: string, @Body() d: UpsertProductDto) { return this.stocksService.updateProduct(this.org(u), this.actor(u), id, d); }
   @Post('products/:id/archive') archiveProduct(@CurrentUser() u: AuthenticatedUser, @Param('id') id: string) { return this.stocksService.archiveProduct(this.org(u), this.actor(u), id); }

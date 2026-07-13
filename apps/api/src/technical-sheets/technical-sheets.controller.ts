@@ -6,7 +6,7 @@ import type { Response } from 'express';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { DuplicateTechnicalSheetDto, ProductionSimulationDto, TechnicalSheetListQueryDto, UpdateTechnicalSheetPricingDto, UpsertAllergenDto, UpsertRecipeCategoryDto, UpsertTechnicalSheetDto } from './dto/technical-sheets.dto';
+import { CompleteTechnicalSheetOnboardingCategoriesDto, DuplicateTechnicalSheetDto, ProductionSimulationDto, TechnicalSheetListQueryDto, UpdateTechnicalSheetPricingDto, UpsertAllergenDto, UpsertRecipeCategoryDto, UpsertTechnicalSheetDto } from './dto/technical-sheets.dto';
 import { TechnicalSheetsService } from './technical-sheets.service';
 
 @ApiTags('technical-sheets')
@@ -21,6 +21,8 @@ export class TechnicalSheetsController {
   @Post('install') install(@CurrentUser() user: AuthenticatedUser) { return this.service.install(this.org(user), this.actor(user)); }
   @Post('uninstall') uninstall(@CurrentUser() user: AuthenticatedUser) { return this.service.uninstall(this.org(user), this.actor(user)); }
   @Get('dashboard') dashboard(@CurrentUser() user: AuthenticatedUser) { return this.service.dashboard(this.org(user)); }
+  @Get('onboarding') onboarding(@CurrentUser() user: AuthenticatedUser) { return this.service.onboarding(this.org(user)); }
+  @Post('onboarding/categories') completeOnboardingCategories(@CurrentUser() user: AuthenticatedUser, @Body() dto: CompleteTechnicalSheetOnboardingCategoriesDto) { return this.service.completeOnboardingCategories(this.org(user), this.actor(user), dto.names); }
 
   @Get('categories') listCategories(@CurrentUser() user: AuthenticatedUser, @Query() q: TechnicalSheetListQueryDto) { return this.service.listCategories(this.org(user), q); }
   @Post('categories') createCategory(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertRecipeCategoryDto) { return this.service.createCategory(this.org(user), dto); }
@@ -38,7 +40,7 @@ export class TechnicalSheetsController {
   @UseInterceptors(FileInterceptor('file', { limits: { files: 1, fileSize: 20 * 1024 * 1024 } }))
   importRecipePdf(@CurrentUser() user: AuthenticatedUser, @UploadedFile() file: any) { return this.service.importRecipePdf(this.org(user), file); }
   @Post('recipes/imports')
-  @UseInterceptors(FilesInterceptor('files', 8, { limits: { files: 8, fileSize: 20 * 1024 * 1024 } }))
+  @UseInterceptors(FilesInterceptor('files', 10, { limits: { files: 10, fileSize: 20 * 1024 * 1024 } }))
   uploadRecipeImports(@CurrentUser() user: AuthenticatedUser, @UploadedFiles() files: any[]) { return this.service.uploadRecipeImports(this.org(user), this.actor(user), files); }
   @Get('recipes/imports/statuses')
   listRecipeImportStatuses(@CurrentUser() user: AuthenticatedUser) { return this.service.listRecipeImportStatuses(this.org(user)); }

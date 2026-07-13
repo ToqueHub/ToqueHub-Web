@@ -78,6 +78,7 @@ import type {
   TechnicalSheetCategory,
   TechnicalSheetDashboard,
   TechnicalSheetHistoryEntry,
+  TechnicalSheetOnboarding,
   TechnicalSheetRecipeImportResult,
   TechnicalSheetRecipeImportStatus,
   TechnicalSheetRecipe,
@@ -692,6 +693,12 @@ export const api = {
   technicalSheetsDashboard(token: string) {
     return request<TechnicalSheetDashboard>('/technical-sheets/dashboard', {}, token);
   },
+  technicalSheetsOnboarding(token: string) {
+    return request<TechnicalSheetOnboarding>('/technical-sheets/onboarding', {}, token);
+  },
+  completeTechnicalSheetsOnboardingCategories(token: string, names: string[]) {
+    return request<TechnicalSheetOnboarding>('/technical-sheets/onboarding/categories', { method: 'POST', body: JSON.stringify({ names }) }, token);
+  },
   technicalSheetCategories(token: string) {
     return request<TechnicalSheetCategory[]>('/technical-sheets/categories?includeArchived=true', {}, token);
   },
@@ -1029,9 +1036,12 @@ export const api = {
   products(token: string) {
     return request<Product[]>('/products', {}, token);
   },
-  articles(token: string, params?: { search?: string; page?: number; pageSize?: number }) {
+  articles(token: string, params?: { search?: string; categoryId?: string; supplierId?: string; status?: string; page?: number; pageSize?: number }) {
     const query = new URLSearchParams();
     if (params?.search) query.set('search', params.search);
+    if (params?.categoryId) query.set('categoryId', params.categoryId);
+    if (params?.supplierId) query.set('supplierId', params.supplierId);
+    if (params?.status) query.set('status', params.status);
     if (params?.page) query.set('page', String(params.page));
     if (params?.pageSize) query.set('pageSize', String(params.pageSize));
     return request<ArticlesResponse>(`/articles${query.toString() ? `?${query}` : ''}`, {}, token);

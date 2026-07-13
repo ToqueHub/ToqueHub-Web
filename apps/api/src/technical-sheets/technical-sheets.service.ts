@@ -19,7 +19,7 @@ type PreparedImportedIngredient = { productId?: string; productName?: string; pr
 
 const DEFAULT_CATEGORIES = ['Entrées', 'Plats', 'Desserts', 'Sauces', 'Accompagnements', 'Petit-déjeuner', 'Pâtisserie', 'Boulangerie', 'Boissons'];
 const MAX_RECIPE_PDF_BYTES = 20 * 1024 * 1024;
-const MAX_RECIPE_IMPORT_FILES = 8;
+const MAX_RECIPE_IMPORT_FILES = 10;
 const TECHNICAL_SHEETS_UPLOAD_ROOT = resolve(process.env.UPLOAD_DIR || 'uploads', 'technical-sheets');
 const RECIPE_IMPORT_SOURCE = 'recipe-import';
 const RECIPE_IMPORT_ACCEPTED_EXTENSIONS = new Set(['.pdf', '.png', '.jpg', '.jpeg', '.webp', '.heic', '.heif', '.avif', '.pages', '.numbers']);
@@ -56,7 +56,6 @@ export class TechnicalSheetsService {
     if (!org?.stocksInstalledAt) throw new BadRequestException('Installation impossible: Stocks est obligatoire.');
     await this.prisma.$transaction(async (tx) => {
       await tx.organization.update({ where: { id: organizationId }, data: { technicalSheetsInstalledAt: new Date() } });
-      await tx.technicalSheetCategory.createMany({ data: DEFAULT_CATEGORIES.map((name) => ({ organizationId, name })), skipDuplicates: true });
       await tx.auditLog.create({ data: { organizationId, userId: actor.id, action: AuditAction.MODULE_TECHNICAL_SHEETS_INSTALLED, entityType: 'Module', entityId: 'technical-sheets', entityName: 'Fiches Techniques' } });
     });
     return { installed: true, installedApplications: this.installedApps({ ...org, technicalSheetsInstalledAt: new Date() }) };
@@ -83,6 +82,43 @@ export class TechnicalSheetsService {
     const products = await this.prisma.product.findMany({ where: { id: { in: used.map((u) => u.productId) } }, include: { unit: true, category: true } });
     const total = sheets.reduce((sum, s) => sum + Number(s.totalCost), 0);
     return { recipeCount, categoryCount, averageMaterialCost: sheets.length ? total / sheets.length : 0, usedStockProductsCount: used.length, latestRecipes: latest.map((s) => this.serializeRecipe(s)), topProducts: used.map((u) => { const product = products.find((p) => p.id === u.productId); return { productId: u.productId, name: product?.name ?? 'Produit Stocks', count: u._count.productId, product }; }), lastModifiedAt: latest[0]?.updatedAt?.toISOString?.() ?? null };
+  }
+
+  async onboarding(organizationId: string) {
+    await this.assertInstalled(organizationId);
+    const [categories, recipeCount] = await Promise.all([
+      this.prisma.technicalSheetCategory.findMany({ where: { organizationId, isArchived: false }, select: { name: true }, orderBy: { name: 'asc' } }),
+      this.prisma.technicalSheet.count({ where: { organizationId, isArchived: false } }),
+    ]);
+    return {
+      categoryCount: categories.length,
+      recipeCount,
+      completed: recipeCount > 0,
+      nextStep: categories.length ? 'recipe' : 'categories',
+      suggestedCategories: DEFAULT_CATEGORIES,
+      selectedCategoryNames: categories.map((category) => category.name),
+    };
+  }
+
+  async completeOnboardingCategories(organizationId: string, actor: Actor, names: string[]) {
+    await this.assertInstalled(organizationId);
+    const normalizedNames = [...names.reduce((byNormalizedName, name) => {
+      const trimmedName = name.trim();
+      if (trimmedName && !byNormalizedName.has(trimmedName.toLocaleLowerCase('fr'))) byNormalizedName.set(trimmedName.toLocaleLowerCase('fr'), trimmedName);
+      return byNormalizedName;
+    }, new Map<string, string>()).values()];
+    if (!normalizedNames.length) throw new BadRequestException('Sélectionnez au moins une catégorie recette.');
+    await this.prisma.$transaction(async (tx) => {
+      const existingCategories = await tx.technicalSheetCategory.findMany({ where: { organizationId }, select: { id: true, name: true, isArchived: true } });
+      const selectedKeys = new Set(normalizedNames.map((name) => name.toLocaleLowerCase('fr')));
+      const categoriesToRestore = existingCategories.filter((category) => category.isArchived && selectedKeys.has(category.name.toLocaleLowerCase('fr'))).map((category) => category.id);
+      if (categoriesToRestore.length) await tx.technicalSheetCategory.updateMany({ where: { id: { in: categoriesToRestore }, organizationId }, data: { isArchived: false, archivedAt: null } });
+      const existingKeys = new Set(existingCategories.map((category) => category.name.toLocaleLowerCase('fr')));
+      const categoriesToCreate = normalizedNames.filter((name) => !existingKeys.has(name.toLocaleLowerCase('fr')));
+      if (categoriesToCreate.length) await tx.technicalSheetCategory.createMany({ data: categoriesToCreate.map((name) => ({ organizationId, name })), skipDuplicates: true });
+      await tx.auditLog.create({ data: { organizationId, userId: actor.id, action: AuditAction.CATEGORY_CREATED, entityType: 'TechnicalSheetOnboarding', entityId: 'categories', entityName: 'Catégories recettes', details: { names: normalizedNames } } });
+    });
+    return this.onboarding(organizationId);
   }
 
   async listCategories(organizationId: string, q: TechnicalSheetListQueryDto = {}) { await this.assertInstalled(organizationId); return this.prisma.technicalSheetCategory.findMany({ where: { organizationId, ...(q.includeArchived ? {} : { isArchived: false }), name: q.search ? { contains: q.search, mode: 'insensitive' } : undefined }, orderBy: { name: 'asc' }, ...this.page(q) }); }
