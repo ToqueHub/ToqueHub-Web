@@ -1777,6 +1777,7 @@ model HrEmployee {
   legalRightCounters            LegalRightCounter[]
   legalRightCounterTransactions LegalRightCounterTransaction[]
   legalCalculationRuns          LegalCalculationRun[]
+  sensitiveData                 HrEmployeeSensitiveData?
   assignedProductionOrders      ProductionOrder[]              @relation("ProductionOrderResponsible")
   productionAssignments         ProductionAssignment[]
 
@@ -1790,6 +1791,20 @@ model HrEmployee {
   @@index([status])
   @@index([isArchived])
   @@map("hr_employees")
+}
+
+model HrEmployeeSensitiveData {
+  id                               String   @id @default(uuid()) @db.Uuid
+  organizationId                   String   @db.Uuid
+  employeeId                       String   @unique @db.Uuid
+  personalIdentityNumberCiphertext String?  @db.Text
+  createdAt                        DateTime @default(now())
+  updatedAt                        DateTime @updatedAt
+
+  employee HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("hr_employee_sensitive_data")
 }
 
 model HrEmployeeSecondaryPosition {

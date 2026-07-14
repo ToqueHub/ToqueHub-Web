@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
-import { AlertCircle, BriefcaseBusiness, CalendarDays, FileText, GraduationCap, History, NotebookText, Search, ShieldCheck, UserRound, UsersRound, X, ChevronDown, Mail, Phone, MapPin, Globe, Languages, Hash } from 'lucide-react';
-import type { CoreUser, HrCollaborator, HrCollaboratorPayload, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, Site } from '../../../types';
+import { AlertCircle, ArrowLeft, BriefcaseBusiness, CalendarDays, CheckCircle2, FileText, GraduationCap, History, NotebookText, Search, ShieldCheck, Sparkles, UploadCloud, UserRound, UsersRound, X, ChevronDown, Mail, Phone, MapPin, Globe, Languages, Hash } from 'lucide-react';
+import type { CoreUser, HrCollaborator, HrCollaboratorPayload, HrContractAnalysis, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, RegulatoryCountryCode, Site } from '../../../types';
 import { HR_CATALOG } from '../../../hr-catalog';
 
 type TabId = 'profile' | 'professional' | 'contracts' | 'documents' | 'trainings' | 'organization' | 'history';
@@ -25,6 +25,12 @@ const statusOptions = [
   { value: 'SUSPENDED', label: 'Suspendu' },
   { value: 'DEPARTED', label: 'Départ' },
 ];
+const OCR_DOCUMENT_NOTE_PREFIX = 'Document analysé par OCR';
+const OCR_DOCUMENT_NOTES = {
+  CONTRACT: `${OCR_DOCUMENT_NOTE_PREFIX} — contrat à vérifier.`,
+  CV: `${OCR_DOCUMENT_NOTE_PREFIX} — CV à vérifier.`,
+  OTHER: `${OCR_DOCUMENT_NOTE_PREFIX} — type à vérifier.`,
+};
 
 function collaboratorSecondarySiteIds(collaborator?: HrCollaborator) {
   if (collaborator?.secondarySiteIds?.length) return collaborator.secondarySiteIds;
@@ -81,7 +87,8 @@ function FormField({
   );
 }
 
-export function CollaboratorModal({ collaborator, collaborators, departments, positions, users, sites, onClose, onSubmit, onViewDocument, onDownloadDocument, onReplaceDocument, onDeleteDocument }: { collaborator?: HrCollaborator; collaborators: HrCollaborator[]; departments: HrDepartment[]; positions: HrPosition[]; users: CoreUser[]; sites: Site[]; onClose: () => void; onSubmit: (payload: HrCollaboratorPayload, documents: PendingHrDocumentUpload[]) => Promise<void>; onViewDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onDownloadDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument?: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument?: (employeeId: string, documentId: string) => Promise<void> }) {
+export function CollaboratorModal({ collaborator, collaborators, departments, positions, users, sites, regulatoryCountryCode, onClose, onSubmit, onAnalyzeContract, onViewDocument, onDownloadDocument, onReplaceDocument, onDeleteDocument }: { collaborator?: HrCollaborator; collaborators: HrCollaborator[]; departments: HrDepartment[]; positions: HrPosition[]; users: CoreUser[]; sites: Site[]; regulatoryCountryCode?: RegulatoryCountryCode | null; onClose: () => void; onSubmit: (payload: HrCollaboratorPayload, documents: PendingHrDocumentUpload[]) => Promise<void>; onAnalyzeContract: (files: File[]) => Promise<HrContractAnalysis>; onViewDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onDownloadDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument?: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument?: (employeeId: string, documentId: string) => Promise<void> }) {
+  const [creationStage, setCreationStage] = useState<'choice' | 'ocr' | 'form'>(collaborator ? 'form' : 'choice');
   const [activeTab, setActiveTab] = useState<TabId>('profile');
   const [submitting, setSubmitting] = useState(false);
   const [positionResetMessage, setPositionResetMessage] = useState('');
@@ -90,6 +97,8 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
   const [requiredErrors, setRequiredErrors] = useState<RequiredFieldErrors>({});
   const [submitError, setSubmitError] = useState('');
   const [pendingDocuments, setPendingDocuments] = useState<PendingHrDocumentUpload[]>([]);
+  const [contractAnalysis, setContractAnalysis] = useState<HrContractAnalysis | null>(null);
+  const [contractAttachmentNotice, setContractAttachmentNotice] = useState('');
   const [selectedTrainings, setSelectedTrainings] = useState<string[]>(collaborator?.trainingNames ?? []);
   const [customTraining, setCustomTraining] = useState('');
   const [form, setForm] = useState<HrCollaboratorPayload>({
@@ -106,6 +115,7 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
     secondaryLanguage: collaborator?.secondaryLanguage ?? '',
     emergencyContact: collaborator?.emergencyContact ?? '',
     birthDate: toInputDate(collaborator?.birthDate),
+    personalIdentityNumber: collaborator?.personalIdentityNumber ?? '',
     hireDate: toInputDate(collaborator?.hireDate) || new Date().toISOString().slice(0, 10),
     departmentId: collaborator?.departmentId ?? collaborator?.department?.id ?? '',
     positionId: collaborator?.positionId ?? collaborator?.position?.id ?? '',
@@ -154,6 +164,51 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
     setPositionResetMessage("Le poste principal a été vidé car il n'appartient pas au nouveau service.");
   }, [form.departmentId, form.positionId, primaryPositions]);
 
+  function applyContractAnalysis(result: HrContractAnalysis, files: File[]) {
+    setForm((current) => {
+      const merged = { ...current, ...result.draft };
+      return {
+        ...merged,
+        firstName: merged.firstName ?? '',
+        lastName: merged.lastName ?? '',
+        hireDate: result.hasContractSource ? merged.hireDate || '' : '',
+        departmentId: merged.departmentId ?? '',
+        positionId: merged.positionId ?? '',
+        personalIdentityNumber: result.hasContractSource ? merged.personalIdentityNumber ?? '' : '',
+        contractType: result.hasContractSource ? merged.contractType ?? '' : '',
+        contractEndDate: result.hasContractSource ? merged.contractEndDate ?? '' : '',
+        trialEndDate: result.hasContractSource ? merged.trialEndDate ?? '' : '',
+        contractWeeklyMinutes: result.hasContractSource ? merged.contractWeeklyMinutes ?? null : null,
+        hourlyRate: result.hasContractSource ? merged.hourlyRate ?? null : null,
+        rateEffectiveDate: result.hasContractSource ? merged.rateEffectiveDate ?? '' : '',
+      };
+    });
+    setSelectedTrainings(result.draft.trainingNames ?? []);
+    const pdfDocuments = files.flatMap((file, index) => {
+      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+      const source = result.documents[index];
+      if (!isPdf || !source) return [];
+      return [{
+        file,
+        category: source.category,
+        notes: OCR_DOCUMENT_NOTES[source.documentType],
+      }];
+    });
+    setPendingDocuments((documents) => [
+      ...pdfDocuments,
+      ...documents.filter((document) => !document.notes?.startsWith(OCR_DOCUMENT_NOTE_PREFIX)),
+    ]);
+    const imageCount = files.length - pdfDocuments.length;
+    setContractAttachmentNotice([
+      pdfDocuments.length ? `${pdfDocuments.length} PDF seront joints au dossier après l’enregistrement.` : '',
+      imageCount ? `${imageCount} image${imageCount > 1 ? 's ont' : ' a'} servi à l’analyse sans être archivée${imageCount > 1 ? 's' : ''}.` : '',
+    ].filter(Boolean).join(' '));
+    setContractAnalysis(result);
+    setDirty(true);
+    setActiveTab('profile');
+    setCreationStage('form');
+  }
+
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     const nextRequiredErrors = validateRequiredFields(form);
@@ -185,6 +240,36 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
     history: <History size={16} />,
   };
 
+  if (!collaborator && creationStage !== 'form') {
+    return (
+      <div className="modal-overlay">
+        <div className="modal-card hr-modal hr-collaborator-modal hr-collaborator-entry-modal" role="dialog" aria-modal="true" aria-labelledby="hr-collaborator-entry-title">
+          <div className="modal-header hr-modal-sticky">
+            <div>
+              <h2 id="hr-collaborator-entry-title">Ajouter un collaborateur</h2>
+              <p>{creationStage === 'choice' ? 'Choisissez comment préparer la fiche. Vous pourrez tout relire avant de l’enregistrer.' : 'Importez un CV, un contrat ou les deux pour compléter un même brouillon.'}</p>
+            </div>
+            <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Fermer"><X size={18} /></button>
+          </div>
+          <div className="hr-collaborator-entry-body">
+            {creationStage === 'choice' ? (
+              <CreationSourceChooser
+                onManual={() => setCreationStage('form')}
+                onOcr={() => setCreationStage('ocr')}
+              />
+            ) : (
+              <ContractOcrStep
+                onBack={() => setCreationStage(contractAnalysis ? 'form' : 'choice')}
+                onAnalyze={onAnalyzeContract}
+                onAnalyzed={applyContractAnalysis}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="modal-overlay">
       <form className="modal-card hr-modal hr-collaborator-modal" onSubmit={submit} noValidate>
@@ -204,8 +289,24 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
             </button>
           ))}
         </div>
+        {contractAnalysis ? (
+          <div className="hr-ocr-review-banner" role="status">
+            <CheckCircle2 size={20} />
+            <div>
+              <strong>{contractAnalysis.fieldCount} information{contractAnalysis.fieldCount > 1 ? 's' : ''} préremplie{contractAnalysis.fieldCount > 1 ? 's' : ''}</strong>
+              <span>{contractAnalysis.documents.length} document{contractAnalysis.documents.length > 1 ? 's' : ''} analysé{contractAnalysis.documents.length > 1 ? 's' : ''} : {contractAnalysis.documents.map((document) => document.documentType === 'CONTRACT' ? 'contrat' : document.documentType === 'CV' ? 'CV' : 'autre').join(' + ')}. Relisez chaque onglet avant l’enregistrement.</span>
+              {contractAttachmentNotice ? <small>{contractAttachmentNotice}</small> : null}
+              {contractAnalysis.uncertainFields.length || contractAnalysis.warnings.length ? (
+                <small className="hr-ocr-review-warning">
+                  {[...contractAnalysis.uncertainFields.map((field) => `Champ incertain : ${field}`), ...contractAnalysis.warnings].slice(0, 3).join(' · ')}
+                </small>
+              ) : null}
+            </div>
+            <button type="button" className="btn btn-secondary" onClick={() => setCreationStage('ocr')}>Modifier les documents</button>
+          </div>
+        ) : null}
         <div className="hr-collaborator-body">
-          {activeTab === 'profile' ? <ProfileTab form={form} set={set} requiredErrors={requiredErrors} /> : null}
+          {activeTab === 'profile' ? <ProfileTab form={form} set={set} requiredErrors={requiredErrors} regulatoryCountryCode={regulatoryCountryCode} /> : null}
           {activeTab === 'professional' ? <ProfessionalTab form={form} set={set} requiredErrors={requiredErrors} departments={activeDepartments} positions={primaryPositions} allPositions={activePositions} selectedDepartment={selectedDepartment} sites={sites} managers={availableManagers} users={availableUsers} positionResetMessage={positionResetMessage} clearPositionResetMessage={() => setPositionResetMessage('')} /> : null}
           {activeTab === 'contracts' ? <ContractsTab form={form} set={set} collaborator={collaborator} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /> : null}
           {activeTab === 'documents' ? <DocumentsTab collaborator={collaborator} pendingDocuments={pendingDocuments} onDocumentsChange={(documents) => { setPendingDocuments(documents); setDirty(true); }} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /> : null}
@@ -225,7 +326,148 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
   );
 }
 
-function ProfileTab({ form, set, requiredErrors }: TabProps & { requiredErrors: RequiredFieldErrors }) {
+function CreationSourceChooser({ onManual, onOcr }: { onManual: () => void; onOcr: () => void }) {
+  return (
+    <section className="hr-collaborator-source-step">
+      <div className="hr-collaborator-entry-intro">
+        <span className="welcome-tag"><Sparkles size={14} /> Fiche collaborateur</span>
+        <h3>Comment souhaitez-vous commencer ?</h3>
+        <p>Dans les deux cas, vous continuerez dans le même formulaire et garderez la main sur toutes les informations.</p>
+      </div>
+      <div className="onboarding-options-grid hr-collaborator-source-options">
+        <button type="button" className="onboarding-option-card emerald" onClick={onManual}>
+          <div className="onboarding-option-icon"><UserRound size={21} /></div>
+          <div className="onboarding-option-content">
+            <span className="onboarding-option-title">Saisie manuelle</span>
+            <span className="onboarding-option-desc">Ouvrir la fiche actuelle et renseigner le profil, le poste, le contrat et les documents.</span>
+          </div>
+        </button>
+        <button type="button" className="onboarding-option-card blue" onClick={onOcr}>
+          <div className="onboarding-option-icon"><FileText size={21} /></div>
+          <div className="onboarding-option-content">
+            <span className="onboarding-option-title">Analyser des documents avec l’OCR</span>
+            <span className="onboarding-option-desc">Combiner un CV et un contrat, puis préremplir et vérifier la fiche.</span>
+          </div>
+        </button>
+      </div>
+      <div className="hr-collaborator-entry-safety">
+        <ShieldCheck size={17} />
+        <span>L’analyse prépare uniquement un brouillon. Aucun collaborateur, contrat ou document n’est enregistré avant votre validation.</span>
+      </div>
+    </section>
+  );
+}
+
+function ContractOcrStep({ onBack, onAnalyze, onAnalyzed }: { onBack: () => void; onAnalyze: (files: File[]) => Promise<HrContractAnalysis>; onAnalyzed: (result: HrContractAnalysis, files: File[]) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [dragActive, setDragActive] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [error, setError] = useState('');
+
+  function selectFiles(nextFiles?: FileList | File[]) {
+    const selected = Array.from(nextFiles ?? []);
+    if (!selected.length) return;
+    if (files.length + selected.length > 6) {
+      setError('Vous pouvez analyser jusqu’à 6 documents à la fois.');
+      return;
+    }
+    for (const next of selected) {
+      const extension = next.name.toLowerCase().split('.').pop() ?? '';
+      const acceptedExtension = ['pdf', 'png', 'jpg', 'jpeg', 'webp', 'heic', 'heif', 'avif'].includes(extension);
+      const acceptedMime = next.type === 'application/pdf' || next.type.startsWith('image/');
+      if (!acceptedExtension && !acceptedMime) {
+        setError(`Format non pris en charge pour « ${next.name} ».`);
+        return;
+      }
+      if (next.size > 10 * 1024 * 1024) {
+        setError(`« ${next.name} » dépasse 10 Mo.`);
+        return;
+      }
+    }
+    setFiles((current) => {
+      const keys = new Set(current.map(fileKey));
+      return [...current, ...selected.filter((file) => !keys.has(fileKey(file)))];
+    });
+    setError('');
+  }
+
+  async function analyze() {
+    if (!files.length || analyzing) return;
+    setAnalyzing(true);
+    setError('');
+    try {
+      const result = await onAnalyze(files);
+      onAnalyzed(result, files);
+    } catch (analysisError) {
+      setError(analysisError instanceof Error ? analysisError.message : 'Impossible d’analyser ces documents.');
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  return (
+    <section className="hr-contract-ocr-step">
+      <div className="hr-collaborator-entry-intro compact">
+        <span className="welcome-tag"><FileText size={14} /> Import sécurisé</span>
+        <h3>Constituez le dossier à analyser</h3>
+        <p>Ajoutez un CV, un contrat ou les deux. Le CV complète le profil et le parcours; seul le contrat peut remplir les informations contractuelles.</p>
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        multiple
+        accept="application/pdf,image/png,image/jpeg,image/webp,image/heic,image/heif,image/avif,.pdf,.png,.jpg,.jpeg,.webp,.heic,.heif,.avif"
+        hidden
+        onChange={(event) => { selectFiles(event.target.files ?? undefined); event.currentTarget.value = ''; }}
+      />
+      <button
+        type="button"
+        className={`hr-contract-dropzone ${dragActive ? 'drag-active' : ''} ${files.length ? 'has-file' : ''}`}
+        disabled={analyzing}
+        onClick={() => inputRef.current?.click()}
+        onDragEnter={(event) => { event.preventDefault(); setDragActive(true); }}
+        onDragOver={(event) => { event.preventDefault(); setDragActive(true); }}
+        onDragLeave={(event) => { event.preventDefault(); setDragActive(false); }}
+        onDrop={(event) => { event.preventDefault(); setDragActive(false); selectFiles(event.dataTransfer.files); }}
+      >
+        <span className="hr-contract-dropzone-icon">{files.length ? <CheckCircle2 size={28} /> : <UploadCloud size={28} />}</span>
+        {files.length ? (
+          <span className="hr-contract-selected-file">
+            <strong>{files.length} document{files.length > 1 ? 's' : ''} sélectionné{files.length > 1 ? 's' : ''}</strong>
+            <small>Cliquez pour ajouter un CV ou un contrat complémentaire</small>
+          </span>
+        ) : (
+          <span>
+            <strong>Déposer un CV et/ou un contrat</strong>
+            <small>Jusqu’à 6 PDF ou images · 10 Mo maximum par fichier</small>
+          </span>
+        )}
+      </button>
+      {files.length ? <div className="hr-ocr-selected-documents">{files.map((file) => (
+        <div key={fileKey(file)}>
+          <FileText size={16} />
+          <span><strong>{file.name}</strong><small>{formatBytes(file.size)}</small></span>
+          <button type="button" className="icon-btn danger" disabled={analyzing} onClick={() => setFiles((current) => current.filter((item) => fileKey(item) !== fileKey(file)))} aria-label={`Retirer ${file.name}`}><X size={14} /></button>
+        </div>
+      ))}</div> : null}
+      {error ? <div className="alert-modern error hr-contract-ocr-error"><AlertCircle size={17} /> {error}</div> : null}
+      <div className="hr-contract-ocr-privacy">
+        <ShieldCheck size={16} />
+        <span>Les dates d’anciens emplois d’un CV ne deviennent jamais des dates de contrat. L’identifiant personnel n’est repris que depuis un contrat explicite.</span>
+      </div>
+      <div className="hr-contract-import-actions">
+        <button type="button" className="btn btn-secondary" disabled={analyzing} onClick={onBack}><ArrowLeft size={16} /> Retour</button>
+        <button type="button" className="btn btn-primary" disabled={!files.length || analyzing} onClick={() => void analyze()}>
+          <Sparkles size={16} /> {analyzing ? 'Analyse OCR en cours…' : `Analyser ${files.length > 1 ? 'les documents' : 'le document'}`}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function ProfileTab({ form, set, requiredErrors, regulatoryCountryCode }: TabProps & { requiredErrors: RequiredFieldErrors; regulatoryCountryCode?: RegulatoryCountryCode | null }) {
+  const identityLabel = regulatoryCountryCode === 'FI' ? 'Henkilötunnus' : regulatoryCountryCode === 'FR' ? 'Numéro de sécurité sociale' : 'Identifiant personnel';
   return <TabPanel icon={<UserRound size={18} />} title="Profil">
     <div className="hr-form-grid">
       <FormField label="URL de la photo" icon={<UserRound size={16} />} className="span-2">
@@ -257,6 +499,9 @@ function ProfileTab({ form, set, requiredErrors }: TabProps & { requiredErrors: 
       </FormField>
       <FormField label="Date de naissance" icon={<CalendarDays size={16} />}>
         <input type="date" value={form.birthDate ?? ''} onChange={(e) => set('birthDate', e.target.value)} />
+      </FormField>
+      <FormField label={identityLabel} icon={<ShieldCheck size={16} />}>
+        <input autoComplete="off" spellCheck={false} placeholder={regulatoryCountryCode === 'FI' ? 'JJMMAA-XXXX' : 'Numéro du salarié'} value={form.personalIdentityNumber ?? ''} onChange={(e) => set('personalIdentityNumber', e.target.value)} />
       </FormField>
       <FormField label="Langue principale" icon={<Languages size={16} />}>
         <input placeholder="Français" value={form.primaryLanguage ?? ''} onChange={(e) => set('primaryLanguage', e.target.value)} />
@@ -418,7 +663,7 @@ function DocumentsTab({ collaborator, pendingDocuments, onDocumentsChange, onVie
             <option value="CERTIFICATION">Formation / certification</option>
             <option value="DIPLOMA">Diplôme</option>
             <option value="IDENTITY">Identité</option>
-            <option value="ADMINISTRATIVE">Administratif</option>
+            <option value="ADMINISTRATIVE">CV / administratif</option>
             <option value="OTHER">Autre</option>
           </select>
           <span className="hr-select-chevron"><ChevronDown size={16} /></span>
@@ -435,7 +680,7 @@ function DocumentsTab({ collaborator, pendingDocuments, onDocumentsChange, onVie
 function DocumentRegistry({ collaborator, onViewDocument, onDownloadDocument, onReplaceDocument, onDeleteDocument }: { collaborator?: HrCollaborator; onViewDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onDownloadDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument?: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument?: (employeeId: string, documentId: string) => Promise<void> }) {
   const documents = collaborator?.documents ?? [];
   if (!collaborator || !documents.length) return <DataTable title="Documents RH" rows={[]} empty="Aucun document enregistré dans HrDocument." />;
-  return <div className="hr-contract-history"><strong>Documents RH</strong>{documents.map((document) => <div key={document.id} className="hr-contract-history-row"><div><span>{document.originalName}</span><small>{document.category} · {formatBytes(document.sizeBytes)} · {document.expiresAt ? formatDate(document.expiresAt) : 'Sans échéance'}</small></div><DocumentActions employeeId={collaborator.id} document={document} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /></div>)}</div>;
+  return <div className="hr-contract-history"><strong>Documents RH</strong>{documents.map((document) => <div key={document.id} className="hr-contract-history-row"><div><span>{document.originalName}</span><small>{hrDocumentCategoryLabel(document.category)} · {formatBytes(document.sizeBytes)} · {document.expiresAt ? formatDate(document.expiresAt) : 'Sans échéance'}</small></div><DocumentActions employeeId={collaborator.id} document={document} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /></div>)}</div>;
 }
 
 function ContractHistory({ collaborator, onViewDocument, onDownloadDocument, onReplaceDocument, onDeleteDocument }: { collaborator?: HrCollaborator; onViewDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onDownloadDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument?: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument?: (employeeId: string, documentId: string) => Promise<void> }) {
@@ -611,6 +856,7 @@ function cleanPayload(form: HrCollaboratorPayload): HrCollaboratorPayload {
     secondaryLanguage: form.secondaryLanguage || undefined,
     emergencyContact: form.emergencyContact || undefined,
     birthDate: form.birthDate || undefined,
+    personalIdentityNumber: form.personalIdentityNumber || undefined,
     siteId: form.siteId || undefined,
     employeeNumber: form.employeeNumber || undefined,
     notes: form.notes || undefined,
@@ -651,3 +897,8 @@ function parseHoursInput(value: string) {
   return Number.isFinite(hours) && hours >= 0 ? hours : null;
 }
 function formatBytes(value?: number | null) { if (!value) return '-'; if (value < 1024 * 1024) return `${Math.round(value / 1024)} Ko`; return `${(value / 1024 / 1024).toFixed(1)} Mo`; }
+function fileKey(file: File) { return `${file.name}:${file.size}:${file.lastModified}`; }
+function hrDocumentCategoryLabel(value?: string | null) {
+  const labels: Record<string, string> = { CONTRACT: 'Contrat', AMENDMENT: 'Avenant', CERTIFICATION: 'Formation / certification', DIPLOMA: 'Diplôme', IDENTITY: 'Identité', ADMINISTRATIVE: 'CV / administratif', OTHER: 'Autre' };
+  return labels[value ?? 'OTHER'] ?? value ?? 'Autre';
+}

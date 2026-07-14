@@ -1534,6 +1534,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     return collaborator;
   }
 
+  async function handleAnalyzeHrContract(files: File[]) {
+    return api.analyzeHrDocuments(token, files);
+  }
+
   async function handleUpdateHrCollaborator(id: string, payload: Partial<HrCollaboratorPayload>) {
     const collaborator = await submit(() => api.updateHrCollaborator(token, id, payload), 'Collaborateur RH mis à jour.') as HrCollaborator;
     await refreshHr();
@@ -2649,6 +2653,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   onNavigate={(next) => setActiveTab(next === 'collaborators' ? 'hr-collaborators' : next === 'departments' ? 'hr-departments' : next === 'positions' ? 'hr-positions' : next === 'orgchart' ? 'hr-orgchart' : 'hr-dashboard')}
                   onExitToOverview={() => setActiveTab('overview')}
                   onCreateCollaborator={handleCreateHrCollaborator}
+                  onAnalyzeCollaboratorContract={handleAnalyzeHrContract}
                   onUpdateCollaborator={handleUpdateHrCollaborator}
                   onArchiveCollaborator={handleArchiveHrCollaborator}
                   onUploadCollaboratorDocument={handleUploadHrCollaboratorDocument}
@@ -3330,6 +3335,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
       {showProductImportModal ? (
         <ProductImportWizard
+          suppliers={suppliers}
           onClose={closeProductImportModal}
           onDownloadTemplate={() => api.downloadProductImportTemplate(token)}
           onAnalyze={(file) => api.analyzeProductImport(token, file)}
@@ -6165,7 +6171,7 @@ function StocksReceptionStep({ ocrConfigured, ocrStatuses, onBack, onImportCsv, 
         <div>
           <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>Importer vos produits ou analyser un document</h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginTop: '0.35rem', lineHeight: 1.5 }}>
-            Ajoutez votre catalogue via CSV, ou déposez un bon de commande, une facture ou un bon de livraison. L’analyse prépare les lignes, vous corrigez si besoin, puis seulement la validation crée la réception et les mouvements de stock.
+            Ajoutez votre catalogue via CSV ou Excel, ou déposez un bon de commande, une facture ou un bon de livraison. L’import catalogue ne crée aucun stock ; seul le parcours de réception validé crée des mouvements.
           </p>
         </div>
         {!ocrConfigured ? (
@@ -6181,8 +6187,8 @@ function StocksReceptionStep({ ocrConfigured, ocrStatuses, onBack, onImportCsv, 
               <Download size={18} />
             </div>
             <div className="onboarding-option-content">
-              <span className="onboarding-option-title">Importer un CSV produits</span>
-              <span className="onboarding-option-desc">L’assistant CSV importe votre catalogue puis revient ici pour continuer l’onboarding.</span>
+              <span className="onboarding-option-title">Importer un fichier produits</span>
+              <span className="onboarding-option-desc">CSV, Excel ou historique fournisseur : l’assistant consolide le catalogue puis revient ici.</span>
             </div>
           </div>
 
@@ -6633,7 +6639,7 @@ const PRODUCT_IMPORT_FIELD_LABELS: Record<ProductImportField, string> = {
   gtin: 'GTIN',
   supplier: 'Fournisseur',
   category: 'Catégorie',
-  averagePrice: 'Prix HT',
+  averagePrice: 'Prix unitaire HT',
   minimumStock: 'Seuil min.',
   description: 'Description',
   originCountry: 'Origine',
@@ -6725,7 +6731,7 @@ function AddImportChooser({ onManual, onCsv, onCreator, onOcr }: { onManual: () 
         </div>
       </button>
 
-      {/* Button 2: Importer un CSV */}
+      {/* Button 2: Importer un fichier structuré */}
       <button
         type="button"
         onClick={onCsv}
@@ -6768,8 +6774,8 @@ function AddImportChooser({ onManual, onCsv, onCreator, onOcr }: { onManual: () 
           <UploadCloud size={20} />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0f172a' }}>Importer un CSV</span>
-          <small style={{ fontSize: '0.78rem', color: '#64748b', lineHeight: 1.3 }}>Contrôler les colonnes et les doublons avant d’enrichir le catalogue.</small>
+          <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0f172a' }}>Importer un CSV ou Excel</span>
+          <small style={{ fontSize: '0.78rem', color: '#64748b', lineHeight: 1.3 }}>Importer une base produit ou un historique fournisseur, avec consolidation avant création.</small>
         </div>
       </button>
 
@@ -6831,12 +6837,14 @@ function AddImportChooser({ onManual, onCsv, onCreator, onOcr }: { onManual: () 
 }
 
 function ProductImportWizard({
+  suppliers,
   onClose,
   onDownloadTemplate,
   onAnalyze,
   onCommit,
   onCreateFromDocuments,
 }: {
+  suppliers: Supplier[];
   onClose: () => void;
   onDownloadTemplate: () => Promise<void>;
   onAnalyze: (file: File) => Promise<ProductImportPreview>;
@@ -6846,6 +6854,7 @@ function ProductImportWizard({
   const [step, setStep] = useState<ProductImportStep>('welcome');
   const [preview, setPreview] = useState<ProductImportPreview | null>(null);
   const [options, setOptions] = useState({ createMissingCategories: true, createMissingSuppliers: true });
+  const [defaultSupplierId, setDefaultSupplierId] = useState('');
   const [result, setResult] = useState<ProductImportCommitResult | null>(null);
   const [busy, setBusy] = useState<'download' | 'analyze' | 'commit' | null>(null);
   const [error, setError] = useState<string>();
@@ -6875,7 +6884,7 @@ function ProductImportWizard({
       setOptions(next.options ?? { createMissingCategories: true, createMissingSuppliers: true });
       setStep('mapping');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Analyse du CSV impossible.');
+      setError(err instanceof Error ? err.message : 'Analyse du fichier produit impossible.');
     } finally {
       setBusy(null);
     }
@@ -6883,11 +6892,18 @@ function ProductImportWizard({
 
   async function commitImport() {
     if (!preview || !selectedRows.length) return;
+    const defaultSupplier = suppliers.find((supplier) => supplier.id === defaultSupplierId);
     setBusy('commit');
     setError(undefined);
     try {
       const commitResult = await onCommit({
-        rows: preview.rows.map(({ rowNumber, fields, selected }) => ({ rowNumber, fields, selected })),
+        rows: preview.rows.map(({ rowNumber, fields, selected }) => ({
+          rowNumber,
+          fields: defaultSupplier && !fields.primarySupplierId && !fields.supplier
+            ? { ...fields, primarySupplierId: defaultSupplier.id, supplierName: defaultSupplier.name }
+            : fields,
+          selected,
+        })),
         mapping: preview.mapping,
         options,
       });
@@ -6952,16 +6968,19 @@ function ProductImportWizard({
                     <ProductImportReviewStep
                       preview={preview}
                       summary={summary}
+                      suppliers={suppliers}
+                      defaultSupplierId={defaultSupplierId}
                       options={options}
                       selectedRows={selectedRows.length}
                       busy={busy === 'commit'}
                       onBack={goBack}
                       onPatchRow={patchRow}
                       onOptionsChange={setOptions}
+                      onDefaultSupplierChange={setDefaultSupplierId}
                       onCommit={commitImport}
                     />
                   ) : null}
-                  {step === 'done' ? <ProductImportDoneStep result={result} onClose={onClose} onRestart={() => { setPreview(null); setResult(null); setStep('structure'); }} /> : null}
+                  {step === 'done' ? <ProductImportDoneStep result={result} onClose={onClose} onRestart={() => { setPreview(null); setResult(null); setDefaultSupplierId(''); setStep('structure'); }} /> : null}
                 </motion.div>
               </AnimatePresence>
             </main>
@@ -6982,10 +7001,10 @@ function ProductImportWelcome({ onClose, onNext }: { onClose: () => void; onNext
         <span className="badge badge-reception product-import-badge"><Sparkles size={14} color="#10b981" /> Configuration Guidée</span>
         <h1>Bienvenue sur l'importation de <span>produits</span></h1>
         <p>
-          Ici, vous pourrez ajouter vos produits depuis un document CSV. L'assistant va d'abord vous guider pour la structure du document CSV attendu, puis vous guider pas à pas pour intégrer votre propre base de produits.
+          Ajoutez vos produits depuis un fichier CSV ou Excel existant. L’assistant lit la structure, consolide les historiques fournisseur compatibles et vous laisse tout vérifier avant la création.
         </p>
         <div className="product-import-bullets">
-          <span><Download size={16} /> Préparer le bon modèle CSV</span>
+          <span><Download size={16} /> Utiliser un CSV ou un classeur Excel</span>
           <span><UploadCloud size={16} /> Importer votre fichier produit</span>
           <span><CheckCircle2 size={16} /> Vérifier avant création</span>
         </div>
@@ -7009,7 +7028,7 @@ function ProductImportAside({ step, summary, result }: { step: ProductImportStep
         <div className="product-import-brand"><Package size={28} /> TOQUE<span>HUB</span> STOCKS</div>
         <div>
           <span className="stocks-onboarding-kicker">Import guidé</span>
-          <h3>Assistant produits CSV</h3>
+          <h3>Assistant produits</h3>
         </div>
         <div className="product-import-steps">
           {PRODUCT_IMPORT_STEPS.map((item, idx) => {
@@ -7038,8 +7057,8 @@ function ProductImportStructureStep({ onBack, onNext, onDownload, onCreateFromDo
   return (
     <div className="product-import-step">
       <div className="product-import-copy">
-        <h2>Structure du document CSV</h2>
-        <p>Le fichier doit contenir au minimum un nom de produit et une unité. Les autres colonnes enrichissent la fiche produit sans toucher au stock.</p>
+        <h2>Structure du fichier produit</h2>
+        <p>Un CSV ou un classeur Excel classique doit contenir au minimum un nom de produit et une unité. Les historiques fournisseur reconnus peuvent aussi permettre de calculer automatiquement l’unité et le prix moyen.</p>
       </div>
       <div className="product-import-structure-grid">
         {columns.map((column, index) => (
@@ -7050,7 +7069,7 @@ function ProductImportStructureStep({ onBack, onNext, onDownload, onCreateFromDo
         ))}
       </div>
       <div className="alert-modern">
-        <Info size={16} /> Si votre fichier vient de Numbers, exportez-le d'abord en CSV depuis Fichier &gt; Exporter vers &gt; CSV.
+        <Info size={16} /> Formats acceptés : CSV et Excel .xlsx. Depuis Numbers, exportez en Excel ou en CSV.
       </div>
       <div className="hr-catalog-actions sticky product-import-footer">
         <button type="button" className="btn btn-secondary" onClick={onBack}>Retour</button>
@@ -7073,22 +7092,22 @@ function ProductImportUploadStep({ onBack, onAnalyze, busy }: { onBack: () => vo
   return (
     <div className="product-import-step">
       <div className="product-import-copy">
-        <h2>Importer votre CSV</h2>
-        <p>Déposez le fichier exporté. L’assistant va lire les colonnes, préparer un mapping et signaler les lignes à vérifier.</p>
+        <h2>Importer votre fichier produit</h2>
+        <p>Déposez votre CSV ou votre fichier Excel. L’assistant lit directement les cellules, prépare les correspondances et signale les produits à vérifier.</p>
       </div>
       <label
         className="stocks-ocr-dropzone product-import-dropzone"
         onDragOver={(event) => event.preventDefault()}
         onDrop={(event) => {
           event.preventDefault();
-          const next = Array.from(event.dataTransfer.files ?? []).find((item) => item.name.toLowerCase().endsWith('.csv'));
+          const next = Array.from(event.dataTransfer.files ?? []).find((item) => /\.(csv|xlsx)$/i.test(item.name));
           if (next) setFile(next);
         }}
       >
         <UploadCloud size={34} style={{ color: '#10b981' }} />
-        <span>{file ? file.name : 'Déposer le CSV ici ou cliquer pour parcourir'}</span>
-        <small>CSV uniquement, jusqu’à 5 Mo. Les fichiers Numbers doivent être exportés en CSV.</small>
-        <input type="file" accept=".csv,text/csv" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+        <span>{file ? file.name : 'Déposer le CSV ou le fichier Excel ici'}</span>
+        <small>CSV ou XLSX, jusqu’à 5 Mo. Le classeur est lu sans passer par l’OCR.</small>
+        <input type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
       </label>
       {file ? (
         <div className="stocks-ocr-file-row product-import-file-row">
@@ -7103,7 +7122,7 @@ function ProductImportUploadStep({ onBack, onAnalyze, busy }: { onBack: () => vo
       <div className="hr-catalog-actions sticky product-import-footer">
         <button type="button" className="btn btn-secondary" onClick={onBack}>Retour</button>
         <button type="button" className="btn btn-primary" disabled={!file || busy} onClick={() => file && onAnalyze(file)}>
-          {busy ? 'Analyse…' : 'Analyser le CSV'}
+          {busy ? 'Analyse…' : 'Analyser le fichier'}
         </button>
       </div>
     </div>
@@ -7128,8 +7147,18 @@ function ProductImportMappingStep({ preview, onBack, onNext, onUploadAgain }: { 
     <div className="product-import-step">
       <div className="product-import-copy">
         <h2>Associer les colonnes</h2>
-        <p>Les colonnes reconnues sont prêtes. Les colonnes non reconnues restent ignorées pour éviter de créer des informations incorrectes.</p>
+        <p>
+          Les colonnes reconnues sont prêtes{preview.sourceSheet ? ` depuis la feuille « ${preview.sourceSheet} »` : ''}. Les colonnes non reconnues restent ignorées pour éviter de créer des informations incorrectes.
+        </p>
       </div>
+      {preview.processingNotes?.length ? (
+        <div className="alert-modern" style={{ margin: 0, alignItems: 'flex-start' }}>
+          <Info size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+            {preview.processingNotes.map((note) => <span key={note}>{note}</span>)}
+          </div>
+        </div>
+      ) : null}
       <div className="product-import-mapping-grid">
         {mapped.map(([header, field]) => (
           <div key={header}>
@@ -7158,28 +7187,34 @@ function ProductImportMappingStep({ preview, onBack, onNext, onUploadAgain }: { 
 function ProductImportReviewStep({
   preview,
   summary,
+  suppliers,
+  defaultSupplierId,
   options,
   selectedRows,
   busy,
   onBack,
   onPatchRow,
   onOptionsChange,
+  onDefaultSupplierChange,
   onCommit,
 }: {
   preview: ProductImportPreview | null;
   summary: ReturnType<typeof summarizeProductImportRows> | null;
+  suppliers: Supplier[];
+  defaultSupplierId: string;
   options: { createMissingCategories: boolean; createMissingSuppliers: boolean };
   selectedRows: number;
   busy: boolean;
   onBack: () => void;
   onPatchRow: (rowNumber: number, selected: boolean) => void;
   onOptionsChange: (options: { createMissingCategories: boolean; createMissingSuppliers: boolean }) => void;
+  onDefaultSupplierChange: (supplierId: string) => void;
   onCommit: () => void;
 }) {
   if (!preview || !summary) {
     return (
       <div className="product-import-step">
-        <EmptyMini title="Aucune prévisualisation" text="Analysez un CSV avant de valider." />
+        <EmptyMini title="Aucune prévisualisation" text="Analysez un fichier produit avant de valider." />
         <div className="hr-catalog-actions sticky product-import-footer">
           <button type="button" className="btn btn-secondary" onClick={onBack}>Retour</button>
         </div>
@@ -7187,6 +7222,7 @@ function ProductImportReviewStep({
     );
   }
   const invalidCount = summary.error + summary.duplicate;
+  const defaultSupplier = suppliers.find((supplier) => supplier.id === defaultSupplierId);
   return (
     <div className="product-import-step">
       <div className="product-import-copy">
@@ -7200,6 +7236,13 @@ function ProductImportReviewStep({
         <div><strong>{summary.error}</strong><span>Erreurs</span></div>
       </div>
       <div className="product-import-options">
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+          Fournisseur principal du fichier
+          <select value={defaultSupplierId} onChange={(event) => onDefaultSupplierChange(event.target.value)}>
+            <option value="">Ne pas renseigner</option>
+            {suppliers.filter((supplier) => !supplier.isArchived).map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+          </select>
+        </label>
         <label><input type="checkbox" checked={options.createMissingCategories} onChange={(event) => onOptionsChange({ ...options, createMissingCategories: event.target.checked })} /> Créer les catégories manquantes</label>
         <label><input type="checkbox" checked={options.createMissingSuppliers} onChange={(event) => onOptionsChange({ ...options, createMissingSuppliers: event.target.checked })} /> Créer les fournisseurs manquants</label>
       </div>
@@ -7212,6 +7255,7 @@ function ProductImportReviewStep({
               <th>Statut</th>
               <th>Produit</th>
               <th>Unité</th>
+              <th>Prix unitaire HT calculé</th>
               <th>Fournisseur</th>
               <th>Catégorie</th>
               <th>Info</th>
@@ -7227,7 +7271,10 @@ function ProductImportReviewStep({
                   <td><span className={`product-import-status ${row.status}`}>{productImportStatusLabel(row.status)}</span></td>
                   <td style={{ fontWeight: 700 }}>{productImportCell(row.fields.name)}</td>
                   <td>{productImportCell(row.fields.unitLabel ?? row.fields.unit)}</td>
-                  <td>{productImportCell(row.fields.supplierName ?? row.fields.supplier)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: row.fields.averagePrice != null ? 700 : 400 }}>
+                    {productImportCalculatedUnitPriceCell(row.fields.averagePrice)}
+                  </td>
+                  <td>{productImportCell(row.fields.supplierName ?? row.fields.supplier ?? defaultSupplier?.name)}</td>
                   <td>{productImportCell(row.fields.categoryName ?? row.fields.category)}</td>
                   <td>{row.errors[0] || row.warnings[0] || '—'}</td>
                 </tr>
@@ -7312,6 +7359,12 @@ function productImportCell(value: unknown) {
   if (Array.isArray(value)) return value.length ? value.join(', ') : '—';
   if (value === null || value === undefined || value === '') return '—';
   return String(value);
+}
+
+function productImportCalculatedUnitPriceCell(value: unknown) {
+  const price = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(price) || price <= 0) return '—';
+  return `${price.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} €`;
 }
 
 function randomLocalId() {

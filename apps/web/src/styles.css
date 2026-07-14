@@ -14893,6 +14893,230 @@ input:checked + .slider-round:before {
   border: 1px solid rgba(226, 232, 240, 0.8);
 }
 
+.hr-collaborator-entry-modal {
+  min-height: min(560px, 88vh);
+}
+
+.hr-collaborator-entry-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 2rem;
+  display: flex;
+}
+
+.hr-collaborator-source-step,
+.hr-contract-ocr-step {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.hr-collaborator-entry-intro {
+  max-width: 760px;
+  margin-bottom: 1.5rem;
+}
+
+.hr-collaborator-entry-intro.compact { margin-bottom: 1.1rem; }
+
+.hr-collaborator-entry-intro h3 {
+  margin: 0.65rem 0 0.4rem;
+  color: #0f172a;
+  font-size: 1.35rem;
+  letter-spacing: -0.025em;
+}
+
+.hr-collaborator-entry-intro p {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.hr-collaborator-source-options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.hr-collaborator-source-options .onboarding-option-card {
+  min-height: 150px;
+  font: inherit;
+}
+
+.hr-collaborator-source-options .onboarding-option-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 13px;
+}
+
+.hr-collaborator-entry-safety,
+.hr-contract-ocr-privacy {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  color: #475569;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.hr-collaborator-entry-safety {
+  margin-top: auto;
+  padding-top: 1.5rem;
+}
+
+.hr-collaborator-entry-safety svg,
+.hr-contract-ocr-privacy svg { color: #10b981; flex-shrink: 0; }
+
+.hr-contract-dropzone {
+  appearance: none;
+  width: 100%;
+  min-height: 190px;
+  border: 1.5px dashed #cbd5e1;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #f8fafc 0%, rgba(239, 246, 255, 0.72) 100%);
+  color: #334155;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  text-align: center;
+  font: inherit;
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.hr-contract-dropzone:hover:not(:disabled),
+.hr-contract-dropzone.drag-active {
+  border-color: #3b82f6;
+  background: rgba(239, 246, 255, 0.95);
+  box-shadow: 0 12px 28px rgba(59, 130, 246, 0.1);
+  transform: translateY(-1px);
+}
+
+.hr-contract-dropzone.has-file {
+  min-height: 140px;
+  border-style: solid;
+  border-color: rgba(16, 185, 129, 0.45);
+  background: rgba(236, 253, 245, 0.72);
+}
+
+.hr-contract-dropzone:disabled { cursor: wait; opacity: 0.75; }
+
+.hr-contract-dropzone-icon {
+  width: 58px;
+  height: 58px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  color: #2563eb;
+  background: white;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.hr-contract-dropzone.has-file .hr-contract-dropzone-icon { color: #059669; }
+
+.hr-contract-dropzone > span:not(.hr-contract-dropzone-icon),
+.hr-contract-selected-file {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.hr-contract-dropzone strong { color: #0f172a; font-size: 0.95rem; }
+.hr-contract-dropzone small { color: #64748b; font-size: 0.78rem; }
+
+.hr-ocr-selected-documents {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.75rem;
+}
+
+.hr-ocr-selected-documents > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 11px;
+  background: #fff;
+  color: #64748b;
+}
+
+.hr-ocr-selected-documents > div > span {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
+}
+
+.hr-ocr-selected-documents strong {
+  overflow: hidden;
+  color: #1e293b;
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hr-ocr-selected-documents small { color: #64748b; font-size: 0.72rem; }
+
+.hr-contract-ocr-error {
+  margin-top: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.hr-contract-ocr-privacy { margin-top: 0.9rem; }
+
+.hr-contract-import-actions {
+  margin-top: auto;
+  padding-top: 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.hr-ocr-review-banner {
+  flex-shrink: 0;
+  margin: 0.75rem 2rem 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(16, 185, 129, 0.24);
+  border-radius: 12px;
+  background: rgba(236, 253, 245, 0.74);
+  color: #047857;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.75rem;
+}
+
+.hr-ocr-review-banner > svg { margin-top: 0.1rem; }
+
+.hr-ocr-review-banner > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+}
+
+.hr-ocr-review-banner strong { color: #065f46; font-size: 0.88rem; }
+.hr-ocr-review-banner span,
+.hr-ocr-review-banner small { color: #47665b; font-size: 0.77rem; line-height: 1.35; }
+.hr-ocr-review-banner .hr-ocr-review-warning { color: #9a5b13; }
+.hr-ocr-review-banner .btn { min-height: 34px; padding: 0.4rem 0.7rem; font-size: 0.76rem; }
+
+@media (max-width: 720px) {
+  .hr-collaborator-entry-body { padding: 1.25rem; }
+  .hr-collaborator-source-options { grid-template-columns: 1fr; }
+  .hr-collaborator-source-options .onboarding-option-card { min-height: auto; }
+  .hr-contract-import-actions { flex-direction: column-reverse; }
+  .hr-contract-import-actions .btn { width: 100%; }
+  .hr-ocr-review-banner { margin: 0.75rem 1rem 0; grid-template-columns: auto 1fr; }
+  .hr-ocr-review-banner .btn { grid-column: 1 / -1; }
+}
+
 .hr-modal-sticky {
   flex-shrink: 0;
   align-items: center;

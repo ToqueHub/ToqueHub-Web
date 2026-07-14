@@ -13,6 +13,7 @@ function mockPrisma(overrides?: any): any {
     hrDepartment: { findFirst: jest.fn(), count: jest.fn(), findMany: jest.fn() },
     hrPosition: { findFirst: jest.fn(), count: jest.fn(), findMany: jest.fn() },
     hrEmployee: { findFirst: jest.fn(), count: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
+    hrEmployeeSensitiveData: { upsert: jest.fn(), deleteMany: jest.fn() },
     hrEmploymentContract: { findFirst: jest.fn(), count: jest.fn(), create: jest.fn().mockReturnValue({ id: 'contract-1' }), updateMany: jest.fn() },
     hrEmployeeCompensation: { findFirst: jest.fn(), count: jest.fn(), create: jest.fn().mockReturnValue({ id: 'comp-1' }), updateMany: jest.fn() },
     hrSalaryReview: { findFirst: jest.fn(), count: jest.fn(), create: jest.fn().mockReturnValue({ id: 'review-1' }), updateMany: jest.fn() },
@@ -49,6 +50,11 @@ describe('HrService permissions', () => {
 
   it('user without employeeId cannot read list', () => {
     expect(() => service.assertRead({ id: '1', role: 'Collaborateur' }, 'emp-2')).toThrow(ForbiddenException);
+  });
+
+  it('reserves contract analysis to RH write roles', () => {
+    expect(() => service.assertWriteAccess({ id: '1', role: 'Manager' })).not.toThrow();
+    expect(() => service.assertWriteAccess({ id: '2', role: 'Collaborateur' })).toThrow(ForbiddenException);
   });
 });
 
@@ -126,6 +132,28 @@ describe('HrService contract change detection', () => {
     await (service as any).syncContractAndCompensation(tx, 'org-1', 'emp-1', { contractType: 'CDD', contractWeeklyMinutes: 2100 } as any, 'user-1');
     expect(tx.hrEmploymentContract.updateMany).toHaveBeenCalled();
     expect(tx.hrEmploymentContract.create).toHaveBeenCalled();
+  });
+});
+
+describe('HrService sensitive employee data', () => {
+  it('stores only the encrypted personal identifier and removes ciphertext from API results', async () => {
+    const prisma = mockPrisma();
+    const crypto = { encrypt: jest.fn().mockReturnValue('v1:encrypted'), decrypt: jest.fn().mockReturnValue('080800A592P') };
+    const service = new HrService(prisma, crypto as any);
+
+    await (service as any).syncSensitiveData(prisma, 'org-1', 'emp-1', '080800A592P');
+    const serialized = (service as any).serializeEmployee({
+      id: 'emp-1',
+      firstName: 'Aino',
+      sensitiveData: { personalIdentityNumberCiphertext: 'v1:encrypted' },
+    });
+
+    expect(prisma.hrEmployeeSensitiveData.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ personalIdentityNumberCiphertext: 'v1:encrypted' }),
+    }));
+    expect(JSON.stringify(prisma.hrEmployeeSensitiveData.upsert.mock.calls)).not.toContain('080800A592P');
+    expect(serialized).toMatchObject({ personalIdentityNumber: '080800A592P' });
+    expect(serialized).not.toHaveProperty('sensitiveData');
   });
 });
 

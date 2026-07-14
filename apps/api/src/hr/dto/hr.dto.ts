@@ -43,6 +43,7 @@ export class UpsertHrEmployeeDto {
   @IsOptional() @IsString() @MaxLength(80) secondaryLanguage?: string;
   @IsOptional() @IsString() @MaxLength(1000) emergencyContact?: string;
   @IsOptional() @IsString() birthDate?: string;
+  @IsOptional() @IsString() @MaxLength(80) personalIdentityNumber?: string;
   @IsString() hireDate!: string;
   @IsUUID() departmentId!: string;
   @IsUUID() positionId!: string;

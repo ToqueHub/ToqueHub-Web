@@ -637,6 +637,7 @@ export interface HrCollaborator {
   secondaryLanguage?: string | null;
   emergencyContact?: string | null;
   birthDate?: string | null;
+  personalIdentityNumber?: string | null;
   hireDate: string;
   departmentId?: string | null;
   positionId?: string | null;
@@ -704,6 +705,7 @@ export interface HrCollaboratorPayload {
   secondaryLanguage?: string;
   emergencyContact?: string;
   birthDate?: string;
+  personalIdentityNumber?: string;
   hireDate: string;
   departmentId: string;
   positionId: string;
@@ -727,6 +729,39 @@ export interface HrCollaboratorPayload {
   rateEffectiveDate?: string;
   nextReviewDate?: string;
   reviewFrequency?: string;
+}
+
+export interface HrContractAnalysis {
+  draft: Partial<HrCollaboratorPayload>;
+  suggestions: {
+    departmentName?: string;
+    positionName?: string;
+    siteName?: string;
+  };
+  confidence: number;
+  hasContractSource: boolean;
+  uncertainFields: string[];
+  warnings: string[];
+  fieldCount: number;
+  documents: Array<{
+    originalName: string;
+    mimeType: string;
+    pageCount?: number | null;
+    durationMs: number;
+    documentType: 'CONTRACT' | 'CV' | 'OTHER';
+    category: string;
+    confidence: number;
+    uncertainFields: string[];
+    warnings: string[];
+  }>;
+  source: {
+    originalName: string;
+    mimeType: string;
+    pageCount?: number | null;
+    durationMs: number;
+    documentType?: 'CONTRACT' | 'CV' | 'OTHER';
+    category?: string;
+  };
 }
 
 export interface HrReferencePayload {
@@ -1545,6 +1580,10 @@ export interface ProductImportPreview {
   filename: string;
   headers: string[];
   delimiter: string;
+  sourceKind?: 'csv' | 'xlsx' | 'supplier_purchase_history';
+  sourceSheet?: string;
+  headerRowNumber?: number;
+  processingNotes?: string[];
   mapping: Record<string, ProductImportField>;
   localMapping?: Record<string, ProductImportField>;
   templateColumns: string[];

@@ -2,15 +2,26 @@ import { BadRequestException, ForbiddenException, Injectable, Logger } from '@ne
 import { AuditAction, Prisma, Unit } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CommitProductImportDto, ProductImportOptionsDto } from './dto/stocks-product-import.dto';
+import { parseProductWorkbook, TabularImportRow } from './stocks-product-spreadsheet';
 
 const WRITE_ROLES = ['SUPER_ADMIN', 'Administrateur', 'Manager', 'Chef', 'Second', 'Magasinier'];
-const MAX_CSV_BYTES = 5 * 1024 * 1024;
+const MAX_IMPORT_FILE_BYTES = 5 * 1024 * 1024;
 const MAX_IMPORT_ROWS = 1000;
 const MISTRAL_MODEL = process.env.OCR_MISTRAL_AI_MODEL || 'mistral-large-latest';
 
 type Actor = { id: string; role: string };
 type Tx = Prisma.TransactionClient;
 type UploadedFile = { originalname: string; mimetype?: string; size?: number; buffer?: Buffer };
+type ProductImportSourceKind = 'csv' | 'xlsx' | 'supplier_purchase_history';
+
+type ParsedProductImport = {
+  headers: string[];
+  rows: TabularImportRow[];
+  delimiter: string;
+  sourceKind: ProductImportSourceKind;
+  sheetName?: string;
+  headerRowNumber?: number;
+};
 
 type ProductImportField =
   | 'name'
@@ -67,6 +78,14 @@ type ProductImportPreviewRow = {
   duplicateOf?: { type: 'existing' | 'file'; field: 'sku' | 'gtin' | 'name'; value: string; label: string } | null;
 };
 
+type PreparedSupplierHistoryRow = {
+  rowNumber: number;
+  source: Record<string, string>;
+  fields: ProductImportFields;
+  warnings: string[];
+  ignoredReason?: string;
+};
+
 type ReferenceContext = {
   units: Unit[];
   unitsByLookup: Map<string, Unit>;
@@ -113,11 +132,11 @@ const IMPORT_FIELDS: ProductImportField[] = [
 
 const FIELD_ALIASES: Record<ProductImportField, string[]> = {
   name: ['nom', 'nom produit', 'nom du produit', 'produit', 'libelle', 'libellé', 'designation', 'désignation', 'article', 'product', 'product name', 'tuote', 'tuotenimi', 'nimi'],
-  unit: ['unite', 'unité', 'unite stock', 'unité stock', 'unite de stock', 'unité de stock', 'unit', 'uom', 'yksikko', 'yksikkö', 'me'],
+  unit: ['unite', 'unité', 'unite stock', 'unité stock', 'unite de stock', 'unité de stock', 'unit', 'uom', 'yksikko', 'yksikkö', 'sisällön mittayksikkö', 'sisallon mittayksikko', 'me'],
   sku: ['sku', 'reference', 'référence', 'ref', 'réf', 'reference fournisseur', 'référence fournisseur', 'code', 'code produit', 'sap', 'nimike'],
-  gtin: ['gtin', 'ean', 'barcode', 'code barre', 'code-barres', 'kupa'],
+  gtin: ['gtin', 'ean', 'ean code', 'barcode', 'code barre', 'code-barres', 'kupa'],
   supplier: ['fournisseur', 'supplier', 'vendor', 'toimittaja', 'markkinoija'],
-  category: ['categorie', 'catégorie', 'famille', 'rayon', 'category', 'tuoteryhma', 'tuoteryhmä'],
+  category: ['categorie', 'catégorie', 'famille', 'sous famille', 'sous-famille', 'rayon', 'category', 'product group', 'sub product group', 'tuoteryhma', 'tuoteryhmä'],
   averagePrice: ['prix', 'prix achat', 'prix achat ht', 'prix_achat_ht', 'prix ht', 'average price', 'unit price', 'á hinta', 'a hinta', 'hinta'],
   minimumStock: ['seuil', 'seuil minimum', 'stock minimum', 'minimum stock', 'min stock', 'seuil_minimum'],
   description: ['description', 'notes', 'note', 'commentaire', 'tuotetiedot'],
@@ -265,26 +284,34 @@ export class StocksProductImportService {
 
   async analyzeProductImport(organizationId: string, actor: Actor, file: UploadedFile) {
     this.assertWrite(actor);
-    this.validateCsvFile(file);
-    const parsed = parseCsv(file.buffer!.toString('utf8'));
-    if (!parsed.headers.length) throw new BadRequestException('Le CSV ne contient pas d’en-têtes.');
-    if (parsed.rows.length > MAX_IMPORT_ROWS) throw new BadRequestException(`Le CSV contient trop de lignes. Maximum: ${MAX_IMPORT_ROWS}.`);
+    this.validateImportFile(file);
+    const parsed = await this.parseImportFile(file);
+    if (!parsed.headers.length) throw new BadRequestException('Le fichier ne contient pas d’en-têtes.');
+    if (parsed.rows.length > MAX_IMPORT_ROWS) throw new BadRequestException(`Le fichier contient trop de lignes. Maximum: ${MAX_IMPORT_ROWS}.`);
 
     let mapping = detectColumnMapping(parsed.headers);
     const localMapping = { ...mapping };
     const references = await this.referenceContext(organizationId);
-    const ai = await this.maybeImproveMappingWithMistral(organizationId, parsed.headers, parsed.rows.slice(0, 6), mapping);
+    if (isSupplierPurchaseHistory(parsed.headers)) {
+      return this.previewSupplierPurchaseHistory(file.originalname, parsed, references);
+    }
+
+    const ai = await this.maybeImproveMappingWithMistral(organizationId, parsed.headers, parsed.rows.slice(0, 6).map((row) => row.values), mapping);
     if (ai.mapping) mapping = { ...mapping, ...ai.mapping };
 
     const seen = this.emptySeen();
-    const rows = parsed.rows.map((values, index) => {
-      const source = rowSource(parsed.headers, values);
-      return this.previewRow(index + 2, source, mapping, references, seen);
+    const rows = parsed.rows.map((row) => {
+      const source = rowSource(parsed.headers, row.values);
+      return this.previewRow(row.rowNumber, source, mapping, references, seen);
     });
     return {
       filename: file.originalname,
       headers: parsed.headers,
       delimiter: parsed.delimiter,
+      sourceKind: parsed.sourceKind,
+      sourceSheet: parsed.sheetName,
+      headerRowNumber: parsed.headerRowNumber,
+      processingNotes: parsed.sourceKind === 'xlsx' ? [`Feuille « ${parsed.sheetName} » lue directement, sans OCR.`] : [],
       mapping,
       localMapping,
       templateColumns: TEMPLATE_HEADERS,
@@ -292,6 +319,87 @@ export class StocksProductImportService {
       summary: summarizeRows(rows),
       options: { createMissingCategories: true, createMissingSuppliers: true },
       ai,
+    };
+  }
+
+  private async parseImportFile(file: UploadedFile): Promise<ParsedProductImport> {
+    const name = file.originalname?.toLowerCase() ?? '';
+    if (name.endsWith('.xlsx')) {
+      try {
+        const workbook = await parseProductWorkbook(file.buffer!, (headers) => headerCandidateScore(headers));
+        return {
+          ...workbook,
+          delimiter: 'xlsx',
+          sourceKind: 'xlsx',
+        };
+      } catch (error: any) {
+        throw new BadRequestException(`Classeur Excel illisible: ${error?.message || 'format invalide'}`);
+      }
+    }
+    const csv = parseCsv(file.buffer!.toString('utf8'));
+    return { ...csv, delimiter: csv.delimiter, sourceKind: 'csv' };
+  }
+
+  private previewSupplierPurchaseHistory(filename: string, parsed: ParsedProductImport, references: ReferenceContext) {
+    const prepared = prepareSupplierPurchaseHistory(parsed.headers, parsed.rows);
+    if (!prepared.rows.length) throw new BadRequestException('Aucun produit exploitable trouvé dans cet historique fournisseur.');
+    if (prepared.rows.length > MAX_IMPORT_ROWS) throw new BadRequestException(`Le fichier contient trop de produits consolidés. Maximum: ${MAX_IMPORT_ROWS}.`);
+    const unitPricedRows = prepared.rows.filter((row) => typeof row.fields.averagePrice === 'number' && row.fields.averagePrice > 0).length;
+
+    const seen = this.emptySeen();
+    const rows = prepared.rows.map((preparedRow): ProductImportPreviewRow => {
+      if (preparedRow.ignoredReason) {
+        return {
+          rowNumber: preparedRow.rowNumber,
+          source: preparedRow.source,
+          fields: preparedRow.fields,
+          status: 'ignored',
+          selected: false,
+          warnings: [preparedRow.ignoredReason, ...preparedRow.warnings],
+          errors: [],
+        };
+      }
+      const row = this.previewImportedFields(preparedRow.rowNumber, preparedRow.fields, references, seen, preparedRow.source);
+      if (!preparedRow.warnings.length) return row;
+      return {
+        ...row,
+        status: row.status === 'ready' ? 'needs_review' : row.status,
+        warnings: [...preparedRow.warnings, ...row.warnings],
+      };
+    });
+
+    const mapping: Record<string, ProductImportField> = {};
+    for (const header of parsed.headers) {
+      const normalized = normalizeLookup(header);
+      if (normalized === 'product') mapping[header] = 'name';
+      else if (normalized === 'sub product group' || normalized === 'product group') mapping[header] = 'category';
+      else if (normalized === 'ean code') mapping[header] = 'gtin';
+      else if (normalized === 'sisallon mittayksikko') mapping[header] = 'unit';
+    }
+
+    return {
+      filename,
+      headers: parsed.headers,
+      delimiter: parsed.delimiter,
+      sourceKind: 'supplier_purchase_history' as const,
+      sourceSheet: parsed.sheetName,
+      headerRowNumber: parsed.headerRowNumber,
+      processingNotes: [
+        `Historique fournisseur détecté: ${prepared.sourceRows} lignes produit consolidées en ${prepared.rows.length} fiches candidates.`,
+        'Les doublons de périodes ou de TVA portant le même EAN ont été regroupés.',
+        `Un prix unitaire HT a été calculé automatiquement pour ${unitPricedRows} fiche${unitPricedRows > 1 ? 's' : ''}: montant total HT acheté ÷ quantité nette commandée.`,
+        'Ce prix unitaire calculé sera enregistré comme prix d’achat initial, puis les prochains imports de factures, bons de livraison ou commandes pourront l’actualiser.',
+        'La colonne VENDOR est conservée comme fabricant ou fournisseur amont; elle ne crée pas de fournisseur principal.',
+        'Vous pouvez appliquer votre fournisseur de commande principal à toutes les fiches depuis l’étape de vérification.',
+        'Lecture structurée du classeur Excel: le moteur OCR des factures et réceptions n’est pas utilisé.',
+      ],
+      mapping,
+      localMapping: mapping,
+      templateColumns: TEMPLATE_HEADERS,
+      rows,
+      summary: summarizeRows(rows),
+      options: { createMissingCategories: true, createMissingSuppliers: true },
+      ai: { status: 'structured_supplier_history', provider: null, mapping: null, warnings: [] },
     };
   }
 
@@ -567,13 +675,16 @@ export class StocksProductImportService {
     };
   }
 
-  private validateCsvFile(file: UploadedFile) {
-    if (!file?.buffer?.length) throw new BadRequestException('Aucun fichier CSV fourni.');
-    if ((file.size ?? file.buffer.length) > MAX_CSV_BYTES) throw new BadRequestException('Le fichier CSV dépasse 5 Mo.');
+  private validateImportFile(file: UploadedFile) {
+    if (!file?.buffer?.length) throw new BadRequestException('Aucun fichier produit fourni.');
+    if ((file.size ?? file.buffer.length) > MAX_IMPORT_FILE_BYTES) throw new BadRequestException('Le fichier produit dépasse 5 Mo.');
     const name = file.originalname?.toLowerCase() ?? '';
     const mime = file.mimetype?.toLowerCase() ?? '';
-    if (!name.endsWith('.csv') && !['text/csv', 'application/csv', 'application/vnd.ms-excel', 'text/plain', 'application/octet-stream'].includes(mime)) {
-      throw new BadRequestException('Format non supporté. Exportez votre document au format CSV.');
+    const isCsv = name.endsWith('.csv') || ['text/csv', 'application/csv', 'text/plain'].includes(mime);
+    const isXlsx = name.endsWith('.xlsx') || mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    const genericBinaryWithSupportedName = mime === 'application/octet-stream' && (name.endsWith('.csv') || name.endsWith('.xlsx'));
+    if (!isCsv && !isXlsx && !genericBinaryWithSupportedName) {
+      throw new BadRequestException('Format non supporté. Utilisez un fichier CSV ou Excel (.xlsx).');
     }
   }
 
@@ -594,7 +705,7 @@ export class StocksProductImportService {
           temperature: 0,
           response_format: { type: 'json_object' },
           messages: [
-            { role: 'system', content: 'Tu aides à associer des colonnes CSV à des champs produit ToqueHub. Réponds uniquement en JSON {"mapping":{"Nom colonne":"champ"}}.' },
+            { role: 'system', content: 'Tu aides à associer les colonnes d’un tableau CSV ou Excel à des champs produit ToqueHub. Réponds uniquement en JSON {"mapping":{"Nom colonne":"champ"}}.' },
             { role: 'user', content: JSON.stringify({ allowedFields: IMPORT_FIELDS, headers, sampleRows: rows }) },
           ],
         }),
@@ -653,7 +764,7 @@ function parseCsv(input: string) {
     if (row.some((value) => value.trim() !== '')) records.push(row);
   }
   const headers = (records.shift() ?? []).map((header) => header.trim()).filter(Boolean);
-  return { delimiter, headers, rows: records };
+  return { delimiter, headers, rows: records.map((values, index) => ({ rowNumber: index + 2, values })) };
 }
 
 function guessDelimiter(text: string) {
@@ -704,6 +815,214 @@ function rowSource(headers: string[], values: string[]) {
     acc[header] = values[index] ?? '';
     return acc;
   }, {});
+}
+
+function headerCandidateScore(headers: string[]) {
+  const mapped = Object.keys(detectColumnMapping(headers)).length;
+  return mapped * 20 + (isSupplierPurchaseHistory(headers) ? 200 : 0);
+}
+
+function isSupplierPurchaseHistory(headers: string[]) {
+  const normalized = new Set(headers.map((header) => normalizeLookup(header)));
+  return normalized.has('product')
+    && normalized.has('ean code')
+    && normalized.has('purchases net content')
+    && normalized.has('purchases vat 0 excl freight');
+}
+
+function prepareSupplierPurchaseHistory(headers: string[], inputRows: TabularImportRow[]) {
+  const indexes = new Map(headers.map((header, index) => [normalizeLookup(header), index]));
+  const indexOf = (...aliases: string[]) => aliases.map((alias) => indexes.get(normalizeLookup(alias))).find((index) => index !== undefined) ?? -1;
+  const columns = {
+    group: indexOf('product group'),
+    subgroup: indexOf('sub product group'),
+    name: indexOf('product'),
+    purchasesNet: indexOf('purchases vat 0 excl freight'),
+    contentQty: indexOf('purchases net content'),
+    contentUnit: indexOf('sisallon mittayksikko'),
+    salesBatchQty: indexOf('purchases mmy'),
+    salesBatchUnit: indexOf('myyntierayksikko'),
+    baseSalesQty: indexOf('puchases pmy', 'purchases pmy'),
+    baseSalesUnit: indexOf('perusmyyntiyksikon mittayksikko'),
+    vendor: indexOf('vendor'),
+    ean: indexOf('ean code'),
+    tax: indexOf('tax'),
+  };
+  const value = (row: TabularImportRow, index: number) => index >= 0 ? String(row.values[index] ?? '').trim() : '';
+  const lines = inputRows.map((row) => ({
+    row,
+    source: rowSource(headers, row.values),
+    group: value(row, columns.group),
+    subgroup: value(row, columns.subgroup),
+    name: value(row, columns.name),
+    purchasesNet: parseHistoryNumber(value(row, columns.purchasesNet)),
+    contentQty: parseHistoryNumber(value(row, columns.contentQty)),
+    contentUnit: value(row, columns.contentUnit),
+    salesBatchQty: parseHistoryNumber(value(row, columns.salesBatchQty)),
+    salesBatchUnit: value(row, columns.salesBatchUnit),
+    baseSalesQty: parseHistoryNumber(value(row, columns.baseSalesQty)),
+    baseSalesUnit: value(row, columns.baseSalesUnit),
+    vendor: value(row, columns.vendor),
+    ean: normalizeHistoryIdentifier(value(row, columns.ean)),
+    tax: value(row, columns.tax),
+  })).filter((line) => line.name);
+
+  const grouped = new Map<string, typeof lines>();
+  for (const line of lines) {
+    const key = line.ean ? `ean:${line.ean}` : `name:${normalizeLookup(line.name)}`;
+    const group = grouped.get(key) ?? [];
+    group.push(line);
+    grouped.set(key, group);
+  }
+
+  const rows: PreparedSupplierHistoryRow[] = [];
+  for (const group of grouped.values()) {
+    const first = group[0];
+    const purchasesNet = sumHistory(group.map((line) => line.purchasesNet));
+    const contentQty = sumHistory(group.map((line) => line.contentQty));
+    const contentUnits = uniqueHistory(group.map((line) => line.contentUnit));
+    const salesBatchUnits = uniqueHistory(group.map((line) => line.salesBatchUnit));
+    const vendors = uniqueHistory(group.map((line) => line.vendor));
+    const warnings: string[] = [];
+    const unit = contentUnits.length === 1 ? historyStockUnit(contentUnits[0]) : null;
+    const fields: ProductImportFields = {
+      name: first.name,
+      gtin: first.ean || null,
+      category: first.subgroup || first.group || null,
+      unit: unit || contentUnits[0] || null,
+    };
+
+    if (purchasesNet > 0 && contentQty > 0) fields.averagePrice = roundHistory(purchasesNet / contentQty, 4);
+    const baseUnits = uniqueHistory(group.map((line) => line.baseSalesUnit));
+    const baseUnitsPerPackage = stableIntegerRatio(group.map((line) => line.baseSalesQty > 0 && line.salesBatchQty > 0 ? line.baseSalesQty / line.salesBatchQty : null));
+    const contentPerBaseUnit = stableRatio(group.map((line) => line.contentQty > 0 && line.baseSalesQty > 0 ? line.contentQty / line.baseSalesQty : null));
+    const stockUnitsPerPackage = baseUnitsPerPackage != null && contentPerBaseUnit != null
+      ? roundHistory(baseUnitsPerPackage * contentPerBaseUnit, 3)
+      : null;
+    if (stockUnitsPerPackage != null) fields.unitsPerPackage = stockUnitsPerPackage;
+    if (salesBatchUnits.length === 1) fields.packageLabel = historyPackageLabel(salesBatchUnits[0], baseUnitsPerPackage, baseUnits, stockUnitsPerPackage, unit);
+
+    if (contentUnits.length === 1 && normalizeLookup(contentUnits[0]) === 'kg' && contentPerBaseUnit != null) {
+      fields.unitWeightGrams = roundHistory(contentPerBaseUnit * 1000, 3);
+    }
+
+    const description: string[] = [];
+    if (first.group && normalizeLookup(first.group) !== normalizeLookup(first.subgroup)) description.push(`Famille fournisseur: ${first.group}`);
+    if (vendors.length) description.push(`Fabricant ou fournisseur amont: ${vendors.slice(0, 3).join(', ')}${vendors.length > 3 ? ` (+${vendors.length - 3})` : ''}`);
+    if (description.length) fields.description = `${description.join('. ')}.`;
+
+    if (contentUnits.length > 1) warnings.push(`Unités de contenu contradictoires: ${contentUnits.join(', ')}.`);
+    if (salesBatchUnits.length > 1) warnings.push(`Conditionnements historiques différents: ${salesBatchUnits.join(', ')}.`);
+    if (vendors.length > 1) warnings.push(`Plusieurs fabricants ou fournisseurs amont observés: ${vendors.join(', ')}.`);
+    if (group.some((line) => /POISTO|DISCONTINU|LOPET/i.test(`${line.name} ${line.vendor}`))) warnings.push('Référence potentiellement retirée du catalogue fournisseur.');
+    if (first.ean.startsWith('2')) warnings.push('EAN interne ou à poids variable: vérifier avant création.');
+    if (normalizeLookup(contentUnits[0]) === 'pak') warnings.push('Unité fournisseur PAK convertie en unité comptable « pièce ».');
+
+    let ignoredReason: string | undefined;
+    if (purchasesNet < 0 || contentQty < 0) ignoredReason = 'Retour, consigne ou emballage négatif exclu de la création produit.';
+    else if (purchasesNet === 0 || contentQty === 0) ignoredReason = 'Ligne sans achat ou quantité exploitable, exclue par défaut.';
+
+    rows.push({
+      rowNumber: first.row.rowNumber,
+      source: { ...first.source, 'Lignes consolidées': String(group.length) },
+      fields,
+      warnings,
+      ignoredReason,
+    });
+  }
+
+  return { sourceRows: lines.length, rows };
+}
+
+function parseHistoryNumber(value: string) {
+  let normalized = value.replace(/[\s\u00a0]/g, '').replace(/[€$]/g, '');
+  const comma = normalized.lastIndexOf(',');
+  const dot = normalized.lastIndexOf('.');
+  if (comma >= 0 && dot >= 0) {
+    normalized = comma > dot ? normalized.replace(/\./g, '').replace(',', '.') : normalized.replace(/,/g, '');
+  } else if (comma >= 0) {
+    normalized = normalized.replace(',', '.');
+  }
+  normalized = normalized.replace(/[^0-9.+-]/g, '');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeHistoryIdentifier(value: string) {
+  const compact = value.replace(/[\s\u00a0]/g, '');
+  if (/^\d+(?:\.0+)?$/.test(compact)) return compact.replace(/\.0+$/, '');
+  if (/^\d+(?:[.,]\d+)?e\+?\d+$/i.test(compact)) {
+    const parsed = Number(compact.replace(',', '.'));
+    if (Number.isSafeInteger(parsed)) return parsed.toFixed(0);
+  }
+  return compact;
+}
+
+function historyStockUnit(value: string) {
+  const lookup = normalizeLookup(value);
+  const units: Record<string, string> = { kg: 'kg', l: 'L', kpl: 'pièce', pak: 'pièce' };
+  return units[lookup] ?? value;
+}
+
+function historyPackageLabel(value: string, baseFactor: number | null, baseUnits: string[], stockUnitsPerPackage: number | null, stockUnit: string | null) {
+  const lookup = normalizeLookup(value);
+  const labels: Record<string, string> = {
+    ltk: 'Carton', pss: 'Sac', rs: 'Barquette', pak: 'Pack', kpl: 'Pièce', pkt: 'Paquet',
+    plo: 'Bouteille', prk: 'Pot', tlk: 'Contenant', sk: 'Seau', tb: 'Tube', kg: 'Kilogramme', nip: 'Lot',
+  };
+  const label = labels[lookup] ?? value;
+  if (!baseFactor) return `${label} (${value})`;
+  const base = baseUnits.length === 1 ? historyBaseUnitLabel(baseUnits[0], baseFactor) : 'unités';
+  const content = stockUnitsPerPackage != null && stockUnit ? ` · ${formatHistoryNumber(stockUnitsPerPackage)} ${stockUnit}` : '';
+  return `${label} de ${formatHistoryNumber(baseFactor)} ${base}${content}`;
+}
+
+function historyBaseUnitLabel(value: string, factor: number) {
+  const plural = factor > 1;
+  const lookup = normalizeLookup(value);
+  const labels: Record<string, [string, string]> = {
+    kpl: ['pièce', 'pièces'], pss: ['sac', 'sacs'], pkt: ['paquet', 'paquets'], rs: ['barquette', 'barquettes'],
+    tlk: ['unité (TLK)', 'unités (TLK)'], plo: ['bouteille', 'bouteilles'], prk: ['pot', 'pots'], kg: ['kg', 'kg'],
+    ltk: ['carton', 'cartons'], pak: ['pack', 'packs'], sk: ['seau', 'seaux'], nip: ['lot', 'lots'],
+  };
+  const pair = labels[lookup];
+  return pair ? pair[plural ? 1 : 0] : value || (plural ? 'unités' : 'unité');
+}
+
+function stableIntegerRatio(values: Array<number | null>) {
+  const stable = stableRatio(values);
+  if (stable == null || stable < 1) return null;
+  const rounded = Math.round(stable);
+  return Math.abs(stable - rounded) <= Math.max(0.02, rounded * 0.01) ? rounded : null;
+}
+
+function stableRatio(values: Array<number | null>) {
+  const numbers = values.filter((value): value is number => value != null && Number.isFinite(value) && value > 0).sort((a, b) => a - b);
+  if (!numbers.length) return null;
+  const median = numbers[Math.floor(numbers.length / 2)];
+  const tolerance = Math.max(Math.abs(median) * 0.03, 0.001);
+  return numbers.every((value) => Math.abs(value - median) <= tolerance) ? median : null;
+}
+
+function uniqueHistory(values: string[]) {
+  const result = new Map<string, string>();
+  for (const value of values) {
+    const cleaned = value.trim();
+    if (cleaned) result.set(normalizeLookup(cleaned), cleaned);
+  }
+  return [...result.values()];
+}
+
+function sumHistory(values: number[]) {
+  return values.reduce((sum, value) => sum + value, 0);
+}
+
+function roundHistory(value: number, digits: number) {
+  return Number(value.toFixed(digits));
+}
+
+function formatHistoryNumber(value: number) {
+  return Number.isInteger(value) ? String(value) : String(roundHistory(value, 3));
 }
 
 function normalizeImportedFields(raw: Record<string, unknown>): ProductImportFields {

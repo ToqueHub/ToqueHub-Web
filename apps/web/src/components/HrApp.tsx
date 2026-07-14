@@ -29,7 +29,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { api } from '../api/client';
-import type { CoreUser, HrCollaborator, HrCollaboratorPayload, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, HrReferencePayload, HrSummary, RegulatoryCountryCode, Site } from '../types';
+import type { CoreUser, HrCollaborator, HrCollaboratorPayload, HrContractAnalysis, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, HrReferencePayload, HrSummary, RegulatoryCountryCode, Site } from '../types';
 import { HR_CATALOG } from '../hr-catalog';
 import { CollaboratorModal as CollaboratorDossierModal } from './hr/collaborator/CollaboratorModal';
 
@@ -66,6 +66,7 @@ type HrAppProps = {
   loading?: boolean;
   onNavigate: (tab: HrTab) => void;
   onCreateCollaborator: (payload: HrCollaboratorPayload) => Promise<HrCollaborator | void>;
+  onAnalyzeCollaboratorContract: (files: File[]) => Promise<HrContractAnalysis>;
   onUpdateCollaborator: (id: string, payload: Partial<HrCollaboratorPayload>) => Promise<HrCollaborator | void>;
   onArchiveCollaborator: (id: string) => Promise<void>;
   onUploadCollaboratorDocument: (employeeId: string, payload: { file: File; category: string; notes?: string; expiresAt?: string }) => Promise<void>;
@@ -102,6 +103,7 @@ export function HrApp({
   loading,
   onNavigate,
   onCreateCollaborator,
+  onAnalyzeCollaboratorContract,
   onUpdateCollaborator,
   onArchiveCollaborator,
   onUploadCollaboratorDocument,
@@ -211,7 +213,7 @@ export function HrApp({
           collaborators={collaborators}
           departments={departments}
           positions={positions}
-          onOpenCollaborators={() => onNavigate('collaborators')}
+          onNavigate={onNavigate}
           canWrite={canWrite}
           onboarding={onboarding}
           onStartWizard={() => {
@@ -261,6 +263,8 @@ export function HrApp({
           positions={activePositions}
           users={selectableUsers}
           sites={sites.filter((site) => !isArchived(site))}
+          regulatoryCountryCode={regulatoryCountryCode}
+          onAnalyzeContract={onAnalyzeCollaboratorContract}
           onClose={() => setCollaboratorModal(null)}
           onDeleteDocument={async (employeeId, documentId) => {
             await onDeleteCollaboratorDocument(employeeId, documentId);
@@ -323,8 +327,10 @@ export function HrApp({
           positions={positions}
           users={users}
           sites={sites}
+          regulatoryCountryCode={regulatoryCountryCode}
           onboarding={onboarding}
           onCreateCollaborator={onCreateCollaborator}
+          onAnalyzeCollaboratorContract={onAnalyzeCollaboratorContract}
           onUploadCollaboratorDocument={onUploadCollaboratorDocument}
           onCreateDepartmentsBulk={onCreateDepartmentsBulk}
           onCreatePositionsBulk={onCreatePositionsBulk}
@@ -353,7 +359,7 @@ function HrDashboard({
   collaborators,
   departments,
   positions,
-  onOpenCollaborators,
+  onNavigate,
   canWrite,
   onboarding,
   onStartWizard,
@@ -362,7 +368,7 @@ function HrDashboard({
   collaborators: HrCollaborator[];
   departments: HrDepartment[];
   positions: HrPosition[];
-  onOpenCollaborators: () => void;
+  onNavigate: (tab: HrTab) => void;
   canWrite: boolean;
   onboarding?: any;
   onStartWizard: () => void;
@@ -404,10 +410,10 @@ function HrDashboard({
     { title: 'Postes', text: `${activePositionsCount} poste${activePositionsCount > 1 ? 's' : ''}`, done: onboardingHasPositions },
     { title: 'Structure', text: employeesUnlocked ? 'Collaborateurs débloqués' : 'Structure à valider', done: employeesUnlocked },
   ];
-  const stats = [
-    { label: 'Collaborateurs', value: summary?.counts?.collaborators ?? activeCollaborators.length, icon: UsersRound, tone: 'emerald' },
-    { label: 'Services', value: summary?.counts?.departments ?? activeDepartmentsCount, icon: Building2, tone: 'blue' },
-    { label: 'Postes', value: summary?.counts?.positions ?? activePositionsCount, icon: BriefcaseBusiness, tone: 'orange' },
+  const stats: Array<{ label: string; value: React.ReactNode; icon: typeof UsersRound; tone: string; target?: HrTab }> = [
+    { label: 'Collaborateurs', value: summary?.counts?.collaborators ?? activeCollaborators.length, icon: UsersRound, tone: 'emerald', target: 'collaborators' },
+    { label: 'Services', value: summary?.counts?.departments ?? activeDepartmentsCount, icon: Building2, tone: 'blue', target: 'departments' },
+    { label: 'Postes', value: summary?.counts?.positions ?? activePositionsCount, icon: BriefcaseBusiness, tone: 'orange', target: 'positions' },
     { label: 'Avec compte ToqueHub', value: summary?.counts?.linkedCollaborators ?? linkedCollaboratorsCount, icon: ShieldCheck, tone: 'purple' },
     ...(withoutContract ? [{ label: 'Sans contrat', value: withoutContract, icon: ShieldCheck, tone: 'orange' }] : []),
     ...(withoutPosition ? [{ label: 'Sans poste principal', value: withoutPosition, icon: BriefcaseBusiness, tone: 'blue' }] : []),
@@ -467,7 +473,7 @@ function HrDashboard({
     <div className="metrics-grid hr-metrics-grid">
       {stats.map((stat, index) => {
         const Icon = stat.icon;
-        return <HrMetric key={stat.label} icon={<Icon size={20} />} value={stat.value} label={stat.label} tone={stat.tone} delay={index + 1} />;
+        return <HrMetric key={stat.label} icon={<Icon size={20} />} value={stat.value} label={stat.label} tone={stat.tone} delay={index + 1} onClick={stat.target ? () => onNavigate(stat.target!) : undefined} />;
       })}
     </div>
     <div className="double-panel">
@@ -479,7 +485,7 @@ function HrDashboard({
       >
         <div className="card-title-container">
           <span className="card-title"><Sparkles size={18} /> Dernières arrivées</span>
-          <button className="btn btn-secondary btn-sm" onClick={onOpenCollaborators}>Voir tous <ChevronRight size={16} /></button>
+          <button className="btn btn-secondary btn-sm" onClick={() => onNavigate('collaborators')}>Voir tous <ChevronRight size={16} /></button>
         </div>
         {latest.length === 0 ? <EmptyState title="Aucun collaborateur" description="Ajoutez votre premier collaborateur RH avec ou sans compte ToqueHub." /> : <div className="hr-list">{latest.map((collaborator) => <PersonRow key={collaborator.id} collaborator={collaborator} detail={formatDate(collaborator.hireDate)} />)}</div>}
       </motion.div>
@@ -496,10 +502,20 @@ function HrDashboard({
   </>;
 }
 
-function HrMetric({ icon, value, label, tone, delay = 0 }: { icon: React.ReactNode; value: React.ReactNode; label: string; tone: string; delay?: number }) {
+function HrMetric({ icon, value, label, tone, delay = 0, onClick }: { icon: React.ReactNode; value: React.ReactNode; label: string; tone: string; delay?: number; onClick?: () => void }) {
   return (
     <motion.div
       className={`metric-card-modern tone-${tone}`}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      aria-label={onClick ? `Ouvrir l’onglet ${label}` : undefined}
+      onKeyDown={onClick ? (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick();
+        }
+      } : undefined}
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.38, delay: delay * 0.05, ease: 'easeOut' }}
@@ -732,8 +748,10 @@ function HrOnboardingWizard({
   positions,
   users,
   sites,
+  regulatoryCountryCode,
   onboarding,
   onCreateCollaborator,
+  onAnalyzeCollaboratorContract,
   onUploadCollaboratorDocument,
   onCreateDepartmentsBulk,
   onCreatePositionsBulk,
@@ -748,8 +766,10 @@ function HrOnboardingWizard({
   positions: HrPosition[];
   users: CoreUser[];
   sites: Site[];
+  regulatoryCountryCode?: RegulatoryCountryCode | null;
   onboarding?: any;
   onCreateCollaborator: (payload: HrCollaboratorPayload) => Promise<HrCollaborator | void>;
+  onAnalyzeCollaboratorContract: (files: File[]) => Promise<HrContractAnalysis>;
   onUploadCollaboratorDocument: (employeeId: string, payload: { file: File; category: string; notes?: string; expiresAt?: string }) => Promise<void>;
   onCreateDepartmentsBulk: (names: string[]) => Promise<void>;
   onCreatePositionsBulk: (items: HrReferencePayload[]) => Promise<void>;
@@ -960,6 +980,8 @@ function HrOnboardingWizard({
             positions={wizardPositions}
             users={users}
             sites={sites.filter((site) => !isArchived(site))}
+            regulatoryCountryCode={regulatoryCountryCode}
+            onAnalyzeContract={onAnalyzeCollaboratorContract}
             onClose={() => setCreatingCollaborator(false)}
             onSubmit={async (payload, documents) => {
               const saved = await onCreateCollaborator(payload);
@@ -1775,6 +1797,7 @@ function CollaboratorSheet({ collaborator, regulatoryCountryCode, canWrite, onCl
               [<MapPin size={14} />, collaborator.address || 'Non renseignée'],
               [<MapPin size={14} />, formatLocation(collaborator)],
               [<CalendarDays size={14} />, formatDate(collaborator.birthDate)],
+              [<ShieldCheck size={14} />, `${regulatoryCountryCode === 'FI' ? 'Henkilötunnus' : regulatoryCountryCode === 'FR' ? 'N° sécurité sociale' : 'Identifiant personnel'} : ${maskPersonalIdentityNumber(collaborator.personalIdentityNumber)}`],
               [<NotebookText size={14} />, `Langue principale : ${collaborator.primaryLanguage || 'Non renseignée'}`],
               [<NotebookText size={14} />, `Langue secondaire : ${collaborator.secondaryLanguage || 'Non renseignée'}`],
               [<ShieldCheck size={14} />, `Contact d'urgence : ${collaborator.emergencyContact || 'Non renseigné'}`],
@@ -2194,6 +2217,7 @@ function collaboratorToPayload(collaborator: HrCollaborator, patch: Partial<HrCo
     secondaryLanguage: collaborator.secondaryLanguage ?? undefined,
     emergencyContact: collaborator.emergencyContact ?? undefined,
     birthDate: toInputDate(collaborator.birthDate) || undefined,
+    personalIdentityNumber: collaborator.personalIdentityNumber ?? undefined,
     hireDate: toInputDate(collaborator.hireDate) || new Date().toISOString().slice(0, 10),
     departmentId: collaborator.departmentId ?? collaborator.department?.id ?? '',
     positionId: collaborator.positionId ?? collaborator.position?.id ?? '',
@@ -2219,10 +2243,16 @@ function collaboratorToPayload(collaborator: HrCollaborator, patch: Partial<HrCo
   };
 }
 function documentCategoryLabel(value?: string | null) {
-  const labels: Record<string, string> = { CONTRACT: 'Contrat', AMENDMENT: 'Avenant', CERTIFICATION: 'Formation', DIPLOMA: 'Diplome', IDENTITY: 'Identite', ADMINISTRATIVE: 'Administratif', OTHER: 'Autre' };
+  const labels: Record<string, string> = { CONTRACT: 'Contrat', AMENDMENT: 'Avenant', CERTIFICATION: 'Formation', DIPLOMA: 'Diplome', IDENTITY: 'Identite', ADMINISTRATIVE: 'CV / administratif', OTHER: 'Autre' };
   return labels[value ?? 'OTHER'] ?? value ?? 'Autre';
 }
 function formatBytes(value?: number | null) { if (!value) return '—'; if (value < 1024 * 1024) return `${Math.round(value / 1024)} Ko`; return `${(value / 1024 / 1024).toFixed(1)} Mo`; }
+function maskPersonalIdentityNumber(value?: string | null) {
+  const cleaned = value?.trim();
+  if (!cleaned) return 'Non renseigné';
+  const visible = cleaned.slice(-4);
+  return `${'•'.repeat(Math.max(4, Math.min(cleaned.length - visible.length, 10)))}${visible}`;
+}
 function formatLocation(collaborator: Pick<HrCollaborator, 'postalCode' | 'city' | 'country'>) {
   const location = [collaborator.postalCode, collaborator.city, collaborator.country].filter(Boolean).join(' ');
   return location || 'Code postal, ville et pays non renseignés';

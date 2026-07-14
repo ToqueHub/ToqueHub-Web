@@ -50,6 +50,7 @@ import type {
   RnmProductsResponse,
   HrCollaborator,
   HrCollaboratorPayload,
+  HrContractAnalysis,
   HrDepartment,
   HrDocument,
   HrPosition,
@@ -1486,6 +1487,30 @@ export const api = {
   },
   createHrCollaborator(token: string, payload: HrCollaboratorPayload) {
     return request<HrCollaborator>('/hr/employees', { method: 'POST', body: JSON.stringify(toHrEmployeePayload(payload)) }, token);
+  },
+  analyzeHrContract(token: string, file: File) {
+    const body = new FormData();
+    body.set('file', file);
+    return fetch(`${API_URL}/api/hr/contracts/analyze`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    }).then(async (response) => {
+      if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
+      return response.json() as Promise<HrContractAnalysis>;
+    });
+  },
+  analyzeHrDocuments(token: string, files: File[]) {
+    const body = new FormData();
+    files.forEach((file) => body.append('files', file));
+    return fetch(`${API_URL}/api/hr/documents/analyze`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    }).then(async (response) => {
+      if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
+      return response.json() as Promise<HrContractAnalysis>;
+    });
   },
   updateHrCollaborator(token: string, id: string, payload: Partial<HrCollaboratorPayload>) {
     return request<HrCollaborator>(`/hr/employees/${id}`, { method: 'PATCH', body: JSON.stringify(toHrEmployeePayload(payload)) }, token);

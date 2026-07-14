@@ -1,11 +1,12 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, UploadedFile, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CompleteHrServicesDto, CreateHrReferencesDto, HrListQueryDto, UpsertHrEmployeeDto, UpsertHrReferenceDto } from './dto/hr.dto';
+import { HrContractOcrService } from './hr-contract-ocr.service';
 import { HrService } from './hr.service';
 import { AdjustHrTimeAccountDto, HrTimeAccountQueryDto, RecomputeHrTimeAccountsDto } from './time-accounts/hr-time-account.dto';
 import { HrTimeAccountService } from './time-accounts/hr-time-account.service';
@@ -17,6 +18,7 @@ import { HrTimeAccountService } from './time-accounts/hr-time-account.service';
 export class HrController {
   constructor(
     private readonly hrService: HrService,
+    private readonly contractOcrService: HrContractOcrService,
     private readonly timeAccountService: HrTimeAccountService,
   ) {}
   private org(user: AuthenticatedUser) { if (!user.organizationId) throw new BadRequestException('Organization setup is required before using RH endpoints'); return user.organizationId; }
@@ -34,6 +36,20 @@ export class HrController {
   @Post('onboarding/complete') completeOnboarding(@CurrentUser() user: AuthenticatedUser) { return this.hrService.completeOnboarding(this.org(user), this.actor(user)); }
   @Get('org-chart') orgChart(@CurrentUser() user: AuthenticatedUser, @Query('departmentId') departmentId?: string) { return this.hrService.orgChart(this.org(user), departmentId); }
   @Get('users/available') users(@CurrentUser() user: AuthenticatedUser) { return this.hrService.listAssignableUsers(this.org(user)); }
+
+  @Post('contracts/analyze')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024, files: 1 } }))
+  analyzeContract(@CurrentUser() user: AuthenticatedUser, @UploadedFile() file: any) {
+    this.hrService.assertWriteAccess(this.actor(user));
+    return this.contractOcrService.analyze(this.org(user), file);
+  }
+
+  @Post('documents/analyze')
+  @UseInterceptors(FilesInterceptor('files', 6, { limits: { fileSize: 10 * 1024 * 1024, files: 6 } }))
+  analyzeDocuments(@CurrentUser() user: AuthenticatedUser, @UploadedFiles() files: any[]) {
+    this.hrService.assertWriteAccess(this.actor(user));
+    return this.contractOcrService.analyze(this.org(user), files);
+  }
 
   @Get('time-accounts') timeAccounts(@CurrentUser() user: AuthenticatedUser, @Query() q: HrTimeAccountQueryDto) { return this.timeAccountService.list(this.org(user), q); }
   @Post('time-accounts/recompute') recomputeTimeAccounts(@CurrentUser() user: AuthenticatedUser, @Body() dto: RecomputeHrTimeAccountsDto) { return this.timeAccountService.recompute(this.org(user), this.actor(user), dto); }

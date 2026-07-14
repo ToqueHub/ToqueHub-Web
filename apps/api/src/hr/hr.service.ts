@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { existsSync } from 'fs';
 import { mkdir, unlink, writeFile } from 'fs/promises';
@@ -7,6 +7,7 @@ import { AuditAction, HrContractStatus, HrDocumentCategory, HrEmployeeStatus, Hr
 import { PrismaService } from '../prisma/prisma.service';
 import { HrListQueryDto, UpsertHrEmployeeDto, UpsertHrReferenceDto } from './dto/hr.dto';
 import { HR_CATALOG } from './hr.catalog';
+import { HrSensitiveDataCryptoService } from './hr-sensitive-data-crypto.service';
 
 type Actor = { id: string; role: string; employeeId?: string | null };
 type Tx = Prisma.TransactionClient;
@@ -15,7 +16,7 @@ const MANAGER_ROLES = [...WRITE_ROLES, 'Manager', 'MANAGER', 'Chef', 'Responsabl
 const ADMIN_ROLES = ['SUPER_ADMIN', 'Administrateur', 'ADMIN'];
 const LEGACY_HR_DEFAULT_DEPARTMENTS = ['Cuisine', 'Pâtisserie', 'Administration', 'Entretien', 'Soins', 'Animation', 'Direction', 'Magasin'];
 const LEGACY_HR_DEFAULT_POSITIONS = ['Chef de cuisine', 'Second de cuisine', 'Commis', 'Pâtissier', 'Magasinier', 'Agent polyvalent', 'Directeur', 'Infirmier', 'Animateur'];
-const includeEmployee: any = { department: true, position: { include: { department: true } }, secondaryPositions: { include: { position: { include: { department: true } } } }, mainSite: true, secondarySites: { include: { site: true } }, user: { select: { id: true, email: true, firstName: true, lastName: true, role: { select: { name: true } } } }, manager: { select: { id: true, firstName: true, lastName: true } }, history: { orderBy: { createdAt: 'desc' }, take: 30, include: { user: { select: { id: true, email: true, firstName: true, lastName: true } } } }, contracts: { orderBy: { startDate: 'desc' } }, compensations: { orderBy: { effectiveFrom: 'desc' } }, salaryReviews: { orderBy: { dueDate: 'asc' } }, documents: { orderBy: { createdAt: 'desc' } } };
+const includeEmployee: any = { department: true, position: { include: { department: true } }, secondaryPositions: { include: { position: { include: { department: true } } } }, mainSite: true, secondarySites: { include: { site: true } }, user: { select: { id: true, email: true, firstName: true, lastName: true, role: { select: { name: true } } } }, manager: { select: { id: true, firstName: true, lastName: true } }, history: { orderBy: { createdAt: 'desc' }, take: 30, include: { user: { select: { id: true, email: true, firstName: true, lastName: true } } } }, contracts: { orderBy: { startDate: 'desc' } }, compensations: { orderBy: { effectiveFrom: 'desc' } }, salaryReviews: { orderBy: { dueDate: 'asc' } }, documents: { orderBy: { createdAt: 'desc' } }, sensitiveData: true };
 function defaultHrUploadRoot() {
   const cwd = process.cwd();
   if (basename(cwd) === 'api' && basename(dirname(cwd)) === 'apps') return resolve(cwd, '..', '..', 'uploads', 'hr');
@@ -30,9 +31,13 @@ const HR_UPLOAD_ROOT = process.env.HR_UPLOAD_DIR
 
 @Injectable()
 export class HrService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly sensitiveDataCrypto?: HrSensitiveDataCryptoService,
+  ) {}
 
   private assertWrite(actor: Actor) { if (!WRITE_ROLES.includes(actor.role)) throw new ForbiddenException('RH write access is restricted to managers and administrators'); }
+  assertWriteAccess(actor: Actor) { this.assertWrite(actor); }
   assertRead(actor: Actor, targetEmployeeId?: string, userEmployeeId?: string | null) {
     if (ADMIN_ROLES.includes(actor.role) || MANAGER_ROLES.includes(actor.role)) return;
     if (userEmployeeId && targetEmployeeId && userEmployeeId === targetEmployeeId) return;
@@ -286,19 +291,20 @@ export class HrService {
     if (!this.isAdminOrManager(actor)) {
       if (actor.employeeId) {
         const employee = await this.prisma.hrEmployee.findFirst({ where: { id: actor.employeeId, organizationId }, include: includeEmployee });
-        return employee ? [employee] : [];
+        return employee ? [this.serializeEmployee(employee)] : [];
       }
       throw new ForbiddenException('Accès restreint à vos propres informations RH');
     }
     const OR = q.search ? [{ firstName: { contains: q.search, mode: 'insensitive' as const } }, { lastName: { contains: q.search, mode: 'insensitive' as const } }, { email: { contains: q.search, mode: 'insensitive' as const } }, { department: { name: { contains: q.search, mode: 'insensitive' as const } } }, { position: { name: { contains: q.search, mode: 'insensitive' as const } } }] : undefined;
-    return this.prisma.hrEmployee.findMany({ where: { organizationId, ...(q.includeArchived ? {} : { isArchived: false }), status: q.status, departmentId: q.departmentId, positionId: q.positionId, ...(q.linkedToUser === undefined ? {} : { userId: q.linkedToUser ? { not: null } : null }), OR }, include: includeEmployee, orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }], ...this.page(q) });
+    const employees = await this.prisma.hrEmployee.findMany({ where: { organizationId, ...(q.includeArchived ? {} : { isArchived: false }), status: q.status, departmentId: q.departmentId, positionId: q.positionId, ...(q.linkedToUser === undefined ? {} : { userId: q.linkedToUser ? { not: null } : null }), OR }, include: includeEmployee, orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }], ...this.page(q) });
+    return employees.map((employee) => this.serializeEmployee(employee));
   }
 
   async getEmployee(organizationId: string, actor: Actor, id: string) {
     const employee = await this.prisma.hrEmployee.findFirst({ where: { id, organizationId }, include: includeEmployee });
     if (!employee) throw new NotFoundException('Collaborateur introuvable');
     this.assertRead(actor, id, actor.employeeId);
-    return employee;
+    return this.serializeEmployee(employee);
   }
 
   async createEmployee(organizationId: string, actor: Actor, dto: UpsertHrEmployeeDto) {
@@ -318,11 +324,12 @@ export class HrService {
       if (dto.secondarySiteIds?.length) {
         await tx.hrEmployeeSecondarySite.createMany({ data: dto.secondarySiteIds.map((siteId) => ({ employeeId: employee.id, siteId })), skipDuplicates: true });
       }
+      await this.syncSensitiveData(tx, organizationId, employee.id, dto.personalIdentityNumber);
       await this.syncContractAndCompensation(tx, organizationId, employee.id, dto, actor.id);
       await this.history(tx, organizationId, employee.id, actor.id, HrHistoryEventType.CREATED, 'Création du collaborateur');
       if (dto.userId) await this.history(tx, organizationId, employee.id, actor.id, HrHistoryEventType.USER_LINKED, 'Compte ToqueHub associé', { userId: dto.userId });
       await this.recomputeOnboarding(organizationId);
-      return tx.hrEmployee.findFirst({ where: { id: employee.id, organizationId }, include: includeEmployee });
+      return this.serializeEmployee(await tx.hrEmployee.findFirst({ where: { id: employee.id, organizationId }, include: includeEmployee }));
     });
   }
 
@@ -347,6 +354,7 @@ export class HrService {
           await tx.hrEmployeeSecondarySite.createMany({ data: dto.secondarySiteIds.map((siteId) => ({ employeeId: id, siteId })), skipDuplicates: true });
         }
       }
+      await this.syncSensitiveData(tx, organizationId, id, dto.personalIdentityNumber);
       await this.syncContractAndCompensation(tx, organizationId, id, dto, actor.id);
       await this.history(tx, organizationId, id, actor.id, HrHistoryEventType.UPDATED, 'Mise à jour du collaborateur');
       if (dto.status && dto.status !== current.status) await this.history(tx, organizationId, id, actor.id, HrHistoryEventType.STATUS_CHANGED, 'Changement de statut', { from: current.status, to: dto.status });
@@ -355,7 +363,7 @@ export class HrService {
       if (dto.userId !== current.userId) await this.history(tx, organizationId, id, actor.id, dto.userId ? HrHistoryEventType.USER_LINKED : HrHistoryEventType.USER_UNLINKED, dto.userId ? 'Compte ToqueHub associé' : 'Compte ToqueHub retiré');
       if (dto.managerId !== current.managerId) await this.history(tx, organizationId, id, actor.id, HrHistoryEventType.MANAGER_CHANGED, 'Changement de responsable');
       await this.recomputeOnboarding(organizationId);
-      return tx.hrEmployee.findFirst({ where: { id, organizationId }, include: includeEmployee });
+      return this.serializeEmployee(await tx.hrEmployee.findFirst({ where: { id, organizationId }, include: includeEmployee }));
     });
   }
 
@@ -363,7 +371,7 @@ export class HrService {
     this.assertWrite(actor);
     const employee = await this.prisma.hrEmployee.update({ where: { id, organizationId }, data: { isArchived: true, archivedAt: new Date() }, include: includeEmployee });
     await this.prisma.hrEmployeeHistory.create({ data: { organizationId, employeeId: id, userId: actor.id, type: HrHistoryEventType.ARCHIVED, label: 'Archivage du collaborateur' } });
-    return employee;
+    return this.serializeEmployee(employee);
   }
 
   async uploadEmployeeDocument(organizationId: string, actor: Actor, employeeId: string, file: any, category = 'OTHER', notes?: string, expiresAt?: string) {
@@ -576,6 +584,31 @@ export class HrService {
   private cleanTextList(values?: string[] | null) { return [...new Set((values ?? []).map((value) => value.trim()).filter(Boolean))]; }
   private sameLabel(a?: string | null, b?: string | null) { return this.normalizeLabel(a) === this.normalizeLabel(b); }
   private normalizeLabel(value?: string | null) { return (value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim(); }
+  private serializeEmployee(employee: any) {
+    if (!employee) return employee;
+    const { sensitiveData, ...safeEmployee } = employee;
+    return {
+      ...safeEmployee,
+      personalIdentityNumber: sensitiveData?.personalIdentityNumberCiphertext
+        ? this.sensitiveDataCrypto?.decrypt(sensitiveData.personalIdentityNumberCiphertext)
+        : null,
+    };
+  }
+  private async syncSensitiveData(tx: Tx, organizationId: string, employeeId: string, value?: string) {
+    if (value === undefined) return;
+    const cleaned = this.cleanText(value);
+    if (!cleaned) {
+      await tx.hrEmployeeSensitiveData.deleteMany({ where: { organizationId, employeeId } });
+      return;
+    }
+    if (!this.sensitiveDataCrypto) throw new BadRequestException('Le chiffrement des données RH sensibles n’est pas configuré.');
+    const personalIdentityNumberCiphertext = this.sensitiveDataCrypto.encrypt(cleaned);
+    await tx.hrEmployeeSensitiveData.upsert({
+      where: { employeeId },
+      create: { organizationId, employeeId, personalIdentityNumberCiphertext },
+      update: { personalIdentityNumberCiphertext },
+    });
+  }
   private employeeData(organizationId: string, dto: UpsertHrEmployeeDto): Prisma.HrEmployeeUncheckedCreateInput {
     return {
       organizationId,
