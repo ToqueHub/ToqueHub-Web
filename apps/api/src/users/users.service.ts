@@ -36,12 +36,18 @@ const BASE_PERMISSIONS = [
   { key: 'haccp.write', description: 'Modifier les contrôles HACCP' },
   { key: 'haccp.validate', description: 'Valider les contrôles HACCP' },
   { key: 'haccp.export', description: 'Exporter les rapports HACCP' },
+  { key: 'purchasing.read', description: 'Consulter les achats' },
+  { key: 'purchasing.draft', description: 'Créer et modifier ses brouillons d’achat' },
+  { key: 'purchasing.write', description: 'Modifier toutes les commandes d’achat' },
+  { key: 'purchasing.send', description: 'Envoyer les commandes fournisseurs' },
+  { key: 'purchasing.receive', description: 'Valider les réceptions fournisseurs' },
+  { key: 'purchasing.manage', description: 'Configurer les achats et les e-mails fournisseurs' },
 ];
 
 const DEFAULT_ROLE_PERMISSIONS: Record<CoreRoleName, string[]> = {
   [CoreRoleName.ADMIN]: BASE_PERMISSIONS.map((permission) => permission.key),
-  [CoreRoleName.MANAGER]: ['catalog.read', 'catalog.write', 'stocks.read', 'stocks.write', 'stocks.audit.read', 'hr.read', 'hr.write', 'planning.read', 'planning.write', 'rnm-prices.read', 'technical-sheets.read', 'technical-sheets.write', 'production.read', 'production.write', 'menus.read', 'menus.write', 'haccp.read', 'haccp.write', 'haccp.validate', 'haccp.export'],
-  [CoreRoleName.USER]: ['catalog.read', 'stocks.read', 'hr.read', 'planning.read', 'rnm-prices.read', 'technical-sheets.read', 'production.read', 'menus.read', 'haccp.read'],
+  [CoreRoleName.MANAGER]: ['catalog.read', 'catalog.write', 'stocks.read', 'stocks.write', 'stocks.audit.read', 'hr.read', 'hr.write', 'planning.read', 'planning.write', 'rnm-prices.read', 'technical-sheets.read', 'technical-sheets.write', 'production.read', 'production.write', 'menus.read', 'menus.write', 'haccp.read', 'haccp.write', 'haccp.validate', 'haccp.export', 'purchasing.read', 'purchasing.draft', 'purchasing.write', 'purchasing.send', 'purchasing.receive', 'purchasing.manage'],
+  [CoreRoleName.USER]: ['catalog.read', 'stocks.read', 'hr.read', 'planning.read', 'rnm-prices.read', 'technical-sheets.read', 'production.read', 'menus.read', 'haccp.read', 'purchasing.read', 'purchasing.draft'],
 };
 
 type UserWithRole = Prisma.UserGetPayload<{ include: { role: { include: { permissions: { include: { permission: true } } } } } }>;

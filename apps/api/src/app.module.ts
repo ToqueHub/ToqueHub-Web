@@ -22,6 +22,8 @@ import { MistralModule } from './mistral/mistral.module';
 import { StockAssistantModule } from './stock-assistant/stock-assistant.module';
 import { TechnicalSheetAssistantModule } from './technical-sheet-assistant/technical-sheet-assistant.module';
 import { HaccpAssistantModule } from './haccp-assistant/haccp-assistant.module';
+import { PurchasingModule } from './purchasing/purchasing.module';
+import { SecretsModule } from './common/secrets/secrets.module';
 
 @Module({
   imports: [
@@ -30,6 +32,7 @@ import { HaccpAssistantModule } from './haccp-assistant/haccp-assistant.module';
       envFilePath: ['../../.env', '.env'],
     }),
     PrismaModule,
+    SecretsModule,
     AuthModule,
     StocksModule,
     SystemModule,
@@ -51,6 +54,7 @@ import { HaccpAssistantModule } from './haccp-assistant/haccp-assistant.module';
     StockAssistantModule,
     TechnicalSheetAssistantModule,
     HaccpAssistantModule,
+    PurchasingModule,
   ],
 })
 export class AppModule {}

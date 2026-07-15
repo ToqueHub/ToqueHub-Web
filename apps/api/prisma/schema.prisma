@@ -289,6 +289,44 @@ enum StockReceptionLineMatchingStatus {
   NOT_FOUND
 }
 
+enum PurchasingDeliveryMode {
+  SCHEDULED_DAYS
+  ON_DEMAND
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  SENT
+  ACKNOWLEDGED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CLOSED
+  CANCELLED
+}
+
+enum PurchaseDispatchStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+}
+
+enum PurchaseReceiptStatus {
+  DRAFT
+  REVIEW_NEEDED
+  VALIDATED
+  CANCELLED
+}
+
+enum PurchaseReceiptLineStatus {
+  MATCHED
+  SHORT
+  OVER
+  UNEXPECTED
+  SUBSTITUTED
+  NEEDS_REVIEW
+}
+
 enum StockProposalType {
   RECEIPT
   WASTE
@@ -617,6 +655,8 @@ enum AuditAction {
   MODULE_PRODUCTION_UNINSTALLED
   MODULE_MENUS_INSTALLED
   MODULE_MENUS_UNINSTALLED
+  MODULE_PURCHASING_INSTALLED
+  MODULE_PURCHASING_UNINSTALLED
   HACCP_SENSOR_DISCOVERED
   HACCP_SENSOR_RENAMED
   HACCP_SENSOR_ASSIGNED
@@ -694,8 +734,14 @@ model Organization {
   productionInstalledAt         DateTime?
   menusInstalledAt              DateTime?
   haccpInstalledAt              DateTime?
+  purchasingInstalledAt         DateTime?
   mistralApiKey                 String?   @db.Text
   mistralApiKeyUpdatedAt        DateTime?
+  resendApiKey                  String?   @db.Text
+  resendApiKeyEncrypted         String?   @db.Text
+  resendApiKeyMask              String?
+  resendApiKeyCipherVersion     Int?
+  resendApiKeyUpdatedAt         DateTime?
   githubToken                   String?   @db.Text
   githubTokenUpdatedAt          DateTime?
   tailscaleEnabled              Boolean   @default(false)
@@ -824,6 +870,18 @@ model Organization {
   iotAlertEvents                  IotAlertEvent[]
   haccpSensorNotificationSettings HaccpSensorNotificationSettings?
   mobilePushTokens                MobilePushToken[]
+  purchasingSettings              PurchasingSettings?
+  purchasingOnboardingProgress    PurchasingOnboardingProgress?
+  supplierPurchasingProfiles      SupplierPurchasingProfile[]
+  supplierProductOffers           SupplierProductOffer[]
+  supplierProductPriceHistory     SupplierProductPriceHistory[]
+  purchaseNumberSequences         PurchaseNumberSequence[]
+  purchaseOrders                  PurchaseOrder[]
+  purchaseOrderLines              PurchaseOrderLine[]
+  purchaseOrderDispatches         PurchaseOrderDispatch[]
+  purchaseReceipts                PurchaseReceipt[]
+  purchaseReceiptLines            PurchaseReceiptLine[]
+  purchaseOrderEvents             PurchaseOrderEvent[]
 
   @@index([regulatoryCountryCode])
   @@index([regulatoryCountrySelectedById])
@@ -927,6 +985,11 @@ model User {
   createdMarginReports               MarginReport[]                 @relation("MarginReportCreatedBy")
   dashboardPreferences               DashboardPreference[]
   backupCloudOAuthStates             BackupCloudOAuthState[]        @relation("BackupCloudOAuthStateUser")
+  createdPurchaseOrders              PurchaseOrder[]                @relation("PurchaseOrderCreatedBy")
+  sentPurchaseOrders                 PurchaseOrder[]                @relation("PurchaseOrderSentBy")
+  createdPurchaseReceipts            PurchaseReceipt[]              @relation("PurchaseReceiptCreatedBy")
+  validatedPurchaseReceipts          PurchaseReceipt[]              @relation("PurchaseReceiptValidatedBy")
+  purchaseOrderEvents                PurchaseOrderEvent[]           @relation("PurchaseOrderEventActor")
 
   @@index([organizationId])
   @@index([roleId])
@@ -1060,6 +1123,9 @@ model Unit {
   technicalSheetIngredients      TechnicalSheetIngredient[]
   productionMaterialRequirements ProductionMaterialRequirement[]
   productionDestockingLines      ProductionDestockingLine[]
+  supplierProductOffers          SupplierProductOffer[]
+  purchaseOrderLines             PurchaseOrderLine[]
+  purchaseReceiptLines           PurchaseReceiptLine[]
 
   @@unique([organizationId, symbol])
   @@index([organizationId])
@@ -1137,6 +1203,9 @@ model Product {
   productionRequirements    ProductionMaterialRequirement[]
   productionDestockingLines ProductionDestockingLine[]
   marginAlerts              MarginAlert[]
+  supplierProductOffers     SupplierProductOffer[]
+  purchaseOrderLines        PurchaseOrderLine[]
+  purchaseReceiptLines      PurchaseReceiptLine[]
 
   @@unique([organizationId, name])
   @@unique([organizationId, sku])
@@ -1169,6 +1238,9 @@ model Supplier {
   marginAlerts           MarginAlert[]
   productionRequirements ProductionMaterialRequirement[]
   primaryProducts        Product[]                       @relation("ProductPrimarySupplier")
+  purchasingProfile      SupplierPurchasingProfile?
+  productOffers          SupplierProductOffer[]
+  purchaseOrders         PurchaseOrder[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -1200,6 +1272,8 @@ model Site {
   sourceMovements              StockMovement[]               @relation("StockMovementSourceSite")
   destinationMovements         StockMovement[]               @relation("StockMovementDestinationSite")
   inventories                  Inventory[]
+  purchaseOrders               PurchaseOrder[]
+  purchaseReceipts             PurchaseReceipt[]
   employees                    HrEmployee[]
   secondaryEmployees           HrEmployeeSecondarySite[]
   planningAssignments          PlanningAssignment[]
@@ -1237,6 +1311,7 @@ model Location {
   sourceMovements      StockMovement[]  @relation("StockMovementSourceLocation")
   destinationMovements StockMovement[]  @relation("StockMovementDestinationLocation")
   inventories          Inventory[]
+  purchaseReceipts     PurchaseReceipt[]
 
   @@unique([organizationId, siteId, name])
   @@index([organizationId])
@@ -1374,6 +1449,7 @@ model Document {
   ocrDocuments     OcrDocument[]
   stockReceptions  StockReception[]
   haccpOilSessions HaccpOilSession[]
+  purchaseReceipts PurchaseReceipt[]
 
   @@index([organizationId])
   @@index([uploadedById])
@@ -1425,6 +1501,7 @@ model OcrBusinessExtraction {
   organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   ocrDocument     OcrDocument      @relation(fields: [ocrDocumentId], references: [id], onDelete: Cascade)
   stockReceptions StockReception[]
+  purchaseReceipts PurchaseReceipt[]
 
   @@index([organizationId])
   @@index([ocrDocumentId])
@@ -1451,6 +1528,7 @@ model StockReception {
   createdById         String?              @db.Uuid
   siteId              String?              @db.Uuid
   locationId          String?              @db.Uuid
+  purchaseReceiptId   String?              @unique @db.Uuid
   validatedAt         DateTime?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
@@ -1462,13 +1540,14 @@ model StockReception {
   createdBy    User?                  @relation("StockReceptionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   site         Site?                  @relation(fields: [siteId], references: [id], onDelete: SetNull)
   location     Location?              @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  purchaseReceipt PurchaseReceipt?       @relation(fields: [purchaseReceiptId], references: [id], onDelete: SetNull)
   lines        StockReceptionLine[]
 
+  @@unique([extractionId])
   @@index([organizationId])
   @@index([supplierId])
   @@index([documentId])
   @@index([extractionId])
-  @@unique([extractionId])
   @@index([status])
   @@map("stock_receptions")
 }
@@ -1506,6 +1585,320 @@ model StockReceptionLine {
   @@index([unitId])
   @@index([lotId])
   @@map("stock_reception_lines")
+}
+
+model PurchasingSettings {
+  id                    String    @id @default(uuid()) @db.Uuid
+  organizationId        String    @unique @db.Uuid
+  defaultCurrency       String    @default("EUR") @db.Char(3)
+  replenishmentDays     Int       @default(7)
+  consumptionWindowDays Int       @default(28)
+  resendApiKeyEncrypted String?   @db.Text // Legacy: kept for non-destructive migrations, no longer used.
+  fromEmail             String?
+  fromName              String?
+  replyTo               String?
+  resendVerifiedAt      DateTime?
+  resendLastTestEmailId String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("purchasing_settings")
+}
+
+model PurchasingOnboardingProgress {
+  id                String    @id @default(uuid()) @db.Uuid
+  organizationId    String    @unique @db.Uuid
+  currentStep       String    @default("welcome")
+  completedSteps    String[]  @default([])
+  skippedEmailSetup Boolean   @default(false)
+  completedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("purchasing_onboarding_progress")
+}
+
+model SupplierPurchasingProfile {
+  id               String                 @id @default(uuid()) @db.Uuid
+  organizationId   String                 @db.Uuid
+  supplierId       String                 @unique @db.Uuid
+  orderEmail       String?
+  customerCode     String?
+  deliveryMode     PurchasingDeliveryMode @default(ON_DEMAND)
+  deliveryWeekdays Int[]                  @default([])
+  cutoffTime       String?
+  timezone         String                 @default("UTC")
+  leadTimeDays     Int                    @default(1)
+  minimumOrder     Decimal                @default(0) @db.Decimal(12, 4)
+  deliveryFee      Decimal                @default(0) @db.Decimal(12, 4)
+  orderingEnabled  Boolean                @default(true)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier     Supplier     @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([orderingEnabled])
+  @@map("supplier_purchasing_profiles")
+}
+
+model SupplierProductOffer {
+  id                   String   @id @default(uuid()) @db.Uuid
+  organizationId       String   @db.Uuid
+  supplierId           String   @db.Uuid
+  productId            String   @db.Uuid
+  orderUnitId          String?  @db.Uuid
+  supplierReference    String
+  supplierLabel        String?
+  unitsPerOrderUnit    Decimal  @default(1) @db.Decimal(12, 4)
+  minimumOrderQuantity Decimal  @default(1) @db.Decimal(12, 3)
+  orderIncrement       Decimal  @default(1) @db.Decimal(12, 3)
+  unitPrice            Decimal  @default(0) @db.Decimal(12, 4)
+  vatRate              Decimal  @default(0) @db.Decimal(5, 2)
+  currency             String   @default("EUR") @db.Char(3)
+  isActive             Boolean  @default(true)
+  priceUpdatedAt       DateTime @default(now())
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  organization Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier     Supplier                      @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  product      Product                       @relation(fields: [productId], references: [id], onDelete: Restrict)
+  orderUnit    Unit?                         @relation(fields: [orderUnitId], references: [id], onDelete: SetNull)
+  priceHistory SupplierProductPriceHistory[]
+  orderLines   PurchaseOrderLine[]
+
+  @@unique([organizationId, supplierId, supplierReference])
+  @@index([organizationId, supplierId, isActive])
+  @@index([organizationId, productId, isActive])
+  @@map("supplier_product_offers")
+}
+
+model SupplierProductPriceHistory {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  offerId        String   @db.Uuid
+  unitPrice      Decimal  @db.Decimal(12, 4)
+  currency       String   @db.Char(3)
+  source         String   @default("MANUAL")
+  recordedAt     DateTime @default(now())
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  offer        SupplierProductOffer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, recordedAt])
+  @@index([offerId, recordedAt])
+  @@map("supplier_product_price_history")
+}
+
+model PurchaseNumberSequence {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  year           Int
+  value          Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, year])
+  @@map("purchase_number_sequences")
+}
+
+model PurchaseOrder {
+  id                      String              @id @default(uuid()) @db.Uuid
+  organizationId          String              @db.Uuid
+  number                  String
+  supplierId              String              @db.Uuid
+  siteId                  String              @db.Uuid
+  status                  PurchaseOrderStatus @default(DRAFT)
+  currency                String              @default("EUR") @db.Char(3)
+  expectedDeliveryDate    DateTime?
+  supplierNameSnapshot    String
+  supplierEmailSnapshot   String?
+  customerCodeSnapshot    String?
+  deliveryAddressSnapshot String?             @db.Text
+  deliveryFeeSnapshot     Decimal             @default(0) @db.Decimal(12, 4)
+  totalExcludingTax       Decimal             @default(0) @db.Decimal(14, 4)
+  totalTax                Decimal             @default(0) @db.Decimal(14, 4)
+  totalIncludingTax       Decimal             @default(0) @db.Decimal(14, 4)
+  notes                   String?             @db.Text
+  supplierMessage         String?             @db.Text
+  version                 Int                 @default(1)
+  createdById             String              @db.Uuid
+  sentById                String?             @db.Uuid
+  sentAt                  DateTime?
+  acknowledgedAt          DateTime?
+  receivedAt              DateTime?
+  closedAt                DateTime?
+  cancelledAt             DateTime?
+  closeReason             String?             @db.Text
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier     Supplier                @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  site         Site                    @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  createdBy    User                    @relation("PurchaseOrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  sentBy       User?                   @relation("PurchaseOrderSentBy", fields: [sentById], references: [id], onDelete: SetNull)
+  lines        PurchaseOrderLine[]
+  dispatches   PurchaseOrderDispatch[]
+  receipts     PurchaseReceipt[]
+  events       PurchaseOrderEvent[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status, createdAt])
+  @@index([organizationId, supplierId, createdAt])
+  @@index([organizationId, expectedDeliveryDate])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderLine {
+  id                        String   @id @default(uuid()) @db.Uuid
+  organizationId            String   @db.Uuid
+  orderId                   String   @db.Uuid
+  offerId                   String?  @db.Uuid
+  productId                 String   @db.Uuid
+  unitId                    String?  @db.Uuid
+  position                  Int      @default(0)
+  productNameSnapshot       String
+  supplierReferenceSnapshot String?
+  supplierLabelSnapshot     String?
+  unitSymbolSnapshot        String?
+  orderedQuantity           Decimal  @db.Decimal(12, 3)
+  unitsPerOrderUnit         Decimal  @default(1) @db.Decimal(12, 4)
+  expectedStockQuantity     Decimal  @db.Decimal(12, 3)
+  receivedQuantity          Decimal  @default(0) @db.Decimal(12, 3)
+  unitPrice                 Decimal  @db.Decimal(12, 4)
+  vatRate                   Decimal  @default(0) @db.Decimal(5, 2)
+  lineExcludingTax          Decimal  @db.Decimal(14, 4)
+  lineTax                   Decimal  @db.Decimal(14, 4)
+  lineIncludingTax          Decimal  @db.Decimal(14, 4)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order        PurchaseOrder         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  offer        SupplierProductOffer? @relation(fields: [offerId], references: [id], onDelete: SetNull)
+  product      Product               @relation(fields: [productId], references: [id], onDelete: Restrict)
+  unit         Unit?                 @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  receiptLines PurchaseReceiptLine[]
+
+  @@index([organizationId, orderId])
+  @@index([organizationId, productId])
+  @@map("purchase_order_lines")
+}
+
+model PurchaseOrderDispatch {
+  id                String                 @id @default(uuid()) @db.Uuid
+  organizationId    String                 @db.Uuid
+  orderId           String                 @db.Uuid
+  idempotencyKey    String
+  status            PurchaseDispatchStatus @default(PENDING)
+  recipient         String
+  subject           String
+  snapshot          Json
+  providerMessageId String?
+  errorMessage      String?                @db.Text
+  attemptedAt       DateTime?
+  sentAt            DateTime?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order        PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, idempotencyKey])
+  @@index([organizationId, status, createdAt])
+  @@map("purchase_order_dispatches")
+}
+
+model PurchaseReceipt {
+  id                     String                @id @default(uuid()) @db.Uuid
+  organizationId         String                @db.Uuid
+  orderId                String                @db.Uuid
+  status                 PurchaseReceiptStatus @default(DRAFT)
+  siteId                 String                @db.Uuid
+  locationId             String?               @db.Uuid
+  deliveryNoteDocumentId String?               @unique @db.Uuid
+  extractionId           String?               @unique @db.Uuid
+  deliveryNoteNumber     String?
+  deliveryDate           DateTime?
+  notes                  String?               @db.Text
+  createdById            String                @db.Uuid
+  validatedById          String?               @db.Uuid
+  validatedAt            DateTime?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order          PurchaseOrder          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  site           Site                   @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  location       Location?              @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  document       Document?              @relation(fields: [deliveryNoteDocumentId], references: [id], onDelete: SetNull)
+  extraction     OcrBusinessExtraction? @relation(fields: [extractionId], references: [id], onDelete: SetNull)
+  createdBy      User                   @relation("PurchaseReceiptCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  validatedBy    User?                  @relation("PurchaseReceiptValidatedBy", fields: [validatedById], references: [id], onDelete: SetNull)
+  lines          PurchaseReceiptLine[]
+  stockReception StockReception?
+
+  @@index([organizationId, status, createdAt])
+  @@index([organizationId, orderId, createdAt])
+  @@map("purchase_receipts")
+}
+
+model PurchaseReceiptLine {
+  id                  String                    @id @default(uuid()) @db.Uuid
+  organizationId      String                    @db.Uuid
+  receiptId           String                    @db.Uuid
+  purchaseOrderLineId String?                   @db.Uuid
+  productId           String?                   @db.Uuid
+  unitId              String?                   @db.Uuid
+  reference           String?
+  label               String
+  deliveredQuantity   Decimal                   @db.Decimal(12, 3)
+  acceptedQuantity    Decimal                   @db.Decimal(12, 3)
+  unitsPerOrderUnit   Decimal                   @default(1) @db.Decimal(12, 4)
+  unitPrice           Decimal?                  @db.Decimal(12, 4)
+  status              PurchaseReceiptLineStatus @default(NEEDS_REVIEW)
+  notes               String?                   @db.Text
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  receipt      PurchaseReceipt    @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  orderLine    PurchaseOrderLine? @relation(fields: [purchaseOrderLineId], references: [id], onDelete: SetNull)
+  product      Product?           @relation(fields: [productId], references: [id], onDelete: SetNull)
+  unit         Unit?              @relation(fields: [unitId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, receiptId])
+  @@index([purchaseOrderLineId])
+  @@index([productId])
+  @@map("purchase_receipt_lines")
+}
+
+model PurchaseOrderEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  orderId        String   @db.Uuid
+  actorUserId    String?  @db.Uuid
+  type           String
+  summary        String
+  details        Json?
+  createdAt      DateTime @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order        PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  actor        User?         @relation("PurchaseOrderEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([orderId, createdAt])
+  @@map("purchase_order_events")
 }
 
 model MarginSettings {
@@ -3492,6 +3885,7 @@ model HaccpAssistantConversation {
   updatedAt DateTime @updatedAt
   messages HaccpAssistantMessage[]
   drafts HaccpAssistantDraft[]
+
   @@index([organizationId, userId])
   @@index([expiresAt])
   @@map("haccp_assistant_conversations")
@@ -3505,6 +3899,7 @@ model HaccpAssistantMessage {
   metadata Json?
   createdAt DateTime @default(now())
   conversation HaccpAssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
   @@index([conversationId, createdAt])
   @@map("haccp_assistant_messages")
 }
@@ -3520,6 +3915,7 @@ model HaccpAssistantDraft {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   conversation HaccpAssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
   @@index([organizationId, status])
   @@index([conversationId])
   @@index([expiresAt])

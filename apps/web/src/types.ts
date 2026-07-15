@@ -1,4 +1,11 @@
-export type EstablishmentType = 'Restaurant' | 'EHPAD' | 'Collectivité' | 'Hôtel' | 'Traiteur' | 'Cuisine centrale' | 'Autre';
+export type EstablishmentType =
+  | 'Restaurant'
+  | 'EHPAD'
+  | 'Collectivité'
+  | 'Hôtel'
+  | 'Traiteur'
+  | 'Cuisine centrale'
+  | 'Autre';
 export type TeamSize = '1-5' | '6-10' | '11-20' | '20+';
 export type HrCountryCode = 'FR' | 'FI';
 export type RegulatoryCountryCode = 'FR' | 'FI';
@@ -289,7 +296,17 @@ export interface BootstrapAdminResponse {
   next: string;
 }
 
-export type StockMovementType = 'RECEPTION' | 'IN' | 'ENTRY' | 'OUT' | 'EXIT' | 'PRODUCTION' | 'LOSS' | 'CORRECTION' | 'INVENTORY' | 'TRANSFER';
+export type StockMovementType =
+  | 'RECEPTION'
+  | 'IN'
+  | 'ENTRY'
+  | 'OUT'
+  | 'EXIT'
+  | 'PRODUCTION'
+  | 'LOSS'
+  | 'CORRECTION'
+  | 'INVENTORY'
+  | 'TRANSFER';
 
 export interface UserSession {
   accessToken: string;
@@ -389,7 +406,15 @@ export interface DashboardSummary {
     remoteAccess?: OrganizationRemoteAccess;
   };
   installedApplications: string[];
-  counts: { products: number; suppliers: number; stockMovements: number; activeUsers?: number; users?: number; collaborators?: number; hrCollaborators?: number };
+  counts: {
+    products: number;
+    suppliers: number;
+    stockMovements: number;
+    activeUsers?: number;
+    users?: number;
+    collaborators?: number;
+    hrCollaborators?: number;
+  };
   progress: {
     percent: number;
     checklist: {
@@ -403,6 +428,11 @@ export interface DashboardSummary {
 
 export interface OrganizationApiKeys {
   mistral: {
+    configured: boolean;
+    masked?: string | null;
+    updatedAt?: string | null;
+  };
+  resend?: {
     configured: boolean;
     masked?: string | null;
     updatedAt?: string | null;
@@ -429,22 +459,115 @@ export interface StocksOcrConfig {
   source?: 'environment' | 'organization' | string | null;
 }
 
-export interface StockProposalLine { id: string; productId?: string | null; rawLabel: string; supplierSku?: string | null; quantity: string | number; purchaseUnit?: string | null; inputUnitId?: string | null; unitPriceExVat?: string | number | null; lotNumber?: string | null; expiryDate?: string | null; matchStatus: 'MATCHED' | 'AMBIGUOUS' | 'UNMATCHED'; matchConfidence?: string | number | null; notes?: string | null; metadata?: { candidates?: Array<{ id: string; name: string; unitId: string; score: number }> }; }
-export interface StockProposal { id: string; type: string; status: string; version: number; locationId?: string | null; sourceLocationId?: string | null; destinationLocationId?: string | null; supplierId?: string | null; duplicateWarning?: unknown; duplicateOverrideReason?: string | null; sourceType?: string | null; sourceDocumentId?: string | null; metadata?: { supplierName?: string | null; ocrResult?: { supplierName?: string | null; supplier?: { name?: string | null; supplierName?: string | null } } } | null; lines: StockProposalLine[]; }
+export interface StockProposalLine {
+  id: string;
+  productId?: string | null;
+  rawLabel: string;
+  supplierSku?: string | null;
+  quantity: string | number;
+  purchaseUnit?: string | null;
+  inputUnitId?: string | null;
+  unitPriceExVat?: string | number | null;
+  lotNumber?: string | null;
+  expiryDate?: string | null;
+  matchStatus: 'MATCHED' | 'AMBIGUOUS' | 'UNMATCHED';
+  matchConfidence?: string | number | null;
+  notes?: string | null;
+  metadata?: { candidates?: Array<{ id: string; name: string; unitId: string; score: number }> };
+}
+export interface StockProposal {
+  id: string;
+  type: string;
+  status: string;
+  version: number;
+  locationId?: string | null;
+  sourceLocationId?: string | null;
+  destinationLocationId?: string | null;
+  supplierId?: string | null;
+  duplicateWarning?: unknown;
+  duplicateOverrideReason?: string | null;
+  sourceType?: string | null;
+  sourceDocumentId?: string | null;
+  metadata?: {
+    supplierName?: string | null;
+    ocrResult?: {
+      supplierName?: string | null;
+      supplier?: { name?: string | null; supplierName?: string | null };
+    };
+  } | null;
+  lines: StockProposalLine[];
+}
 export interface StockConversation {
   id: string;
   locationId?: string | null;
   state?: Record<string, unknown> | null;
   summary?: Record<string, unknown> | null;
-  messages?: Array<{ id: string; role: string; content: string; createdAt: string; metadata?: { proposalId?: string | null; state?: Record<string, unknown>; choices?: StockAssistantChoice[] } | null }>;
+  messages?: Array<{
+    id: string;
+    role: string;
+    content: string;
+    createdAt: string;
+    metadata?: {
+      proposalId?: string | null;
+      state?: Record<string, unknown>;
+      choices?: StockAssistantChoice[];
+    } | null;
+  }>;
 }
 
-export type StockAssistantChoice = { type: 'product_select' | 'product_create' | 'location_select' | 'supplier_select' | 'proposal_review' | 'confirm_duplicate' | 'clarification'; label: string; value?: string; description?: string; payload?: Record<string, unknown> };
+export type StockAssistantChoice = {
+  type:
+    | 'product_select'
+    | 'product_create'
+    | 'location_select'
+    | 'supplier_select'
+    | 'proposal_review'
+    | 'confirm_duplicate'
+    | 'clarification';
+  label: string;
+  value?: string;
+  description?: string;
+  payload?: Record<string, unknown>;
+};
 
-export type TechnicalSheetAssistantChoice = { type: 'recipe_select' | 'product_select' | 'category_select' | 'draft_review' | 'clarification'; label: string; value?: string; description?: string };
-export type HaccpAssistantChoice = { type: 'haccp_draft_review' | 'haccp_equipment' | 'haccp_surface' | 'clarification'; label: string; value?: string; description?: string; payload?: Record<string, unknown> };
-export interface TechnicalSheetAssistantDraft { id: string; targetTechnicalSheetId?: string | null; status: 'PENDING_REVIEW' | 'APPLIED' | 'DISCARDED' | 'EXPIRED' | string; payload: TechnicalSheetRecipePayload; metadata?: Record<string, unknown> | null; expiresAt: string; }
-export interface TechnicalSheetAssistantConversation { id: string; state?: Record<string, unknown> | null; summary?: Record<string, unknown> | null; messages?: Array<{ id: string; role: string; content: string; createdAt: string; metadata?: { draftId?: string | null; choices?: TechnicalSheetAssistantChoice[]; needsReview?: boolean } | null }>; drafts?: TechnicalSheetAssistantDraft[]; }
+export type TechnicalSheetAssistantChoice = {
+  type: 'recipe_select' | 'product_select' | 'category_select' | 'draft_review' | 'clarification';
+  label: string;
+  value?: string;
+  description?: string;
+};
+export type HaccpAssistantChoice = {
+  type: 'haccp_draft_review' | 'haccp_equipment' | 'haccp_surface' | 'clarification';
+  label: string;
+  value?: string;
+  description?: string;
+  payload?: Record<string, unknown>;
+};
+export interface TechnicalSheetAssistantDraft {
+  id: string;
+  targetTechnicalSheetId?: string | null;
+  status: 'PENDING_REVIEW' | 'APPLIED' | 'DISCARDED' | 'EXPIRED' | string;
+  payload: TechnicalSheetRecipePayload;
+  metadata?: Record<string, unknown> | null;
+  expiresAt: string;
+}
+export interface TechnicalSheetAssistantConversation {
+  id: string;
+  state?: Record<string, unknown> | null;
+  summary?: Record<string, unknown> | null;
+  messages?: Array<{
+    id: string;
+    role: string;
+    content: string;
+    createdAt: string;
+    metadata?: {
+      draftId?: string | null;
+      choices?: TechnicalSheetAssistantChoice[];
+      needsReview?: boolean;
+    } | null;
+  }>;
+  drafts?: TechnicalSheetAssistantDraft[];
+}
 
 export interface MyDocument {
   id: string;
@@ -467,7 +590,12 @@ export interface MyDocument {
   extractionId?: string | null;
   receptionId?: string | null;
   receptionStatus?: string | null;
-  uploadedBy?: { id: string; firstName?: string | null; lastName?: string | null; email?: string | null } | null;
+  uploadedBy?: {
+    id: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+  } | null;
 }
 
 export interface MyDocumentsResponse {
@@ -537,12 +665,23 @@ export interface DashboardCockpit {
   refreshIntervalMs: number;
   organizationName: string;
   primarySite: { id: string; name: string; address?: string | null } | null;
-  weather: { status: 'ready' | 'needs_location' | 'unavailable'; city?: string; temperature?: number; apparentTemperature?: number; weatherCode?: number; label?: string; cityImage?: string };
+  weather: {
+    status: 'ready' | 'needs_location' | 'unavailable';
+    city?: string;
+    temperature?: number;
+    apparentTemperature?: number;
+    weatherCode?: number;
+    label?: string;
+    cityImage?: string;
+  };
   urgent: DashboardCockpitCard[];
   overview: DashboardCockpitCard[];
   activity: DashboardCockpitCard[];
   insights: DashboardCockpitCard[];
-  news: { local: Array<{ title: string; url: string; source: string; publishedAt?: string }>; industry: Array<{ title: string; url: string; source: string; publishedAt?: string }> };
+  news: {
+    local: Array<{ title: string; url: string; source: string; publishedAt?: string }>;
+    industry: Array<{ title: string; url: string; source: string; publishedAt?: string }>;
+  };
 }
 
 export type HrCollaboratorStatus = 'ACTIVE' | 'ABSENT' | 'SUSPENDED' | 'DEPARTED';
@@ -794,7 +933,13 @@ export interface HrOnboardingProgress {
   updatedAt?: string;
 }
 
-export type PlanningAlertLevel = 'critique' | 'attention' | 'information' | 'critical' | 'warning' | 'info';
+export type PlanningAlertLevel =
+  | 'critique'
+  | 'attention'
+  | 'information'
+  | 'critical'
+  | 'warning'
+  | 'info';
 
 export interface PlanningAlert {
   id?: string;
@@ -920,7 +1065,9 @@ export interface PlanningTemplate {
   defaultEmployeeIds?: string[];
   content?: Record<string, any>;
   days?: PlanningTemplateDay[];
-  lines?: Array<Partial<PlanningAssignment> & { dayOfWeek?: number; requiredCount?: number; label?: string }>;
+  lines?: Array<
+    Partial<PlanningAssignment> & { dayOfWeek?: number; requiredCount?: number; label?: string }
+  >;
   createdAt?: string | null;
 }
 
@@ -965,7 +1112,12 @@ export interface PlanningEmployeeTemplateAssignment {
   persistence?: string;
 }
 
-export type PlanningPeriodStatusCode = 'DRAFT' | 'CONTROLLED' | 'PUBLISHED' | 'MODIFIED_AFTER_PUBLICATION' | 'LOCKED';
+export type PlanningPeriodStatusCode =
+  | 'DRAFT'
+  | 'CONTROLLED'
+  | 'PUBLISHED'
+  | 'MODIFIED_AFTER_PUBLICATION'
+  | 'LOCKED';
 
 export interface PlanningPeriodStatus {
   status: PlanningPeriodStatusCode | string;
@@ -1119,7 +1271,13 @@ export interface PlanningCountersSummary {
   transactionCount: number;
   neutralizedTransactionCount?: number;
   negativeBalanceCount: number;
-  totals: Array<{ code: string; accountType: string; label?: string; unit: 'MINUTES' | 'DAYS' | string; total: number }>;
+  totals: Array<{
+    code: string;
+    accountType: string;
+    label?: string;
+    unit: 'MINUTES' | 'DAYS' | string;
+    total: number;
+  }>;
   employeePreview?: PlanningCounterEmployeeSummary[];
   hiddenEmployeeCount?: number;
   alerts?: PlanningCounterAlert[];
@@ -1166,7 +1324,12 @@ export interface PlanningAttendanceResponse {
   period: { startDate: string; endDate: string };
   rows: PlanningAttendanceRow[];
   employees: PlanningAttendanceEmployeeSummary[];
-  totals: { plannedMinutes: number; declaredMinutes: number; validatedMinutes: number; rows: number };
+  totals: {
+    plannedMinutes: number;
+    declaredMinutes: number;
+    validatedMinutes: number;
+    rows: number;
+  };
 }
 
 export interface PlanningHistoryEntry {
@@ -1219,7 +1382,11 @@ export interface PlanningBootstrap {
   historyHuman?: Array<Record<string, any>>;
   notifications?: PlanningAlert[];
   dashboard?: Record<string, any>;
-  planning?: { month?: Record<string, any>; assignmentsByDate?: Record<string, PlanningAssignment[]>; periodStatus?: PlanningPeriodStatus };
+  planning?: {
+    month?: Record<string, any>;
+    assignmentsByDate?: Record<string, PlanningAssignment[]>;
+    periodStatus?: PlanningPeriodStatus;
+  };
   settings?: Record<string, any>;
   attendance?: PlanningAttendanceResponse | Record<string, any>;
   periodStatus?: PlanningPeriodStatus;
@@ -1296,7 +1463,12 @@ export interface RnmProductsResponse {
   categories?: string[];
   sectors?: string[];
   filters?: { categories?: string[]; sectors?: string[] };
-  stats?: { products?: number; sectors?: number; markets?: number; lastQuotationDate?: string | null };
+  stats?: {
+    products?: number;
+    sectors?: number;
+    markets?: number;
+    lastQuotationDate?: string | null;
+  };
 }
 
 export interface RnmHistoryPoint extends RnmQuote {
@@ -1320,7 +1492,6 @@ export interface RnmFavorite {
   sector?: string | null;
   createdAt?: string;
 }
-
 
 export type ArchitectureAlertLevel = 'information' | 'attention' | 'critique';
 
@@ -1449,10 +1620,27 @@ export interface ArchitectureAnalysis {
   impacts?: ArchitectureImpact[];
   impact?: ArchitectureImpact[];
   graph?: {
-    nodes: Array<{ id: string; label: string; type: 'system' | 'module' | 'table' | 'entity'; module?: string }>;
-    edges: Array<{ id: string; source: string; target: string; type: 'ownership' | 'consumption' | 'relation' | 'dependency'; label: string }>;
+    nodes: Array<{
+      id: string;
+      label: string;
+      type: 'system' | 'module' | 'table' | 'entity';
+      module?: string;
+    }>;
+    edges: Array<{
+      id: string;
+      source: string;
+      target: string;
+      type: 'ownership' | 'consumption' | 'relation' | 'dependency';
+      label: string;
+    }>;
   };
-  roadmap: Array<{ module: string; status: string; active?: boolean; note?: string; description?: string }>;
+  roadmap: Array<{
+    module: string;
+    status: string;
+    active?: boolean;
+    note?: string;
+    description?: string;
+  }>;
   documentation: ArchitectureDocumentationPage[];
 }
 
@@ -1513,6 +1701,9 @@ export interface Product {
   shelfLifeAfterOpening?: string | null;
   storageInstructions?: string | null;
   preparationInstructions?: string | null;
+  stockQuantity?: number;
+  orderCount?: number;
+  lastOrderedAt?: string | null;
   archivedAt?: string | null;
   isArchived?: boolean;
   category?: Category | null;
@@ -1556,7 +1747,9 @@ export type ProductImportField =
   | 'storageInstructions'
   | 'preparationInstructions';
 
-export interface ProductImportPreviewFields extends Partial<Record<ProductImportField, string | number | string[] | null>> {
+export interface ProductImportPreviewFields extends Partial<
+  Record<ProductImportField, string | number | string[] | null>
+> {
   unitId?: string | null;
   unitLabel?: string | null;
   categoryId?: string | null;
@@ -1573,7 +1766,12 @@ export interface ProductImportPreviewRow {
   selected: boolean;
   warnings: string[];
   errors: string[];
-  duplicateOf?: { type: 'existing' | 'file'; field: 'sku' | 'gtin' | 'name'; value: string; label: string } | null;
+  duplicateOf?: {
+    type: 'existing' | 'file';
+    field: 'sku' | 'gtin' | 'name';
+    value: string;
+    label: string;
+  } | null;
 }
 
 export interface ProductImportPreview {
@@ -1590,7 +1788,13 @@ export interface ProductImportPreview {
   rows: ProductImportPreviewRow[];
   summary: Record<ProductImportStatus | 'total' | 'selected', number>;
   options: { createMissingCategories: boolean; createMissingSuppliers: boolean };
-  ai?: { status: string; provider?: string | null; model?: string | null; warnings?: string[]; mapping?: Record<string, ProductImportField> | null };
+  ai?: {
+    status: string;
+    provider?: string | null;
+    model?: string | null;
+    warnings?: string[];
+    mapping?: Record<string, ProductImportField> | null;
+  };
 }
 
 export interface ProductImportCommitResult {
@@ -1678,8 +1882,18 @@ export interface TechnicalSheetRecipe {
   hasNonCalculableLines?: boolean;
   nonCalculableLinesCount?: number;
   duplicatedFromId?: string | null;
-  author?: { id?: string; email?: string | null; firstName?: string | null; lastName?: string | null } | null;
-  createdBy?: { id?: string; email?: string | null; firstName?: string | null; lastName?: string | null } | null;
+  author?: {
+    id?: string;
+    email?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+  } | null;
+  createdBy?: {
+    id?: string;
+    email?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+  } | null;
   createdAt?: string;
   updatedAt?: string;
   isArchived?: boolean;
@@ -1785,7 +1999,12 @@ export interface TechnicalSheetHistoryEntry {
   action: string;
   summary?: string | null;
   createdAt?: string;
-  user?: { id?: string; email?: string | null; firstName?: string | null; lastName?: string | null } | null;
+  user?: {
+    id?: string;
+    email?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+  } | null;
 }
 
 export interface TechnicalSheetSimulationLine {
@@ -1826,6 +2045,254 @@ export interface Supplier {
   notes?: string | null;
   archivedAt?: string | null;
   isArchived?: boolean;
+  productCount?: number;
+  purchasingProfile?: SupplierPurchasingProfile | null;
+}
+
+export type PurchasingDeliveryMode = 'SCHEDULED_DAYS' | 'ON_DEMAND';
+
+export interface SupplierPurchasingProfile {
+  id?: string;
+  orderEmail?: string | null;
+  customerCode?: string | null;
+  deliveryMode: PurchasingDeliveryMode;
+  deliveryWeekdays: number[];
+  cutoffTime?: string | null;
+  minimumOrder: number | string;
+  deliveryFee: number | string;
+  timezone: string;
+  leadTimeDays: number;
+  orderingEnabled?: boolean;
+}
+
+export interface SupplierPurchasingPayload {
+  orderEmail?: string;
+  customerCode?: string;
+  deliveryMode: PurchasingDeliveryMode;
+  deliveryWeekdays: number[];
+  cutoffTime?: string;
+  minimumOrder: number;
+  deliveryFee: number;
+  timezone?: string;
+  leadTimeDays?: number;
+  orderingEnabled?: boolean;
+}
+
+export type PurchaseOrderStatus =
+  | 'DRAFT'
+  | 'SENT'
+  | 'ACKNOWLEDGED'
+  | 'PARTIALLY_RECEIVED'
+  | 'RECEIVED'
+  | 'CLOSED'
+  | 'CANCELLED';
+
+export type PurchaseReceiptStatus = 'DRAFT' | 'REVIEW_NEEDED' | 'VALIDATED' | 'CANCELLED';
+export type PurchaseReceiptLineStatus =
+  | 'MATCHED'
+  | 'SHORT'
+  | 'OVER'
+  | 'UNEXPECTED'
+  | 'SUBSTITUTED'
+  | 'NEEDS_REVIEW';
+
+export interface PurchaseOrderLine {
+  id: string;
+  offerId?: string | null;
+  productId: string;
+  unitId?: string | null;
+  productNameSnapshot: string;
+  supplierReferenceSnapshot?: string | null;
+  supplierLabelSnapshot?: string | null;
+  unitSymbolSnapshot?: string | null;
+  orderedQuantity: number;
+  unitsPerOrderUnit: number;
+  expectedStockQuantity: number;
+  receivedQuantity: number;
+  unitPrice: number;
+  vatRate: number;
+  lineExcludingTax: number;
+  lineTax: number;
+  lineIncludingTax: number;
+  product?: Product;
+}
+
+export interface PurchaseOrderLinePayload {
+  productId: string;
+  unitId?: string;
+  supplierReference?: string;
+  supplierLabel?: string;
+  quantity: number;
+  unitsPerOrderUnit?: number;
+  unitPrice?: number;
+  vatRate?: number;
+}
+
+export interface PurchaseOrderPayload {
+  supplierId: string;
+  siteId: string;
+  currency?: string;
+  expectedDeliveryDate?: string;
+  notes?: string;
+  supplierMessage?: string;
+  expectedVersion?: number;
+  lines: PurchaseOrderLinePayload[];
+}
+
+export interface PurchaseOrder {
+  id: string;
+  number: string;
+  supplierId: string;
+  siteId: string;
+  status: PurchaseOrderStatus;
+  currency: string;
+  expectedDeliveryDate?: string | null;
+  supplierNameSnapshot: string;
+  supplierEmailSnapshot?: string | null;
+  customerCodeSnapshot?: string | null;
+  deliveryAddressSnapshot?: string | null;
+  deliveryFeeSnapshot: number;
+  totalExcludingTax: number;
+  totalTax: number;
+  totalIncludingTax: number;
+  notes?: string | null;
+  supplierMessage?: string | null;
+  version: number;
+  createdById: string;
+  sentAt?: string | null;
+  acknowledgedAt?: string | null;
+  receivedAt?: string | null;
+  closedAt?: string | null;
+  cancelledAt?: string | null;
+  closeReason?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  supplier?: Supplier;
+  site?: Site;
+  lines?: PurchaseOrderLine[];
+  lineCount?: number;
+  receipts?: PurchaseReceipt[];
+  dispatches?: Array<{
+    id: string;
+    status: string;
+    recipient: string;
+    errorMessage?: string | null;
+    sentAt?: string | null;
+    createdAt: string;
+  }>;
+  events?: PurchaseOrderEvent[];
+}
+
+export interface PurchaseReceiptLine {
+  id: string;
+  purchaseOrderLineId?: string | null;
+  productId?: string | null;
+  unitId?: string | null;
+  reference?: string | null;
+  label: string;
+  deliveredQuantity: number;
+  acceptedQuantity: number;
+  unitsPerOrderUnit: number;
+  unitPrice?: number | null;
+  status: PurchaseReceiptLineStatus;
+  notes?: string | null;
+  product?: Product | null;
+  orderLine?: PurchaseOrderLine | null;
+}
+
+export interface PurchaseReceiptLinePayload {
+  purchaseOrderLineId?: string;
+  productId?: string;
+  unitId?: string;
+  reference?: string;
+  label: string;
+  deliveredQuantity: number;
+  acceptedQuantity: number;
+  unitsPerOrderUnit?: number;
+  unitPrice?: number;
+  status?: PurchaseReceiptLineStatus;
+  notes?: string;
+}
+
+export interface PurchaseReceiptPayload {
+  siteId: string;
+  locationId?: string;
+  deliveryNoteDocumentId?: string;
+  extractionId?: string;
+  deliveryNoteNumber?: string;
+  deliveryDate?: string;
+  notes?: string;
+  lines: PurchaseReceiptLinePayload[];
+}
+
+export interface PurchaseReceipt {
+  id: string;
+  orderId: string;
+  status: PurchaseReceiptStatus;
+  siteId: string;
+  locationId?: string | null;
+  deliveryNoteDocumentId?: string | null;
+  extractionId?: string | null;
+  deliveryNoteNumber?: string | null;
+  deliveryDate?: string | null;
+  notes?: string | null;
+  validatedAt?: string | null;
+  createdAt: string;
+  lines?: PurchaseReceiptLine[];
+  anomalyCount?: number;
+  order?: PurchaseOrder;
+  site?: Site;
+  location?: Location | null;
+  stockReception?: StockReception | null;
+}
+
+export interface PurchaseOrderEvent {
+  id: string;
+  type: string;
+  summary: string;
+  details?: Record<string, unknown> | null;
+  createdAt: string;
+  order?: Pick<PurchaseOrder, 'id' | 'number' | 'supplierNameSnapshot'>;
+  actor?: { id: string; email: string; firstName?: string | null; lastName?: string | null } | null;
+}
+
+export interface PurchasingBootstrap {
+  installed: boolean;
+  organizationId: string;
+  settings: {
+    defaultCurrency: string;
+    replenishmentDays: number;
+    consumptionWindowDays: number;
+    fromEmail?: string | null;
+    fromName?: string | null;
+    replyTo?: string | null;
+    resendApiKeyConfigured: boolean;
+    resendVerifiedAt?: string | null;
+    resendLastTestEmailId?: string | null;
+  };
+  onboarding: {
+    currentStep: string;
+    completedSteps: string[];
+    skippedEmailSetup: boolean;
+    completedAt?: string | null;
+  };
+  suppliers: Supplier[];
+  products: Array<Product & { stockQuantity?: number }>;
+  units: Unit[];
+  sites: Site[];
+  locations: Location[];
+  permissions: string[];
+}
+
+export interface PurchasingDashboard {
+  stats: {
+    drafts: number;
+    ordersThisMonth: number;
+    amountThisMonth: number;
+    expectedNext7Days: number;
+    receiptsToReview: number;
+  };
+  recent: PurchaseOrder[];
 }
 
 export type MenuStatus = 'DRAFT' | 'VALIDATED' | 'PUBLISHED' | 'ARCHIVED';
@@ -1892,7 +2359,11 @@ export interface MenuVariant {
   diet?: MenuDiet | null;
   type?: 'DERIVED' | 'FULL_MENU' | string;
   guestCount?: number | null;
-  replacements?: Array<{ sourceTechnicalSheetId: string; replacementTechnicalSheetId: string; section?: MenuSection }>;
+  replacements?: Array<{
+    sourceTechnicalSheetId: string;
+    replacementTechnicalSheetId: string;
+    section?: MenuSection;
+  }>;
   estimatedCostTotal?: number | string | null;
   allergens?: Array<TechnicalSheetAllergen | { name?: string } | string>;
 }
@@ -2009,7 +2480,12 @@ export interface MenuHistoryEntry {
   context?: string | null;
   summary?: string | null;
   createdAt?: string;
-  user?: { id?: string; email?: string | null; firstName?: string | null; lastName?: string | null } | null;
+  user?: {
+    id?: string;
+    email?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+  } | null;
   menu?: { id?: string; name?: string | null } | null;
   cycle?: { id?: string; name?: string | null } | null;
 }
@@ -2088,18 +2564,42 @@ export type ArticleStockStatus = 'NORMAL' | 'LOW' | 'OUT' | 'NEGATIVE' | 'NO_STO
 export interface Article {
   product: Product;
   stock: { quantity: string | number; value: string | number; status: ArticleStockStatus };
-  stockBySite: Array<{ siteId?: string | null; siteName?: string | null; quantity: string | number }>;
-  lots?: Array<{ lotNumber?: string | null; expiresAt?: string | null; quantity: string | number; siteName?: string | null; locationName?: string | null }>;
+  stockBySite: Array<{
+    siteId?: string | null;
+    siteName?: string | null;
+    quantity: string | number;
+  }>;
+  lots?: Array<{
+    lotNumber?: string | null;
+    expiresAt?: string | null;
+    quantity: string | number;
+    siteName?: string | null;
+    locationName?: string | null;
+  }>;
   lastMovement?: StockMovement | null;
 }
 export interface ArticlesResponse {
   items: Article[];
-  summary: { articleCount: number; articlesWithStock: number; articlesWithoutStock: number; stockValue: number; lowStockCount: number };
+  summary: {
+    articleCount: number;
+    articlesWithStock: number;
+    articlesWithoutStock: number;
+    stockValue: number;
+    lowStockCount: number;
+  };
   pagination?: { page: number; pageSize: number; total: number; pages?: number };
 }
 
 export type OcrMatchingStatus = 'RECOGNIZED' | 'NEEDS_REVIEW' | 'NOT_FOUND';
-export type StocksOcrLineStatus = 'ready' | 'needs_review' | 'missing_product' | 'price_mismatch' | 'quantity_suspicious' | 'non_product_line' | 'duplicate_line' | string;
+export type StocksOcrLineStatus =
+  | 'ready'
+  | 'needs_review'
+  | 'missing_product'
+  | 'price_mismatch'
+  | 'quantity_suspicious'
+  | 'non_product_line'
+  | 'duplicate_line'
+  | string;
 
 export interface StocksOcrDocument {
   id: string;
@@ -2145,7 +2645,18 @@ export interface StocksOcrLine {
   warnings?: string[];
   sourceText?: string | null;
   packageDescription?: string | null;
-  productCandidates?: Array<{ id: string; name: string; sku?: string | null; categoryId?: string | null; categoryName?: string | null; unitId?: string | null; unitSymbol?: string | null; supplierId?: string | null; supplierName?: string | null; score: number | string }>;
+  productCandidates?: Array<{
+    id: string;
+    name: string;
+    sku?: string | null;
+    categoryId?: string | null;
+    categoryName?: string | null;
+    unitId?: string | null;
+    unitSymbol?: string | null;
+    supplierId?: string | null;
+    supplierName?: string | null;
+    score: number | string;
+  }>;
 }
 
 export interface StocksOcrReceptionData {
@@ -2228,9 +2739,19 @@ export interface StocksOcrStatus {
     id: string;
     status: string;
     errorMessage?: string | null;
-    extractions?: Array<{ id: string; status: string; extractedJson?: StocksOcrReceptionData; correctedJson?: StocksOcrReceptionData | null }>;
+    extractions?: Array<{
+      id: string;
+      status: string;
+      extractedJson?: StocksOcrReceptionData;
+      correctedJson?: StocksOcrReceptionData | null;
+    }>;
   } | null;
-  extraction?: { id: string; status: string; extractedJson?: StocksOcrReceptionData; correctedJson?: StocksOcrReceptionData | null } | null;
+  extraction?: {
+    id: string;
+    status: string;
+    extractedJson?: StocksOcrReceptionData;
+    correctedJson?: StocksOcrReceptionData | null;
+  } | null;
   state: string;
 }
 
@@ -2240,7 +2761,12 @@ export interface StockReception {
   supplierName?: string | null;
   invoiceNumber?: string | null;
   deliveryNoteNumber?: string | null;
-  lines?: Array<{ id: string; product?: Product | null; quantity?: string | number | null; movements?: StockMovement[] }>;
+  lines?: Array<{
+    id: string;
+    product?: Product | null;
+    quantity?: string | number | null;
+    movements?: StockMovement[];
+  }>;
 }
 
 export interface InventoryLine {
@@ -2429,14 +2955,55 @@ export interface MarginSupplierDetail {
   documents: Array<Record<string, unknown>>;
 }
 
-export type ProductionOrderStatus = 'PLANNED' | 'VALIDATED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+export type ProductionOrderStatus =
+  | 'PLANNED'
+  | 'VALIDATED'
+  | 'IN_PROGRESS'
+  | 'COMPLETED'
+  | 'CANCELLED';
 export type ProductionPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
-export type ProductionMaterialStatus = 'OK' | 'POTENTIAL_SHORTAGE' | 'INSUFFICIENT_STOCK' | 'PRODUCT_ARCHIVED' | 'UNIT_NOT_CONVERTIBLE' | 'STOCK_UNKNOWN';
+export type ProductionMaterialStatus =
+  | 'OK'
+  | 'POTENTIAL_SHORTAGE'
+  | 'INSUFFICIENT_STOCK'
+  | 'PRODUCT_ARCHIVED'
+  | 'UNIT_NOT_CONVERTIBLE'
+  | 'STOCK_UNKNOWN';
 export type ProductionAlertSeverity = 'INFO' | 'WARNING' | 'CRITICAL';
-export type ProductionAlertCode = 'NOT_STARTED' | 'LATE' | 'MISSING_MATERIAL' | 'STAFFING_SHORTAGE' | 'UNASSIGNED_COLLABORATOR' | 'NO_RESPONSIBLE' | 'DESTOCKING_PENDING' | 'QUALITY_CONTROL_MISSING' | 'ABSENT_COLLABORATOR' | 'QUANTITY_VARIANCE' | 'UNIT_NOT_CONVERTIBLE' | 'PRODUCT_ARCHIVED' | 'STOCK_UNKNOWN';
-export type ProductionHistoryAction = 'CREATED' | 'UPDATED' | 'VALIDATED' | 'CANCELLED' | 'STATUS_CHANGED' | 'ASSIGNMENT_ADDED' | 'ASSIGNMENT_REMOVED' | 'ALERT_OVERRIDE_CONFIRMED' | 'DESTOCKING_PROPOSED' | 'DESTOCKING_CONFIRMED' | 'EXPORT_GENERATED' | 'REALIZATION_CLOSED' | 'QUALITY_CONTROL_UPDATED' | 'REALIZED_PORTIONS_UPDATED';
+export type ProductionAlertCode =
+  | 'NOT_STARTED'
+  | 'LATE'
+  | 'MISSING_MATERIAL'
+  | 'STAFFING_SHORTAGE'
+  | 'UNASSIGNED_COLLABORATOR'
+  | 'NO_RESPONSIBLE'
+  | 'DESTOCKING_PENDING'
+  | 'QUALITY_CONTROL_MISSING'
+  | 'ABSENT_COLLABORATOR'
+  | 'QUANTITY_VARIANCE'
+  | 'UNIT_NOT_CONVERTIBLE'
+  | 'PRODUCT_ARCHIVED'
+  | 'STOCK_UNKNOWN';
+export type ProductionHistoryAction =
+  | 'CREATED'
+  | 'UPDATED'
+  | 'VALIDATED'
+  | 'CANCELLED'
+  | 'STATUS_CHANGED'
+  | 'ASSIGNMENT_ADDED'
+  | 'ASSIGNMENT_REMOVED'
+  | 'ALERT_OVERRIDE_CONFIRMED'
+  | 'DESTOCKING_PROPOSED'
+  | 'DESTOCKING_CONFIRMED'
+  | 'EXPORT_GENERATED'
+  | 'REALIZATION_CLOSED'
+  | 'QUALITY_CONTROL_UPDATED'
+  | 'REALIZED_PORTIONS_UPDATED';
 export type ProductionExportFormat = 'PDF' | 'EXCEL' | 'PRINT';
-export type ProductionExportType = 'PRODUCTION_SHEET' | 'MATERIAL_REQUIREMENTS' | 'TEAM_ASSIGNMENTS';
+export type ProductionExportType =
+  | 'PRODUCTION_SHEET'
+  | 'MATERIAL_REQUIREMENTS'
+  | 'TEAM_ASSIGNMENTS';
 export type ProductionDestockingStatus = 'PROPOSED' | 'CONFIRMED' | 'CANCELLED';
 
 export interface ProductionQuery {
@@ -2464,7 +3031,9 @@ export interface ProductionOrderPayload {
   comments?: string;
 }
 
-export type ProductionOrderUpdatePayload = Partial<Omit<ProductionOrderPayload, 'technicalSheetId'>>;
+export type ProductionOrderUpdatePayload = Partial<
+  Omit<ProductionOrderPayload, 'technicalSheetId'>
+>;
 
 export interface ProductionStatusPayload {
   status: ProductionOrderStatus;
@@ -2657,7 +3226,11 @@ export interface ProductionExport {
   snapshot: unknown;
   fileUrl?: string | null;
   createdAt?: string;
-  requestedBy?: { email?: string | null; firstName?: string | null; lastName?: string | null } | null;
+  requestedBy?: {
+    email?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+  } | null;
   order?: ProductionOrder | null;
 }
 

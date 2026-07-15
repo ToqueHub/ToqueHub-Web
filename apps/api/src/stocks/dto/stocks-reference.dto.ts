@@ -1,7 +1,22 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsEmail, IsEnum, IsIn, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
-import { UnitType } from '@prisma/client';
+import {
+  IsArray,
+  IsBoolean,
+  IsEmail,
+  IsEnum,
+  IsIn,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+  ValidateNested,
+} from 'class-validator';
+import { PurchasingDeliveryMode, UnitType } from '@prisma/client';
 
 export class ListQueryDto {
   @ApiPropertyOptional()
@@ -97,6 +112,44 @@ export class UpsertUnitDto {
   type?: UnitType;
 }
 
+export class SupplierPurchasingSettingsDto {
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(180)
+  orderEmail?: string;
+
+  @IsEnum(PurchasingDeliveryMode)
+  deliveryMode!: PurchasingDeliveryMode;
+
+  @IsArray()
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  @Max(7, { each: true })
+  deliveryWeekdays!: number[];
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  minimumOrder!: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  deliveryFee!: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  timezone?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(365)
+  leadTimeDays?: number;
+}
+
 export class UpsertSupplierDto {
   @IsString()
   @MaxLength(180)
@@ -108,7 +161,7 @@ export class UpsertSupplierDto {
   contactName?: string;
 
   @IsOptional()
-  @IsString()
+  @IsEmail()
   @MaxLength(180)
   email?: string;
 
@@ -126,6 +179,11 @@ export class UpsertSupplierDto {
   @IsString()
   @MaxLength(2000)
   notes?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SupplierPurchasingSettingsDto)
+  purchasing?: SupplierPurchasingSettingsDto;
 }
 
 export class UpsertProductDto {

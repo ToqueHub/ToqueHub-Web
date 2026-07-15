@@ -77,6 +77,15 @@ const MODULE_DEFINITIONS = [
     patterns: [/^Haccp/],
     labels: ['haccp', 'temperature', 'traceability', 'cleaning', 'reception', 'oil', 'cooling'],
   },
+  {
+    id: 'purchasing',
+    name: 'Achats',
+    installedField: 'purchasingInstalledAt',
+    description: 'Commandes fournisseurs, catalogues d’achat, livraisons et rapprochement des réceptions.',
+    dependencies: ['Core', 'Stocks'],
+    patterns: [/^Purchasing/, /^SupplierPurchasing/, /^SupplierProduct/, /^Purchase/],
+    labels: ['purchasing', 'purchase', 'order', 'supplier', 'receipt', 'dispatch'],
+  },
 ] as const;
 
 const COMMON_FIELD_NAMES = new Set(['id', 'organizationId', 'createdAt', 'updatedAt', 'isArchived', 'archivedAt']);

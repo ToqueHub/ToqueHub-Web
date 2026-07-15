@@ -13,6 +13,7 @@ import { UpdateOrganizationApiKeysDto } from './dto/api-keys.dto';
 import { UpdateOrganizationIdentityDto } from './dto/organization-identity.dto';
 import { UpdateOrganizationRemoteAccessDto } from './dto/remote-access.dto';
 import { UpdateRegulatoryCountryDto } from './dto/regulatory-country.dto';
+import { OrganizationApiKeySecretService } from '../common/secrets/organization-api-key-secret.service';
 
 type PrefillStocksDto = {
   categories?: boolean;
@@ -44,6 +45,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly apiKeySecrets: OrganizationApiKeySecretService,
   ) {}
 
   async completeOnboarding(dto: CompleteOnboardingDto) {
@@ -237,7 +239,16 @@ export class AuthService {
     if (!user.organizationId) throw new ForbiddenException('Organization setup is required before reading API keys');
     const organization = await this.prisma.organization.findUnique({
       where: { id: user.organizationId },
-      select: { mistralApiKey: true, mistralApiKeyUpdatedAt: true, githubToken: true, githubTokenUpdatedAt: true },
+      select: {
+        mistralApiKey: true,
+        mistralApiKeyUpdatedAt: true,
+        resendApiKey: true,
+        resendApiKeyEncrypted: true,
+        resendApiKeyMask: true,
+        resendApiKeyUpdatedAt: true,
+        githubToken: true,
+        githubTokenUpdatedAt: true,
+      },
     });
     if (!organization) throw new ForbiddenException('Organization setup is required before reading API keys');
     return this.serializeApiKeys(organization);
@@ -248,8 +259,8 @@ export class AuthService {
     if (!SETTINGS_ROLES.includes(user.role)) throw new ForbiddenException('Only administrators and managers can update organization API keys');
     const key = dto.mistralApiKey?.trim();
     const githubToken = dto.githubToken?.trim();
-    const organization = await this.prisma.organization.update({
-      where: { id: user.organizationId },
+    await this.prisma.organization.update({
+        where: { id: user.organizationId! },
       data: {
         ...(dto.mistralApiKey !== undefined ? {
           mistralApiKey: key || null,
@@ -260,7 +271,22 @@ export class AuthService {
           githubTokenUpdatedAt: githubToken ? new Date() : null,
         } : {}),
       },
-      select: { mistralApiKey: true, mistralApiKeyUpdatedAt: true, githubToken: true, githubTokenUpdatedAt: true },
+        select: { id: true },
+    });
+    if (dto.resendApiKey !== undefined)
+      await this.apiKeySecrets.setResendSecret(user.organizationId, dto.resendApiKey);
+    const organization = await this.prisma.organization.findUniqueOrThrow({
+      where: { id: user.organizationId },
+      select: {
+          mistralApiKey: true,
+          mistralApiKeyUpdatedAt: true,
+          resendApiKey: true,
+          resendApiKeyEncrypted: true,
+          resendApiKeyMask: true,
+          resendApiKeyUpdatedAt: true,
+          githubToken: true,
+          githubTokenUpdatedAt: true,
+        },
     });
     return this.serializeApiKeys(organization);
   }
@@ -575,6 +601,7 @@ export class AuthService {
       ...(currentUser.organization.productionInstalledAt ? ['production'] : []),
       ...(currentUser.organization.menusInstalledAt ? ['menus'] : []),
       ...(currentUser.organization.haccpInstalledAt ? ['haccp'] : []),
+      ...(currentUser.organization.purchasingInstalledAt ? ['purchasing'] : []),
     ];
     const checklist = {
       applicationInstalled: installedApplications.length > 0,
@@ -795,8 +822,11 @@ export class AuthService {
       productionInstalledAt?: Date | null;
       menusInstalledAt?: Date | null;
       haccpInstalledAt?: Date | null;
+      purchasingInstalledAt?: Date | null;
         mistralApiKey?: string | null;
         mistralApiKeyUpdatedAt?: Date | null;
+        resendApiKey?: string | null;
+        resendApiKeyUpdatedAt?: Date | null;
         githubToken?: string | null;
         githubTokenUpdatedAt?: Date | null;
         tailscaleEnabled?: boolean | null;
@@ -835,6 +865,7 @@ export class AuthService {
         ...(user.organization?.productionInstalledAt ? ['production'] : []),
         ...(user.organization?.menusInstalledAt ? ['menus'] : []),
         ...(user.organization?.haccpInstalledAt ? ['haccp'] : []),
+        ...(user.organization?.purchasingInstalledAt ? ['purchasing'] : []),
       ],
       role: user.role.name,
       status: 'status' in user ? user.status : undefined,
@@ -880,8 +911,11 @@ export class AuthService {
       technicalSheetsInstalledAt?: Date | null;
       productionInstalledAt?: Date | null;
       menusInstalledAt?: Date | null;
+      purchasingInstalledAt?: Date | null;
       mistralApiKey?: string | null;
       mistralApiKeyUpdatedAt?: Date | null;
+      resendApiKey?: string | null;
+      resendApiKeyUpdatedAt?: Date | null;
       githubToken?: string | null;
       githubTokenUpdatedAt?: Date | null;
       tailscaleEnabled?: boolean | null;
@@ -907,12 +941,29 @@ export class AuthService {
     };
   }
 
-  private serializeApiKeys(organization: { mistralApiKey?: string | null; mistralApiKeyUpdatedAt?: Date | null; githubToken?: string | null; githubTokenUpdatedAt?: Date | null }) {
+  private serializeApiKeys(organization: {
+    mistralApiKey?: string | null;
+    mistralApiKeyUpdatedAt?: Date | null;
+    resendApiKey?: string | null;
+    resendApiKeyEncrypted?: string | null;
+    resendApiKeyMask?: string | null;
+    resendApiKeyUpdatedAt?: Date | null;
+    githubToken?: string | null;
+    githubTokenUpdatedAt?: Date | null;
+  }) {
     return {
       mistral: {
         configured: Boolean(organization.mistralApiKey),
         masked: organization.mistralApiKey ? this.maskSecret(organization.mistralApiKey) : null,
         updatedAt: organization.mistralApiKeyUpdatedAt ?? null,
+      },
+      resend: {
+        ...this.apiKeySecrets.publicSummary({
+          resendApiKey: organization.resendApiKey ?? null,
+          resendApiKeyEncrypted: organization.resendApiKeyEncrypted ?? null,
+          resendApiKeyMask: organization.resendApiKeyMask ?? null,
+          resendApiKeyUpdatedAt: organization.resendApiKeyUpdatedAt ?? null,
+        }),
       },
       github: {
         configured: Boolean(organization.githubToken),

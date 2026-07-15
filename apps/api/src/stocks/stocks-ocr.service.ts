@@ -8,7 +8,6 @@ import {
   OcrExtractionType,
   OcrProcessingStatus,
   Prisma,
-  StockMovementType,
   StockReceptionLineMatchingStatus,
   StockReceptionStatus,
 } from '@prisma/client';
@@ -16,7 +15,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MistralClientService } from '../mistral/mistral-client.service';
 import { SaveOcrCorrectionDto } from './dto/stocks-ocr.dto';
 import { StocksMarginsService } from './stocks-margins.service';
-import { StocksService } from './stocks.service';
+import { StocksReceptionInventoryService } from './stocks-reception-inventory.service';
 
 const OCR_ROLES = ['SUPER_ADMIN', 'Administrateur', 'ADMIN', 'Manager', 'MANAGER', 'Chef', 'Second', 'Magasinier'];
 const MAX_FILES = Number(process.env.OCR_MAX_FILES ?? 8);
@@ -48,7 +47,7 @@ const STOCKS_OCR_CATEGORY_HINTS = [
 type BusinessDocumentType = 'invoice' | 'delivery_note' | 'supplier_order' | 'order_confirmation' | 'unknown';
 const BUSINESS_DOCUMENT_TYPES: BusinessDocumentType[] = ['invoice', 'delivery_note', 'supplier_order', 'order_confirmation', 'unknown'];
 
-type Actor = { id: string; role: string };
+type Actor = { id: string; role: string; permissions?: string[] };
 type UploadedFile = { originalname: string; mimetype: string; size: number; buffer: Buffer };
 type Tx = Prisma.TransactionClient;
 
@@ -234,10 +233,12 @@ interface BusinessExtraction {
 export class StocksOcrService {
   private readonly logger = new Logger(StocksOcrService.name);
 
-  constructor(private readonly prisma: PrismaService, private readonly marginsService: StocksMarginsService, private readonly mistralClient: MistralClientService, private readonly stocksService: StocksService) {}
+  constructor(private readonly prisma: PrismaService, private readonly marginsService: StocksMarginsService, private readonly mistralClient: MistralClientService, private readonly receptionInventory: StocksReceptionInventoryService) {}
 
   private assertOcr(actor: Actor) {
-    if (!OCR_ROLES.includes(actor.role)) throw new ForbiddenException('Droits OCR Stocks insuffisants');
+    if (!OCR_ROLES.includes(actor.role) && !actor.permissions?.includes('purchasing.receive')) {
+      throw new ForbiddenException('Droits OCR Stocks ou réception Achats insuffisants');
+  }
   }
 
   private async assertOcrConfigured(organizationId: string) {
@@ -261,6 +262,10 @@ export class StocksOcrService {
     return this.uploadDocumentsForSource(organizationId, actor, files, 'ocr-reception');
   }
 
+  async uploadPurchasingDocuments(organizationId: string, actor: Actor, files: UploadedFile[]) {
+    return this.uploadDocumentsForSource(organizationId, actor, files, 'purchasing-delivery-note');
+  }
+
   async uploadCatalogDocuments(organizationId: string, actor: Actor, files: UploadedFile[]) {
     const uploaded = await this.uploadDocumentsForSource(organizationId, actor, files, 'product-csv-creator');
     const items: Array<Record<string, unknown>> = [];
@@ -273,7 +278,7 @@ export class StocksOcrService {
     return { documents, items };
   }
 
-  private async uploadDocumentsForSource(organizationId: string, actor: Actor, files: UploadedFile[], sourceType: 'ocr-reception' | 'product-csv-creator') {
+  private async uploadDocumentsForSource(organizationId: string, actor: Actor, files: UploadedFile[], sourceType: 'ocr-reception' | 'product-csv-creator' | 'purchasing-delivery-note') {
     this.assertOcr(actor);
     if (!files?.length) throw new BadRequestException('Aucun fichier fourni');
     if (files.length > MAX_FILES) throw new BadRequestException(`Vous pouvez importer ${MAX_FILES} fichiers maximum.`);
@@ -296,7 +301,7 @@ export class StocksOcrService {
           sizeBytes: file.size,
           storagePath: relativePath,
           contentSha256: createHash('sha256').update(file.buffer).digest('hex'),
-          sourceModule: 'stocks',
+          sourceModule: sourceType === 'purchasing-delivery-note' ? 'purchasing' : 'stocks',
           sourceType,
           status: DocumentStatus.UPLOADED,
         },
@@ -563,46 +568,35 @@ export class StocksOcrService {
             })
           : null;
         const quantity = await this.convertToProductUnitTx(tx, organizationId, unit.id, product.unitId, line.quantity!);
-        const receptionLine = await tx.stockReceptionLine.create({
-          data: {
+        const inputQuantity = new Prisma.Decimal(line.quantity!);
+        const lineTotal = this.decimalOrNull(line.lineTotal);
+        const unitPrice = this.decimalOrNull(line.unitPrice);
+        await this.receptionInventory.applyValidatedLineTx(tx, {
+          organizationId,
             receptionId: created.id,
-            productId: product.id,
-            ocrLabel: line.ocrLabel || product.name,
-            reference: line.reference,
-            quantity: this.decimalOrNull(line.quantity),
-            unit: line.unit,
-            unitId: unit.id,
-            unitPrice: this.decimalOrNull(line.unitPrice),
-            lineTotal: this.decimalOrNull(line.lineTotal),
+          product,
+          unit,
+          lotId: lot?.id,
+          supplierId: corrected.supplierId,
+          siteId: corrected.siteId,
+          locationId: corrected.locationId,
+          stockQuantity: quantity,
+          inputQuantity,
+          baseUnitPrice: lineTotal && !quantity.isZero() ? lineTotal.div(quantity) : unitPrice,
+          unitPrice,
+          lineTotal,
             vatRate: this.decimalOrNull(line.vatRate),
+          label: line.ocrLabel || product.name,
+          reference: line.reference,
             lotNumber: line.lotNumber,
             bestBeforeDate: line.bestBeforeDate ? new Date(line.bestBeforeDate) : null,
             matchingStatus: line.productId || line.createProduct ? StockReceptionLineMatchingStatus.RECOGNIZED : line.matchingStatus,
             matchingScore: line.productId || line.createProduct ? new Prisma.Decimal(1) : this.decimalOrNull(line.matchingScore),
             userCorrection: line as Prisma.InputJsonValue,
-            lotId: lot?.id,
-          },
-        });
-        await this.applyStock(tx, organizationId, product.id, lot?.id, corrected.siteId, corrected.locationId, quantity);
-        await this.updateProductAveragePriceFromReceptionLineTx(tx, organizationId, actor.id, product.id, quantity, line);
-        await tx.stockMovement.create({
-          data: {
-            organizationId,
-            productId: product.id,
-            lotId: lot?.id,
-            supplierId: corrected.supplierId,
-            type: StockMovementType.RECEPTION,
-            quantity,
-            inputQuantity: new Prisma.Decimal(line.quantity!),
-            unitId: unit.id,
-            unitSymbolSnapshot: unit.symbol,
-            reason: `Réception OCR ${corrected.invoiceNumber || corrected.deliveryNoteNumber || extraction.ocrDocument.document.originalName}`,
-            destinationSiteId: corrected.siteId,
-            destinationLocationId: corrected.locationId,
+          movementReason: `Réception OCR ${corrected.invoiceNumber || corrected.deliveryNoteNumber || extraction.ocrDocument.document.originalName}`,
             movementDate: corrected.deliveryDate ? new Date(corrected.deliveryDate) : new Date(),
-            createdById: actor.id,
-            stockReceptionLineId: receptionLine.id,
-          },
+          actorId: actor.id,
+          priceMode: 'replace',
         });
       }
       await tx.ocrBusinessExtraction.update({
@@ -2201,27 +2195,6 @@ export class StocksOcrService {
     const conversion = await tx.unitConversion.findFirst({ where: { organizationId, fromUnitId, toUnitId } });
     if (!conversion) throw new BadRequestException('Conversion d’unité incompatible sur une ligne de réception.');
     return new Prisma.Decimal(quantity).mul(conversion.factor);
-  }
-
-  private async updateProductAveragePriceFromReceptionLineTx(tx: Tx, organizationId: string, userId: string | null, productId: string, convertedQuantity: Prisma.Decimal, line: any) {
-    let nextPrice: Prisma.Decimal | null = null;
-    if (line.lineTotal != null && !convertedQuantity.isZero()) {
-      nextPrice = new Prisma.Decimal(line.lineTotal).div(convertedQuantity);
-    } else if (line.unitPrice != null) {
-      nextPrice = new Prisma.Decimal(line.unitPrice);
-    }
-    if (nextPrice && nextPrice.greaterThanOrEqualTo(0)) {
-      const previous = await tx.product.findUnique({ where: { id: productId }, select: { averagePrice: true } });
-      await tx.product.update({ where: { id: productId }, data: { averagePrice: nextPrice } });
-      if (!previous?.averagePrice.equals(nextPrice)) {
-        await this.stocksService.recalculateTechnicalSheetsForProductTx(tx, organizationId, productId, userId);
       }
-    }
-  }
 
-  private async applyStock(tx: Tx, organizationId: string, productId: string, lotId: string | undefined | null, siteId: string | undefined | null, locationId: string | undefined | null, delta: Prisma.Decimal) {
-    const existing = await tx.stock.findFirst({ where: { organizationId, productId, lotId: lotId ?? null, siteId: siteId ?? null, locationId: locationId ?? null } });
-    if (existing) return tx.stock.update({ where: { id: existing.id }, data: { quantity: existing.quantity.add(delta) } });
-    return tx.stock.create({ data: { organizationId, productId, lotId, siteId, locationId, quantity: delta } });
   }
-}

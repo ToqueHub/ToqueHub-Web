@@ -5,7 +5,7 @@ import { DashboardExternalService } from './dashboard-external.service';
 
 type Zone = 'kpi' | 'activity' | 'analytics' | 'alerts';
 type WidgetSize = 'sm' | 'md' | 'lg' | 'xl';
-type AppId = 'core' | 'stocks' | 'rnm-prices' | 'hr' | 'planning' | 'technical-sheets' | 'production' | 'menus' | 'haccp' | 'purchases' | 'quality' | 'finance';
+type AppId = 'core' | 'stocks' | 'rnm-prices' | 'hr' | 'planning' | 'technical-sheets' | 'production' | 'menus' | 'haccp' | 'purchasing' | 'quality' | 'finance';
 
 type RegistryWidget = {
   id: string;
@@ -48,6 +48,7 @@ type OrganizationInstallState = {
   productionInstalledAt: Date | null;
   menusInstalledAt: Date | null;
   haccpInstalledAt: Date | null;
+  purchasingInstalledAt: Date | null;
 };
 
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
@@ -63,6 +64,7 @@ const APP_PERMISSIONS: Partial<Record<AppId, string>> = {
   production: 'production.read',
   menus: 'menus.read',
   haccp: 'haccp.read',
+  purchasing: 'purchasing.read',
 };
 
 const INSTALL_FIELDS: Partial<Record<AppId, keyof OrganizationInstallState>> = {
@@ -74,6 +76,7 @@ const INSTALL_FIELDS: Partial<Record<AppId, keyof OrganizationInstallState>> = {
   production: 'productionInstalledAt',
   menus: 'menusInstalledAt',
   haccp: 'haccpInstalledAt',
+  purchasing: 'purchasingInstalledAt',
 };
 
 const REGISTRY: RegistryWidget[] = [
@@ -111,7 +114,7 @@ const REGISTRY: RegistryWidget[] = [
   { id: 'haccp.alerts', appId: 'haccp', moduleLabel: 'HACCP', title: 'Alertes HACCP', description: 'Contrôles manquants et anomalies à traiter.', zone: 'alerts', defaultOrder: 40, size: 'lg' },
   { id: 'haccp.today', appId: 'haccp', moduleLabel: 'HACCP', title: 'Contrôles du jour', description: 'Activité HACCP enregistrée aujourd’hui.', zone: 'activity', defaultOrder: 80, size: 'lg' },
 
-  { id: 'purchases.coming-soon', appId: 'purchases', moduleLabel: 'Achats', title: 'Achats', description: 'Suivi des commandes fournisseurs.', zone: 'analytics', defaultOrder: 900, size: 'md', comingSoon: true },
+  { id: 'purchasing.orders', appId: 'purchasing', moduleLabel: 'Achats', title: 'Commandes fournisseurs', description: 'Brouillons, commandes ouvertes et réceptions à traiter.', zone: 'analytics', defaultOrder: 70, size: 'lg' },
   { id: 'quality.coming-soon', appId: 'quality', moduleLabel: 'Qualité', title: 'Qualité', description: 'PMS, contrôles et non-conformités.', zone: 'alerts', defaultOrder: 900, size: 'md', comingSoon: true },
   { id: 'finance.coming-soon', appId: 'finance', moduleLabel: 'Finance', title: 'Finance', description: 'Budgets et marges.', zone: 'kpi', defaultOrder: 900, size: 'md', comingSoon: true },
 ];
@@ -270,6 +273,7 @@ export class DashboardService {
       case 'haccp.score': return this.haccpScore(organizationId);
       case 'haccp.alerts': return this.haccpAlerts(organizationId);
       case 'haccp.today': return this.haccpToday(organizationId);
+      case 'purchasing.orders': return this.purchasingSummary(organizationId);
       default: return null;
     }
   }
@@ -324,6 +328,16 @@ export class DashboardService {
   }
 
   private recentActivity(organizationId: string) { return this.prisma.auditLog.findMany({ where: { organizationId }, include: { user: { select: { email: true, firstName: true, lastName: true } } }, orderBy: { createdAt: 'desc' }, take: 8 }); }
+
+  private async purchasingSummary(organizationId: string) {
+    const [drafts, open, receipts, month] = await Promise.all([
+      this.prisma.purchaseOrder.count({ where: { organizationId, status: 'DRAFT' } }),
+      this.prisma.purchaseOrder.count({ where: { organizationId, status: { in: ['SENT', 'ACKNOWLEDGED', 'PARTIALLY_RECEIVED'] } } }),
+      this.prisma.purchaseReceipt.count({ where: { organizationId, status: { in: ['DRAFT', 'REVIEW_NEEDED'] } } }),
+      this.prisma.purchaseOrder.aggregate({ where: { organizationId, createdAt: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) }, status: { not: 'CANCELLED' } }, _sum: { totalIncludingTax: true } }),
+    ]);
+    return { drafts, open, receiptsToReview: receipts, monthlyAmount: Number(month._sum.totalIncludingTax ?? 0) };
+  }
 
   private async stockValue(organizationId: string) {
     const [products, suppliers, stockRows] = await Promise.all([

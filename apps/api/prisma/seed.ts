@@ -22,6 +22,12 @@ const permissions = [
   'stocks.ocr.validate',
   'stocks.audit.read',
   'stocks.audit.export',
+  'purchasing.read',
+  'purchasing.draft',
+  'purchasing.write',
+  'purchasing.send',
+  'purchasing.receive',
+  'purchasing.manage',
 ];
 
 async function main() {
