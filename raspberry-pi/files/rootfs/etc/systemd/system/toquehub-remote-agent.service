@@ -1,0 +1,15 @@
+[Unit]
+Description=ToqueHub Remote Access Agent
+After=network-online.target tailscaled.service
+Wants=network-online.target tailscaled.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/toquehub/toquehub.env
+Environment=TOQUEHUB_REMOTE_AGENT_ENV_FILE=/etc/toquehub/toquehub.env
+ExecStart=/usr/local/sbin/toquehub-remote-agent
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

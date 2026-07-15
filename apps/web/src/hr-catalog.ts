@@ -1,0 +1,142 @@
+export interface HrCatalogItem {
+  id: string;
+  name: string;
+  description: string;
+  examplePositions: string[];
+  positions: string[];
+}
+
+export const HR_CATALOG: HrCatalogItem[] = [
+  {
+    id: 'direction', name: 'Direction',
+    description: 'Pilotage stratégique, management général et décisions d\'entreprise.',
+    examplePositions: ['Directeur général', 'Directeur d\'établissement', 'Assistant de direction'],
+    positions: ['Directeur général', 'Directeur d\'établissement', 'Directeur adjoint', 'Responsable d\'exploitation', 'Assistant de direction', 'Directeur de restaurant', 'Directeur d\'hôtel'],
+  },
+  {
+    id: 'administration', name: 'Administration',
+    description: 'Gestion administrative, comptable et financière de l\'établissement.',
+    examplePositions: ['Responsable administratif', 'Comptable', 'Secrétaire'],
+    positions: ['Responsable administratif', 'Assistant administratif', 'Comptable', 'Assistant comptable', 'Contrôleur de gestion', 'Responsable financier', 'Secrétaire', 'Gestionnaire de paie'],
+  },
+  {
+    id: 'rh', name: 'Ressources humaines',
+    description: 'Recrutement, formation, gestion des talents et paie.',
+    examplePositions: ['Responsable RH', 'Assistant RH', 'Gestionnaire de paie'],
+    positions: ['Responsable RH', 'Assistant RH', 'Gestionnaire RH', 'Responsable recrutement', 'Gestionnaire de paie', 'Responsable formation'],
+  },
+  {
+    id: 'cuisine', name: 'Cuisine',
+    description: 'Préparation, production et organisation des cuisines.',
+    examplePositions: ['Chef de cuisine', 'Second', 'Chef de partie', 'Commis', 'Plongeur'],
+    positions: ['Chef exécutif', 'Chef de cuisine', 'Sous-chef', 'Second de cuisine', 'Chef de partie', 'Demi-chef de partie', 'Commis de cuisine', 'Aide de cuisine', 'Apprenti cuisine', 'Plongeur', 'Économe', 'Responsable de production', 'Cuisinier', 'Cuisinier polyvalent'],
+  },
+  {
+    id: 'cuisine-centrale', name: 'Cuisine centrale',
+    description: 'Production en volume, conditionnement et logistique alimentaire.',
+    examplePositions: ['Responsable de cuisine centrale', 'Cuisinier de production', 'Magasinier'],
+    positions: ['Responsable de cuisine centrale', 'Chef de production', 'Responsable de production', 'Cuisinier de production', 'Agent de production', 'Préparateur', 'Conditionneur', 'Plongeur', 'Magasinier'],
+  },
+  {
+    id: 'patisserie', name: 'Pâtisserie',
+    description: 'Création de desserts, entremets, chocolats et viennoiseries.',
+    examplePositions: ['Chef pâtissier', 'Pâtissier', 'Commis pâtissier', 'Glacier'],
+    positions: ['Chef pâtissier', 'Sous-chef pâtissier', 'Second pâtissier', 'Chef de partie pâtisserie', 'Demi-chef de partie pâtisserie', 'Pâtissier', 'Commis pâtissier', 'Aide-pâtissier', 'Apprenti pâtissier', 'Chocolatier', 'Glacier', 'Tourier', 'Plongeur pâtisserie'],
+  },
+  {
+    id: 'boulangerie', name: 'Boulangerie',
+    description: 'Fabrication du pain, des viennoiseries et produits de boulangerie.',
+    examplePositions: ['Chef boulanger', 'Boulanger', 'Viennoisier'],
+    positions: ['Chef boulanger', 'Boulanger', 'Tourier', 'Viennoisier', 'Aide-boulanger', 'Apprenti boulanger', 'Préparateur', 'Responsable de production boulangerie'],
+  },
+  {
+    id: 'salle', name: 'Salle',
+    description: 'Service en salle, accueil client et expérience convive.',
+    examplePositions: ['Maître d\'hôtel', 'Chef de rang', 'Serveur', 'Sommelier'],
+    positions: ['Directeur de salle', 'Responsable de salle', 'Maître d\'hôtel', 'Assistant maître d\'hôtel', 'Chef de rang', 'Demi-chef de rang', 'Serveur', 'Commis de salle', 'Runner', 'Hôte / Hôtesse d\'accueil', 'Sommelier', 'Assistant sommelier', 'Caissier', 'Employé polyvalent de restauration'],
+  },
+  {
+    id: 'bar', name: 'Bar',
+    description: 'Service au bar, cocktails et boissons.',
+    examplePositions: ['Responsable de bar', 'Barman', 'Mixologue'],
+    positions: ['Responsable de bar', 'Chef barman', 'Barman', 'Barmaid', 'Commis de bar', 'Mixologue', 'Serveur de bar', 'Plongeur bar'],
+  },
+  {
+    id: 'cafe-barista', name: 'Café / Barista',
+    description: 'Spécialités café, torréfaction et service comptoir.',
+    examplePositions: ['Head barista', 'Barista', 'Torréfacteur'],
+    positions: ['Responsable café', 'Head barista', 'Barista', 'Barista junior', 'Torréfacteur', 'Assistant torréfacteur', 'Employé de comptoir', 'Serveur café'],
+  },
+  {
+    id: 'reception', name: 'Réception',
+    description: 'Accueil client, réservations et conciergerie.',
+    examplePositions: ['Chef de réception', 'Réceptionniste', 'Concierge', 'Voiturier'],
+    positions: ['Chef de réception', 'Assistant chef de réception', 'Réceptionniste', 'Réceptionniste de nuit', 'Night auditor', 'Concierge', 'Bagagiste', 'Voiturier', 'Agent de réservation'],
+  },
+  {
+    id: 'hebergement', name: 'Hébergement',
+    description: 'Gestion des chambres, étages et confort des hôtes.',
+    examplePositions: ['Gouvernant général', 'Femme de chambre', 'Valet de chambre'],
+    positions: ['Gouvernant général', 'Gouvernant d\'étage', 'Assistant gouvernant', 'Femme de chambre', 'Valet de chambre', 'Employé d\'étage', 'Lingère', 'Responsable lingerie', 'Équipier d\'étage'],
+  },
+  {
+    id: 'entretien', name: 'Entretien / Housekeeping',
+    description: 'Propreté, hygiène et entretien des locaux.',
+    examplePositions: ['Responsable entretien', 'Agent d\'entretien', 'Employé de nettoyage'],
+    positions: ['Responsable entretien', 'Agent d\'entretien', 'Employé de nettoyage', 'Agent de propreté', 'Plongeur', 'Lingère', 'Employé polyvalent'],
+  },
+  {
+    id: 'maintenance', name: 'Maintenance',
+    description: 'Maintenance technique, électricité et plomberie.',
+    examplePositions: ['Responsable maintenance', 'Technicien', 'Électricien'],
+    positions: ['Responsable maintenance', 'Technicien de maintenance', 'Agent technique', 'Électricien', 'Plombier', 'Technicien polyvalent', 'Jardinier'],
+  },
+  {
+    id: 'achats', name: 'Achats',
+    description: 'Approvisionnement, négociation et gestion fournisseurs.',
+    examplePositions: ['Responsable achats', 'Acheteur', 'Économe'],
+    positions: ['Responsable achats', 'Acheteur', 'Assistant achats', 'Économe', 'Approvisionneur'],
+  },
+  {
+    id: 'stock', name: 'Stock / Magasin',
+    description: 'Gestion des stocks, magasin et inventaires.',
+    examplePositions: ['Responsable des stocks', 'Magasinier', 'Gestionnaire de stock'],
+    positions: ['Responsable des stocks', 'Magasinier', 'Gestionnaire de stock', 'Réceptionnaire', 'Préparateur de commandes', 'Inventoriste'],
+  },
+  {
+    id: 'evenementiel', name: 'Événementiel',
+    description: 'Organisation de banquets, séminaires et événements privés.',
+    examplePositions: ['Responsable événementiel', 'Chef de projet', 'Serveur banquet'],
+    positions: ['Responsable événementiel', 'Chef de projet événementiel', 'Coordinateur événementiel', 'Responsable banquet', 'Maître d\'hôtel banquet', 'Serveur banquet', 'Agent événementiel'],
+  },
+  {
+    id: 'animation', name: 'Animation',
+    description: 'Activités, loisirs et divertissement des clients.',
+    examplePositions: ['Responsable animation', 'Animateur', 'Animateur enfant'],
+    positions: ['Responsable animation', 'Animateur', 'Animateur enfant', 'Animateur sportif', 'Coordinateur d\'activités'],
+  },
+  {
+    id: 'securite', name: 'Sécurité',
+    description: 'Sécurité des biens et des personnes, surveillance nocturne.',
+    examplePositions: ['Responsable sécurité', 'Agent de sécurité', 'Veilleur de nuit'],
+    positions: ['Responsable sécurité', 'Agent de sécurité', 'Veilleur de nuit', 'Agent SSIAP', 'Contrôleur d\'accès'],
+  },
+  {
+    id: 'spa', name: 'Spa / Bien-être',
+    description: 'Soins esthétiques, massages et bien-être des clients.',
+    examplePositions: ['Responsable spa', 'Spa manager', 'Esthéticien', 'Masseur'],
+    positions: ['Responsable spa', 'Spa manager', 'Réceptionniste spa', 'Esthéticien', 'Masseur', 'Thérapeute', 'Coach sportif'],
+  },
+  {
+    id: 'logistique', name: 'Logistique',
+    description: 'Transport interne, livraisons et flux de marchandises.',
+    examplePositions: ['Responsable logistique', 'Chauffeur-livreur', 'Préparateur'],
+    positions: ['Responsable logistique', 'Chauffeur-livreur', 'Préparateur', 'Magasinier logistique'],
+  },
+  {
+    id: 'autre', name: 'Autre',
+    description: 'Service personnalisé ou spécifique à votre établissement.',
+    examplePositions: ['Poste personnalisé'],
+    positions: ['Poste personnalisé'],
+  },
+];

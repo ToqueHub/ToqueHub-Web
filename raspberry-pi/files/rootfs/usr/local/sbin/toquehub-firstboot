@@ -1,0 +1,261 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG_DIR="/etc/toquehub"
+DATA_DIR="/var/lib/toquehub"
+ENV_FILE="$CONFIG_DIR/toquehub.env"
+COMPOSE_FILE="/opt/toquehub/docker-compose.pi.yml"
+ZIGBEE_CONFIG="$DATA_DIR/zigbee2mqtt/configuration.yaml"
+
+secret() {
+  openssl rand -hex 32
+}
+
+detect_zigbee_adapter() {
+  shopt -s nullglob
+  local candidates=(
+    /dev/serial/by-id/*
+    /dev/ttyUSB*
+    /dev/ttyACM*
+  )
+  shopt -u nullglob
+  if [[ ${#candidates[@]} -gt 0 ]]; then
+    printf '%s\n' "${candidates[0]}"
+  fi
+}
+
+tailscale_ip() {
+  command -v tailscale >/dev/null 2>&1 || return 0
+  tailscale ip -4 2>/dev/null | head -1 || true
+}
+
+server_ip() {
+  hostname -I 2>/dev/null | awk '{print $1}'
+}
+
+origin_for_host() {
+  local host="$1"
+  local port="$2"
+  if [[ "$port" == "80" ]]; then
+    printf 'http://%s\n' "$host"
+  else
+    printf 'http://%s:%s\n' "$host" "$port"
+  fi
+}
+
+port_in_use() {
+  local port="$1"
+
+  if command -v ss >/dev/null 2>&1; then
+    ss -H -ltn "( sport = :$port )" | grep -q .
+    return
+  fi
+
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
+    return
+  fi
+
+  timeout 1 bash -c "</dev/tcp/127.0.0.1/$port" >/dev/null 2>&1
+}
+
+find_free_port() {
+  local start="$1"
+  local port
+  for ((port = start; port < start + 200; port++)); do
+    if ! port_in_use "$port"; then
+      printf '%s\n' "$port"
+      return
+    fi
+  done
+
+  echo "Aucun port libre trouve a partir de $start." >&2
+  exit 1
+}
+
+ensure_mdns_nsswitch() {
+  if [[ ! -f /etc/nsswitch.conf ]]; then
+    return
+  fi
+
+  if grep -E '^hosts:' /etc/nsswitch.conf | grep -q 'mdns4_minimal'; then
+    return
+  fi
+
+  cp /etc/nsswitch.conf /etc/nsswitch.conf.toquehub.bak || true
+  sed -i -E 's/^hosts:.*/hosts:          files mdns4_minimal [NOTFOUND=return] dns mdns4/' /etc/nsswitch.conf || true
+}
+
+set_env() {
+  local key="$1"
+  local value="$2"
+  local tmp
+  tmp="$(mktemp)"
+
+  if grep -q "^${key}=" "$ENV_FILE"; then
+    awk -v key="$key" -v value="$value" '$0 ~ "^" key "=" { print key "=" value; next } { print }' "$ENV_FILE" > "$tmp"
+  else
+    cp "$ENV_FILE" "$tmp"
+    printf '%s=%s\n' "$key" "$value" >> "$tmp"
+  fi
+
+  mv "$tmp" "$ENV_FILE"
+  chmod 0600 "$ENV_FILE"
+}
+
+configure_tailscale() {
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+
+  if [[ "${TOQUEHUB_TAILSCALE_ENABLED:-true}" != "true" && "${TOQUEHUB_TAILSCALE_ENABLED:-true}" != "1" ]]; then
+    set_env TOQUEHUB_TAILSCALE_INSTALLED "false"
+    return
+  fi
+
+  if ! command -v tailscale >/dev/null 2>&1; then
+    curl -fsSL https://tailscale.com/install.sh | sh
+  fi
+
+  systemctl enable --now tailscaled || true
+  set_env TOQUEHUB_TAILSCALE_INSTALLED "$(command -v tailscale >/dev/null 2>&1 && printf true || printf false)"
+
+  if [[ -n "${TOQUEHUB_TAILSCALE_AUTHKEY:-}" ]]; then
+    tailscale up --authkey "$TOQUEHUB_TAILSCALE_AUTHKEY" --hostname "${TOQUEHUB_TAILSCALE_HOSTNAME:-toquehub}" || true
+    if [[ -n "$(tailscale_ip)" ]]; then
+      set_env TOQUEHUB_TAILSCALE_AUTHKEY ""
+    fi
+  fi
+
+  local tail_ip
+  tail_ip="$(tailscale_ip || true)"
+  if [[ -n "$tail_ip" ]]; then
+    set_env TOQUEHUB_TAILSCALE_IP "$tail_ip"
+    set_env TOQUEHUB_REMOTE_ACCESS_URL "http://$tail_ip:${TOQUEHUB_HTTP_PORT:-8080}"
+  else
+    set_env TOQUEHUB_TAILSCALE_IP ""
+    set_env TOQUEHUB_REMOTE_ACCESS_URL ""
+  fi
+}
+
+configure_local_hostname() {
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+
+  local local_hostname set_hostname
+  local_hostname="${TOQUEHUB_LOCAL_HOSTNAME:-toquehub}"
+  set_hostname="${TOQUEHUB_SET_LOCAL_HOSTNAME:-true}"
+
+  ensure_mdns_nsswitch
+  systemctl enable --now avahi-daemon >/dev/null 2>&1 || true
+  if [[ "$set_hostname" != "true" && "$set_hostname" != "1" ]]; then
+    return
+  fi
+
+  if command -v hostnamectl >/dev/null 2>&1; then
+    hostnamectl set-hostname "$local_hostname" || true
+  else
+    printf '%s\n' "$local_hostname" > /etc/hostname || true
+    hostname "$local_hostname" || true
+  fi
+
+  if grep -qE '^127\.0\.1\.1\s+' /etc/hosts; then
+    sed -i "s/^127\\.0\\.1\\.1.*/127.0.1.1 $local_hostname/" /etc/hosts || true
+  else
+    printf '127.0.1.1 %s\n' "$local_hostname" >> /etc/hosts || true
+  fi
+}
+
+configure_web_url() {
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+
+  local http_port ip origins local_hostname local_origin
+  http_port="${TOQUEHUB_HTTP_PORT:-8080}"
+  if port_in_use "$http_port"; then
+    http_port="$(find_free_port 8080)"
+    set_env TOQUEHUB_HTTP_PORT "$http_port"
+  fi
+
+  local_hostname="${TOQUEHUB_LOCAL_HOSTNAME:-toquehub}"
+  local_origin="$(origin_for_host "$local_hostname.local" "$http_port")"
+  ip="$(server_ip || true)"
+  origins="$local_origin,$(origin_for_host localhost "$http_port"),$(origin_for_host 127.0.0.1 "$http_port")"
+
+  if [[ -n "$ip" ]]; then
+    set_env TOQUEHUB_WEB_URL "$local_origin"
+    set_env TOQUEHUB_DISCOVERY_HOST "$ip"
+    origins="$(origin_for_host "$ip" "$http_port"),$origins"
+  else
+    set_env TOQUEHUB_WEB_URL "$local_origin"
+  fi
+
+  set_env TOQUEHUB_DISCOVERY_PORT "$http_port"
+  set_env CORS_ORIGIN "$origins"
+}
+
+mkdir -p "$CONFIG_DIR" "$DATA_DIR"/{api,postgres,mosquitto/data,mosquitto/log,zigbee2mqtt}
+chmod 0750 "$CONFIG_DIR" "$DATA_DIR"
+
+if [[ ! -f "$ENV_FILE" ]]; then
+  cp /opt/toquehub/toquehub.env.example "$ENV_FILE"
+  chmod 0600 "$ENV_FILE"
+fi
+
+if grep -q 'replace-with-generated-secret' "$ENV_FILE"; then
+  set_env POSTGRES_PASSWORD "$(secret)"
+  set_env JWT_SECRET "$(secret)"
+  set_env BACKUP_CLOUD_ENCRYPTION_KEY "$(secret)"
+  set_env TOQUEHUB_UPDATER_SECRET "$(secret)"
+  set_env TOQUEHUB_REMOTE_AGENT_SECRET "$(secret)"
+fi
+
+configure_local_hostname
+configure_tailscale
+configure_web_url
+systemctl restart toquehub-remote-agent.service >/dev/null 2>&1 || true
+
+if [[ ! -f "$CONFIG_DIR/mosquitto.conf" ]]; then
+  cp /opt/toquehub/mosquitto.conf "$CONFIG_DIR/mosquitto.conf"
+fi
+
+adapter="$(detect_zigbee_adapter || true)"
+if [[ -n "$adapter" ]]; then
+  adapter_type="$(grep -E '^ZIGBEE_ADAPTER_TYPE=' "$ENV_FILE" | tail -1 | cut -d= -f2- || true)"
+  adapter_type="${adapter_type:-zstack}"
+  set_env ZIGBEE_ADAPTER_PATH "$adapter"
+  set_env ZIGBEE_ADAPTER_TYPE "$adapter_type"
+  mkdir -p "$(dirname "$ZIGBEE_CONFIG")"
+  if [[ ! -f "$ZIGBEE_CONFIG" ]]; then
+    cat > "$ZIGBEE_CONFIG" <<YAML
+homeassistant: false
+permit_join: false
+mqtt:
+  base_topic: zigbee2mqtt
+  server: mqtt://mosquitto:1883
+serial:
+  port: $adapter
+  adapter: $adapter_type
+frontend:
+  enabled: true
+  port: 8080
+advanced:
+  log_level: info
+YAML
+  fi
+  systemctl enable toquehub.service >/dev/null
+  systemctl enable toquehub-zigbee.service >/dev/null
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile zigbee up -d zigbee2mqtt
+else
+  systemctl enable toquehub.service >/dev/null
+  systemctl disable toquehub-zigbee.service >/dev/null 2>&1 || true
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
+fi
+
+touch "$CONFIG_DIR/.firstboot-complete"

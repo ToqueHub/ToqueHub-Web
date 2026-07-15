@@ -1,0 +1,157 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-toquehub}
+      POSTGRES_USER: ${POSTGRES_USER:-toquehub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-toquehub}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    ports:
+      - "${MQTT_PORT:-1883}:1883"
+    volumes:
+      - ./docker/iot/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+
+  zigbee2mqtt:
+    image: ghcr.io/koenkk/zigbee2mqtt:latest
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+    privileged: true
+    ports:
+      - "${ZIGBEE2MQTT_HTTP_PORT:-8081}:8080"
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+    volumes:
+      - ./.toquehub-iot/zigbee2mqtt-data:/app/data
+      - /dev:/dev
+
+  api:
+    image: ${TOQUEHUB_IMAGE_REGISTRY:-ghcr.io/toquehub}/toquehub-api:${TOQUEHUB_IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+      args:
+        TOQUEHUB_VERSION: ${TOQUEHUB_VERSION:-${TOQUEHUB_IMAGE_TAG:-local}}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-toquehub}:${POSTGRES_PASSWORD:-toquehub}@postgres:5432/${POSTGRES_DB:-toquehub}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-development}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      BACKUP_CLOUD_ENCRYPTION_KEY: ${BACKUP_CLOUD_ENCRYPTION_KEY:-replace-with-a-32-byte-minimum-random-secret}
+      BACKUP_DIR: /app/data/backups
+      UPLOAD_DIR: /app/data/uploads
+      HR_UPLOAD_DIR: /app/data/uploads/hr
+      STOCKS_OCR_UPLOAD_DIR: /app/data/uploads/stocks-ocr
+      HACCP_UPLOAD_DIR: /app/data/uploads/haccp
+      MQTT_URL: mqtt://mosquitto:1883
+      MQTT_USERNAME: ${MQTT_USERNAME:-}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      ZIGBEE2MQTT_BASE_TOPIC: ${ZIGBEE2MQTT_BASE_TOPIC:-zigbee2mqtt}
+      ZIGBEE2MQTT_FRONTEND_URL: ${ZIGBEE2MQTT_FRONTEND_URL:-http://localhost:8081}
+      ZIGBEE_ADAPTER_PATH: ${ZIGBEE_ADAPTER_PATH:-}
+      HACCP_SENSOR_OFFLINE_AFTER_MINUTES: ${HACCP_SENSOR_OFFLINE_AFTER_MINUTES:-30}
+      HACCP_PAIRING_DURATION_SECONDS: ${HACCP_PAIRING_DURATION_SECONDS:-180}
+      TOQUEHUB_WEB_URL: ${TOQUEHUB_WEB_URL:-http://localhost:${TOQUEHUB_HTTP_PORT:-8080}}
+      TOQUEHUB_VERSION: ${TOQUEHUB_VERSION:-${TOQUEHUB_IMAGE_TAG:-local}}
+      TOQUEHUB_IMAGE_REGISTRY: ${TOQUEHUB_IMAGE_REGISTRY:-ghcr.io/toquehub}
+      TOQUEHUB_IMAGE_TAG: ${TOQUEHUB_IMAGE_TAG:-latest}
+      TOQUEHUB_RELEASE_REPO: ${TOQUEHUB_RELEASE_REPO:-ToqueHub/ToqueHub-Web}
+      TOQUEHUB_GITHUB_TOKEN: ${TOQUEHUB_GITHUB_TOKEN:-}
+      TOQUEHUB_TAILSCALE_ENABLED: ${TOQUEHUB_TAILSCALE_ENABLED:-false}
+      TOQUEHUB_TAILSCALE_INSTALLED: ${TOQUEHUB_TAILSCALE_INSTALLED:-false}
+      TOQUEHUB_TAILSCALE_HOSTNAME: ${TOQUEHUB_TAILSCALE_HOSTNAME:-toquehub}
+      TOQUEHUB_TAILSCALE_IP: ${TOQUEHUB_TAILSCALE_IP:-}
+      TOQUEHUB_REMOTE_ACCESS_URL: ${TOQUEHUB_REMOTE_ACCESS_URL:-}
+      TOQUEHUB_REMOTE_AGENT_URL: ${TOQUEHUB_REMOTE_AGENT_URL:-http://host.docker.internal:3101}
+      TOQUEHUB_REMOTE_AGENT_SECRET: ${TOQUEHUB_REMOTE_AGENT_SECRET:-}
+      TOQUEHUB_UPDATER_URL: http://updater:3099
+      TOQUEHUB_UPDATER_SECRET: ${TOQUEHUB_UPDATER_SECRET:-change-me-updater-secret}
+      TOQUEHUB_DISCOVERY_ENABLED: "false"
+      TOQUEHUB_DISCOVERY_NAME: ${TOQUEHUB_DISCOVERY_NAME:-Cuisine Centrale}
+      TOQUEHUB_DISCOVERY_ORGANIZATION: ${TOQUEHUB_DISCOVERY_ORGANIZATION:-Cuisine Centrale}
+      TOQUEHUB_DISCOVERY_HOST: ${TOQUEHUB_DISCOVERY_HOST:-}
+      TOQUEHUB_DISCOVERY_PORT: ${TOQUEHUB_DISCOVERY_PORT:-${TOQUEHUB_HTTP_PORT:-8080}}
+      TOQUEHUB_DISCOVERY_HTTPS: ${TOQUEHUB_DISCOVERY_HTTPS:-false}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080,http://127.0.0.1:8080}
+    volumes:
+      - api-data:/app/data
+      - /dev:/dev:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  web:
+    image: ${TOQUEHUB_IMAGE_REGISTRY:-ghcr.io/toquehub}/toquehub-web:${TOQUEHUB_IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+      args:
+        VITE_API_URL: ""
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${TOQUEHUB_HTTP_PORT:-8080}:80"
+
+  mdns:
+    image: ${TOQUEHUB_IMAGE_REGISTRY:-ghcr.io/toquehub}/toquehub-mdns:${TOQUEHUB_IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: docker/mdns.Dockerfile
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      - web
+    environment:
+      TOQUEHUB_DISCOVERY_ENABLED: ${TOQUEHUB_DISCOVERY_ENABLED:-true}
+      TOQUEHUB_DISCOVERY_NAME: ${TOQUEHUB_DISCOVERY_NAME:-Cuisine Centrale}
+      TOQUEHUB_DISCOVERY_ORGANIZATION: ${TOQUEHUB_DISCOVERY_ORGANIZATION:-Cuisine Centrale}
+      TOQUEHUB_DISCOVERY_HOST: ${TOQUEHUB_DISCOVERY_HOST:-}
+      TOQUEHUB_DISCOVERY_PORT: ${TOQUEHUB_DISCOVERY_PORT:-${TOQUEHUB_HTTP_PORT:-8080}}
+      TOQUEHUB_DISCOVERY_HTTPS: ${TOQUEHUB_DISCOVERY_HTTPS:-false}
+      TOQUEHUB_DISCOVERY_URL: http://127.0.0.1:${TOQUEHUB_HTTP_PORT:-8080}/api/discovery
+
+  updater:
+    image: ${TOQUEHUB_IMAGE_REGISTRY:-ghcr.io/toquehub}/toquehub-updater:${TOQUEHUB_IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: docker/updater.Dockerfile
+    restart: unless-stopped
+    environment:
+      UPDATER_SECRET: ${TOQUEHUB_UPDATER_SECRET:-change-me-updater-secret}
+      UPDATER_WORKDIR: /workspace
+      UPDATER_COMPOSE_FILE: /workspace/docker-compose.yml
+      UPDATER_ENV_FILE: /workspace/.env.docker
+      UPDATER_BACKUP_DIR: /workspace/.toquehub-updates/backups
+      UPDATER_HEALTH_URL: http://web/api/system/status
+      POSTGRES_DB: ${POSTGRES_DB:-toquehub}
+      POSTGRES_USER: ${POSTGRES_USER:-toquehub}
+      TOQUEHUB_GITHUB_TOKEN: ${TOQUEHUB_GITHUB_TOKEN:-}
+    volumes:
+      - ./:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  postgres-data:
+  api-data:
+  mosquitto-data:
+  mosquitto-log:

@@ -1,0 +1,13 @@
+CREATE TYPE "HaccpAssistantMessageRole" AS ENUM ('USER', 'ASSISTANT', 'SYSTEM');
+CREATE TYPE "HaccpAssistantDraftStatus" AS ENUM ('PENDING_REVIEW', 'APPLIED', 'DISCARDED', 'EXPIRED');
+CREATE TABLE "haccp_assistant_conversations" ("id" UUID NOT NULL, "organizationId" UUID NOT NULL, "userId" UUID NOT NULL, "state" JSONB, "summary" JSONB, "expiresAt" TIMESTAMP(3) NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL, CONSTRAINT "haccp_assistant_conversations_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "haccp_assistant_messages" ("id" UUID NOT NULL, "conversationId" UUID NOT NULL, "role" "HaccpAssistantMessageRole" NOT NULL, "content" TEXT NOT NULL, "metadata" JSONB, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "haccp_assistant_messages_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "haccp_assistant_drafts" ("id" UUID NOT NULL, "organizationId" UUID NOT NULL, "conversationId" UUID NOT NULL, "kind" TEXT NOT NULL, "status" "HaccpAssistantDraftStatus" NOT NULL DEFAULT 'PENDING_REVIEW', "payload" JSONB NOT NULL, "expiresAt" TIMESTAMP(3) NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL, CONSTRAINT "haccp_assistant_drafts_pkey" PRIMARY KEY ("id"));
+CREATE INDEX "haccp_assistant_conversations_organizationId_userId_idx" ON "haccp_assistant_conversations"("organizationId", "userId");
+CREATE INDEX "haccp_assistant_conversations_expiresAt_idx" ON "haccp_assistant_conversations"("expiresAt");
+CREATE INDEX "haccp_assistant_messages_conversationId_createdAt_idx" ON "haccp_assistant_messages"("conversationId", "createdAt");
+CREATE INDEX "haccp_assistant_drafts_organizationId_status_idx" ON "haccp_assistant_drafts"("organizationId", "status");
+CREATE INDEX "haccp_assistant_drafts_conversationId_idx" ON "haccp_assistant_drafts"("conversationId");
+CREATE INDEX "haccp_assistant_drafts_expiresAt_idx" ON "haccp_assistant_drafts"("expiresAt");
+ALTER TABLE "haccp_assistant_messages" ADD CONSTRAINT "haccp_assistant_messages_conversationId_fkey" FOREIGN KEY ("conversationId") REFERENCES "haccp_assistant_conversations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "haccp_assistant_drafts" ADD CONSTRAINT "haccp_assistant_drafts_conversationId_fkey" FOREIGN KEY ("conversationId") REFERENCES "haccp_assistant_conversations"("id") ON DELETE CASCADE ON UPDATE CASCADE;

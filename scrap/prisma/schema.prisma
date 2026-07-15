@@ -1,0 +1,95 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model MarketSector {
+  id         String           @id @default(uuid()) @map("id")
+  name       String           @unique @map("name")
+  label      String           @map("label")
+  categories MarketCategory[]
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @updatedAt @map("updated_at")
+
+  @@map("market_sectors")
+}
+
+model MarketCategory {
+  id        String           @id @default(uuid()) @map("id")
+  name      String           @map("name")
+  label     String           @map("label")
+  parentId  String?          @map("parent_id")
+  parent    MarketCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children  MarketCategory[] @relation("CategoryHierarchy")
+  sectorId  String           @map("sector_id")
+  sector    MarketSector     @relation(fields: [sectorId], references: [id], onDelete: Cascade)
+  products  MarketProduct[]
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  @@map("market_categories")
+}
+
+model MarketProduct {
+  id         String         @id @default(uuid()) @map("id")
+  name       String         @unique @map("name")
+  label      String         @map("label")
+  especeId   Int            @unique @map("espece_id")
+  categoryId String         @map("category_id")
+  category   MarketCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  labels     MarketLabel[]
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+
+  @@map("market_products")
+}
+
+model Market {
+  id        String        @id @default(uuid()) @map("id")
+  code      String        @unique @map("code")
+  name      String        @map("name")
+  prices    MarketPrice[]
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  @@map("markets")
+}
+
+model MarketLabel {
+  id        String        @id @default(uuid()) @map("id")
+  libcod    Int           @unique @map("libcod")
+  name      String        @map("name")
+  productId String        @map("product_id")
+  product   MarketProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  prices    MarketPrice[]
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  @@map("market_labels")
+}
+
+model MarketPrice {
+  id            String      @id @default(uuid()) @map("id")
+  labelId       String      @map("label_id")
+  label         MarketLabel @relation(fields: [labelId], references: [id], onDelete: Cascade)
+  marketId      String      @map("market_id")
+  market        Market      @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  date          DateTime    @map("quotation_date")
+  stage         String      @map("stage")
+  unit          String      @map("unit")
+  avgPrice      Decimal     @db.Decimal(10, 2) @map("avg_price")
+  minPrice      Decimal?    @db.Decimal(10, 2) @map("min_price")
+  maxPrice      Decimal?    @db.Decimal(10, 2) @map("max_price")
+  variation     Decimal?    @db.Decimal(10, 2) @map("variation")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@unique([labelId, marketId, date, stage])
+  @@index([date])
+  @@index([labelId, marketId])
+  @@map("market_prices")
+}

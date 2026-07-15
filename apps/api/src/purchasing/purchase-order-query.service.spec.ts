@@ -1,0 +1,225 @@
+import type { PrismaService } from '../prisma/prisma.service';
+import { PurchaseOrderPolicy } from './purchase-order.policy';
+import { PurchaseOrderQueryService } from './purchase-order-query.service';
+
+const actor = {
+  id: 'user-1',
+  email: 'user@example.com',
+  organizationId: 'org-1',
+  role: 'Utilisateur',
+  permissions: ['purchasing.read', 'purchasing.draft'],
+};
+
+describe('PurchaseOrderQueryService', () => {
+  it('scopes paginated order reads and counts to the organization and owner visibility', async () => {
+    const prisma = {
+      organization: { findFirst: jest.fn().mockResolvedValue({ id: 'org-1' }) },
+      purchaseOrder: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+      },
+    };
+    const queries = new PurchaseOrderQueryService(
+      prisma as unknown as PrismaService,
+      new PurchaseOrderPolicy(),
+    );
+
+    const result = await queries.list('org-1', actor, {
+      page: 2,
+      pageSize: 25,
+      search: 'CA-2026',
+    });
+
+    expect(result).toEqual({ items: [], total: 0, page: 2, pageSize: 25 });
+    expect(prisma.purchaseOrder.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          organizationId: 'org-1',
+          AND: expect.arrayContaining([
+            { OR: [{ status: { not: 'DRAFT' } }, { createdById: 'user-1' }] },
+          ]),
+        }),
+        skip: 25,
+        take: 25,
+      }),
+    );
+    expect(prisma.purchaseOrder.count.mock.calls[0][0].where.organizationId).toBe('org-1');
+  });
+
+  it('only searches Stocks products for the selected primary supplier and aggregates stock', async () => {
+    const prisma = {
+      organization: { findFirst: jest.fn().mockResolvedValue({ id: 'org-1' }) },
+      supplier: { findFirst: jest.fn().mockResolvedValue({ id: 'supplier-1' }) },
+      product: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'product-1',
+            name: 'Farine',
+            averagePrice: 2,
+            unit: null,
+            primarySupplier: { id: 'supplier-1' },
+          },
+        ]),
+        count: jest.fn().mockResolvedValue(1),
+      },
+      stock: {
+        groupBy: jest.fn().mockResolvedValue([{ productId: 'product-1', _sum: { quantity: 12 } }]),
+      },
+    };
+    const queries = new PurchaseOrderQueryService(
+      prisma as unknown as PrismaService,
+      new PurchaseOrderPolicy(),
+    );
+
+    const result = await queries.products('org-1', actor, {
+      supplierId: 'supplier-1',
+      categoryId: 'category-1',
+      page: 1,
+      pageSize: 30,
+    });
+
+    expect(result.items[0]).toEqual(expect.objectContaining({ stockQuantity: 12 }));
+    expect(prisma.product.findMany.mock.calls[0][0].where).toEqual(
+      expect.objectContaining({
+        organizationId: 'org-1',
+        primarySupplierId: 'supplier-1',
+        categoryId: 'category-1',
+        isArchived: false,
+      }),
+    );
+    expect(prisma.product.findMany.mock.calls[0][0].include).toEqual(
+      expect.objectContaining({ category: true, unit: true, primarySupplier: true }),
+    );
+    expect(prisma.stock.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { organizationId: 'org-1', productId: { in: ['product-1'] } },
+      }),
+    );
+  });
+
+  it('does not leak whether a supplier exists in another organization', async () => {
+    const prisma = {
+      organization: { findFirst: jest.fn().mockResolvedValue({ id: 'org-1' }) },
+      supplier: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+    const queries = new PurchaseOrderQueryService(
+      prisma as unknown as PrismaService,
+      new PurchaseOrderPolicy(),
+    );
+
+    await expect(
+      queries.products('org-1', actor, { supplierId: 'supplier-other-org' }),
+    ).rejects.toThrow('Fournisseur introuvable');
+    expect(prisma.supplier.findFirst).toHaveBeenCalledWith({
+      where: { id: 'supplier-other-org', organizationId: 'org-1', isArchived: false },
+      select: { id: true },
+    });
+  });
+
+  it('filters the lightweight order list to receivable states on demand', async () => {
+    const prisma = {
+      organization: { findFirst: jest.fn().mockResolvedValue({ id: 'org-1' }) },
+      purchaseOrder: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+      },
+    };
+    const queries = new PurchaseOrderQueryService(
+      prisma as unknown as PrismaService,
+      new PurchaseOrderPolicy(),
+    );
+
+    await queries.list('org-1', actor, { receivable: true, pageSize: 30 });
+
+    expect(prisma.purchaseOrder.findMany.mock.calls[0][0].where.status).toEqual({
+      in: ['ACKNOWLEDGED', 'PARTIALLY_RECEIVED'],
+    });
+  });
+
+  it('returns only Stocks categories containing products of the selected supplier', async () => {
+    const prisma = {
+      organization: { findFirst: jest.fn().mockResolvedValue({ id: 'org-1' }) },
+      supplier: { findFirst: jest.fn().mockResolvedValue({ id: 'supplier-1' }) },
+      category: { findMany: jest.fn().mockResolvedValue([{ id: 'category-1', name: 'Frais' }]) },
+    };
+    const queries = new PurchaseOrderQueryService(
+      prisma as unknown as PrismaService,
+      new PurchaseOrderPolicy(),
+    );
+
+    await expect(queries.categories('org-1', actor, { supplierId: 'supplier-1' })).resolves.toEqual(
+      [{ id: 'category-1', name: 'Frais' }],
+    );
+    expect(prisma.category.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          organizationId: 'org-1',
+          isArchived: false,
+          products: {
+            some: {
+              organizationId: 'org-1',
+              primarySupplierId: 'supplier-1',
+              isArchived: false,
+            },
+          },
+        },
+      }),
+    );
+  });
+
+  it('builds recent and frequent products from organization-scoped sent order history', async () => {
+    const recentAt = new Date('2026-07-14T10:00:00.000Z');
+    const prisma = {
+      organization: { findFirst: jest.fn().mockResolvedValue({ id: 'org-1' }) },
+      supplier: { findFirst: jest.fn().mockResolvedValue({ id: 'supplier-1' }) },
+      purchaseOrderLine: {
+        groupBy: jest.fn().mockResolvedValue([
+          {
+            productId: 'product-1',
+            _count: { _all: 4 },
+            _max: { createdAt: recentAt },
+          },
+        ]),
+      },
+      product: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { id: 'product-1', name: 'Farine', category: { id: 'category-1', name: 'Sec' } },
+          ]),
+      },
+      stock: {
+        groupBy: jest.fn().mockResolvedValue([{ productId: 'product-1', _sum: { quantity: 7 } }]),
+      },
+    };
+    const queries = new PurchaseOrderQueryService(
+      prisma as unknown as PrismaService,
+      new PurchaseOrderPolicy(),
+    );
+
+    const result = await queries.productHighlights('org-1', actor, {
+      supplierId: 'supplier-1',
+    });
+
+    expect(result.recent[0]).toEqual(
+      expect.objectContaining({
+        id: 'product-1',
+        stockQuantity: 7,
+        orderCount: 4,
+        lastOrderedAt: recentAt,
+      }),
+    );
+    expect(result.frequent[0]?.id).toBe('product-1');
+    expect(prisma.purchaseOrderLine.groupBy.mock.calls[0][0].where).toEqual(
+      expect.objectContaining({
+        organizationId: 'org-1',
+        product: {
+          organizationId: 'org-1',
+          primarySupplierId: 'supplier-1',
+          isArchived: false,
+        },
+        order: expect.objectContaining({ organizationId: 'org-1' }),
+      }),
+    );
+  });
+});

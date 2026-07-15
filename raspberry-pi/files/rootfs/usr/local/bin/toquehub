@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+COMPOSE_FILE="/opt/toquehub/docker-compose.pi.yml"
+ENV_FILE="/etc/toquehub/toquehub.env"
+
+set -a
+# shellcheck disable=SC1090
+. "$ENV_FILE"
+set +a
+
+compose() {
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+}
+
+set_env() {
+  local key="$1"
+  local value="$2"
+  local tmp
+  tmp="$(mktemp)"
+
+  if grep -q "^${key}=" "$ENV_FILE"; then
+    awk -v key="$key" -v value="$value" '$0 ~ "^" key "=" { print key "=" value; next } { print }' "$ENV_FILE" > "$tmp"
+  else
+    cp "$ENV_FILE" "$tmp"
+    printf '%s=%s\n' "$key" "$value" >> "$tmp"
+  fi
+
+  mv "$tmp" "$ENV_FILE"
+  chmod 0600 "$ENV_FILE"
+}
+
+tailscale_ip() {
+  command -v tailscale >/dev/null 2>&1 || return 0
+  tailscale ip -4 2>/dev/null | head -1 || true
+}
+
+refresh_remote_env() {
+  local tail_ip
+  tail_ip="$(tailscale_ip || true)"
+  set_env TOQUEHUB_TAILSCALE_INSTALLED "$(command -v tailscale >/dev/null 2>&1 && printf true || printf false)"
+  if [[ -n "$tail_ip" ]]; then
+    set_env TOQUEHUB_TAILSCALE_IP "$tail_ip"
+    set_env TOQUEHUB_REMOTE_ACCESS_URL "http://$tail_ip:${TOQUEHUB_HTTP_PORT:-8080}"
+  fi
+}
+
+case "${1:-status}" in
+  status)
+    compose ps
+    ;;
+  logs)
+    shift || true
+    if [[ $# -gt 0 ]]; then
+      compose logs -f "$@"
+    else
+      compose logs -f api web postgres mosquitto zigbee2mqtt updater
+    fi
+    ;;
+  update)
+    mkdir -p /var/lib/toquehub/manual-backups
+    compose exec -T postgres pg_dump -U "${POSTGRES_USER:-toquehub}" "${POSTGRES_DB:-toquehub}" \
+      > "/var/lib/toquehub/manual-backups/pre-update-$(date +%Y%m%d-%H%M%S).sql"
+    compose pull
+    compose up -d
+    ;;
+  restart)
+    compose restart
+    ;;
+  stop)
+    compose stop
+    ;;
+  start)
+    compose up -d
+    ;;
+  backup)
+    mkdir -p /var/lib/toquehub/manual-backups
+    compose exec -T postgres pg_dump -U "${POSTGRES_USER:-toquehub}" "${POSTGRES_DB:-toquehub}" \
+      > "/var/lib/toquehub/manual-backups/toquehub-$(date +%Y%m%d-%H%M%S).sql"
+    ;;
+  remote-status)
+    if command -v tailscale >/dev/null 2>&1; then
+      tailscale status || true
+      refresh_remote_env
+      printf '\nURL ToqueHub distante: %s\n' "${TOQUEHUB_REMOTE_ACCESS_URL:-$(grep -E '^TOQUEHUB_REMOTE_ACCESS_URL=' "$ENV_FILE" | tail -1 | cut -d= -f2-)}"
+    else
+      echo "Tailscale n'est pas installe."
+      exit 1
+    fi
+    ;;
+  remote-up)
+    if ! command -v tailscale >/dev/null 2>&1; then
+      curl -fsSL https://tailscale.com/install.sh | sh
+    fi
+    systemctl enable --now tailscaled || true
+    if [[ -n "${TOQUEHUB_TAILSCALE_AUTHKEY:-}" ]]; then
+      tailscale up --authkey "$TOQUEHUB_TAILSCALE_AUTHKEY" --hostname "${TOQUEHUB_TAILSCALE_HOSTNAME:-toquehub}"
+      set_env TOQUEHUB_TAILSCALE_AUTHKEY ""
+    else
+      tailscale up --hostname "${TOQUEHUB_TAILSCALE_HOSTNAME:-toquehub}"
+    fi
+    refresh_remote_env
+    ;;
+  remote-ip)
+    refresh_remote_env
+    tailscale_ip
+    ;;
+  address|addresses)
+    TOQUEHUB_ENV_FILE="$ENV_FILE" toquehub-addresses
+    ;;
+  *)
+    cat <<'MSG'
+Usage: toquehub [status|logs|update|restart|stop|start|backup|remote-status|remote-up|remote-ip|address]
+MSG
+    exit 1
+    ;;
+esac
