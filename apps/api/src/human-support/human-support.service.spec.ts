@@ -3,8 +3,7 @@ import { HumanSupportService } from './human-support.service';
 describe('HumanSupportService', () => {
   const actor = { id: 'user-1', email: 'user@example.test', organizationId: 'org-1' };
   const relay = { openTicket: jest.fn(), sendMessage: jest.fn(), closeTicket: jest.fn(), pullEvents: jest.fn().mockResolvedValue([]) };
-  const push = { sendToUser: jest.fn() };
-  function service(prisma: any) { return new HumanSupportService(prisma, relay as any, push as any); }
+  function service(prisma: any) { return new HumanSupportService(prisma, relay as any); }
 
   it('refuses an empty initial request', async () => {
     const prisma: any = { humanSupportTicket: { findFirst: jest.fn() } };
