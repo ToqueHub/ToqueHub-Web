@@ -57,6 +57,10 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-toquehub}:${POSTGRES_PASSWORD:-toquehub}@postgres:5432/${POSTGRES_DB:-toquehub}?schema=public
       JWT_SECRET: ${JWT_SECRET:-change-me-in-development}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      # URL HTTPS publique de cette instance. Requise pour le retour OAuth Google/Microsoft
+      # quand ToqueHub est installé derrière un reverse proxy ou sur un serveur Docker.
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-}
+      TOQUEHUB_OAUTH_BROKER_URL: ${TOQUEHUB_OAUTH_BROKER_URL:-https://oauth.toquehub.app}
       BACKUP_CLOUD_ENCRYPTION_KEY: ${BACKUP_CLOUD_ENCRYPTION_KEY:-replace-with-a-32-byte-minimum-random-secret}
       PURCHASING_EMAIL_ENCRYPTION_KEY: ${PURCHASING_EMAIL_ENCRYPTION_KEY:-replace-with-a-32-byte-minimum-random-secret}
       BACKUP_DIR: /app/data/backups

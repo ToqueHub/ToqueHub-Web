@@ -4,7 +4,6 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, extname, join, resolve } from 'node:path';
 import { PrismaService } from '../prisma/prisma.service';
-import { MobilePushService } from '../mobile/mobile-push.service';
 import { SupportRelayClient } from './support-relay.client';
 
 type Actor = { id: string; email: string; organizationId: string | null };
@@ -16,7 +15,7 @@ const MIME_BY_EXTENSION: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg
 export class HumanSupportService implements OnModuleInit, OnModuleDestroy {
   private cleanupTimer?: NodeJS.Timeout;
   private syncTimer?: NodeJS.Timeout;
-  constructor(private readonly prisma: PrismaService, private readonly relay: SupportRelayClient, private readonly push: MobilePushService) {}
+  constructor(private readonly prisma: PrismaService, private readonly relay: SupportRelayClient) {}
 
   onModuleInit() { void this.cleanupExpired(); void this.syncRelay(); this.cleanupTimer = setInterval(() => void this.cleanupExpired(), 24 * 60 * 60 * 1000); this.cleanupTimer.unref?.(); this.syncTimer = setInterval(() => void this.syncRelay(), 15_000); this.syncTimer.unref?.(); }
   onModuleDestroy() { if (this.cleanupTimer) clearInterval(this.cleanupTimer); if (this.syncTimer) clearInterval(this.syncTimer); }
@@ -104,7 +103,6 @@ export class HumanSupportService implements OnModuleInit, OnModuleDestroy {
       const message = await (this.prisma as any).humanSupportMessage.create({ data: { ticketId: ticket.id, author: HumanSupportMessageAuthor.VOLUNTEER, volunteerName: String(event.volunteerName || 'Bénévole').slice(0, 100), content: String(event.content || ''), relayMessageId: event.messageId, deliveryStatus: HumanSupportDeliveryStatus.SENT, metadata: event.metadata || null } });
       for (const attachment of event.attachments || []) await this.saveAttachment(ticket.id, message.id, { buffer: Buffer.from(String(attachment.contentBase64 || ''), 'base64'), originalname: attachment.filename, mimetype: attachment.mimeType, size: attachment.size });
       await (this.prisma as any).humanSupportTicket.update({ where: { id: ticket.id }, data: { status: HumanSupportTicketStatus.IN_PROGRESS, assignedVolunteer: event.volunteerName || ticket.assignedVolunteer, relayCursor: event.cursor || ticket.relayCursor } });
-      void this.push.sendToUser(ticket.organizationId, ticket.userId, { title: 'Kokki · Bénévole', body: String(event.content || 'Vous avez reçu une réponse.'), data: { screen: 'kokki-human', ticketId: ticket.id } });
       return { ok: true, messageId: message.id };
     }
     return { ignored: true };

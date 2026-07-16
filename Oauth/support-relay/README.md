@@ -9,7 +9,7 @@ cd Oauth/support-relay
 fly apps create toquehub-support-relay
 openssl rand -hex 32
 fly secrets set \
-  SUPPORT_RELAY_DATABASE_URL='postgresql://…' \
+  DATABASE_URL='postgresql://…' \
   TELEGRAM_BOT_TOKEN='…' \
   TELEGRAM_SUPPORT_CHAT_ID='-100…' \
   TELEGRAM_OPERATOR_IDS='12345,67890' \
@@ -19,17 +19,17 @@ fly secrets set \
 ./deploy.sh
 ```
 
-Le service nécessite une base PostgreSQL dédiée. Appliquez les migrations du monorepo sur cette base avant le premier déploiement : `DATABASE_URL='…' npm run prisma:deploy -w apps/api`.
+Le service nécessite une base PostgreSQL dédiée. Appliquez les migrations du monorepo ToqueHub-Web sur cette base avant le premier déploiement : `DATABASE_URL='…' npm run prisma:deploy -w apps/api`.
 
-Ajoutez ensuite le webhook du bot vers :
+Le webhook du bot est configuré automatiquement au démarrage vers :
 
 ```text
 https://toquehub-support-relay.fly.dev/v1/telegram/webhook
 ```
 
-en fournissant `TELEGRAM_WEBHOOK_SECRET` comme secret token. Le test de santé est disponible sur `/v1/health`.
+avec `TELEGRAM_WEBHOOK_SECRET` comme secret token. Le test de santé est disponible sur `/v1/health`.
 
-Le domaine final recommandé est `support.toquehub.app` ; dès qu’il est relié à Fly, les installations ToqueHub utiliseront cette adresse par défaut sans configuration utilisateur.
+L’adresse active est `https://toquehub-support-relay.fly.dev`. Un domaine personnalisé peut être ajouté ultérieurement.
 
 ## Bloquer une installation
 

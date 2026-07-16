@@ -236,8 +236,38 @@ export class PurchasingEmailConnectionService {
   private hash(value: string) { return createHash('sha256').update(value).digest('hex'); }
   private brokerUrl() { return process.env.TOQUEHUB_OAUTH_BROKER_URL?.trim().replace(/\/$/, '') || 'https://oauth.toquehub.app'; }
   private oauthKey(provider: PurchasingEmailProvider) { return `purchasing-oauth-${provider.toLowerCase()}`; }
-  private async callbackUrl(provider: PurchasingEmailProvider, requestOrigin?: string) { const base = requestOrigin ? this.resolvePublicBaseUrl(requestOrigin) : process.env.PUBLIC_APP_URL?.trim().replace(/\/$/, '') || (await this.prisma.systemSetting.findUnique({ where: { key: 'purchasing-oauth-public-url' } }))?.value; if (!base) throw new BadRequestException('Ouvrez ToqueHub depuis son adresse publique pour initialiser automatiquement OAuth.'); return `${base}/api/purchasing/oauth/${provider.toLowerCase()}/callback`; }
-  private resolvePublicBaseUrl(origin?: string) { const raw = origin?.trim(); if (!raw) throw new BadRequestException('Impossible de détecter l’adresse publique de ToqueHub.'); try { const url = new URL(raw); if (url.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(url.hostname)) throw new Error(); return url.origin; } catch { throw new BadRequestException('Adresse publique ToqueHub invalide.'); } }
+  private async callbackUrl(provider: PurchasingEmailProvider, requestOrigin?: string) {
+    const base = requestOrigin
+      ? this.resolvePublicBaseUrl(requestOrigin)
+      : this.resolvePublicBaseUrl(
+          process.env.PUBLIC_APP_URL ||
+            process.env.TOQUEHUB_WEB_URL ||
+            (await this.prisma.systemSetting.findUnique({ where: { key: 'purchasing-oauth-public-url' } }))?.value,
+        );
+    return `${base}/api/purchasing/oauth/${provider.toLowerCase()}/callback`;
+  }
+  private resolvePublicBaseUrl(origin?: string) {
+    const candidates = [origin, process.env.PUBLIC_APP_URL, process.env.TOQUEHUB_WEB_URL];
+    for (const candidate of candidates) {
+      const raw = candidate?.trim();
+      if (!raw) continue;
+      try {
+        const url = new URL(raw);
+        if (url.protocol === 'https:' || this.isLocalNetworkHost(url.hostname)) return url.origin;
+      } catch {
+        // Try the configured public URL before rejecting the OAuth connection.
+      }
+    }
+    throw new BadRequestException('Adresse publique ToqueHub invalide. Utilisez une URL HTTPS ou une adresse locale du réseau, par exemple http://192.168.1.55:8080.');
+  }
+  private isLocalNetworkHost(hostname: string) {
+    if (hostname === 'localhost' || hostname.endsWith('.local') || hostname.endsWith('.ts.net') || hostname === '::1') return true;
+    const match = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (!match) return false;
+    const [a, b, c, d] = match.slice(1).map(Number);
+    if ([a, b, c, d].some((part) => part > 255)) return false;
+    return a === 10 || a === 127 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 169 && b === 254);
+  }
   private async oauthConfigRecord(provider: PurchasingEmailProvider): Promise<{ clientId: string; clientSecret: string; tenantId?: string } | null> { const record = await this.prisma.systemSetting.findUnique({ where: { key: this.oauthKey(provider) } }); return record ? JSON.parse(record.value) : null; }
   private async oauthConfig(provider: PurchasingEmailProvider): Promise<OAuthConfig> { const envPrefix = provider === PurchasingEmailProvider.GOOGLE ? 'GOOGLE' : 'MICROSOFT'; const clientId = process.env[`${envPrefix}_OAUTH_CLIENT_ID`]?.trim(); const secret = process.env[`${envPrefix}_OAUTH_CLIENT_SECRET`]?.trim(); if (clientId && secret) return { clientId, clientSecret: secret, tenantId: process.env.MICROSOFT_OAUTH_TENANT_ID?.trim() || 'common' }; const stored = await this.oauthConfigRecord(provider); if (!stored) throw new BadRequestException(`Configurez ${provider === PurchasingEmailProvider.GOOGLE ? 'Google' : 'Microsoft'} dans les réglages super-admin avant de connecter une boîte.`); return { clientId: stored.clientId, clientSecret: this.crypto.decrypt(stored.clientSecret)!, tenantId: stored.tenantId || 'common' }; }
   private async microsoftToken(config: OAuthConfig, input: { code?: string; refreshToken?: string; redirectUri?: string }) { const body = new URLSearchParams({ client_id: config.clientId, client_secret: config.clientSecret, scope: MICROSOFT_SCOPE, grant_type: input.code ? 'authorization_code' : 'refresh_token', ...(input.code ? { code: input.code, redirect_uri: input.redirectUri! } : { refresh_token: input.refreshToken! }) }); const response = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(config.tenantId || 'common')}/oauth2/v2.0/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body }); const result = await response.json().catch(() => ({})) as { access_token?: string; refresh_token?: string; error_description?: string }; if (!response.ok || !result.access_token) throw new BadRequestException(result.error_description || 'Microsoft n’a pas renvoyé de jeton.'); return result as { access_token: string; refresh_token?: string }; }
