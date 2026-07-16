@@ -12,6 +12,10 @@ export type PublicPurchasingSettingsSource = {
   replyTo: string | null;
   resendVerifiedAt: Date | null;
   resendLastTestEmailId: string | null;
+  activeEmailProvider?: string | null;
+  emailSubjectTemplate?: string | null;
+  emailBodyTemplate?: string | null;
+  emailSignature?: string | null;
   updatedAt: Date;
   organization?: {
     resendApiKey: string | null;
@@ -97,6 +101,10 @@ export class PurchasingContextService {
       ),
       resendVerifiedAt: settings.resendVerifiedAt,
       resendLastTestEmailId: settings.resendLastTestEmailId,
+      activeEmailProvider: settings.activeEmailProvider ?? null,
+      emailSubjectTemplate: settings.emailSubjectTemplate ?? null,
+      emailBodyTemplate: settings.emailBodyTemplate ?? null,
+      emailSignature: settings.emailSignature ?? null,
       updatedAt: settings.updatedAt,
     };
   }
@@ -108,6 +116,9 @@ export class PurchasingContextService {
     fromEmail?: string;
     fromName?: string;
     replyTo?: string;
+    emailSubjectTemplate?: string;
+    emailBodyTemplate?: string;
+    emailSignature?: string;
   }): Prisma.PurchasingSettingsUpdateInput {
     return {
       defaultCurrency: dto.defaultCurrency?.toUpperCase(),
@@ -116,6 +127,9 @@ export class PurchasingContextService {
       fromEmail: dto.fromEmail,
       fromName: dto.fromName,
       replyTo: dto.replyTo,
+      emailSubjectTemplate: dto.emailSubjectTemplate,
+      emailBodyTemplate: dto.emailBodyTemplate,
+      emailSignature: dto.emailSignature,
       resendVerifiedAt:
         dto.fromEmail !== undefined || dto.fromName !== undefined || dto.replyTo !== undefined
           ? null

@@ -412,7 +412,6 @@ export function OrderComposer({
       isOpen
       size="full"
       title={order ? `Modifier ${order.number}` : 'Nouvelle commande'}
-      subtitle="Fournisseur → livraison → catalogue → panier"
       onClose={onClose}
       bodyClassName="purchasing-composer purchasing-catalog-modal"
     >
@@ -427,7 +426,98 @@ export function OrderComposer({
                 ? 'Conflit ou erreur d’enregistrement'
                 : 'Modifications en attente'}
         </div>
-      ) : null}
+      ) : (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '1.25rem',
+            margin: '0 auto 1.25rem',
+            paddingBottom: '1.25rem',
+            borderBottom: '1px solid var(--light-border)',
+            width: '100%',
+            maxWidth: '620px',
+            flexWrap: 'wrap',
+          }}
+        >
+          {[
+            { id: 'supplier', label: 'Fournisseur', index: 1 },
+            { id: 'delivery', label: 'Livraison', index: 2 },
+            { id: 'catalog', label: 'Catalogue', index: 3 },
+          ].map((s, idx, arr) => {
+            const isActive = step === s.id;
+            const isCompleted =
+              (step === 'delivery' && s.id === 'supplier') ||
+              (step === 'catalog' && (s.id === 'supplier' || s.id === 'delivery'));
+            
+            return (
+              <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.55rem',
+                    cursor: isCompleted ? 'pointer' : 'default',
+                  }}
+                  onClick={() => {
+                    if (isCompleted) {
+                      setStep(s.id as ComposerStep);
+                    }
+                  }}
+                >
+                  <span
+                    style={{
+                      width: '26px',
+                      height: '26px',
+                      borderRadius: '50%',
+                      background: isActive
+                        ? 'var(--primary)'
+                        : isCompleted
+                          ? 'var(--success-bg)'
+                          : 'var(--light-bg)',
+                      color: isActive
+                        ? 'white'
+                        : isCompleted
+                          ? 'var(--success)'
+                          : 'var(--text-muted)',
+                      display: 'grid',
+                      placeItems: 'center',
+                      fontSize: '0.75rem',
+                      fontWeight: 800,
+                      border: isActive
+                        ? 'none'
+                        : isCompleted
+                          ? '1px solid rgba(16, 185, 129, 0.2)'
+                          : '1px solid var(--light-border)',
+                      transition: 'all 0.25s',
+                    }}
+                  >
+                    {s.index}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: '0.82rem',
+                      fontWeight: isActive ? 750 : 500,
+                      color: isActive
+                        ? 'var(--text-main)'
+                        : isCompleted
+                          ? 'var(--success)'
+                          : 'var(--text-muted)',
+                      transition: 'all 0.25s',
+                    }}
+                  >
+                    {s.label}
+                  </span>
+                </div>
+                {idx < arr.length - 1 && (
+                  <span style={{ color: '#cbd5e1', fontSize: '0.8rem', fontWeight: 300 }} aria-hidden="true">→</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
       {step === 'supplier' ? (
         <SupplierSelection
           suppliers={supplierOptions}

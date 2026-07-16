@@ -84,6 +84,7 @@ export function LandingPage() {
 
           <nav style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
             <a href="#features" style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: '0.05em' }} className="nav-link">Modules</a>
+            <a href="/documentation" style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: '0.05em' }} className="nav-link">Documentation</a>
             <a href="#interactive-simulator" style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: '0.05em' }} className="nav-link">Démonstration</a>
             <a href="#architecture" style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: '0.05em' }} className="nav-link">Architecture</a>
             <span className="badge-neon badge-neon-emerald" style={{ fontSize: '0.68rem', border: '1px solid var(--border-light)' }}>

@@ -97,9 +97,11 @@ export class DashboardExternalService {
   }
 
   private async weatherLocation(query: string): Promise<{ latitude: number; longitude: number; city: string } | null> {
+    let lookupCompleted = false;
     // The official French geocoder handles a complete French street address precisely.
     try {
       const french = await this.fetchJson(`https://data.geopf.fr/geocodage/search/?q=${encodeURIComponent(query)}&limit=1`);
+      lookupCompleted = true;
       const feature = french?.features?.[0];
       const coordinates = feature?.geometry?.coordinates;
       if (Array.isArray(coordinates) && coordinates.length >= 2) {
@@ -111,7 +113,9 @@ export class DashboardExternalService {
     // Finnish saved addresses contain the locality and are resolved with the Finnish-only search.
     try {
       const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=fi&limit=1&q=${encodeURIComponent(query)}`, { signal: AbortSignal.timeout(4500), headers: { Accept: 'application/json', 'User-Agent': 'ToqueHub weather lookup' } });
-      const rows: NominatimResult[] = response.ok ? await response.json() as NominatimResult[] : [];
+      if (!response.ok) throw new Error(`External service returned ${response.status}`);
+      const rows = await response.json() as NominatimResult[];
+      lookupCompleted = true;
       const row = rows[0];
       if (row?.lat && row?.lon) {
         const a = row.address ?? {};
@@ -123,9 +127,13 @@ export class DashboardExternalService {
     try {
       const cityQuery = query.split(',').at(-1)?.trim() || query;
       const geo = await this.fetchJson(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityQuery)}&count=1&language=fr&format=json`);
+      lookupCompleted = true;
       const place = geo?.results?.[0];
       return place ? { latitude: Number(place.latitude), longitude: Number(place.longitude), city: [place.name, place.admin1].filter(Boolean).join(', ') } : null;
-    } catch { return null; }
+    } catch (error) {
+      if (!lookupCompleted) throw error;
+      return null;
+    }
   }
 
   private async industryNews() {

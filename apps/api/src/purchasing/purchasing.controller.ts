@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   Res,
   UploadedFiles,
   UseGuards,
@@ -15,6 +16,7 @@ import {
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
+import type { Request } from 'express';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -31,7 +33,11 @@ import {
   UpdatePurchaseReceiptDto,
   UpdatePurchasingOnboardingDto,
   UpdatePurchasingSettingsDto,
+  ConfigurePurchasingEmailConnectionDto,
+  ConfigurePurchasingOAuthDto,
 } from './dto/purchasing.dto';
+import { PurchasingEmailProvider } from '@prisma/client';
+import { PurchasingEmailConnectionService } from './purchasing-email-connection.service';
 import { PurchaseHistoryService } from './purchase-history.service';
 import { PurchaseOrderCommandService } from './purchase-order-command.service';
 import { PurchaseOrderDispatchService } from './purchase-order-dispatch.service';
@@ -67,6 +73,7 @@ export class PurchasingController {
     private readonly receiptValidation: PurchaseReceiptValidationService,
     private readonly historyService: PurchaseHistoryService,
     private readonly stocksOcr: StocksOcrService,
+    private readonly emailConnectionService: PurchasingEmailConnectionService,
   ) {}
 
   private org(user: AuthenticatedUser) {
@@ -100,6 +107,38 @@ export class PurchasingController {
   }
   @Post('settings/resend/test') testResend(@CurrentUser() user: AuthenticatedUser) {
     return this.settingsService.testResend(this.org(user), user);
+  }
+  @Get('email-connections') async listEmailConnections(@CurrentUser() user: AuthenticatedUser) {
+    await this.settingsService.assertManage(this.org(user), user);
+    return this.emailConnectionService.list(this.org(user));
+  }
+  @Post('email-connections') async configureEmailConnection(@CurrentUser() user: AuthenticatedUser, @Body() dto: ConfigurePurchasingEmailConnectionDto) {
+    await this.settingsService.assertManage(this.org(user), user);
+    return this.emailConnectionService.configure(this.org(user), dto);
+  }
+  @Post('email-connections/:provider/test') async testEmailConnection(@CurrentUser() user: AuthenticatedUser, @Param('provider') provider: PurchasingEmailProvider) {
+    await this.settingsService.assertManage(this.org(user), user);
+    return this.emailConnectionService.test(this.org(user), provider);
+  }
+  @Post('email-connections/:provider/oauth/start') async startEmailOAuth(@CurrentUser() user: AuthenticatedUser, @Param('provider') provider: PurchasingEmailProvider, @Req() request: Request) {
+    await this.settingsService.assertManage(this.org(user), user);
+    return this.emailConnectionService.startOAuthForUser(this.org(user), user.id, provider, request.headers.origin);
+  }
+  @Get('oauth/config/:provider') async oauthConfig(@CurrentUser() user: AuthenticatedUser, @Param('provider') provider: PurchasingEmailProvider, @Req() request: Request) {
+    await this.settingsService.assertManage(this.org(user), user);
+    return this.emailConnectionService.oauthStatus(provider, request.headers.origin);
+  }
+  @Post('oauth/config') async configureOauth(@CurrentUser() user: AuthenticatedUser, @Body() dto: ConfigurePurchasingOAuthDto, @Req() request: Request) {
+    if (!['SUPER_ADMIN', 'Administrateur'].includes(user.role)) throw new BadRequestException('Configuration OAuth réservée au super-admin.');
+    return this.emailConnectionService.configureOAuth(dto.provider, dto, request.headers.origin);
+  }
+  @Post('email-connections/:provider/activate') async activateEmailConnection(@CurrentUser() user: AuthenticatedUser, @Param('provider') provider: PurchasingEmailProvider) {
+    await this.settingsService.assertManage(this.org(user), user);
+    return this.emailConnectionService.activate(this.org(user), provider);
+  }
+  @Post('email-connections/:provider/disconnect') async disconnectEmailConnection(@CurrentUser() user: AuthenticatedUser, @Param('provider') provider: PurchasingEmailProvider) {
+    await this.settingsService.assertManage(this.org(user), user);
+    return this.emailConnectionService.disconnect(this.org(user), provider);
   }
   @Patch('onboarding') onboarding(
     @CurrentUser() user: AuthenticatedUser,
@@ -183,7 +222,10 @@ export class PurchasingController {
     @Param('id') id: string,
     @Body() dto: SendPurchaseOrderDto,
   ) {
-    return this.orderDispatch.send(this.org(user), user, id, dto.idempotencyKey, dto.recipient);
+    return this.orderDispatch.send(this.org(user), user, id, dto.idempotencyKey, dto.recipient, dto.subject, dto.body);
+  }
+  @Get('orders/:id/email-preview') emailPreview(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Query('recipient') recipient?: string) {
+    return this.orderDispatch.preview(this.org(user), user, id, recipient);
   }
   @Post('orders/:id/acknowledge') acknowledgeOrder(
     @CurrentUser() user: AuthenticatedUser,

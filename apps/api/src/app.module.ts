@@ -24,6 +24,7 @@ import { TechnicalSheetAssistantModule } from './technical-sheet-assistant/techn
 import { HaccpAssistantModule } from './haccp-assistant/haccp-assistant.module';
 import { PurchasingModule } from './purchasing/purchasing.module';
 import { SecretsModule } from './common/secrets/secrets.module';
+import { HumanSupportModule } from './human-support/human-support.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { SecretsModule } from './common/secrets/secrets.module';
     TechnicalSheetAssistantModule,
     HaccpAssistantModule,
     PurchasingModule,
+    HumanSupportModule,
   ],
 })
 export class AppModule {}

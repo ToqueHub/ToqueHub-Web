@@ -3,7 +3,7 @@ import { MistralClientService } from '../mistral/mistral-client.service';
 
 export const TECHNICAL_SHEET_TOOLS = ['search_recipes', 'get_recipe_details', 'search_stock_products', 'list_recipe_categories', 'get_recipe_cost', 'simulate_production', 'prepare_recipe_draft', 'prepare_recipe_pricing', 'clarify'] as const;
 const SCHEMA = { type: 'object', additionalProperties: false, required: ['tool', 'args', 'confidence'], properties: { tool: { type: 'string', enum: TECHNICAL_SHEET_TOOLS }, args: { type: 'object' }, confidence: { type: 'number' } } };
-const FINAL_SCHEMA = { type: 'object', additionalProperties: false, required: ['assistantMessage', 'suggestions', 'confidence', 'needsReview'], properties: { assistantMessage: { type: 'string' }, suggestions: { type: 'array', items: { type: 'string' } }, confidence: { type: 'number' }, needsReview: { type: 'boolean' } } };
+const FINAL_SCHEMA = { type: 'object', additionalProperties: false, required: ['assistantMessage', 'suggestions', 'confidence', 'needsReview', 'humanHandoffSuggested', 'humanHandoffReason'], properties: { assistantMessage: { type: 'string' }, suggestions: { type: 'array', items: { type: 'string' } }, confidence: { type: 'number' }, needsReview: { type: 'boolean' }, humanHandoffSuggested: { type: 'boolean' }, humanHandoffReason: { type: ['string', 'null'] } } };
 
 @Injectable()
 export class TechnicalSheetAgentHarnessService {
@@ -36,10 +36,10 @@ export class TechnicalSheetAgentHarnessService {
     if (Array.isArray(result.choices) && result.choices.length) return result;
     try {
       const final: any = await this.mistral.chatJson(organizationId, [
-        { role: 'system', content: 'Tu es Kokki, assistant Fiches Techniques. Réponds en français, clairement et brièvement, seulement à partir du résultat réel de l’outil. Ne prétends jamais qu’un brouillon est une fiche enregistrée. Si un brouillon existe, invite à l’ouvrir pour le relire. Réponds uniquement au JSON demandé.' },
+          { role: 'system', content: 'Tu es Kokki, assistant Fiches Techniques. Réponds en français, clairement et brièvement, seulement à partir du résultat réel de l’outil. Ne prétends jamais qu’un brouillon est une fiche enregistrée. Si un brouillon existe, invite à l’ouvrir pour le relire. Propose humanHandoffSuggested seulement si un bénévole est réellement préférable. Réponds uniquement au JSON demandé.' },
         { role: 'user', content: JSON.stringify({ message: content, toolResult: result }) },
       ], 'toquehub_technical_sheet_agent_final', FINAL_SCHEMA, { temperature: .2 });
-      return { ...result, assistantMessage: String(final.assistantMessage || result.assistantMessage), suggestions: final.suggestions?.length ? final.suggestions : result.suggestions || [], confidence: Number(final.confidence ?? result.confidence ?? .6), needsReview: Boolean(final.needsReview || result.needsReview) };
+      return { ...result, assistantMessage: String(final.assistantMessage || result.assistantMessage), suggestions: final.suggestions?.length ? final.suggestions : result.suggestions || [], confidence: Number(final.confidence ?? result.confidence ?? .6), needsReview: Boolean(final.needsReview || result.needsReview), humanHandoffSuggested: Boolean(final.humanHandoffSuggested), humanHandoffReason: final.humanHandoffReason ? String(final.humanHandoffReason) : null };
     } catch { return result; }
   }
 

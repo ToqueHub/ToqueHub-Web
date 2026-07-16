@@ -20,6 +20,7 @@ import {
   Calculator,
   CalendarDays,
   LayoutDashboard,
+  BookOpen,
   Package,
   History,
   ChefHat,
@@ -647,6 +648,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [showStocksOnboarding, setShowStocksOnboarding] = useState(false);
   const [showTechnicalSheetsOnboarding, setShowTechnicalSheetsOnboarding] = useState(false);
   const [showStockAssistant, setShowStockAssistant] = useState(false);
+  const [humanSupportUnread, setHumanSupportUnread] = useState(0);
   const [confirmation, setConfirmation] = useState<Confirmation>(null);
   const [appActionLoading, setAppActionLoading] = useState(false);
   const [selectedStoreApp, setSelectedStoreApp] = useState<AppDefinition | null>(null);
@@ -851,6 +853,13 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     const interval = window.setInterval(() => void refresh(), 5 * 60 * 1000);
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    const refreshHumanSupportUnread = () => void api.humanSupportUnreadCount(token).then((result) => setHumanSupportUnread(result.unread)).catch(() => undefined);
+    refreshHumanSupportUnread();
+    const interval = window.setInterval(refreshHumanSupportUnread, 30_000);
+    return () => window.clearInterval(interval);
+  }, [token]);
 
   useEffect(() => {
     if (success) addAppNotification('success', success);
@@ -3349,6 +3358,19 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               <History size={13} />
               Changelog
             </button>
+            <a
+              className="status-badge changelog-badge"
+              href={
+                import.meta.env.DEV
+                  ? `${window.location.protocol}//${window.location.hostname}:5174/documentation`
+                  : 'https://toquehub.app/documentation'
+              }
+              target="_blank"
+              rel="noreferrer"
+            >
+              <BookOpen size={13} />
+              Documentation
+            </a>
             <button type="button" className="status-badge" onClick={() => void openInstanceModal()}>
               <div className="status-dot"></div>
               Instance Locale
@@ -5182,6 +5204,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         isOpen={showStockAssistant}
         onClose={() => setShowStockAssistant(false)}
         token={token}
+        userEmail={session.user.email || ''}
         products={products}
         categories={categories}
         units={units}
@@ -5195,6 +5218,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           setShowStockAssistant(false);
           setActiveTab('technical-sheets-recipes');
         }}
+        onHumanUnreadChange={setHumanSupportUnread}
       />
 
       <button
@@ -5213,6 +5237,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             filter: 'drop-shadow(0 3px 6px rgba(0, 0, 0, 0.16))',
           }}
         />
+        {humanSupportUnread > 0 ? <span style={{ position: 'absolute', right: -3, top: -3, minWidth: 20, height: 20, borderRadius: 10, padding: '0 5px', background: '#dc2626', color: '#fff', fontSize: 11, fontWeight: 700, display: 'grid', placeItems: 'center', border: '2px solid #fff' }}>{humanSupportUnread > 9 ? '9+' : humanSupportUnread}</span> : null}
       </button>
 
       <Modal isOpen={showSiteModal} onClose={() => setShowSiteModal(false)} title="Créer un site">
@@ -7252,6 +7277,7 @@ function DashboardCockpitOverview({
       </section>
 
       {/* 6. Floating Toque Button */}
+      {/*
       <button
         className="cockpit-floating-action"
         onClick={() => onNavigate('overview')}
@@ -7259,56 +7285,87 @@ function DashboardCockpitOverview({
       >
         <ChefHat size={26} />
       </button>
+      */}
     </div>
   );
 }
 
 function DashboardCockpitLoading() {
+  const [stepIndex, setStepIndex] = useState(0);
+  const steps = [
+    "Connexion sécurisée aux services...",
+    "Initialisation du cockpit ToqueHub...",
+    "Récupération des indicateurs HACCP...",
+    "Synchronisation des effectifs et plannings...",
+    "Analyse des alertes opérationnelles...",
+    "Calcul des priorités de l'établissement...",
+    "Finalisation du cockpit..."
+  ];
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setStepIndex((prev) => (prev < steps.length - 1 ? prev + 1 : prev));
+    }, 1200);
+    return () => clearInterval(interval);
+  }, []);
+
+  const progressPercent = Math.min(((stepIndex + 1) / steps.length) * 100, 100);
+
   return (
     <div
       className="cockpit-loading-shell"
       aria-busy="true"
       aria-label="Chargement du cockpit opérationnel"
     >
-      <div className="cockpit-loading-hero">
-        <div className="cockpit-loader-orbit">
-          <i />
-          <i />
-          <div>
-            <ChefHat size={28} />
-          </div>
-        </div>
-        <div className="cockpit-loading-copy">
-          <span>
-            <Sparkles size={14} /> ToqueHub Intelligence
-          </span>
-          <h1>Préparation de votre cockpit</h1>
-          <p>Connexion sécurisée aux indicateurs, alertes et actualités de votre établissement.</p>
-          <div className="cockpit-loading-steps">
-            <b>
-              <i /> Données métier
-            </b>
-            <b>
-              <i /> Conformité HACCP
-            </b>
-            <b>
-              <i /> Veille locale
-            </b>
-          </div>
-        </div>
-        <div className="cockpit-loading-status">
-          <span>Synchronisation</span>
-          <strong>En cours</strong>
-          <div>
-            <i />
-          </div>
+      <div className="cockpit-loading-skeleton-bg">
+        <div className="skeleton-header" />
+        <div className="skeleton-grid">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div className="skeleton-card" key={index} />
+          ))}
         </div>
       </div>
-      <div className="cockpit-loading-alert" />
-      <div className="cockpit-loading-grid">
-        {Array.from({ length: 5 }).map((_, index) => (
-          <div className="cockpit-loading-card" key={index} />
-        ))}
+
+      <div className="cockpit-loading-card-centered">
+        <div className="cockpit-loader-spinner-wrapper">
+          <div className="cockpit-minimal-spinner" />
+          <div className="cockpit-loader-icon">
+            <ChefHat size={32} className="chef-hat-pulse" />
+          </div>
+        </div>
+
+        <div className="cockpit-loading-info">
+          <div className="cockpit-brand-badge">
+            <Sparkles size={12} />
+            <span>ToqueHub OS</span>
+          </div>
+
+          <h2 className="cockpit-loading-title">
+            Préparation du cockpit<span className="dot-flashing" />
+          </h2>
+
+          <div className="cockpit-step-wrapper">
+            <AnimatePresence mode="wait">
+              <motion.span
+                key={stepIndex}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.25 }}
+                className="cockpit-current-step"
+              >
+                {steps[stepIndex]}
+              </motion.span>
+            </AnimatePresence>
+          </div>
+
+          <div className="cockpit-progress-container">
+            <div
+              className="cockpit-progress-bar"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -16685,6 +16742,8 @@ function SettingsPage({
     remoteStatus?.status ??
     (remoteAccess.enabled && remoteAccess.tailscaleUrl ? 'active' : 'inactive');
   const remoteAccessUrl = remoteStatus?.url || remoteAccess.tailscaleUrl || '';
+  const remoteMagicDnsUrl = remoteStatus?.dnsUrl || '';
+  const remoteTailscaleIp = remoteStatus?.ip || remoteAccess.tailscaleIp || '';
   const remoteLoginUrl = remoteStatus?.loginUrl || null;
   const remoteStatusLabel =
     effectiveRemoteStatus === 'active'
@@ -17500,6 +17559,25 @@ function SettingsPage({
                   >
                     {remoteAccessUrl}
                   </code>
+                ) : null}
+                {remoteMagicDnsUrl && remoteMagicDnsUrl !== remoteAccessUrl ? (
+                  <code
+                    style={{
+                      padding: '0.65rem 0.85rem',
+                      borderRadius: 10,
+                      background: 'white',
+                      color: '#475569',
+                      fontWeight: 700,
+                      wordBreak: 'break-all',
+                    }}
+                  >
+                    MagicDNS : {remoteMagicDnsUrl}
+                  </code>
+                ) : null}
+                {remoteTailscaleIp ? (
+                  <span className="muted" style={{ fontSize: '0.82rem' }}>
+                    IP Tailscale de secours : {remoteTailscaleIp}
+                  </span>
                 ) : null}
                 {remoteLoginUrl ? (
                   <a

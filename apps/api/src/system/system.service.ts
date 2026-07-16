@@ -25,6 +25,9 @@ type RemoteAccessStatus = {
   url: string | null;
   loginUrl: string | null;
   hostname: string | null;
+  dnsName?: string | null;
+  dnsUrl?: string | null;
+  magicDnsReady?: boolean;
   ip: string | null;
   message: string;
 };
@@ -276,13 +279,19 @@ export class SystemService {
   private remoteAccessFromEnv(message?: string): RemoteAccessStatus {
     const hostname = env('TOQUEHUB_TAILSCALE_HOSTNAME', 'toquehub');
     const ip = env('TOQUEHUB_TAILSCALE_IP') || null;
-    const url = env('TOQUEHUB_REMOTE_ACCESS_URL') || (ip ? `http://${ip}:${env('TOQUEHUB_HTTP_PORT', '8080')}` : null);
+    const dnsName = env('TOQUEHUB_TAILSCALE_DNS_NAME') || null;
+    const port = env('TOQUEHUB_HTTP_PORT', '8080');
+    const host = dnsName || ip;
+    const url = env('TOQUEHUB_REMOTE_ACCESS_URL') || (host ? `http://${host}${port === '80' ? '' : `:${port}`}` : null);
     const installed = boolEnv('TOQUEHUB_TAILSCALE_INSTALLED', boolEnv('TOQUEHUB_TAILSCALE_ENABLED') || Boolean(ip || url));
     return {
       status: url || ip ? 'active' : installed ? 'inactive' : 'unavailable',
       url,
       loginUrl: null,
       hostname,
+      dnsName,
+      dnsUrl: dnsName ? `http://${dnsName}${port === '80' ? '' : `:${port}`}` : null,
+      magicDnsReady: Boolean(dnsName && url && url.includes(dnsName)),
       ip,
       message: message || (url || ip ? 'Accès distant actif.' : installed ? 'Accès distant prêt à être activé.' : 'Agent d’accès distant indisponible.'),
     };
@@ -306,6 +315,9 @@ export class SystemService {
       url: body.url ?? null,
       loginUrl: body.loginUrl ?? null,
       hostname: body.hostname ?? env('TOQUEHUB_TAILSCALE_HOSTNAME', 'toquehub'),
+      dnsName: body.dnsName ?? null,
+      dnsUrl: body.dnsUrl ?? null,
+      magicDnsReady: body.magicDnsReady === true,
       ip: body.ip ?? null,
       message: body.message ?? 'Statut accès distant récupéré.',
     };

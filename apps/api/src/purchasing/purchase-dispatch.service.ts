@@ -19,6 +19,10 @@ export class PurchaseDispatchService {
     idempotencyKey: string;
     recipient: string;
     snapshot: Prisma.InputJsonValue;
+    provider?: string | null;
+    senderEmail?: string | null;
+    senderName?: string | null;
+    renderedBody?: string | null;
     now?: Date;
   }) {
     const now = input.now ?? new Date();
@@ -55,6 +59,10 @@ export class PurchaseDispatchService {
             snapshot: input.snapshot,
             attemptedAt: now,
             errorMessage: null,
+            provider: input.provider as any,
+            senderEmail: input.senderEmail ?? null,
+            senderName: input.senderName ?? null,
+            renderedBody: input.renderedBody ?? null,
           },
         });
         return { dispatch, existing: false as const };
@@ -87,6 +95,10 @@ export class PurchaseDispatchService {
           recipient: input.recipient,
           subject: `Commande ${input.orderNumber}`,
           snapshot: input.snapshot,
+          provider: input.provider as any,
+          senderEmail: input.senderEmail ?? null,
+          senderName: input.senderName ?? null,
+          renderedBody: input.renderedBody ?? null,
           attemptedAt: now,
         },
       });

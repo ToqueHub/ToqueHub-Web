@@ -58,6 +58,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change-me-in-development}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
       BACKUP_CLOUD_ENCRYPTION_KEY: ${BACKUP_CLOUD_ENCRYPTION_KEY:-replace-with-a-32-byte-minimum-random-secret}
+      PURCHASING_EMAIL_ENCRYPTION_KEY: ${PURCHASING_EMAIL_ENCRYPTION_KEY:-replace-with-a-32-byte-minimum-random-secret}
       BACKUP_DIR: /app/data/backups
       UPLOAD_DIR: /app/data/uploads
       HR_UPLOAD_DIR: /app/data/uploads/hr
@@ -72,6 +73,7 @@ services:
       HACCP_SENSOR_OFFLINE_AFTER_MINUTES: ${HACCP_SENSOR_OFFLINE_AFTER_MINUTES:-30}
       HACCP_PAIRING_DURATION_SECONDS: ${HACCP_PAIRING_DURATION_SECONDS:-180}
       TOQUEHUB_WEB_URL: ${TOQUEHUB_WEB_URL:-http://localhost:${TOQUEHUB_HTTP_PORT:-8080}}
+      TOQUEHUB_SUPPORT_RELAY_URL: ${TOQUEHUB_SUPPORT_RELAY_URL:-https://toquehub-support-relay.fly.dev}
       TOQUEHUB_VERSION: ${TOQUEHUB_VERSION:-${TOQUEHUB_IMAGE_TAG:-local}}
       TOQUEHUB_IMAGE_REGISTRY: ${TOQUEHUB_IMAGE_REGISTRY:-ghcr.io/toquehub}
       TOQUEHUB_IMAGE_TAG: ${TOQUEHUB_IMAGE_TAG:-latest}

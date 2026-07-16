@@ -16,3 +16,8 @@ apps/api/backups/
 *.local
 .toquehub-iot/
 raspberry-pi/build/
+Oauth/
+!Oauth/
+Oauth/*
+!Oauth/support-relay/
+!Oauth/support-relay/**

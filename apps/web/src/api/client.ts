@@ -138,6 +138,8 @@ import type {
   PurchaseReceipt,
   PurchaseOrderEvent,
   PurchasingDeliveryMode,
+  PurchasingEmailConnection,
+  PurchaseEmailPreview,
   PurchaseOrderStatus,
   PurchaseReceiptLineStatus,
   PurchaseOrderPayload,
@@ -580,6 +582,27 @@ export const api = {
       token,
     );
   },
+  purchasingEmailConnections(token: string) {
+    return request<PurchasingEmailConnection[]>('/purchasing/email-connections', {}, token);
+  },
+  configurePurchasingEmailConnection(token: string, payload: { provider: PurchasingEmailConnection['provider']; senderEmail?: string; senderName?: string; smtpHost?: string; smtpPort?: number; smtpSecure?: boolean; smtpUsername?: string; smtpPassword?: string }) {
+    return request<PurchasingEmailConnection>('/purchasing/email-connections', { method: 'POST', body: JSON.stringify(payload) }, token);
+  },
+  testPurchasingEmailConnection(token: string, provider: PurchasingEmailConnection['provider']) {
+    return request<PurchasingEmailConnection>(`/purchasing/email-connections/${provider}/test`, { method: 'POST' }, token);
+  },
+  activatePurchasingEmailConnection(token: string, provider: PurchasingEmailConnection['provider']) {
+    return request<PurchasingEmailConnection[]>(`/purchasing/email-connections/${provider}/activate`, { method: 'POST' }, token);
+  },
+  startPurchasingEmailOAuth(token: string, provider: 'GOOGLE' | 'MICROSOFT') {
+    return request<{ url: string }>(`/purchasing/email-connections/${provider}/oauth/start`, { method: 'POST' }, token);
+  },
+  purchasingOAuthConfig(token: string, provider: 'GOOGLE' | 'MICROSOFT') {
+    return request<{ provider: string; configured: boolean; clientId?: string | null; redirectUri: string }>(`/purchasing/oauth/config/${provider}`, {}, token);
+  },
+  configurePurchasingOAuth(token: string, payload: { provider: 'GOOGLE' | 'MICROSOFT'; clientId: string; clientSecret?: string; tenantId?: string }) {
+    return request<{ provider: string; configured: boolean; clientId: string; redirectUri: string }>('/purchasing/oauth/config', { method: 'POST', body: JSON.stringify(payload) }, token);
+  },
   updatePurchasingOnboarding(
     token: string,
     payload: {
@@ -719,13 +742,16 @@ export const api = {
   sendPurchaseOrder(
     token: string,
     id: string,
-    payload: { idempotencyKey: string; recipient?: string },
+    payload: { idempotencyKey: string; recipient?: string; subject?: string; body?: string },
   ) {
     return request<{ id: string; status: string; recipient: string; errorMessage?: string | null }>(
       `/purchasing/orders/${id}/send`,
       { method: 'POST', body: JSON.stringify(payload) },
       token,
     );
+  },
+  purchaseOrderEmailPreview(token: string, id: string, recipient?: string) {
+    return request<PurchaseEmailPreview>(`/purchasing/orders/${id}/email-preview${recipient ? `?recipient=${encodeURIComponent(recipient)}` : ''}`, {}, token);
   },
   acknowledgePurchaseOrder(token: string, id: string) {
     return request<PurchaseOrder>(
@@ -2603,6 +2629,23 @@ export const api = {
       token,
     );
   },
+  humanSupportActive(token: string) { return request<import('../types').HumanSupportTicket | null>('/human-support/active', {}, token); },
+  humanSupportUnreadCount(token: string) { return request<{ unread: number }>('/human-support/unread-count', {}, token); },
+  async createHumanSupportTicket(token: string, input: { content: string; email: string; phone?: string; transcript?: string }, file?: File) {
+    const body = new FormData(); body.append('content', input.content); body.append('email', input.email); if (input.phone) body.append('phone', input.phone); if (input.transcript) body.append('transcript', input.transcript); if (file) body.append('file', file);
+    const response = await fetch(`${API_URL}/api/human-support/tickets`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body });
+    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status); return response.json() as Promise<import('../types').HumanSupportTicket>;
+  },
+  humanSupportTicket(token: string, ticketId: string) { return request<import('../types').HumanSupportTicket>(`/human-support/tickets/${ticketId}`, {}, token); },
+  humanSupportMessages(token: string, ticketId: string, after?: string) { return request<import('../types').HumanSupportMessage[]>(`/human-support/tickets/${ticketId}/messages${after ? `?after=${encodeURIComponent(after)}` : ''}`, {}, token); },
+  async sendHumanSupportMessage(token: string, ticketId: string, content?: string, file?: File) {
+    const body = new FormData(); if (content) body.append('content', content); if (file) body.append('file', file);
+    const response = await fetch(`${API_URL}/api/human-support/tickets/${ticketId}/messages`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body });
+    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status); return response.json() as Promise<import('../types').HumanSupportMessage>;
+  },
+  markHumanSupportRead(token: string, ticketId: string) { return request(`/human-support/tickets/${ticketId}/read`, { method: 'POST' }, token); },
+  closeHumanSupportTicket(token: string, ticketId: string) { return request<import('../types').HumanSupportTicket>(`/human-support/tickets/${ticketId}/close`, { method: 'POST' }, token); },
+  humanSupportAttachmentUrl(attachmentId: string) { return `${API_URL}/api/human-support/attachments/${attachmentId}/download`; },
   createTechnicalSheetAssistantConversation(token: string) {
     return request<import('../types').TechnicalSheetAssistantConversation>(
       '/technical-sheet-assistant/conversations',
@@ -2639,6 +2682,8 @@ export const api = {
       state?: Record<string, unknown>;
       confidence?: number;
       needsReview?: boolean;
+      humanHandoffSuggested?: boolean;
+      humanHandoffReason?: string | null;
     }>(
       `/technical-sheet-assistant/conversations/${conversationId}/messages`,
       { method: 'POST', body: JSON.stringify({ content }) },
@@ -2703,6 +2748,8 @@ export const api = {
       toolResults?: unknown[];
       confidence?: number | null;
       needsReview?: boolean;
+      humanHandoffSuggested?: boolean;
+      humanHandoffReason?: string | null;
     }>(
       `/stock-assistant/conversations/${conversationId}/messages`,
       { method: 'POST', body: JSON.stringify({ content, locationId }) },

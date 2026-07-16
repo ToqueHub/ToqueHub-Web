@@ -269,16 +269,16 @@ export function Pagination({
 export function PurchasingSkeleton() {
   return (
     <div className="purchasing-app">
-      <section className="purchasing-hero skeleton">
+      <section className="welcome-hero stocks-hero skeleton" style={{ minHeight: '190px', background: 'radial-gradient(circle at 10% 20%, rgba(16, 185, 129, 0.22) 0%, transparent 65%), radial-gradient(circle at 90% 80%, rgba(5, 150, 105, 0.08) 0%, transparent 55%), linear-gradient(135deg, #06090f 0%, #0c121e 100%)' }}>
         <div>
           <span />
           <span />
           <span />
         </div>
       </section>
-      <div className="purchasing-metrics">
+      <div className="metrics-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.85rem' }}>
         {Array.from({ length: 5 }, (_, index) => (
-          <div className="purchasing-metric skeleton" key={index} />
+          <div className="metric-card skeleton" key={index} style={{ minHeight: '100px', background: '#f8fafc' }} />
         ))}
       </div>
     </div>

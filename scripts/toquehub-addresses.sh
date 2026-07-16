@@ -44,6 +44,14 @@ ip_url=""
 if [[ -n "$ip" ]]; then
   ip_url="$(origin_for_host "$ip" "$http_port")"
 fi
+tailscale_dns_name="$(get_env TOQUEHUB_TAILSCALE_DNS_NAME)"
+tailscale_ip="$(get_env TOQUEHUB_TAILSCALE_IP)"
+tailscale_url=""
+if [[ -n "$tailscale_dns_name" ]]; then
+  tailscale_url="$(origin_for_host "$tailscale_dns_name" "$http_port")"
+elif [[ -n "$tailscale_ip" ]]; then
+  tailscale_url="$(origin_for_host "$tailscale_ip" "$http_port")"
+fi
 
 cat <<MSG
 Adresses ToqueHub
@@ -57,6 +65,17 @@ Si cette adresse ne charge pas, utilise l'adresse IP de secours:
 Fichier env:
   $ENV_FILE
 MSG
+
+if [[ -n "$tailscale_url" ]]; then
+  cat <<MSG
+
+Depuis un appareil connecté au même réseau Tailscale, ouvre:
+  $tailscale_url
+
+Adresse MagicDNS: ${tailscale_dns_name:-non disponible — accès par IP Tailscale}
+IP Tailscale: ${tailscale_ip:-non détectée}
+MSG
+fi
 
 if command -v systemctl >/dev/null 2>&1; then
   if systemctl is-active --quiet avahi-daemon 2>/dev/null; then
@@ -106,5 +125,14 @@ if command -v curl >/dev/null 2>&1; then
     printf '  KO: ToqueHub ne repond pas encore sur /api/discovery.\n'
     printf '  A verifier: docker compose --env-file %s ps\n' "$ENV_FILE"
     printf '  Puis: curl -v %s/api/discovery\n' "${ip_url:-$local_url}"
+  fi
+
+  if [[ -n "$tailscale_url" ]]; then
+    printf '\nTest accès Tailscale:\n'
+    if probe_url "$tailscale_url" 2 1; then
+      printf '  OK: %s/api/discovery\n' "$tailscale_url"
+    else
+      printf '  KO: %s ne répond pas depuis cette machine. Vérifiez que MagicDNS est activé dans la console Tailscale et que cet appareil est connecté au même tailnet.\n' "$tailscale_url"
+    fi
   fi
 fi

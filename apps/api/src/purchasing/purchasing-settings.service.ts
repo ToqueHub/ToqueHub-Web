@@ -62,6 +62,11 @@ export class PurchasingSettingsService {
     };
   }
 
+  async assertManage(organizationId: string, actor: AuthenticatedUser) {
+    await this.context.assertInstalled(organizationId);
+    this.policy.assertPermission(actor, 'purchasing.manage');
+  }
+
   async update(
     organizationId: string,
     actor: AuthenticatedUser,

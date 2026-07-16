@@ -147,6 +147,14 @@ tailscale_ip() {
   tailscale ip -4 2>/dev/null | head -1 || true
 }
 
+tailscale_dns_name() {
+  command -v tailscale >/dev/null 2>&1 || return 0
+  tailscale status --json 2>/dev/null \
+    | sed -n 's/^[[:space:]]*"DNSName":[[:space:]]*"\([^"]*\)".*/\1/p' \
+    | head -1 \
+    | sed 's/\.$//' || true
+}
+
 get_env() {
   local key="$1"
   local fallback="${2:-}"
@@ -333,6 +341,7 @@ configure_toquehub() {
   set_env_if_placeholder POSTGRES_PASSWORD "$(secret)"
   set_env_if_placeholder JWT_SECRET "$(secret)"
   set_env_if_placeholder BACKUP_CLOUD_ENCRYPTION_KEY "$(secret)"
+  set_env_if_placeholder PURCHASING_EMAIL_ENCRYPTION_KEY "$(secret)"
   set_env_if_placeholder TOQUEHUB_UPDATER_SECRET "$(secret)"
   set_env_if_placeholder TOQUEHUB_REMOTE_AGENT_SECRET "$(secret)"
   set_env TOQUEHUB_REMOTE_AGENT_URL "${TOQUEHUB_REMOTE_AGENT_URL:-http://host.docker.internal:3101}"
@@ -359,12 +368,18 @@ configure_toquehub() {
 
   local tail_ip
   tail_ip="$(tailscale_ip || true)"
+  local tail_dns_name
+  tail_dns_name="$(tailscale_dns_name || true)"
   if [[ -n "$tail_ip" ]]; then
     set_env TOQUEHUB_TAILSCALE_IP "$tail_ip"
-    set_env TOQUEHUB_REMOTE_ACCESS_URL "$(url_for_host "$tail_ip" "$HTTP_PORT")"
-    set_env CORS_ORIGIN "$(get_env CORS_ORIGIN "$(origin_for_host localhost "$HTTP_PORT")"),$(origin_for_host "$tail_ip" "$HTTP_PORT")"
+    set_env TOQUEHUB_TAILSCALE_DNS_NAME "$tail_dns_name"
+    set_env TOQUEHUB_REMOTE_ACCESS_URL "$(url_for_host "${tail_dns_name:-$tail_ip}" "$HTTP_PORT")"
+    local tailscale_origin
+    tailscale_origin="$(origin_for_host "${tail_dns_name:-$tail_ip}" "$HTTP_PORT")"
+    set_env CORS_ORIGIN "$(get_env CORS_ORIGIN "$(origin_for_host localhost "$HTTP_PORT")"),$tailscale_origin"
   else
     set_env TOQUEHUB_TAILSCALE_IP ""
+    set_env TOQUEHUB_TAILSCALE_DNS_NAME ""
     set_env TOQUEHUB_REMOTE_ACCESS_URL ""
   fi
 }

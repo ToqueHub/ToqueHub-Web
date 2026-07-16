@@ -38,6 +38,9 @@ export interface RemoteAccessStatus {
   url: string | null;
   loginUrl: string | null;
   hostname: string | null;
+  dnsName?: string | null;
+  dnsUrl?: string | null;
+  magicDnsReady?: boolean;
   ip: string | null;
   message: string;
 }
@@ -543,6 +546,9 @@ export type HaccpAssistantChoice = {
   description?: string;
   payload?: Record<string, unknown>;
 };
+export type HumanSupportAttachment = { id: string; filename: string; mimeType: string; size: number; createdAt: string };
+export type HumanSupportMessage = { id: string; author: 'USER' | 'VOLUNTEER' | 'SYSTEM'; content: string; volunteerName?: string | null; deliveryStatus: 'PENDING' | 'SENT' | 'FAILED'; deliveryError?: string | null; createdAt: string; attachments: HumanSupportAttachment[] };
+export type HumanSupportTicket = { id: string; status: 'OPEN' | 'IN_PROGRESS' | 'CLOSED'; contactEmail: string; contactPhone?: string | null; assignedVolunteer?: string | null; relayError?: string | null; createdAt: string; updatedAt: string; closedAt?: string | null; messages: HumanSupportMessage[] };
 export interface TechnicalSheetAssistantDraft {
   id: string;
   targetTechnicalSheetId?: string | null;
@@ -2063,6 +2069,9 @@ export interface SupplierPurchasingProfile {
   timezone: string;
   leadTimeDays: number;
   orderingEnabled?: boolean;
+  emailSubjectTemplate?: string | null;
+  emailBodyTemplate?: string | null;
+  emailSignature?: string | null;
 }
 
 export interface SupplierPurchasingPayload {
@@ -2176,7 +2185,13 @@ export interface PurchaseOrder {
     id: string;
     status: string;
     recipient: string;
+    subject?: string;
+    provider?: 'RESEND' | 'SMTP' | 'GOOGLE' | 'MICROSOFT' | null;
+    senderEmail?: string | null;
+    senderName?: string | null;
+    attemptedAt?: string | null;
     errorMessage?: string | null;
+    providerMessageId?: string | null;
     sentAt?: string | null;
     createdAt: string;
   }>;
@@ -2269,6 +2284,10 @@ export interface PurchasingBootstrap {
     resendApiKeyConfigured: boolean;
     resendVerifiedAt?: string | null;
     resendLastTestEmailId?: string | null;
+    activeEmailProvider?: 'RESEND' | 'SMTP' | 'GOOGLE' | 'MICROSOFT' | null;
+    emailSubjectTemplate?: string | null;
+    emailBodyTemplate?: string | null;
+    emailSignature?: string | null;
   };
   onboarding: {
     currentStep: string;
@@ -2282,6 +2301,30 @@ export interface PurchasingBootstrap {
   sites: Site[];
   locations: Location[];
   permissions: string[];
+}
+
+export interface PurchasingEmailConnection {
+  id: string;
+  provider: 'RESEND' | 'SMTP' | 'GOOGLE' | 'MICROSOFT';
+  status: 'DISCONNECTED' | 'CONFIGURED' | 'CONNECTED' | 'ERROR';
+  senderEmail?: string | null;
+  senderName?: string | null;
+  smtpHost?: string | null;
+  smtpPort?: number | null;
+  smtpSecure?: boolean;
+  smtpUsername?: string | null;
+  configured: boolean;
+  lastTestedAt?: string | null;
+  lastError?: string | null;
+}
+
+export interface PurchaseEmailPreview {
+  recipient?: string | null;
+  senderEmail?: string | null;
+  senderName?: string | null;
+  provider: string;
+  subject: string;
+  text: string;
 }
 
 export interface PurchasingDashboard {

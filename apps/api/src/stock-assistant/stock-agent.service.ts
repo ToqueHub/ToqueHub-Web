@@ -33,6 +33,8 @@ export type AgentResult = {
   questions?: string[];
   confidence?: number;
   needsReview?: boolean;
+  humanHandoffSuggested?: boolean;
+  humanHandoffReason?: string | null;
 };
 export type AgentToolCall = { tool: string; args?: Record<string, any>; message?: string; decision?: 'deterministic' | 'mistral' | 'fallback'; confidence?: number };
 

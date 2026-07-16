@@ -17,7 +17,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { PurchaseReceiptLineStatus } from '@prisma/client';
+import { PurchaseReceiptLineStatus, PurchasingEmailProvider } from '@prisma/client';
 
 export class PurchasingListQueryDto {
   @IsOptional() @IsString() @MaxLength(160) search?: string;
@@ -49,6 +49,9 @@ export class UpdatePurchasingSettingsDto {
   @IsOptional() @IsEmail() @MaxLength(255) fromEmail?: string;
   @IsOptional() @IsString() @MaxLength(160) fromName?: string;
   @IsOptional() @IsEmail() @MaxLength(255) replyTo?: string;
+  @IsOptional() @IsString() @MaxLength(300) emailSubjectTemplate?: string;
+  @IsOptional() @IsString() @MaxLength(8000) emailBodyTemplate?: string;
+  @IsOptional() @IsString() @MaxLength(2000) emailSignature?: string;
 }
 
 export class UpdatePurchasingOnboardingDto {
@@ -99,6 +102,26 @@ export class UpdatePurchaseOrderDto extends CreatePurchaseOrderDto {
 export class SendPurchaseOrderDto {
   @IsString() @MaxLength(120) idempotencyKey!: string;
   @IsOptional() @IsEmail() recipient?: string;
+  @IsOptional() @IsString() @MaxLength(300) subject?: string;
+  @IsOptional() @IsString() @MaxLength(12000) body?: string;
+}
+
+export class ConfigurePurchasingEmailConnectionDto {
+  @IsEnum(PurchasingEmailProvider) provider!: PurchasingEmailProvider;
+  @IsOptional() @IsEmail() @MaxLength(255) senderEmail?: string;
+  @IsOptional() @IsString() @MaxLength(160) senderName?: string;
+  @IsOptional() @IsString() @MaxLength(255) smtpHost?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(65535) smtpPort?: number;
+  @IsOptional() @IsBoolean() smtpSecure?: boolean;
+  @IsOptional() @IsString() @MaxLength(255) smtpUsername?: string;
+  @IsOptional() @IsString() @MaxLength(1000) smtpPassword?: string;
+}
+
+export class ConfigurePurchasingOAuthDto {
+  @IsEnum(PurchasingEmailProvider) provider!: PurchasingEmailProvider;
+  @IsString() @MaxLength(1024) clientId!: string;
+  @IsOptional() @IsString() @MaxLength(2048) clientSecret?: string;
+  @IsOptional() @IsString() @MaxLength(120) tenantId?: string;
 }
 
 export class PurchaseOrderReasonDto {

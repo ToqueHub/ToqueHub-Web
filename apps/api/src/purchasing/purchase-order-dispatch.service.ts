@@ -14,6 +14,8 @@ import {
   type PurchasingEmailTransport,
 } from './purchasing-email.transport';
 import { purchaseOrderInclude, purchaseOrderSnapshot } from './purchasing-records';
+import { PurchasingEmailConnectionService } from './purchasing-email-connection.service';
+import { PurchasingEmailTemplateService } from './purchasing-email-template.service';
 
 @Injectable()
 export class PurchaseOrderDispatchService {
@@ -26,6 +28,8 @@ export class PurchaseOrderDispatchService {
     private readonly pdf: PurchaseOrderPdfService,
     @Inject(PURCHASING_EMAIL_TRANSPORT)
     private readonly emailTransport: PurchasingEmailTransport,
+    private readonly connections: PurchasingEmailConnectionService,
+    private readonly templates: PurchasingEmailTemplateService,
   ) {}
 
   async send(
@@ -34,6 +38,8 @@ export class PurchaseOrderDispatchService {
     id: string,
     idempotencyKey: string,
     recipientOverride?: string,
+    subjectOverride?: string,
+    bodyOverride?: string,
   ) {
     await this.context.assertInstalled(organizationId);
     this.policy.assertPermission(actor, 'purchasing.send');
@@ -44,11 +50,10 @@ export class PurchaseOrderDispatchService {
     if (!order) throw new NotFoundException('Commande introuvable.');
     if (!order.lines.length)
       throw new BadRequestException('Ajoutez au moins une ligne avant l’envoi.');
-    const recipient =
-      recipientOverride?.trim() || order.supplier.purchasingProfile?.orderEmail?.trim();
+    const recipient = recipientOverride?.trim() || order.supplier.purchasingProfile?.orderEmail?.trim() || order.supplier.email?.trim();
     if (!recipient)
       throw new BadRequestException(
-        'E-mail de commande fournisseur requis. Ajoutez-le dans Stocks > Fournisseurs avant l’envoi.',
+        'E-mail de commande fournisseur requis. Ajoutez un e-mail Achats ou un e-mail de contact dans Stocks > Fournisseurs avant l’envoi.',
       );
     if (order.expectedDeliveryDate)
       this.delivery.assertAllowed(
@@ -61,28 +66,36 @@ export class PurchaseOrderDispatchService {
     );
     assertMinimumOrder(productSubtotal, minimumOrder);
     const settings = await this.context.ensureSettings(organizationId);
-    if (!settings.resendVerifiedAt)
-      throw new BadRequestException('Testez et validez la clé API Resend avant le premier envoi.');
+    const connection = await this.connections.active(organizationId);
+    if (!connection && !settings.resendVerifiedAt)
+      throw new BadRequestException('Connectez et testez une messagerie avant le premier envoi.');
+    const email = this.templates.render({
+      order,
+      senderName: connection?.senderName || settings.fromName || order.organization?.name || 'ToqueHub',
+      subjectTemplate: subjectOverride || order.supplier.purchasingProfile?.emailSubjectTemplate || settings.emailSubjectTemplate,
+      bodyTemplate: bodyOverride || order.supplier.purchasingProfile?.emailBodyTemplate || settings.emailBodyTemplate,
+      signature: order.supplier.purchasingProfile?.emailSignature || settings.emailSignature,
+    });
     const reservation = await this.dispatches.reserve({
       organizationId,
       orderId: id,
       orderNumber: order.number,
       idempotencyKey,
       recipient,
-      snapshot: purchaseOrderSnapshot(order) as Prisma.InputJsonValue,
+      snapshot: { order: purchaseOrderSnapshot(order), email: { recipient, subject: email.subject, body: email.text } } as Prisma.InputJsonValue,
+      provider: connection?.provider || 'RESEND',
+      senderEmail: connection?.senderEmail || settings.fromEmail,
+      senderName: connection?.senderName || settings.fromName,
+      renderedBody: email.text,
     });
     if (reservation.existing) return reservation.dispatch;
     const dispatch = reservation.dispatch;
     try {
       const document = order as unknown as PurchaseOrderEmailDocument;
       const attachment = await this.pdf.build(document);
-      const result = await this.emailTransport.sendOrder(
-        settings,
-        document,
-        attachment,
-        recipient,
-        dispatch.idempotencyKey,
-      );
+      const result = connection
+        ? await this.connections.send({ organizationId, recipient, subject: email.subject, text: email.text, pdf: attachment, filename: `${order.number}.pdf` })
+        : await this.emailTransport.sendOrder(settings, document, attachment, recipient, dispatch.idempotencyKey);
       return await this.dispatches.complete({
         organizationId,
         orderId: id,
@@ -91,7 +104,7 @@ export class PurchaseOrderDispatchService {
         dispatchId: dispatch.id,
         recipient,
         providerMessageId: result.messageId,
-        subject: result.subject,
+        subject: 'subject' in result ? result.subject : email.subject,
       });
     } catch (error) {
       const message = await this.dispatches.fail(
@@ -106,6 +119,18 @@ export class PurchaseOrderDispatchService {
       );
       throw new BadRequestException(`La commande n’a pas été marquée envoyée : ${message}`);
     }
+  }
+
+  async preview(organizationId: string, actor: AuthenticatedUser, id: string, recipientOverride?: string) {
+    await this.context.assertInstalled(organizationId);
+    this.policy.assertPermission(actor, 'purchasing.send');
+    const order = await this.prisma.purchaseOrder.findFirst({ where: { id, organizationId }, include: { ...purchaseOrderInclude(true), organization: true } });
+    if (!order) throw new NotFoundException('Commande introuvable.');
+    const settings = await this.context.ensureSettings(organizationId);
+    const connection = await this.connections.active(organizationId);
+    const recipient = recipientOverride?.trim() || order.supplier.purchasingProfile?.orderEmail?.trim() || order.supplier.email?.trim() || null;
+    const rendered = this.templates.render({ order, senderName: connection?.senderName || settings.fromName || order.organization?.name || 'ToqueHub', subjectTemplate: order.supplier.purchasingProfile?.emailSubjectTemplate || settings.emailSubjectTemplate, bodyTemplate: order.supplier.purchasingProfile?.emailBodyTemplate || settings.emailBodyTemplate, signature: order.supplier.purchasingProfile?.emailSignature || settings.emailSignature });
+    return { recipient, senderEmail: connection?.senderEmail || settings.fromEmail, senderName: connection?.senderName || settings.fromName || order.organization?.name, provider: connection?.provider || 'RESEND', ...rendered };
   }
 
   async document(organizationId: string, actor: AuthenticatedUser, id: string) {
