@@ -40,6 +40,15 @@ function normalizeVersion(value?: string | null) {
   return (value || '').trim().replace(/^v/i, '');
 }
 
+function installedVersion() {
+  // The updater changes the image tag atomically. TOQUEHUB_VERSION can remain from an
+  // older installation, so the running image tag is the authoritative Docker version.
+  const runtimeVersion = normalizeVersion(env('TOQUEHUB_IMAGE_TAG') || env('TOQUEHUB_VERSION'));
+  return /^\d+\.\d+\.\d+(?:[-+].*)?$/.test(runtimeVersion)
+    ? runtimeVersion
+    : normalizeVersion(resolveAppPackageInfo().version);
+}
+
 function compareVersions(left?: string | null, right?: string | null) {
   const leftParts = normalizeVersion(left).split(/[.-]/).map((part) => Number.parseInt(part, 10) || 0);
   const rightParts = normalizeVersion(right).split(/[.-]/).map((part) => Number.parseInt(part, 10) || 0);
@@ -93,7 +102,7 @@ export class SystemUpdateService {
 
   async getStatus(force = false) {
     const imageTag = env('TOQUEHUB_IMAGE_TAG') || 'local';
-    const installedVersion = normalizeVersion(resolveAppPackageInfo().version);
+    const currentVersion = installedVersion();
     const githubToken = await this.getGithubToken();
     const release = await this.getLatestRelease(force, githubToken);
     const latestVersion = normalizeVersion(release.release?.tag_name);
@@ -106,7 +115,7 @@ export class SystemUpdateService {
       channel: 'stable',
       checkedAt: release.checkedAt,
       current: {
-        version: installedVersion,
+        version: currentVersion,
         imageTag,
         registry: env('TOQUEHUB_IMAGE_REGISTRY') || null,
         apiImage: `${env('TOQUEHUB_IMAGE_REGISTRY', 'ghcr.io/toquehub')}/toquehub-api:${imageTag}`,
@@ -121,7 +130,7 @@ export class SystemUpdateService {
         notes: release.release.body ?? null,
         source: release.release.source ?? 'release',
       } : null,
-      updateAvailable: Boolean(latestVersion && compareVersions(latestVersion, installedVersion) > 0),
+      updateAvailable: Boolean(latestVersion && compareVersions(latestVersion, currentVersion) > 0),
       github: {
         repo: env('TOQUEHUB_RELEASE_REPO', 'ToqueHub/ToqueHub-Web'),
         error: release.error,
@@ -145,7 +154,7 @@ export class SystemUpdateService {
 
     const checkedAt = new Date().toISOString();
     const repo = env('TOQUEHUB_RELEASE_REPO', 'ToqueHub/ToqueHub-Web');
-    const currentVersion = normalizeVersion(resolveAppPackageInfo().version);
+    const currentVersion = installedVersion();
 
     try {
       const response = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=10`, {

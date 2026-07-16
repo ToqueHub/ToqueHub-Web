@@ -11,6 +11,7 @@ const COMPOSE_FILE = process.env.UPDATER_COMPOSE_FILE || '/workspace/docker-comp
 const ENV_FILE = process.env.UPDATER_ENV_FILE || '/workspace/.env.docker';
 const BACKUP_DIR = process.env.UPDATER_BACKUP_DIR || '/workspace/.toquehub-updates/backups';
 const HEALTH_URL = process.env.UPDATER_HEALTH_URL || 'http://web/api/system/status';
+const COMPOSE_PROJECT_NAME = process.env.COMPOSE_PROJECT_NAME || 'toquehub';
 
 const operations = new Map();
 let lastOperationId = null;
@@ -73,7 +74,7 @@ function run(operation, command, args, options = {}) {
 }
 
 function composeArgs(...args) {
-  return ['compose', '--env-file', ENV_FILE, '-f', COMPOSE_FILE, ...args];
+  return ['compose', '--project-name', COMPOSE_PROJECT_NAME, '--env-file', ENV_FILE, '-f', COMPOSE_FILE, ...args];
 }
 
 function dockerCompose(operation, args, options = {}) {
@@ -85,6 +86,10 @@ async function githubLoginFromToken(operation, token) {
   if (!githubToken) {
     operationLog(operation, 'GHCR: aucun token GitHub fourni, pull Docker anonyme.');
     return;
+  }
+
+  if (githubToken.startsWith('github_pat_')) {
+    operationLog(operation, 'GHCR: token fine-grained détecté. Pour un registre privé, utilisez un Personal access token (classic) avec repo et read:packages.');
   }
 
   let username = '';
@@ -299,7 +304,7 @@ async function runUpdate(operation, targetTag, githubToken) {
     setEnvValue('TOQUEHUB_IMAGE_TAG', targetImageTag);
     envTagChanged = true;
     operationLog(operation, `TOQUEHUB_IMAGE_TAG=${targetImageTag}`);
-    await dockerCompose(operation, ['up', '-d', '--no-build', 'api', 'web']);
+    await dockerCompose(operation, ['up', '-d', '--no-build', '--no-deps', 'api', 'web']);
     await healthCheck(operation);
     operation.status = 'success';
     operation.finishedAt = new Date().toISOString();
@@ -321,7 +326,7 @@ async function runUpdate(operation, targetTag, githubToken) {
       await dockerCompose(operation, ['pull', 'api', 'web']).catch((pullError) => {
         operationLog(operation, `Pull rollback ignoré: ${pullError.message}`);
       });
-      await dockerCompose(operation, ['up', '-d', '--no-build', 'api', 'web']);
+      await dockerCompose(operation, ['up', '-d', '--no-build', '--no-deps', 'api', 'web']);
       operationLog(operation, 'Rollback terminé.');
     } catch (rollbackError) {
       operationLog(operation, `Rollback échoué: ${rollbackError.message}`);
