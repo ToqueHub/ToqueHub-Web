@@ -185,12 +185,12 @@ async function preflight(operation, targetImageTag, githubToken) {
   operationLog(operation, 'Précontrôle avant mise à jour.');
   if (!existsSync(COMPOSE_FILE)) throw new Error(`Compose introuvable: ${COMPOSE_FILE}`);
   if (!existsSync(ENV_FILE)) throw new Error(`Fichier env introuvable: ${ENV_FILE}`);
-  operationLog(operation, 'Démarrage des services ToqueHub requis si nécessaire.');
-  await dockerCompose(operation, ['up', '-d']);
+  await githubLoginFromToken(operation, githubToken);
+  operationLog(operation, 'Démarrage des conteneurs existants requis, sans pull ni compilation locale.');
+  await dockerCompose(operation, ['start', 'postgres', 'api']);
   await ensureServiceRunning(operation, 'postgres');
   await ensurePostgresReady(operation);
   await ensureServiceRunning(operation, 'api');
-  await githubLoginFromToken(operation, githubToken);
   operationLog(operation, `Vérification accès images Docker: ${targetImageTag}`);
   await dockerCompose(operation, ['pull', 'api', 'web'], { env: { TOQUEHUB_IMAGE_TAG: targetImageTag } });
   operationLog(operation, 'Précontrôle OK.');
@@ -299,7 +299,7 @@ async function runUpdate(operation, targetTag, githubToken) {
     setEnvValue('TOQUEHUB_IMAGE_TAG', targetImageTag);
     envTagChanged = true;
     operationLog(operation, `TOQUEHUB_IMAGE_TAG=${targetImageTag}`);
-    await dockerCompose(operation, ['up', '-d', 'api', 'web']);
+    await dockerCompose(operation, ['up', '-d', '--no-build', 'api', 'web']);
     await healthCheck(operation);
     operation.status = 'success';
     operation.finishedAt = new Date().toISOString();
@@ -321,7 +321,7 @@ async function runUpdate(operation, targetTag, githubToken) {
       await dockerCompose(operation, ['pull', 'api', 'web']).catch((pullError) => {
         operationLog(operation, `Pull rollback ignoré: ${pullError.message}`);
       });
-      await dockerCompose(operation, ['up', '-d', 'api', 'web']);
+      await dockerCompose(operation, ['up', '-d', '--no-build', 'api', 'web']);
       operationLog(operation, 'Rollback terminé.');
     } catch (rollbackError) {
       operationLog(operation, `Rollback échoué: ${rollbackError.message}`);
