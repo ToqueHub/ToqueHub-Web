@@ -17212,8 +17212,7 @@ function SettingsPage({
                       <History size={18} /> GitHub releases & changelog
                     </span>
                     <p className="muted" style={{ fontSize: '0.85rem', margin: 0 }}>
-                      Token en lecture seule pour récupérer les mises à jour et les notes de version
-                      d’un dépôt privé.
+                      Token GitHub utilisé pour lire les releases et télécharger les images privées.
                     </p>
                   </div>
                   <span
@@ -17261,14 +17260,14 @@ function SettingsPage({
                     color: 'var(--text-main)',
                   }}
                 >
-                  Fine-grained token GitHub
+                  Personal access token GitHub (classic)
                   <div className="api-key-input-container">
                     <input
                       type="password"
                       placeholder={
                         githubTokenConfigured
                           ? 'Nouveau token ou laisser vide pour supprimer'
-                          : 'github_pat_...'
+                          : 'ghp_...'
                       }
                       value={githubToken}
                       onChange={(event) => setGithubToken(event.target.value)}
@@ -17322,9 +17321,9 @@ function SettingsPage({
                   </button>
                 </div>
                 <p className="muted" style={{ fontSize: '0.78rem', margin: '0.85rem 0 0 0' }}>
-                  Permission GitHub recommandée : accès au dépôt privé avec{' '}
-                  <strong>Contents: Read-only</strong>. Le token est stocké côté serveur et n’est
-                  jamais réaffiché en clair.
+                  Pour un dépôt et des images privés, créez un token classic avec les droits{' '}
+                  <strong>repo</strong> et <strong>read:packages</strong>. Le token est stocké côté
+                  serveur et n’est jamais réaffiché en clair.
                 </p>
               </div>
 

@@ -335,6 +335,7 @@ configure_toquehub() {
   ZIGBEE2MQTT_PORT="$(get_env ZIGBEE2MQTT_HTTP_PORT "$ZIGBEE2MQTT_PORT")"
   MQTT_PORT="$(get_env MQTT_PORT "$MQTT_PORT")"
   set_env TOQUEHUB_RELEASE_REPO "$slug"
+  set_env COMPOSE_PROJECT_NAME "$(get_env COMPOSE_PROJECT_NAME toquehub)"
   set_env TOQUEHUB_IMAGE_REGISTRY "ghcr.io/$owner"
   set_env TOQUEHUB_IMAGE_TAG "$version"
   set_env TOQUEHUB_VERSION "$version"

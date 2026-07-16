@@ -140,6 +140,7 @@ services:
     restart: unless-stopped
     environment:
       UPDATER_SECRET: ${TOQUEHUB_UPDATER_SECRET:-change-me-updater-secret}
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-toquehub}
       UPDATER_WORKDIR: /workspace
       UPDATER_COMPOSE_FILE: /workspace/docker-compose.yml
       UPDATER_ENV_FILE: /workspace/.env.docker
