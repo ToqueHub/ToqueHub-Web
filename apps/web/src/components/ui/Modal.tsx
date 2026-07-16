@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
 
@@ -21,7 +22,9 @@ export function Modal({
   size?: ModalSize;
   bodyClassName?: string;
 }) {
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
         <div className="modal-overlay" onClick={onClose} style={{ pointerEvents: 'auto' }}>
@@ -46,6 +49,7 @@ export function Modal({
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }

@@ -148,6 +148,10 @@ export class SupplierPurchasingSettingsDto {
   @Min(0)
   @Max(365)
   leadTimeDays?: number;
+
+  @IsOptional() @IsString() @MaxLength(300) emailSubjectTemplate?: string;
+  @IsOptional() @IsString() @MaxLength(8000) emailBodyTemplate?: string;
+  @IsOptional() @IsString() @MaxLength(2000) emailSignature?: string;
 }
 
 export class UpsertSupplierDto {

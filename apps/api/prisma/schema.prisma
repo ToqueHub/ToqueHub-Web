@@ -311,6 +311,20 @@ enum PurchaseDispatchStatus {
   FAILED
 }
 
+enum PurchasingEmailProvider {
+  RESEND
+  SMTP
+  GOOGLE
+  MICROSOFT
+}
+
+enum PurchasingEmailConnectionStatus {
+  DISCONNECTED
+  CONFIGURED
+  CONNECTED
+  ERROR
+}
+
 enum PurchaseReceiptStatus {
   DRAFT
   REVIEW_NEEDED
@@ -358,6 +372,24 @@ enum StockAssistantMessageRole {
   USER
   ASSISTANT
   SYSTEM
+}
+
+enum HumanSupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  CLOSED
+}
+
+enum HumanSupportMessageAuthor {
+  USER
+  VOLUNTEER
+  SYSTEM
+}
+
+enum HumanSupportDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
 }
 
 enum MarginAlertSeverity {
@@ -882,6 +914,9 @@ model Organization {
   purchaseReceipts                PurchaseReceipt[]
   purchaseReceiptLines            PurchaseReceiptLine[]
   purchaseOrderEvents             PurchaseOrderEvent[]
+  purchasingEmailConnections      PurchasingEmailConnection[]
+  purchasingEmailOAuthStates      PurchasingEmailOAuthState[]
+  humanSupportTickets             HumanSupportTicket[]
 
   @@index([regulatoryCountryCode])
   @@index([regulatoryCountrySelectedById])
@@ -894,6 +929,113 @@ model SystemSetting {
   value     String   @db.Text
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// Ces tables appartiennent au déploiement central apps/support-relay. Elles restent
+// dans le schéma partagé afin que le relais et les installations utilisent le même client Prisma.
+model SupportRelayInstallation {
+  id         String   @id @default(uuid()) @db.Uuid
+  instanceId String   @unique
+  secret     String   @db.Text
+  blockedAt  DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  tickets    SupportRelayTicket[]
+  nonces     SupportRelayNonce[]
+
+  @@map("support_relay_installations")
+}
+
+model SupportRelayNonce {
+  id             String   @id @default(uuid()) @db.Uuid
+  installationId String   @db.Uuid
+  nonce          String
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+  installation   SupportRelayInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  @@unique([installationId, nonce])
+  @@index([expiresAt])
+  @@map("support_relay_nonces")
+}
+
+model SupportRelayTicket {
+  id                 String   @id @default(uuid()) @db.Uuid
+  installationId     String   @db.Uuid
+  localTicketId      String
+  telegramTopicId    String?
+  status             String   @default("OPEN")
+  assignedTelegramId String?
+  assignedVolunteer  String?
+  payload            Json
+  closedAt           DateTime?
+  expiresAt          DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  installation       SupportRelayInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  messages           SupportRelayMessage[]
+  events             SupportRelayEvent[]
+
+  @@unique([installationId, localTicketId])
+  @@index([telegramTopicId])
+  @@index([expiresAt])
+  @@map("support_relay_tickets")
+}
+
+model SupportRelayMessage {
+  id              String   @id @default(uuid()) @db.Uuid
+  ticketId        String   @db.Uuid
+  localMessageId  String?
+  telegramMessageId String?
+  author          String
+  content         String   @db.Text
+  payload         Json?
+  createdAt       DateTime @default(now())
+  ticket          SupportRelayTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@unique([ticketId, localMessageId])
+  @@unique([ticketId, telegramMessageId])
+  @@map("support_relay_messages")
+}
+
+model SupportRelayEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  ticketId    String   @db.Uuid
+  eventKey    String   @unique
+  payload     Json
+  deliveredAt DateTime?
+  createdAt   DateTime @default(now())
+  ticket      SupportRelayTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, deliveredAt])
+  @@map("support_relay_events")
+}
+
+model PurchasingOAuthBrokerState {
+  id            String                  @id @default(uuid()) @db.Uuid
+  provider      PurchasingEmailProvider
+  stateHash     String                  @unique
+  returnUrl     String                  @db.Text
+  clientState   String                  @db.Text
+  expiresAt     DateTime
+  consumedAt    DateTime?
+  createdAt     DateTime                @default(now())
+
+  @@index([expiresAt])
+  @@map("purchasing_oauth_broker_states")
+}
+
+model PurchasingOAuthBrokerGrant {
+  id                String   @id @default(uuid()) @db.Uuid
+  grantHash         String   @unique
+  stateId           String   @unique @db.Uuid
+  payloadCiphertext String   @db.Text
+  expiresAt         DateTime
+  consumedAt        DateTime?
+  createdAt         DateTime @default(now())
+
+  @@index([expiresAt])
+  @@map("purchasing_oauth_broker_grants")
 }
 
 model User {
@@ -911,6 +1053,8 @@ model User {
   roleId         String     @db.Uuid
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
+
+  purchasingEmailOAuthStates PurchasingEmailOAuthState[]
 
   organization                       Organization?                  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   role                               Role                           @relation(fields: [roleId], references: [id], onDelete: Restrict)
@@ -990,6 +1134,7 @@ model User {
   createdPurchaseReceipts            PurchaseReceipt[]              @relation("PurchaseReceiptCreatedBy")
   validatedPurchaseReceipts          PurchaseReceipt[]              @relation("PurchaseReceiptValidatedBy")
   purchaseOrderEvents                PurchaseOrderEvent[]           @relation("PurchaseOrderEventActor")
+  humanSupportTickets                HumanSupportTicket[]
 
   @@index([organizationId])
   @@index([roleId])
@@ -1599,12 +1744,62 @@ model PurchasingSettings {
   replyTo               String?
   resendVerifiedAt      DateTime?
   resendLastTestEmailId String?
+  activeEmailProvider   PurchasingEmailProvider?
+  emailSubjectTemplate  String?   @db.Text
+  emailBodyTemplate     String?   @db.Text
+  emailSignature        String?   @db.Text
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("purchasing_settings")
+}
+
+model PurchasingEmailConnection {
+  id                  String                          @id @default(uuid()) @db.Uuid
+  organizationId      String                          @db.Uuid
+  provider            PurchasingEmailProvider
+  status              PurchasingEmailConnectionStatus @default(DISCONNECTED)
+  senderEmail         String?
+  senderName          String?
+  smtpHost            String?
+  smtpPort            Int?
+  smtpSecure          Boolean                         @default(true)
+  smtpUsername        String?
+  secretCiphertext    String?                         @db.Text
+  oauthRefreshToken   String?                         @db.Text
+  oauthAccountId      String?
+  lastTestedAt        DateTime?
+  lastError           String?                         @db.Text
+  createdAt           DateTime                        @default(now())
+  updatedAt           DateTime                        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, provider])
+  @@index([organizationId, status])
+  @@map("purchasing_email_connections")
+}
+
+model PurchasingEmailOAuthState {
+  id             String                  @id @default(uuid()) @db.Uuid
+  organizationId String                  @db.Uuid
+  userId         String                  @db.Uuid
+  provider       PurchasingEmailProvider
+  redirectUri    String
+  stateHash      String                  @unique
+  expiresAt      DateTime
+  consumedAt     DateTime?
+  createdAt      DateTime                @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("purchasing_email_oauth_states")
 }
 
 model PurchasingOnboardingProgress {
@@ -1636,6 +1831,9 @@ model SupplierPurchasingProfile {
   minimumOrder     Decimal                @default(0) @db.Decimal(12, 4)
   deliveryFee      Decimal                @default(0) @db.Decimal(12, 4)
   orderingEnabled  Boolean                @default(true)
+  emailSubjectTemplate String?            @db.Text
+  emailBodyTemplate    String?            @db.Text
+  emailSignature       String?            @db.Text
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
 
@@ -1802,6 +2000,10 @@ model PurchaseOrderDispatch {
   status            PurchaseDispatchStatus @default(PENDING)
   recipient         String
   subject           String
+  provider          PurchasingEmailProvider?
+  senderEmail       String?
+  senderName        String?
+  renderedBody      String?                @db.Text
   snapshot          Json
   providerMessageId String?
   errorMessage      String?                @db.Text
@@ -4563,6 +4765,70 @@ model StockAssistantMessage {
 
   @@index([conversationId, createdAt])
   @@map("stock_assistant_messages")
+}
+
+model HumanSupportTicket {
+  id                 String                    @id @default(uuid()) @db.Uuid
+  organizationId     String                    @db.Uuid
+  userId             String                    @db.Uuid
+  relayTicketId      String?                   @unique
+  status             HumanSupportTicketStatus  @default(OPEN)
+  contactEmail       String
+  contactPhone       String?
+  transcript         String                    @db.Text
+  assignedVolunteer  String?
+  openedAt           DateTime                  @default(now())
+  closedAt           DateTime?
+  lastReadAt         DateTime?
+  relayError         String?                   @db.Text
+  relayCursor        String?
+  expiresAt          DateTime?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+
+  organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages     HumanSupportMessage[]
+
+  @@index([organizationId, userId, status])
+  @@index([closedAt])
+  @@index([expiresAt])
+  @@map("human_support_tickets")
+}
+
+model HumanSupportMessage {
+  id             String                       @id @default(uuid()) @db.Uuid
+  ticketId       String                       @db.Uuid
+  author         HumanSupportMessageAuthor
+  content        String                       @db.Text
+  volunteerName  String?
+  relayMessageId String?                      @unique
+  deliveryStatus HumanSupportDeliveryStatus   @default(PENDING)
+  deliveryError  String?                      @db.Text
+  metadata       Json?
+  createdAt      DateTime                     @default(now())
+
+  ticket      HumanSupportTicket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  attachments HumanSupportAttachment[]
+
+  @@index([ticketId, createdAt])
+  @@map("human_support_messages")
+}
+
+model HumanSupportAttachment {
+  id           String   @id @default(uuid()) @db.Uuid
+  messageId    String   @db.Uuid
+  filename     String
+  mimeType     String
+  size         Int
+  storagePath  String   @db.Text
+  relayFileId  String?
+  createdAt    DateTime @default(now())
+
+  message HumanSupportMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@map("human_support_attachments")
 }
 
 model StockProposal {

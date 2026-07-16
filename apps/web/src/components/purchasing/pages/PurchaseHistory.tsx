@@ -99,23 +99,20 @@ export function HistoryView({ token }: { token: string }) {
         />
       </div>
       {events.length ? (
-        <div className="purchasing-timeline">
+        <div className="hr-history">
           {events.map((event) => (
-            <article key={event.id}>
-              <span className="purchasing-timeline-dot" />
-              <div>
-                <strong>{event.summary}</strong>
-                <p>
-                  {event.order?.number} · {event.order?.supplierNameSnapshot}
-                </p>
-                <small>
-                  {dateTimeLabel(event.createdAt)}
-                  {event.actor
-                    ? ` · ${event.actor.firstName ?? ''} ${event.actor.lastName ?? event.actor.email}`
-                    : ''}
-                </small>
-              </div>
-            </article>
+            <div key={event.id}>
+              <strong>{event.summary}</strong>
+              <p style={{ margin: '0.15rem 0', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                {event.order?.number} · {event.order?.supplierNameSnapshot}
+              </p>
+              <small style={{ color: '#94a3b8', fontSize: '0.68rem' }}>
+                {dateTimeLabel(event.createdAt)}
+                {event.actor
+                  ? ` · ${event.actor.firstName ?? ''} ${event.actor.lastName ?? event.actor.email}`
+                  : ''}
+              </small>
+            </div>
           ))}
         </div>
       ) : (

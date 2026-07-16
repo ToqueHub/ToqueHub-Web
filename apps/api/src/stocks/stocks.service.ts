@@ -445,6 +445,9 @@ export class StocksService {
       timezone: settings.timezone?.trim() || 'UTC',
       leadTimeDays: settings.leadTimeDays ?? 1,
       orderingEnabled: true,
+      emailSubjectTemplate: settings.emailSubjectTemplate?.trim() || null,
+      emailBodyTemplate: settings.emailBodyTemplate?.trim() || null,
+      emailSignature: settings.emailSignature?.trim() || null,
     };
   }
 

@@ -35,7 +35,7 @@ const TOOL_CALL_SCHEMA = {
 const FINAL_RESPONSE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['assistantMessage', 'statePatch', 'choices', 'suggestions', 'confidence', 'needsReview'],
+  required: ['assistantMessage', 'statePatch', 'choices', 'suggestions', 'confidence', 'needsReview', 'humanHandoffSuggested', 'humanHandoffReason'],
   properties: {
     assistantMessage: { type: 'string' },
     statePatch: { type: 'object' },
@@ -57,6 +57,8 @@ const FINAL_RESPONSE_SCHEMA = {
     suggestions: { type: 'array', items: { type: 'string' } },
     confidence: { type: 'number' },
     needsReview: { type: 'boolean' },
+    humanHandoffSuggested: { type: 'boolean' },
+    humanHandoffReason: { type: ['string', 'null'] },
   },
 };
 
@@ -144,6 +146,8 @@ export class StockAgentHarnessService {
         suggestions: Array.isArray(final.suggestions) && final.suggestions.length ? final.suggestions : toolResult.suggestions || [],
         confidence: Number.isFinite(Number(final.confidence)) ? Number(final.confidence) : toolResult.confidence ?? toolCall.confidence,
         needsReview: Boolean(final.needsReview || toolResult.needsReview),
+        humanHandoffSuggested: Boolean(final.humanHandoffSuggested),
+        humanHandoffReason: final.humanHandoffReason ? String(final.humanHandoffReason) : null,
         toolResults: [
           ...(toolResult.toolResults || []),
           { tool: 'agent_final_response', result: { provider: 'mistral', confidence: final.confidence, statePatch: final.statePatch || {} } },
@@ -397,6 +401,7 @@ export class StockAgentHarnessService {
       'Ne parle jamais de sous-lieu interne. Utilise le mot “site”.',
       'Si une proposition a été préparée, rappelle qu’elle doit être vérifiée et validée avant application.',
       'Si l’outil est incertain, demande une clarification simple.',
+      'Utilise humanHandoffSuggested seulement lorsqu’un bénévole est réellement préférable à une nouvelle réponse IA.',
       'Réponds uniquement avec le JSON du schéma.',
     ].join('\n');
   }

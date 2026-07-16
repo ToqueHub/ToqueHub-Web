@@ -25,7 +25,7 @@ export function PurchasingDashboardView({
       label: 'À préparer',
       value: stats.drafts,
       icon: FileText,
-      tone: 'pink',
+      tone: 'purple',
       action: 'orders' as const,
     },
     {
@@ -39,14 +39,14 @@ export function PurchasingDashboardView({
       label: 'Achats TTC ce mois',
       value: money(stats.amountThisMonth),
       icon: Building2,
-      tone: 'green',
+      tone: 'emerald',
       action: 'orders' as const,
     },
     {
       label: 'Livraisons sous 7 jours',
       value: stats.expectedNext7Days,
       icon: Truck,
-      tone: 'amber',
+      tone: 'orange',
       action: 'receipts' as const,
     },
     {
@@ -59,18 +59,29 @@ export function PurchasingDashboardView({
   ];
   return (
     <div className="purchasing-dashboard-view">
-      <div className="purchasing-metrics">
+      <div className="metrics-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.85rem' }}>
         {cards.map(({ label, value, icon: Icon, tone, action }) => (
           <button
-            className={`purchasing-metric ${tone}`}
+            className="metric-card"
             key={label}
             onClick={() => onNavigate(action)}
+            style={{
+              textAlign: 'left',
+              width: '100%',
+              border: '1px solid var(--light-border)',
+              cursor: 'pointer',
+              outline: 'none',
+              background: 'white',
+              font: 'inherit',
+            }}
           >
-            <span className="purchasing-metric-icon">
-              <Icon size={20} />
-            </span>
-            <strong>{value}</strong>
-            <span>{label}</span>
+            <div className={`metric-icon-wrapper ${tone}`}>
+              <Icon size={22} />
+            </div>
+            <div className="metric-content">
+              <span className="metric-value">{value}</span>
+              <span className="metric-label">{label}</span>
+            </div>
           </button>
         ))}
       </div>

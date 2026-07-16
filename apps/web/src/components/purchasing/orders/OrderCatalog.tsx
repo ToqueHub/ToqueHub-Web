@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 import {
   ArrowLeft,
   CalendarDays,
@@ -55,17 +56,24 @@ export function SupplierSelection({
         />
       </label>
       <div className="purchasing-supplier-grid">
-        {suppliers.map((supplier) => {
+        {suppliers.map((supplier, idx) => {
           const scheduled = supplier.purchasingProfile?.deliveryMode === 'SCHEDULED_DAYS';
           return (
-            <button
+            <motion.button
               type="button"
               className="purchasing-supplier-card"
               key={supplier.id}
               onClick={() => onSelect(supplier)}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.05, duration: 0.2 }}
+              whileHover={{ scale: 1.02, y: -2, borderColor: '#10b981', boxShadow: '0 8px 16px rgba(16,185,129,0.06)' }}
+              style={{
+                transition: 'border-color 0.2s, box-shadow 0.2s',
+              }}
             >
               <span className="purchasing-supplier-icon">
-                <Truck size={23} />
+                <Truck size={22} />
               </span>
               <span>
                 <strong>{supplier.name}</strong>
@@ -75,8 +83,8 @@ export function SupplierSelection({
                   {scheduled ? 'Livraison programmée' : 'Livraison selon disponibilité'}
                 </small>
               </span>
-              <ChevronRight size={19} />
-            </button>
+              <ChevronRight size={19} className="chevron-indicator" />
+            </motion.button>
           );
         })}
       </div>

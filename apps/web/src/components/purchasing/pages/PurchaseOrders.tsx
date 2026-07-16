@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Check, CheckCircle2, Download, Plus, Search, Send, ShoppingCart, X } from 'lucide-react';
+import { AlertCircle, Check, CheckCircle2, Clock3, Download, Mail, Plus, Search, Send, ShoppingCart, X } from 'lucide-react';
 import { api } from '../../../api/client';
 import { Modal } from '../../ui/Modal';
-import type { PurchaseOrder, PurchaseOrderStatus, PurchasingBootstrap } from '../../../types';
+import type { PurchaseEmailPreview, PurchaseOrder, PurchaseOrderStatus, PurchasingBootstrap } from '../../../types';
 import {
   Detail,
   Empty,
@@ -12,6 +12,7 @@ import {
   Pagination,
   ReasonDialog,
   dateLabel,
+  dateTimeLabel,
   messageOf,
   money,
 } from '../components/PurchasingUi';
@@ -49,6 +50,7 @@ export function OrdersView({
   const [selected, setSelected] = useState<PurchaseOrder>();
   const [composerOrder, setComposerOrder] = useState<PurchaseOrder | null | undefined>();
   const [working, setWorking] = useState<string>();
+  const [emailPreview, setEmailPreview] = useState<PurchaseEmailPreview & { orderId: string }>();
   const [reasonAction, setReasonAction] = useState<{
     order: PurchaseOrder;
     kind: 'cancel' | 'close';
@@ -72,6 +74,18 @@ export function OrdersView({
       flash('success', success);
       setSelected(undefined);
       onChanged();
+    } catch (err) {
+      flash('error', messageOf(err));
+    } finally {
+      setWorking(undefined);
+    }
+  };
+  const openEmailPreview = async (order: PurchaseOrder) => {
+    setWorking(order.id);
+    try {
+      const preview = await api.purchaseOrderEmailPreview(token, order.id);
+      if (!preview.recipient) throw new Error('Ajoutez un e-mail Achats ou un e-mail de contact au fournisseur avant l’envoi.');
+      setEmailPreview({ ...preview, orderId: order.id });
     } catch (err) {
       flash('error', messageOf(err));
     } finally {
@@ -185,6 +199,7 @@ export function OrdersView({
               {money(selected.totalIncludingTax, selected.currency)}
             </Detail>
           </div>
+          <OrderDispatchTimeline order={selected} />
           <OrderLinesTable order={selected} />
           <div className="modal-footer purchasing-inline-footer wrap">
             <button
@@ -205,22 +220,13 @@ export function OrdersView({
             {selected.status === 'DRAFT' && can('purchasing.send') && (
               <button
                 className="btn btn-primary"
-                disabled={working === selected.id || !bootstrap.settings.resendVerifiedAt}
+                disabled={working === selected.id || (!bootstrap.settings.activeEmailProvider && !bootstrap.settings.resendVerifiedAt)}
                 title={
-                  bootstrap.settings.resendVerifiedAt
+                  bootstrap.settings.activeEmailProvider || bootstrap.settings.resendVerifiedAt
                     ? undefined
-                    : 'Testez d’abord la clé API Resend dans le guide de configuration.'
+                    : 'Connectez et testez d’abord votre messagerie dans le guide de configuration.'
                 }
-                onClick={() =>
-                  void act(
-                    selected.id,
-                    () =>
-                      api.sendPurchaseOrder(token, selected.id, {
-                        idempotencyKey: crypto.randomUUID(),
-                      }),
-                    'Commande envoyée au fournisseur.',
-                  )
-                }
+                onClick={() => void openEmailPreview(selected)}
               >
                 <Send size={16} /> Envoyer
               </button>
@@ -289,6 +295,18 @@ export function OrdersView({
           flash={flash}
         />
       )}
+      {emailPreview && (
+        <Modal isOpen size="lg" title="Vérifier l’e-mail" subtitle="La commande ne sera envoyée qu’après cette validation." onClose={() => setEmailPreview(undefined)}>
+          <div className="form-row">
+            <label>De<input value={`${emailPreview.senderName || ''} <${emailPreview.senderEmail || ''}>`} disabled /></label>
+            <label>À<input type="email" value={emailPreview.recipient || ''} onChange={(event) => setEmailPreview({ ...emailPreview, recipient: event.target.value })} /></label>
+            <label>Objet<input value={emailPreview.subject} onChange={(event) => setEmailPreview({ ...emailPreview, subject: event.target.value })} /></label>
+            <label className="product-sheet-wide">Message<textarea rows={12} value={emailPreview.text} onChange={(event) => setEmailPreview({ ...emailPreview, text: event.target.value })} /></label>
+          </div>
+          <p className="purchasing-stock-help">Le bon de commande PDF sera joint à cet e-mail.</p>
+          <div className="modal-footer"><button className="btn btn-secondary" onClick={() => setEmailPreview(undefined)}>Annuler</button><button className="btn btn-primary" disabled={!emailPreview.recipient || !emailPreview.subject || working === emailPreview.orderId} onClick={() => void act(emailPreview.orderId, () => api.sendPurchaseOrder(token, emailPreview.orderId, { idempotencyKey: crypto.randomUUID(), recipient: emailPreview.recipient || undefined, subject: emailPreview.subject, body: emailPreview.text }), 'Commande envoyée au fournisseur.')}><Send size={16} /> Confirmer l’envoi</button></div>
+        </Modal>
+      )}
       {reasonAction && (
         <ReasonDialog
           title={
@@ -315,6 +333,65 @@ export function OrdersView({
             );
           }}
         />
+      )}
+    </section>
+  );
+}
+
+function OrderDispatchTimeline({ order }: { order: PurchaseOrder }) {
+  const dispatches = order.dispatches ?? [];
+  const labels: Record<string, { label: string; tone: 'success' | 'danger' | 'pending' }> = {
+    SENT: { label: 'Envoyée au transport', tone: 'success' },
+    FAILED: { label: 'Échec d’envoi', tone: 'danger' },
+    SENDING: { label: 'Envoi en cours', tone: 'pending' },
+    PENDING: { label: 'En attente', tone: 'pending' },
+  };
+  const providerLabels: Record<string, string> = {
+    GOOGLE: 'Google / Gmail',
+    MICROSOFT: 'Microsoft / Outlook',
+    SMTP: 'SMTP',
+    RESEND: 'Resend',
+  };
+
+  return (
+    <section className="purchasing-dispatches" aria-label="Suivi des envois e-mail">
+      <div className="purchasing-dispatches-heading">
+        <div>
+          <h3><Mail size={17} /> Suivi d’envoi</h3>
+          <p>« Envoyée au transport » confirme l’acceptation de l’e-mail, pas sa lecture par le fournisseur.</p>
+        </div>
+      </div>
+      {dispatches.length ? (
+        <div className="purchasing-dispatch-list">
+          {dispatches.map((dispatch) => {
+            const state = labels[dispatch.status] ?? { label: dispatch.status, tone: 'pending' as const };
+            const date = dispatch.sentAt ?? dispatch.attemptedAt ?? dispatch.createdAt;
+            return (
+              <article key={dispatch.id} className="purchasing-dispatch-item">
+                <div className={`purchasing-dispatch-icon ${state.tone}`}>
+                  {state.tone === 'success' ? <CheckCircle2 size={17} /> : state.tone === 'danger' ? <AlertCircle size={17} /> : <Clock3 size={17} />}
+                </div>
+                <div className="purchasing-dispatch-content">
+                  <div className="purchasing-dispatch-topline">
+                    <strong>{state.label}</strong>
+                    <span className={`purchasing-dispatch-status ${state.tone}`}>{state.label}</span>
+                  </div>
+                  <p>
+                    À <b>{dispatch.recipient}</b>
+                    {dispatch.senderEmail ? <> · depuis {dispatch.senderName ? `${dispatch.senderName} <${dispatch.senderEmail}>` : dispatch.senderEmail}</> : null}
+                  </p>
+                  <small>
+                    {dateTimeLabel(date)} · {dispatch.provider ? providerLabels[dispatch.provider] ?? dispatch.provider : 'Transport non renseigné'}
+                    {dispatch.subject ? ` · ${dispatch.subject}` : ''}
+                  </small>
+                  {dispatch.errorMessage ? <div className="purchasing-dispatch-error">{dispatch.errorMessage}</div> : null}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="purchasing-dispatch-empty">Aucun e-mail n’a encore été envoyé pour cette commande.</p>
       )}
     </section>
   );

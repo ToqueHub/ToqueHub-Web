@@ -19,12 +19,14 @@ import {
   MinusCircle,
   Calculator,
   ClipboardCheck,
-  Thermometer
+  Thermometer,
+  UserRound
 } from 'lucide-react';
 import { api } from '../api/client';
+import { HumanSupportPane } from './HumanSupportPane';
 import type { Category, HaccpAssistantChoice, Location, Product, Site, StockAssistantChoice, StockConversation, StockProposal, Supplier, TechnicalSheetAssistantChoice, Unit } from '../types';
 
-type ChatItem = { id: string; role: 'user' | 'assistant' | 'system'; text: string; fileName?: string; proposalId?: string; action?: 'location_select'; choices?: Array<StockAssistantChoice | TechnicalSheetAssistantChoice | HaccpAssistantChoice> };
+type ChatItem = { id: string; role: 'user' | 'assistant' | 'system'; text: string; fileName?: string; proposalId?: string; action?: 'location_select'; choices?: Array<StockAssistantChoice | TechnicalSheetAssistantChoice | HaccpAssistantChoice>; humanHandoffSuggested?: boolean; humanHandoffReason?: string | null };
 type QuickCard = { id: string; title: string; subtitle: string; prompt: string };
 const greetingItems: ChatItem[] = [
   { id: 'hello', role: 'assistant', text: 'Bonjour ! Je suis Kokki, votre assistant IA. Je peux vous aider avec les stocks, les fiches techniques et la production. Dites-moi simplement ce que vous voulez faire.' }
@@ -51,6 +53,8 @@ export function StockAssistantPanel({
   initialProposalId,
   onApplied,
   onOpenTechnicalSheets,
+  userEmail,
+  onHumanUnreadChange,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -64,6 +68,8 @@ export function StockAssistantPanel({
   initialProposalId?: string;
   onApplied: () => void;
   onOpenTechnicalSheets?: () => void;
+  userEmail: string;
+  onHumanUnreadChange?: (unread: number) => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const feedRef = useRef<HTMLDivElement>(null);
@@ -77,6 +83,8 @@ export function StockAssistantPanel({
   const [error, setError] = useState<string>();
   const [attachedFile, setAttachedFile] = useState<File>();
   const [items, setItems] = useState<ChatItem[]>(greetingItems);
+  const [pane, setPane] = useState<'ai' | 'human'>('ai');
+  const [humanUnread, setHumanUnread] = useState(0);
   const [productPickerLineIndex, setProductPickerLineIndex] = useState<number | null>(null);
   const [productSearch, setProductSearch] = useState('');
   const [productCategoryFilter, setProductCategoryFilter] = useState('');
@@ -100,6 +108,7 @@ export function StockAssistantPanel({
   };
   const visibleChoices = (choices?: Array<StockAssistantChoice | TechnicalSheetAssistantChoice | HaccpAssistantChoice>) => (choices || []).filter((choice) => choice.type !== 'location_select');
   const pickerLine = productPickerLineIndex !== null ? proposal?.lines[productPickerLineIndex] : null;
+  const humanTranscript = items.map((item) => `[${item.role === 'user' ? 'Utilisateur' : item.role === 'assistant' ? 'Kokki' : 'Système'}] ${item.text}`).join('\n\n');
   const filteredProducts = useMemo(() => {
     const query = normalizeAssistantSearch(productSearch || pickerLine?.rawLabel || '');
     return products
@@ -131,6 +140,16 @@ export function StockAssistantPanel({
       feedRef.current.scrollTop = feedRef.current.scrollHeight;
     }
   }, [items, busy]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const refreshUnread = () => void api.humanSupportUnreadCount(token).then((result) => setHumanUnread(result.unread)).catch(() => undefined);
+    refreshUnread();
+    const timer = window.setInterval(refreshUnread, 30_000);
+    return () => window.clearInterval(timer);
+  }, [isOpen, token]);
+
+  useEffect(() => { onHumanUnreadChange?.(humanUnread); }, [humanUnread, onHumanUnreadChange]);
 
   useEffect(() => {
     if (initialProposalId) {
@@ -224,14 +243,14 @@ export function StockAssistantPanel({
     const normalizedText = text.replace(/\bfoche\b/gi, 'fiche');
     const result = await api.technicalSheetAssistantMessage(token, id, normalizedText);
     setAssistantDomain('technical');
-    setItems((current) => [...current, { id: `${Date.now()}-technical`, role: 'assistant', text: result.assistantMessage, choices: result.choices }]);
+    setItems((current) => [...current, { id: `${Date.now()}-technical`, role: 'assistant', text: result.assistantMessage, choices: result.choices, humanHandoffSuggested: result.humanHandoffSuggested, humanHandoffReason: result.humanHandoffReason }]);
   }
   async function sendHaccp(text: string) {
     const id = haccpConversationId || (await api.createHaccpAssistantConversation(token)).id;
     setHaccpConversationId(id);
     const result = await api.haccpAssistantMessage(token, id, text);
     setAssistantDomain('haccp');
-    setItems((current) => [...current, { id: `${Date.now()}-haccp`, role: 'assistant', text: result.assistantMessage, choices: result.choices }]);
+    setItems((current) => [...current, { id: `${Date.now()}-haccp`, role: 'assistant', text: result.assistantMessage, choices: result.choices, humanHandoffSuggested: result.humanHandoffSuggested, humanHandoffReason: result.humanHandoffReason }]);
   }
 
   async function send() {
@@ -293,6 +312,8 @@ export function StockAssistantPanel({
           text: result.assistantMessage || 'J’ai préparé la proposition correspondante pour vos stocks.',
           proposalId: result.proposalId,
           choices: result.choices,
+          humanHandoffSuggested: result.humanHandoffSuggested,
+          humanHandoffReason: result.humanHandoffReason,
           action: undefined,
         }
       ]);
@@ -326,6 +347,8 @@ export function StockAssistantPanel({
           text: result.assistantMessage || 'J’ai préparé la proposition correspondante pour vos stocks.',
           proposalId: result.proposalId,
           choices: result.choices,
+          humanHandoffSuggested: result.humanHandoffSuggested,
+          humanHandoffReason: result.humanHandoffReason,
           action: undefined,
         },
       ]);
@@ -421,7 +444,7 @@ export function StockAssistantPanel({
       }
       const id = await ensureConversation();
       const result = await api.stockAssistantMessage(token, id, text, proposal?.locationId || undefined);
-      setItems((current) => [...current, { id: `${Date.now()}-assistant-choice`, role: 'assistant', text: result.assistantMessage || 'J’ai traité votre choix.', proposalId: result.proposalId, choices: result.choices, action: undefined }]);
+      setItems((current) => [...current, { id: `${Date.now()}-assistant-choice`, role: 'assistant', text: result.assistantMessage || 'J’ai traité votre choix.', proposalId: result.proposalId, choices: result.choices, action: undefined, humanHandoffSuggested: result.humanHandoffSuggested, humanHandoffReason: result.humanHandoffReason }]);
       if (result.proposalId) setProposal(await api.stockAssistantProposal(token, result.proposalId));
       void loadConversation(id);
     } catch (e: any) {
@@ -551,18 +574,35 @@ export function StockAssistantPanel({
               <div className="stock-chat-header">
                 <div className="stock-chat-header-info">
                   <div className="stock-chat-header-avatar">
-                    <img
-                      src="/kokki-transparent.png"
-                      alt="Kokki"
-                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                    />
+                    {pane === 'human' ? (
+                      <UserRound size={20} style={{ color: 'white' }} />
+                    ) : (
+                      <img
+                        src="/kokki-transparent.png"
+                        alt="Kokki"
+                        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                      />
+                    )}
                   </div>
                   <div className="stock-chat-status">
-                    <span className="stock-chat-status-title">Kokki · Assistant IA</span>
-                    <span className="stock-chat-status-dot">En ligne</span>
+                    <span className="stock-chat-status-title">
+                      {pane === 'human' ? 'Bénévole ToqueHub' : 'Kokki · Assistant IA'}
+                    </span>
+                    <span className="stock-chat-status-dot">
+                      {pane === 'human' ? 'Support en ligne' : 'En ligne'}
+                    </span>
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <button
+                    className="stock-chat-header-btn-new"
+                    onClick={() => setPane((current) => current === 'ai' ? 'human' : 'ai')}
+                    title={pane === 'ai' ? 'Parler à un bénévole' : 'Retour à Kokki IA'}
+                    style={{ position: 'relative' }}
+                  >
+                    {pane === 'ai' ? <UserRound size={16} /> : <Sparkles size={16} />}
+                    {humanUnread > 0 ? <span style={{ position: 'absolute', top: -5, right: -6, minWidth: 16, height: 16, borderRadius: 8, background: '#dc2626', color: '#fff', fontSize: 10, display: 'grid', placeItems: 'center' }}>{humanUnread > 9 ? '9+' : humanUnread}</span> : null}
+                  </button>
                   <button
                     className="stock-chat-header-btn-new"
                     onClick={handleNewConversation}
@@ -576,6 +616,7 @@ export function StockAssistantPanel({
                 </div>
               </div>
 
+              {pane === 'human' ? <HumanSupportPane token={token} email={userEmail} transcript={humanTranscript} onUnreadChange={setHumanUnread} /> : <>
               <div ref={feedRef} className="stock-chat-feed">
                 {items.map((item) => (
                   <motion.div
@@ -652,6 +693,14 @@ export function StockAssistantPanel({
                               {choice.description ? <small>{choice.description}</small> : null}
                             </button>
                           ))}
+                        </div>
+                      ) : null}
+                      {item.humanHandoffSuggested ? (
+                        <div className="stock-chat-choice-list" style={{ marginTop: 8 }}>
+                          <button disabled={busy} onClick={() => setPane('human')}>
+                            <span>Parler à un bénévole</span>
+                            <small>{item.humanHandoffReason || 'Un bénévole peut vous aider directement.'}</small>
+                          </button>
                         </div>
                       ) : null}
                     </div>
@@ -757,6 +806,7 @@ export function StockAssistantPanel({
                   </button>
                 </div>
               </div>
+              </>}
             </div>
 
             {/* Split Proposal Review Pane */}

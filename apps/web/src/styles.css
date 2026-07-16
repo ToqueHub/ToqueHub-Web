@@ -15572,7 +15572,7 @@ input:checked + .slider-round:before {
   flex-direction: column;
   min-height: 0;
   padding: 2.5rem;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .guided-wizard-progress {
@@ -15602,7 +15602,12 @@ input:checked + .slider-round:before {
   flex: 1;
   flex-direction: column;
   min-height: 0;
-  justify-content: space-between;
+  gap: 1.5rem;
+  justify-content: flex-start;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 0 0.5rem;
+  scrollbar-gutter: stable;
 }
 
 .guided-welcome {
@@ -15758,6 +15763,10 @@ input:checked + .slider-round:before {
   }
   .guided-wizard-main {
     padding: 1.25rem;
+  }
+  .guided-wizard-content {
+    gap: 1rem;
+    padding-bottom: 1rem;
   }
 }
 
@@ -24171,6 +24180,32 @@ input:checked + .slider-round:before {
   color: #10b981;
 }
 
+.onboarding-option-card.configured {
+  border-color: rgba(16, 185, 129, 0.38);
+  background:
+    radial-gradient(circle at 100% 0, rgba(196, 181, 253, 0.28), transparent 46%),
+    linear-gradient(135deg, #ffffff 0%, #f5f3ff 53%, #ecfdf5 100%);
+  box-shadow: 0 7px 18px rgba(16, 185, 129, 0.08), inset 0 1px rgba(255, 255, 255, 0.9);
+}
+
+.onboarding-option-card.configured:hover {
+  border-color: var(--primary);
+  box-shadow: 0 10px 22px rgba(16, 185, 129, 0.13), inset 0 1px rgba(255, 255, 255, 0.9);
+}
+
+.onboarding-option-configured {
+  display: inline-flex;
+  align-self: flex-start;
+  margin-top: 0.25rem;
+  padding: 0.2rem 0.45rem;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.68);
+  color: #047857;
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
 .onboarding-option-content {
   display: flex;
   flex-direction: column;
@@ -24883,218 +24918,226 @@ input:checked + .slider-round:before {
 
 /* The overview never falls back to legacy UI while its first API response is loading. */
 .cockpit-loading-shell {
+  width: 100%;
   max-width: 1400px;
   margin: 0 auto;
-  padding: 0.25rem 0 2rem;
-  animation: cockpit-fade-in 0.32s ease both;
+  padding: 1.5rem 0 4rem;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 120px);
 }
-.cockpit-loading-hero {
-  min-height: 250px;
-  padding: 2.1rem 2.4rem;
+
+.cockpit-loading-skeleton-bg {
+  width: 100%;
+  pointer-events: none;
+  opacity: 0.35;
+  filter: blur(1px);
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.skeleton-header {
+  height: 90px;
   border-radius: 28px;
-  color: #fff;
-  overflow: hidden;
-  position: relative;
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+  animation: skeleton-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.5rem;
+}
+
+.skeleton-card {
+  height: 180px;
+  border-radius: 20px;
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+  animation: skeleton-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Glassmorphic Central Card Loader */
+.cockpit-loading-card-centered {
+  position: absolute;
+  top: 45%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+  padding: 3.5rem 2.5rem;
+  border-radius: 28px;
+  max-width: 440px;
+  min-width: 300px;
+  width: 90%;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 
+    0 4px 30px rgba(0, 0, 0, 0.03),
+    0 30px 60px rgba(4, 75, 61, 0.08);
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 1.6rem;
-  background:
-    radial-gradient(circle at 90% 8%, rgba(116, 239, 194, 0.3), transparent 25%),
-    linear-gradient(120deg, #063d34, #08735f);
-  box-shadow: 0 24px 48px rgba(4, 75, 61, 0.22);
+  text-align: center;
+  gap: 1.5rem;
+  animation: cockpit-fade-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-.cockpit-loading-hero::before {
-  content: '';
-  position: absolute;
-  width: 420px;
-  height: 420px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 50%;
-  right: -130px;
-  top: -210px;
-}
-.cockpit-loading-hero::after,
-.cockpit-loading-card::after,
-.cockpit-loading-alert::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.14), transparent);
-  animation: cockpit-shimmer 1.7s infinite;
-}
-.cockpit-loader-orbit {
-  width: 104px;
-  height: 104px;
-  flex: none;
+
+.cockpit-loader-spinner-wrapper {
   position: relative;
+  width: 96px;
+  height: 96px;
   display: grid;
   place-items: center;
+  margin-bottom: 0.5rem;
 }
-.cockpit-loader-orbit > i {
+
+.cockpit-minimal-spinner {
   position: absolute;
   inset: 0;
-  border: 1px solid rgba(255, 255, 255, 0.26);
   border-radius: 50%;
-  animation: cockpit-orbit 2.4s linear infinite;
+  border: 2px solid rgba(11, 140, 107, 0.08);
+  border-top-color: #0b8c6b;
+  border-right-color: #5eead4;
+  animation: cockpit-spin 1.2s cubic-bezier(0.4, 0.15, 0.3, 0.85) infinite;
 }
-.cockpit-loader-orbit > i:nth-child(2) {
-  inset: 14px;
-  border-color: #8cf0cb;
-  border-left-color: transparent;
-  animation-direction: reverse;
-  animation-duration: 1.8s;
-}
-.cockpit-loader-orbit div {
-  width: 60px;
-  height: 60px;
-  z-index: 1;
+
+.cockpit-loader-icon {
   display: grid;
   place-items: center;
-  border-radius: 22px;
-  color: #075d4c;
-  background: #edfff8;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.16);
+  color: #0b8c6b;
+  z-index: 2;
 }
-.cockpit-loading-copy {
-  position: relative;
-  z-index: 1;
-  max-width: 610px;
+
+.chef-hat-pulse {
+  animation: float-hat 3s ease-in-out infinite;
 }
-.cockpit-loading-copy > span {
-  display: inline-flex;
-  gap: 0.35rem;
-  align-items: center;
-  color: #a7f3d0;
-  font-size: 0.72rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-.cockpit-loading-copy h1 {
-  margin: 0.55rem 0 0.45rem;
-  font-size: clamp(1.65rem, 3vw, 2.45rem);
-  letter-spacing: -0.055em;
-}
-.cockpit-loading-copy p {
-  margin: 0;
-  max-width: 560px;
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 0.88rem;
-}
-.cockpit-loading-steps {
+
+.cockpit-loading-info {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: center;
   gap: 0.85rem;
-  margin-top: 1.25rem;
+  width: 100%;
 }
-.cockpit-loading-steps b {
-  display: flex;
-  gap: 0.35rem;
+
+.cockpit-brand-badge {
+  display: inline-flex;
   align-items: center;
-  color: rgba(255, 255, 255, 0.8);
+  gap: 0.35rem;
+  padding: 0.35rem 0.8rem;
+  border-radius: 99px;
+  background: rgba(11, 140, 107, 0.05);
+  border: 1px solid rgba(11, 140, 107, 0.1);
+  color: #0b8c6b;
   font-size: 0.72rem;
-  font-weight: 650;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
-.cockpit-loading-steps i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #80f1c8;
-  box-shadow: 0 0 0 5px rgba(128, 241, 200, 0.14);
-  animation: cockpit-pulse 1.25s ease-in-out infinite;
+
+.cockpit-loading-title {
+  margin: 0.25rem 0 0.1rem;
+  color: #0f172a;
+  font-size: 1.4rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  display: inline-flex;
+  align-items: center;
 }
-.cockpit-loading-status {
-  position: relative;
-  z-index: 1;
-  margin-left: auto;
-  min-width: 132px;
-  padding: 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 16px;
-  background: rgba(2, 42, 35, 0.23);
-}
-.cockpit-loading-status span {
-  display: block;
-  color: rgba(255, 255, 255, 0.55);
-  font-size: 0.68rem;
-}
-.cockpit-loading-status strong {
-  display: block;
-  margin: 0.22rem 0 0.75rem;
-  font-size: 0.9rem;
-}
-.cockpit-loading-status div {
-  height: 5px;
+
+.cockpit-step-wrapper {
+  height: 22px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
   overflow: hidden;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.18);
 }
-.cockpit-loading-status div i {
-  display: block;
-  width: 48%;
+
+.cockpit-current-step {
+  color: #64748b;
+  font-size: 0.88rem;
+  font-weight: 500;
+  display: inline-block;
+}
+
+.cockpit-progress-container {
+  width: 160px;
+  height: 3px;
+  background: #f1f5f9;
+  border-radius: 99px;
+  overflow: hidden;
+  margin-top: 0.5rem;
+}
+
+.cockpit-progress-bar {
   height: 100%;
+  background: linear-gradient(90deg, #0b8c6b, #10b981);
   border-radius: inherit;
-  background: #8cf0cb;
-  animation: cockpit-progress 1.3s ease-in-out infinite;
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.cockpit-loading-alert {
-  height: 92px;
-  margin-top: 1.6rem;
-  border-radius: 18px;
-  position: relative;
-  overflow: hidden;
-  background: #fff5ea;
-  border: 1px solid #fde1c2;
-}
-.cockpit-loading-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 1rem;
-  margin-top: 1.8rem;
-}
-.cockpit-loading-card {
-  height: 175px;
-  position: relative;
-  overflow: hidden;
-  border: 1px solid #e6edf0;
-  border-radius: 18px;
-  background: #fff;
-}
-@keyframes cockpit-shimmer {
-  to {
-    transform: translateX(100%);
-  }
-}
-@keyframes cockpit-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-@keyframes cockpit-orbit {
+
+/* Animations */
+@keyframes cockpit-spin {
   to {
     transform: rotate(360deg);
   }
 }
-@keyframes cockpit-pulse {
+
+@keyframes float-hat {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+  }
   50% {
-    opacity: 0.35;
-    transform: scale(0.72);
+    transform: translateY(-6px) scale(1.03);
   }
 }
-@keyframes cockpit-progress {
-  0%,
-  100% {
-    transform: translateX(-50%);
+
+@keyframes cockpit-fade-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -42%);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% {
+    background-position: 200% 0;
+    opacity: 0.4;
   }
   50% {
-    transform: translateX(110%);
+    background-position: -200% 0;
+    opacity: 0.25;
   }
+}
+
+/* Dot Flashing Animation */
+.dot-flashing {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 4px;
+}
+.dot-flashing::after {
+  content: '...';
+  animation: ellipsis 1.5s infinite steps(4, end);
+  width: 12px;
+  text-align: left;
+}
+
+@keyframes ellipsis {
+  0% { content: ''; }
+  25% { content: '.'; }
+  50% { content: '..'; }
+  75% { content: '...'; }
 }
 
 /* Floating Action Toque Button */
@@ -25145,30 +25188,12 @@ input:checked + .slider-round:before {
   }
 }
 @media (max-width: 768px) {
-  .cockpit-loading-hero {
-    min-height: 0;
-    padding: 1.5rem;
-    align-items: flex-start;
-    flex-wrap: wrap;
+  .skeleton-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
-  .cockpit-loader-orbit {
-    width: 72px;
-    height: 72px;
-  }
-  .cockpit-loader-orbit div {
-    width: 46px;
-    height: 46px;
-    border-radius: 16px;
-  }
-  .cockpit-loading-status {
-    margin-left: 0;
-  }
-  .cockpit-loading-copy {
-    order: 3;
-    width: 100%;
-  }
-  .cockpit-loading-copy h1 {
-    font-size: 1.7rem;
+  .cockpit-loading-card-centered {
+    padding: 2.5rem 1.5rem;
+    width: 92%;
   }
   .cockpit-urgent-banner {
     grid-template-columns: 1fr;
@@ -25185,8 +25210,10 @@ input:checked + .slider-round:before {
   .cockpit-news-card-modern {
     grid-template-columns: 1.2fr 1fr;
   }
-  .cockpit-loading-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (max-width: 480px) {
+  .skeleton-grid {
+    grid-template-columns: 1fr;
   }
 }
 @media (max-width: 480px) {
@@ -25492,4 +25519,103 @@ input:checked + .slider-round:before {
   padding: 0.9rem;
   color: #718096;
   font-size: 0.76rem;
+}
+
+/* Human Support Panel redesign */
+.human-support-onboarding-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed rgba(226, 232, 240, 0.8);
+  margin-bottom: 12px;
+}
+
+.human-support-onboarding-inputs input {
+  width: 100%;
+  padding: 0.8rem 1.15rem;
+  border-radius: 16px;
+  border: 1px solid rgba(203, 213, 225, 0.95);
+  font-size: 0.92rem;
+  outline: none;
+  background: rgba(255, 255, 255, 0.95);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: inset 0 2px 4px rgba(15, 23, 42, 0.01);
+}
+
+.human-support-onboarding-inputs input:focus {
+  border-color: #0d9488;
+  background: #ffffff;
+  box-shadow:
+    0 0 0 3px rgba(13, 148, 136, 0.12),
+    inset 0 2px 4px rgba(15, 23, 42, 0.01);
+}
+
+.human-support-banner {
+  margin: 1rem 1.25rem;
+  padding: 1rem 1.15rem;
+  background: rgba(239, 246, 255, 0.6);
+  border: 1px solid rgba(191, 219, 254, 0.5);
+  border-radius: 16px;
+  color: #1e3a8a;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 12px rgba(30, 58, 138, 0.02);
+}
+
+.human-support-banner svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: #2563eb;
+}
+
+.human-support-closed-bar {
+  padding: 1.25rem 1.5rem;
+  background: rgba(248, 250, 252, 0.8);
+  border-top: 1px solid rgba(226, 232, 240, 0.8);
+  color: #64748b;
+  font-size: 0.88rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.human-support-closed-bar button {
+  border: none;
+  background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(13, 148, 136, 0.15);
+  transition: all 0.2s ease;
+}
+
+.human-support-closed-bar button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(13, 148, 136, 0.25);
+}
+
+.human-support-close-action-btn {
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.human-support-close-action-btn:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.05);
 }

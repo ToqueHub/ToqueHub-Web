@@ -115,6 +115,17 @@ export class MobilePushService {
     return { sent, activeTokens: uniqueTokens.length, errors, ticketIds };
   }
 
+  async sendToUser(organizationId: string, userId: string, payload: PushPayload) {
+    const tokens = await this.prisma.mobilePushToken.findMany({
+      where: { organizationId, userId, isActive: true, user: { isActive: true, organizationId } },
+      select: { token: true },
+    });
+    const uniqueTokens = [...new Set(tokens.map((item) => item.token).filter((token) => this.isExpoPushToken(token)))];
+    if (!uniqueTokens.length) return { sent: 0, activeTokens: 0, errors: [], ticketIds: [] };
+    const result = await this.sendChunk(organizationId, uniqueTokens, payload);
+    return { ...result, activeTokens: uniqueTokens.length };
+  }
+
   private async sendChunk(organizationId: string, tokens: string[], payload: PushPayload): Promise<Omit<PushSendResult, 'activeTokens'>> {
     try {
       const response = await fetch(this.expoPushUrl, {

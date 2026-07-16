@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { StocksModule } from '../stocks/stocks.module';
 import { PurchasingController } from './purchasing.controller';
+import { PurchasingEmailOAuthController } from './purchasing-email-oauth.controller';
 import { ResendPurchasingGateway } from './resend-purchasing.gateway';
 import { PurchaseOrderPdfService } from './purchase-order-pdf.service';
 import { PurchaseOrderPolicy } from './purchase-order.policy';
@@ -20,10 +21,13 @@ import { PurchaseOrderDispatchService } from './purchase-order-dispatch.service'
 import { PurchaseReceiptService } from './purchase-receipt.service';
 import { PurchaseReceiptValidationService } from './purchase-receipt-validation.service';
 import { PURCHASING_EMAIL_TRANSPORT } from './purchasing-email.transport';
+import { PurchasingMailCryptoService } from './purchasing-mail-crypto.service';
+import { PurchasingEmailConnectionService } from './purchasing-email-connection.service';
+import { PurchasingEmailTemplateService } from './purchasing-email-template.service';
 
 @Module({
   imports: [StocksModule],
-  controllers: [PurchasingController],
+  controllers: [PurchasingController, PurchasingEmailOAuthController],
   providers: [
     ResendPurchasingGateway,
     PurchaseOrderPdfService,
@@ -43,6 +47,9 @@ import { PURCHASING_EMAIL_TRANSPORT } from './purchasing-email.transport';
     PurchaseOrderDispatchService,
     PurchaseReceiptService,
     PurchaseReceiptValidationService,
+    PurchasingMailCryptoService,
+    PurchasingEmailConnectionService,
+    PurchasingEmailTemplateService,
     { provide: PURCHASING_EMAIL_TRANSPORT, useExisting: ResendPurchasingGateway },
   ],
 })

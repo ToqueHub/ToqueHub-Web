@@ -65,6 +65,11 @@ On first boot:
 - Tailscale is installed/enabled for private remote access when
   `TOQUEHUB_TAILSCALE_ENABLED=true`
 - the ToqueHub remote access agent starts automatically
+
+When the machine joins a tailnet with MagicDNS enabled, ToqueHub automatically
+uses the assigned `*.ts.net` address for remote access and retains the
+Tailscale IP as a fallback. Run `toquehub address` after connecting Tailscale
+to display and verify both addresses.
 - Docker Compose pulls the published ToqueHub images
 - ToqueHub starts automatically
 - Zigbee2MQTT is enabled only when a Zigbee USB adapter is detected

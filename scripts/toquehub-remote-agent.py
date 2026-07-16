@@ -3,7 +3,9 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -74,16 +76,46 @@ def tailscale_ip():
     return output.strip().splitlines()[0] if output.strip() else ""
 
 
-def remote_url(ip, env):
-    if not ip:
+def tailscale_dns_name():
+    """Return the MagicDNS name assigned by the tailnet, without its final dot."""
+    if not tailscale_installed():
         return ""
-    return f"http://{ip}:{env.get('TOQUEHUB_HTTP_PORT', '8080')}"
+    code, output = run(["tailscale", "status", "--json"], timeout=8)
+    if code != 0:
+        return ""
+    try:
+        dns_name = json.loads(output).get("Self", {}).get("DNSName", "")
+    except json.JSONDecodeError:
+        return ""
+    return dns_name.rstrip(".") if isinstance(dns_name, str) else ""
 
 
-def sync_env(status, ip="", url=""):
+def magic_dns_resolves(dns_name, attempts=5):
+    """Confirm that this host accepts the tailnet DNS configuration."""
+    if not dns_name:
+        return False
+    for attempt in range(attempts):
+        try:
+            socket.getaddrinfo(dns_name, None, socket.AF_INET)
+            return True
+        except socket.gaierror:
+            if attempt + 1 < attempts:
+                time.sleep(1)
+    return False
+
+
+def remote_url(host, env):
+    if not host:
+        return ""
+    port = env.get('TOQUEHUB_HTTP_PORT', '8080')
+    return f"http://{host}" if port == "80" else f"http://{host}:{port}"
+
+
+def sync_env(status, ip="", dns_name="", url=""):
     set_env("TOQUEHUB_TAILSCALE_INSTALLED", "true" if tailscale_installed() else "false")
     set_env("TOQUEHUB_TAILSCALE_ENABLED", "true" if status in ("active", "needs_login") else "false")
     set_env("TOQUEHUB_TAILSCALE_IP", ip)
+    set_env("TOQUEHUB_TAILSCALE_DNS_NAME", dns_name)
     set_env("TOQUEHUB_REMOTE_ACCESS_URL", url)
 
 
@@ -101,15 +133,30 @@ def status_payload(message=None, login_url=None):
         }
     ip = tailscale_ip()
     if ip:
-        url = remote_url(ip, env)
-        sync_env("active", ip, url)
+        dns_name = tailscale_dns_name()
+        dns_url = remote_url(dns_name, env)
+        magic_dns_ready = magic_dns_resolves(dns_name)
+        url = dns_url if magic_dns_ready else remote_url(ip, env)
+        sync_env("active", ip, dns_name, url)
+        if magic_dns_ready:
+            active_message = "Accès distant actif avec adresse MagicDNS."
+        elif dns_name:
+            active_message = (
+                "Accès distant actif par IP Tailscale. L’adresse MagicDNS a été détectée, "
+                "mais n’est pas encore résolue : vérifiez MagicDNS dans l’administration Tailscale."
+            )
+        else:
+            active_message = "Accès distant actif par IP Tailscale."
         return {
             "status": "active",
             "url": url,
             "loginUrl": None,
             "hostname": hostname,
+            "dnsName": dns_name or None,
+            "dnsUrl": dns_url or None,
+            "magicDnsReady": magic_dns_ready,
             "ip": ip,
-            "message": "Accès distant actif.",
+            "message": message or active_message,
         }
     sync_env("needs_login" if login_url else "inactive")
     return {

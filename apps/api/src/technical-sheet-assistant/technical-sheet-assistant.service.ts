@@ -47,7 +47,7 @@ export class TechnicalSheetAssistantService implements OnModuleInit, OnModuleDes
     const response = await this.harness.finalize(organizationId, content, { ...raw, toolResults: [{ tool: call.tool, result: raw.data || null }], confidence: raw.confidence ?? call.confidence, needsReview: raw.needsReview ?? false });
     const state = { ...(conversation.state || {}), ...(raw.statePatch || {}), lastTool: call.tool, lastDraftId: response.draftId || (conversation.state as any)?.lastDraftId || null };
     await (this.prisma as any).$transaction([
-      (this.prisma as any).technicalSheetAssistantMessage.create({ data: { conversationId, role: TechnicalSheetAssistantMessageRole.ASSISTANT, content: response.assistantMessage, metadata: { draftId: response.draftId || null, choices: response.choices || [], toolResults: response.toolResults, confidence: response.confidence, needsReview: response.needsReview } } }),
+      (this.prisma as any).technicalSheetAssistantMessage.create({ data: { conversationId, role: TechnicalSheetAssistantMessageRole.ASSISTANT, content: response.assistantMessage, metadata: { draftId: response.draftId || null, choices: response.choices || [], toolResults: response.toolResults, confidence: response.confidence, needsReview: response.needsReview, humanHandoffSuggested: !!response.humanHandoffSuggested, humanHandoffReason: response.humanHandoffReason || null } } }),
       (this.prisma as any).technicalSheetAssistantConversation.update({ where: { id: conversationId }, data: { state, summary: this.summary(state), expiresAt: ttl() } }),
     ]);
     return { ...response, state };

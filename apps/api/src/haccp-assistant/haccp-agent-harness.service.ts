@@ -1,15 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { MistralClientService } from '../mistral/mistral-client.service';
 const TOOLS = ['get_haccp_dashboard', 'list_haccp_alerts', 'list_temperature_equipment', 'get_temperature_status', 'get_cleaning_status', 'prepare_temperature_reading', 'prepare_cleaning_session', 'prepare_corrective_control', 'clarify'];
-const schema = { type: 'object', additionalProperties: false, required: ['tool', 'args', 'confidence'], properties: { tool: { type: 'string', enum: TOOLS }, args: { type: 'object' }, confidence: { type: 'number' } } };
+const schema = { type: 'object', additionalProperties: false, required: ['tool', 'args', 'confidence', 'humanHandoffSuggested', 'humanHandoffReason'], properties: { tool: { type: 'string', enum: TOOLS }, args: { type: 'object' }, confidence: { type: 'number' }, humanHandoffSuggested: { type: 'boolean' }, humanHandoffReason: { type: ['string', 'null'] } } };
 @Injectable()
 export class HaccpAgentHarnessService {
   constructor(private readonly mistral: MistralClientService) {}
   async decide(org: string, content: string, state: any, context: any) {
     const guarded = this.guard(content, state); if (guarded) return guarded;
     try {
-      const value: any = await this.mistral.chatJson(org, [{ role: 'system', content: 'Tu es Kokki HACCP. Choisis exactement un outil. Les capteurs IoT sont en lecture seule : jamais appairage, seuil, affectation, suppression ou réglage. Toute écriture est un brouillon à valider, jamais une saisie directe. Réponds uniquement en JSON.' }, { role: 'user', content: JSON.stringify({ message: content, state, context, availableTools: TOOLS }) }], 'toquehub_haccp_tool_call', schema, { temperature: 0 });
-      if (TOOLS.includes(value?.tool)) return { tool: value.tool, args: value.args || {}, confidence: Number(value.confidence || .7), decision: 'mistral' };
+      const value: any = await this.mistral.chatJson(org, [{ role: 'system', content: 'Tu es Kokki HACCP. Choisis exactement un outil. Les capteurs IoT sont en lecture seule : jamais appairage, seuil, affectation, suppression ou réglage. Toute écriture est un brouillon à valider, jamais une saisie directe. Propose humanHandoffSuggested seulement si un bénévole est réellement préférable. Réponds uniquement en JSON.' }, { role: 'user', content: JSON.stringify({ message: content, state, context, availableTools: TOOLS }) }], 'toquehub_haccp_tool_call', schema, { temperature: 0 });
+      if (TOOLS.includes(value?.tool)) return { tool: value.tool, args: value.args || {}, confidence: Number(value.confidence || .7), decision: 'mistral', humanHandoffSuggested: Boolean(value.humanHandoffSuggested), humanHandoffReason: value.humanHandoffReason ? String(value.humanHandoffReason) : null };
     } catch { /* fallback */ }
     return this.fallback(content, state);
   }

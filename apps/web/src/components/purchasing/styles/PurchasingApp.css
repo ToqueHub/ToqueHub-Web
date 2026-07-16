@@ -216,6 +216,69 @@
   font-size: 0.82rem;
 }
 
+.purchasing-dispatches {
+  margin: 0 0 1rem;
+  padding: 1rem;
+  border: 1px solid var(--light-border);
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fbfefd, #f7fafc);
+}
+
+.purchasing-dispatches-heading h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.purchasing-dispatches-heading h3 svg { color: var(--primary); }
+.purchasing-dispatches-heading p,
+.purchasing-dispatch-empty {
+  margin: 0.35rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.purchasing-dispatch-list {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.85rem;
+}
+
+.purchasing-dispatch-item {
+  display: flex;
+  gap: 0.7rem;
+  padding: 0.75rem;
+  border: 1px solid var(--light-border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.purchasing-dispatch-icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+}
+.purchasing-dispatch-icon.success { background: var(--success-bg); color: var(--success); }
+.purchasing-dispatch-icon.danger { background: var(--danger-bg); color: var(--danger); }
+.purchasing-dispatch-icon.pending { background: var(--info-bg); color: var(--info); }
+
+.purchasing-dispatch-content { min-width: 0; flex: 1; }
+.purchasing-dispatch-topline { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; }
+.purchasing-dispatch-topline strong { font-size: 0.8rem; }
+.purchasing-dispatch-content p { margin: 0.25rem 0 0; color: var(--text-main); font-size: 0.76rem; overflow-wrap: anywhere; }
+.purchasing-dispatch-content small { display: block; margin-top: 0.2rem; color: var(--text-muted); font-size: 0.68rem; }
+.purchasing-dispatch-status { flex: 0 0 auto; padding: 0.22rem 0.45rem; border-radius: 999px; font-size: 0.62rem; font-weight: 800; white-space: nowrap; }
+.purchasing-dispatch-status.success { background: var(--success-bg); color: var(--success); }
+.purchasing-dispatch-status.danger { background: var(--danger-bg); color: var(--danger); }
+.purchasing-dispatch-status.pending { background: var(--info-bg); color: var(--info); }
+.purchasing-dispatch-error { margin-top: 0.45rem; padding: 0.45rem 0.55rem; border-radius: 8px; background: var(--danger-bg); color: var(--danger); font-size: 0.7rem; line-height: 1.35; overflow-wrap: anywhere; }
+
 .purchasing-modal-form,
 .purchasing-reason-form {
   display: flex;
@@ -587,7 +650,199 @@
   min-height: 46px;
 }
 .purchasing-onboarding-actions {
-  margin-top: auto;
+  flex: 0 0 auto;
+  width: 100%;
+  margin-top: 0;
+  padding: 0.25rem 0 0;
+  justify-content: space-between;
+}
+
+.purchasing-email-status-overlay {
+  z-index: 10020;
+  padding: 1.25rem;
+}
+
+.purchasing-email-status-modal {
+  position: relative;
+  width: min(100%, 430px);
+  padding: 2rem;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22);
+  text-align: center;
+}
+
+.purchasing-email-status-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+}
+
+.purchasing-email-status-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 0.85rem;
+  border-radius: 15px;
+  background: var(--light-bg);
+  color: var(--text-muted);
+}
+
+.purchasing-email-status-icon.ready {
+  background: var(--success-bg);
+  color: var(--primary);
+}
+
+.purchasing-email-status-kicker {
+  color: var(--primary-dark);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.purchasing-email-status-modal h2 {
+  margin: 0.35rem 0 0.65rem;
+  color: var(--text-main);
+  font-size: 1.3rem;
+}
+
+.purchasing-email-status-modal > p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.purchasing-email-status-provider {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1.25rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(16, 185, 129, 0.18);
+  border-radius: 12px;
+  background: var(--success-bg);
+  color: var(--text-main);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-align: left;
+}
+
+.purchasing-email-status-provider b {
+  color: var(--success);
+  font-size: 0.72rem;
+}
+
+.purchasing-email-status-other {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--light-border);
+  text-align: left;
+}
+
+.purchasing-email-status-other > span {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.purchasing-email-status-other > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--text-main);
+  font-size: 0.78rem;
+}
+
+.purchasing-email-status-choice > span {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.purchasing-email-status-choice > span > b {
+  color: var(--text-main);
+  font-size: 0.78rem;
+}
+
+.purchasing-email-status-other small {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  overflow-wrap: anywhere;
+}
+
+.purchasing-email-status-choice .btn {
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.purchasing-onboarding-actions-spacer {
+  flex: 1 1 auto;
+}
+
+.purchasing-oauth-flow {
+  padding-bottom: 0.25rem;
+}
+
+.purchasing-oauth-card {
+  min-width: 0;
+}
+
+@media (max-width: 760px) {
+  .purchasing-dispatches {
+    padding: 0.8rem;
+  }
+
+  .purchasing-dispatch-topline {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .purchasing-onboarding-step {
+    gap: 0.85rem;
+  }
+
+  .purchasing-email-config-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    padding: 1rem !important;
+  }
+
+  .purchasing-email-config-grid > div {
+    grid-column: auto !important;
+  }
+
+  .purchasing-smtp-host-port {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .purchasing-onboarding-actions {
+    gap: 0.65rem;
+    padding-top: 0.25rem;
+  }
+
+  .purchasing-onboarding-actions-spacer {
+    display: none;
+  }
+
+  .purchasing-onboarding-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .purchasing-oauth-card {
+    padding: 1.25rem !important;
+    gap: 1rem !important;
+  }
 }
 
 .purchasing-save-state {
@@ -636,10 +891,14 @@
 
 .purchasing-choice-step {
   width: min(920px, 100%);
-  margin: auto;
+  margin: 0 auto;
   display: grid;
-  gap: 1rem;
-  padding: 1rem 0 2rem;
+  gap: 1.25rem;
+  padding: 1rem 0.5rem 2.5rem;
+  max-height: 100%;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .purchasing-step-heading {
@@ -799,33 +1058,39 @@
   display: grid;
   place-items: center;
   padding: 0;
-  border: 1px solid var(--light-border);
-  background: #fff;
-  color: #64748b;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
   font: inherit;
-  font-size: 0.76rem;
-  font-weight: 800;
+  font-size: 0.78rem;
+  font-weight: 700;
+  transition: all 0.2s ease;
 }
 .purchasing-calendar-grid button.available {
-  border-color: var(--primary);
-  background: var(--primary);
-  color: #fff;
+  background: rgba(16, 185, 129, 0.08);
+  color: var(--primary-hover);
+  border: 1px solid rgba(16, 185, 129, 0.15);
   cursor: pointer;
-  box-shadow: 0 5px 12px rgba(16, 185, 129, 0.18);
+  border-radius: 11px;
 }
 .purchasing-calendar-grid button.available:hover {
-  background: var(--primary-dark);
-  transform: translateY(-1px);
+  background: rgba(16, 185, 129, 0.16);
+  border-color: var(--primary);
+  transform: translateY(-2px);
 }
 .purchasing-calendar-grid button.available.selected {
-  outline: 3px solid rgba(16, 185, 129, 0.22);
-  outline-offset: 2px;
+  background: var(--primary) !important;
+  color: #fff !important;
+  border-color: var(--primary) !important;
+  box-shadow: 0 8px 16px rgba(16, 185, 129, 0.3) !important;
+  outline: none;
 }
 .purchasing-calendar-grid button.unavailable:disabled {
-  opacity: 1;
-  background: #fff;
-  color: #94a3b8;
-  cursor: default;
+  opacity: 0.45;
+  background: transparent;
+  color: #cbd5e1;
+  cursor: not-allowed;
+  border: none;
 }
 .purchasing-calendar-legend {
   display: flex;
@@ -1369,11 +1634,12 @@
   }
 }
 
-@media (max-width: 480px) {
-  .purchasing-metrics {
-    grid-template-columns: 1fr;
-  }
-  .purchasing-metric {
-    min-height: 86px;
-  }
+.metric-icon-wrapper.red {
+  background: var(--danger-bg) !important;
+  color: var(--danger) !important;
+}
+
+.metric-icon-wrapper.purple {
+  background: var(--purple-bg) !important;
+  color: var(--purple) !important;
 }
