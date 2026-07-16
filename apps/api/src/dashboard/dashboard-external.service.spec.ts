@@ -18,4 +18,13 @@ describe('DashboardExternalService', () => {
     expect(result.localNews).toEqual([]);
     expect(result.industryNews).toEqual([]);
   });
+
+  it('asks for a more precise address when providers respond without finding a location', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ features: [], results: [] }),
+    } as Response);
+    const result = await new DashboardExternalService().get('adresse inconnue unique');
+    expect(result.weather).toMatchObject({ status: 'needs_location' });
+  });
 });
