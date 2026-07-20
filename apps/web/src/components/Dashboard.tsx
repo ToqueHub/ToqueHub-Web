@@ -152,6 +152,7 @@ import type {
   SupplierPurchasingPayload,
   PurchasingDeliveryMode,
   Unit,
+  MenuSettings,
   UserSession,
   EstablishmentType,
   TeamSize,
@@ -286,7 +287,7 @@ const apps = [
       'Transformez vos fiches techniques en ordres de fabrication pilotables, alertés et historisés.',
     description:
       'Production orchestre les données existantes sans recréer de référentiel métier : fiches techniques, produits, stocks, collaborateurs, services, postes et plannings restent propriétaires de leurs modules.\n\nFonctionnalités clés V1 :\n- Création manuelle d’ordres depuis les fiches techniques.\n- Recalcul automatique des portions, besoins matières, coûts et allergènes.\n- Workflow manuel Planifiée / Validée / En cours / Terminée / Annulée.\n- Alertes critiques contournables uniquement avec confirmation historisée.\n- Affectations RH et service optionnels.\n- Réalisation détaillée, déstockage proposé puis confirmé via Stocks.\n- Exports historisés avec snapshot figé.',
-    screenshots: ['Tableau de bord Production', 'Besoins matières', 'Réalisation et exports'],
+    screenshots: ['Tableau de bord Production', 'Produits fabriqués', 'Réalisation et exports'],
     changelog:
       'Lancement V1 complet avec cockpit opérationnel, calendrier, affectations, alertes, exports et historique.',
     version: 'v1.0.0',
@@ -464,6 +465,7 @@ type ActiveTab =
   | 'production-exports'
   | 'production-history'
   | 'menus-dashboard'
+  | 'menus-catalog'
   | 'menus-list'
   | 'menus-calendar'
   | 'menus-cycles'
@@ -606,6 +608,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [installedApps, setInstalledApps] = useState<string[]>(
     session.user.installedApplications ?? [],
   );
+  const [menuModuleSettings, setMenuModuleSettings] = useState<MenuSettings>();
   const isAdmin = ['ADMIN', 'SUPER_ADMIN', 'ADMINISTRATEUR'].includes(
     session.user.role?.toUpperCase(),
   );
@@ -762,24 +765,23 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         rolesResult,
         devConfig,
         hrData,
+        nextMenuSettings,
       ] = await Promise.all([
         api.dashboardSummary(token).catch(() => undefined),
         api.modularDashboard(token).catch(() => undefined),
         api.categories(token),
         api.units(token),
-        api.products(token),
-        api
-          .articles(token, { page: 1, pageSize: 25 })
-          .catch(() => ({
-            items: [],
-            summary: {
-              articleCount: 0,
-              articlesWithStock: 0,
-              articlesWithoutStock: 0,
-              stockValue: 0,
-              lowStockCount: 0,
-            },
-          })),
+        api.allProducts(token),
+        api.articles(token, { page: 1, pageSize: 25 }).catch(() => ({
+          items: [],
+          summary: {
+            articleCount: 0,
+            articlesWithStock: 0,
+            articlesWithoutStock: 0,
+            stockValue: 0,
+            lowStockCount: 0,
+          },
+        })),
         api.suppliers(token),
         api.stocks(token),
         api.movements(token),
@@ -791,6 +793,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         api.roles(token).catch(() => []),
         api.devSwitchConfig(token).catch(() => ({ enabled: false })),
         api.hrBootstrap(token).catch(() => undefined),
+        api.menuSettings(token).catch(() => undefined),
       ]);
       if (summaryResult) {
         setDashboardSummary(summaryResult);
@@ -814,6 +817,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       setLocations(nextLocations);
       setInventories(nextInventories);
       setAuditEntries(nextAuditEntries);
+      setMenuModuleSettings(nextMenuSettings);
       if (Array.isArray(usersResult)) {
         setUsers(usersResult);
       } else {
@@ -855,7 +859,11 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   }, []);
 
   useEffect(() => {
-    const refreshHumanSupportUnread = () => void api.humanSupportUnreadCount(token).then((result) => setHumanSupportUnread(result.unread)).catch(() => undefined);
+    const refreshHumanSupportUnread = () =>
+      void api
+        .humanSupportUnreadCount(token)
+        .then((result) => setHumanSupportUnread(result.unread))
+        .catch(() => undefined);
     refreshHumanSupportUnread();
     const interval = window.setInterval(refreshHumanSupportUnread, 30_000);
     return () => window.clearInterval(interval);
@@ -1125,20 +1133,23 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     () =>
       [
         'production-dashboard',
-        'production-orders',
-        'production-calendar',
         'production-today',
         'production-assignments',
         'production-materials',
-        'production-exports',
         'production-history',
       ].includes(activeTab),
     [activeTab],
   );
+  useEffect(() => {
+    if (['production-orders', 'production-calendar', 'production-exports'].includes(activeTab)) {
+      setActiveTab('production-dashboard');
+    }
+  }, [activeTab]);
   const isMenusTab = useMemo(
     () =>
       [
         'menus-dashboard',
+        'menus-catalog',
         'menus-list',
         'menus-calendar',
         'menus-cycles',
@@ -1391,13 +1402,28 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         defaultTab: 'production-dashboard',
         submenu: [
           { tab: 'production-dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
-          { tab: 'production-orders', label: 'Ordres de production', icon: ClipboardList },
-          { tab: 'production-calendar', label: 'Calendrier', icon: Calendar },
-          { tab: 'production-today', label: 'Productions du jour', icon: CalendarDays },
-          { tab: 'production-assignments', label: 'Affectations', icon: UsersRound },
-          { tab: 'production-materials', label: 'Besoins matières', icon: Package },
-          { tab: 'production-exports', label: 'Exports & Documents', icon: Download },
-          { tab: 'production-history', label: 'Historique', icon: History },
+          {
+            tab: 'production-assignments',
+            label:
+              menuModuleSettings?.usageProfile === 'CATERER'
+                ? 'Besoins des prestations'
+                : menuModuleSettings?.usageProfile === 'CENTRAL_KITCHEN'
+                  ? 'Besoins à couvrir'
+                  : 'À produire',
+            icon: ClipboardList,
+          },
+          {
+            tab: 'production-today',
+            label:
+              menuModuleSettings?.usageProfile === 'CATERER'
+                ? 'Productions des prestations'
+                : menuModuleSettings?.usageProfile === 'CENTRAL_KITCHEN'
+                  ? 'Fabrications en cours'
+                  : 'Productions',
+            icon: CalendarDays,
+          },
+          { tab: 'production-materials', label: 'Produits fabriqués', icon: Package },
+          { tab: 'production-history', label: 'Historique & traçabilité', icon: History },
         ],
       },
       {
@@ -1411,13 +1437,42 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         defaultTab: 'menus-dashboard',
         submenu: [
           { tab: 'menus-dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
-          { tab: 'menus-list', label: 'Menus', icon: ClipboardList },
-          { tab: 'menus-calendar', label: 'Calendrier', icon: Calendar },
-          { tab: 'menus-cycles', label: 'Cycles', icon: RefreshCw },
-          { tab: 'menus-diets', label: 'Régimes alimentaires', icon: UsersRound },
-          { tab: 'menus-guests', label: 'Convives', icon: UsersRound },
-          { tab: 'menus-exports', label: 'Exports', icon: Download },
-          { tab: 'menus-history', label: 'Historique', icon: History },
+          ...(menuModuleSettings?.catalogEnabled !== false
+            ? [
+                {
+                  tab: 'menus-catalog' as ActiveTab,
+                  label:
+                    menuModuleSettings?.usageProfile === 'RESTAURANT_CAFE'
+                      ? 'Carte'
+                      : 'Carte & disponibilités',
+                  icon: BookOpen,
+                },
+              ]
+            : []),
+          ...(menuModuleSettings?.scheduledMenusEnabled !== false
+            ? [
+                { tab: 'menus-list' as ActiveTab, label: 'Menus planifiés', icon: ClipboardList },
+                { tab: 'menus-calendar' as ActiveTab, label: 'Calendrier', icon: Calendar },
+              ]
+            : []),
+          ...(menuModuleSettings?.cyclesEnabled !== false
+            ? [{ tab: 'menus-cycles' as ActiveTab, label: 'Cycles', icon: RefreshCw }]
+            : []),
+          ...(menuModuleSettings?.dietsEnabled !== false
+            ? [{ tab: 'menus-diets' as ActiveTab, label: 'Régimes alimentaires', icon: UsersRound }]
+            : []),
+          ...(menuModuleSettings?.guestForecastsEnabled !== false
+            ? [{ tab: 'menus-guests' as ActiveTab, label: 'Convives', icon: UsersRound }]
+            : []),
+          { tab: 'menus-exports', label: 'Exports & Documents', icon: Download },
+          {
+            tab: 'menus-history',
+            label:
+              menuModuleSettings?.usageProfile === 'RESTAURANT_CAFE'
+                ? 'Historique & audit'
+                : 'Historique',
+            icon: History,
+          },
         ],
       },
       {
@@ -1503,6 +1558,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       menusInstalled,
       menusMenuExpanded,
       isMenusTab,
+      menuModuleSettings,
       haccpInstalled,
       haccpMenuExpanded,
       isHaccpTab,
@@ -2821,14 +2877,15 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     'technical-sheets-costs': 'Coûts fiches techniques',
     'technical-sheets-production': 'Production théorique',
     'production-dashboard': 'Production',
-    'production-orders': 'Ordres de production',
-    'production-calendar': 'Calendrier Production',
-    'production-today': 'Productions du jour',
-    'production-assignments': 'Affectations Production',
-    'production-materials': 'Besoins matières',
-    'production-exports': 'Exports & Documents',
-    'production-history': 'Historique Production',
+    'production-orders': 'Production',
+    'production-calendar': 'Production',
+    'production-today': 'Productions',
+    'production-assignments': 'À produire',
+    'production-materials': 'Produits fabriqués',
+    'production-exports': 'Production',
+    'production-history': 'Historique & traçabilité',
     'menus-dashboard': 'Menus',
+    'menus-catalog': 'Carte & disponibilités',
     'menus-list': 'Menus planifiés',
     'menus-calendar': 'Calendrier Menus',
     'menus-cycles': 'Cycles Menus',
@@ -3976,45 +4033,29 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                 <ProductionApp
                   token={token}
                   session={session}
+                  usageProfile={menuModuleSettings?.usageProfile}
                   tab={
-                    activeTab === 'production-orders'
-                      ? 'orders'
-                      : activeTab === 'production-calendar'
-                        ? 'calendar'
-                        : activeTab === 'production-today'
-                          ? 'today'
-                          : activeTab === 'production-assignments'
-                            ? 'assignments'
-                            : activeTab === 'production-materials'
-                              ? 'materials'
-                              : activeTab === 'production-exports'
-                                ? 'exports'
-                                : activeTab === 'production-history'
-                                  ? 'history'
-                                  : 'dashboard'
+                    activeTab === 'production-today'
+                      ? 'today'
+                      : activeTab === 'production-assignments'
+                        ? 'assignments'
+                        : activeTab === 'production-materials'
+                          ? 'materials'
+                          : activeTab === 'production-history'
+                            ? 'history'
+                            : 'dashboard'
                   }
-                  products={products}
-                  units={units}
-                  stocks={stocks}
-                  collaborators={hrCollaborators}
-                  departments={hrDepartments}
                   onNavigate={(next) =>
                     setActiveTab(
-                      next === 'orders'
-                        ? 'production-orders'
-                        : next === 'calendar'
-                          ? 'production-calendar'
-                          : next === 'today'
-                            ? 'production-today'
-                            : next === 'assignments'
-                              ? 'production-assignments'
-                              : next === 'materials'
-                                ? 'production-materials'
-                                : next === 'exports'
-                                  ? 'production-exports'
-                                  : next === 'history'
-                                    ? 'production-history'
-                                    : 'production-dashboard',
+                      next === 'today'
+                        ? 'production-today'
+                        : next === 'assignments'
+                          ? 'production-assignments'
+                          : next === 'materials'
+                            ? 'production-materials'
+                            : next === 'history'
+                              ? 'production-history'
+                              : 'production-dashboard',
                     )
                   }
                 />
@@ -4025,47 +4066,52 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   token={token}
                   session={session}
                   tab={
-                    activeTab === 'menus-list'
-                      ? 'menus'
-                      : activeTab === 'menus-calendar'
-                        ? 'calendar'
-                        : activeTab === 'menus-cycles'
-                          ? 'cycles'
-                          : activeTab === 'menus-diets'
-                            ? 'diets'
-                            : activeTab === 'menus-guests'
-                              ? 'guests'
-                              : activeTab === 'menus-exports'
-                                ? 'exports'
-                                : activeTab === 'menus-history'
-                                  ? 'history'
-                                  : 'dashboard'
+                    activeTab === 'menus-catalog'
+                      ? 'catalog'
+                      : activeTab === 'menus-list'
+                        ? 'menus'
+                        : activeTab === 'menus-calendar'
+                          ? 'calendar'
+                          : activeTab === 'menus-cycles'
+                            ? 'cycles'
+                            : activeTab === 'menus-diets'
+                              ? 'diets'
+                              : activeTab === 'menus-guests'
+                                ? 'guests'
+                                : activeTab === 'menus-exports'
+                                  ? 'exports'
+                                  : activeTab === 'menus-history'
+                                    ? 'history'
+                                    : 'dashboard'
                   }
                   sites={activeSites}
                   canManage={canWriteHr}
                   onNavigate={(next) =>
                     setActiveTab(
-                      next === 'menus'
-                        ? 'menus-list'
-                        : next === 'calendar'
-                          ? 'menus-calendar'
-                          : next === 'cycles'
-                            ? 'menus-cycles'
-                            : next === 'diets'
-                              ? 'menus-diets'
-                              : next === 'guests'
-                                ? 'menus-guests'
-                                : next === 'exports'
-                                  ? 'menus-exports'
-                                  : next === 'history'
-                                    ? 'menus-history'
-                                    : 'menus-dashboard',
+                      next === 'catalog'
+                        ? 'menus-catalog'
+                        : next === 'menus'
+                          ? 'menus-list'
+                          : next === 'calendar'
+                            ? 'menus-calendar'
+                            : next === 'cycles'
+                              ? 'menus-cycles'
+                              : next === 'diets'
+                                ? 'menus-diets'
+                                : next === 'guests'
+                                  ? 'menus-guests'
+                                  : next === 'exports'
+                                    ? 'menus-exports'
+                                    : next === 'history'
+                                      ? 'menus-history'
+                                      : 'menus-dashboard',
                     )
                   }
                   onInstalled={(apps) => {
                     if (apps) setInstalledApps(apps);
                     void refresh();
                   }}
+                  onSettingsChanged={setMenuModuleSettings}
                 />
               )}
 
@@ -5237,7 +5283,28 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             filter: 'drop-shadow(0 3px 6px rgba(0, 0, 0, 0.16))',
           }}
         />
-        {humanSupportUnread > 0 ? <span style={{ position: 'absolute', right: -3, top: -3, minWidth: 20, height: 20, borderRadius: 10, padding: '0 5px', background: '#dc2626', color: '#fff', fontSize: 11, fontWeight: 700, display: 'grid', placeItems: 'center', border: '2px solid #fff' }}>{humanSupportUnread > 9 ? '9+' : humanSupportUnread}</span> : null}
+        {humanSupportUnread > 0 ? (
+          <span
+            style={{
+              position: 'absolute',
+              right: -3,
+              top: -3,
+              minWidth: 20,
+              height: 20,
+              borderRadius: 10,
+              padding: '0 5px',
+              background: '#dc2626',
+              color: '#fff',
+              fontSize: 11,
+              fontWeight: 700,
+              display: 'grid',
+              placeItems: 'center',
+              border: '2px solid #fff',
+            }}
+          >
+            {humanSupportUnread > 9 ? '9+' : humanSupportUnread}
+          </span>
+        ) : null}
       </button>
 
       <Modal isOpen={showSiteModal} onClose={() => setShowSiteModal(false)} title="Créer un site">
@@ -7293,13 +7360,13 @@ function DashboardCockpitOverview({
 function DashboardCockpitLoading() {
   const [stepIndex, setStepIndex] = useState(0);
   const steps = [
-    "Connexion sécurisée aux services...",
-    "Initialisation du cockpit ToqueHub...",
-    "Récupération des indicateurs HACCP...",
-    "Synchronisation des effectifs et plannings...",
-    "Analyse des alertes opérationnelles...",
+    'Connexion sécurisée aux services...',
+    'Initialisation du cockpit ToqueHub...',
+    'Récupération des indicateurs HACCP...',
+    'Synchronisation des effectifs et plannings...',
+    'Analyse des alertes opérationnelles...',
     "Calcul des priorités de l'établissement...",
-    "Finalisation du cockpit..."
+    'Finalisation du cockpit...',
   ];
 
   useEffect(() => {
@@ -7341,7 +7408,8 @@ function DashboardCockpitLoading() {
           </div>
 
           <h2 className="cockpit-loading-title">
-            Préparation du cockpit<span className="dot-flashing" />
+            Préparation du cockpit
+            <span className="dot-flashing" />
           </h2>
 
           <div className="cockpit-step-wrapper">
@@ -7360,10 +7428,7 @@ function DashboardCockpitLoading() {
           </div>
 
           <div className="cockpit-progress-container">
-            <div
-              className="cockpit-progress-bar"
-              style={{ width: `${progressPercent}%` }}
-            />
+            <div className="cockpit-progress-bar" style={{ width: `${progressPercent}%` }} />
           </div>
         </div>
       </div>
@@ -8274,8 +8339,7 @@ function computeStocksReadiness(
   const catalogReady = Boolean(activeProducts.length);
   const hasValidatedOcr = ocrStatuses.some((status) => {
     const document = status.document as unknown as
-      | { receptionId?: string | null; receptionStatus?: string | null }
-      | undefined;
+      { receptionId?: string | null; receptionStatus?: string | null } | undefined;
     return Boolean(
       document?.receptionId ||
       document?.receptionStatus === 'VALIDATED' ||
@@ -15701,12 +15765,7 @@ type SettingsSubTab =
   | 'api-keys'
   | 'core';
 type OrganizationSettingModal =
-  | 'name'
-  | 'establishmentType'
-  | 'regulatoryCountry'
-  | 'secondarySites'
-  | 'siteForm'
-  | null;
+  'name' | 'establishmentType' | 'regulatoryCountry' | 'secondarySites' | 'siteForm' | null;
 type SiteDraft = {
   name: string;
   description: string;
@@ -18947,13 +19006,7 @@ function UnitForm({ onSubmit, onClose }: UnitFormProps) {
 
 // Product Form
 type ProductSheetTab =
-  | 'identity'
-  | 'supplier'
-  | 'stock'
-  | 'packaging'
-  | 'allergens'
-  | 'nutrition'
-  | 'storage';
+  'identity' | 'supplier' | 'stock' | 'packaging' | 'allergens' | 'nutrition' | 'storage';
 
 const PRODUCT_SHEET_TABS: Array<{ id: ProductSheetTab; label: string }> = [
   { id: 'identity', label: 'Identité' },

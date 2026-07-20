@@ -1,5 +1,6 @@
 import { TechnicalSheetsService } from './technical-sheets.service';
 import AdmZip from 'adm-zip';
+import { ProductKind } from '@prisma/client';
 
 const baseImport = {
   name: null,
@@ -103,7 +104,15 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
     expect(result.matchedIngredientsCount).toBe(0);
     expect(result.newProductsCount).toBe(1);
     expect(result.skippedIngredientsCount).toBe(0);
+    expect(result.payload.stockPolicy).toBe('MAKE_TO_STOCK');
     expect(result.payload.ingredients).toEqual([expect.objectContaining({ productName: 'Stab2000', createProduct: true, quantity: 2, unitId: 'unit-g' })]);
+    expect(prisma.product.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        kind: {
+          in: [ProductKind.UNSPECIFIED, ProductKind.RAW_MATERIAL, ProductKind.PACKAGED],
+        },
+      }),
+    }));
   });
 
   it('does not match a short ingredient name to a contaminated longer product name', () => {
@@ -119,6 +128,7 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
     const unit = { id: 'unit-g', symbol: 'g' };
     const product = { id: 'product-new', name: 'Stab2000', unitId: unit.id, unit, isArchived: false };
     const tx = {
+      technicalSheet: { findFirst: jest.fn().mockResolvedValue({ mode: 'PRODUCTION' }) },
       technicalSheetIngredient: { deleteMany: jest.fn(), create: jest.fn() },
       unit: { findFirst: jest.fn().mockResolvedValue(unit) },
       product: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(product) },
@@ -135,6 +145,133 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
     expect(tx.product.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ name: 'Stab2000', unitId: 'unit-g' }) }));
     expect(tx.technicalSheetIngredient.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ productId: 'product-new', quantity: 2 }) }));
     expect(tx.auditLog.create).toHaveBeenCalled();
+  });
+
+  it('creates the internal production output automatically from the sheet yield', async () => {
+    const unit = { id: 'unit-piece', name: 'Pièce', symbol: 'pc' };
+    const outputProduct = { id: 'product-output', name: 'Snicker', unitId: unit.id, unit, kind: 'FINISHED' };
+    const tx = {
+      unit: { findFirst: jest.fn().mockResolvedValue(unit) },
+      product: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue(outputProduct),
+      },
+      auditLog: { create: jest.fn() },
+    };
+
+    const result = await (service as any).resolveRecipeOutputTx(tx, 'org-1', {
+      name: 'Snicker',
+      referencePortions: 24,
+      mode: 'ASSEMBLY',
+    }, undefined, 'user-1');
+
+    expect(result).toEqual({ outputProductId: 'product-output', yieldUnitId: 'unit-piece' });
+    expect(tx.product.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ name: 'Snicker', unitId: 'unit-piece', kind: 'FINISHED' }),
+    }));
+    expect(tx.auditLog.create).toHaveBeenCalled();
+  });
+
+  it('links a sub-recipe to its manufactured product', async () => {
+    const unit = { id: 'unit-g', symbol: 'g' };
+    const outputProduct = { id: 'product-ganache', name: 'Ganache', unitId: unit.id, unit, isArchived: false };
+    const source = {
+      id: 'sheet-ganache',
+      name: 'Ganache',
+      mode: 'PRODUCTION',
+      status: 'ACTIVE',
+      outputProductId: outputProduct.id,
+      outputProduct,
+      yieldUnit: unit,
+    };
+    const tx = {
+      technicalSheetIngredient: {
+        deleteMany: jest.fn(),
+        create: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      technicalSheet: { findFirst: jest.fn().mockResolvedValueOnce({ mode: 'ASSEMBLY' }).mockResolvedValueOnce(source) },
+      unit: { findFirst: jest.fn().mockResolvedValue(unit) },
+      product: { findFirst: jest.fn().mockResolvedValue(outputProduct) },
+    };
+
+    await (service as any).replaceIngredients(tx, 'org-1', 'sheet-snicker', [{
+      sourceTechnicalSheetId: source.id,
+      productId: '',
+      unitId: unit.id,
+      quantity: 500,
+      section: 'Ganache',
+    }]);
+
+    expect(tx.technicalSheetIngredient.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        technicalSheetId: 'sheet-snicker',
+        sourceTechnicalSheetId: 'sheet-ganache',
+        productId: 'product-ganache',
+        quantity: 500,
+        section: 'Ganache',
+      }),
+    }));
+  });
+
+  it('rejects sub-recipes in a fabrication sheet', async () => {
+    const tx = {
+      technicalSheet: { findFirst: jest.fn().mockResolvedValue({ mode: 'PRODUCTION' }) },
+      technicalSheetIngredient: { deleteMany: jest.fn() },
+    };
+
+    await expect((service as any).replaceIngredients(tx, 'org-1', 'sheet-biscuit', [{
+      sourceTechnicalSheetId: 'sheet-ganache',
+      productId: '',
+      unitId: 'unit-piece',
+      quantity: 1,
+    }])).rejects.toThrow('sans sous-recette');
+  });
+
+  it('rejects a production output used as a direct Stocks ingredient', async () => {
+    const unit = { id: 'unit-piece', symbol: 'pc' };
+    const tx = {
+      technicalSheet: { findFirst: jest.fn().mockResolvedValue({ mode: 'ASSEMBLY' }) },
+      technicalSheetIngredient: { deleteMany: jest.fn() },
+      unit: { findFirst: jest.fn().mockResolvedValue(unit) },
+      product: { findFirst: jest.fn().mockResolvedValue({
+        id: 'product-biscuit',
+        name: 'Biscuit Joconde',
+        kind: ProductKind.INTERMEDIATE,
+        unitId: unit.id,
+        unit,
+      }) },
+    };
+
+    await expect((service as any).replaceIngredients(tx, 'org-1', 'sheet-snicker', [{
+      productId: 'product-biscuit',
+      unitId: unit.id,
+      quantity: 1,
+    }])).rejects.toThrow('production interne');
+  });
+
+  it('keeps only Brouillon and Actif as visible workflow statuses', () => {
+    expect((service as any).visibleRecipeStatus('DRAFT')).toBe('DRAFT');
+    expect((service as any).visibleRecipeStatus('ACTIVE')).toBe('ACTIVE');
+    expect((service as any).visibleRecipeStatus('VALIDATED')).toBe('ACTIVE');
+    expect((service as any).visibleRecipeStatus('ARCHIVED')).toBe('DRAFT');
+  });
+
+  it('rejects circular sub-recipes', async () => {
+    const tx = {
+      technicalSheetIngredient: {
+        findMany: jest.fn()
+          .mockResolvedValueOnce([{ sourceTechnicalSheetId: 'sheet-biscuit' }])
+          .mockResolvedValueOnce([{ sourceTechnicalSheetId: 'sheet-snicker' }]),
+      },
+    };
+
+    await expect((service as any).assertNoSubRecipeCycleTx(
+      tx,
+      'org-1',
+      'sheet-snicker',
+      'sheet-ganache',
+    )).rejects.toThrow('Cycle de sous-recettes détecté');
   });
 
   it.each(['Fiche.pages', 'Recette.numbers'])('extracts the embedded Apple preview before OCR for %s', (originalname) => {
@@ -269,5 +406,84 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
     expect(tx.technicalSheetCategory.updateMany).toHaveBeenCalledWith({ where: { id: { in: ['cat-1'] }, organizationId: 'org-1' }, data: { isArchived: false, archivedAt: null } });
     expect(tx.technicalSheetCategory.createMany).toHaveBeenCalledWith({ data: [{ organizationId: 'org-1', name: 'Desserts' }], skipDuplicates: true });
     expect(tx.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ details: { names: ['Pâtisserie', 'Desserts'] } }) }));
+  });
+
+  it('reactivates an archived recipe when a new import uses the same name', async () => {
+    const archivedRecipe = {
+      id: 'sheet-croissant',
+      name: 'Croissant',
+      isArchived: true,
+      outputProductId: null,
+      yieldUnitId: 'unit-portion',
+      mode: 'PRODUCTION',
+    };
+    const restoredRecipe = { ...archivedRecipe, isArchived: false, status: 'DRAFT' };
+    const tx = {
+      technicalSheet: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue(archivedRecipe),
+        update: jest.fn(),
+        findUnique: jest.fn().mockResolvedValue(restoredRecipe),
+        create: jest.fn(),
+      },
+    };
+    const prisma = {
+      organization: { findUnique: jest.fn().mockResolvedValue({ stocksInstalledAt: new Date(), technicalSheetsInstalledAt: new Date() }) },
+      technicalSheet: { findFirst: jest.fn().mockResolvedValue({ id: archivedRecipe.id, name: archivedRecipe.name, isArchived: true }) },
+      $transaction: jest.fn(async (callback: any) => callback(tx)),
+    };
+    const restoringService = new TechnicalSheetsService(prisma as any, {} as any);
+    jest.spyOn(restoringService as any, 'resolveRecipeOutputTx').mockResolvedValue({ outputProductId: null, yieldUnitId: 'unit-portion' });
+    jest.spyOn(restoringService as any, 'replaceChildren').mockResolvedValue(undefined);
+    jest.spyOn(restoringService as any, 'assertRecipeCanBeActiveTx').mockResolvedValue(undefined);
+    jest.spyOn(restoringService as any, 'syncProductionProfileTx').mockResolvedValue(undefined);
+    const history = jest.spyOn(restoringService as any, 'history').mockResolvedValue(undefined);
+    jest.spyOn(restoringService as any, 'recalculateCostTx').mockResolvedValue(undefined);
+    jest.spyOn(restoringService as any, 'serializeRecipe').mockReturnValue({ id: archivedRecipe.id, name: archivedRecipe.name });
+
+    const result = await restoringService.createRecipe('org-1', { id: 'user-1', role: 'ADMIN' }, {
+      name: ' Croissant ',
+      mode: 'PRODUCTION',
+      status: 'DRAFT',
+      referencePortions: 28,
+      ingredients: [],
+      steps: [],
+    } as any);
+
+    expect(tx.technicalSheet.create).not.toHaveBeenCalled();
+    expect(tx.technicalSheet.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: archivedRecipe.id, organizationId: 'org-1' },
+      data: expect.objectContaining({ name: 'Croissant', isArchived: false, archivedAt: null, sourceTechnicalSheetId: null }),
+    }));
+    expect(history).toHaveBeenCalledWith(expect.anything(), 'org-1', archivedRecipe.id, 'user-1', 'STATUS_CHANGED', 'Réactivation de la fiche archivée avec un nouvel import', expect.objectContaining({ restoredFromArchive: true }));
+    expect(result).toEqual(expect.objectContaining({ id: archivedRecipe.id, name: 'Croissant', restoredFromArchive: true }));
+  });
+
+  it('rejects a duplicate active recipe with a clear business error', async () => {
+    const prisma = {
+      organization: { findUnique: jest.fn().mockResolvedValue({ stocksInstalledAt: new Date(), technicalSheetsInstalledAt: new Date() }) },
+      technicalSheet: { findFirst: jest.fn().mockResolvedValue({ id: 'sheet-croissant', name: 'Croissant', isArchived: false }) },
+      $transaction: jest.fn(),
+    };
+    const duplicateService = new TechnicalSheetsService(prisma as any, {} as any);
+
+    await expect(duplicateService.createRecipe('org-1', { id: 'user-1', role: 'ADMIN' }, {
+      name: 'croissant',
+      mode: 'PRODUCTION',
+      status: 'DRAFT',
+      referencePortions: 28,
+    } as any)).rejects.toThrow('Une fiche technique nommée « Croissant » existe déjà.');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('always stores technical sheets with stock production policy', () => {
+    const stockService = new TechnicalSheetsService({} as any, {} as any);
+    const payload = {
+      name: 'Croissant',
+      referencePortions: 28,
+      stockPolicy: 'MAKE_TO_ORDER',
+    } as any;
+
+    expect((stockService as any).recipeCreateData('org-1', payload).stockPolicy).toBe('MAKE_TO_STOCK');
+    expect((stockService as any).recipeUpdateData(payload).stockPolicy).toBe('MAKE_TO_STOCK');
   });
 });

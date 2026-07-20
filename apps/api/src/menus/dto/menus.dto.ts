@@ -1,6 +1,6 @@
 import { Type, Transform } from 'class-transformer';
-import { IsArray, IsBoolean, IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
-import { MenuExportAudience, MenuExportFormat, MenuGuestGroupType, MenuHistoryAction, MenuProductionGenerationMode, MenuSectionType, MenuServiceType, MenuStatus, MenuVariantMode } from '@prisma/client';
+import { IsArray, IsBoolean, IsEnum, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { MenuCatalogType, MenuExportAudience, MenuExportFormat, MenuGuestGroupType, MenuHistoryAction, MenuKind, MenuProductionGenerationMode, MenuSectionType, MenuServiceType, MenuStatus, MenuUsageProfile, MenuVariantMode } from '@prisma/client';
 
 export class MenuQueryDto {
   @IsOptional() @IsString() search?: string;
@@ -10,26 +10,67 @@ export class MenuQueryDto {
   @IsOptional() @IsUUID() siteId?: string;
   @IsOptional() @IsEnum(MenuServiceType) service?: MenuServiceType;
   @IsOptional() @IsEnum(MenuStatus) status?: MenuStatus;
+  @IsOptional() @IsEnum(MenuKind) kind?: MenuKind;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) pageSize?: number;
 }
 
 export class MenuItemDto {
   @IsEnum(MenuSectionType) section!: MenuSectionType;
-  @IsUUID() technicalSheetId!: string;
+  @IsOptional() @IsUUID() menuCategoryId?: string;
+  @IsOptional() @IsUUID() technicalSheetId?: string;
+  @IsOptional() @IsUUID() productId?: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) position?: number;
   @IsOptional() @Type(() => Number) @Min(0.001) portionsOverride?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0.001) servingQuantity?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) targetReadyQuantity?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) lowStockThreshold?: number;
+  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() availabilityEnabled?: boolean;
   @IsOptional() @IsString() @MaxLength(2000) notes?: string;
 }
 
 export class UpsertMenuDto {
   @IsString() @MaxLength(160) name!: string;
-  @IsString() date!: string;
+  @IsOptional() @IsString() date?: string;
   @IsEnum(MenuServiceType) service!: MenuServiceType;
+  @IsOptional() @IsEnum(MenuKind) kind?: MenuKind;
+  @IsOptional() @IsEnum(MenuCatalogType) catalogType?: MenuCatalogType;
   @IsOptional() @IsUUID() siteId?: string;
   @IsOptional() @IsString() @MaxLength(4000) description?: string;
+  @IsOptional() @IsString() activeFrom?: string;
+  @IsOptional() @IsString() activeUntil?: string;
+  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() isPrimary?: boolean;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) expectedGuests?: number;
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => MenuItemDto) items?: MenuItemDto[];
+}
+
+export class UpdateMenuSettingsDto {
+  @IsEnum(MenuUsageProfile) usageProfile!: MenuUsageProfile;
+  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() catalogEnabled?: boolean;
+  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() scheduledMenusEnabled?: boolean;
+  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() eventsEnabled?: boolean;
+  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() cyclesEnabled?: boolean;
+  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() dietsEnabled?: boolean;
+  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() guestForecastsEnabled?: boolean;
+  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() targetStockEnabled?: boolean;
+}
+
+export class UpsertMenuCategoryDto {
+  @IsString() @MaxLength(80) name!: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) position?: number;
+  @IsOptional() @IsString() @MaxLength(20) color?: string;
+  @IsOptional() @IsString() @MaxLength(40) icon?: string;
+  @IsOptional() @IsEnum(MenuCatalogType) catalogType?: MenuCatalogType;
+}
+
+export class MenuAvailabilityQueryDto {
+  @IsOptional() @IsUUID() siteId?: string;
+}
+
+export class PlanMenuShortagesDto {
+  @IsOptional() @IsUUID() siteId?: string;
+  @IsOptional() @IsArray() @IsUUID(undefined, { each: true }) itemIds?: string[];
+  @IsOptional() @IsString() neededAt?: string;
 }
 
 export class UpdateMenuStatusDto {

@@ -60,11 +60,137 @@ enum HaccpAssistantDraftStatus {
   EXPIRED
 }
 
+enum ProductKind {
+  UNSPECIFIED
+  RAW_MATERIAL
+  INTERMEDIATE
+  FINISHED
+  PACKAGED
+}
+
+enum TechnicalSheetMode {
+  ASSEMBLY
+  PRODUCTION
+}
+
+enum TechnicalSheetStockPolicy {
+  MAKE_TO_ORDER
+  MAKE_TO_STOCK
+}
+
+enum ConservationState {
+  AMBIENT
+  CHILLED
+  FROZEN
+  THAWING
+  THAWED
+  COOLING
+  BLOCKED
+  EXPIRED
+  DEPLETED
+}
+
+enum ProductionNeedSource {
+  MANUAL
+  MENU
+  CATERING_ORDER
+  STOCK_TARGET
+  STOCK_MINIMUM
+  SALES_FORECAST
+  RESERVATION
+  SUB_RECIPE
+  TRANSFER_REQUEST
+}
+
+enum ProductionNeedStatus {
+  DRAFT
+  CONFIRMED
+  PARTIALLY_COVERED
+  COVERED
+  CANCELLED
+}
+
+enum ProductionProfileMode {
+  FIXED
+  MULTIPLES
+  FLEXIBLE
+  FORMATS
+  EQUIPMENT
+}
+
+enum ProductionRoundingMode {
+  UP
+  DOWN
+  NEAREST
+}
+
+enum ProductionBatchStatus {
+  TO_PREPARE
+  PREPARING
+  COOKING
+  COOLING
+  FREEZING
+  COMPLETED
+  PARTIALLY_LOST
+  CANCELLED
+}
+
+enum ProductionOperationType {
+  PREPARATION
+  THAWING
+  COOKING
+  COOLING
+  FREEZING
+  ASSEMBLY
+  FINISHING
+  PACKAGING
+  TRANSFER
+  DELIVERY
+  OTHER
+}
+
+enum ProductionOperationStatus {
+  PENDING
+  READY
+  IN_PROGRESS
+  COMPLETED
+  BLOCKED
+  SKIPPED
+  CANCELLED
+}
+
+enum ProductionConsumptionKind {
+  PLANNED
+  ACTUAL
+  LOSS
+}
+
+enum StockReservationStatus {
+  ACTIVE
+  CONSUMED
+  RELEASED
+  CANCELLED
+  EXPIRED
+}
+
+enum StockReservationTarget {
+  NEED
+  ORDER
+  MENU
+  CAMPAIGN
+  TRANSFER
+  OTHER
+}
+
 enum ProductionOrderStatus {
+  DRAFT
+  PROPOSED
   PLANNED
   VALIDATED
   IN_PROGRESS
+  PARTIALLY_COMPLETED
   COMPLETED
+  BLOCKED
   CANCELLED
 }
 
@@ -148,6 +274,25 @@ enum MenuStatus {
   ARCHIVED
 }
 
+enum MenuUsageProfile {
+  RESTAURANT_CAFE
+  CATERER
+  CENTRAL_KITCHEN
+  CUSTOM
+}
+
+enum MenuKind {
+  CATALOG
+  SERVICE
+  EVENT
+  CYCLE
+}
+
+enum MenuCatalogType {
+  FOOD
+  DRINKS
+}
+
 enum MenuServiceType {
   BREAKFAST
   LUNCH
@@ -218,6 +363,8 @@ enum MenuHistoryAction {
   MANUAL_RESYNC
   GUESTS_UPDATED
   VARIANTS_UPDATED
+  SETTINGS_UPDATED
+  AVAILABILITY_PLANNED
 }
 
 enum UserStatus {
@@ -240,9 +387,23 @@ enum StockMovementType {
   CORRECTION
   INVENTORY
   PRODUCTION
+  CONSUMPTION
+  RESERVATION
+  RESERVATION_RELEASE
   LOSS
+  BREAKAGE
+  TASTING
+  EXPIRATION
+  DESTRUCTION
+  SALE
+  RETURN
   TRANSFER
   RECEPTION
+  FREEZE
+  THAW
+  COOLING
+  PACKAGING
+  UNPACKAGING
 }
 
 enum InventoryStatus {
@@ -790,6 +951,8 @@ model Organization {
   categories                      Category[]
   units                           Unit[]
   products                        Product[]
+  productVariants                 ProductVariant[]
+  packagingCompositionItems       PackagingCompositionItem[]
   suppliers                       Supplier[]
   sites                           Site[]                           @relation("OrganizationSites")
   locations                       Location[]
@@ -852,7 +1015,16 @@ model Organization {
   technicalSheetSimulations       TechnicalSheetSimulation[]
   technicalSheetExports           TechnicalSheetExport[]
   technicalSheetHistory           TechnicalSheetHistory[]
+  technicalSheetVersions          TechnicalSheetVersion[]
+  productionProfiles              ProductionProfile[]
+  productionNeeds                 ProductionNeed[]
+  productionNeedAllocations       ProductionNeedAllocation[]
   productionOrders                ProductionOrder[]
+  productionBatches               ProductionBatch[]
+  productionOperations            ProductionOperation[]
+  productionOperationDependencies ProductionOperationDependency[]
+  productionBatchConsumptions     ProductionBatchConsumption[]
+  stockReservations               StockReservation[]
   productionMaterialRequirements  ProductionMaterialRequirement[]
   productionAssignments           ProductionAssignment[]
   productionAlerts                ProductionAlert[]
@@ -863,6 +1035,8 @@ model Organization {
   productionDestockingProposals   ProductionDestockingProposal[]
   productionDestockingLines       ProductionDestockingLine[]
   productionDestockingMovements   ProductionDestockingMovement[]
+  menuSettings                    MenuSettings?
+  menuCategories                  MenuCategory[]
   menuDiets                       MenuDiet[]
   menus                           Menu[]
   menuItems                       MenuItem[]
@@ -934,12 +1108,12 @@ model SystemSetting {
 // Ces tables appartiennent au déploiement central apps/support-relay. Elles restent
 // dans le schéma partagé afin que le relais et les installations utilisent le même client Prisma.
 model SupportRelayInstallation {
-  id         String   @id @default(uuid()) @db.Uuid
-  instanceId String   @unique
-  secret     String   @db.Text
+  id         String               @id @default(uuid()) @db.Uuid
+  instanceId String               @unique
+  secret     String               @db.Text
   blockedAt  DateTime?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
   tickets    SupportRelayTicket[]
   nonces     SupportRelayNonce[]
 
@@ -947,11 +1121,11 @@ model SupportRelayInstallation {
 }
 
 model SupportRelayNonce {
-  id             String   @id @default(uuid()) @db.Uuid
-  installationId String   @db.Uuid
+  id             String                   @id @default(uuid()) @db.Uuid
+  installationId String                   @db.Uuid
   nonce          String
   expiresAt      DateTime
-  createdAt      DateTime @default(now())
+  createdAt      DateTime                 @default(now())
   installation   SupportRelayInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
 
   @@unique([installationId, nonce])
@@ -960,18 +1134,18 @@ model SupportRelayNonce {
 }
 
 model SupportRelayTicket {
-  id                 String   @id @default(uuid()) @db.Uuid
-  installationId     String   @db.Uuid
+  id                 String                   @id @default(uuid()) @db.Uuid
+  installationId     String                   @db.Uuid
   localTicketId      String
   telegramTopicId    String?
-  status             String   @default("OPEN")
+  status             String                   @default("OPEN")
   assignedTelegramId String?
   assignedVolunteer  String?
   payload            Json
   closedAt           DateTime?
   expiresAt          DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
   installation       SupportRelayInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
   messages           SupportRelayMessage[]
   events             SupportRelayEvent[]
@@ -983,15 +1157,15 @@ model SupportRelayTicket {
 }
 
 model SupportRelayMessage {
-  id              String   @id @default(uuid()) @db.Uuid
-  ticketId        String   @db.Uuid
-  localMessageId  String?
+  id                String             @id @default(uuid()) @db.Uuid
+  ticketId          String             @db.Uuid
+  localMessageId    String?
   telegramMessageId String?
-  author          String
-  content         String   @db.Text
-  payload         Json?
-  createdAt       DateTime @default(now())
-  ticket          SupportRelayTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author            String
+  content           String             @db.Text
+  payload           Json?
+  createdAt         DateTime           @default(now())
+  ticket            SupportRelayTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
   @@unique([ticketId, localMessageId])
   @@unique([ticketId, telegramMessageId])
@@ -999,12 +1173,12 @@ model SupportRelayMessage {
 }
 
 model SupportRelayEvent {
-  id          String   @id @default(uuid()) @db.Uuid
-  ticketId    String   @db.Uuid
-  eventKey    String   @unique
+  id          String             @id @default(uuid()) @db.Uuid
+  ticketId    String             @db.Uuid
+  eventKey    String             @unique
   payload     Json
   deliveredAt DateTime?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime           @default(now())
   ticket      SupportRelayTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
   @@index([ticketId, deliveredAt])
@@ -1012,27 +1186,27 @@ model SupportRelayEvent {
 }
 
 model PurchasingOAuthBrokerState {
-  id            String                  @id @default(uuid()) @db.Uuid
-  provider      PurchasingEmailProvider
-  stateHash     String                  @unique
-  returnUrl     String                  @db.Text
-  clientState   String                  @db.Text
-  expiresAt     DateTime
-  consumedAt    DateTime?
-  createdAt     DateTime                @default(now())
+  id          String                  @id @default(uuid()) @db.Uuid
+  provider    PurchasingEmailProvider
+  stateHash   String                  @unique
+  returnUrl   String                  @db.Text
+  clientState String                  @db.Text
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime                @default(now())
 
   @@index([expiresAt])
   @@map("purchasing_oauth_broker_states")
 }
 
 model PurchasingOAuthBrokerGrant {
-  id                String   @id @default(uuid()) @db.Uuid
-  grantHash         String   @unique
-  stateId           String   @unique @db.Uuid
-  payloadCiphertext String   @db.Text
+  id                String    @id @default(uuid()) @db.Uuid
+  grantHash         String    @unique
+  stateId           String    @unique @db.Uuid
+  payloadCiphertext String    @db.Text
   expiresAt         DateTime
   consumedAt        DateTime?
-  createdAt         DateTime @default(now())
+  createdAt         DateTime  @default(now())
 
   @@index([expiresAt])
   @@map("purchasing_oauth_broker_grants")
@@ -1096,6 +1270,10 @@ model User {
   regulatoryCountrySelections        Organization[]                 @relation("OrganizationRegulatoryCountrySelectedBy")
   createdHrEmployeeEntitlements      HrEmployeeEntitlement[]        @relation("HrEmployeeEntitlementCreatedBy")
   createdTechnicalSheetHistory       TechnicalSheetHistory[]        @relation("TechnicalSheetHistoryActor")
+  createdProductionNeeds             ProductionNeed[]               @relation("ProductionNeedCreatedBy")
+  producedProductionBatches          ProductionBatch[]              @relation("ProductionBatchProducer")
+  completedProductionBatches         ProductionBatch[]              @relation("ProductionBatchCompletedBy")
+  createdStockReservations           StockReservation[]             @relation("StockReservationCreatedBy")
   planningViewPreferences            PlanningViewPreference[]
   createdProductionOrders            ProductionOrder[]              @relation("ProductionOrderCreatedBy")
   updatedProductionOrders            ProductionOrder[]              @relation("ProductionOrderUpdatedBy")
@@ -1266,6 +1444,13 @@ model Unit {
   fromConversions                UnitConversion[]                @relation("UnitConversionFrom")
   toConversions                  UnitConversion[]                @relation("UnitConversionTo")
   technicalSheetIngredients      TechnicalSheetIngredient[]
+  technicalSheetOutputs          TechnicalSheet[]                @relation("TechnicalSheetYieldUnit")
+  packagingCompositionItems      PackagingCompositionItem[]
+  productionProfiles             ProductionProfile[]
+  productionNeeds                ProductionNeed[]
+  productionBatches              ProductionBatch[]
+  productionBatchConsumptions    ProductionBatchConsumption[]
+  stockReservations              StockReservation[]
   productionMaterialRequirements ProductionMaterialRequirement[]
   productionDestockingLines      ProductionDestockingLine[]
   supplierProductOffers          SupplierProductOffer[]
@@ -1297,43 +1482,44 @@ model UnitConversion {
 }
 
 model Product {
-  id                      String    @id @default(uuid()) @db.Uuid
+  id                      String      @id @default(uuid()) @db.Uuid
   name                    String
   sku                     String?
   description             String?
-  averagePrice            Decimal   @default(0) @db.Decimal(12, 4)
-  minimumStock            Decimal   @default(0) @db.Decimal(12, 3)
+  averagePrice            Decimal     @default(0) @db.Decimal(12, 4)
+  minimumStock            Decimal     @default(0) @db.Decimal(12, 3)
   gtin                    String?
   originCountry           String?
   packageLabel            String?
-  unitsPerPackage         Decimal?  @db.Decimal(12, 3)
-  unitWeightGrams         Decimal?  @db.Decimal(12, 3)
-  netWeightGrams          Decimal?  @db.Decimal(12, 3)
-  ingredients             String?   @db.Text
-  allergensPresent        String[]  @default([])
-  possibleTraces          String[]  @default([])
-  dietaryTags             String[]  @default([])
-  energyKj                Decimal?  @db.Decimal(12, 3)
-  energyKcal              Decimal?  @db.Decimal(12, 3)
-  fatGrams                Decimal?  @db.Decimal(12, 3)
-  saturatedFatGrams       Decimal?  @db.Decimal(12, 3)
-  carbohydratesGrams      Decimal?  @db.Decimal(12, 3)
-  sugarsGrams             Decimal?  @db.Decimal(12, 3)
-  fiberGrams              Decimal?  @db.Decimal(12, 3)
-  proteinGrams            Decimal?  @db.Decimal(12, 3)
-  saltGrams               Decimal?  @db.Decimal(12, 3)
+  unitsPerPackage         Decimal?    @db.Decimal(12, 3)
+  unitWeightGrams         Decimal?    @db.Decimal(12, 3)
+  netWeightGrams          Decimal?    @db.Decimal(12, 3)
+  ingredients             String?     @db.Text
+  allergensPresent        String[]    @default([])
+  possibleTraces          String[]    @default([])
+  dietaryTags             String[]    @default([])
+  energyKj                Decimal?    @db.Decimal(12, 3)
+  energyKcal              Decimal?    @db.Decimal(12, 3)
+  fatGrams                Decimal?    @db.Decimal(12, 3)
+  saturatedFatGrams       Decimal?    @db.Decimal(12, 3)
+  carbohydratesGrams      Decimal?    @db.Decimal(12, 3)
+  sugarsGrams             Decimal?    @db.Decimal(12, 3)
+  fiberGrams              Decimal?    @db.Decimal(12, 3)
+  proteinGrams            Decimal?    @db.Decimal(12, 3)
+  saltGrams               Decimal?    @db.Decimal(12, 3)
   storageType             String?
   shelfLifeAfterOpening   String?
-  storageInstructions     String?   @db.Text
-  preparationInstructions String?   @db.Text
-  isArchived              Boolean   @default(false)
+  storageInstructions     String?     @db.Text
+  preparationInstructions String?     @db.Text
+  kind                    ProductKind @default(UNSPECIFIED)
+  isArchived              Boolean     @default(false)
   archivedAt              DateTime?
-  organizationId          String    @db.Uuid
-  categoryId              String?   @db.Uuid
-  unitId                  String    @db.Uuid
-  primarySupplierId       String?   @db.Uuid
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
+  organizationId          String      @db.Uuid
+  categoryId              String?     @db.Uuid
+  unitId                  String      @db.Uuid
+  primarySupplierId       String?     @db.Uuid
+  createdAt               DateTime    @default(now())
+  updatedAt               DateTime    @updatedAt
 
   organization              Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   category                  Category?                       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
@@ -1344,13 +1530,23 @@ model Product {
   stockReceptionLines       StockReceptionLine[]
   lots                      Lot[]
   technicalSheetIngredients TechnicalSheetIngredient[]
+  technicalSheetOutputs     TechnicalSheet[]                @relation("TechnicalSheetOutputProduct")
   inventoryLines            InventoryLine[]
   productionRequirements    ProductionMaterialRequirement[]
+  variants                  ProductVariant[]
+  packagingOutputs          PackagingCompositionItem[]      @relation("PackagingOutputProduct")
+  packagingComponents       PackagingCompositionItem[]      @relation("PackagingComponentProduct")
+  productionProfiles        ProductionProfile[]             @relation("ProductionProfileOutputProduct")
+  productionNeeds           ProductionNeed[]
+  productionOrderOutputs    ProductionOrder[]               @relation("ProductionOrderOutputProduct")
+  productionConsumptions    ProductionBatchConsumption[]
+  stockReservations         StockReservation[]
   productionDestockingLines ProductionDestockingLine[]
   marginAlerts              MarginAlert[]
   supplierProductOffers     SupplierProductOffer[]
   purchaseOrderLines        PurchaseOrderLine[]
   purchaseReceiptLines      PurchaseReceiptLine[]
+  menuItems                 MenuItem[]
 
   @@unique([organizationId, name])
   @@unique([organizationId, sku])
@@ -1360,6 +1556,65 @@ model Product {
   @@index([primarySupplierId])
   @@index([isArchived])
   @@map("products")
+}
+
+model ProductVariant {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  productId      String    @db.Uuid
+  name           String
+  sku            String?
+  description    String?   @db.Text
+  isArchived     Boolean   @default(false)
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization        Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product             Product                      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  packagingOutputs    PackagingCompositionItem[]   @relation("PackagingOutputVariant")
+  packagingComponents PackagingCompositionItem[]   @relation("PackagingComponentVariant")
+  productionProfiles  ProductionProfile[]
+  productionNeeds     ProductionNeed[]
+  productionOrders    ProductionOrder[]            @relation("ProductionOrderOutputVariant")
+  lots                Lot[]
+  stocks              Stock[]
+  consumptions        ProductionBatchConsumption[]
+  reservations        StockReservation[]
+  stockMovements      StockMovement[]
+
+  @@unique([organizationId, productId, name])
+  @@unique([organizationId, sku])
+  @@index([organizationId])
+  @@index([productId])
+  @@index([isArchived])
+  @@map("product_variants")
+}
+
+model PackagingCompositionItem {
+  id                 String   @id @default(uuid()) @db.Uuid
+  organizationId     String   @db.Uuid
+  outputProductId    String   @db.Uuid
+  outputVariantId    String?  @db.Uuid
+  componentProductId String   @db.Uuid
+  componentVariantId String?  @db.Uuid
+  quantity           Decimal  @db.Decimal(12, 3)
+  unitId             String   @db.Uuid
+  position           Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  organization     Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  outputProduct    Product         @relation("PackagingOutputProduct", fields: [outputProductId], references: [id], onDelete: Cascade)
+  outputVariant    ProductVariant? @relation("PackagingOutputVariant", fields: [outputVariantId], references: [id], onDelete: Cascade)
+  componentProduct Product         @relation("PackagingComponentProduct", fields: [componentProductId], references: [id], onDelete: Restrict)
+  componentVariant ProductVariant? @relation("PackagingComponentVariant", fields: [componentVariantId], references: [id], onDelete: Restrict)
+  unit             Unit            @relation(fields: [unitId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([outputProductId, outputVariantId])
+  @@index([componentProductId, componentVariantId])
+  @@map("packaging_composition_items")
 }
 
 model Supplier {
@@ -1430,6 +1685,10 @@ model Site {
   employeeLegalProfiles        EmployeeLegalProfile[]
   menus                        Menu[]
   menuCycles                   MenuCycle[]
+  productionProfiles           ProductionProfile[]
+  productionNeeds              ProductionNeed[]
+  productionOrders             ProductionOrder[]
+  stockReservations            StockReservation[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -1448,15 +1707,16 @@ model Location {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  organization         Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  site                 Site             @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  organization         Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site                 Site              @relation(fields: [siteId], references: [id], onDelete: Restrict)
   stocks               Stock[]
   lots                 Lot[]
   stockReceptions      StockReception[]
-  sourceMovements      StockMovement[]  @relation("StockMovementSourceLocation")
-  destinationMovements StockMovement[]  @relation("StockMovementDestinationLocation")
+  sourceMovements      StockMovement[]   @relation("StockMovementSourceLocation")
+  destinationMovements StockMovement[]   @relation("StockMovementDestinationLocation")
   inventories          Inventory[]
   purchaseReceipts     PurchaseReceipt[]
+  productionBatches    ProductionBatch[]
 
   @@unique([organizationId, siteId, name])
   @@index([organizationId])
@@ -1466,30 +1726,48 @@ model Location {
 }
 
 model Lot {
-  id             String    @id @default(uuid()) @db.Uuid
-  lotNumber      String
-  productId      String    @db.Uuid
-  supplierId     String?   @db.Uuid
-  organizationId String    @db.Uuid
-  receivedAt     DateTime  @default(now())
-  expiresAt      DateTime?
-  siteId         String?   @db.Uuid
-  locationId     String?   @db.Uuid
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id                String            @id @default(uuid()) @db.Uuid
+  lotNumber         String
+  productId         String            @db.Uuid
+  variantId         String?           @db.Uuid
+  supplierId        String?           @db.Uuid
+  organizationId    String            @db.Uuid
+  productionBatchId String?           @db.Uuid
+  recipeVersionId   String?           @db.Uuid
+  initialQuantity   Decimal?          @db.Decimal(12, 3)
+  conservationState ConservationState @default(AMBIENT)
+  producedAt        DateTime?
+  availableAt       DateTime?
+  frozenAt          DateTime?
+  thawedAt          DateTime?
+  receivedAt        DateTime          @default(now())
+  expiresAt         DateTime?
+  siteId            String?           @db.Uuid
+  locationId        String?           @db.Uuid
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
-  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  product             Product              @relation(fields: [productId], references: [id], onDelete: Restrict)
-  supplier            Supplier?            @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  site                Site?                @relation(fields: [siteId], references: [id], onDelete: SetNull)
-  location            Location?            @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  organization        Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product             Product                      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant             ProductVariant?              @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  supplier            Supplier?                    @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  productionBatch     ProductionBatch?             @relation(fields: [productionBatchId], references: [id], onDelete: SetNull)
+  recipeVersion       TechnicalSheetVersion?       @relation(fields: [recipeVersionId], references: [id], onDelete: Restrict)
+  site                Site?                        @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  location            Location?                    @relation(fields: [locationId], references: [id], onDelete: SetNull)
   stocks              Stock[]
   movements           StockMovement[]
   stockReceptionLines StockReceptionLine[]
+  batchConsumptions   ProductionBatchConsumption[]
+  reservations        StockReservation[]
 
   @@unique([organizationId, lotNumber, productId])
   @@index([organizationId])
   @@index([productId])
+  @@index([variantId])
+  @@index([productionBatchId])
+  @@index([recipeVersionId])
+  @@index([conservationState])
   @@index([supplierId])
   @@index([siteId])
   @@index([locationId])
@@ -1500,6 +1778,7 @@ model Stock {
   id             String   @id @default(uuid()) @db.Uuid
   organizationId String   @db.Uuid
   productId      String   @db.Uuid
+  variantId      String?  @db.Uuid
   lotId          String?  @db.Uuid
   siteId         String?  @db.Uuid
   locationId     String?  @db.Uuid
@@ -1507,15 +1786,18 @@ model Stock {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  product      Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
-  lot          Lot?         @relation(fields: [lotId], references: [id], onDelete: SetNull)
-  site         Site?        @relation(fields: [siteId], references: [id], onDelete: SetNull)
-  location     Location?    @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product      Product            @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant      ProductVariant?    @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  lot          Lot?               @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  site         Site?              @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  location     Location?          @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  reservations StockReservation[]
 
-  @@unique([organizationId, productId, lotId, siteId, locationId])
+  @@unique([organizationId, productId, variantId, lotId, siteId, locationId])
   @@index([organizationId])
   @@index([productId])
+  @@index([variantId])
   @@index([lotId])
   @@index([siteId])
   @@index([locationId])
@@ -1523,29 +1805,36 @@ model Stock {
 }
 
 model StockMovement {
-  id                    String            @id @default(uuid()) @db.Uuid
-  organizationId        String            @db.Uuid
-  productId             String            @db.Uuid
-  lotId                 String?           @db.Uuid
-  supplierId            String?           @db.Uuid
+  id                    String             @id @default(uuid()) @db.Uuid
+  organizationId        String             @db.Uuid
+  productId             String             @db.Uuid
+  variantId             String?            @db.Uuid
+  lotId                 String?            @db.Uuid
+  supplierId            String?            @db.Uuid
   type                  StockMovementType
-  quantity              Decimal           @db.Decimal(12, 3)
-  inputQuantity         Decimal?          @db.Decimal(12, 3)
-  unitId                String?           @db.Uuid
+  quantity              Decimal            @db.Decimal(12, 3)
+  inputQuantity         Decimal?           @db.Decimal(12, 3)
+  unitId                String?            @db.Uuid
   unitSymbolSnapshot    String?
   reason                String?
-  sourceSiteId          String?           @db.Uuid
-  sourceLocationId      String?           @db.Uuid
-  destinationSiteId     String?           @db.Uuid
-  destinationLocationId String?           @db.Uuid
-  movementDate          DateTime          @default(now())
-  createdById           String?           @db.Uuid
-  inventoryId           String?           @db.Uuid
-  stockReceptionLineId  String?           @db.Uuid
-  createdAt             DateTime          @default(now())
+  sourceState           ConservationState?
+  destinationState      ConservationState?
+  sourceEntityType      String?
+  sourceEntityId        String?
+  idempotencyKey        String?
+  sourceSiteId          String?            @db.Uuid
+  sourceLocationId      String?            @db.Uuid
+  destinationSiteId     String?            @db.Uuid
+  destinationLocationId String?            @db.Uuid
+  movementDate          DateTime           @default(now())
+  createdById           String?            @db.Uuid
+  inventoryId           String?            @db.Uuid
+  stockReceptionLineId  String?            @db.Uuid
+  createdAt             DateTime           @default(now())
 
   organization                  Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   product                       Product                        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant                       ProductVariant?                @relation(fields: [variantId], references: [id], onDelete: Restrict)
   lot                           Lot?                           @relation(fields: [lotId], references: [id], onDelete: SetNull)
   supplier                      Supplier?                      @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   unit                          Unit?                          @relation(fields: [unitId], references: [id], onDelete: SetNull)
@@ -1557,9 +1846,12 @@ model StockMovement {
   inventory                     Inventory?                     @relation(fields: [inventoryId], references: [id], onDelete: SetNull)
   stockReceptionLine            StockReceptionLine?            @relation(fields: [stockReceptionLineId], references: [id], onDelete: SetNull)
   productionDestockingMovements ProductionDestockingMovement[]
+  productionBatchConsumptions   ProductionBatchConsumption[]
 
+  @@unique([organizationId, idempotencyKey])
   @@index([organizationId])
   @@index([productId])
+  @@index([variantId])
   @@index([lotId])
   @@index([supplierId])
   @@index([sourceSiteId])
@@ -1569,6 +1861,7 @@ model StockMovement {
   @@index([stockReceptionLineId])
   @@index([createdAt])
   @@index([movementDate])
+  @@index([sourceEntityType, sourceEntityId])
   @@map("stock_movements")
 }
 
@@ -1643,9 +1936,9 @@ model OcrBusinessExtraction {
   createdAt       DateTime                    @default(now())
   updatedAt       DateTime                    @updatedAt
 
-  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  ocrDocument     OcrDocument      @relation(fields: [ocrDocumentId], references: [id], onDelete: Cascade)
-  stockReceptions StockReception[]
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ocrDocument      OcrDocument       @relation(fields: [ocrDocumentId], references: [id], onDelete: Cascade)
+  stockReceptions  StockReception[]
   purchaseReceipts PurchaseReceipt[]
 
   @@index([organizationId])
@@ -1678,15 +1971,15 @@ model StockReception {
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
-  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  supplier     Supplier?              @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  document     Document?              @relation(fields: [documentId], references: [id], onDelete: SetNull)
-  extraction   OcrBusinessExtraction? @relation(fields: [extractionId], references: [id], onDelete: SetNull)
-  createdBy    User?                  @relation("StockReceptionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  site         Site?                  @relation(fields: [siteId], references: [id], onDelete: SetNull)
-  location     Location?              @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier        Supplier?              @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  document        Document?              @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  extraction      OcrBusinessExtraction? @relation(fields: [extractionId], references: [id], onDelete: SetNull)
+  createdBy       User?                  @relation("StockReceptionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  site            Site?                  @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  location        Location?              @relation(fields: [locationId], references: [id], onDelete: SetNull)
   purchaseReceipt PurchaseReceipt?       @relation(fields: [purchaseReceiptId], references: [id], onDelete: SetNull)
-  lines        StockReceptionLine[]
+  lines           StockReceptionLine[]
 
   @@unique([extractionId])
   @@index([organizationId])
@@ -1733,23 +2026,23 @@ model StockReceptionLine {
 }
 
 model PurchasingSettings {
-  id                    String    @id @default(uuid()) @db.Uuid
-  organizationId        String    @unique @db.Uuid
-  defaultCurrency       String    @default("EUR") @db.Char(3)
-  replenishmentDays     Int       @default(7)
-  consumptionWindowDays Int       @default(28)
-  resendApiKeyEncrypted String?   @db.Text // Legacy: kept for non-destructive migrations, no longer used.
+  id                    String                   @id @default(uuid()) @db.Uuid
+  organizationId        String                   @unique @db.Uuid
+  defaultCurrency       String                   @default("EUR") @db.Char(3)
+  replenishmentDays     Int                      @default(7)
+  consumptionWindowDays Int                      @default(28)
+  resendApiKeyEncrypted String?                  @db.Text // Legacy: kept for non-destructive migrations, no longer used.
   fromEmail             String?
   fromName              String?
   replyTo               String?
   resendVerifiedAt      DateTime?
   resendLastTestEmailId String?
   activeEmailProvider   PurchasingEmailProvider?
-  emailSubjectTemplate  String?   @db.Text
-  emailBodyTemplate     String?   @db.Text
-  emailSignature        String?   @db.Text
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  emailSubjectTemplate  String?                  @db.Text
+  emailBodyTemplate     String?                  @db.Text
+  emailSignature        String?                  @db.Text
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -1757,23 +2050,23 @@ model PurchasingSettings {
 }
 
 model PurchasingEmailConnection {
-  id                  String                          @id @default(uuid()) @db.Uuid
-  organizationId      String                          @db.Uuid
-  provider            PurchasingEmailProvider
-  status              PurchasingEmailConnectionStatus @default(DISCONNECTED)
-  senderEmail         String?
-  senderName          String?
-  smtpHost            String?
-  smtpPort            Int?
-  smtpSecure          Boolean                         @default(true)
-  smtpUsername        String?
-  secretCiphertext    String?                         @db.Text
-  oauthRefreshToken   String?                         @db.Text
-  oauthAccountId      String?
-  lastTestedAt        DateTime?
-  lastError           String?                         @db.Text
-  createdAt           DateTime                        @default(now())
-  updatedAt           DateTime                        @updatedAt
+  id                String                          @id @default(uuid()) @db.Uuid
+  organizationId    String                          @db.Uuid
+  provider          PurchasingEmailProvider
+  status            PurchasingEmailConnectionStatus @default(DISCONNECTED)
+  senderEmail       String?
+  senderName        String?
+  smtpHost          String?
+  smtpPort          Int?
+  smtpSecure        Boolean                         @default(true)
+  smtpUsername      String?
+  secretCiphertext  String?                         @db.Text
+  oauthRefreshToken String?                         @db.Text
+  oauthAccountId    String?
+  lastTestedAt      DateTime?
+  lastError         String?                         @db.Text
+  createdAt         DateTime                        @default(now())
+  updatedAt         DateTime                        @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -1818,24 +2111,24 @@ model PurchasingOnboardingProgress {
 }
 
 model SupplierPurchasingProfile {
-  id               String                 @id @default(uuid()) @db.Uuid
-  organizationId   String                 @db.Uuid
-  supplierId       String                 @unique @db.Uuid
-  orderEmail       String?
-  customerCode     String?
-  deliveryMode     PurchasingDeliveryMode @default(ON_DEMAND)
-  deliveryWeekdays Int[]                  @default([])
-  cutoffTime       String?
-  timezone         String                 @default("UTC")
-  leadTimeDays     Int                    @default(1)
-  minimumOrder     Decimal                @default(0) @db.Decimal(12, 4)
-  deliveryFee      Decimal                @default(0) @db.Decimal(12, 4)
-  orderingEnabled  Boolean                @default(true)
-  emailSubjectTemplate String?            @db.Text
-  emailBodyTemplate    String?            @db.Text
-  emailSignature       String?            @db.Text
-  createdAt        DateTime               @default(now())
-  updatedAt        DateTime               @updatedAt
+  id                   String                 @id @default(uuid()) @db.Uuid
+  organizationId       String                 @db.Uuid
+  supplierId           String                 @unique @db.Uuid
+  orderEmail           String?
+  customerCode         String?
+  deliveryMode         PurchasingDeliveryMode @default(ON_DEMAND)
+  deliveryWeekdays     Int[]                  @default([])
+  cutoffTime           String?
+  timezone             String                 @default("UTC")
+  leadTimeDays         Int                    @default(1)
+  minimumOrder         Decimal                @default(0) @db.Decimal(12, 4)
+  deliveryFee          Decimal                @default(0) @db.Decimal(12, 4)
+  orderingEnabled      Boolean                @default(true)
+  emailSubjectTemplate String?                @db.Text
+  emailBodyTemplate    String?                @db.Text
+  emailSignature       String?                @db.Text
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   supplier     Supplier     @relation(fields: [supplierId], references: [id], onDelete: Cascade)
@@ -1993,24 +2286,24 @@ model PurchaseOrderLine {
 }
 
 model PurchaseOrderDispatch {
-  id                String                 @id @default(uuid()) @db.Uuid
-  organizationId    String                 @db.Uuid
-  orderId           String                 @db.Uuid
+  id                String                   @id @default(uuid()) @db.Uuid
+  organizationId    String                   @db.Uuid
+  orderId           String                   @db.Uuid
   idempotencyKey    String
-  status            PurchaseDispatchStatus @default(PENDING)
+  status            PurchaseDispatchStatus   @default(PENDING)
   recipient         String
   subject           String
   provider          PurchasingEmailProvider?
   senderEmail       String?
   senderName        String?
-  renderedBody      String?                @db.Text
+  renderedBody      String?                  @db.Text
   snapshot          Json
   providerMessageId String?
-  errorMessage      String?                @db.Text
+  errorMessage      String?                  @db.Text
   attemptedAt       DateTime?
   sentAt            DateTime?
-  createdAt         DateTime               @default(now())
-  updatedAt         DateTime               @updatedAt
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
 
   organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   order        PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -2267,6 +2560,7 @@ model HrDepartment {
   planningTemplates   PlanningTemplate[]
   planningExports     PlanningExport[]
   productionOrders    ProductionOrder[]
+  productionNeeds     ProductionNeed[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -2375,6 +2669,7 @@ model HrEmployee {
   sensitiveData                 HrEmployeeSensitiveData?
   assignedProductionOrders      ProductionOrder[]              @relation("ProductionOrderResponsible")
   productionAssignments         ProductionAssignment[]
+  productionOperations          ProductionOperation[]
 
   @@unique([organizationId, email])
   @@unique([organizationId, employeeNumber])
@@ -3801,41 +4096,50 @@ model TechnicalSheetCategory {
 }
 
 model TechnicalSheet {
-  id                     String               @id @default(uuid()) @db.Uuid
-  organizationId         String               @db.Uuid
-  categoryId             String?              @db.Uuid
-  sourceTechnicalSheetId String?              @db.Uuid
-  name                   String
-  description            String?              @db.Text
-  photoUrl               String?              @db.Text
-  photoDataUrl           String?              @db.Text
-  referencePortions      Decimal              @default(1) @db.Decimal(12, 3)
-  preparationTimeMinutes Int?                 @default(0)
-  cookingTimeMinutes     Int?                 @default(0)
-  totalTimeMinutes       Int?                 @default(0)
-  status                 TechnicalSheetStatus @default(DRAFT)
-  totalCost              Decimal              @default(0) @db.Decimal(12, 4)
-  costPerPortion         Decimal              @default(0) @db.Decimal(12, 4)
-  costPerKg              Decimal?             @db.Decimal(12, 4)
-  costPerLiter           Decimal?             @db.Decimal(12, 4)
-  targetSellingPriceHtPerPortion Decimal?      @db.Decimal(12, 4)
-  hasNonCalculableLines  Boolean              @default(false)
-  lastCostCalculationAt  DateTime?
-  isArchived             Boolean              @default(false)
-  archivedAt             DateTime?
-  createdAt              DateTime             @default(now())
-  updatedAt              DateTime             @updatedAt
+  id                             String                    @id @default(uuid()) @db.Uuid
+  organizationId                 String                    @db.Uuid
+  categoryId                     String?                   @db.Uuid
+  sourceTechnicalSheetId         String?                   @db.Uuid
+  outputProductId                String?                   @db.Uuid
+  yieldUnitId                    String?                   @db.Uuid
+  name                           String
+  description                    String?                   @db.Text
+  photoUrl                       String?                   @db.Text
+  photoDataUrl                   String?                   @db.Text
+  referencePortions              Decimal                   @default(1) @db.Decimal(12, 3)
+  preparationTimeMinutes         Int?                      @default(0)
+  cookingTimeMinutes             Int?                      @default(0)
+  totalTimeMinutes               Int?                      @default(0)
+  status                         TechnicalSheetStatus      @default(DRAFT)
+  mode                           TechnicalSheetMode        @default(ASSEMBLY)
+  stockPolicy                    TechnicalSheetStockPolicy @default(MAKE_TO_STOCK)
+  totalCost                      Decimal                   @default(0) @db.Decimal(12, 4)
+  costPerPortion                 Decimal                   @default(0) @db.Decimal(12, 4)
+  costPerKg                      Decimal?                  @db.Decimal(12, 4)
+  costPerLiter                   Decimal?                  @db.Decimal(12, 4)
+  targetSellingPriceHtPerPortion Decimal?                  @db.Decimal(12, 4)
+  hasNonCalculableLines          Boolean                   @default(false)
+  lastCostCalculationAt          DateTime?
+  isArchived                     Boolean                   @default(false)
+  archivedAt                     DateTime?
+  createdAt                      DateTime                  @default(now())
+  updatedAt                      DateTime                  @updatedAt
 
   organization            Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   category                TechnicalSheetCategory?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   sourceTechnicalSheet    TechnicalSheet?              @relation("TechnicalSheetDuplication", fields: [sourceTechnicalSheetId], references: [id], onDelete: SetNull)
   duplicates              TechnicalSheet[]             @relation("TechnicalSheetDuplication")
+  outputProduct           Product?                     @relation("TechnicalSheetOutputProduct", fields: [outputProductId], references: [id], onDelete: SetNull)
+  yieldUnit               Unit?                        @relation("TechnicalSheetYieldUnit", fields: [yieldUnitId], references: [id], onDelete: SetNull)
+  subRecipeUsages         TechnicalSheetIngredient[]   @relation("TechnicalSheetSubRecipe")
   ingredients             TechnicalSheetIngredient[]
   steps                   TechnicalSheetStep[]
   costSnapshots           TechnicalSheetCostSnapshot[]
   simulations             TechnicalSheetSimulation[]
   exports                 TechnicalSheetExport[]
   history                 TechnicalSheetHistory[]
+  versions                TechnicalSheetVersion[]
+  productionProfiles      ProductionProfile[]
   productionOrders        ProductionOrder[]
   menuItems               MenuItem[]
   menuVariantReplacements MenuVariantReplacement[]
@@ -3844,6 +4148,9 @@ model TechnicalSheet {
   @@unique([organizationId, name])
   @@index([organizationId])
   @@index([categoryId])
+  @@index([outputProductId])
+  @@index([yieldUnitId])
+  @@index([mode])
   @@index([status])
   @@index([isArchived])
   @@index([updatedAt])
@@ -3854,10 +4161,12 @@ model TechnicalSheetIngredient {
   id                        String   @id @default(uuid()) @db.Uuid
   organizationId            String   @db.Uuid
   technicalSheetId          String   @db.Uuid
+  sourceTechnicalSheetId    String?  @db.Uuid
   productId                 String   @db.Uuid
   unitId                    String   @db.Uuid
   quantity                  Decimal  @db.Decimal(12, 3)
   comment                   String?  @db.Text
+  section                   String?
   order                     Int      @default(0)
   unitPriceSnapshot         Decimal? @db.Decimal(12, 4)
   cost                      Decimal? @db.Decimal(12, 4)
@@ -3873,6 +4182,7 @@ model TechnicalSheetIngredient {
 
   organization           Organization                       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   technicalSheet         TechnicalSheet                     @relation(fields: [technicalSheetId], references: [id], onDelete: Cascade)
+  sourceTechnicalSheet   TechnicalSheet?                    @relation("TechnicalSheetSubRecipe", fields: [sourceTechnicalSheetId], references: [id], onDelete: SetNull)
   product                Product                            @relation(fields: [productId], references: [id], onDelete: Restrict)
   unit                   Unit                               @relation(fields: [unitId], references: [id], onDelete: Restrict)
   allergens              TechnicalSheetIngredientAllergen[]
@@ -3880,6 +4190,7 @@ model TechnicalSheetIngredient {
 
   @@index([organizationId])
   @@index([technicalSheetId])
+  @@index([sourceTechnicalSheetId])
   @@index([productId])
   @@index([unitId])
   @@map("technical_sheet_ingredients")
@@ -3892,6 +4203,7 @@ model TechnicalSheetStep {
   order            Int
   title            String
   description      String   @db.Text
+  section          String?
   estimatedMinutes Int?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -4024,6 +4336,79 @@ model TechnicalSheetHistory {
   @@map("technical_sheet_history")
 }
 
+model TechnicalSheetVersion {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String   @db.Uuid
+  technicalSheetId String   @db.Uuid
+  version          Int
+  sourceUpdatedAt  DateTime
+  referenceYield   Decimal  @db.Decimal(12, 3)
+  snapshot         Json
+  createdAt        DateTime @default(now())
+
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  technicalSheet    TechnicalSheet    @relation(fields: [technicalSheetId], references: [id], onDelete: Restrict)
+  productionOrders  ProductionOrder[]
+  productionBatches ProductionBatch[]
+  lots              Lot[]
+
+  @@unique([technicalSheetId, version])
+  @@unique([technicalSheetId, sourceUpdatedAt])
+  @@index([organizationId])
+  @@index([technicalSheetId])
+  @@map("technical_sheet_versions")
+}
+
+model ProductionProfile {
+  id                      String                 @id @default(uuid()) @db.Uuid
+  organizationId          String                 @db.Uuid
+  siteId                  String                 @db.Uuid
+  technicalSheetId        String                 @db.Uuid
+  outputProductId         String                 @db.Uuid
+  outputVariantId         String?                @db.Uuid
+  yieldUnitId             String                 @db.Uuid
+  mode                    ProductionProfileMode  @default(FIXED)
+  referenceYield          Decimal                @db.Decimal(12, 3)
+  minimumQuantity         Decimal?               @db.Decimal(12, 3)
+  optimalQuantity         Decimal?               @db.Decimal(12, 3)
+  maximumQuantity         Decimal?               @db.Decimal(12, 3)
+  stepQuantity            Decimal?               @db.Decimal(12, 3)
+  allowedFormats          Json?
+  allowHalfBatch          Boolean                @default(false)
+  allowDoubleBatch        Boolean                @default(false)
+  averageLossPercent      Decimal                @default(0) @db.Decimal(7, 3)
+  safetyMarginPercent     Decimal                @default(0) @db.Decimal(7, 3)
+  quantityPerMold         Decimal?               @db.Decimal(12, 3)
+  quantityPerTray         Decimal?               @db.Decimal(12, 3)
+  quantityPerContainer    Decimal?               @db.Decimal(12, 3)
+  quantityPerCycle        Decimal?               @db.Decimal(12, 3)
+  maximumCycles           Int?
+  canFreeze               Boolean                @default(false)
+  shelfLifeHours          Int?
+  frozenShelfLifeHours    Int?
+  shelfLifeAfterThawHours Int?
+  thawingTimeMinutes      Int?
+  canRefreeze             Boolean                @default(false)
+  roundingMode            ProductionRoundingMode @default(UP)
+  optimisticVersion       Int                    @default(1)
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site           Site            @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  technicalSheet TechnicalSheet  @relation(fields: [technicalSheetId], references: [id], onDelete: Restrict)
+  outputProduct  Product         @relation("ProductionProfileOutputProduct", fields: [outputProductId], references: [id], onDelete: Restrict)
+  outputVariant  ProductVariant? @relation(fields: [outputVariantId], references: [id], onDelete: Restrict)
+  yieldUnit      Unit            @relation(fields: [yieldUnitId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, siteId, technicalSheetId, outputProductId, outputVariantId], map: "production_profiles_site_sheet_output_key")
+  @@index([organizationId])
+  @@index([siteId])
+  @@index([technicalSheetId])
+  @@index([outputProductId, outputVariantId])
+  @@map("production_profiles")
+}
+
 model TechnicalSheetAssistantConversation {
   id             String   @id @default(uuid()) @db.Uuid
   organizationId String   @db.Uuid
@@ -4043,12 +4428,12 @@ model TechnicalSheetAssistantConversation {
 }
 
 model TechnicalSheetAssistantMessage {
-  id             String                           @id @default(uuid()) @db.Uuid
-  conversationId String                           @db.Uuid
+  id             String                             @id @default(uuid()) @db.Uuid
+  conversationId String                             @db.Uuid
   role           TechnicalSheetAssistantMessageRole
-  content        String                           @db.Text
+  content        String                             @db.Text
   metadata       Json?
-  createdAt      DateTime                         @default(now())
+  createdAt      DateTime                           @default(now())
 
   conversation TechnicalSheetAssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
@@ -4057,16 +4442,16 @@ model TechnicalSheetAssistantMessage {
 }
 
 model TechnicalSheetAssistantDraft {
-  id                    String                           @id @default(uuid()) @db.Uuid
-  organizationId        String                           @db.Uuid
-  conversationId        String                           @db.Uuid
-  targetTechnicalSheetId String?                         @db.Uuid
-  status                TechnicalSheetAssistantDraftStatus @default(PENDING_REVIEW)
-  payload               Json
-  metadata              Json?
-  expiresAt             DateTime
-  createdAt             DateTime                         @default(now())
-  updatedAt             DateTime                         @updatedAt
+  id                     String                             @id @default(uuid()) @db.Uuid
+  organizationId         String                             @db.Uuid
+  conversationId         String                             @db.Uuid
+  targetTechnicalSheetId String?                            @db.Uuid
+  status                 TechnicalSheetAssistantDraftStatus @default(PENDING_REVIEW)
+  payload                Json
+  metadata               Json?
+  expiresAt              DateTime
+  createdAt              DateTime                           @default(now())
+  updatedAt              DateTime                           @updatedAt
 
   conversation TechnicalSheetAssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
@@ -4077,16 +4462,16 @@ model TechnicalSheetAssistantDraft {
 }
 
 model HaccpAssistantConversation {
-  id String @id @default(uuid()) @db.Uuid
-  organizationId String @db.Uuid
-  userId String @db.Uuid
-  state Json?
-  summary Json?
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  messages HaccpAssistantMessage[]
-  drafts HaccpAssistantDraft[]
+  id             String                  @id @default(uuid()) @db.Uuid
+  organizationId String                  @db.Uuid
+  userId         String                  @db.Uuid
+  state          Json?
+  summary        Json?
+  expiresAt      DateTime
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  messages       HaccpAssistantMessage[]
+  drafts         HaccpAssistantDraft[]
 
   @@index([organizationId, userId])
   @@index([expiresAt])
@@ -4094,29 +4479,29 @@ model HaccpAssistantConversation {
 }
 
 model HaccpAssistantMessage {
-  id String @id @default(uuid()) @db.Uuid
-  conversationId String @db.Uuid
-  role HaccpAssistantMessageRole
-  content String @db.Text
-  metadata Json?
-  createdAt DateTime @default(now())
-  conversation HaccpAssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  id             String                     @id @default(uuid()) @db.Uuid
+  conversationId String                     @db.Uuid
+  role           HaccpAssistantMessageRole
+  content        String                     @db.Text
+  metadata       Json?
+  createdAt      DateTime                   @default(now())
+  conversation   HaccpAssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
   @@map("haccp_assistant_messages")
 }
 
 model HaccpAssistantDraft {
-  id String @id @default(uuid()) @db.Uuid
-  organizationId String @db.Uuid
-  conversationId String @db.Uuid
-  kind String
-  status HaccpAssistantDraftStatus @default(PENDING_REVIEW)
-  payload Json
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  conversation HaccpAssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  id             String                     @id @default(uuid()) @db.Uuid
+  organizationId String                     @db.Uuid
+  conversationId String                     @db.Uuid
+  kind           String
+  status         HaccpAssistantDraftStatus  @default(PENDING_REVIEW)
+  payload        Json
+  expiresAt      DateTime
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+  conversation   HaccpAssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, status])
   @@index([conversationId])
@@ -4124,12 +4509,76 @@ model HaccpAssistantDraft {
   @@map("haccp_assistant_drafts")
 }
 
+model ProductionNeed {
+  id                  String               @id @default(uuid()) @db.Uuid
+  organizationId      String               @db.Uuid
+  siteId              String               @db.Uuid
+  productId           String               @db.Uuid
+  variantId           String?              @db.Uuid
+  unitId              String               @db.Uuid
+  serviceId           String?              @db.Uuid
+  source              ProductionNeedSource
+  sourceReferenceType String?
+  sourceReferenceId   String?
+  quantity            Decimal              @db.Decimal(12, 3)
+  coveredQuantity     Decimal              @default(0) @db.Decimal(12, 3)
+  neededAt            DateTime
+  priority            ProductionPriority   @default(NORMAL)
+  status              ProductionNeedStatus @default(DRAFT)
+  notes               String?              @db.Text
+  createdById         String?              @db.Uuid
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site         Site                       @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  product      Product                    @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant      ProductVariant?            @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  unit         Unit                       @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  service      HrDepartment?              @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  createdBy    User?                      @relation("ProductionNeedCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  allocations  ProductionNeedAllocation[]
+  reservations StockReservation[]
+
+  @@index([organizationId])
+  @@index([siteId, neededAt])
+  @@index([productId, variantId])
+  @@index([status])
+  @@index([source, sourceReferenceType, sourceReferenceId])
+  @@map("production_needs")
+}
+
+model ProductionNeedAllocation {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String   @db.Uuid
+  needId           String   @db.Uuid
+  orderId          String   @db.Uuid
+  plannedQuantity  Decimal  @db.Decimal(12, 3)
+  reservedQuantity Decimal  @default(0) @db.Decimal(12, 3)
+  consumedQuantity Decimal  @default(0) @db.Decimal(12, 3)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  need         ProductionNeed  @relation(fields: [needId], references: [id], onDelete: Cascade)
+  order        ProductionOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([needId, orderId])
+  @@index([organizationId])
+  @@index([orderId])
+  @@map("production_need_allocations")
+}
+
 model ProductionOrder {
   id                    String                @id @default(uuid()) @db.Uuid
   organizationId        String                @db.Uuid
+  siteId                String?               @db.Uuid
   number                String
   name                  String
   technicalSheetId      String                @db.Uuid
+  recipeVersionId       String?               @db.Uuid
+  outputProductId       String?               @db.Uuid
+  outputVariantId       String?               @db.Uuid
   productionDate        DateTime
   plannedTime           String
   status                ProductionOrderStatus @default(PLANNED)
@@ -4137,6 +4586,12 @@ model ProductionOrder {
   serviceId             String?               @db.Uuid
   responsibleEmployeeId String?               @db.Uuid
   plannedPortions       Decimal               @db.Decimal(12, 3)
+  grossRequirement      Decimal               @default(0) @db.Decimal(12, 3)
+  netRequirement        Decimal               @default(0) @db.Decimal(12, 3)
+  proposedQuantity      Decimal               @default(0) @db.Decimal(12, 3)
+  validatedQuantity     Decimal               @default(0) @db.Decimal(12, 3)
+  reservedQuantity      Decimal               @default(0) @db.Decimal(12, 3)
+  surplusQuantity       Decimal               @default(0) @db.Decimal(12, 3)
   realizedPortions      Decimal?              @db.Decimal(12, 3)
   estimatedCost         Decimal               @default(0) @db.Decimal(12, 4)
   actualCost            Decimal?              @db.Decimal(12, 4)
@@ -4147,11 +4602,16 @@ model ProductionOrder {
   completedById         String?               @db.Uuid
   completedAt           DateTime?
   cancelledAt           DateTime?
+  optimisticVersion     Int                   @default(1)
   createdAt             DateTime              @default(now())
   updatedAt             DateTime              @updatedAt
 
   organization        Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site                Site?                           @relation(fields: [siteId], references: [id], onDelete: Restrict)
   technicalSheet      TechnicalSheet                  @relation(fields: [technicalSheetId], references: [id], onDelete: Restrict)
+  recipeVersion       TechnicalSheetVersion?          @relation(fields: [recipeVersionId], references: [id], onDelete: Restrict)
+  outputProduct       Product?                        @relation("ProductionOrderOutputProduct", fields: [outputProductId], references: [id], onDelete: Restrict)
+  outputVariant       ProductVariant?                 @relation("ProductionOrderOutputVariant", fields: [outputVariantId], references: [id], onDelete: Restrict)
   service             HrDepartment?                   @relation(fields: [serviceId], references: [id], onDelete: SetNull)
   responsibleEmployee HrEmployee?                     @relation("ProductionOrderResponsible", fields: [responsibleEmployeeId], references: [id], onDelete: SetNull)
   createdBy           User?                           @relation("ProductionOrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -4165,16 +4625,195 @@ model ProductionOrder {
   realization         ProductionRealization?
   destockingProposals ProductionDestockingProposal[]
   menuProductionLinks MenuProductionLink[]
+  needAllocations     ProductionNeedAllocation[]
+  batches             ProductionBatch[]
+  stockReservations   StockReservation[]
 
   @@unique([organizationId, number])
   @@index([organizationId])
+  @@index([siteId])
   @@index([technicalSheetId])
+  @@index([recipeVersionId])
+  @@index([outputProductId, outputVariantId])
   @@index([productionDate])
   @@index([status])
   @@index([priority])
   @@index([serviceId])
   @@index([responsibleEmployeeId])
   @@map("production_orders")
+}
+
+model ProductionBatch {
+  id                    String                @id @default(uuid()) @db.Uuid
+  organizationId        String                @db.Uuid
+  orderId               String                @db.Uuid
+  recipeVersionId       String?               @db.Uuid
+  unitId                String                @db.Uuid
+  destinationLocationId String?               @db.Uuid
+  producerUserId        String?               @db.Uuid
+  completedById         String?               @db.Uuid
+  number                Int
+  reference             String
+  plannedQuantity       Decimal               @db.Decimal(12, 3)
+  actualQuantity        Decimal?              @db.Decimal(12, 3)
+  lostQuantity          Decimal               @default(0) @db.Decimal(12, 3)
+  status                ProductionBatchStatus @default(TO_PREPARE)
+  plannedStartAt        DateTime?
+  startedAt             DateTime?
+  completedAt           DateTime?
+  idempotencyKey        String?
+  optimisticVersion     Int                   @default(1)
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  organization        Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order               ProductionOrder              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  recipeVersion       TechnicalSheetVersion?       @relation(fields: [recipeVersionId], references: [id], onDelete: Restrict)
+  unit                Unit                         @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  destinationLocation Location?                    @relation(fields: [destinationLocationId], references: [id], onDelete: SetNull)
+  producerUser        User?                        @relation("ProductionBatchProducer", fields: [producerUserId], references: [id], onDelete: SetNull)
+  completedBy         User?                        @relation("ProductionBatchCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+  operations          ProductionOperation[]
+  consumptions        ProductionBatchConsumption[]
+  outputLots          Lot[]
+
+  @@unique([orderId, number])
+  @@unique([organizationId, reference])
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId])
+  @@index([orderId])
+  @@index([status])
+  @@index([plannedStartAt])
+  @@map("production_batches")
+}
+
+model ProductionOperation {
+  id                    String                    @id @default(uuid()) @db.Uuid
+  organizationId        String                    @db.Uuid
+  batchId               String                    @db.Uuid
+  responsibleEmployeeId String?                   @db.Uuid
+  type                  ProductionOperationType
+  title                 String
+  position              Int                       @default(0)
+  plannedAt             DateTime?
+  activeMinutes         Int?
+  passiveMinutes        Int?
+  workstation           String?
+  resourceReference     String?
+  status                ProductionOperationStatus @default(PENDING)
+  startedAt             DateTime?
+  completedAt           DateTime?
+  notes                 String?                   @db.Text
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+
+  organization        Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  batch               ProductionBatch                 @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  responsibleEmployee HrEmployee?                     @relation(fields: [responsibleEmployeeId], references: [id], onDelete: SetNull)
+  dependencies        ProductionOperationDependency[] @relation("ProductionOperationDependents")
+  dependents          ProductionOperationDependency[] @relation("ProductionOperationPrerequisites")
+
+  @@unique([batchId, position])
+  @@index([organizationId])
+  @@index([batchId])
+  @@index([responsibleEmployeeId])
+  @@index([plannedAt, status])
+  @@map("production_operations")
+}
+
+model ProductionOperationDependency {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  operationId    String   @db.Uuid
+  prerequisiteId String   @db.Uuid
+  createdAt      DateTime @default(now())
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  operation    ProductionOperation @relation("ProductionOperationDependents", fields: [operationId], references: [id], onDelete: Cascade)
+  prerequisite ProductionOperation @relation("ProductionOperationPrerequisites", fields: [prerequisiteId], references: [id], onDelete: Cascade)
+
+  @@unique([operationId, prerequisiteId])
+  @@index([organizationId])
+  @@index([prerequisiteId])
+  @@map("production_operation_dependencies")
+}
+
+model ProductionBatchConsumption {
+  id              String                    @id @default(uuid()) @db.Uuid
+  organizationId  String                    @db.Uuid
+  batchId         String                    @db.Uuid
+  productId       String                    @db.Uuid
+  variantId       String?                   @db.Uuid
+  lotId           String?                   @db.Uuid
+  unitId          String                    @db.Uuid
+  stockMovementId String?                   @unique @db.Uuid
+  kind            ProductionConsumptionKind @default(ACTUAL)
+  quantity        Decimal                   @db.Decimal(12, 3)
+  createdAt       DateTime                  @default(now())
+
+  organization  Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  batch         ProductionBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  product       Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant       ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  lot           Lot?            @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  unit          Unit            @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  stockMovement StockMovement?  @relation(fields: [stockMovementId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([batchId])
+  @@index([productId, variantId])
+  @@index([lotId])
+  @@map("production_batch_consumptions")
+}
+
+model StockReservation {
+  id                String                 @id @default(uuid()) @db.Uuid
+  organizationId    String                 @db.Uuid
+  stockId           String                 @db.Uuid
+  productId         String                 @db.Uuid
+  variantId         String?                @db.Uuid
+  lotId             String?                @db.Uuid
+  siteId            String                 @db.Uuid
+  unitId            String                 @db.Uuid
+  needId            String?                @db.Uuid
+  orderId           String?                @db.Uuid
+  menuId            String?                @db.Uuid
+  target            StockReservationTarget
+  targetReferenceId String?
+  quantity          Decimal                @db.Decimal(12, 3)
+  status            StockReservationStatus @default(ACTIVE)
+  expiresAt         DateTime?
+  consumedAt        DateTime?
+  releasedAt        DateTime?
+  cancelledAt       DateTime?
+  reason            String?                @db.Text
+  createdById       String?                @db.Uuid
+  idempotencyKey    String?
+  optimisticVersion Int                    @default(1)
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stock        Stock            @relation(fields: [stockId], references: [id], onDelete: Restrict)
+  product      Product          @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant      ProductVariant?  @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  lot          Lot?             @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  site         Site             @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  unit         Unit             @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  need         ProductionNeed?  @relation(fields: [needId], references: [id], onDelete: SetNull)
+  order        ProductionOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  menu         Menu?            @relation(fields: [menuId], references: [id], onDelete: SetNull)
+  createdBy    User?            @relation("StockReservationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId])
+  @@index([stockId, status])
+  @@index([productId, variantId, siteId, status])
+  @@index([needId])
+  @@index([orderId])
+  @@index([menuId])
+  @@index([expiresAt])
+  @@map("stock_reservations")
 }
 
 model ProductionMaterialRequirement {
@@ -4427,6 +5066,49 @@ model ProductionExport {
   @@map("production_exports")
 }
 
+model MenuSettings {
+  id                    String           @id @default(uuid()) @db.Uuid
+  organizationId        String           @unique @db.Uuid
+  usageProfile          MenuUsageProfile @default(RESTAURANT_CAFE)
+  catalogEnabled        Boolean          @default(true)
+  scheduledMenusEnabled Boolean          @default(true)
+  eventsEnabled         Boolean          @default(false)
+  cyclesEnabled         Boolean          @default(false)
+  dietsEnabled          Boolean          @default(false)
+  guestForecastsEnabled Boolean          @default(false)
+  targetStockEnabled    Boolean          @default(true)
+  onboardingCompletedAt DateTime?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("menu_settings")
+}
+
+model MenuCategory {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  name           String
+  position       Int              @default(0)
+  color          String?
+  icon           String?
+  catalogType    MenuCatalogType?
+  isArchived     Boolean          @default(false)
+  archivedAt     DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  menuItems    MenuItem[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, position])
+  @@index([catalogType])
+  @@index([isArchived])
+  @@map("menu_categories")
+}
+
 model MenuDiet {
   id             String    @id @default(uuid()) @db.Uuid
   organizationId String    @db.Uuid
@@ -4448,70 +5130,89 @@ model MenuDiet {
 }
 
 model Menu {
-  id                    String          @id @default(uuid()) @db.Uuid
-  organizationId        String          @db.Uuid
+  id                    String           @id @default(uuid()) @db.Uuid
+  organizationId        String           @db.Uuid
   name                  String
-  date                  DateTime
+  date                  DateTime?
   service               MenuServiceType
-  siteId                String?         @db.Uuid
-  description           String?         @db.Text
-  expectedGuests        Int             @default(0)
-  status                MenuStatus      @default(DRAFT)
-  cycleId               String?         @db.Uuid
+  kind                  MenuKind         @default(SERVICE)
+  catalogType           MenuCatalogType?
+  siteId                String?          @db.Uuid
+  description           String?          @db.Text
+  activeFrom            DateTime?
+  activeUntil           DateTime?
+  isPrimary             Boolean          @default(false)
+  expectedGuests        Int              @default(0)
+  status                MenuStatus       @default(DRAFT)
+  cycleId               String?          @db.Uuid
   cycleWeek             Int?
   cycleDay              Int?
-  sourceMenuId          String?         @db.Uuid
+  sourceMenuId          String?          @db.Uuid
   productionGeneratedAt DateTime?
   productionDirtySince  DateTime?
   publishedSnapshot     Json?
-  createdById           String?         @db.Uuid
-  updatedById           String?         @db.Uuid
-  createdAt             DateTime        @default(now())
-  updatedAt             DateTime        @updatedAt
+  createdById           String?          @db.Uuid
+  updatedById           String?          @db.Uuid
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
 
-  organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  site            Site?                @relation(fields: [siteId], references: [id], onDelete: SetNull)
-  cycle           MenuCycle?           @relation(fields: [cycleId], references: [id], onDelete: SetNull)
-  sourceMenu      Menu?                @relation("MenuSource", fields: [sourceMenuId], references: [id], onDelete: SetNull)
-  generatedMenus  Menu[]               @relation("MenuSource")
-  createdBy       User?                @relation("MenuCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  updatedBy       User?                @relation("MenuUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
-  items           MenuItem[]
-  variants        MenuVariant[]
-  guestForecasts  MenuGuestForecast[]
-  exports         MenuExport[]
-  history         MenuHistory[]
-  productionLinks MenuProductionLink[]
+  organization      Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site              Site?                @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  cycle             MenuCycle?           @relation(fields: [cycleId], references: [id], onDelete: SetNull)
+  sourceMenu        Menu?                @relation("MenuSource", fields: [sourceMenuId], references: [id], onDelete: SetNull)
+  generatedMenus    Menu[]               @relation("MenuSource")
+  createdBy         User?                @relation("MenuCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy         User?                @relation("MenuUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  items             MenuItem[]
+  variants          MenuVariant[]
+  guestForecasts    MenuGuestForecast[]
+  exports           MenuExport[]
+  history           MenuHistory[]
+  productionLinks   MenuProductionLink[]
+  stockReservations StockReservation[]
 
   @@index([organizationId])
   @@index([date])
   @@index([service])
   @@index([siteId])
   @@index([status])
+  @@index([kind])
+  @@index([catalogType])
+  @@index([isPrimary])
   @@index([cycleId])
   @@map("menus")
 }
 
 model MenuItem {
-  id               String          @id @default(uuid()) @db.Uuid
-  organizationId   String          @db.Uuid
-  menuId           String          @db.Uuid
-  section          MenuSectionType
-  technicalSheetId String          @db.Uuid
-  position         Int             @default(0)
-  portionsOverride Decimal?        @db.Decimal(12, 3)
-  notes            String?         @db.Text
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  id                  String          @id @default(uuid()) @db.Uuid
+  organizationId      String          @db.Uuid
+  menuId              String          @db.Uuid
+  section             MenuSectionType
+  menuCategoryId      String?         @db.Uuid
+  technicalSheetId    String?         @db.Uuid
+  productId           String?         @db.Uuid
+  position            Int             @default(0)
+  portionsOverride    Decimal?        @db.Decimal(12, 3)
+  servingQuantity     Decimal         @default(1) @db.Decimal(12, 3)
+  targetReadyQuantity Decimal?        @db.Decimal(12, 3)
+  lowStockThreshold   Decimal?        @db.Decimal(12, 3)
+  availabilityEnabled Boolean         @default(true)
+  notes               String?         @db.Text
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
 
   organization   Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   menu           Menu                     @relation(fields: [menuId], references: [id], onDelete: Cascade)
-  technicalSheet TechnicalSheet           @relation(fields: [technicalSheetId], references: [id], onDelete: Restrict)
+  menuCategory   MenuCategory?            @relation(fields: [menuCategoryId], references: [id], onDelete: SetNull)
+  technicalSheet TechnicalSheet?          @relation(fields: [technicalSheetId], references: [id], onDelete: Restrict)
+  product        Product?                 @relation(fields: [productId], references: [id], onDelete: Restrict)
   replacements   MenuVariantReplacement[]
 
   @@index([organizationId])
   @@index([menuId])
   @@index([technicalSheetId])
+  @@index([productId])
+  @@index([menuCategoryId])
   @@index([section])
   @@map("menu_items")
 }
@@ -4756,38 +5457,38 @@ model StockConversation {
 }
 
 model StockAssistantMessage {
-  id             String                      @id @default(uuid()) @db.Uuid
-  conversationId String                      @db.Uuid
+  id             String                    @id @default(uuid()) @db.Uuid
+  conversationId String                    @db.Uuid
   role           StockAssistantMessageRole
-  content        String                      @db.Text
+  content        String                    @db.Text
   metadata       Json?
-  createdAt      DateTime                    @default(now())
+  createdAt      DateTime                  @default(now())
 
   @@index([conversationId, createdAt])
   @@map("stock_assistant_messages")
 }
 
 model HumanSupportTicket {
-  id                 String                    @id @default(uuid()) @db.Uuid
-  organizationId     String                    @db.Uuid
-  userId             String                    @db.Uuid
-  relayTicketId      String?                   @unique
-  status             HumanSupportTicketStatus  @default(OPEN)
-  contactEmail       String
-  contactPhone       String?
-  transcript         String                    @db.Text
-  assignedVolunteer  String?
-  openedAt           DateTime                  @default(now())
-  closedAt           DateTime?
-  lastReadAt         DateTime?
-  relayError         String?                   @db.Text
-  relayCursor        String?
-  expiresAt          DateTime?
-  createdAt          DateTime                  @default(now())
-  updatedAt          DateTime                  @updatedAt
+  id                String                   @id @default(uuid()) @db.Uuid
+  organizationId    String                   @db.Uuid
+  userId            String                   @db.Uuid
+  relayTicketId     String?                  @unique
+  status            HumanSupportTicketStatus @default(OPEN)
+  contactEmail      String
+  contactPhone      String?
+  transcript        String                   @db.Text
+  assignedVolunteer String?
+  openedAt          DateTime                 @default(now())
+  closedAt          DateTime?
+  lastReadAt        DateTime?
+  relayError        String?                  @db.Text
+  relayCursor       String?
+  expiresAt         DateTime?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
 
-  organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages     HumanSupportMessage[]
 
   @@index([organizationId, userId, status])
@@ -4797,16 +5498,16 @@ model HumanSupportTicket {
 }
 
 model HumanSupportMessage {
-  id             String                       @id @default(uuid()) @db.Uuid
-  ticketId       String                       @db.Uuid
+  id             String                     @id @default(uuid()) @db.Uuid
+  ticketId       String                     @db.Uuid
   author         HumanSupportMessageAuthor
-  content        String                       @db.Text
+  content        String                     @db.Text
   volunteerName  String?
-  relayMessageId String?                      @unique
-  deliveryStatus HumanSupportDeliveryStatus   @default(PENDING)
-  deliveryError  String?                      @db.Text
+  relayMessageId String?                    @unique
+  deliveryStatus HumanSupportDeliveryStatus @default(PENDING)
+  deliveryError  String?                    @db.Text
   metadata       Json?
-  createdAt      DateTime                     @default(now())
+  createdAt      DateTime                   @default(now())
 
   ticket      HumanSupportTicket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   attachments HumanSupportAttachment[]
@@ -4816,14 +5517,14 @@ model HumanSupportMessage {
 }
 
 model HumanSupportAttachment {
-  id           String   @id @default(uuid()) @db.Uuid
-  messageId    String   @db.Uuid
-  filename     String
-  mimeType     String
-  size         Int
-  storagePath  String   @db.Text
-  relayFileId  String?
-  createdAt    DateTime @default(now())
+  id          String   @id @default(uuid()) @db.Uuid
+  messageId   String   @db.Uuid
+  filename    String
+  mimeType    String
+  size        Int
+  storagePath String   @db.Text
+  relayFileId String?
+  createdAt   DateTime @default(now())
 
   message HumanSupportMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
@@ -4864,25 +5565,25 @@ model StockProposal {
 }
 
 model StockProposalLine {
-  id                String                       @id @default(uuid()) @db.Uuid
-  proposalId        String                       @db.Uuid
-  productId         String?                      @db.Uuid
-  rawLabel          String
-  supplierSku       String?
-  quantity          Decimal                      @db.Decimal(12, 3)
-  purchaseUnit      String?
-  inputUnitId       String?                      @db.Uuid
-  stockQuantity     Decimal?                     @db.Decimal(12, 3)
-  stockUnit         String?
-  unitPriceExVat    Decimal?                     @db.Decimal(12, 4)
-  lotNumber         String?
-  expiryDate        DateTime?
-  matchConfidence   Decimal?                     @db.Decimal(5, 4)
-  matchStatus       StockProposalLineMatchStatus @default(UNMATCHED)
-  notes             String?                      @db.Text
-  metadata          Json?
-  createdAt         DateTime                     @default(now())
-  updatedAt         DateTime                     @updatedAt
+  id              String                       @id @default(uuid()) @db.Uuid
+  proposalId      String                       @db.Uuid
+  productId       String?                      @db.Uuid
+  rawLabel        String
+  supplierSku     String?
+  quantity        Decimal                      @db.Decimal(12, 3)
+  purchaseUnit    String?
+  inputUnitId     String?                      @db.Uuid
+  stockQuantity   Decimal?                     @db.Decimal(12, 3)
+  stockUnit       String?
+  unitPriceExVat  Decimal?                     @db.Decimal(12, 4)
+  lotNumber       String?
+  expiryDate      DateTime?
+  matchConfidence Decimal?                     @db.Decimal(5, 4)
+  matchStatus     StockProposalLineMatchStatus @default(UNMATCHED)
+  notes           String?                      @db.Text
+  metadata        Json?
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
 
   @@index([proposalId])
   @@index([productId])
@@ -4890,19 +5591,19 @@ model StockProposalLine {
 }
 
 model ProductAlias {
-  id              String   @id @default(uuid()) @db.Uuid
-  organizationId  String   @db.Uuid
-  supplierId      String?  @db.Uuid
-  alias           String
-  normalizedAlias String
-  supplierSku     String?
-  productId       String   @db.Uuid
-  purchaseUnit    String?
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String   @db.Uuid
+  supplierId       String?  @db.Uuid
+  alias            String
+  normalizedAlias  String
+  supplierSku      String?
+  productId        String   @db.Uuid
+  purchaseUnit     String?
   conversionFactor Decimal? @db.Decimal(18, 6)
-  stockUnit       String?
-  createdBy       String
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  stockUnit        String?
+  createdBy        String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@unique([organizationId, supplierId, normalizedAlias])
   @@index([organizationId, productId])

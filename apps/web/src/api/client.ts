@@ -103,7 +103,18 @@ import type {
   ProductionHistoryEntry,
   ProductionExport,
   ProductionExportPayload,
+  ProductionBatch,
+  ProductionCampaign,
+  ProductionNeed,
+  ProductionProfile,
+  ProductionStockItem,
+  ProductionStockSummaryItem,
+  ProductionSuggestion,
+  CreateProductionCampaignPayload,
+  ConservationState,
   MenuCalendarView,
+  MenuAvailabilityReport,
+  MenuCategory,
   MenuCycle,
   MenuCyclePayload,
   MenuDiet,
@@ -118,7 +129,9 @@ import type {
   MenuPlanPayload,
   MenuProductionGenerationPayload,
   MenuProductionGenerationResult,
+  MenuSettings,
   MenuStatus,
+  MenuUsageProfile,
   BackupInspection,
   BackupCloudStatus,
   BackupListResponse,
@@ -278,9 +291,15 @@ function normalizeMenuPayload(payload: Partial<MenuPlanPayload>) {
       };
       return {
         section: item.section,
+        menuCategoryId: extended.menuCategoryId || undefined,
         technicalSheetId: item.technicalSheetId,
+        productId: item.productId,
         position: extended.position ?? item.order ?? index,
         portionsOverride: extended.portionsOverride,
+        servingQuantity: extended.servingQuantity,
+        targetReadyQuantity: extended.targetReadyQuantity,
+        lowStockThreshold: extended.lowStockThreshold,
+        availabilityEnabled: extended.availabilityEnabled,
         notes: extended.notes,
       };
     }),
@@ -1033,6 +1052,21 @@ export const api = {
   menusDashboard(token: string) {
     return request<MenuModuleDashboard>('/menus/dashboard', {}, token);
   },
+  menuSettings(token: string) {
+    return request<MenuSettings>('/menus/settings', {}, token);
+  },
+  updateMenuSettings(token: string, payload: Partial<MenuSettings> & { usageProfile: MenuUsageProfile }) {
+    return request<MenuSettings>('/menus/settings', { method: 'PATCH', body: JSON.stringify(payload) }, token);
+  },
+  menuCategories(token: string) {
+    return request<MenuCategory[]>('/menus/categories', {}, token);
+  },
+  createMenuCategory(token: string, payload: { name: string; position?: number; color?: string; icon?: string; catalogType?: 'FOOD' | 'DRINKS' }) {
+    return request<MenuCategory>('/menus/categories', { method: 'POST', body: JSON.stringify(payload) }, token);
+  },
+  updateMenuCategory(token: string, id: string, payload: { name: string; position?: number; color?: string; icon?: string; catalogType?: 'FOOD' | 'DRINKS' }) {
+    return request<MenuCategory>(`/menus/categories/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
+  },
   menusList(
     token: string,
     params: {
@@ -1042,6 +1076,7 @@ export const api = {
       dateFrom?: string;
       dateTo?: string;
       siteId?: string;
+      kind?: string;
     } = {},
   ) {
     const qs = new URLSearchParams();
@@ -1105,6 +1140,13 @@ export const api = {
       },
       token,
     );
+  },
+  menuAvailability(token: string, id: string, siteId?: string) {
+    const query = siteId ? `?siteId=${encodeURIComponent(siteId)}` : '';
+    return request<MenuAvailabilityReport>(`/menus/menus/${id}/availability${query}`, {}, token);
+  },
+  planMenuShortages(token: string, id: string, payload: { siteId?: string; itemIds?: string[]; neededAt?: string }) {
+    return request<{ created: number; needs: ProductionNeed[]; skipped: Array<{ itemId: string; name: string; reason: string }>; report: MenuAvailabilityReport }>(`/menus/menus/${id}/plan-shortages`, { method: 'POST', body: JSON.stringify(payload) }, token);
   },
   menuCycles(token: string) {
     return request<MenuCycle[]>('/menus/cycles', {}, token);
@@ -1213,6 +1255,175 @@ export const api = {
   },
   productionDashboard(token: string) {
     return request<ProductionDashboard>('/production/dashboard', {}, token);
+  },
+  productionNeeds(
+    token: string,
+    params: { siteId?: string; productId?: string; status?: string; startDate?: string; endDate?: string; pageSize?: number } = {},
+  ) {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') qs.set(key, String(value));
+    });
+    return request<{ items: ProductionNeed[]; total: number }>(
+      `/production/needs${qs.toString() ? `?${qs.toString()}` : ''}`,
+      {},
+      token,
+    );
+  },
+  createProductionNeed(
+    token: string,
+    payload: {
+      siteId: string;
+      productId: string;
+      variantId?: string;
+      unitId: string;
+      source: string;
+      quantity: string;
+      neededAt: string;
+      priority?: string;
+      status?: string;
+      notes?: string;
+    },
+  ) {
+    return request<ProductionNeed>(
+      '/production/needs',
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
+  },
+  productionProfiles(token: string, params: { siteId?: string; productId?: string; technicalSheetId?: string; pageSize?: number } = {}) {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') qs.set(key, String(value));
+    });
+    return request<ProductionProfile[]>(
+      `/production/profiles${qs.toString() ? `?${qs.toString()}` : ''}`,
+      {},
+      token,
+    );
+  },
+  createProductionProfile(
+    token: string,
+    payload: {
+      siteId: string;
+      technicalSheetId: string;
+      outputProductId: string;
+      outputVariantId?: string;
+      yieldUnitId: string;
+      mode?: string;
+      referenceYield: string;
+      minimumQuantity?: string;
+      optimalQuantity?: string;
+      maximumQuantity?: string;
+      stepQuantity?: string;
+      allowedFormats?: string[];
+      allowHalfBatch?: boolean;
+      allowDoubleBatch?: boolean;
+      quantityPerMold?: string;
+      quantityPerTray?: string;
+      quantityPerContainer?: string;
+      quantityPerCycle?: string;
+      maximumCycles?: number;
+      canFreeze?: boolean;
+      shelfLifeHours?: number;
+      frozenShelfLifeHours?: number;
+      shelfLifeAfterThawHours?: number;
+      thawingTimeMinutes?: number;
+    },
+  ) {
+    return request<ProductionProfile>(
+      '/production/profiles',
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
+  },
+  simulateProductionSuggestion(
+    token: string,
+    payload: { profileId: string; grossRequirement: string; neededAt: string; storageCapacity?: string; optimizedTarget?: string },
+  ) {
+    return request<ProductionSuggestion>(
+      '/production/simulations/suggestions',
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
+  },
+  productionCampaigns(token: string, params: ProductionQuery = {}) {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') qs.set(key, String(value));
+    });
+    return request<{ items: ProductionCampaign[]; total: number }>(
+      `/production/campaigns${qs.toString() ? `?${qs.toString()}` : ''}`,
+      {},
+      token,
+    );
+  },
+  productionCampaign(token: string, id: string) {
+    return request<ProductionCampaign>(`/production/campaigns/${id}`, {}, token);
+  },
+  createProductionCampaign(token: string, payload: CreateProductionCampaignPayload) {
+    return request<ProductionCampaign>(
+      '/production/campaigns',
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
+  },
+  validateProductionCampaign(token: string, id: string, payload: { allowShortage?: boolean; overrideReason?: string; idempotencyKey?: string } = {}) {
+    return request<ProductionCampaign>(
+      `/production/campaigns/${id}/validate`,
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
+  },
+  startProductionBatch(token: string, id: string) {
+    return request<ProductionBatch>(
+      `/production/batches/${id}/start`,
+      { method: 'POST', body: JSON.stringify({ idempotencyKey: crypto.randomUUID() }) },
+      token,
+    );
+  },
+  completeProductionBatch(
+    token: string,
+    id: string,
+    payload: { actualQuantity: string; lostQuantity?: string; destinationLocationId?: string; conservationState?: ConservationState; expiresAt?: string; notes?: string; idempotencyKey: string },
+  ) {
+    return request<ProductionBatch>(
+      `/production/batches/${id}/complete`,
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
+  },
+  updateProductionOperation(token: string, id: string, payload: { status: string; notes?: string; responsibleEmployeeId?: string }) {
+    return request(
+      `/production/operations/${id}`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      token,
+    );
+  },
+  productionStock(token: string, params: { siteId?: string; productId?: string; state?: ConservationState; search?: string; pageSize?: number } = {}) {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') qs.set(key, String(value));
+    });
+    return request<{ items: ProductionStockItem[]; summary: ProductionStockSummaryItem[]; total: number }>(
+      `/production/stock${qs.toString() ? `?${qs.toString()}` : ''}`,
+      {},
+      token,
+    );
+  },
+  transitionProductionStock(
+    token: string,
+    stockId: string,
+    payload: { quantity: string; destinationState: ConservationState; availableAt?: string; expiresAt?: string; reason?: string; idempotencyKey: string },
+  ) {
+    return request(
+      `/production/stock/${stockId}/transition`,
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
+  },
+  productionLotTraceability(token: string, lotId: string) {
+    return request<Record<string, unknown>>(`/production/traceability/lots/${lotId}`, {}, token);
   },
   productionOrders(token: string, params: ProductionQuery = {}) {
     const qs = new URLSearchParams();
@@ -2217,8 +2428,32 @@ export const api = {
   archiveUnit(token: string, id: string) {
     return request<Unit>(`/units/${id}/archive`, { method: 'POST' }, token);
   },
-  products(token: string) {
-    return request<Product[]>('/products', {}, token);
+  products(
+    token: string,
+    params: {
+      search?: string;
+      includeArchived?: boolean;
+      page?: number;
+      pageSize?: number;
+    } = {},
+  ) {
+    const query = new URLSearchParams();
+    if (params.search) query.set('search', params.search);
+    if (params.includeArchived !== undefined) query.set('includeArchived', String(params.includeArchived));
+    if (params.page) query.set('page', String(params.page));
+    if (params.pageSize) query.set('pageSize', String(params.pageSize));
+    return request<Product[]>(`/products${query.toString() ? `?${query}` : ''}`, {}, token);
+  },
+  async allProducts(token: string, params: { includeArchived?: boolean } = {}) {
+    const pageSize = 200;
+    const items: Product[] = [];
+    for (let page = 1; ; page += 1) {
+      const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+      if (params.includeArchived !== undefined) query.set('includeArchived', String(params.includeArchived));
+      const batch = await request<Product[]>(`/products?${query}`, {}, token);
+      items.push(...batch);
+      if (batch.length < pageSize) return items;
+    }
   },
   articles(
     token: string,

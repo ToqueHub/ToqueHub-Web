@@ -63,8 +63,6 @@ type TechnicalSheetsAppProps = {
 const statuses = [
   { value: 'DRAFT', label: 'Brouillon' },
   { value: 'ACTIVE', label: 'Actif' },
-  { value: 'VALIDATED', label: 'Validé' },
-  { value: 'ARCHIVED', label: 'Archivé' },
 ];
 
 const MAX_RECIPE_IMPORT_FILES = 10;
@@ -74,6 +72,10 @@ const emptyRecipe: TechnicalSheetRecipePayload = {
   description: '',
   categoryId: '',
   photoUrl: '',
+  stockPolicy: 'MAKE_TO_STOCK',
+  trackOutputStock: false,
+  createOutputProduct: false,
+  outputProductKind: 'FINISHED',
   referencePortions: 10,
   prepTimeMinutes: 0,
   cookTimeMinutes: 0,
@@ -91,7 +93,17 @@ const formatImportBytes = (value: number) => value >= 1024 * 1024 ? `${(value / 
 function recipePayloadForSave(form: TechnicalSheetRecipePayload, importDocumentId: string | null): TechnicalSheetRecipePayload {
   const payload: TechnicalSheetRecipePayload = {
     ...form,
-    ingredients: (form.ingredients ?? []).map(({ id: _id, ...ingredient }) => ingredient),
+    stockPolicy: 'MAKE_TO_STOCK',
+    status: form.status === 'ACTIVE' ? 'ACTIVE' : 'DRAFT',
+    trackOutputStock: true,
+    createOutputProduct: true,
+    outputProductName: form.name.trim(),
+    outputProductKind: form.mode === 'PRODUCTION' ? 'INTERMEDIATE' : 'FINISHED',
+    ingredients: (form.ingredients ?? []).map(({ id: _id, componentType: _componentType, ...ingredient }) => ({
+      ...ingredient,
+      sourceTechnicalSheetId: ingredient.sourceTechnicalSheetId || undefined,
+      section: ingredient.section?.trim() || undefined,
+    })),
     steps: (form.steps ?? []).map(({ id: _id, ...step }) => step),
   };
   if (importDocumentId) payload.importDocumentId = importDocumentId;
@@ -703,28 +715,48 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
       description: recipe.description ?? '',
       categoryId: recipe.categoryId ?? recipe.category?.id ?? '',
       photoUrl: recipe.photoUrl ?? recipe.photoDataUrl ?? '',
+      mode: recipe.mode ?? 'ASSEMBLY',
+      stockPolicy: 'MAKE_TO_STOCK',
+      trackOutputStock: Boolean(recipe.outputProductId),
+      outputProductId: recipe.outputProductId ?? undefined,
+      outputProductName: recipe.outputProduct?.name ?? recipe.name,
+      outputProductKind: recipe.outputProduct?.kind === 'INTERMEDIATE' ? 'INTERMEDIATE' : 'FINISHED',
+      yieldUnitId: recipe.yieldUnitId ?? recipe.outputProduct?.unitId ?? undefined,
       referencePortions: Number(recipe.referencePortions ?? recipe.portions ?? 10),
       prepTimeMinutes: Number(recipe.prepTimeMinutes ?? 0),
       cookTimeMinutes: Number(recipe.cookTimeMinutes ?? 0),
-      status: recipe.status ?? 'DRAFT',
+      status: ['ACTIVE', 'VALIDATED'].includes(recipe.status) ? 'ACTIVE' : 'DRAFT',
       ingredients: (recipe.ingredients ?? []).map((line) => ({
         id: line.id,
         productId: line.productId,
+        componentType: line.sourceTechnicalSheetId ? 'SUB_RECIPE' : 'PRODUCT',
+        sourceTechnicalSheetId: line.sourceTechnicalSheetId ?? undefined,
         unitId: line.unitId,
         quantity: Number(line.quantity),
         comment: line.comment ?? '',
+        section: line.section ?? '',
       })),
-      steps: (recipe.steps ?? []).map((step, index) => ({ id: step.id, order: step.order ?? index + 1, title: step.title ?? '', description: step.description ?? '', estimatedTimeMinutes: Number(step.estimatedTimeMinutes ?? 0) })),
+      steps: (recipe.steps ?? []).map((step, index) => ({ id: step.id, order: step.order ?? index + 1, title: step.title ?? '', description: step.description ?? '', section: step.section ?? '', estimatedTimeMinutes: Number(step.estimatedTimeMinutes ?? 0) })),
     } : { ...emptyRecipe, categoryId: categories.find((cat) => !isArchived(cat))?.id ?? '', ingredients: [], steps: [] });
     setRecipeDialog(true);
   }
 
   async function saveRecipe() {
+    if (!form.mode) return setError('Choisissez Assemblage ou Fabrication.');
     if (!form.name.trim()) return setError('Le nom de la fiche est requis.');
     if (!form.categoryId) return setError('Choisissez une catégorie recette.');
     if (!form.referencePortions || form.referencePortions <= 0) return setError('Les portions de référence doivent être positives.');
-    if ((form.ingredients ?? []).some((line) => !line.productId && !(line.createProduct && line.productName?.trim()))) {
+    if ((form.ingredients ?? []).some((line) => !line.sourceTechnicalSheetId && !line.productId && !(line.createProduct && line.productName?.trim()))) {
       return setError('Chaque ingrédient doit être associé à un produit Stocks ou défini comme nouveau produit.');
+    }
+    if (form.mode === 'PRODUCTION' && (form.ingredients ?? []).some((line) => line.sourceTechnicalSheetId)) {
+      return setError('Une fabrication ne peut pas contenir de sous-recette. Utilisez une fiche Assemblage.');
+    }
+    if (form.status === 'ACTIVE' && !(form.ingredients ?? []).length) {
+      return setError('Ajoutez au moins un ingrédient avant de rendre la fiche active.');
+    }
+    if (form.status === 'ACTIVE' && form.mode === 'PRODUCTION' && !(form.steps ?? []).length) {
+      return setError('Ajoutez au moins une étape avant de rendre une fabrication active.');
     }
     setLoading(true);
     setError(undefined);
@@ -732,6 +764,7 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
       const payload = recipePayloadForSave(form, !editingRecipe ? reviewingImportDocumentId : null);
       const savedRecipeName = form.name.trim();
       const savedRecipe = editingRecipe ? await api.updateTechnicalSheetRecipe(token, editingRecipe.id, payload) : await api.createTechnicalSheetRecipe(token, payload);
+      const restoredFromArchive = savedRecipe.restoredFromArchive === true;
       if (reviewingKokkiPricing && (reviewingKokkiPricing.targetSellingPriceExclTax != null || reviewingKokkiPricing.targetSellingPriceInclTax != null)) {
         await api.updateTechnicalSheetRecipePricing(token, savedRecipe.id, reviewingKokkiPricing);
         setReviewingKokkiPricing(null);
@@ -751,15 +784,15 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
         nextImport = remainingReady[0];
         remainingReadyCount = remainingReady.length;
       }
-      const refreshedProducts = await api.products(token).catch(() => undefined);
+      const refreshedProducts = await api.allProducts(token).catch(() => undefined);
       if (refreshedProducts) setAvailableProducts(refreshedProducts);
       await load();
       if (nextImport) {
         showImportedRecipe(nextImport, false);
-        setSuccess(`Fiche « ${savedRecipeName} » créée. La fiche suivante est prête à être vérifiée (${remainingReadyCount} restante${remainingReadyCount > 1 ? 's' : ''}).`);
+        setSuccess(`Fiche « ${savedRecipeName} » ${restoredFromArchive ? 'réactivée à partir de sa version archivée' : 'créée'}. La fiche suivante est prête à être vérifiée (${remainingReadyCount} restante${remainingReadyCount > 1 ? 's' : ''}).`);
       } else {
         setRecipeDialog(false);
-        setSuccess(editingRecipe ? 'Fiche technique mise à jour.' : 'Fiche technique créée.');
+        setSuccess(editingRecipe ? 'Fiche technique mise à jour.' : restoredFromArchive ? 'Fiche technique archivée réactivée avec le nouvel import.' : 'Fiche technique créée.');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Enregistrement impossible.');
@@ -890,6 +923,8 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
     setForm({
       ...emptyRecipe,
       ...result.payload,
+      mode: result.payload.mode ?? 'PRODUCTION',
+      stockPolicy: 'MAKE_TO_STOCK',
       importDocumentId: status.document.id,
       categoryId: result.payload.categoryId || categories.find((category) => !isArchived(category))?.id || '',
       ingredients: result.payload.ingredients ?? [],
@@ -1076,8 +1111,10 @@ export function TechnicalSheetsApp({ token, tab, stocksInstalled, products, unit
         setForm={setForm}
         products={activeProducts}
         units={units}
+        recipes={recipes}
         categories={categories.filter((cat) => !isArchived(cat))}
         editing={Boolean(editingRecipe)}
+        editingRecipeId={editingRecipe?.id}
         onClose={() => { setRecipeDialog(false); setReviewingImportDocumentId(null); }}
         onSave={saveRecipe}
         loading={loading}
@@ -1996,7 +2033,7 @@ function RecipesTab(props: {
                       {recipe.category?.name ?? 'Sans catégorie'} · {recipe.referencePortions ?? recipe.portions ?? 1} portions
                     </p>
                   </div>
-                  <span className={`badge ${recipe.status === 'VALIDATED' ? 'badge-reception' : recipe.status === 'ARCHIVED' ? 'badge-loss' : 'badge-production'}`}>
+                  <span className={`badge ${recipe.status === 'ACTIVE' ? 'badge-reception' : 'badge-production'}`}>
                     {statuses.find((s) => s.value === recipe.status)?.label ?? recipe.status}
                   </span>
                 </div>
@@ -2532,9 +2569,47 @@ function ProductionTab({
   );
 }
 
-function RecipeDialog({ open, form, setForm, products, units, categories, editing, onClose, onSave, loading }: { open: boolean; form: TechnicalSheetRecipePayload; setForm: (f: TechnicalSheetRecipePayload) => void; products: Product[]; units: Unit[]; categories: TechnicalSheetCategory[]; editing: boolean; onClose: () => void; onSave: () => void; loading: boolean }) {
+function RecipeCompositionNode({ line, ratio, recipes, products, units, visited = [] }: { line: any; ratio: number; recipes: TechnicalSheetRecipe[]; products: Product[]; units: Unit[]; visited?: string[] }) {
+  const source = recipes.find((recipe) => recipe.id === line.sourceTechnicalSheetId);
+  const product = products.find((item) => item.id === line.productId);
+  const unit = units.find((item) => item.id === line.unitId);
+  const required = Number(line.quantity || 0) * ratio;
+  if (!source) {
+    return <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', padding: '0.4rem 0.65rem', color: '#475569', fontSize: '0.78rem' }}><span>{product?.name || line.productName || 'Produit'}</span><strong>{required.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} {unit?.symbol || ''}</strong></div>;
+  }
+  if (visited.includes(source.id)) {
+    return <div style={{ color: '#b91c1c', fontSize: '0.78rem', padding: '0.4rem 0.65rem' }}>Cycle détecté vers {source.name}</div>;
+  }
+  const childRatio = required / Math.max(Number(source.referencePortions || 1), 0.001);
+  return (
+    <div style={{ borderLeft: '3px solid #86efac', margin: '0.45rem 0', paddingLeft: '0.65rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', padding: '0.45rem 0.65rem', background: '#f0fdf4', borderRadius: '8px', color: '#166534', fontSize: '0.8rem' }}>
+        <strong>{source.name}</strong>
+        <span>{required.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} {unit?.symbol || source.yieldUnit?.symbol || ''}</span>
+      </div>
+      <div style={{ paddingLeft: '0.45rem' }}>
+        {(source.ingredients ?? []).map((child, index) => <RecipeCompositionNode key={`${source.id}-${child.id || index}`} line={child} ratio={childRatio} recipes={recipes} products={products} units={units} visited={[...visited, source.id]} />)}
+      </div>
+    </div>
+  );
+}
+
+function RecipeDialog({ open, form, setForm, products, units, recipes, categories, editing, editingRecipeId, onClose, onSave, loading }: { open: boolean; form: TechnicalSheetRecipePayload; setForm: (f: TechnicalSheetRecipePayload) => void; products: Product[]; units: Unit[]; recipes: TechnicalSheetRecipe[]; categories: TechnicalSheetCategory[]; editing: boolean; editingRecipeId?: string; onClose: () => void; onSave: () => void; loading: boolean }) {
   const ingredients = form.ingredients ?? [];
   const steps = form.steps ?? [];
+  const [previewQuantity, setPreviewQuantity] = useState(Number(form.referencePortions || 1));
+  const previewRatio = previewQuantity / Math.max(Number(form.referencePortions || 1), 0.001);
+  const subRecipeOptions = recipes.filter((recipe) =>
+    !recipe.isArchived &&
+    recipe.mode === 'PRODUCTION' &&
+    ['ACTIVE', 'VALIDATED'].includes(recipe.status) &&
+    recipe.outputProductId &&
+    recipe.id !== editingRecipeId,
+  );
+
+  useEffect(() => {
+    if (open) setPreviewQuantity(Number(form.referencePortions || 1));
+  }, [open, form.referencePortions]);
 
   const patchIngredient = (index: number, patch: Partial<(typeof ingredients)[number]>) => {
     const next = [...ingredients];
@@ -2626,12 +2701,12 @@ function RecipeDialog({ open, form, setForm, products, units, categories, editin
                 letterSpacing: '0.05em',
                 padding: '0.25rem 0.75rem',
                 borderRadius: '9999px',
-                background: form.status === 'VALIDATED' ? '#ecfdf5' : '#f1f5f9',
-                color: form.status === 'VALIDATED' ? '#059669' : '#475569',
-                border: form.status === 'VALIDATED' ? '1px solid #10b981' : '1px solid #cbd5e1',
+                background: form.status === 'ACTIVE' ? '#ecfdf5' : '#f1f5f9',
+                color: form.status === 'ACTIVE' ? '#059669' : '#475569',
+                border: form.status === 'ACTIVE' ? '1px solid #10b981' : '1px solid #cbd5e1',
                 marginRight: '0.5rem'
               }}>
-                {form.status === 'VALIDATED' ? 'Validé' : 'Brouillon'}
+                {form.status === 'ACTIVE' ? 'Actif' : 'Brouillon'}
               </div>
 
               <button
@@ -2661,6 +2736,49 @@ function RecipeDialog({ open, form, setForm, products, units, categories, editin
             </div>
           </div>
 
+          {!form.mode ? (
+            <div style={{
+              position: 'absolute',
+              inset: '72px 0 0',
+              zIndex: 20,
+              background: 'linear-gradient(135deg, #f8fafc 0%, #ecfdf5 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '2rem'
+            }}>
+              <div style={{ width: 'min(900px, 100%)', display: 'flex', flexDirection: 'column', gap: '1.75rem', alignItems: 'center' }}>
+                <div style={{ textAlign: 'center', maxWidth: '620px' }}>
+                  <span style={{ display: 'inline-flex', padding: '0.35rem 0.75rem', borderRadius: '999px', background: '#dcfce7', color: '#15803d', fontWeight: 800, fontSize: '0.75rem', marginBottom: '0.8rem' }}>CRÉATION GUIDÉE</span>
+                  <h2 style={{ margin: 0, fontSize: '2rem', color: '#0f172a' }}>Que souhaitez-vous préparer ?</h2>
+                  <p style={{ color: '#64748b', fontSize: '1rem', lineHeight: 1.6 }}>Choisissez le cas le plus proche. L’écran s’adaptera automatiquement et vous pourrez modifier ce choix plus tard.</p>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '1.25rem', width: '100%' }}>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, mode: 'ASSEMBLY', stockPolicy: 'MAKE_TO_STOCK', referencePortions: Math.max(Number(form.referencePortions || 1), 1), trackOutputStock: true, createOutputProduct: true, outputProductKind: 'FINISHED' })}
+                    style={{ border: '2px solid #dbeafe', borderRadius: '20px', background: '#fff', padding: '2rem', textAlign: 'left', cursor: 'pointer', boxShadow: '0 12px 30px rgba(15, 23, 42, 0.08)' }}
+                  >
+                    <div style={{ width: 52, height: 52, borderRadius: 16, background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}><Utensils size={26} /></div>
+                    <strong style={{ display: 'block', fontSize: '1.25rem', color: '#0f172a', marginBottom: '0.5rem' }}>Assemblage / produit fini</strong>
+                    <span style={{ display: 'block', color: '#64748b', lineHeight: 1.55, minHeight: '3.2rem' }}>Croque-monsieur ou Snickers : assemblez des produits et, si besoin, des préparations déjà fabriquées.</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#2563eb', fontWeight: 800, marginTop: '1.25rem' }}>Créer l’assemblage <ArrowRight size={16} /></span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, mode: 'PRODUCTION', stockPolicy: 'MAKE_TO_STOCK', referencePortions: Math.max(Number(form.referencePortions || 10), 1), trackOutputStock: true, createOutputProduct: true, outputProductKind: 'INTERMEDIATE' })}
+                    style={{ border: '2px solid #a7f3d0', borderRadius: '20px', background: '#fff', padding: '2rem', textAlign: 'left', cursor: 'pointer', boxShadow: '0 12px 30px rgba(5, 150, 105, 0.12)' }}
+                  >
+                    <div style={{ width: 52, height: 52, borderRadius: 16, background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}><ChefHat size={27} /></div>
+                    <strong style={{ display: 'block', fontSize: '1.25rem', color: '#0f172a', marginBottom: '0.5rem' }}>Fabrication</strong>
+                    <span style={{ display: 'block', color: '#64748b', lineHeight: 1.55, minHeight: '3.2rem' }}>Biscuit, ganache ou autre base produite en avance, à partir de produits Stocks uniquement.</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#059669', fontWeight: 800, marginTop: '1.25rem' }}>Créer la fabrication <ArrowRight size={16} /></span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           {/* Main Body */}
           <div style={{
             display: 'grid',
@@ -2679,6 +2797,14 @@ function RecipeDialog({ open, form, setForm, products, units, categories, editin
               gap: '1.5rem',
               overflowY: 'auto'
             }}>
+              <div style={{ padding: '0.85rem 1rem', borderRadius: '12px', background: form.mode === 'PRODUCTION' ? '#ecfdf5' : '#eff6ff', border: `1px solid ${form.mode === 'PRODUCTION' ? '#a7f3d0' : '#bfdbfe'}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+                <div>
+                  <span style={{ display: 'block', fontSize: '0.7rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Type de fiche</span>
+                  <strong style={{ color: form.mode === 'PRODUCTION' ? '#047857' : '#1d4ed8' }}>{form.mode === 'PRODUCTION' ? 'Fabrication / préparation' : 'Assemblage / produit fini'}</strong>
+                </div>
+                <button type="button" onClick={() => setForm({ ...form, mode: undefined })} style={{ border: 0, background: 'transparent', color: '#64748b', textDecoration: 'underline', cursor: 'pointer', fontSize: '0.75rem' }}>Changer</button>
+              </div>
+
               {/* Image Preview / Cover */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#475569' }}>Photo de couverture</span>
@@ -2796,16 +2922,17 @@ function RecipeDialog({ open, form, setForm, products, units, categories, editin
 
                 {/* Metrics block */}
                 <h3 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b' }}>
-                  Paramètres de Production
+                  Paramètres de la fiche
                 </h3>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                   <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.85rem', fontWeight: 600 }}>
-                    Portions
+                    {form.mode === 'PRODUCTION' ? 'Rendement (portions obtenues)' : 'Nombre de portions obtenues'}
                     <div style={{ position: 'relative' }}>
                       <input
                         type="number"
-                        min={1}
+                        step="any"
+                        min={0.001}
                         value={form.referencePortions ?? 1}
                         onChange={(e) => setForm({ ...form, referencePortions: Number(e.target.value) })}
                         style={{
@@ -2891,6 +3018,40 @@ function RecipeDialog({ open, form, setForm, products, units, categories, editin
               flexDirection: 'column',
               gap: '2.5rem'
             }}>
+              <div style={{ background: 'linear-gradient(135deg, #eff6ff, #f8fafc)', borderRadius: '16px', border: '1px solid #bfdbfe', padding: '1.25rem 1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginBottom: '0.8rem' }}>
+                  <div>
+                    <strong style={{ color: '#1e3a8a' }}>Aperçu automatique des besoins</strong>
+                    <div style={{ color: '#64748b', fontSize: '0.78rem', marginTop: '0.2rem' }}>Modifiez la quantité pour vérifier la mise à l’échelle.</div>
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#334155', fontSize: '0.82rem', fontWeight: 700 }}>
+                    Quantité souhaitée
+                    <input type="number" min={0.001} step="any" value={previewQuantity} onChange={(e) => setPreviewQuantity(Math.max(Number(e.target.value || 0), 0.001))} style={{ width: '110px', margin: 0 }} />
+                  </label>
+                </div>
+                {ingredients.length ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '0.55rem' }}>
+                      {ingredients.slice(0, 8).map((line, index) => {
+                        const product = products.find((item) => item.id === line.productId);
+                        const source = recipes.find((item) => item.id === line.sourceTechnicalSheetId);
+                        const unit = units.find((item) => item.id === line.unitId);
+                        return <div key={index} style={{ background: '#fff', border: '1px solid #dbeafe', borderRadius: '9px', padding: '0.65rem 0.75rem' }}><span style={{ display: 'block', fontSize: '0.75rem', color: '#64748b' }}>{source ? `Sous-recette · ${source.name}` : product?.name || line.productName || 'Composant'}</span><strong style={{ color: '#1e3a8a' }}>{(Number(line.quantity) * previewRatio).toLocaleString('fr-FR', { maximumFractionDigits: 3 })} {unit?.symbol || ''}</strong></div>;
+                      })}
+                    </div>
+                    {ingredients.some((line) => line.sourceTechnicalSheetId) ? (
+                      <div style={{ background: '#ffffff', border: '1px solid #bbf7d0', borderRadius: '11px', padding: '0.8rem' }}>
+                        <div style={{ color: '#166534', fontSize: '0.78rem', fontWeight: 800, marginBottom: '0.35rem' }}>Arbre de fabrication</div>
+                        <div style={{ color: '#64748b', fontSize: '0.72rem', marginBottom: '0.55rem' }}>Les préparations intermédiaires sont automatiquement décomposées jusqu’aux produits Stocks.</div>
+                        {ingredients.map((line, index) => (
+                          <RecipeCompositionNode key={`composition-${line.sourceTechnicalSheetId || line.productId || index}`} line={line} ratio={previewRatio} recipes={recipes} products={products} units={units} />
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : <span style={{ color: '#64748b', fontSize: '0.82rem' }}>Ajoutez un composant pour voir le calcul.</span>}
+              </div>
+
               {/* Ingredients Section */}
               <div style={{
                 background: '#ffffff',
@@ -2902,7 +3063,7 @@ function RecipeDialog({ open, form, setForm, products, units, categories, editin
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>
-                      Ingrédients Stocks
+                      {form.mode === 'PRODUCTION' ? 'Ingrédients de fabrication' : 'Composants de l’assemblage'}
                     </h3>
                     <span style={{
                       background: '#eff6ff',
@@ -2912,17 +3073,31 @@ function RecipeDialog({ open, form, setForm, products, units, categories, editin
                       padding: '0.2rem 0.6rem',
                       borderRadius: '9999px'
                     }}>
-                      {ingredients.length} {ingredients.length > 1 ? 'produits' : 'produit'}
+                      {ingredients.length} {ingredients.length > 1 ? 'composants' : 'composant'}
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', borderRadius: '8px', padding: '0.4rem 0.8rem' }}
-                    onClick={() => setForm({ ...form, ingredients: [...ingredients, { productId: '', unitId: units[0]?.id ?? '', quantity: 1, comment: '' }] })}
-                  >
-                    <Plus size={14} /> Ajouter un ingrédient
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+                    {form.mode === 'ASSEMBLY' ? (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        disabled={!subRecipeOptions.length}
+                        title={subRecipeOptions.length ? 'Ajouter une fabrication déjà active' : 'Créez et activez d’abord une fiche de fabrication'}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', borderRadius: '8px', padding: '0.4rem 0.8rem' }}
+                        onClick={() => setForm({ ...form, ingredients: [...ingredients, { componentType: 'SUB_RECIPE', productId: '', sourceTechnicalSheetId: '', unitId: units[0]?.id ?? '', quantity: 1, section: '', comment: '' }] })}
+                      >
+                        <Copy size={14} /> Ajouter une sous-recette
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', borderRadius: '8px', padding: '0.4rem 0.8rem' }}
+                      onClick={() => setForm({ ...form, ingredients: [...ingredients, { componentType: 'PRODUCT', productId: '', unitId: units[0]?.id ?? '', quantity: 1, section: '', comment: '' }] })}
+                    >
+                      <Plus size={14} /> Ajouter un produit
+                    </button>
+                  </div>
                 </div>
 
                 {ingredients.length > 0 ? (
@@ -2948,8 +3123,27 @@ function RecipeDialog({ open, form, setForm, products, units, categories, editin
                         >
                           <div style={{ display: 'grid', gridTemplateColumns: '2.5fr 1fr 1fr auto', gap: '0.75rem', alignItems: 'end' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>
-                              Produit Stocks
-                              {line.createProduct && !line.productId ? (
+                              {line.componentType === 'SUB_RECIPE' || line.sourceTechnicalSheetId ? 'Sous-recette' : 'Produit Stocks'}
+                              {line.componentType === 'SUB_RECIPE' || line.sourceTechnicalSheetId ? (
+                                <select
+                                  value={line.sourceTechnicalSheetId ?? ''}
+                                  onChange={(event) => {
+                                    const source = subRecipeOptions.find((recipe) => recipe.id === event.target.value);
+                                    patchIngredient(index, source ? {
+                                      componentType: 'SUB_RECIPE',
+                                      sourceTechnicalSheetId: source.id,
+                                      productId: source.outputProductId ?? '',
+                                      unitId: source.yieldUnitId ?? source.outputProduct?.unitId ?? line.unitId,
+                                      section: line.section || source.name,
+                                      createProduct: false,
+                                    } : { sourceTechnicalSheetId: '', productId: '' });
+                                  }}
+                                  style={{ padding: '0.55rem 0.7rem', border: '1px solid #86efac', background: '#f0fdf4', borderRadius: '8px' }}
+                                >
+                                  <option value="">Choisir une préparation…</option>
+                                  {subRecipeOptions.map((recipe) => <option key={recipe.id} value={recipe.id}>{recipe.name} · rendement {Number(recipe.referencePortions ?? 1).toLocaleString('fr-FR')}</option>)}
+                                </select>
+                              ) : line.createProduct && !line.productId ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', padding: '0.65rem', border: '1px solid #a7f3d0', borderRadius: '8px', background: '#ecfdf5' }}>
                                   <span style={{ color: '#047857', fontSize: '0.72rem', fontWeight: 700 }}>Nouveau produit Stocks à créer</span>
                                   <input
@@ -2965,17 +3159,19 @@ function RecipeDialog({ open, form, setForm, products, units, categories, editin
                                   ) : null}
                                 </div>
                               ) : null}
-                              <ProductSelect
-                                products={products}
-                                value={line.productId ?? ''}
-                                placeholder={line.createProduct ? 'Ou associer à un produit existant...' : undefined}
-                                onChange={(productId) => {
-                                  const product = products.find(p => p.id === productId);
-                                  patchIngredient(index, productId
-                                    ? { productId, unitId: product?.unitId ?? line.unitId, createProduct: false }
-                                    : { productId });
-                                }}
-                              />
+                              {line.componentType !== 'SUB_RECIPE' && !line.sourceTechnicalSheetId ? (
+                                <ProductSelect
+                                  products={products}
+                                  value={line.productId ?? ''}
+                                  placeholder={line.createProduct ? 'Ou associer à un produit existant...' : undefined}
+                                  onChange={(productId) => {
+                                    const product = products.find(p => p.id === productId);
+                                    patchIngredient(index, productId
+                                      ? { productId, unitId: product?.unitId ?? line.unitId, createProduct: false, componentType: 'PRODUCT' }
+                                      : { productId });
+                                  }}
+                                />
+                              ) : null}
                             </div>
                             <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>
                               Quantité
@@ -3036,6 +3232,14 @@ function RecipeDialog({ open, form, setForm, products, units, categories, editin
                           </div>
 
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            {form.mode === 'PRODUCTION' ? (
+                              <input
+                                placeholder="Phase (ex. Ganache)"
+                                value={line.section ?? ''}
+                                onChange={(e) => patchIngredient(index, { section: e.target.value })}
+                                style={{ fontSize: '0.85rem', padding: '0.5rem 0.75rem', border: '1px solid #cbd5e1', borderRadius: '8px', width: '180px', marginBottom: 0, background: '#ffffff' }}
+                              />
+                            ) : null}
                             <input
                               placeholder="Commentaire de préparation (ex: émincé finement, réserver le jus...)"
                               value={line.comment ?? ''}
@@ -3167,7 +3371,7 @@ function RecipeDialog({ open, form, setForm, products, units, categories, editin
                             border: '1px solid #e2e8f0',
                             borderRadius: '12px',
                             display: 'grid',
-                            gridTemplateColumns: '80px 2fr 3fr 120px auto',
+                            gridTemplateColumns: form.mode === 'PRODUCTION' ? '75px 1.2fr 1.5fr 2.4fr 110px auto' : '80px 2fr 3fr 120px auto',
                             gap: '0.75rem',
                             alignItems: 'end',
                             transition: 'border-color 0.2s'
@@ -3191,6 +3395,17 @@ function RecipeDialog({ open, form, setForm, products, units, categories, editin
                               }}
                             />
                           </label>
+                          {form.mode === 'PRODUCTION' ? (
+                            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>
+                              Phase
+                              <input
+                                value={step.section ?? ''}
+                                onChange={(e) => patchStep(index, { section: e.target.value })}
+                                placeholder="ex: Ganache"
+                                style={{ padding: '0.5rem 0.75rem', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '0.85rem', marginBottom: 0 }}
+                              />
+                            </label>
+                          ) : null}
                           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>
                             Titre de l'étape
                             <input
@@ -3304,12 +3519,12 @@ function RecipeDialog({ open, form, setForm, products, units, categories, editin
             <label className="toggle-inline" style={{ userSelect: 'none', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
               <input
                 type="checkbox"
-                checked={form.status === 'VALIDATED'}
-                onChange={(e) => setForm({ ...form, status: e.target.checked ? 'VALIDATED' : 'DRAFT' })}
+                checked={form.status === 'ACTIVE'}
+                onChange={(e) => setForm({ ...form, status: e.target.checked ? 'ACTIVE' : 'DRAFT' })}
                 style={{ cursor: 'pointer' }}
               />
               <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#334155' }}>
-                Fiche validée comme référence de production
+                Fiche terminée et active
               </span>
             </label>
             <div style={{ display: 'flex', gap: '0.75rem' }}>

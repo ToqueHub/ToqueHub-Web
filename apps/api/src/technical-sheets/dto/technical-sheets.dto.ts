@@ -1,6 +1,6 @@
 import { Transform, Type } from 'class-transformer';
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsEnum, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min, ValidateNested } from 'class-validator';
-import { TechnicalSheetStatus } from '@prisma/client';
+import { ProductKind, TechnicalSheetMode, TechnicalSheetStatus, TechnicalSheetStockPolicy } from '@prisma/client';
 
 export class TechnicalSheetListQueryDto {
   @IsOptional() @IsString() search?: string;
@@ -38,8 +38,10 @@ export class UpsertIngredientDto {
   @IsOptional() @IsString() @MaxLength(32) productGtin?: string;
   @IsOptional() @IsBoolean() createProduct?: boolean;
   @IsUUID() unitId!: string;
+  @IsOptional() @IsUUID() sourceTechnicalSheetId?: string;
   @Type(() => Number) @IsNumber({ maxDecimalPlaces: 3 }) @Min(0.001) quantity!: number;
   @IsOptional() @IsString() @MaxLength(2000) comment?: string;
+  @IsOptional() @IsString() @MaxLength(120) section?: string;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) order?: number;
 }
 
@@ -47,6 +49,7 @@ export class UpsertStepDto {
   @Type(() => Number) @IsNumber() @Min(0) order!: number;
   @IsString() @MaxLength(180) title!: string;
   @IsString() @MaxLength(5000) description!: string;
+  @IsOptional() @IsString() @MaxLength(120) section?: string;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) estimatedMinutes?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) estimatedTimeMinutes?: number;
 }
@@ -58,6 +61,14 @@ export class UpsertTechnicalSheetDto {
   @IsOptional() @IsUUID() categoryId?: string;
   @IsOptional() @IsString() @MaxLength(2000) photoUrl?: string;
   @IsOptional() @IsString() photoDataUrl?: string;
+  @IsOptional() @IsEnum(TechnicalSheetMode) mode?: TechnicalSheetMode;
+  @IsOptional() @IsEnum(TechnicalSheetStockPolicy) stockPolicy?: TechnicalSheetStockPolicy;
+  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() trackOutputStock?: boolean;
+  @IsOptional() @IsUUID() outputProductId?: string;
+  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() createOutputProduct?: boolean;
+  @IsOptional() @IsString() @MaxLength(220) outputProductName?: string;
+  @IsOptional() @IsEnum(ProductKind) outputProductKind?: ProductKind;
+  @IsOptional() @IsUUID() yieldUnitId?: string;
   @Type(() => Number) @IsNumber({ maxDecimalPlaces: 3 }) @Min(0.001) referencePortions!: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) preparationTimeMinutes?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) prepTimeMinutes?: number;

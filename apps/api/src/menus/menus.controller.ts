@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { GenerateProductionsDto, GuestForecastDto, HistoryQueryDto, MenuQueryDto, PrepareMenuExportDto, ReplicateCycleDto, UpdateGuestForecastsDto, UpdateMenuStatusDto, UpsertCycleDto, UpsertDietDto, UpsertGuestGroupDto, UpsertMenuDto, UpsertMenuVariantDto } from './dto/menus.dto';
+import { GenerateProductionsDto, HistoryQueryDto, MenuAvailabilityQueryDto, MenuQueryDto, PlanMenuShortagesDto, PrepareMenuExportDto, ReplicateCycleDto, UpdateGuestForecastsDto, UpdateMenuSettingsDto, UpdateMenuStatusDto, UpsertCycleDto, UpsertDietDto, UpsertGuestGroupDto, UpsertMenuCategoryDto, UpsertMenuDto, UpsertMenuVariantDto } from './dto/menus.dto';
 import { MenusService } from './menus.service';
 
 @ApiTags('menus')
@@ -18,6 +18,11 @@ export class MenusController {
   @Post('install') install(@CurrentUser() user: AuthenticatedUser) { return this.service.install(this.org(user), this.actor(user)); }
   @Post('uninstall') uninstall(@CurrentUser() user: AuthenticatedUser) { return this.service.uninstall(this.org(user), this.actor(user)); }
   @Get('dashboard') dashboard(@CurrentUser() user: AuthenticatedUser) { return this.service.dashboard(this.org(user)); }
+  @Get('settings') settings(@CurrentUser() user: AuthenticatedUser) { return this.service.settings(this.org(user)); }
+  @Patch('settings') updateSettings(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateMenuSettingsDto) { return this.service.updateSettings(this.org(user), this.actor(user), dto); }
+  @Get('categories') categories(@CurrentUser() user: AuthenticatedUser) { return this.service.categories(this.org(user)); }
+  @Post('categories') createCategory(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertMenuCategoryDto) { return this.service.upsertCategory(this.org(user), this.actor(user), dto); }
+  @Patch('categories/:id') updateCategory(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpsertMenuCategoryDto) { return this.service.upsertCategory(this.org(user), this.actor(user), dto, id); }
 
   @Get('menus') listMenus(@CurrentUser() user: AuthenticatedUser, @Query() q: MenuQueryDto) { return this.service.listMenus(this.org(user), q); }
   @Post('menus') createMenu(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertMenuDto) { return this.service.createMenu(this.org(user), this.actor(user), dto); }
@@ -28,6 +33,8 @@ export class MenusController {
   @Post('menus/:id/variants') createVariant(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpsertMenuVariantDto) { return this.service.upsertVariant(this.org(user), this.actor(user), id, dto); }
   @Patch('menus/:id/variants/:variantId') updateVariant(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('variantId') variantId: string, @Body() dto: UpsertMenuVariantDto) { return this.service.upsertVariant(this.org(user), this.actor(user), id, dto, variantId); }
   @Post('menus/:id/generate-productions') generateProductions(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: GenerateProductionsDto) { return this.service.generateProductions(this.org(user), this.actor(user), id, dto); }
+  @Get('menus/:id/availability') availability(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Query() q: MenuAvailabilityQueryDto) { return this.service.availability(this.org(user), id, q.siteId); }
+  @Post('menus/:id/plan-shortages') planShortages(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: PlanMenuShortagesDto) { return this.service.planShortages(this.org(user), this.actor(user), id, dto); }
 
   @Get('calendar') calendar(@CurrentUser() user: AuthenticatedUser, @Query() q: MenuQueryDto) { return this.service.calendar(this.org(user), q); }
 

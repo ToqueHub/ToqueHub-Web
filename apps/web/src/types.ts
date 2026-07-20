@@ -1707,6 +1707,7 @@ export interface Product {
   shelfLifeAfterOpening?: string | null;
   storageInstructions?: string | null;
   preparationInstructions?: string | null;
+  kind?: 'UNSPECIFIED' | 'RAW_MATERIAL' | 'INTERMEDIATE' | 'FINISHED' | 'PACKAGED' | string;
   stockQuantity?: number;
   orderCount?: number;
   lastOrderedAt?: string | null;
@@ -1829,17 +1830,20 @@ export interface TechnicalSheetAllergen {
   archivedAt?: string | null;
 }
 
-export type TechnicalSheetRecipeStatus = 'DRAFT' | 'ACTIVE' | 'VALIDATED' | 'ARCHIVED' | string;
+export type TechnicalSheetRecipeStatus = 'DRAFT' | 'ACTIVE' | string;
 
 export interface TechnicalSheetIngredientLine {
   id?: string;
   recipeId?: string;
   productId: string;
   product?: Product | null;
+  sourceTechnicalSheetId?: string | null;
+  sourceTechnicalSheet?: TechnicalSheetRecipe | null;
   unitId: string;
   unit?: Unit | null;
   quantity: number | string;
   comment?: string | null;
+  section?: string | null;
   allergens?: TechnicalSheetAllergen[];
   cost?: number | string | null;
   costTotal?: number | string | null;
@@ -1852,17 +1856,27 @@ export interface TechnicalSheetStep {
   order: number;
   title?: string | null;
   description?: string | null;
+  section?: string | null;
   estimatedTimeMinutes?: number | string | null;
 }
 
 export interface TechnicalSheetRecipe {
   id: string;
   name: string;
+  restoredFromArchive?: boolean;
   description?: string | null;
   categoryId?: string | null;
   category?: TechnicalSheetCategory | null;
   photoUrl?: string | null;
   photoDataUrl?: string | null;
+  mode?: 'ASSEMBLY' | 'PRODUCTION';
+  stockPolicy?: 'MAKE_TO_ORDER' | 'MAKE_TO_STOCK';
+  trackOutputStock?: boolean;
+  outputProductId?: string | null;
+  outputProduct?: Product | null;
+  yieldUnitId?: string | null;
+  yieldUnit?: Unit | null;
+  productionProfiles?: ProductionProfile[];
   referencePortions?: number | string | null;
   portions?: number | string | null;
   prepTimeMinutes?: number | string | null;
@@ -1913,6 +1927,14 @@ export interface TechnicalSheetRecipePayload {
   categoryId?: string;
   photoUrl?: string;
   photoDataUrl?: string;
+  mode?: 'ASSEMBLY' | 'PRODUCTION';
+  stockPolicy?: 'MAKE_TO_ORDER' | 'MAKE_TO_STOCK';
+  trackOutputStock?: boolean;
+  outputProductId?: string;
+  createOutputProduct?: boolean;
+  outputProductName?: string;
+  outputProductKind?: 'INTERMEDIATE' | 'FINISHED';
+  yieldUnitId?: string;
   referencePortions: number;
   prepTimeMinutes?: number;
   cookTimeMinutes?: number;
@@ -1924,9 +1946,12 @@ export interface TechnicalSheetRecipePayload {
     productSku?: string;
     productGtin?: string;
     createProduct?: boolean;
+    componentType?: 'PRODUCT' | 'SUB_RECIPE';
+    sourceTechnicalSheetId?: string;
     quantity: number;
     unitId: string;
     comment?: string;
+    section?: string;
     order?: number;
   }>;
   steps?: Array<{
@@ -1934,6 +1959,7 @@ export interface TechnicalSheetRecipePayload {
     order: number;
     title?: string;
     description?: string;
+    section?: string;
     estimatedTimeMinutes?: number;
   }>;
 }
@@ -2342,6 +2368,32 @@ export type MenuStatus = 'DRAFT' | 'VALIDATED' | 'PUBLISHED' | 'ARCHIVED';
 export type MenuServiceType = 'BREAKFAST' | 'LUNCH' | 'DINNER' | 'SNACK' | 'EVENT' | 'BUFFET';
 export type MenuSection = 'STARTER' | 'MAIN' | 'SIDE' | 'CHEESE' | 'DESSERT' | 'DRINK' | 'OTHER';
 export type MenuCalendarView = 'day' | 'week' | 'month' | 'year';
+export type MenuUsageProfile = 'RESTAURANT_CAFE' | 'CATERER' | 'CENTRAL_KITCHEN' | 'CUSTOM';
+export type MenuKind = 'CATALOG' | 'SERVICE' | 'EVENT' | 'CYCLE';
+export type MenuCatalogType = 'FOOD' | 'DRINKS';
+
+export interface MenuCategory {
+  id: string;
+  name: string;
+  position: number;
+  color?: string | null;
+  icon?: string | null;
+  catalogType?: MenuCatalogType | null;
+}
+
+export interface MenuSettings {
+  id: string;
+  usageProfile: MenuUsageProfile;
+  catalogEnabled: boolean;
+  scheduledMenusEnabled: boolean;
+  eventsEnabled: boolean;
+  cyclesEnabled: boolean;
+  dietsEnabled: boolean;
+  guestForecastsEnabled: boolean;
+  targetStockEnabled: boolean;
+  onboardingCompletedAt?: string | null;
+  categories?: MenuCategory[];
+}
 
 export interface MenuAlert {
   code?: string;
@@ -2380,18 +2432,34 @@ export interface MenuGuestGroup {
 export interface MenuItem {
   id?: string;
   section: MenuSection;
-  technicalSheetId: string;
+  menuCategoryId?: string | null;
+  menuCategory?: MenuCategory | null;
+  sourceType?: 'TECHNICAL_SHEET' | 'PRODUCT';
+  technicalSheetId?: string | null;
   technicalSheet?: TechnicalSheetRecipe | null;
+  productId?: string | null;
+  product?: Product | null;
   portionsMultiplier?: number | string | null;
+  portionsOverride?: number | null;
+  servingQuantity?: number;
+  targetReadyQuantity?: number | null;
+  lowStockThreshold?: number | null;
+  availabilityEnabled?: boolean;
   order?: number | null;
 }
 
 export interface MenuItemPayload {
   section: MenuSection;
-  technicalSheetId: string;
+  menuCategoryId?: string;
+  technicalSheetId?: string;
+  productId?: string;
   portionsMultiplier?: number;
   order?: number;
   portionsOverride?: number;
+  servingQuantity?: number;
+  targetReadyQuantity?: number;
+  lowStockThreshold?: number;
+  availabilityEnabled?: boolean;
   notes?: string;
 }
 
@@ -2425,11 +2493,16 @@ export interface MenuGuestForecast {
 export interface MenuPlan {
   id: string;
   name: string;
-  date: string;
+  date?: string | null;
   service: MenuServiceType;
+  kind?: MenuKind;
+  catalogType?: MenuCatalogType | null;
   siteId?: string | null;
   site?: Site | null;
   description?: string | null;
+  activeFrom?: string | null;
+  activeUntil?: string | null;
+  isPrimary?: boolean;
   expectedGuests?: number | string | null;
   guestCount?: number | string | null;
   status: MenuStatus;
@@ -2454,13 +2527,62 @@ export interface MenuPlan {
 
 export interface MenuPlanPayload {
   name: string;
-  date: string;
+  date?: string;
   service: MenuServiceType;
+  kind?: MenuKind;
+  catalogType?: MenuCatalogType;
   siteId?: string;
   description?: string;
+  activeFrom?: string;
+  activeUntil?: string;
+  isPrimary?: boolean;
   expectedGuests?: number;
   items?: MenuItemPayload[];
   guestForecasts?: Array<{ guestGroupId: string; dietId?: string; count: number }>;
+}
+
+export interface MenuAvailabilityComponent {
+  kind: 'SUB_RECIPE' | 'PRODUCT';
+  technicalSheetId?: string;
+  productId?: string;
+  name: string;
+  requiredQuantity: number;
+  availableQuantity?: number;
+  inProductionQuantity?: number;
+  missingQuantity: number;
+  unit?: string;
+  status: 'READY' | 'TO_PRODUCE' | 'BLOCKED' | 'NOT_CONFIGURED';
+  reason?: string;
+  children?: MenuAvailabilityComponent[];
+}
+
+export interface MenuAvailabilityItem {
+  id: string;
+  sourceType?: 'TECHNICAL_SHEET' | 'PRODUCT';
+  technicalSheetId?: string;
+  productId?: string;
+  name: string;
+  category?: MenuCategory | null;
+  outputProduct?: { id: string; name: string; unit?: Unit };
+  servingQuantity: number;
+  targetPortions: number;
+  stockQuantity?: number;
+  inProductionQuantity?: number;
+  availablePortions?: number;
+  projectedPortions?: number;
+  toProduceQuantity?: number;
+  toProducePortions?: number;
+  missingStockQuantity?: number;
+  status: 'READY' | 'LOW_STOCK' | 'TO_PRODUCE' | 'COMPONENT_MISSING' | 'BLOCKED' | 'NOT_CONFIGURED';
+  message?: string;
+  components: MenuAvailabilityComponent[];
+}
+
+export interface MenuAvailabilityReport {
+  menu: { id: string; name: string; kind: MenuKind; siteId?: string | null; site?: Site | null };
+  generatedAt: string;
+  summary: { total: number; ready: number; lowStock: number; toProduce: number; blocked: number };
+  items: MenuAvailabilityItem[];
 }
 
 export interface MenuCycle {
@@ -2999,10 +3121,14 @@ export interface MarginSupplierDetail {
 }
 
 export type ProductionOrderStatus =
+  | 'DRAFT'
+  | 'PROPOSED'
   | 'PLANNED'
   | 'VALIDATED'
   | 'IN_PROGRESS'
+  | 'PARTIALLY_COMPLETED'
   | 'COMPLETED'
+  | 'BLOCKED'
   | 'CANCELLED';
 export type ProductionPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
 export type ProductionMaterialStatus =
@@ -3282,6 +3408,10 @@ export interface ProductionOrder {
   number: string;
   name: string;
   technicalSheetId: string;
+  siteId?: string | null;
+  recipeVersionId?: string | null;
+  outputProductId?: string | null;
+  outputVariantId?: string | null;
   productionDate: string;
   plannedTime: string;
   status: ProductionOrderStatus;
@@ -3290,6 +3420,12 @@ export interface ProductionOrder {
   serviceId?: string | null;
   responsibleEmployeeId?: string | null;
   plannedPortions: number | string;
+  grossRequirement?: number | string;
+  netRequirement?: number | string;
+  proposedQuantity?: number | string;
+  validatedQuantity?: number | string;
+  reservedQuantity?: number | string;
+  surplusQuantity?: number | string;
   realizedPortions?: number | string | null;
   estimatedCost?: number | string | null;
   actualCost?: number | string | null;
@@ -3303,6 +3439,9 @@ export interface ProductionOrder {
   createdAt?: string;
   updatedAt?: string;
   technicalSheet?: TechnicalSheetRecipe | null;
+  site?: Site | null;
+  outputProduct?: Product | null;
+  outputVariant?: ProductionProductVariant | null;
   service?: HrDepartment | null;
   responsibleEmployee?: HrCollaborator | null;
   requirements: ProductionMaterialRequirement[];
@@ -3312,6 +3451,9 @@ export interface ProductionOrder {
   destockingProposals?: ProductionDestockingProposal[];
   history?: ProductionHistoryEntry[];
   exports?: ProductionExport[];
+  needAllocations?: ProductionNeedAllocation[];
+  batches?: ProductionBatch[];
+  stockReservations?: ProductionStockReservation[];
 }
 
 export interface ProductionOrdersResponse {
@@ -3333,4 +3475,274 @@ export interface ProductionDashboard {
   };
   alerts: ProductionAlert[];
   today: ProductionOrder[];
+}
+
+export type ProductionNeedSource =
+  | 'MANUAL'
+  | 'MENU'
+  | 'CATERING_ORDER'
+  | 'STOCK_TARGET'
+  | 'STOCK_MINIMUM'
+  | 'SALES_FORECAST'
+  | 'RESERVATION'
+  | 'SUB_RECIPE'
+  | 'TRANSFER_REQUEST';
+export type ProductionNeedStatus =
+  | 'DRAFT'
+  | 'CONFIRMED'
+  | 'PARTIALLY_COVERED'
+  | 'COVERED'
+  | 'CANCELLED';
+export type ProductionProfileMode = 'FIXED' | 'MULTIPLES' | 'FLEXIBLE' | 'FORMATS' | 'EQUIPMENT';
+export type ProductionBatchStatus =
+  | 'TO_PREPARE'
+  | 'PREPARING'
+  | 'COOKING'
+  | 'COOLING'
+  | 'FREEZING'
+  | 'COMPLETED'
+  | 'PARTIALLY_LOST'
+  | 'CANCELLED';
+export type ProductionOperationStatus =
+  | 'PENDING'
+  | 'READY'
+  | 'IN_PROGRESS'
+  | 'COMPLETED'
+  | 'BLOCKED'
+  | 'SKIPPED'
+  | 'CANCELLED';
+export type ConservationState =
+  | 'AMBIENT'
+  | 'CHILLED'
+  | 'FROZEN'
+  | 'THAWING'
+  | 'THAWED'
+  | 'COOLING'
+  | 'BLOCKED'
+  | 'EXPIRED'
+  | 'DEPLETED';
+
+export interface ProductionProductVariant {
+  id: string;
+  productId: string;
+  name: string;
+  sku?: string | null;
+}
+
+export interface ProductionNeed {
+  id: string;
+  siteId: string;
+  productId: string;
+  variantId?: string | null;
+  unitId: string;
+  source: ProductionNeedSource;
+  sourceReferenceType?: string | null;
+  sourceReferenceId?: string | null;
+  quantity: number | string;
+  coveredQuantity: number | string;
+  neededAt: string;
+  priority: ProductionPriority;
+  status: ProductionNeedStatus;
+  notes?: string | null;
+  site?: Site;
+  product?: Product;
+  variant?: ProductionProductVariant | null;
+  unit?: Unit;
+  allocations?: ProductionNeedAllocation[];
+}
+
+export interface ProductionNeedAllocation {
+  id: string;
+  needId: string;
+  orderId: string;
+  plannedQuantity: number | string;
+  reservedQuantity: number | string;
+  consumedQuantity: number | string;
+  need?: ProductionNeed;
+}
+
+export interface ProductionProfile {
+  id: string;
+  siteId: string;
+  technicalSheetId: string;
+  outputProductId: string;
+  outputVariantId?: string | null;
+  yieldUnitId: string;
+  mode: ProductionProfileMode;
+  referenceYield: number | string;
+  minimumQuantity?: number | string | null;
+  optimalQuantity?: number | string | null;
+  maximumQuantity?: number | string | null;
+  stepQuantity?: number | string | null;
+  allowedFormats?: Array<number | string> | null;
+  allowHalfBatch: boolean;
+  allowDoubleBatch: boolean;
+  quantityPerMold?: number | string | null;
+  quantityPerTray?: number | string | null;
+  quantityPerContainer?: number | string | null;
+  quantityPerCycle?: number | string | null;
+  maximumCycles?: number | null;
+  canFreeze: boolean;
+  shelfLifeHours?: number | null;
+  frozenShelfLifeHours?: number | null;
+  shelfLifeAfterThawHours?: number | null;
+  thawingTimeMinutes?: number | null;
+  site?: Site;
+  technicalSheet?: TechnicalSheetRecipe;
+  outputProduct?: Product;
+  outputVariant?: ProductionProductVariant | null;
+  yieldUnit?: Unit;
+}
+
+export interface ProductionScenario {
+  kind: 'RECOMMENDED' | 'MINIMAL' | 'OPTIMIZED';
+  quantity: string;
+  batches: string[];
+  coveredQuantity: string;
+  uncoveredQuantity: string;
+  surplusQuantity: string;
+  storageShortage: string;
+  warnings: string[];
+}
+
+export interface ProductionComponentPlan {
+  profileId: string;
+  technicalSheetId: string;
+  outputQuantity: string;
+  components: Array<{
+    product: Product;
+    recipeUnit: Unit;
+    requiredQuantity: string;
+    stockUnitQuantity: string | null;
+    missingQuantity?: string;
+    status: 'AVAILABLE' | 'TO_PRODUCE' | 'SHORTAGE' | 'UNIT_NOT_CONVERTIBLE';
+    subRecipe?: {
+      profileId: string;
+      missingQuantity: string;
+      suggestion: ProductionScenario;
+      plan: ProductionComponentPlan;
+    } | null;
+  }>;
+}
+
+export interface ProductionSuggestion {
+  profile: ProductionProfile;
+  neededAt: string;
+  availability: {
+    physical: string;
+    reserved: string;
+    usable: string;
+    confirmedProduction: string;
+  };
+  scenarios: ProductionScenario[];
+  componentPlan: ProductionComponentPlan;
+  capacity: Array<{
+    kind?: string;
+    quantity: string;
+    molds: string | null;
+    trays: string | null;
+    containers: string | null;
+    cycles: string;
+    feasible: boolean;
+    maximumQuantity: string | null;
+  }>;
+}
+
+export interface ProductionOperation {
+  id: string;
+  type: string;
+  title: string;
+  position: number;
+  plannedAt?: string | null;
+  activeMinutes?: number | null;
+  passiveMinutes?: number | null;
+  workstation?: string | null;
+  status: ProductionOperationStatus;
+  notes?: string | null;
+}
+
+export interface ProductionBatch {
+  id: string;
+  orderId: string;
+  unitId: string;
+  number: number;
+  reference: string;
+  plannedQuantity: number | string;
+  actualQuantity?: number | string | null;
+  lostQuantity: number | string;
+  status: ProductionBatchStatus;
+  plannedStartAt?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  unit?: Unit;
+  operations?: ProductionOperation[];
+  outputLots?: Array<Lot & { stocks?: Stock[]; conservationState?: ConservationState }>;
+}
+
+export interface ProductionStockReservation {
+  id: string;
+  stockId: string;
+  productId: string;
+  variantId?: string | null;
+  lotId?: string | null;
+  quantity: number | string;
+  status: 'ACTIVE' | 'CONSUMED' | 'RELEASED' | 'CANCELLED' | 'EXPIRED';
+  target: 'NEED' | 'ORDER' | 'MENU' | 'CAMPAIGN' | 'TRANSFER' | 'OTHER';
+  lot?: Lot | null;
+}
+
+export interface ProductionCampaign extends ProductionOrder {
+  batches: ProductionBatch[];
+  needAllocations: ProductionNeedAllocation[];
+  stockReservations: ProductionStockReservation[];
+}
+
+export interface ProductionStockItem extends Stock {
+  variantId?: string | null;
+  variant?: ProductionProductVariant | null;
+  physicalQuantity: string;
+  reservedQuantity: string;
+  freeQuantity: string;
+  lot: Lot & {
+    conservationState: ConservationState;
+    productionBatchId?: string | null;
+    producedAt?: string | null;
+    availableAt?: string | null;
+    frozenAt?: string | null;
+    thawedAt?: string | null;
+  };
+}
+
+export interface ProductionStockSummaryItem {
+  technicalSheetId?: string | null;
+  technicalSheetName: string;
+  mode?: 'ASSEMBLY' | 'PRODUCTION' | string | null;
+  productId: string;
+  productName: string;
+  variantId?: string | null;
+  variantName?: string | null;
+  unitSymbol?: string | null;
+  producedQuantity: string;
+  storedQuantity: string;
+  reservedQuantity: string;
+  availableQuantity: string;
+  batchCount: number;
+  lastProducedAt?: string | null;
+}
+
+export interface CreateProductionCampaignPayload {
+  profileId: string;
+  grossRequirement: string;
+  neededAt: string;
+  plannedTime?: string;
+  name?: string;
+  priority?: ProductionPriority;
+  responsibleEmployeeId?: string;
+  destinationLocationId?: string;
+  needIds?: string[];
+  scenarioKind?: 'RECOMMENDED' | 'MINIMAL' | 'OPTIMIZED';
+  storageCapacity?: string;
+  optimizedTarget?: string;
+  createSubRecipeNeeds?: boolean;
+  comments?: string;
 }

@@ -197,7 +197,7 @@ describe('HaccpService', () => {
   });
 
   it('automatically generates yesterday PDF at midnight and skips duplicate closure', async () => {
-    jest.useFakeTimers().setSystemTime(new Date('2026-06-30T22:03:00.000Z'));
+    jest.useFakeTimers().setSystemTime(new Date(2026, 6, 1, 0, 3, 0, 0));
     try {
       const prisma = createPrismaMock();
       let storedReport: any;

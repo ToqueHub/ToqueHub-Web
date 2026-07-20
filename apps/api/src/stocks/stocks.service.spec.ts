@@ -1,4 +1,4 @@
-import { Prisma, StockMovementType } from '@prisma/client';
+import { Prisma, ProductKind, StockMovementType } from '@prisma/client';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
@@ -42,6 +42,24 @@ describe('StocksService articles pagination', () => {
       where: expect.objectContaining({
         categoryId: '11111111-1111-4111-8111-111111111111',
         primarySupplierId: '22222222-2222-4222-8222-222222222222',
+        kind: {
+          in: [ProductKind.UNSPECIFIED, ProductKind.RAW_MATERIAL, ProductKind.PACKAGED],
+        },
+      }),
+    }));
+  });
+
+  it('never exposes recipe outputs in the Stocks product catalogue', async () => {
+    const prisma = { product: { findMany: jest.fn().mockResolvedValue([]) } };
+    const service = new StocksService(prisma as any);
+
+    await service.listProducts('org-1');
+
+    expect(prisma.product.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        kind: {
+          in: [ProductKind.UNSPECIFIED, ProductKind.RAW_MATERIAL, ProductKind.PACKAGED],
+        },
       }),
     }));
   });

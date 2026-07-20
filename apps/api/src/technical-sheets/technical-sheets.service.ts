@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { AuditAction, DocumentStatus, OcrBusinessExtractionStatus, OcrExtractionType, OcrProcessingStatus, Prisma, TechnicalSheetExportFormat, TechnicalSheetHistoryAction, TechnicalSheetStatus } from '@prisma/client';
+import { AuditAction, DocumentStatus, OcrBusinessExtractionStatus, OcrExtractionType, OcrProcessingStatus, Prisma, ProductKind, ProductionProfileMode, TechnicalSheetExportFormat, TechnicalSheetHistoryAction, TechnicalSheetMode, TechnicalSheetStatus, TechnicalSheetStockPolicy, UnitType } from '@prisma/client';
 import AdmZip from 'adm-zip';
 import { createHash, randomUUID } from 'crypto';
 import { mkdir, readFile, writeFile } from 'fs/promises';
@@ -18,6 +18,11 @@ type ImportedRecipeStep = { title?: string | null; description?: string | null; 
 type PreparedImportedIngredient = { productId?: string; productName?: string; productSku?: string; productGtin?: string; createProduct?: boolean; unitId: string; quantity: number; comment?: string; order: number };
 
 const DEFAULT_CATEGORIES = ['Entrées', 'Plats', 'Desserts', 'Sauces', 'Accompagnements', 'Petit-déjeuner', 'Pâtisserie', 'Boulangerie', 'Boissons'];
+const STOCK_INPUT_PRODUCT_KINDS = [
+  ProductKind.UNSPECIFIED,
+  ProductKind.RAW_MATERIAL,
+  ProductKind.PACKAGED,
+];
 const MAX_RECIPE_PDF_BYTES = 20 * 1024 * 1024;
 const MAX_RECIPE_IMPORT_FILES = 10;
 const TECHNICAL_SHEETS_UPLOAD_ROOT = resolve(process.env.UPLOAD_DIR || 'uploads', 'technical-sheets');
@@ -140,20 +145,62 @@ export class TechnicalSheetsService {
   async getRecipe(organizationId: string, id: string) { await this.assertInstalled(organizationId); const recipe = await this.prisma.technicalSheet.findFirst({ where: { id, organizationId }, include: this.recipeInclude(true) }); if (!recipe) throw new NotFoundException('Fiche technique introuvable'); return this.serializeRecipe(recipe); }
 
   async createRecipe(organizationId: string, actor: Actor, dto: UpsertTechnicalSheetDto) {
-    await this.assertInstalled(organizationId); if (dto.categoryId) await this.ensureCategory(organizationId, dto.categoryId);
-    return this.prisma.$transaction(async (tx) => {
-      const created = await tx.technicalSheet.create({ data: this.recipeCreateData(organizationId, dto) });
-      await this.replaceChildren(tx, organizationId, created.id, dto, actor.id);
-      if (dto.importDocumentId) await this.markRecipeImportReviewedTx(tx, organizationId, dto.importDocumentId);
-      await this.history(tx, organizationId, created.id, actor.id, TechnicalSheetHistoryAction.CREATED, 'Création de la fiche technique', dto.importDocumentId ? { importDocumentId: dto.importDocumentId } : undefined);
-      await this.recalculateCostTx(tx, organizationId, created.id, actor.id, false);
-      return this.serializeRecipe(await tx.technicalSheet.findUnique({ where: { id: created.id }, include: this.recipeInclude(true) }));
+    await this.assertInstalled(organizationId);
+    if (dto.categoryId) await this.ensureCategory(organizationId, dto.categoryId);
+    const name = dto.name.trim();
+    const existing = await this.prisma.technicalSheet.findFirst({
+      where: { organizationId, name: { equals: name, mode: 'insensitive' } },
+      select: { id: true, name: true, isArchived: true },
     });
+    if (existing && !existing.isArchived) {
+      throw new BadRequestException(`Une fiche technique nommée « ${existing.name} » existe déjà.`);
+    }
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        if (existing?.isArchived) {
+          const current = await tx.technicalSheet.findUniqueOrThrow({ where: { id: existing.id } });
+          const output = await this.resolveRecipeOutputTx(tx, organizationId, { ...dto, name }, current, actor.id);
+          await tx.technicalSheet.update({
+            where: { id: current.id, organizationId },
+            data: {
+              ...this.recipeUpdateData({ ...dto, name }),
+              ...output,
+              isArchived: false,
+              archivedAt: null,
+              sourceTechnicalSheetId: null,
+            },
+          });
+          await this.replaceChildren(tx, organizationId, current.id, dto, actor.id);
+          await this.assertRecipeCanBeActiveTx(tx, current.id);
+          await this.syncProductionProfileTx(tx, organizationId, current.id, dto, output);
+          if (dto.importDocumentId) await this.markRecipeImportReviewedTx(tx, organizationId, dto.importDocumentId);
+          await this.history(tx, organizationId, current.id, actor.id, TechnicalSheetHistoryAction.STATUS_CHANGED, 'Réactivation de la fiche archivée avec un nouvel import', { restoredFromArchive: true, importDocumentId: dto.importDocumentId ?? null });
+          await this.recalculateCostTx(tx, organizationId, current.id, actor.id, false);
+          const restored = await tx.technicalSheet.findUnique({ where: { id: current.id }, include: this.recipeInclude(true) });
+          return { ...this.serializeRecipe(restored), restoredFromArchive: true };
+        }
+
+        const output = await this.resolveRecipeOutputTx(tx, organizationId, { ...dto, name }, undefined, actor.id);
+        const created = await tx.technicalSheet.create({ data: { ...this.recipeCreateData(organizationId, { ...dto, name }), ...output } });
+        await this.replaceChildren(tx, organizationId, created.id, dto, actor.id);
+        await this.assertRecipeCanBeActiveTx(tx, created.id);
+        await this.syncProductionProfileTx(tx, organizationId, created.id, dto, output);
+        if (dto.importDocumentId) await this.markRecipeImportReviewedTx(tx, organizationId, dto.importDocumentId);
+        await this.history(tx, organizationId, created.id, actor.id, TechnicalSheetHistoryAction.CREATED, 'Création de la fiche technique', dto.importDocumentId ? { importDocumentId: dto.importDocumentId } : undefined);
+        await this.recalculateCostTx(tx, organizationId, created.id, actor.id, false);
+        return this.serializeRecipe(await tx.technicalSheet.findUnique({ where: { id: created.id }, include: this.recipeInclude(true) }));
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new BadRequestException(`Une fiche technique nommée « ${name} » existe déjà.`);
+      }
+      throw error;
+    }
   }
 
   async updateRecipe(organizationId: string, actor: Actor, id: string, dto: UpsertTechnicalSheetDto) {
     await this.assertInstalled(organizationId); await this.ensureRecipe(organizationId, id); if (dto.categoryId) await this.ensureCategory(organizationId, dto.categoryId);
-    return this.prisma.$transaction(async (tx) => { await tx.technicalSheet.update({ where: { id, organizationId }, data: this.recipeUpdateData(dto) }); if (dto.ingredients) await this.replaceIngredients(tx, organizationId, id, dto.ingredients, actor.id); if (dto.steps) await this.replaceSteps(tx, organizationId, id, dto.steps); await this.history(tx, organizationId, id, actor.id, TechnicalSheetHistoryAction.GENERAL_UPDATED, 'Modification de la fiche technique'); await this.recalculateCostTx(tx, organizationId, id, actor.id, false); return this.serializeRecipe(await tx.technicalSheet.findUnique({ where: { id }, include: this.recipeInclude(true) })); });
+    return this.prisma.$transaction(async (tx) => { const current = await tx.technicalSheet.findUniqueOrThrow({ where: { id } }); const output = await this.resolveRecipeOutputTx(tx, organizationId, dto, current, actor.id); await tx.technicalSheet.update({ where: { id, organizationId }, data: { ...this.recipeUpdateData(dto), ...output } }); if (dto.ingredients) await this.replaceIngredients(tx, organizationId, id, dto.ingredients, actor.id); if (dto.steps) await this.replaceSteps(tx, organizationId, id, dto.steps); await this.assertRecipeCanBeActiveTx(tx, id); await this.syncProductionProfileTx(tx, organizationId, id, dto, output); await this.history(tx, organizationId, id, actor.id, TechnicalSheetHistoryAction.GENERAL_UPDATED, 'Modification de la fiche technique'); await this.recalculateCostTx(tx, organizationId, id, actor.id, false); return this.serializeRecipe(await tx.technicalSheet.findUnique({ where: { id }, include: this.recipeInclude(true) })); });
   }
 
   async updateRecipePricing(organizationId: string, actor: Actor, id: string, dto: UpdateTechnicalSheetPricingDto) {
@@ -185,8 +232,44 @@ export class TechnicalSheetsService {
   async archiveRecipe(organizationId: string, actor: Actor, id: string) { await this.assertInstalled(organizationId); await this.ensureRecipe(organizationId, id); return this.prisma.$transaction(async (tx) => { const sheet = await tx.technicalSheet.update({ where: { id, organizationId }, data: { status: TechnicalSheetStatus.ARCHIVED, isArchived: true, archivedAt: new Date() }, include: this.recipeInclude(true) }); await this.history(tx, organizationId, id, actor.id, TechnicalSheetHistoryAction.ARCHIVED, 'Archivage de la fiche technique'); return this.serializeRecipe(sheet); }); }
 
   async duplicateRecipe(organizationId: string, actor: Actor, id: string, dto: DuplicateTechnicalSheetDto) {
-    await this.assertInstalled(organizationId); const source = await this.getRecipe(organizationId, id) as any; const name = dto.name || `${source.name} (copie)`;
-    return this.prisma.$transaction(async (tx) => { const created = await tx.technicalSheet.create({ data: { organizationId, sourceTechnicalSheetId: id, name, description: dto.copyGeneral === false ? undefined : source.description, categoryId: dto.copyCategory === false ? undefined : source.categoryId, photoUrl: dto.copyPhoto === false ? undefined : source.photoUrl, photoDataUrl: dto.copyPhoto === false ? undefined : source.photoDataUrl, referencePortions: dto.copyGeneral === false ? 1 : source.referencePortions, preparationTimeMinutes: dto.copyGeneral === false ? 0 : source.preparationTimeMinutes, cookingTimeMinutes: dto.copyGeneral === false ? 0 : source.cookingTimeMinutes, totalTimeMinutes: dto.copyGeneral === false ? 0 : source.totalTimeMinutes, status: TechnicalSheetStatus.DRAFT } }); if (dto.copyIngredients !== false) await this.replaceIngredients(tx, organizationId, created.id, source.ingredients.map((i: any) => ({ productId: i.productId, unitId: i.unitId, quantity: Number(i.quantity), comment: i.comment, order: i.order }))); if (dto.copySteps !== false) await this.replaceSteps(tx, organizationId, created.id, source.steps.map((s: any) => ({ order: s.order, title: s.title, description: s.description, estimatedMinutes: s.estimatedMinutes ?? s.estimatedTimeMinutes }))); await this.history(tx, organizationId, created.id, actor.id, TechnicalSheetHistoryAction.DUPLICATED, `Duplication depuis ${source.name}`, { sourceTechnicalSheetId: id }); await this.recalculateCostTx(tx, organizationId, created.id, actor.id, false); return this.serializeRecipe(await tx.technicalSheet.findUnique({ where: { id: created.id }, include: this.recipeInclude(true) })); });
+    await this.assertInstalled(organizationId);
+    const source = await this.getRecipe(organizationId, id) as any;
+    const name = dto.name || `${source.name} (copie)`;
+    const duplicatePayload = {
+      name,
+      referencePortions: dto.copyGeneral === false ? 1 : Number(source.referencePortions),
+      mode: source.mode ?? TechnicalSheetMode.ASSEMBLY,
+      stockPolicy: TechnicalSheetStockPolicy.MAKE_TO_STOCK,
+      status: TechnicalSheetStatus.DRAFT,
+    } as UpsertTechnicalSheetDto;
+    return this.prisma.$transaction(async (tx) => {
+      const output = await this.resolveRecipeOutputTx(tx, organizationId, duplicatePayload, undefined, actor.id);
+      const created = await tx.technicalSheet.create({
+        data: {
+          organizationId,
+          sourceTechnicalSheetId: id,
+          name,
+          description: dto.copyGeneral === false ? undefined : source.description,
+          categoryId: dto.copyCategory === false ? undefined : source.categoryId,
+          photoUrl: dto.copyPhoto === false ? undefined : source.photoUrl,
+          photoDataUrl: dto.copyPhoto === false ? undefined : source.photoDataUrl,
+          referencePortions: duplicatePayload.referencePortions,
+          preparationTimeMinutes: dto.copyGeneral === false ? 0 : source.preparationTimeMinutes,
+          cookingTimeMinutes: dto.copyGeneral === false ? 0 : source.cookingTimeMinutes,
+          totalTimeMinutes: dto.copyGeneral === false ? 0 : source.totalTimeMinutes,
+          status: TechnicalSheetStatus.DRAFT,
+          mode: duplicatePayload.mode,
+          stockPolicy: duplicatePayload.stockPolicy,
+          ...output,
+        },
+      });
+      if (dto.copyIngredients !== false) await this.replaceIngredients(tx, organizationId, created.id, source.ingredients.map((i: any) => ({ productId: i.productId, sourceTechnicalSheetId: i.sourceTechnicalSheetId, unitId: i.unitId, quantity: Number(i.quantity), comment: i.comment, section: i.section, order: i.order })));
+      if (dto.copySteps !== false) await this.replaceSteps(tx, organizationId, created.id, source.steps.map((s: any) => ({ order: s.order, title: s.title, description: s.description, section: s.section, estimatedMinutes: s.estimatedMinutes ?? s.estimatedTimeMinutes })));
+      await this.syncProductionProfileTx(tx, organizationId, created.id, duplicatePayload, output);
+      await this.history(tx, organizationId, created.id, actor.id, TechnicalSheetHistoryAction.DUPLICATED, `Duplication depuis ${source.name}`, { sourceTechnicalSheetId: id });
+      await this.recalculateCostTx(tx, organizationId, created.id, actor.id, false);
+      return this.serializeRecipe(await tx.technicalSheet.findUnique({ where: { id: created.id }, include: this.recipeInclude(true) }));
+    });
   }
 
   async recalculateCost(organizationId: string, actor: Actor, id: string) { await this.assertInstalled(organizationId); await this.ensureRecipe(organizationId, id); return this.serializeRecipe(await this.prisma.$transaction((tx) => this.recalculateCostTx(tx, organizationId, id, actor.id, true))); }
@@ -345,7 +428,15 @@ export class TechnicalSheetsService {
   private async analyzeRecipeFile(organizationId: string, file: UploadedRecipePdf) {
     this.validateRecipeFile(file);
     const [products, units, categories] = await Promise.all([
-      this.prisma.product.findMany({ where: { organizationId, isArchived: false }, include: { unit: true, category: true }, orderBy: { name: 'asc' } }),
+      this.prisma.product.findMany({
+        where: {
+          organizationId,
+          isArchived: false,
+          kind: { in: STOCK_INPUT_PRODUCT_KINDS },
+        },
+        include: { unit: true, category: true },
+        orderBy: { name: 'asc' },
+      }),
       this.prisma.unit.findMany({ where: { organizationId, isArchived: false }, orderBy: { name: 'asc' } }),
       this.prisma.technicalSheetCategory.findMany({ where: { organizationId, isArchived: false }, orderBy: { name: 'asc' } }),
     ]);
@@ -395,6 +486,8 @@ export class TechnicalSheetsService {
         name: imported.name || this.nameFromFilename(file.originalname),
         description: imported.description || undefined,
         categoryId,
+        mode: TechnicalSheetMode.PRODUCTION,
+        stockPolicy: TechnicalSheetStockPolicy.MAKE_TO_STOCK,
         referencePortions: Math.max(Number(imported.referencePortions ?? 1) || 1, 0.001),
         prepTimeMinutes: Math.max(Number(imported.prepTimeMinutes ?? 0) || 0, 0),
         cookTimeMinutes: Math.max(Number(imported.cookTimeMinutes ?? 0) || 0, 0),
@@ -433,20 +526,340 @@ export class TechnicalSheetsService {
       : { filename, contentType: 'application/pdf', body: await this.simulationPdf(sim as any) };
   }
 
-  private recipeInclude(full = false) { return { category: true, ingredients: { orderBy: { order: 'asc' as const }, include: { product: { include: { unit: true, category: true } }, unit: true, allergens: { include: { allergen: true } } } }, steps: { orderBy: { order: 'asc' as const } }, ...(full ? { costSnapshots: { orderBy: { createdAt: 'desc' as const }, take: 20 }, history: { orderBy: { createdAt: 'desc' as const }, take: 20, include: { user: { select: { email: true, firstName: true, lastName: true } } } } } : {}) }; }
-  private serializeRecipe(sheet: any, salesTaxPolicy?: TechnicalSheetSalesTaxPolicy) { if (!sheet) return sheet; const ingredients = (sheet.ingredients ?? []).map((line: any) => ({ ...line, quantity: Number(line.quantity), cost: line.cost == null ? null : Number(line.cost), costTotal: line.cost == null ? null : Number(line.cost), allergens: this.productAllergens(line.product) })); const allergensById = new Map<string, any>(); ingredients.forEach((line: any) => (line.allergens ?? []).forEach((allergen: any) => allergensById.set(allergen.id ?? allergen.name, allergen))); const costPerPortion = sheet.costPerPortion == null ? null : Number(sheet.costPerPortion); const targetSellingPriceExclTax = sheet.targetSellingPriceHtPerPortion == null ? null : Number(sheet.targetSellingPriceHtPerPortion); const targetSellingPriceInclTax = targetSellingPriceExclTax == null || salesTaxPolicy?.rate == null ? null : targetSellingPriceExclTax * (1 + salesTaxPolicy.rate / 100); const grossMarginAmount = targetSellingPriceExclTax == null || costPerPortion == null ? null : targetSellingPriceExclTax - costPerPortion; const grossMarginRate = grossMarginAmount == null || !targetSellingPriceExclTax ? null : grossMarginAmount / targetSellingPriceExclTax * 100; return { ...sheet, referencePortions: Number(sheet.referencePortions ?? 0), portions: Number(sheet.referencePortions ?? 0), prepTimeMinutes: sheet.preparationTimeMinutes, cookTimeMinutes: sheet.cookingTimeMinutes, costTotal: sheet.totalCost == null ? null : Number(sheet.totalCost), totalCost: sheet.totalCost == null ? null : Number(sheet.totalCost), costPerPortion, costPerKg: sheet.costPerKg == null ? null : Number(sheet.costPerKg), costPerLiter: sheet.costPerLiter == null ? null : Number(sheet.costPerLiter), targetSellingPriceHtPerPortion: targetSellingPriceExclTax, targetSellingPriceExclTax, targetSellingPriceInclTax, grossMarginAmount, grossMarginRate, salesTaxRate: salesTaxPolicy?.rate ?? null, regulatoryCountryCode: salesTaxPolicy?.countryCode ?? null, duplicatedFromId: sheet.sourceTechnicalSheetId, ingredients, steps: (sheet.steps ?? []).map((step: any) => ({ ...step, estimatedTimeMinutes: step.estimatedMinutes })), allergens: [...allergensById.values()], nonCalculableLinesCount: ingredients.filter((line: any) => !line.isCalculable).length }; }
+  private recipeInclude(full = false) {
+    return {
+      category: true,
+      outputProduct: { include: { unit: true, category: true } },
+      yieldUnit: true,
+      productionProfiles: {
+        include: { site: true, outputProduct: true, yieldUnit: true },
+        orderBy: { createdAt: 'asc' as const },
+      },
+      ingredients: {
+        orderBy: { order: 'asc' as const },
+        include: {
+          product: { include: { unit: true, category: true } },
+          unit: true,
+          sourceTechnicalSheet: { include: { outputProduct: true, yieldUnit: true } },
+          allergens: { include: { allergen: true } },
+        },
+      },
+      steps: { orderBy: { order: 'asc' as const } },
+      ...(full
+        ? {
+            costSnapshots: { orderBy: { createdAt: 'desc' as const }, take: 20 },
+            history: {
+              orderBy: { createdAt: 'desc' as const },
+              take: 20,
+              include: { user: { select: { email: true, firstName: true, lastName: true } } },
+            },
+          }
+        : {}),
+    };
+  }
+
+  private serializeRecipe(sheet: any, salesTaxPolicy?: TechnicalSheetSalesTaxPolicy) {
+    if (!sheet) return sheet;
+    const ingredients = (sheet.ingredients ?? []).map((line: any) => ({
+      ...line,
+      quantity: Number(line.quantity),
+      cost: line.cost == null ? null : Number(line.cost),
+      costTotal: line.cost == null ? null : Number(line.cost),
+      allergens: this.productAllergens(line.product),
+    }));
+    const allergensById = new Map<string, any>();
+    ingredients.forEach((line: any) =>
+      (line.allergens ?? []).forEach((allergen: any) =>
+        allergensById.set(allergen.id ?? allergen.name, allergen),
+      ),
+    );
+    const costPerPortion = sheet.costPerPortion == null ? null : Number(sheet.costPerPortion);
+    const targetSellingPriceExclTax =
+      sheet.targetSellingPriceHtPerPortion == null
+        ? null
+        : Number(sheet.targetSellingPriceHtPerPortion);
+    const targetSellingPriceInclTax =
+      targetSellingPriceExclTax == null || salesTaxPolicy?.rate == null
+        ? null
+        : targetSellingPriceExclTax * (1 + salesTaxPolicy.rate / 100);
+    const grossMarginAmount =
+      targetSellingPriceExclTax == null || costPerPortion == null
+        ? null
+        : targetSellingPriceExclTax - costPerPortion;
+    const grossMarginRate =
+      grossMarginAmount == null || !targetSellingPriceExclTax
+        ? null
+        : (grossMarginAmount / targetSellingPriceExclTax) * 100;
+    return {
+      ...sheet,
+      status: [TechnicalSheetStatus.ACTIVE, TechnicalSheetStatus.VALIDATED].includes(sheet.status)
+        ? TechnicalSheetStatus.ACTIVE
+        : TechnicalSheetStatus.DRAFT,
+      trackOutputStock: Boolean(sheet.outputProductId),
+      referencePortions: Number(sheet.referencePortions ?? 0),
+      portions: Number(sheet.referencePortions ?? 0),
+      referenceYield: Number(sheet.referencePortions ?? 0),
+      prepTimeMinutes: sheet.preparationTimeMinutes,
+      cookTimeMinutes: sheet.cookingTimeMinutes,
+      costTotal: sheet.totalCost == null ? null : Number(sheet.totalCost),
+      totalCost: sheet.totalCost == null ? null : Number(sheet.totalCost),
+      costPerPortion,
+      costPerKg: sheet.costPerKg == null ? null : Number(sheet.costPerKg),
+      costPerLiter: sheet.costPerLiter == null ? null : Number(sheet.costPerLiter),
+      targetSellingPriceHtPerPortion: targetSellingPriceExclTax,
+      targetSellingPriceExclTax,
+      targetSellingPriceInclTax,
+      grossMarginAmount,
+      grossMarginRate,
+      salesTaxRate: salesTaxPolicy?.rate ?? null,
+      regulatoryCountryCode: salesTaxPolicy?.countryCode ?? null,
+      duplicatedFromId: sheet.sourceTechnicalSheetId,
+      ingredients,
+      steps: (sheet.steps ?? []).map((step: any) => ({
+        ...step,
+        estimatedTimeMinutes: step.estimatedMinutes,
+      })),
+      allergens: [...allergensById.values()],
+      nonCalculableLinesCount: ingredients.filter((line: any) => !line.isCalculable).length,
+    };
+  }
   private async salesTaxPolicy(organizationId: string) { const organization = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { regulatoryCountryCode: true } }); return technicalSheetSalesTaxPolicy(organization?.regulatoryCountryCode); }
-  private recipeCreateData(organizationId: string, dto: UpsertTechnicalSheetDto): Prisma.TechnicalSheetUncheckedCreateInput { const prep = dto.preparationTimeMinutes ?? dto.prepTimeMinutes ?? 0; const cook = dto.cookingTimeMinutes ?? dto.cookTimeMinutes ?? 0; return { organizationId, name: dto.name, description: dto.description, categoryId: dto.categoryId || null, photoUrl: dto.photoUrl, photoDataUrl: dto.photoDataUrl, referencePortions: dto.referencePortions, preparationTimeMinutes: prep, cookingTimeMinutes: cook, totalTimeMinutes: dto.totalTimeMinutes ?? prep + cook, status: dto.status ?? TechnicalSheetStatus.DRAFT }; }
-  private recipeUpdateData(dto: UpsertTechnicalSheetDto): Prisma.TechnicalSheetUncheckedUpdateInput { const prep = dto.preparationTimeMinutes ?? dto.prepTimeMinutes ?? 0; const cook = dto.cookingTimeMinutes ?? dto.cookTimeMinutes ?? 0; return { name: dto.name, description: dto.description, categoryId: dto.categoryId || null, photoUrl: dto.photoUrl, photoDataUrl: dto.photoDataUrl, referencePortions: dto.referencePortions, preparationTimeMinutes: prep, cookingTimeMinutes: cook, totalTimeMinutes: dto.totalTimeMinutes ?? prep + cook, status: dto.status ?? TechnicalSheetStatus.DRAFT }; }
+  private recipeCreateData(
+    organizationId: string,
+    dto: UpsertTechnicalSheetDto,
+  ): Prisma.TechnicalSheetUncheckedCreateInput {
+    const prep = dto.preparationTimeMinutes ?? dto.prepTimeMinutes ?? 0;
+    const cook = dto.cookingTimeMinutes ?? dto.cookTimeMinutes ?? 0;
+    return {
+      organizationId,
+      name: dto.name,
+      description: dto.description,
+      categoryId: dto.categoryId || null,
+      photoUrl: dto.photoUrl,
+      photoDataUrl: dto.photoDataUrl,
+      referencePortions: dto.referencePortions,
+      preparationTimeMinutes: prep,
+      cookingTimeMinutes: cook,
+      totalTimeMinutes: dto.totalTimeMinutes ?? prep + cook,
+      status: this.visibleRecipeStatus(dto.status),
+      mode: dto.mode ?? TechnicalSheetMode.ASSEMBLY,
+      stockPolicy: TechnicalSheetStockPolicy.MAKE_TO_STOCK,
+    };
+  }
+
+  private recipeUpdateData(dto: UpsertTechnicalSheetDto): Prisma.TechnicalSheetUncheckedUpdateInput {
+    const prep = dto.preparationTimeMinutes ?? dto.prepTimeMinutes ?? 0;
+    const cook = dto.cookingTimeMinutes ?? dto.cookTimeMinutes ?? 0;
+    return {
+      name: dto.name,
+      description: dto.description,
+      categoryId: dto.categoryId || null,
+      photoUrl: dto.photoUrl,
+      photoDataUrl: dto.photoDataUrl,
+      referencePortions: dto.referencePortions,
+      preparationTimeMinutes: prep,
+      cookingTimeMinutes: cook,
+      totalTimeMinutes: dto.totalTimeMinutes ?? prep + cook,
+      status: this.visibleRecipeStatus(dto.status),
+      mode: dto.mode,
+      stockPolicy: TechnicalSheetStockPolicy.MAKE_TO_STOCK,
+    };
+  }
+
+  private async resolveRecipeOutputTx(
+    tx: Tx,
+    organizationId: string,
+    dto: UpsertTechnicalSheetDto,
+    current?: { outputProductId: string | null; yieldUnitId: string | null; mode: TechnicalSheetMode },
+    actorId?: string | null,
+  ) {
+    const mode = dto.mode ?? current?.mode ?? TechnicalSheetMode.ASSEMBLY;
+    const expectedKind = mode === TechnicalSheetMode.PRODUCTION
+      ? ProductKind.INTERMEDIATE
+      : ProductKind.FINISHED;
+    const requestedUnit = await this.portionUnitTx(tx, organizationId, dto.yieldUnitId);
+    let product = (dto.outputProductId || current?.outputProductId)
+      ? await tx.product.findFirst({
+          where: { id: dto.outputProductId || current?.outputProductId || undefined, organizationId, isArchived: false },
+          include: { unit: true },
+        })
+      : null;
+    if (dto.outputProductId && !product) {
+      throw new NotFoundException('Produit fabriqué introuvable ou archivé.');
+    }
+
+    if (!product) {
+      const name = dto.name.trim();
+      product = await tx.product.findFirst({
+        where: { organizationId, isArchived: false, name: { equals: name, mode: 'insensitive' } },
+        include: { unit: true },
+      });
+      if (!product) {
+        product = await tx.product.create({
+          data: {
+            organizationId,
+            name,
+            unitId: requestedUnit.id,
+            averagePrice: new Prisma.Decimal(0),
+            kind: expectedKind,
+          },
+          include: { unit: true },
+        });
+        await tx.auditLog.create({
+          data: {
+            organizationId,
+            userId: actorId || null,
+            action: AuditAction.PRODUCT_CREATED,
+            entityType: 'Product',
+            entityId: product.id,
+            entityName: product.name,
+            details: { source: 'technical-sheet-output' } as Prisma.InputJsonValue,
+          },
+        });
+      }
+    }
+
+    if (!product) throw new BadRequestException('La sortie technique de la fiche n’a pas pu être créée.');
+    if (product.kind !== expectedKind || product.unitId !== requestedUnit.id) {
+      product = await tx.product.update({ where: { id: product.id }, data: { kind: expectedKind, unitId: requestedUnit.id }, include: { unit: true } });
+    }
+    return { outputProductId: product.id, yieldUnitId: requestedUnit.id };
+  }
+
+  private async portionUnitTx(tx: Tx, organizationId: string, preferredUnitId?: string) {
+    if (preferredUnitId) {
+      const preferred = await tx.unit.findFirst({ where: { id: preferredUnitId, organizationId, isArchived: false, type: UnitType.COUNT } });
+      if (preferred) return preferred;
+    }
+    const countUnit = await tx.unit.findFirst({
+      where: { organizationId, isArchived: false, type: UnitType.COUNT },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (countUnit) return countUnit;
+    return tx.unit.upsert({
+      where: { organizationId_symbol: { organizationId, symbol: 'portion' } },
+      update: { name: 'Portion', type: UnitType.COUNT, isArchived: false, archivedAt: null },
+      create: { organizationId, name: 'Portion', symbol: 'portion', type: UnitType.COUNT },
+    });
+  }
+
+  private async syncProductionProfileTx(
+    tx: Tx,
+    organizationId: string,
+    technicalSheetId: string,
+    dto: UpsertTechnicalSheetDto,
+    output: { outputProductId: string | null; yieldUnitId: string | null },
+  ) {
+    if (!output.outputProductId || !output.yieldUnitId) {
+      await tx.productionProfile.deleteMany({ where: { organizationId, technicalSheetId } });
+      return;
+    }
+    const organization = await tx.organization.findUnique({
+      where: { id: organizationId },
+      select: { primarySiteId: true },
+    });
+    const siteId =
+      organization?.primarySiteId ??
+      (
+        await tx.site.findFirst({
+          where: { organizationId, isArchived: false },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true },
+        })
+      )?.id;
+    if (!siteId) return;
+    const profile = await tx.productionProfile.findFirst({
+      where: { organizationId, siteId, technicalSheetId, outputVariantId: null },
+      orderBy: { createdAt: 'asc' },
+    });
+    const data = {
+      outputProductId: output.outputProductId,
+      yieldUnitId: output.yieldUnitId,
+      referenceYield: new Prisma.Decimal(dto.referencePortions),
+    };
+    if (profile) {
+      await tx.productionProfile.update({ where: { id: profile.id }, data });
+      return;
+    }
+    await tx.productionProfile.create({
+      data: {
+        organizationId,
+        siteId,
+        technicalSheetId,
+        ...data,
+        mode: ProductionProfileMode.FIXED,
+      },
+    });
+  }
+
   private async replaceChildren(tx: Tx, organizationId: string, id: string, dto: UpsertTechnicalSheetDto, actorId?: string | null) { if (dto.ingredients) await this.replaceIngredients(tx, organizationId, id, dto.ingredients, actorId); if (dto.steps) await this.replaceSteps(tx, organizationId, id, dto.steps); }
   private async replaceIngredients(tx: Tx, organizationId: string, technicalSheetId: string, ingredients: NonNullable<UpsertTechnicalSheetDto['ingredients']>, actorId?: string | null) {
+    const parentSheet = await tx.technicalSheet.findFirst({ where: { id: technicalSheetId, organizationId }, select: { mode: true } });
+    if (!parentSheet) throw new NotFoundException('Fiche technique introuvable.');
     await tx.technicalSheetIngredient.deleteMany({ where: { technicalSheetId } });
     for (const [idx, line] of ingredients.entries()) {
+      if (line.sourceTechnicalSheetId && parentSheet.mode === TechnicalSheetMode.PRODUCTION) {
+        throw new BadRequestException('Une fiche de fabrication utilise uniquement des produits Stocks, sans sous-recette.');
+      }
+      const sourceTechnicalSheet = line.sourceTechnicalSheetId
+        ? await tx.technicalSheet.findFirst({
+            where: {
+              id: line.sourceTechnicalSheetId,
+              organizationId,
+              isArchived: false,
+            },
+            include: { outputProduct: { include: { unit: true } }, yieldUnit: true },
+          })
+        : null;
+      if (line.sourceTechnicalSheetId && !sourceTechnicalSheet) {
+        throw new NotFoundException('Sous-recette introuvable ou archivée.');
+      }
+      if (sourceTechnicalSheet) {
+        if (sourceTechnicalSheet.id === technicalSheetId) {
+          throw new BadRequestException('Une fiche technique ne peut pas se contenir elle-même.');
+        }
+        if (sourceTechnicalSheet.mode !== TechnicalSheetMode.PRODUCTION) {
+          throw new BadRequestException(`« ${sourceTechnicalSheet.name} » doit être une fiche de fabrication pour être utilisée comme sous-recette.`);
+        }
+        if (sourceTechnicalSheet.status !== TechnicalSheetStatus.ACTIVE && sourceTechnicalSheet.status !== TechnicalSheetStatus.VALIDATED) {
+          throw new BadRequestException(`La sous-recette « ${sourceTechnicalSheet.name} » doit être active.`);
+        }
+        if (!sourceTechnicalSheet.outputProductId || !sourceTechnicalSheet.outputProduct) {
+          throw new BadRequestException(
+            `La sous-recette « ${sourceTechnicalSheet.name} » n’a pas de produit fabriqué.`,
+          );
+        }
+        await this.assertNoSubRecipeCycleTx(
+          tx,
+          organizationId,
+          technicalSheetId,
+          sourceTechnicalSheet.id,
+        );
+      }
       const unit = await tx.unit.findFirst({ where: { id: line.unitId, organizationId, isArchived: false } });
       if (!unit) throw new NotFoundException('Unité Stocks introuvable');
-      let product = line.productId
-        ? await tx.product.findFirst({ where: { id: line.productId, organizationId, isArchived: false }, include: { unit: true } })
+      const effectiveProductId = line.productId || sourceTechnicalSheet?.outputProductId;
+      let product = effectiveProductId
+        ? await tx.product.findFirst({ where: { id: effectiveProductId, organizationId, isArchived: false }, include: { unit: true } })
         : null;
+      if (
+        !sourceTechnicalSheet &&
+        product &&
+        (product.kind === ProductKind.INTERMEDIATE || product.kind === ProductKind.FINISHED)
+      ) {
+        throw new BadRequestException(
+          `« ${product.name} » est une production interne. Ajoutez sa fiche technique comme sous-recette plutôt que comme produit Stocks.`,
+        );
+      }
+      if (
+        sourceTechnicalSheet?.outputProductId &&
+        product &&
+        product.id !== sourceTechnicalSheet.outputProductId
+      ) {
+        throw new BadRequestException(
+          `Le produit choisi ne correspond pas à la sortie de « ${sourceTechnicalSheet.name} ».`,
+        );
+      }
       if (!product && line.createProduct && line.productName?.trim()) {
         const name = line.productName.trim();
         const sku = line.productSku?.trim() || null;
@@ -482,12 +895,105 @@ export class TechnicalSheetsService {
         }
       }
       if (!product) throw new BadRequestException('Chaque ingrédient doit être associé à un produit Stocks ou marqué comme nouveau produit.');
-      await tx.technicalSheetIngredient.create({ data: { organizationId, technicalSheetId, productId: product.id, unitId: unit.id, quantity: line.quantity, comment: line.comment, order: line.order ?? idx, productNameSnapshot: product.name, unitSymbolSnapshot: unit.symbol, productUnitIdSnapshot: product.unitId, productUnitSymbolSnapshot: product.unit.symbol, productArchivedSnapshot: product.isArchived } });
+      await tx.technicalSheetIngredient.create({ data: { organizationId, technicalSheetId, sourceTechnicalSheetId: sourceTechnicalSheet?.id, productId: product.id, unitId: unit.id, quantity: line.quantity, comment: line.comment, section: line.section?.trim() || null, order: line.order ?? idx, productNameSnapshot: product.name, unitSymbolSnapshot: unit.symbol, productUnitIdSnapshot: product.unitId, productUnitSymbolSnapshot: product.unit.symbol, productArchivedSnapshot: product.isArchived } });
     }
   }
-  private async replaceSteps(tx: Tx, organizationId: string, technicalSheetId: string, steps: NonNullable<UpsertTechnicalSheetDto['steps']>) { await tx.technicalSheetStep.deleteMany({ where: { technicalSheetId } }); await tx.technicalSheetStep.createMany({ data: steps.map((s, idx) => ({ organizationId, technicalSheetId, order: s.order ?? idx, title: s.title ?? `Étape ${idx + 1}`, description: s.description ?? '', estimatedMinutes: s.estimatedMinutes ?? s.estimatedTimeMinutes })) }); }
+
+  private visibleRecipeStatus(status?: TechnicalSheetStatus) {
+    return status === TechnicalSheetStatus.ACTIVE || status === TechnicalSheetStatus.VALIDATED
+      ? TechnicalSheetStatus.ACTIVE
+      : TechnicalSheetStatus.DRAFT;
+  }
+
+  private async assertRecipeCanBeActiveTx(tx: Tx, technicalSheetId: string) {
+    const sheet = await tx.technicalSheet.findUnique({
+      where: { id: technicalSheetId },
+      select: {
+        name: true,
+        status: true,
+        mode: true,
+        _count: { select: { ingredients: true, steps: true } },
+      },
+    });
+    if (!sheet) return;
+    if (sheet.mode === TechnicalSheetMode.PRODUCTION) {
+      const subRecipeCount = await tx.technicalSheetIngredient.count({
+        where: { technicalSheetId, sourceTechnicalSheetId: { not: null } },
+      });
+      if (subRecipeCount) {
+        throw new BadRequestException('Une fiche de fabrication utilise uniquement des produits Stocks, sans sous-recette.');
+      }
+    }
+    if (sheet.status !== TechnicalSheetStatus.ACTIVE) return;
+    if (!sheet._count.ingredients) {
+      throw new BadRequestException('Ajoutez au moins un ingrédient avant de rendre la fiche active.');
+    }
+    if (sheet.mode === TechnicalSheetMode.PRODUCTION && !sheet._count.steps) {
+      throw new BadRequestException('Ajoutez au moins une étape avant de rendre une fabrication active.');
+    }
+  }
+  private async assertNoSubRecipeCycleTx(
+    tx: Tx,
+    organizationId: string,
+    parentTechnicalSheetId: string,
+    sourceTechnicalSheetId: string,
+  ) {
+    const pending = [sourceTechnicalSheetId];
+    const visited = new Set<string>();
+    while (pending.length) {
+      const current = pending.shift()!;
+      if (current === parentTechnicalSheetId) {
+        throw new BadRequestException('Cycle de sous-recettes détecté. Vérifiez la composition des fiches.');
+      }
+      if (visited.has(current)) continue;
+      visited.add(current);
+      const children = await tx.technicalSheetIngredient.findMany({
+        where: {
+          organizationId,
+          technicalSheetId: current,
+          sourceTechnicalSheetId: { not: null },
+        },
+        select: { sourceTechnicalSheetId: true },
+      });
+      children.forEach((child) => {
+        if (child.sourceTechnicalSheetId) pending.push(child.sourceTechnicalSheetId);
+      });
+    }
+  }
+  private async replaceSteps(tx: Tx, organizationId: string, technicalSheetId: string, steps: NonNullable<UpsertTechnicalSheetDto['steps']>) { await tx.technicalSheetStep.deleteMany({ where: { technicalSheetId } }); await tx.technicalSheetStep.createMany({ data: steps.map((s, idx) => ({ organizationId, technicalSheetId, order: s.order ?? idx, title: s.title ?? `Étape ${idx + 1}`, description: s.description ?? '', section: s.section?.trim() || null, estimatedMinutes: s.estimatedMinutes ?? s.estimatedTimeMinutes })) }); }
   private async recalculateCostTx(tx: Tx, organizationId: string, technicalSheetId: string, userId: string | null, snapshot: boolean) { const recipe = await tx.technicalSheet.findUnique({ where: { id: technicalSheetId }, include: { ingredients: { include: { product: { include: { unit: true } }, unit: true } } } }); if (!recipe) throw new NotFoundException('Fiche technique introuvable'); let total = new Prisma.Decimal(0); const details: any[] = []; let hasNonCalculable = false; for (const line of recipe.ingredients) { const calc = await this.calculateLine(tx, organizationId, line); hasNonCalculable ||= !calc.isCalculable; if (calc.cost) total = total.add(calc.cost); await tx.technicalSheetIngredient.update({ where: { id: line.id }, data: { cost: calc.cost, unitPriceSnapshot: line.product.averagePrice, isCalculable: calc.isCalculable, nonCalculableReason: calc.reason, productArchivedSnapshot: line.product.isArchived } }); details.push({ ingredientId: line.id, productId: line.productId, productName: line.product.name, cost: calc.cost?.toString() ?? null, isCalculable: calc.isCalculable, reason: calc.reason }); } const perPortion = recipe.referencePortions.isZero() ? new Prisma.Decimal(0) : total.div(recipe.referencePortions); const updated = await tx.technicalSheet.update({ where: { id: technicalSheetId }, data: { totalCost: total, costPerPortion: perPortion, hasNonCalculableLines: hasNonCalculable, lastCostCalculationAt: new Date() }, include: this.recipeInclude(true) }); if (snapshot) await tx.technicalSheetCostSnapshot.create({ data: { organizationId, technicalSheetId, totalCost: total, costPerPortion: perPortion, hasNonCalculableLines: hasNonCalculable, lineDetails: details } }); await this.history(tx, organizationId, technicalSheetId, userId, TechnicalSheetHistoryAction.COST_RECALCULATED, 'Recalcul du coût matière', { totalCost: total.toString(), hasNonCalculableLines: hasNonCalculable }); return updated; }
-  private async calculateLine(tx: Tx, organizationId: string, line: any) { if (line.product.isArchived) return { isCalculable: false, cost: null, reason: 'Produit Stocks archivé' }; let qty = new Prisma.Decimal(line.quantity); if (line.unitId !== line.product.unitId) { const conv = await tx.unitConversion.findFirst({ where: { organizationId, fromUnitId: line.unitId, toUnitId: line.product.unitId } }); if (!conv) return { isCalculable: false, cost: null, reason: 'Conversion unité indisponible dans Stocks' }; qty = qty.mul(conv.factor); } return { isCalculable: true, cost: qty.mul(line.product.averagePrice), reason: null }; }
+  private async calculateLine(tx: Tx, organizationId: string, line: any) {
+    if (line.product.isArchived) return { isCalculable: false, cost: null, reason: 'Produit Stocks archivé' };
+    let qty = new Prisma.Decimal(line.quantity);
+    if (line.sourceTechnicalSheetId) {
+      const source = await tx.technicalSheet.findFirst({
+        where: { id: line.sourceTechnicalSheetId, organizationId, isArchived: false },
+      });
+      if (!source || !source.yieldUnitId || source.referencePortions.isZero()) {
+        return { isCalculable: false, cost: null, reason: 'Rendement de la sous-recette indisponible' };
+      }
+      if (line.unitId !== source.yieldUnitId) {
+        const conversion = await tx.unitConversion.findFirst({
+          where: { organizationId, fromUnitId: line.unitId, toUnitId: source.yieldUnitId },
+        });
+        if (!conversion) {
+          return { isCalculable: false, cost: null, reason: 'Conversion vers la sous-recette indisponible' };
+        }
+        qty = qty.mul(conversion.factor);
+      }
+      return {
+        isCalculable: true,
+        cost: source.totalCost.mul(qty).div(source.referencePortions),
+        reason: null,
+      };
+    }
+    if (line.unitId !== line.product.unitId) {
+      const conv = await tx.unitConversion.findFirst({ where: { organizationId, fromUnitId: line.unitId, toUnitId: line.product.unitId } });
+      if (!conv) return { isCalculable: false, cost: null, reason: 'Conversion unité indisponible dans Stocks' };
+      qty = qty.mul(conv.factor);
+    }
+    return { isCalculable: true, cost: qty.mul(line.product.averagePrice), reason: null };
+  }
   private async history(tx: Tx, organizationId: string, technicalSheetId: string, userId: string | null, action: TechnicalSheetHistoryAction, summary: string, details?: Prisma.InputJsonValue) { await tx.technicalSheetHistory.create({ data: { organizationId, technicalSheetId, userId: userId || null, action, summary, details } }); }
   private async ensureCategory(organizationId: string, id: string) { const item = await this.prisma.technicalSheetCategory.findFirst({ where: { id, organizationId } }); if (!item) throw new NotFoundException('Catégorie recette introuvable'); return item; }
   private async ensureRecipe(organizationId: string, id: string) { const item = await this.prisma.technicalSheet.findFirst({ where: { id, organizationId } }); if (!item) throw new NotFoundException('Fiche technique introuvable'); return item; }

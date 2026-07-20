@@ -4,6 +4,8 @@ import {
   AlertCircle,
   Archive,
   ArrowRight,
+  BookOpen,
+  Boxes,
   Calendar,
   CalendarDays,
   CheckCircle2,
@@ -11,18 +13,29 @@ import {
   ClipboardList,
   Download,
   FileText,
+  Factory,
   History,
   LayoutDashboard,
+  PackageCheck,
   Plus,
   RefreshCw,
   Search,
+  Settings,
   Sparkles,
+  Utensils,
   UsersRound,
+  Wine,
   X,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { ApiError, api } from '../api/client';
 import type {
   MenuCalendarView,
+  MenuCatalogType,
+  MenuAvailabilityComponent,
+  MenuAvailabilityReport,
+  MenuCategory,
   MenuCycle,
   MenuCyclePayload,
   MenuDiet,
@@ -38,14 +51,17 @@ import type {
   MenuProductionGenerationPayload,
   MenuProductionGenerationResult,
   MenuSection,
+  MenuSettings,
   MenuServiceType,
   MenuStatus,
+  MenuUsageProfile,
+  Product,
   Site,
   TechnicalSheetRecipe,
   UserSession,
 } from '../types';
 
-type MenusTab = 'dashboard' | 'menus' | 'calendar' | 'cycles' | 'diets' | 'guests' | 'exports' | 'history';
+type MenusTab = 'dashboard' | 'catalog' | 'menus' | 'calendar' | 'cycles' | 'diets' | 'guests' | 'exports' | 'history';
 
 interface MenusAppProps {
   token: string;
@@ -55,6 +71,7 @@ interface MenusAppProps {
   canManage: boolean;
   onNavigate: (tab: MenusTab) => void;
   onInstalled?: (apps?: string[]) => void;
+  onSettingsChanged?: (settings: MenuSettings) => void;
 }
 
 const services: Array<{ value: MenuServiceType; label: string }> = [
@@ -90,19 +107,66 @@ const calendarViews: Array<{ value: MenuCalendarView; label: string }> = [
   { value: 'year', label: 'Année' },
 ];
 
-const initialMenuForm = (): MenuPlanPayload => ({
+const initialMenuForm = (siteId = ''): MenuPlanPayload => ({
   name: '',
   date: new Date().toISOString().slice(0, 10),
   service: 'LUNCH',
-  siteId: '',
+  siteId,
   description: '',
   expectedGuests: 0,
   items: [],
   guestForecasts: [],
 });
 
-export function MenusApp({ token, session, tab, sites, canManage, onNavigate, onInstalled }: MenusAppProps) {
+const initialCatalogForm = (siteId = ''): MenuPlanPayload => ({
+  name: 'Carte principale',
+  kind: 'CATALOG',
+  service: 'SNACK',
+  siteId,
+  description: '',
+  isPrimary: true,
+  items: [],
+});
+
+const catalogCategoryPresets: Record<MenuCatalogType, Array<{ name: string; color: string; icon: string }>> = {
+  FOOD: [
+    { name: 'Entrées', color: '#0f766e', icon: 'starter' },
+    { name: 'Plats', color: '#dc2626', icon: 'dish' },
+    { name: 'Desserts', color: '#b45309', icon: 'cake' },
+    { name: 'Sous-desserts', color: '#c2410c', icon: 'cookie' },
+    { name: 'Amuse-bouches', color: '#7c3aed', icon: 'sparkles' },
+    { name: 'Mignardises', color: '#be185d', icon: 'candy' },
+  ],
+  DRINKS: [
+    { name: 'Vins blancs', color: '#ca8a04', icon: 'wine' },
+    { name: 'Vins rouges', color: '#991b1b', icon: 'wine' },
+    { name: 'Vins rosés', color: '#e11d48', icon: 'wine' },
+    { name: 'Champagnes & effervescents', color: '#a16207', icon: 'glass' },
+    { name: 'Cocktails', color: '#7c3aed', icon: 'cocktail' },
+    { name: 'Bières', color: '#b45309', icon: 'beer' },
+    { name: 'Spiritueux', color: '#713f12', icon: 'glass' },
+    { name: 'Softs & jus', color: '#ea580c', icon: 'bottle' },
+    { name: 'Cafés & boissons chaudes', color: '#78350f', icon: 'coffee' },
+    { name: 'Thés & infusions', color: '#15803d', icon: 'tea' },
+    { name: 'Eaux', color: '#2563eb', icon: 'water' },
+  ],
+};
+
+const normalizeCatalogLookup = (value?: string | null) => (value ?? '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLocaleLowerCase('fr')
+  .trim();
+
+export function MenusApp({ token, session, tab, sites, canManage, onNavigate, onInstalled, onSettingsChanged }: MenusAppProps) {
+  const primarySite = sites.find((site) => site.id === session.user.primarySiteId)
+    ?? sites.find((site) => site.isPrimary || site.isMain)
+    ?? sites[0];
+  const defaultSiteId = primarySite?.id ?? '';
   const [dashboard, setDashboard] = useState<MenuModuleDashboard>();
+  const [settings, setSettings] = useState<MenuSettings>();
+  const [categories, setCategories] = useState<MenuCategory[]>([]);
+  const [availability, setAvailability] = useState<MenuAvailabilityReport>();
   const [menus, setMenus] = useState<MenuPlan[]>([]);
   const [cycles, setCycles] = useState<MenuCycle[]>([]);
   const [diets, setDiets] = useState<MenuDiet[]>([]);
@@ -110,10 +174,20 @@ export function MenusApp({ token, session, tab, sites, canManage, onNavigate, on
   const [exportsList, setExportsList] = useState<MenuExport[]>([]);
   const [history, setHistory] = useState<MenuHistoryEntry[]>([]);
   const [recipes, setRecipes] = useState<TechnicalSheetRecipe[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [selectedMenuId, setSelectedMenuId] = useState<string>();
   const [calendarView, setCalendarView] = useState<MenuCalendarView>('week');
   const [search, setSearch] = useState('');
-  const [menuForm, setMenuForm] = useState<MenuPlanPayload>(initialMenuForm);
+  const [menuForm, setMenuForm] = useState<MenuPlanPayload>(() => initialMenuForm(defaultSiteId));
+  const [catalogForm, setCatalogForm] = useState<MenuPlanPayload>(() => initialCatalogForm(defaultSiteId));
+  const [catalogItemForm, setCatalogItemForm] = useState({ sourceType: 'TECHNICAL_SHEET' as 'TECHNICAL_SHEET' | 'PRODUCT', technicalSheetId: '', productId: '', menuCategoryId: '', servingQuantity: 1, targetReadyQuantity: 0 });
+  const [catalogSourceSearch, setCatalogSourceSearch] = useState('');
+  const [categoryName, setCategoryName] = useState('');
+  const [catalogWizardOpen, setCatalogWizardOpen] = useState(false);
+  const [catalogWizardDismissed, setCatalogWizardDismissed] = useState(false);
+  const [catalogWizardStep, setCatalogWizardStep] = useState<1 | 2 | 3>(1);
+  const [catalogType, setCatalogType] = useState<MenuCatalogType>();
+  const [selectedPresetCategories, setSelectedPresetCategories] = useState<string[]>([]);
   const [cycleForm, setCycleForm] = useState<MenuCyclePayload>({ name: '', description: '', durationWeeks: 4, siteId: '', status: 'ACTIVE' });
   const [dietForm, setDietForm] = useState({ name: '', description: '' });
   const [guestForm, setGuestForm] = useState({ menuId: '', guestGroupId: '', dietId: '', count: 0 });
@@ -124,18 +198,64 @@ export function MenusApp({ token, session, tab, sites, canManage, onNavigate, on
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
   const [success, setSuccess] = useState<string>();
+  const [showProfileSettings, setShowProfileSettings] = useState(false);
 
   const selectedMenu = useMemo(() => menus.find((menu) => menu.id === selectedMenuId) ?? menus[0], [menus, selectedMenuId]);
-  const filteredMenus = useMemo(() => menus.filter((menu) => [menu.name, menu.site?.name, serviceLabel(menu.service), statusLabel(menu.status)].join(' ').toLowerCase().includes(search.toLowerCase())), [menus, search]);
-  const activeRecipes = useMemo(() => recipes.filter((recipe) => !recipe.isArchived && recipe.status !== 'ARCHIVED'), [recipes]);
+  const catalogs = useMemo(() => menus.filter((menu) => menu.kind === 'CATALOG'), [menus]);
+  const selectedCatalog = useMemo(() => catalogs.find((menu) => menu.id === selectedMenuId) ?? catalogs[0], [catalogs, selectedMenuId]);
+  const filteredMenus = useMemo(() => menus.filter((menu) => menu.kind !== 'CATALOG' && [menu.name, menu.site?.name, serviceLabel(menu.service), statusLabel(menu.status)].join(' ').toLowerCase().includes(search.toLowerCase())), [menus, search]);
+  const activeRecipes = useMemo(() => recipes.filter((recipe) => !recipe.isArchived && recipe.status === 'ACTIVE'), [recipes]);
+  const menuEligibleRecipes = useMemo(() => activeRecipes.filter((recipe) => recipe.outputProductId), [activeRecipes]);
+  const activeProducts = useMemo(() => products.filter((product) => !product.isArchived).sort((a, b) => a.name.localeCompare(b.name, 'fr')), [products]);
+  const catalogProductOptions = useMemo(() => {
+    const query = normalizeCatalogLookup(catalogSourceSearch);
+    return activeProducts
+      .filter((product) => !selectedCatalog?.items?.some((item) => item.productId === product.id))
+      .filter((product) => !query || normalizeCatalogLookup([
+        product.name,
+        product.sku,
+        product.gtin,
+        product.category?.name,
+        product.primarySupplier?.name,
+      ].filter(Boolean).join(' ')).includes(query))
+      .slice(0, 100)
+      .map((product) => ({
+        id: product.id,
+        label: product.name,
+        detail: [product.sku, product.category?.name, product.unit?.symbol].filter(Boolean).join(' · '),
+      }));
+  }, [activeProducts, catalogSourceSearch, selectedCatalog?.items]);
+  const catalogRecipeOptions = useMemo(() => {
+    const query = normalizeCatalogLookup(catalogSourceSearch);
+    return menuEligibleRecipes
+      .filter((recipe) => !selectedCatalog?.items?.some((item) => item.technicalSheetId === recipe.id))
+      .filter((recipe) => !query || normalizeCatalogLookup([
+        recipe.name,
+        recipe.category?.name,
+        recipe.description,
+        recipe.mode === 'PRODUCTION' ? 'fabrication preparation' : 'assemblage produit fini',
+      ].filter(Boolean).join(' ')).includes(query))
+      .slice(0, 100)
+      .map((recipe) => ({
+        id: recipe.id,
+        label: recipe.name,
+        detail: `${recipe.mode === 'PRODUCTION' ? 'Fabrication / préparation' : 'Assemblage / produit fini'}${recipe.category?.name ? ` · ${recipe.category.name}` : ''}`,
+      }));
+  }, [menuEligibleRecipes, catalogSourceSearch, selectedCatalog?.items]);
+  const catalogCategories = useMemo(() => {
+    if (!selectedCatalog?.catalogType) return categories;
+    return categories.filter((category) => category.catalogType === selectedCatalog.catalogType);
+  }, [categories, selectedCatalog?.catalogType]);
   const canGenerateSelected = Boolean(selectedMenu && ['VALIDATED', 'PUBLISHED'].includes(selectedMenu.status) && Number(selectedMenu.expectedGuests ?? selectedMenu.guestCount ?? 0) > 0 && !selectedMenu.hasBlockingAlerts);
 
   async function refresh() {
     setLoading(true);
     setError(undefined);
     try {
-      const [dashboardResult, menusResult, cyclesResult, dietsResult, groupsResult, exportsResult, historyResult, recipesResult] = await Promise.all([
+      const [dashboardResult, settingsResult, categoriesResult, menusResult, cyclesResult, dietsResult, groupsResult, exportsResult, historyResult, recipesResult, productsResult] = await Promise.all([
         api.menusDashboard(token).catch(() => undefined),
+        api.menuSettings(token).catch(() => undefined),
+        api.menuCategories(token).catch(() => []),
         api.menusList(token).catch(() => []),
         api.menuCycles(token).catch(() => []),
         api.menuDiets(token).catch(() => []),
@@ -143,8 +263,11 @@ export function MenusApp({ token, session, tab, sites, canManage, onNavigate, on
         api.menuExports(token).catch(() => []),
         api.menuHistory(token).catch(() => []),
         api.technicalSheetRecipes(token, { includeArchived: true, pageSize: 200 }).then((result) => result.items).catch(() => []),
+        api.allProducts(token).catch(() => []),
       ]);
       setDashboard(dashboardResult);
+      setSettings(settingsResult);
+      setCategories(categoriesResult);
       setMenus(menusResult);
       setCycles(cyclesResult);
       setDiets(dietsResult);
@@ -152,7 +275,8 @@ export function MenusApp({ token, session, tab, sites, canManage, onNavigate, on
       setExportsList(exportsResult);
       setHistory(historyResult);
       setRecipes(recipesResult);
-      if (!selectedMenuId && menusResult[0]) setSelectedMenuId(menusResult[0].id);
+      setProducts(productsResult);
+      if (!selectedMenuId && menusResult[0]) setSelectedMenuId(menusResult.find((menu) => menu.kind === 'CATALOG')?.id ?? menusResult[0].id);
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) setError('Le backend Menus n’est pas encore disponible. Installez/relancez le module Menus côté API.');
       else setError(err instanceof Error ? err.message : 'Chargement du module Menus impossible.');
@@ -163,12 +287,160 @@ export function MenusApp({ token, session, tab, sites, canManage, onNavigate, on
 
   useEffect(() => { void refresh(); }, []);
 
+  useEffect(() => {
+    if (!defaultSiteId) return;
+    setCatalogForm((current) => current.siteId ? current : { ...current, siteId: defaultSiteId });
+  }, [defaultSiteId]);
+
+  useEffect(() => {
+    if (!['catalog', 'dashboard'].includes(tab) || !selectedCatalog) {
+      setAvailability(undefined);
+      return;
+    }
+    void api.menuAvailability(token, selectedCatalog.id, selectedCatalog.siteId || undefined)
+      .then(setAvailability)
+      .catch((err) => setError(err instanceof Error ? err.message : 'Calcul des disponibilités impossible.'));
+  }, [tab, selectedCatalog?.id, selectedCatalog?.updatedAt]);
+
+  useEffect(() => {
+    if (tab === 'catalog' && settings?.onboardingCompletedAt && catalogs.length === 0 && !catalogWizardDismissed) setCatalogWizardOpen(true);
+  }, [tab, settings?.onboardingCompletedAt, catalogs.length, catalogWizardDismissed]);
+
   async function installMenus() {
     await run(async () => {
       const result = await api.installMenus(token);
       if ('installedApplications' in result) onInstalled?.(result.installedApplications);
       await refresh();
     }, 'Module Menus installé. Fiches Techniques et Production restent les référentiels consommés.');
+  }
+
+  async function configureProfile(usageProfile: MenuUsageProfile) {
+    await run(async () => {
+      const configured = await api.updateMenuSettings(token, { usageProfile });
+      setSettings(configured);
+      onSettingsChanged?.(configured);
+      setCategories(configured.categories ?? []);
+      await refresh();
+      setShowProfileSettings(false);
+    }, 'Le module Menu est maintenant adapté à votre activité.');
+  }
+
+  async function createCatalog(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!catalogType || !selectedPresetCategories.length) return;
+    await run(async () => {
+      for (const name of selectedPresetCategories) {
+        const preset = catalogCategoryPresets[catalogType].find((category) => category.name === name);
+        const existing = categories.find((category) => category.name.toLocaleLowerCase('fr') === name.toLocaleLowerCase('fr'));
+        const payload = { name, position: catalogCategoryPresets[catalogType].findIndex((category) => category.name === name), color: preset?.color, icon: preset?.icon, catalogType };
+        if (existing) await api.updateMenuCategory(token, existing.id, payload);
+        else await api.createMenuCategory(token, payload);
+      }
+      const created = await api.createMenu(token, { ...catalogForm, siteId: catalogForm.siteId || defaultSiteId || undefined, kind: 'CATALOG', catalogType, items: [] });
+      setSelectedMenuId(created.id);
+      setCatalogForm(initialCatalogForm(defaultSiteId));
+      setCatalogWizardOpen(false);
+      setCatalogWizardDismissed(false);
+      setCatalogWizardStep(1);
+      setCatalogType(undefined);
+      setSelectedPresetCategories([]);
+      await refresh();
+    }, 'Votre carte est créée. Ajoutez maintenant des produits Stocks ou des fiches d’assemblage.');
+  }
+
+  function openCatalogWizard() {
+    setCatalogWizardDismissed(false);
+    setCatalogWizardStep(1);
+    setCatalogType(undefined);
+    setSelectedPresetCategories([]);
+    setCatalogForm(initialCatalogForm(defaultSiteId));
+    setCatalogWizardOpen(true);
+  }
+
+  function chooseCatalogType(type: MenuCatalogType) {
+    setCatalogType(type);
+    setSelectedPresetCategories(catalogCategoryPresets[type].map((category) => category.name));
+    setCatalogForm((current) => ({ ...current, name: type === 'FOOD' ? 'Carte nourriture' : 'Carte des boissons' }));
+    setCatalogWizardStep(2);
+  }
+
+  function menuItemsPayload(menu: MenuPlan) {
+    return (menu.items ?? []).map((item, index) => ({
+      section: item.section ?? 'OTHER',
+      menuCategoryId: item.menuCategoryId || undefined,
+      technicalSheetId: item.technicalSheetId || undefined,
+      productId: item.productId || undefined,
+      position: item.order ?? index,
+      portionsOverride: item.portionsOverride ?? undefined,
+      servingQuantity: item.servingQuantity ?? 1,
+      targetReadyQuantity: item.targetReadyQuantity ?? undefined,
+      lowStockThreshold: item.lowStockThreshold ?? undefined,
+      availabilityEnabled: item.availabilityEnabled ?? true,
+    }));
+  }
+
+  async function saveCatalogItems(items: MenuItemPayload[], message: string) {
+    if (!selectedCatalog) return;
+    await run(async () => {
+      await api.updateMenu(token, selectedCatalog.id, {
+        name: selectedCatalog.name,
+        kind: 'CATALOG',
+        catalogType: selectedCatalog.catalogType || undefined,
+        service: selectedCatalog.service,
+        siteId: selectedCatalog.siteId || undefined,
+        description: selectedCatalog.description || undefined,
+        activeFrom: selectedCatalog.activeFrom || undefined,
+        activeUntil: selectedCatalog.activeUntil || undefined,
+        isPrimary: selectedCatalog.isPrimary,
+        items,
+      });
+      await refresh();
+    }, message);
+  }
+
+  async function addCatalogItem(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const sourceId = catalogItemForm.sourceType === 'PRODUCT' ? catalogItemForm.productId : catalogItemForm.technicalSheetId;
+    if (!selectedCatalog || !sourceId) return;
+    await saveCatalogItems([
+      ...menuItemsPayload(selectedCatalog),
+      { section: selectedCatalog.catalogType === 'DRINKS' ? 'DRINK' : 'OTHER', technicalSheetId: catalogItemForm.sourceType === 'TECHNICAL_SHEET' ? catalogItemForm.technicalSheetId : undefined, productId: catalogItemForm.sourceType === 'PRODUCT' ? catalogItemForm.productId : undefined, menuCategoryId: catalogItemForm.menuCategoryId || undefined, servingQuantity: Number(catalogItemForm.servingQuantity), targetReadyQuantity: Number(catalogItemForm.targetReadyQuantity), availabilityEnabled: true },
+    ], catalogItemForm.sourceType === 'PRODUCT' ? 'Produit Stocks ajouté à la carte.' : 'Fiche d’assemblage ajoutée à la carte.');
+    setCatalogItemForm({ sourceType: catalogItemForm.sourceType, technicalSheetId: '', productId: '', menuCategoryId: catalogCategories[0]?.id ?? '', servingQuantity: 1, targetReadyQuantity: 0 });
+    setCatalogSourceSearch('');
+  }
+
+  async function updateCatalogTarget(itemId: string, targetReadyQuantity: number) {
+    if (!selectedCatalog) return;
+    const items = menuItemsPayload(selectedCatalog).map((item, index) => ({
+      ...item,
+      targetReadyQuantity: selectedCatalog.items?.[index]?.id === itemId ? Math.max(targetReadyQuantity, 0) : item.targetReadyQuantity,
+    }));
+    await saveCatalogItems(items, 'Objectif de disponibilité mis à jour.');
+  }
+
+  async function removeCatalogItem(itemId: string) {
+    if (!selectedCatalog) return;
+    const items = menuItemsPayload(selectedCatalog).filter((_, index) => selectedCatalog.items?.[index]?.id !== itemId);
+    await saveCatalogItems(items, 'Article retiré de la carte.');
+  }
+
+  async function createCategory(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!categoryName.trim()) return;
+    await run(async () => {
+      await api.createMenuCategory(token, { name: categoryName.trim(), position: catalogCategories.length, catalogType: selectedCatalog?.catalogType || undefined });
+      setCategoryName('');
+      await refresh();
+    }, 'Rubrique ajoutée à votre carte.');
+  }
+
+  async function planCatalogShortages() {
+    if (!selectedCatalog) return;
+    await run(async () => {
+      const result = await api.planMenuShortages(token, selectedCatalog.id, { siteId: selectedCatalog.siteId || undefined });
+      setAvailability(result.report);
+    }, 'Les besoins manquants ont été préparés en brouillon dans Production.');
   }
 
   async function createMenu(event: React.FormEvent<HTMLFormElement>) {
@@ -281,6 +553,10 @@ export function MenusApp({ token, session, tab, sites, canManage, onNavigate, on
     );
   }
 
+  if (settings && !settings.onboardingCompletedAt) {
+    return <MenuProfileSetup saving={saving} onSelect={configureProfile} />;
+  }
+
   return (
     <div className="menus-app" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       <motion.section
@@ -288,24 +564,46 @@ export function MenusApp({ token, session, tab, sites, canManage, onNavigate, on
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <span className="welcome-tag"><ChefHat size={14} /> Menus & Planification</span>
-        <h1 className="welcome-title">Menus</h1>
+        <span className="welcome-tag"><ChefHat size={14} /> Carte, Menus & Production</span>
+        <h1 className="welcome-title">{settings?.usageProfile === 'RESTAURANT_CAFE' ? 'Ma carte' : 'Menus'}</h1>
         <p className="welcome-desc">
-          Planifiez vos repas, concevez des cycles de menus et anticipez vos productions culinaires en toute simplicité. Les compositions référencent uniquement des fiches techniques existantes.
+          Reliez ce que vous proposez aux fiches techniques, visualisez ce qui est disponible et préparez uniquement les productions manquantes.
         </p>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowProfileSettings(true)} style={{ marginTop: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}><Settings size={14} /> Adapter le module à mon activité</button>
       </motion.section>
 
+      {showProfileSettings ? <MenuProfileSetup compact saving={saving} onSelect={configureProfile} onClose={() => setShowProfileSettings(false)} /> : null}
+      {catalogWizardOpen ? (
+        <CatalogWizard
+          step={catalogWizardStep}
+          type={catalogType}
+          selectedCategories={selectedPresetCategories}
+          form={catalogForm}
+          sites={sites}
+          saving={saving}
+          canManage={canManage}
+          onChooseType={chooseCatalogType}
+          onToggleCategory={(name) => setSelectedPresetCategories((current) => current.includes(name) ? current.filter((item) => item !== name) : [...current, name])}
+          onBack={() => setCatalogWizardStep((current) => current === 3 ? 2 : 1)}
+          onContinue={() => setCatalogWizardStep(3)}
+          onForm={setCatalogForm}
+          onSubmit={createCatalog}
+          onClose={() => { setCatalogWizardOpen(false); setCatalogWizardDismissed(true); }}
+        />
+      ) : null}
+
       <div className="hr-tabs menus-tabs" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-        {([
+        {(settings?.usageProfile === 'RESTAURANT_CAFE' ? [
+          ['dashboard', 'Tableau de bord'], ['catalog', 'Carte'], ['exports', 'Exports & Documents'], ['history', 'Historique & audit'],
+        ] : [
           ['dashboard', 'Tableau de bord'],
-          ['menus', 'Menus planifiés'],
-          ['calendar', 'Calendrier'],
-          ['cycles', 'Cycles'],
-          ['diets', 'Régimes'],
-          ['guests', 'Convives par groupes'],
-          ['exports', 'Exports & Documents'],
-          ['history', 'Historique d’audit'],
-        ] as const).map(([id, label]) => (
+          ...(settings?.catalogEnabled ? [['catalog', 'Carte & disponibilités']] : []),
+          ...(settings?.scheduledMenusEnabled ? [['menus', 'Menus planifiés'], ['calendar', 'Calendrier']] : []),
+          ...(settings?.cyclesEnabled ? [['cycles', 'Cycles']] : []),
+          ...(settings?.dietsEnabled ? [['diets', 'Régimes']] : []),
+          ...(settings?.guestForecastsEnabled ? [['guests', 'Convives par groupes']] : []),
+          ['exports', 'Exports & Documents'], ['history', 'Historique d’audit'],
+        ] as Array<[MenusTab, string]>).map(([id, label]) => (
           <button
             key={id}
             className={tab === id ? 'active' : ''}
@@ -329,6 +627,18 @@ export function MenusApp({ token, session, tab, sites, canManage, onNavigate, on
         >
           {tab === 'dashboard' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+              {settings?.catalogEnabled ? (
+                <div className="card-modern" style={{ padding: '1.5rem', background: 'linear-gradient(135deg, #ecfdf5, #ffffff)', border: '1px solid #a7f3d0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
+                    <div>
+                      <span style={{ color: '#047857', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase' }}>Vue opérationnelle</span>
+                      <h2 style={{ margin: '0.25rem 0', color: '#0f172a', fontSize: '1.3rem' }}>{selectedCatalog?.name ?? 'Créez votre première carte'}</h2>
+                      <span className="muted">{availability ? `${availability.summary.ready} article(s) disponibles · ${availability.summary.toProduce} à produire · ${availability.summary.blocked} bloqué(s)` : 'Suivez le stock de vos produits finis et de leurs préparations.'}</span>
+                    </div>
+                    <button className="btn btn-primary" onClick={() => onNavigate('catalog')}><BookOpen size={16} /> Ouvrir la carte</button>
+                  </div>
+                </div>
+              ) : null}
               <div className="menus-grid">
                 <MetricCard
                   icon={<ChefHat />}
@@ -382,21 +692,158 @@ export function MenusApp({ token, session, tab, sites, canManage, onNavigate, on
                     <Sparkles size={18} /> Actions rapides
                   </span>
                   <div className="quick-actions-grid">
-                    <button className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }} onClick={() => onNavigate('menus')}>
-                      <Plus size={16} /> Créer un menu
-                    </button>
-                    <button className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }} onClick={() => onNavigate('calendar')}>
-                      <Calendar size={16} /> Calendrier
-                    </button>
-                    <button className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }} onClick={() => onNavigate('cycles')}>
-                      <RefreshCw size={16} /> Créer un cycle
-                    </button>
-                    <button className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }} onClick={() => onNavigate('diets')}>
-                      <UsersRound size={16} /> Gérer les régimes
-                    </button>
+                    {settings?.usageProfile === 'RESTAURANT_CAFE' ? <>
+                      <button className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }} onClick={() => onNavigate('catalog')}><BookOpen size={16} /> Ouvrir la carte</button>
+                      <button className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }} onClick={() => onNavigate('exports')}><Download size={16} /> Exports & Documents</button>
+                      <button className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }} onClick={() => onNavigate('history')}><History size={16} /> Historique & audit</button>
+                    </> : <>
+                      <button className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }} onClick={() => onNavigate('menus')}><Plus size={16} /> Créer un menu</button>
+                      <button className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }} onClick={() => onNavigate('calendar')}><Calendar size={16} /> Calendrier</button>
+                      <button className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }} onClick={() => onNavigate('cycles')}><RefreshCw size={16} /> Créer un cycle</button>
+                      <button className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }} onClick={() => onNavigate('diets')}><UsersRound size={16} /> Gérer les régimes</button>
+                    </>}
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {tab === 'catalog' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              {catalogs.length === 0 ? (
+                <div className="card-modern" style={{ maxWidth: '720px', margin: '0 auto', width: '100%', padding: '2.5rem', textAlign: 'center' }}>
+                  <div style={{ width: 58, height: 58, borderRadius: 18, background: '#ecfdf5', color: '#047857', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem' }}><BookOpen size={28} /></div>
+                  <h2 style={{ margin: 0 }}>Créez votre première carte</h2>
+                  <p className="muted" style={{ lineHeight: 1.6, maxWidth: 540, margin: '0.75rem auto 1.25rem' }}>Choisissez d’abord une carte nourriture ou boissons. Vous pourrez ensuite ajouter chaque article depuis Stocks ou depuis une fiche technique active.</p>
+                  <button type="button" className="btn btn-primary" disabled={!canManage} onClick={openCatalogWizard}><Plus size={16} /> Créer une carte</button>
+                </div>
+              ) : (
+                <>
+                  <div className="card-modern" style={{ padding: '1.25rem 1.5rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                        <div style={{ width: 44, height: 44, borderRadius: 13, background: '#ecfdf5', color: '#047857', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><BookOpen size={23} /></div>
+                        <div>
+                          <select value={selectedCatalog?.id ?? ''} onChange={(event) => setSelectedMenuId(event.target.value)} style={{ border: 0, fontSize: '1.15rem', fontWeight: 800, padding: 0, color: '#0f172a', background: 'transparent' }}>
+                            {catalogs.map((catalog) => <option key={catalog.id} value={catalog.id}>{catalog.name}</option>)}
+                          </select>
+                          <div className="muted" style={{ fontSize: '0.78rem', marginTop: '0.2rem' }}>{selectedCatalog?.site?.name ?? primarySite?.name ?? 'Site non défini'} · disponibilité en temps réel</div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <button className="btn btn-secondary" onClick={() => selectedCatalog && api.menuAvailability(token, selectedCatalog.id, selectedCatalog.siteId || undefined).then(setAvailability)}><RefreshCw size={15} /> Actualiser</button>
+                        <button className="btn btn-secondary" disabled={!canManage} onClick={openCatalogWizard}><Plus size={15} /> Nouvelle carte</button>
+                        <button className="btn btn-primary" disabled={saving || !canManage || !availability?.summary.toProduce} onClick={planCatalogShortages}><Factory size={16} /> Planifier les manquants</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {availability ? (
+                    <div className="menus-grid" style={{ gridTemplateColumns: 'repeat(4, minmax(150px, 1fr))' }}>
+                      <MetricCard label="Articles suivis" value={availability.summary.total} icon={<Boxes />} tone="blue" />
+                      <MetricCard label="Disponibles" value={availability.summary.ready} icon={<PackageCheck />} tone="emerald" />
+                      <MetricCard label="À produire" value={availability.summary.toProduce} icon={<Factory />} tone="orange" />
+                      <MetricCard label="À vérifier" value={availability.summary.blocked} icon={<AlertCircle />} tone="purple" />
+                    </div>
+                  ) : null}
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(300px, 0.8fr)', gap: '1.5rem', alignItems: 'start' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      {!availability ? (
+                        <div className="card-modern" style={{ padding: '2rem', textAlign: 'center' }}><RefreshCw className="animate-spin" size={22} /> Calcul des disponibilités…</div>
+                      ) : availability.items.length === 0 ? (
+                        <div className="card-modern"><EmptyState title="Carte vide" desc="Ajoutez votre premier article à droite. Les produits Stocks et les fiches actives suivies dans Production sont proposés." /></div>
+                      ) : (
+                        catalogCategories.map((category) => {
+                          const categoryItems = availability.items.filter((item) => item.category?.id === category.id);
+                          if (!categoryItems.length) return null;
+                          return (
+                            <section key={category.id} className="card-modern" style={{ padding: '1.25rem' }}>
+                              <h3 style={{ margin: '0 0 1rem', color: category.color || '#0f172a', fontSize: '1rem' }}>{category.name} <span className="muted" style={{ fontWeight: 500 }}>· {categoryItems.length}</span></h3>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                {categoryItems.map((item) => <CatalogAvailabilityCard key={item.id} item={item} target={selectedCatalog?.items?.find((menuItem) => menuItem.id === item.id)?.targetReadyQuantity ?? item.targetPortions} saving={saving} onTarget={updateCatalogTarget} onRemove={removeCatalogItem} />)}
+                              </div>
+                            </section>
+                          );
+                        })
+                      )}
+                      {availability?.items.some((item) => !item.category) ? (
+                        <section className="card-modern" style={{ padding: '1.25rem' }}>
+                          <h3 style={{ margin: '0 0 1rem', fontSize: '1rem' }}>Autres</h3>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                            {availability.items.filter((item) => !item.category).map((item) => <CatalogAvailabilityCard key={item.id} item={item} target={selectedCatalog?.items?.find((menuItem) => menuItem.id === item.id)?.targetReadyQuantity ?? item.targetPortions} saving={saving} onTarget={updateCatalogTarget} onRemove={removeCatalogItem} />)}
+                          </div>
+                        </section>
+                      ) : null}
+                    </div>
+
+                    <aside style={{ display: 'flex', flexDirection: 'column', gap: '1rem', position: 'sticky', top: '1rem' }}>
+                      <div className="card-modern" style={{ padding: '1.25rem' }}>
+                        <span className="card-title"><Plus size={17} /> Ajouter un article</span>
+                        <form onSubmit={addCatalogItem} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginTop: '1rem' }}>
+                          <div>
+                            <span style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: '#334155', marginBottom: '0.45rem' }}>L’article vient de</span>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                              <button type="button" className={`btn ${catalogItemForm.sourceType === 'PRODUCT' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setCatalogSourceSearch(''); setCatalogItemForm({ ...catalogItemForm, sourceType: 'PRODUCT', productId: '', technicalSheetId: '' }); }}><Boxes size={14} /> Stocks</button>
+                              <button type="button" className={`btn ${catalogItemForm.sourceType === 'TECHNICAL_SHEET' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setCatalogSourceSearch(''); setCatalogItemForm({ ...catalogItemForm, sourceType: 'TECHNICAL_SHEET', productId: '', technicalSheetId: '' }); }}><ChefHat size={14} /> Fiche technique</button>
+                            </div>
+                          </div>
+                          {catalogItemForm.sourceType === 'PRODUCT' ? (
+                            <CatalogSourceAutocomplete
+                              label="Produit Stocks"
+                              placeholder="Rechercher parmi vos produits…"
+                              options={catalogProductOptions}
+                              value={catalogItemForm.productId}
+                              search={catalogSourceSearch}
+                              onSearch={(value) => { setCatalogSourceSearch(value); setCatalogItemForm((current) => ({ ...current, productId: '' })); }}
+                              onSelect={(option) => { setCatalogSourceSearch(option?.label ?? ''); setCatalogItemForm((current) => ({ ...current, productId: option?.id ?? '' })); }}
+                              emptyText="Aucun produit Stocks trouvé"
+                              helper="Pour un vin, une eau, un soft ou tout article vendu tel quel. Commencez à écrire pour consulter les résultats."
+                            />
+                          ) : (
+                            <CatalogSourceAutocomplete
+                              label="Fiche technique active"
+                              placeholder="Rechercher une fiche technique…"
+                              options={catalogRecipeOptions}
+                              value={catalogItemForm.technicalSheetId}
+                              search={catalogSourceSearch}
+                              onSearch={(value) => { setCatalogSourceSearch(value); setCatalogItemForm((current) => ({ ...current, technicalSheetId: '' })); }}
+                              onSelect={(option) => { setCatalogSourceSearch(option?.label ?? ''); setCatalogItemForm((current) => ({ ...current, technicalSheetId: option?.id ?? '' })); }}
+                              emptyText="Aucune fiche technique active trouvée"
+                              helper="Toutes les fiches actives avec une sortie suivie dans Production sont disponibles."
+                            />
+                          )}
+                          <label>Rubrique
+                            <select value={catalogItemForm.menuCategoryId} onChange={(event) => setCatalogItemForm({ ...catalogItemForm, menuCategoryId: event.target.value })}>
+                              <option value="">Autres</option>
+                              {catalogCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                            </select>
+                          </label>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
+                            <label>Qté par portion
+                              <input type="number" min="0.001" step="any" value={catalogItemForm.servingQuantity} onChange={(event) => setCatalogItemForm({ ...catalogItemForm, servingQuantity: Number(event.target.value) })} />
+                            </label>
+                            <label>Objectif prêt
+                              <input type="number" min="0" step="any" value={catalogItemForm.targetReadyQuantity} onChange={(event) => setCatalogItemForm({ ...catalogItemForm, targetReadyQuantity: Number(event.target.value) })} />
+                            </label>
+                          </div>
+                          <button className="btn btn-primary" disabled={saving || !canManage || !(catalogItemForm.sourceType === 'PRODUCT' ? catalogItemForm.productId : catalogItemForm.technicalSheetId)}><Plus size={15} /> Ajouter à la carte</button>
+                          {catalogItemForm.sourceType === 'TECHNICAL_SHEET' && !menuEligibleRecipes.length ? <span className="muted" style={{ fontSize: '0.75rem' }}>Créez et activez d’abord une fiche technique.</span> : null}
+                        </form>
+                      </div>
+
+                      <div className="card-modern" style={{ padding: '1.25rem' }}>
+                        <span className="card-title"><Settings size={17} /> Rubriques</span>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', margin: '0.9rem 0' }}>{catalogCategories.map((category) => <span key={category.id} className="badge badge-draft" style={{ color: category.color || undefined }}>{category.name}</span>)}</div>
+                        <form onSubmit={createCategory} style={{ display: 'flex', gap: '0.5rem' }}>
+                          <input value={categoryName} onChange={(event) => setCategoryName(event.target.value)} placeholder="Nouvelle rubrique" style={{ minWidth: 0 }} />
+                          <button className="btn btn-secondary" disabled={!categoryName.trim() || saving}><Plus size={14} /></button>
+                        </form>
+                      </div>
+                    </aside>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -493,7 +940,7 @@ export function MenusApp({ token, session, tab, sites, canManage, onNavigate, on
                     </label>
                     
                     <span className="menus-form-span" style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '0.5rem' }}>Composition du menu</span>
-                    <CompositionBuilder recipes={activeRecipes} onAdd={addMenuItem} />
+                    <CompositionBuilder recipes={menuEligibleRecipes} onAdd={addMenuItem} />
                     
                     <div className="menus-form-span menus-item-list">
                       {menuForm.items?.length === 0 ? (
@@ -900,6 +1347,237 @@ export function MenusApp({ token, session, tab, sites, canManage, onNavigate, on
   );
 }
 
+type CatalogSourceOption = { id: string; label: string; detail?: string };
+
+function CatalogSourceAutocomplete({ label, placeholder, options, value, search, onSearch, onSelect, emptyText, helper }: {
+  label: string;
+  placeholder: string;
+  options: CatalogSourceOption[];
+  value: string;
+  search: string;
+  onSearch: (value: string) => void;
+  onSelect: (option?: CatalogSourceOption) => void;
+  emptyText: string;
+  helper: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const visibleOptions = options.slice(0, 12);
+  return (
+    <div className="custom-autocomplete-wrapper" style={{ position: 'relative' }}>
+      <label style={{ display: 'block' }}>{label}</label>
+      <div style={{ position: 'relative', marginTop: '0.35rem' }}>
+        <input
+          value={search}
+          onChange={(event) => { onSearch(event.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setOpen(false)}
+          placeholder={placeholder}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={open}
+          style={{ width: '100%', paddingRight: value ? '2.25rem' : undefined }}
+        />
+        {value ? <button type="button" aria-label="Effacer la sélection" onMouseDown={(event) => event.preventDefault()} onClick={() => { onSelect(undefined); setOpen(true); }} style={{ position: 'absolute', right: '0.55rem', top: '50%', transform: 'translateY(-50%)', border: 0, background: 'transparent', color: '#64748b', cursor: 'pointer', display: 'grid', placeItems: 'center', padding: '0.2rem' }}><X size={15} /></button> : null}
+      </div>
+      {open ? (
+        <div className="custom-autocomplete-dropdown" role="listbox" style={{ position: 'absolute', top: 'calc(100% - 1.55rem)', left: 0, right: 0, zIndex: 1400, maxHeight: 280, overflowY: 'auto', border: '1px solid #cbd5e1', borderRadius: 12, background: '#fff', boxShadow: '0 14px 32px rgba(15, 23, 42, 0.16)' }}>
+          {visibleOptions.length ? visibleOptions.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              role="option"
+              aria-selected={option.id === value}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                onSelect(option);
+                setOpen(false);
+              }}
+              style={{ width: '100%', border: 0, borderBottom: '1px solid #f1f5f9', background: option.id === value ? '#ecfdf5' : '#fff', padding: '0.7rem 0.8rem', textAlign: 'left', cursor: 'pointer' }}
+            >
+              <strong style={{ display: 'block', color: '#0f172a', fontSize: '0.84rem' }}>{option.label}</strong>
+              {option.detail ? <span style={{ display: 'block', color: '#64748b', fontSize: '0.73rem', marginTop: '0.15rem' }}>{option.detail}</span> : null}
+            </button>
+          )) : <div style={{ padding: '0.85rem', color: '#64748b', fontSize: '0.8rem' }}>{emptyText}</div>}
+          {options.length > visibleOptions.length ? <div style={{ padding: '0.55rem 0.8rem', color: '#64748b', fontSize: '0.72rem', background: '#f8fafc' }}>{options.length - visibleOptions.length} autre(s) résultat(s) — précisez votre recherche.</div> : null}
+        </div>
+      ) : null}
+      <small className="muted" style={{ display: 'block', marginTop: '0.4rem' }}>{helper}</small>
+    </div>
+  );
+}
+
+function CatalogWizard({ step, type, selectedCategories, form, sites, saving, canManage, onChooseType, onToggleCategory, onBack, onContinue, onForm, onSubmit, onClose }: {
+  step: 1 | 2 | 3;
+  type?: MenuCatalogType;
+  selectedCategories: string[];
+  form: MenuPlanPayload;
+  sites: Site[];
+  saving: boolean;
+  canManage: boolean;
+  onChooseType: (type: MenuCatalogType) => void;
+  onToggleCategory: (name: string) => void;
+  onBack: () => void;
+  onContinue: () => void;
+  onForm: (form: MenuPlanPayload) => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  onClose: () => void;
+}) {
+  const labels = ['Type de carte', 'Catégories', 'Informations'];
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1600, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.25rem' }}>
+      <div className="card-modern" style={{ width: 'min(880px, 100%)', maxHeight: '92vh', overflowY: 'auto', padding: '1.75rem', position: 'relative' }}>
+        <button type="button" aria-label="Fermer" onClick={onClose} style={{ position: 'absolute', top: '1rem', right: '1rem', border: 0, background: '#f1f5f9', color: '#475569', borderRadius: 9, padding: '0.45rem', cursor: 'pointer' }}><X size={18} /></button>
+        <div style={{ maxWidth: 650, margin: '0 auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '1.3rem', paddingRight: '2.5rem' }}>
+            {labels.map((label, index) => {
+              const number = index + 1;
+              const active = number === step;
+              const complete = number < step;
+              return <div key={label} style={{ display: 'flex', alignItems: 'center', flex: index === labels.length - 1 ? '0 0 auto' : 1, gap: '0.4rem' }}><span style={{ width: 26, height: 26, borderRadius: 999, display: 'grid', placeItems: 'center', fontSize: '0.75rem', fontWeight: 800, background: active || complete ? '#10b981' : '#e2e8f0', color: active || complete ? '#fff' : '#64748b' }}>{complete ? '✓' : number}</span><span style={{ fontSize: '0.75rem', fontWeight: active ? 800 : 600, color: active ? '#0f172a' : '#64748b' }}>{label}</span>{index < labels.length - 1 ? <span style={{ height: 1, background: complete ? '#6ee7b7' : '#e2e8f0', flex: 1 }} /> : null}</div>;
+            })}
+          </div>
+
+          {step === 1 ? (
+            <div>
+              <div style={{ textAlign: 'center', marginBottom: '1.4rem' }}><h2 style={{ margin: 0 }}>Quelle carte souhaitez-vous créer ?</h2><p className="muted">Ce choix prépare les bonnes catégories sans vous imposer une configuration complexe.</p></div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '1rem' }}>
+                <button type="button" onClick={() => onChooseType('FOOD')} style={{ border: '1px solid #d1fae5', borderRadius: 16, padding: '1.5rem', background: '#f0fdf4', textAlign: 'left', cursor: 'pointer' }}><span style={{ width: 48, height: 48, borderRadius: 14, display: 'grid', placeItems: 'center', background: '#fff', color: '#047857', marginBottom: '0.9rem' }}><Utensils size={25} /></span><strong style={{ display: 'block', fontSize: '1.08rem', color: '#0f172a' }}>Carte nourriture</strong><span style={{ display: 'block', marginTop: '0.35rem', color: '#475569', lineHeight: 1.5 }}>Entrées, plats, desserts, amuse-bouches et mignardises.</span></button>
+                <button type="button" onClick={() => onChooseType('DRINKS')} style={{ border: '1px solid #dbeafe', borderRadius: 16, padding: '1.5rem', background: '#eff6ff', textAlign: 'left', cursor: 'pointer' }}><span style={{ width: 48, height: 48, borderRadius: 14, display: 'grid', placeItems: 'center', background: '#fff', color: '#2563eb', marginBottom: '0.9rem' }}><Wine size={25} /></span><strong style={{ display: 'block', fontSize: '1.08rem', color: '#0f172a' }}>Carte des boissons</strong><span style={{ display: 'block', marginTop: '0.35rem', color: '#475569', lineHeight: 1.5 }}>Vins, eaux, softs, cafés, cocktails et boissons chaudes.</span></button>
+              </div>
+            </div>
+          ) : null}
+
+          {step === 2 && type ? (
+            <div>
+              <div style={{ textAlign: 'center', marginBottom: '1.2rem' }}><h2 style={{ margin: 0 }}>Choisissez vos catégories</h2><p className="muted">Les catégories courantes sont déjà sélectionnées. Décochez simplement celles que vous n’utilisez pas.</p></div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '0.7rem' }}>
+                {catalogCategoryPresets[type].map((category) => {
+                  const checked = selectedCategories.includes(category.name);
+                  return <label key={category.name} style={{ border: `1px solid ${checked ? category.color : '#e2e8f0'}`, borderRadius: 12, padding: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.7rem', cursor: 'pointer', background: checked ? `${category.color}0D` : '#fff' }}><input type="checkbox" checked={checked} onChange={() => onToggleCategory(category.name)} /><span style={{ width: 10, height: 10, borderRadius: 999, background: category.color }} /><strong style={{ color: '#334155', fontSize: '0.86rem' }}>{category.name}</strong></label>;
+                })}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', marginTop: '1.4rem' }}><button type="button" className="btn btn-secondary" onClick={onBack}>Retour</button><button type="button" className="btn btn-primary" disabled={!selectedCategories.length} onClick={onContinue}>Valider les catégories <ArrowRight size={15} /></button></div>
+            </div>
+          ) : null}
+
+          {step === 3 && type ? (
+            <form onSubmit={onSubmit}>
+              <div style={{ textAlign: 'center', marginBottom: '1.2rem' }}><h2 style={{ margin: 0 }}>Dernières informations</h2><p className="muted">Votre espace de carte sera prêt dès la validation.</p></div>
+              <div className="menus-form-grid">
+                <label className="menus-form-span">Nom de la carte
+                  <input value={form.name} onChange={(event) => onForm({ ...form, name: event.target.value })} required placeholder={type === 'FOOD' ? 'Ex. Carte nourriture' : 'Ex. Carte des boissons'} />
+                </label>
+                <label>Site suivi
+                  <select value={form.siteId ?? ''} onChange={(event) => onForm({ ...form, siteId: event.target.value })} required>{sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}</select>
+                </label>
+                <label>Début de validité
+                  <input type="date" value={form.activeFrom ?? ''} onChange={(event) => onForm({ ...form, activeFrom: event.target.value })} />
+                </label>
+                <label className="menus-form-span">Description
+                  <textarea rows={3} value={form.description ?? ''} onChange={(event) => onForm({ ...form, description: event.target.value })} placeholder="Saison, salle, terrasse, emplacement…" />
+                </label>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', marginTop: '1.4rem' }}><button type="button" className="btn btn-secondary" onClick={onBack}>Retour</button><button className="btn btn-primary" disabled={saving || !canManage || !form.name.trim()}>{saving ? 'Création…' : 'Créer la carte'} <CheckCircle2 size={15} /></button></div>
+            </form>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MenuProfileSetup({ saving, onSelect, compact = false, onClose }: { saving: boolean; onSelect: (profile: MenuUsageProfile) => void; compact?: boolean; onClose?: () => void }) {
+  const profiles: Array<{ id: MenuUsageProfile; title: string; description: string; examples: string; icon: React.ReactNode; color: string; background: string }> = [
+    { id: 'RESTAURANT_CAFE', title: 'Restaurant ou café', description: 'Carte permanente ou saisonnière avec disponibilité des produits finis.', examples: 'Café, restaurant, boulangerie', icon: <BookOpen size={25} />, color: '#047857', background: '#ecfdf5' },
+    { id: 'CATERER', title: 'Traiteur', description: 'Événements datés, quantités par prestation et heure de livraison.', examples: 'Cocktail, buffet, mariage', icon: <CalendarDays size={25} />, color: '#7c3aed', background: '#f5f3ff' },
+    { id: 'CENTRAL_KITCHEN', title: 'Cuisine centrale', description: 'Cycles, sites, régimes et groupes de convives.', examples: 'École, santé, collectivité', icon: <Factory size={25} />, color: '#b45309', background: '#fffbeb' },
+    { id: 'CUSTOM', title: 'Organisation hybride', description: 'Combine les parcours restaurant, traiteur et cuisine centrale.', examples: 'Plusieurs activités dans une organisation', icon: <Settings size={25} />, color: '#2563eb', background: '#eff6ff' },
+  ];
+  return (
+    <div style={compact ? { position: 'fixed', inset: 0, zIndex: 1500, background: 'rgba(15,23,42,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' } : { minHeight: '70vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', background: 'linear-gradient(135deg, #f8fafc, #ecfdf5)', borderRadius: '18px' }}>
+      <div className="card-modern" style={{ width: 'min(980px, 100%)', padding: '2rem', position: 'relative' }}>
+        {onClose ? <button type="button" onClick={onClose} style={{ position: 'absolute', right: '1rem', top: '1rem', border: 0, background: '#f1f5f9', borderRadius: 8, padding: '0.4rem', cursor: 'pointer' }}><X size={17} /></button> : null}
+        <div style={{ textAlign: 'center', maxWidth: '680px', margin: '0 auto 1.5rem' }}>
+          <span style={{ color: '#047857', fontWeight: 800, fontSize: '0.75rem', textTransform: 'uppercase' }}>Configuration guidée</span>
+          <h1 style={{ margin: '0.35rem 0', fontSize: '1.7rem', color: '#0f172a' }}>Comment utilisez-vous vos menus ?</h1>
+          <p className="muted" style={{ lineHeight: 1.55 }}>Choisissez le fonctionnement principal. Les outils utiles seront mis en avant et ce choix restera modifiable.</p>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '1rem' }}>
+          {profiles.map((profile) => (
+            <button key={profile.id} type="button" disabled={saving} onClick={() => onSelect(profile.id)} style={{ textAlign: 'left', border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: '1.25rem', cursor: saving ? 'wait' : 'pointer', display: 'flex', gap: '1rem' }}>
+              <span style={{ width: 48, height: 48, flexShrink: 0, borderRadius: 14, background: profile.background, color: profile.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{profile.icon}</span>
+              <span><strong style={{ display: 'block', color: '#0f172a', fontSize: '1rem', marginBottom: '0.3rem' }}>{profile.title}</strong><span style={{ display: 'block', color: '#475569', fontSize: '0.82rem', lineHeight: 1.45 }}>{profile.description}</span><small style={{ display: 'block', color: profile.color, marginTop: '0.5rem', fontWeight: 700 }}>{profile.examples}</small></span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CatalogAvailabilityCard({ item, target, saving, onTarget, onRemove }: { item: MenuAvailabilityReport['items'][number]; target: number; saving: boolean; onTarget: (id: string, target: number) => void; onRemove: (id: string) => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const [targetValue, setTargetValue] = useState(Number(target ?? 0));
+  useEffect(() => setTargetValue(Number(target ?? 0)), [target]);
+  const status = availabilityStatus(item.status);
+  return (
+    <div style={{ border: `1px solid ${status.border}`, borderRadius: 12, background: '#fff', overflow: 'hidden' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 1.4fr) repeat(3, minmax(90px, 0.65fr)) auto', gap: '0.85rem', alignItems: 'center', padding: '0.9rem 1rem' }}>
+        <div>
+          <strong style={{ color: '#0f172a', display: 'block' }}>{item.name}</strong>
+          <small className="muted">{item.sourceType === 'PRODUCT' ? 'Produit Stocks' : 'Fiche technique'}</small>
+          <span style={{ display: 'inline-flex', marginTop: '0.3rem', padding: '0.15rem 0.45rem', borderRadius: 999, background: status.background, color: status.color, fontSize: '0.7rem', fontWeight: 800 }}>{status.label}</span>
+          {item.message ? <small style={{ display: 'block', color: '#b45309', marginTop: '0.35rem' }}>{item.message}</small> : null}
+        </div>
+        <AvailabilityNumber label="Disponible" value={item.availablePortions ?? 0} suffix="port." color="#047857" />
+        <AvailabilityNumber label={item.sourceType === 'PRODUCT' ? 'Réservé en production' : 'En production'} value={item.servingQuantity ? Math.floor(Number(item.inProductionQuantity ?? 0) / item.servingQuantity) : 0} suffix="port." color="#2563eb" />
+        <AvailabilityNumber label={item.sourceType === 'PRODUCT' ? 'À approvisionner' : 'À produire'} value={item.sourceType === 'PRODUCT' ? Math.ceil(Number(item.missingStockQuantity ?? 0) / item.servingQuantity) : item.toProducePortions ?? 0} suffix="port." color={Number(item.sourceType === 'PRODUCT' ? item.missingStockQuantity : item.toProducePortions) > 0 ? '#c2410c' : '#64748b'} />
+        <div style={{ display: 'flex', alignItems: 'end', gap: '0.4rem' }}>
+          <label style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 700 }}>Objectif
+            <input type="number" min="0" step="any" value={targetValue} onChange={(event) => setTargetValue(Number(event.target.value))} style={{ width: 70, padding: '0.35rem', marginTop: '0.2rem' }} />
+          </label>
+          <button className="btn btn-secondary btn-sm" disabled={saving || targetValue === Number(target ?? 0)} onClick={() => onTarget(item.id, targetValue)}>OK</button>
+          <button type="button" title="Retirer de la carte" disabled={saving} onClick={() => onRemove(item.id)} style={{ border: 0, background: '#fef2f2', color: '#dc2626', borderRadius: 7, padding: '0.4rem', cursor: 'pointer' }}><X size={14} /></button>
+        </div>
+      </div>
+      {item.components?.length ? (
+        <div style={{ borderTop: '1px solid #e2e8f0' }}>
+          <button type="button" onClick={() => setExpanded(!expanded)} style={{ width: '100%', border: 0, background: '#f8fafc', color: '#475569', display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 700 }}>{expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />} {item.sourceType === 'PRODUCT' ? 'Détail du stock' : 'Situation des préparations et matières'}</button>
+          {expanded ? <div style={{ padding: '0.65rem 1rem 0.85rem' }}>{item.components.map((component, index) => <AvailabilityComponentRow key={`${component.kind}-${component.technicalSheetId || component.productId}-${index}`} component={component} />)}</div> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function AvailabilityNumber({ label, value, suffix, color }: { label: string; value: number; suffix: string; color: string }) {
+  return <div><span style={{ display: 'block', fontSize: '0.68rem', color: '#64748b', fontWeight: 700 }}>{label}</span><strong style={{ color, fontSize: '1rem' }}>{Number(value).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} <small>{suffix}</small></strong></div>;
+}
+
+function AvailabilityComponentRow({ component, depth = 0 }: { component: MenuAvailabilityComponent; depth?: number }) {
+  const [expanded, setExpanded] = useState(true);
+  const hasChildren = Boolean(component.children?.length);
+  return (
+    <div style={{ marginLeft: depth ? '0.8rem' : 0, borderLeft: depth ? '2px solid #dbeafe' : undefined, paddingLeft: depth ? '0.65rem' : 0 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', padding: '0.4rem 0', fontSize: '0.76rem' }}>
+        <button type="button" onClick={() => hasChildren && setExpanded(!expanded)} style={{ border: 0, background: 'transparent', padding: 0, color: '#334155', cursor: hasChildren ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: '0.3rem', textAlign: 'left' }}>{hasChildren ? expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} /> : <span style={{ width: 13 }} />}<strong>{component.kind === 'SUB_RECIPE' ? 'Préparation · ' : ''}{component.name}</strong></button>
+        <span style={{ color: component.missingQuantity > 0 ? '#c2410c' : '#047857', whiteSpace: 'nowrap' }}>{component.missingQuantity > 0 ? `Manque ${Number(component.missingQuantity).toLocaleString('fr-FR', { maximumFractionDigits: 3 })}` : 'Disponible'} {component.unit}</span>
+      </div>
+      {component.reason ? <div style={{ color: '#b91c1c', fontSize: '0.7rem', marginLeft: '1rem' }}>{component.reason}</div> : null}
+      {expanded ? component.children?.map((child, index) => <AvailabilityComponentRow key={`${child.kind}-${child.technicalSheetId || child.productId}-${index}`} component={child} depth={depth + 1} />) : null}
+    </div>
+  );
+}
+
+function availabilityStatus(status: string) {
+  if (status === 'READY') return { label: 'Disponible', color: '#047857', background: '#ecfdf5', border: '#a7f3d0' };
+  if (status === 'LOW_STOCK') return { label: 'Production en cours', color: '#1d4ed8', background: '#eff6ff', border: '#bfdbfe' };
+  if (status === 'TO_PRODUCE') return { label: 'À produire', color: '#c2410c', background: '#fff7ed', border: '#fed7aa' };
+  if (status === 'COMPONENT_MISSING') return { label: 'Préparation à refaire', color: '#a16207', background: '#fefce8', border: '#fde68a' };
+  if (status === 'NOT_CONFIGURED') return { label: 'À configurer', color: '#7c3aed', background: '#f5f3ff', border: '#ddd6fe' };
+  return { label: 'Matière manquante', color: '#b91c1c', background: '#fef2f2', border: '#fecaca' };
+}
+
 function CompositionBuilder({ recipes, onAdd }: { recipes: TechnicalSheetRecipe[]; onAdd: (item: MenuItemPayload) => void }) {
   const [section, setSection] = useState<MenuSection>('MAIN');
   const [technicalSheetId, setTechnicalSheetId] = useState('');
@@ -996,5 +1674,5 @@ function allergenLabel(allergens?: MenuPlan['allergens']) { return allergens?.ma
 function money(value?: number | string | null) { const n = Number(value ?? 0); return Number.isFinite(n) ? n.toFixed(2) : '0.00'; }
 function averageCost(menus: MenuPlan[]) { const values = menus.map((m) => Number(m.costPerGuest ?? m.estimatedCostPerGuest ?? 0)).filter((n) => Number.isFinite(n) && n > 0); return values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0; }
 function dateFr(value?: string | null) { return value ? new Date(value).toLocaleDateString('fr-FR') : '—'; }
-function buildAlerts(menus: MenuPlan[]) { const alerts = []; if (menus.some((m) => (m.items?.length ?? 0) === 0)) alerts.push({ message: 'Menus incomplets : certaines compositions sont vides.', severity: 'warning' }); if (menus.some((m) => !(m.expectedGuests ?? m.guestCount))) alerts.push({ message: 'Menus sans estimation de convives.', severity: 'warning' }); if (menus.some((m) => ['VALIDATED', 'PUBLISHED'].includes(m.status) && !m.productionGeneratedAt)) alerts.push({ message: 'Menus validés ou publiés non générés en Production.', severity: 'warning' }); if (alerts.length === 0) alerts.push({ message: 'Aucune alerte bloquante détectée.', severity: 'success' }); return alerts; }
-function groupMenusForCalendar(menus: MenuPlan[], view: MenuCalendarView) { const size = view === 'day' ? 1 : view === 'week' ? 7 : view === 'month' ? 31 : 12; return Array.from({ length: Math.min(size, 12) }, (_, index) => { const date = new Date(); date.setDate(date.getDate() + index); const label = view === 'year' ? date.toLocaleDateString('fr-FR', { month: 'long' }) : date.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' }); return { label, items: menus.filter((m) => view === 'year' ? new Date(m.date).getMonth() === date.getMonth() : new Date(m.date).toDateString() === date.toDateString()) }; }); }
+function buildAlerts(menus: MenuPlan[]) { const planned = menus.filter((menu) => menu.kind !== 'CATALOG'); const alerts = []; if (menus.some((m) => (m.items?.length ?? 0) === 0)) alerts.push({ message: 'Certaines cartes ou menus sont encore vides.', severity: 'warning' }); if (planned.some((m) => !(m.expectedGuests ?? m.guestCount))) alerts.push({ message: 'Menus sans estimation de convives.', severity: 'warning' }); if (planned.some((m) => ['VALIDATED', 'PUBLISHED'].includes(m.status) && !m.productionGeneratedAt)) alerts.push({ message: 'Menus validés ou publiés non générés en Production.', severity: 'warning' }); if (alerts.length === 0) alerts.push({ message: 'Aucune alerte bloquante détectée.', severity: 'success' }); return alerts; }
+function groupMenusForCalendar(menus: MenuPlan[], view: MenuCalendarView) { const datedMenus = menus.filter((menu) => menu.date); const size = view === 'day' ? 1 : view === 'week' ? 7 : view === 'month' ? 31 : 12; return Array.from({ length: Math.min(size, 12) }, (_, index) => { const date = new Date(); date.setDate(date.getDate() + index); const label = view === 'year' ? date.toLocaleDateString('fr-FR', { month: 'long' }) : date.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' }); return { label, items: datedMenus.filter((m) => view === 'year' ? new Date(m.date!).getMonth() === date.getMonth() : new Date(m.date!).toDateString() === date.toDateString()) }; }); }

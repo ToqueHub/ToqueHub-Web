@@ -8,6 +8,7 @@ import {
   AuditAction,
   InventoryStatus,
   Prisma,
+  ProductKind,
   PurchasingDeliveryMode,
   StockMovementType,
   TechnicalSheetHistoryAction,
@@ -31,10 +32,24 @@ import {
 
 const WRITE_ROLES = ['SUPER_ADMIN', 'Administrateur', 'Manager', 'Chef', 'Second', 'Magasinier'];
 const ADMIN_MANAGER_ROLES = ['SUPER_ADMIN', 'Administrateur', 'Manager', 'Chef'];
-const NEGATIVE_TYPES = new Set<StockMovementType>([StockMovementType.OUT, StockMovementType.LOSS]);
+const STOCK_CATALOG_PRODUCT_KINDS = [
+  ProductKind.UNSPECIFIED,
+  ProductKind.RAW_MATERIAL,
+  ProductKind.PACKAGED,
+];
+const NEGATIVE_TYPES = new Set<StockMovementType>([
+  StockMovementType.OUT,
+  StockMovementType.CONSUMPTION,
+  StockMovementType.LOSS,
+  StockMovementType.BREAKAGE,
+  StockMovementType.TASTING,
+  StockMovementType.EXPIRATION,
+  StockMovementType.DESTRUCTION,
+  StockMovementType.SALE,
+]);
 const CONSUMPTION_TYPES = [
   StockMovementType.OUT,
-  StockMovementType.PRODUCTION,
+  StockMovementType.CONSUMPTION,
   StockMovementType.LOSS,
   StockMovementType.CORRECTION,
   StockMovementType.INVENTORY,
@@ -468,6 +483,7 @@ export class StocksService {
     return this.prisma.product.findMany({
       where: {
         organizationId,
+        kind: { in: STOCK_CATALOG_PRODUCT_KINDS },
         ...(q.includeArchived ? {} : { isArchived: false }),
         OR: q.search
           ? [
@@ -489,6 +505,7 @@ export class StocksService {
   async listArticles(organizationId: string, q: ListArticlesQueryDto = {}) {
     const where: Prisma.ProductWhereInput = {
       organizationId,
+      kind: { in: STOCK_CATALOG_PRODUCT_KINDS },
       ...(q.includeArchived ? {} : { isArchived: false }),
       categoryId: q.categoryId,
       primarySupplierId: q.supplierId,
@@ -739,6 +756,7 @@ export class StocksService {
     return this.prisma.lot.findMany({
       where: {
         organizationId,
+        product: { kind: { in: STOCK_CATALOG_PRODUCT_KINDS } },
         OR: q.search
           ? [
               { lotNumber: { contains: q.search, mode: 'insensitive' } },
@@ -784,6 +802,7 @@ export class StocksService {
     const stocks = await this.prisma.stock.findMany({
       where: {
         organizationId,
+        product: { kind: { in: STOCK_CATALOG_PRODUCT_KINDS } },
         OR: q.search
           ? [
               { product: { name: { contains: q.search, mode: 'insensitive' } } },
@@ -814,6 +833,7 @@ export class StocksService {
     return this.prisma.stockMovement.findMany({
       where: {
         organizationId,
+        product: { kind: { in: STOCK_CATALOG_PRODUCT_KINDS } },
         OR: q.search
           ? [
               { product: { name: { contains: q.search, mode: 'insensitive' } } },
@@ -1005,16 +1025,16 @@ export class StocksService {
     monthStart.setHours(0, 0, 0, 0);
     const [productCount, supplierCount, stockRows, movementsThisMonth, latestMovements, consumed] =
       await Promise.all([
-      this.prisma.product.count({ where: { organizationId, isArchived: false } }),
+      this.prisma.product.count({ where: { organizationId, isArchived: false, kind: { in: STOCK_CATALOG_PRODUCT_KINDS } } }),
       this.prisma.supplier.count({ where: { organizationId, isArchived: false } }),
-      this.prisma.stock.findMany({ where: { organizationId }, include: { product: true } }),
+      this.prisma.stock.findMany({ where: { organizationId, product: { kind: { in: STOCK_CATALOG_PRODUCT_KINDS } } }, include: { product: true } }),
         this.prisma.stockMovement.count({
-          where: { organizationId, createdAt: { gte: monthStart } },
+          where: { organizationId, product: { kind: { in: STOCK_CATALOG_PRODUCT_KINDS } }, createdAt: { gte: monthStart } },
         }),
       this.listMovements(organizationId, { pageSize: 10 }),
         this.prisma.stockMovement.groupBy({
           by: ['productId'],
-          where: { organizationId, type: { in: CONSUMPTION_TYPES }, quantity: { lt: 0 } },
+          where: { organizationId, product: { kind: { in: STOCK_CATALOG_PRODUCT_KINDS } }, type: { in: CONSUMPTION_TYPES }, quantity: { lt: 0 } },
           _sum: { quantity: true },
           orderBy: { _sum: { quantity: 'asc' } },
           take: 10,
@@ -1055,7 +1075,7 @@ export class StocksService {
         },
     });
       const products = await tx.product.findMany({
-        where: { organizationId, isArchived: false },
+        where: { organizationId, isArchived: false, kind: { in: STOCK_CATALOG_PRODUCT_KINDS } },
         include: {
           stocks: { where: { organizationId, siteId: dto.siteId, locationId: dto.locationId } },
         },
@@ -1098,6 +1118,7 @@ export class StocksService {
       },
       include: {
         lines: {
+          where: { product: { kind: { in: STOCK_CATALOG_PRODUCT_KINDS } } },
           include: { product: { include: { unit: true, category: true, primarySupplier: true } } },
         },
         site: true,
@@ -1476,10 +1497,15 @@ export class StocksService {
   }
   private async ensureProduct(organizationId: string, id: string, activeOnly: boolean) {
     const item = await this.prisma.product.findFirst({
-      where: { id, organizationId, ...(activeOnly ? { isArchived: false } : {}) },
+      where: {
+        id,
+        organizationId,
+        kind: { in: STOCK_CATALOG_PRODUCT_KINDS },
+        ...(activeOnly ? { isArchived: false } : {}),
+      },
       include: { unit: true },
     });
-    if (!item) throw new NotFoundException('Product not found');
+    if (!item) throw new NotFoundException('Produit Stocks introuvable');
     return item;
   }
 }

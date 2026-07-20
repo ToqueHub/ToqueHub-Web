@@ -30,6 +30,15 @@ const BASE_PERMISSIONS = [
   { key: 'technical-sheets.write', description: 'Modifier les fiches techniques' },
   { key: 'production.read', description: 'Consulter la production' },
   { key: 'production.write', description: 'Modifier la production' },
+  { key: 'production.need.create', description: 'Créer un besoin de production' },
+  { key: 'production.menu.generate', description: 'Générer la production depuis un menu' },
+  { key: 'production.campaign.validate', description: 'Valider une campagne de production' },
+  { key: 'production.batch.execute', description: 'Exécuter un lot de production' },
+  { key: 'production.loss.declare', description: 'Déclarer une perte de production' },
+  { key: 'production.stock.adjust', description: 'Corriger un stock de production' },
+  { key: 'production.profile.manage', description: 'Modifier les profils de production' },
+  { key: 'production.override', description: 'Forcer une production avec justification' },
+  { key: 'production.traceability.read', description: 'Consulter la traçabilité de production' },
   { key: 'menus.read', description: 'Consulter les menus' },
   { key: 'menus.write', description: 'Modifier les menus' },
   { key: 'haccp.read', description: 'Consulter le module HACCP' },
@@ -46,8 +55,8 @@ const BASE_PERMISSIONS = [
 
 const DEFAULT_ROLE_PERMISSIONS: Record<CoreRoleName, string[]> = {
   [CoreRoleName.ADMIN]: BASE_PERMISSIONS.map((permission) => permission.key),
-  [CoreRoleName.MANAGER]: ['catalog.read', 'catalog.write', 'stocks.read', 'stocks.write', 'stocks.audit.read', 'hr.read', 'hr.write', 'planning.read', 'planning.write', 'rnm-prices.read', 'technical-sheets.read', 'technical-sheets.write', 'production.read', 'production.write', 'menus.read', 'menus.write', 'haccp.read', 'haccp.write', 'haccp.validate', 'haccp.export', 'purchasing.read', 'purchasing.draft', 'purchasing.write', 'purchasing.send', 'purchasing.receive', 'purchasing.manage'],
-  [CoreRoleName.USER]: ['catalog.read', 'stocks.read', 'hr.read', 'planning.read', 'rnm-prices.read', 'technical-sheets.read', 'production.read', 'menus.read', 'haccp.read', 'purchasing.read', 'purchasing.draft'],
+  [CoreRoleName.MANAGER]: ['catalog.read', 'catalog.write', 'stocks.read', 'stocks.write', 'stocks.audit.read', 'hr.read', 'hr.write', 'planning.read', 'planning.write', 'rnm-prices.read', 'technical-sheets.read', 'technical-sheets.write', 'production.read', 'production.write', 'production.need.create', 'production.menu.generate', 'production.campaign.validate', 'production.batch.execute', 'production.loss.declare', 'production.stock.adjust', 'production.profile.manage', 'production.override', 'production.traceability.read', 'menus.read', 'menus.write', 'haccp.read', 'haccp.write', 'haccp.validate', 'haccp.export', 'purchasing.read', 'purchasing.draft', 'purchasing.write', 'purchasing.send', 'purchasing.receive', 'purchasing.manage'],
+  [CoreRoleName.USER]: ['catalog.read', 'stocks.read', 'hr.read', 'planning.read', 'rnm-prices.read', 'technical-sheets.read', 'production.read', 'production.batch.execute', 'production.loss.declare', 'production.traceability.read', 'menus.read', 'haccp.read', 'purchasing.read', 'purchasing.draft'],
 };
 
 type UserWithRole = Prisma.UserGetPayload<{ include: { role: { include: { permissions: { include: { permission: true } } } } } }>;
