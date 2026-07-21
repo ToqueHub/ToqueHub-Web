@@ -112,12 +112,19 @@ import type {
   ProductionSuggestion,
   CreateProductionCampaignPayload,
   ConservationState,
+  OperationalTask,
+  OperationalTaskAssignee,
+  OperationalTaskPayload,
+  OperationalTaskQuery,
+  OperationalTaskStatus,
+  OperationalTaskOptions,
   MenuCalendarView,
   MenuAvailabilityReport,
   MenuCategory,
   MenuCycle,
   MenuCyclePayload,
   MenuDiet,
+  MenuDisplayTemplate,
   MenuExport,
   MenuExportPayload,
   MenuGuestGroup,
@@ -1217,23 +1224,86 @@ export const api = {
   menuExports(token: string) {
     return request<MenuExport[]>('/menus/exports', {}, token);
   },
+  menuDisplayTemplates(token: string) {
+    return request<MenuDisplayTemplate[]>('/menus/display-templates', {}, token);
+  },
+  async uploadMenuDisplayTemplate(token: string, file: File, name?: string) {
+    const form = new FormData();
+    form.append('file', file);
+    if (name?.trim()) form.append('name', name.trim());
+    const response = await fetch(`${API_URL}/api/menus/display-templates`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+    if (!response.ok) {
+      let message = 'Import du modèle impossible.';
+      try {
+        const body = await response.json();
+        if (body?.message) message = Array.isArray(body.message) ? body.message.join(', ') : body.message;
+      } catch {
+        // Keep fallback.
+      }
+      throw new ApiError(message, response.status);
+    }
+    return response.json() as Promise<MenuDisplayTemplate>;
+  },
+  setDefaultMenuDisplayTemplate(token: string, id: string) {
+    return request<{ id: string; isDefault: boolean }>(
+      `/menus/display-templates/${id}/default`,
+      { method: 'PATCH' },
+      token,
+    );
+  },
+  archiveMenuDisplayTemplate(token: string, id: string) {
+    return request<{ archived: boolean }>(
+      `/menus/display-templates/${id}`,
+      { method: 'DELETE' },
+      token,
+    );
+  },
+  async menuDisplayTemplateSource(token: string, id: string) {
+    const response = await fetch(`${API_URL}/api/menus/display-templates/${id}/source`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new ApiError('Aperçu du modèle indisponible.', response.status);
+    return URL.createObjectURL(await response.blob());
+  },
   prepareMenuExport(token: string, payload: MenuExportPayload) {
-    const format = payload.format === 'XLSX' || payload.kind === 'EXCEL' ? 'EXCEL' : payload.format;
-    const audience = payload.kind === 'EXCEL' ? 'PUBLIC_DISPLAY' : payload.kind;
     return request<MenuExport>(
       '/menus/exports',
       {
         method: 'POST',
         body: JSON.stringify({
           menuId: payload.menuId,
-          format,
-          audience,
+          format: payload.format,
+          audience: payload.kind,
+          templateId: payload.templateId,
           startDate: payload.fromDate,
           endDate: payload.toDate,
         }),
       },
       token,
     );
+  },
+  async downloadMenuExport(token: string, item: Pick<MenuExport, 'id' | 'filename'>) {
+    const response = await fetch(`${API_URL}/api/menus/exports/${item.id}/download`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      let message = 'Téléchargement de l’export impossible.';
+      try {
+        const body = await response.json();
+        if (body?.message) message = Array.isArray(body.message) ? body.message.join(', ') : body.message;
+      } catch {
+        // Keep fallback.
+      }
+      throw new ApiError(message, response.status);
+    }
+    return {
+      blob: await response.blob(),
+      filename: filenameFromContentDisposition(response.headers.get('Content-Disposition'), item.filename || 'menu.pdf'),
+    };
   },
   menuHistory(token: string, params: { menuId?: string; cycleId?: string } = {}) {
     const qs = new URLSearchParams();
@@ -1255,6 +1325,74 @@ export const api = {
   },
   productionDashboard(token: string) {
     return request<ProductionDashboard>('/production/dashboard', {}, token);
+  },
+  productionTasks(token: string, params: OperationalTaskQuery) {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') qs.set(key, String(value));
+    });
+    return request<OperationalTask[]>(`/production/tasks?${qs.toString()}`, {}, token);
+  },
+  productionTaskContext(token: string) {
+    return request<{
+      departments: HrDepartment[];
+      ownEmployeeId: string | null;
+      managesPeople: boolean;
+      canCreateUnassigned: boolean;
+    }>('/production/tasks/context', {}, token);
+  },
+  productionTaskOptions(token: string, departmentId?: string) {
+    const qs = departmentId ? `?departmentId=${encodeURIComponent(departmentId)}` : '';
+    return request<OperationalTaskOptions>(`/production/tasks/options${qs}`, {}, token);
+  },
+  productionTaskAssignees(
+    token: string,
+    params: { departmentId: string; startsAt: string; endsAt: string; taskId?: string },
+  ) {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value) qs.set(key, value);
+    });
+    return request<OperationalTaskAssignee[]>(
+      `/production/tasks/assignees?${qs.toString()}`,
+      {},
+      token,
+    );
+  },
+  createProductionTask(token: string, payload: OperationalTaskPayload) {
+    return request<OperationalTask>(
+      '/production/tasks',
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
+  },
+  generateProductionTasksFromMenu(
+    token: string,
+    payload: { menuId: string; departmentId: string; date: string; serviceTime: string; siteId?: string },
+  ) {
+    return request<{
+      menu: { id: string; name: string };
+      created: OperationalTask[];
+      skipped: Array<{ technicalSheetId: string; name: string; reason: string }>;
+    }>(
+      '/production/tasks/from-menu',
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
+  },
+  updateProductionTask(token: string, id: string, payload: Partial<OperationalTaskPayload>) {
+    return request<OperationalTask>(
+      `/production/tasks/${id}`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      token,
+    );
+  },
+  updateProductionTaskStatus(token: string, id: string, status: OperationalTaskStatus) {
+    return request<OperationalTask>(
+      `/production/tasks/${id}/status`,
+      { method: 'PATCH', body: JSON.stringify({ status }) },
+      token,
+    );
   },
   productionNeeds(
     token: string,

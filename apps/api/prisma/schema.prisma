@@ -159,6 +159,30 @@ enum ProductionOperationStatus {
   CANCELLED
 }
 
+enum OperationalTaskStatus {
+  TODO
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum OperationalTaskCategory {
+  KITCHEN
+  SERVICE
+  HOUSEKEEPING
+  RECEPTION
+  MAINTENANCE
+  LOGISTICS
+  MANAGEMENT
+  OTHER
+}
+
+enum OperationalTaskSource {
+  MANUAL
+  MENU
+  TECHNICAL_SHEET
+}
+
 enum ProductionConsumptionKind {
   PLANNED
   ACTUAL
@@ -1035,6 +1059,7 @@ model Organization {
   productionDestockingProposals   ProductionDestockingProposal[]
   productionDestockingLines       ProductionDestockingLine[]
   productionDestockingMovements   ProductionDestockingMovement[]
+  operationalTasks                OperationalTask[]
   menuSettings                    MenuSettings?
   menuCategories                  MenuCategory[]
   menuDiets                       MenuDiet[]
@@ -1045,6 +1070,7 @@ model Organization {
   menuGuestForecasts              MenuGuestForecast[]
   menuCycles                      MenuCycle[]
   menuCycleItems                  MenuCycleItem[]
+  menuDisplayTemplates            MenuDisplayTemplate[]
   menuExports                     MenuExport[]
   menuHistory                     MenuHistory[]
   menuProductionLinks             MenuProductionLink[]
@@ -1280,6 +1306,7 @@ model User {
   completedProductionOrders          ProductionOrder[]              @relation("ProductionOrderCompletedBy")
   productionAlertOverrides           ProductionAlertOverride[]      @relation("ProductionAlertOverrideConfirmedBy")
   actorProductionHistory             ProductionHistory[]            @relation("ProductionHistoryActor")
+  createdOperationalTasks            OperationalTask[]              @relation("OperationalTaskCreatedBy")
   productionExports                  ProductionExport[]             @relation("ProductionExportRequestedBy")
   createdMenus                       Menu[]                         @relation("MenuCreatedBy")
   updatedMenus                       Menu[]                         @relation("MenuUpdatedBy")
@@ -1689,6 +1716,7 @@ model Site {
   productionNeeds              ProductionNeed[]
   productionOrders             ProductionOrder[]
   stockReservations            StockReservation[]
+  operationalTasks             OperationalTask[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -2559,6 +2587,7 @@ model HrDepartment {
   planningNeeds       PlanningOperationalNeed[]
   planningTemplates   PlanningTemplate[]
   planningExports     PlanningExport[]
+  operationalTasks    OperationalTask[]
   productionOrders    ProductionOrder[]
   productionNeeds     ProductionNeed[]
 
@@ -2576,6 +2605,7 @@ model HrPosition {
   archivedAt     DateTime?
   organizationId String    @db.Uuid
   departmentId   String?   @db.Uuid
+  taskPresets    Json?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -2586,6 +2616,7 @@ model HrPosition {
   requiredSkills      HrPositionSkill[]
   planningAssignments PlanningAssignment[]
   planningNeeds       PlanningOperationalNeed[]
+  operationalTasks    OperationalTask[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -2670,6 +2701,7 @@ model HrEmployee {
   assignedProductionOrders      ProductionOrder[]              @relation("ProductionOrderResponsible")
   productionAssignments         ProductionAssignment[]
   productionOperations          ProductionOperation[]
+  operationalTasks              OperationalTask[]
 
   @@unique([organizationId, email])
   @@unique([organizationId, employeeNumber])
@@ -3044,6 +3076,7 @@ model PlanningAssignment {
   conflicts             PlanningConflict[]
   productionAssignments ProductionAssignment[]
   attendanceEntries     PlanningAttendanceEntry[]
+  operationalTasks      OperationalTask[]
 
   @@index([organizationId])
   @@index([employeeId])
@@ -4141,6 +4174,7 @@ model TechnicalSheet {
   versions                TechnicalSheetVersion[]
   productionProfiles      ProductionProfile[]
   productionOrders        ProductionOrder[]
+  operationalTasks        OperationalTask[]
   menuItems               MenuItem[]
   menuVariantReplacements MenuVariantReplacement[]
   menuCycleItems          MenuCycleItem[]
@@ -4208,8 +4242,9 @@ model TechnicalSheetStep {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  technicalSheet TechnicalSheet @relation(fields: [technicalSheetId], references: [id], onDelete: Cascade)
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  technicalSheet   TechnicalSheet    @relation(fields: [technicalSheetId], references: [id], onDelete: Cascade)
+  operationalTasks OperationalTask[]
 
   @@unique([technicalSheetId, order])
   @@index([organizationId])
@@ -4876,6 +4911,58 @@ model ProductionAssignment {
   @@map("production_assignments")
 }
 
+model OperationalTask {
+  id                   String                  @id @default(uuid()) @db.Uuid
+  organizationId       String                  @db.Uuid
+  title                String
+  description          String?                 @db.Text
+  category             OperationalTaskCategory @default(OTHER)
+  status               OperationalTaskStatus   @default(TODO)
+  source               OperationalTaskSource   @default(MANUAL)
+  departmentId         String                  @db.Uuid
+  positionId           String?                 @db.Uuid
+  siteId               String?                 @db.Uuid
+  assignedEmployeeId   String?                 @db.Uuid
+  planningAssignmentId String?                 @db.Uuid
+  menuId               String?                 @db.Uuid
+  technicalSheetId     String?                 @db.Uuid
+  technicalSheetStepId String?                 @db.Uuid
+  positionTaskPresetId String?
+  startsAt             DateTime
+  endsAt               DateTime
+  quantity             Decimal?                @db.Decimal(12, 3)
+  unitLabel            String?
+  completedAt          DateTime?
+  createdById          String?                 @db.Uuid
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  department         HrDepartment        @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  position           HrPosition?         @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  site               Site?               @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  assignedEmployee   HrEmployee?         @relation(fields: [assignedEmployeeId], references: [id], onDelete: SetNull)
+  planningAssignment PlanningAssignment? @relation(fields: [planningAssignmentId], references: [id], onDelete: SetNull)
+  menu               Menu?               @relation(fields: [menuId], references: [id], onDelete: SetNull)
+  technicalSheet     TechnicalSheet?     @relation(fields: [technicalSheetId], references: [id], onDelete: SetNull)
+  technicalSheetStep TechnicalSheetStep? @relation(fields: [technicalSheetStepId], references: [id], onDelete: SetNull)
+  createdBy          User?               @relation("OperationalTaskCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([departmentId])
+  @@index([positionId])
+  @@index([siteId])
+  @@index([assignedEmployeeId])
+  @@index([planningAssignmentId])
+  @@index([menuId])
+  @@index([technicalSheetId])
+  @@index([technicalSheetStepId])
+  @@index([startsAt])
+  @@index([endsAt])
+  @@index([status])
+  @@map("operational_tasks")
+}
+
 model ProductionAlert {
   id             String                  @id @default(uuid()) @db.Uuid
   organizationId String                  @db.Uuid
@@ -5170,6 +5257,7 @@ model Menu {
   history           MenuHistory[]
   productionLinks   MenuProductionLink[]
   stockReservations StockReservation[]
+  operationalTasks  OperationalTask[]
 
   @@index([organizationId])
   @@index([date])
@@ -5375,6 +5463,7 @@ model MenuExport {
   organizationId String             @db.Uuid
   menuId         String?            @db.Uuid
   requestedById  String?            @db.Uuid
+  templateId     String?            @db.Uuid
   format         MenuExportFormat
   audience       MenuExportAudience
   filename       String
@@ -5383,16 +5472,46 @@ model MenuExport {
   fileUrl        String?
   createdAt      DateTime           @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  menu         Menu?        @relation(fields: [menuId], references: [id], onDelete: SetNull)
-  requestedBy  User?        @relation("MenuExportRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  menu         Menu?                @relation(fields: [menuId], references: [id], onDelete: SetNull)
+  requestedBy  User?                @relation("MenuExportRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  template     MenuDisplayTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([menuId])
   @@index([requestedById])
+  @@index([templateId])
   @@index([format])
   @@index([audience])
   @@map("menu_exports")
+}
+
+model MenuDisplayTemplate {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  createdById    String?   @db.Uuid
+  name           String
+  originalName   String
+  mimeType       String
+  sizeBytes      Int
+  storagePath    String    @db.Text
+  pageCount      Int?
+  ocrText        String?   @db.Text
+  layout         Json
+  status         String    @default("READY")
+  isDefault      Boolean   @default(false)
+  isArchived     Boolean   @default(false)
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  exports      MenuExport[]
+
+  @@index([organizationId])
+  @@index([isArchived])
+  @@index([isDefault])
+  @@map("menu_display_templates")
 }
 
 model MenuHistory {

@@ -9,6 +9,8 @@ import { CompleteProductionBatchDto, CreateProductionCampaignDto, ProductionStoc
 import { ProductionExecutionService } from './production-execution.service';
 import { ProductionPlanningService } from './production-planning.service';
 import { ProductionService } from './production.service';
+import { OperationalTasksService } from './operational-tasks.service';
+import { GenerateOperationalTasksFromMenuDto, OperationalTaskAssigneeQueryDto, OperationalTaskOptionsQueryDto, OperationalTaskQueryDto, UpdateOperationalTaskDto, UpdateOperationalTaskStatusDto, UpsertOperationalTaskDto } from './dto/operational-task.dto';
 
 @ApiTags('production')
 @ApiBearerAuth()
@@ -19,13 +21,23 @@ export class ProductionController {
     private readonly service: ProductionService,
     private readonly planning: ProductionPlanningService,
     private readonly execution: ProductionExecutionService,
+    private readonly operationalTasks: OperationalTasksService,
   ) {}
   private org(user: AuthenticatedUser) { if (!user.organizationId) throw new BadRequestException('Organization setup is required'); return user.organizationId; }
-  private actor(user: AuthenticatedUser) { return { id: user.id, role: user.role, permissions: user.permissions }; }
+  private actor(user: AuthenticatedUser) { return { id: user.id, role: user.role, permissions: user.permissions, employeeId: user.employeeId }; }
 
   @Post('install') install(@CurrentUser() user: AuthenticatedUser) { return this.service.install(this.org(user), this.actor(user)); }
   @Post('uninstall') uninstall(@CurrentUser() user: AuthenticatedUser) { return this.service.uninstall(this.org(user), this.actor(user)); }
   @Get('dashboard') dashboard(@CurrentUser() user: AuthenticatedUser) { return this.service.dashboard(this.org(user)); }
+
+  @Get('tasks') tasks(@CurrentUser() user: AuthenticatedUser, @Query() query: OperationalTaskQueryDto) { return this.operationalTasks.list(this.org(user), this.actor(user), query); }
+  @Get('tasks/context') taskContext(@CurrentUser() user: AuthenticatedUser) { return this.operationalTasks.context(this.org(user), this.actor(user)); }
+  @Get('tasks/options') taskOptions(@CurrentUser() user: AuthenticatedUser, @Query() query: OperationalTaskOptionsQueryDto) { return this.operationalTasks.options(this.org(user), this.actor(user), query); }
+  @Get('tasks/assignees') taskAssignees(@CurrentUser() user: AuthenticatedUser, @Query() query: OperationalTaskAssigneeQueryDto) { return this.operationalTasks.assignees(this.org(user), this.actor(user), query); }
+  @Post('tasks/from-menu') tasksFromMenu(@CurrentUser() user: AuthenticatedUser, @Body() dto: GenerateOperationalTasksFromMenuDto) { return this.operationalTasks.generateFromMenu(this.org(user), this.actor(user), dto); }
+  @Post('tasks') createTask(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertOperationalTaskDto) { return this.operationalTasks.create(this.org(user), this.actor(user), dto); }
+  @Patch('tasks/:id') updateTask(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpdateOperationalTaskDto) { return this.operationalTasks.update(this.org(user), this.actor(user), id, dto); }
+  @Patch('tasks/:id/status') updateTaskStatus(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpdateOperationalTaskStatusDto) { return this.operationalTasks.updateStatus(this.org(user), this.actor(user), id, dto); }
 
   @Get('orders') listOrders(@CurrentUser() user: AuthenticatedUser, @Query() q: ProductionQueryDto) { return this.service.listOrders(this.org(user), q); }
   @Post('orders') createOrder(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateProductionOrderDto) { return this.service.createOrder(this.org(user), this.actor(user), dto); }

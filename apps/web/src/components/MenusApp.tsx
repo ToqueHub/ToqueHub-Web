@@ -22,6 +22,7 @@ import {
   Search,
   Settings,
   Sparkles,
+  Upload,
   Utensils,
   UsersRound,
   Wine,
@@ -39,6 +40,7 @@ import type {
   MenuCycle,
   MenuCyclePayload,
   MenuDiet,
+  MenuDisplayTemplate,
   MenuExport,
   MenuExportPayload,
   MenuGuestGroup,
@@ -171,6 +173,7 @@ export function MenusApp({ token, session, tab, sites, canManage, onNavigate, on
   const [cycles, setCycles] = useState<MenuCycle[]>([]);
   const [diets, setDiets] = useState<MenuDiet[]>([]);
   const [guestGroups, setGuestGroups] = useState<MenuGuestGroup[]>([]);
+  const [displayTemplates, setDisplayTemplates] = useState<MenuDisplayTemplate[]>([]);
   const [exportsList, setExportsList] = useState<MenuExport[]>([]);
   const [history, setHistory] = useState<MenuHistoryEntry[]>([]);
   const [recipes, setRecipes] = useState<TechnicalSheetRecipe[]>([]);
@@ -194,6 +197,9 @@ export function MenusApp({ token, session, tab, sites, canManage, onNavigate, on
   const [generationMode, setGenerationMode] = useState<'DETAILED' | 'GROUPED'>('DETAILED');
   const [generationResult, setGenerationResult] = useState<MenuProductionGenerationResult>();
   const [exportKind, setExportKind] = useState<MenuExportPayload['kind']>('PUBLIC_DISPLAY');
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [templateName, setTemplateName] = useState('');
+  const [templateFile, setTemplateFile] = useState<File>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
@@ -252,7 +258,7 @@ export function MenusApp({ token, session, tab, sites, canManage, onNavigate, on
     setLoading(true);
     setError(undefined);
     try {
-      const [dashboardResult, settingsResult, categoriesResult, menusResult, cyclesResult, dietsResult, groupsResult, exportsResult, historyResult, recipesResult, productsResult] = await Promise.all([
+      const [dashboardResult, settingsResult, categoriesResult, menusResult, cyclesResult, dietsResult, groupsResult, exportsResult, templatesResult, historyResult, recipesResult, productsResult] = await Promise.all([
         api.menusDashboard(token).catch(() => undefined),
         api.menuSettings(token).catch(() => undefined),
         api.menuCategories(token).catch(() => []),
@@ -261,6 +267,7 @@ export function MenusApp({ token, session, tab, sites, canManage, onNavigate, on
         api.menuDiets(token).catch(() => []),
         api.menuGuestGroups(token).catch(() => []),
         api.menuExports(token).catch(() => []),
+        api.menuDisplayTemplates(token).catch(() => []),
         api.menuHistory(token).catch(() => []),
         api.technicalSheetRecipes(token, { includeArchived: true, pageSize: 200 }).then((result) => result.items).catch(() => []),
         api.allProducts(token).catch(() => []),
@@ -273,6 +280,8 @@ export function MenusApp({ token, session, tab, sites, canManage, onNavigate, on
       setDiets(dietsResult);
       setGuestGroups(groupsResult);
       setExportsList(exportsResult);
+      setDisplayTemplates(templatesResult);
+      setSelectedTemplateId((current) => current || templatesResult.find((template) => template.isDefault)?.id || templatesResult[0]?.id || '');
       setHistory(historyResult);
       setRecipes(recipesResult);
       setProducts(productsResult);
@@ -513,9 +522,64 @@ export function MenusApp({ token, session, tab, sites, canManage, onNavigate, on
   async function prepareExport() {
     if (!selectedMenu) return;
     await run(async () => {
-      await api.prepareMenuExport(token, { menuId: selectedMenu.id, kind: exportKind, format: exportKind === 'EXCEL' ? 'XLSX' : 'PDF' });
+      const item = await api.prepareMenuExport(token, {
+        menuId: selectedMenu.id,
+        kind: exportKind,
+        format: 'PDF',
+        templateId: exportKind === 'PUBLIC_DISPLAY' && selectedTemplateId ? selectedTemplateId : undefined,
+      });
+      await downloadExportFile(item);
       await refresh();
-    }, 'Export préparé et historisé avec snapshot figé.');
+    }, 'PDF généré, téléchargé et historisé.');
+  }
+
+  async function uploadDisplayTemplate(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!templateFile) return;
+    await run(async () => {
+      const template = await api.uploadMenuDisplayTemplate(token, templateFile, templateName || undefined);
+      setSelectedTemplateId(template.id);
+      setTemplateFile(undefined);
+      setTemplateName('');
+      await refresh();
+    }, 'Modèle analysé par OCR et prêt pour l’affichage public.');
+  }
+
+  async function chooseDefaultTemplate(id: string) {
+    await run(async () => {
+      await api.setDefaultMenuDisplayTemplate(token, id);
+      setSelectedTemplateId(id);
+      await refresh();
+    }, 'Modèle public défini par défaut.');
+  }
+
+  async function archiveDisplayTemplate(id: string) {
+    if (!window.confirm('Archiver ce modèle de carte ? Les exports déjà générés restent disponibles.')) return;
+    await run(async () => {
+      await api.archiveMenuDisplayTemplate(token, id);
+      if (selectedTemplateId === id) setSelectedTemplateId('');
+      await refresh();
+    }, 'Modèle archivé.');
+  }
+
+  async function previewDisplayTemplate(id: string) {
+    await run(async () => {
+      const url = await api.menuDisplayTemplateSource(token, id);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    }, 'Aperçu du modèle ouvert.');
+  }
+
+  async function downloadExportFile(item: MenuExport) {
+    const file = await api.downloadMenuExport(token, item);
+    const url = URL.createObjectURL(file.blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = file.filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
   }
 
   async function run(handler: () => Promise<void>, message: string) {
@@ -1224,7 +1288,7 @@ export function MenusApp({ token, session, tab, sites, canManage, onNavigate, on
             <div className="double-panel">
               <div className="card-modern">
                 <span className="card-title"><Download size={18} /> Préparer un export</span>
-                <p className="muted" style={{ marginTop: '0.25rem', marginBottom: '1.25rem' }}>Générez des fiches ou des exports globaux consolidés à partir de vos menus planifiés.</p>
+                <p className="muted" style={{ marginTop: '0.25rem', marginBottom: '1.25rem' }}>Choisissez le document utile. Chaque export est un PDF figé et historisé à partir de la carte actuelle.</p>
                 
                 <form className="menus-form-grid" onSubmit={(e) => { e.preventDefault(); void prepareExport(); }}>
                   <label className="menus-form-span">Menu ciblé
@@ -1237,21 +1301,83 @@ export function MenusApp({ token, session, tab, sites, canManage, onNavigate, on
                     <select value={exportKind} onChange={(e) => setExportKind(e.target.value as MenuExportPayload['kind'])}>
                       <option value="KITCHEN">Fiche Cuisine</option>
                       <option value="DINING_ROOM">Fiche Salle</option>
-                      <option value="RESIDENTS">Fiche Résidents</option>
-                      <option value="PATIENTS">Fiche Patients</option>
                       <option value="PUBLIC_DISPLAY">Affichage public</option>
-                      <option value="EXCEL">Format Excel complet</option>
                     </select>
                   </label>
+
+                  {exportKind === 'PUBLIC_DISPLAY' && (
+                    <label className="menus-form-span">Design de la carte
+                      <select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)}>
+                        <option value="">Design ToqueHub</option>
+                        {displayTemplates.map((template) => (
+                          <option key={template.id} value={template.id}>
+                            {template.name}{template.isDefault ? ' · par défaut' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                   
                   <button className="btn btn-primary menus-form-span" type="submit" disabled={!selectedMenu || !canManage || saving} style={{ marginTop: '0.5rem' }}>
-                    <Download size={16} /> Préparer l'export
+                    <Download size={16} /> Générer et télécharger le PDF
                   </button>
                 </form>
                 
                 <p className="muted" style={{ fontSize: '0.8rem', marginTop: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                  <AlertCircle size={14} /> Les PDF et affichages publics sont figés ; Excel est généré à la demande et historisé.
+                  <AlertCircle size={14} /> Cuisine et Salle utilisent le design ToqueHub. L’affichage public reprend le modèle graphique importé.
                 </p>
+
+                {exportKind === 'KITCHEN' && (
+                  <div style={{ marginTop: '1rem', padding: '1rem', borderRadius: 14, background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+                    <strong style={{ display: 'block', marginBottom: '.3rem' }}>Contenu de la fiche cuisine</strong>
+                    <span className="muted" style={{ fontSize: '.84rem' }}>Le menu complet, puis les fiches techniques associées avec quantités recalculées, ingrédients, rendements, temps et étapes.</span>
+                  </div>
+                )}
+
+                {exportKind === 'DINING_ROOM' && (
+                  <div style={{ marginTop: '1rem', padding: '1rem', borderRadius: 14, background: '#f8fafc', border: '1px solid #dbe4ee' }}>
+                    <strong style={{ display: 'block', marginBottom: '.3rem' }}>Contenu de la fiche salle</strong>
+                    <span className="muted" style={{ fontSize: '.84rem' }}>Une fiche de briefing claire par article avec description, allergènes et fournisseurs renseignés dans les fiches techniques.</span>
+                  </div>
+                )}
+
+                {exportKind === 'PUBLIC_DISPLAY' && (
+                  <div style={{ marginTop: '1.25rem', display: 'grid', gap: '.85rem' }}>
+                    <div style={{ padding: '1rem', borderRadius: 14, background: '#f8fafc', border: '1px solid #dbe4ee' }}>
+                      <strong style={{ display: 'flex', alignItems: 'center', gap: '.45rem' }}><Sparkles size={16} color="#10b981" /> Modèles de carte analysés</strong>
+                      <p className="muted" style={{ margin: '.35rem 0 .8rem', fontSize: '.82rem' }}>L’OCR repère le titre et la zone des articles. Le PDF original reste le fond graphique ; seuls les textes du menu sont remplacés.</p>
+                      {displayTemplates.length ? (
+                        <div style={{ display: 'grid', gap: '.55rem' }}>
+                          {displayTemplates.map((template) => (
+                            <div key={template.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '.65rem', padding: '.7rem .8rem', borderRadius: 12, background: selectedTemplateId === template.id ? '#ecfdf5' : '#ffffff', border: selectedTemplateId === template.id ? '1px solid #6ee7b7' : '1px solid #e2e8f0' }}>
+                              <button type="button" onClick={() => setSelectedTemplateId(template.id)} style={{ border: 0, padding: 0, background: 'transparent', textAlign: 'left', cursor: 'pointer', flex: 1, color: 'inherit' }}>
+                                <strong style={{ display: 'block' }}>{template.name}{template.isDefault ? ' · par défaut' : ''}</strong>
+                                <small className="muted">{template.originalName} · {template.pageCount ?? 1} page{(template.pageCount ?? 1) > 1 ? 's' : ''}</small>
+                              </button>
+                              <div style={{ display: 'flex', gap: '.35rem' }}>
+                                <button type="button" className="btn btn-secondary" onClick={() => void previewDisplayTemplate(template.id)} style={{ padding: '.45rem .6rem' }}>Voir</button>
+                                {!template.isDefault && <button type="button" className="btn btn-secondary" onClick={() => void chooseDefaultTemplate(template.id)} style={{ padding: '.45rem .6rem' }}>Défaut</button>}
+                                <button type="button" className="btn btn-secondary" aria-label="Archiver le modèle" onClick={() => void archiveDisplayTemplate(template.id)} style={{ padding: '.45rem .6rem', color: '#b91c1c' }}><Archive size={14} /></button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="muted" style={{ fontSize: '.84rem' }}>Aucun modèle importé. Le design ToqueHub sera utilisé.</span>
+                      )}
+                    </div>
+
+                    <form onSubmit={(event) => void uploadDisplayTemplate(event)} style={{ padding: '1rem', borderRadius: 14, border: '1px dashed #94a3b8', display: 'grid', gap: '.7rem' }}>
+                      <strong style={{ display: 'flex', gap: '.45rem', alignItems: 'center' }}><Upload size={16} /> Importer un modèle existant</strong>
+                      <input value={templateName} onChange={(event) => setTemplateName(event.target.value)} placeholder="Nom du modèle, ex. Carte été" />
+                      <input type="file" accept="application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg" onChange={(event) => setTemplateFile(event.target.files?.[0])} required />
+                      <small className="muted">PDF, PNG ou JPEG, 20 Mo maximum. L’analyse OCR peut prendre quelques secondes.</small>
+                      <button className="btn btn-secondary" type="submit" disabled={!templateFile || !canManage || saving}>
+                        <Sparkles size={15} /> {saving ? 'Analyse en cours…' : 'Importer et analyser par OCR'}
+                      </button>
+                    </form>
+                  </div>
+                )}
               </div>
 
               <div className="card-modern">
@@ -1266,12 +1392,13 @@ export function MenusApp({ token, session, tab, sites, canManage, onNavigate, on
                         <th>Type</th>
                         <th>Format</th>
                         <th>Menu</th>
+                        <th>Fichier</th>
                       </tr>
                     </thead>
                     <tbody>
                       {exportsList.length === 0 ? (
                         <tr>
-                          <td colSpan={4}>
+                          <td colSpan={5}>
                             <EmptyState title="Aucun export" desc="Les documents générés apparaîtront ici." />
                           </td>
                         </tr>
@@ -1280,12 +1407,13 @@ export function MenusApp({ token, session, tab, sites, canManage, onNavigate, on
                           <tr key={item.id}>
                             <td>{dateFr(item.createdAt)}</td>
                             <td>
-                              <span className="badge badge-reception" style={{ fontSize: '0.75rem' }}>{item.kind}</span>
+                              <span className="badge badge-reception" style={{ fontSize: '0.75rem' }}>{menuExportLabel(item.audience ?? item.kind)}</span>
                             </td>
                             <td>
                               <span className="badge badge-production" style={{ fontSize: '0.75rem' }}>{item.format}</span>
                             </td>
                             <td>{item.menu?.name ?? item.menuId ?? '—'}</td>
+                            <td><button type="button" className="btn btn-secondary" disabled={!item.fileUrl || saving} onClick={() => void run(() => downloadExportFile(item), 'PDF téléchargé.')} style={{ padding: '.4rem .6rem' }}><Download size={14} /> PDF</button></td>
                           </tr>
                         ))
                       )}
@@ -1668,6 +1796,12 @@ function EmptyState({ title, desc }: { title: string; desc: string }) {
 }
 
 function serviceLabel(service?: string) { return services.find((s) => s.value === service)?.label ?? service ?? '—'; }
+function menuExportLabel(audience?: string) {
+  if (audience === 'KITCHEN') return 'Fiche cuisine';
+  if (audience === 'DINING_ROOM') return 'Fiche salle';
+  if (audience === 'PUBLIC_DISPLAY') return 'Affichage public';
+  return audience ?? 'Export';
+}
 function sectionLabel(section?: string) { return sections.find((s) => s.value === section)?.label ?? section ?? '—'; }
 function statusLabel(status?: string) { return statusLabels[(status as MenuStatus) ?? 'DRAFT'] ?? status ?? 'Brouillon'; }
 function allergenLabel(allergens?: MenuPlan['allergens']) { return allergens?.map((a) => typeof a === 'string' ? a : a.name ?? 'Allergène').join(', ') || '—'; }

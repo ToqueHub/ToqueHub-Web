@@ -708,6 +708,16 @@ export interface HrPosition {
   department?: HrDepartment | null;
   isArchived?: boolean;
   archivedAt?: string | null;
+  taskPresets?: HrPositionTaskPreset[] | null;
+}
+
+export interface HrPositionTaskPreset {
+  id: string;
+  title: string;
+  description?: string | null;
+  category: OperationalTaskCategory;
+  defaultDurationMinutes?: number | null;
+  requiresTechnicalSheet?: boolean;
 }
 
 export interface HrHistoryEntry {
@@ -913,6 +923,7 @@ export interface HrReferencePayload {
   name: string;
   description?: string;
   departmentId?: string | null;
+  taskPresets?: HrPositionTaskPreset[];
 }
 
 export interface HrSummary {
@@ -2451,7 +2462,7 @@ export interface MenuItem {
 export interface MenuItemPayload {
   section: MenuSection;
   menuCategoryId?: string;
-  technicalSheetId?: string;
+  technicalSheetId?: string | null;
   productId?: string;
   portionsMultiplier?: number;
   order?: number;
@@ -2620,11 +2631,29 @@ export interface MenuProductionGenerationResult {
 
 export interface MenuExportPayload {
   menuId?: string;
-  cycleId?: string;
-  kind: 'KITCHEN' | 'DINING_ROOM' | 'RESIDENTS' | 'PATIENTS' | 'PUBLIC_DISPLAY' | 'EXCEL';
-  format: 'PDF' | 'XLSX' | 'CSV' | 'PRINT';
+  kind: 'KITCHEN' | 'DINING_ROOM' | 'PUBLIC_DISPLAY';
+  format: 'PDF';
+  templateId?: string;
   fromDate?: string;
   toDate?: string;
+}
+
+export interface MenuDisplayTemplate {
+  id: string;
+  name: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  pageCount?: number | null;
+  layout?: {
+    titleZone?: { x: number; y: number; width: number; height: number };
+    contentZone?: { x: number; y: number; width: number; height: number };
+    confidence?: number | null;
+  };
+  status: string;
+  isDefault: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface MenuExport {
@@ -2633,10 +2662,14 @@ export interface MenuExport {
   menu?: MenuPlan | null;
   cycleId?: string | null;
   cycle?: MenuCycle | null;
-  kind: string;
+  kind?: string;
+  audience?: 'KITCHEN' | 'DINING_ROOM' | 'PUBLIC_DISPLAY' | string;
   format: string;
+  filename?: string;
   createdAt?: string;
   fileUrl?: string | null;
+  templateId?: string | null;
+  template?: { id: string; name: string; originalName?: string } | null;
 }
 
 export interface MenuHistoryEntry {
@@ -3308,6 +3341,127 @@ export interface ProductionAssignment {
   updatedAt?: string;
   employee?: HrCollaborator | null;
   planningAssignment?: PlanningAssignment | null;
+}
+
+export type OperationalTaskStatus = 'TODO' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+
+export type OperationalTaskCategory =
+  | 'KITCHEN'
+  | 'SERVICE'
+  | 'HOUSEKEEPING'
+  | 'RECEPTION'
+  | 'MAINTENANCE'
+  | 'LOGISTICS'
+  | 'MANAGEMENT'
+  | 'OTHER';
+
+export type OperationalTaskSource = 'MANUAL' | 'MENU' | 'TECHNICAL_SHEET';
+
+export interface OperationalTask {
+  id: string;
+  title: string;
+  description?: string | null;
+  category: OperationalTaskCategory;
+  status: OperationalTaskStatus;
+  source: OperationalTaskSource;
+  departmentId: string;
+  positionId?: string | null;
+  siteId?: string | null;
+  assignedEmployeeId?: string | null;
+  planningAssignmentId?: string | null;
+  menuId?: string | null;
+  technicalSheetId?: string | null;
+  technicalSheetStepId?: string | null;
+  positionTaskPresetId?: string | null;
+  startsAt: string;
+  endsAt: string;
+  quantity?: number | string | null;
+  unitLabel?: string | null;
+  completedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  department?: HrDepartment | null;
+  position?: HrPosition | null;
+  site?: Site | null;
+  assignedEmployee?: HrCollaborator | null;
+  planningAssignment?: PlanningAssignment | null;
+  menu?: { id: string; name: string; date?: string | null; service?: string | null } | null;
+  technicalSheet?: {
+    id: string;
+    name: string;
+    referencePortions?: number | string | null;
+  } | null;
+  technicalSheetStep?: {
+    id: string;
+    order: number;
+    title: string;
+    description?: string | null;
+    estimatedMinutes?: number | null;
+  } | null;
+  createdBy?: {
+    id: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    email: string;
+  } | null;
+}
+
+export interface OperationalTaskAssignee extends HrCollaborator {
+  available: boolean;
+  planningAssignment?: PlanningAssignment | null;
+  operationalConflict?: Pick<
+    OperationalTask,
+    'id' | 'title' | 'assignedEmployeeId' | 'startsAt' | 'endsAt'
+  > | null;
+  availabilityLabel: string;
+}
+
+export interface OperationalTaskQuery {
+  startDate: string;
+  endDate: string;
+  departmentId?: string;
+  employeeId?: string;
+  status?: OperationalTaskStatus;
+}
+
+export interface OperationalTaskPayload {
+  title: string;
+  description?: string;
+  category: OperationalTaskCategory;
+  departmentId: string;
+  positionId?: string | null;
+  siteId?: string | null;
+  assignedEmployeeId?: string | null;
+  startsAt: string;
+  endsAt: string;
+  quantity?: number | null;
+  unitLabel?: string | null;
+  source?: OperationalTaskSource;
+  menuId?: string;
+  technicalSheetId?: string | null;
+  technicalSheetStepId?: string | null;
+  positionTaskPresetId?: string | null;
+}
+
+export interface OperationalTaskTechnicalSheetOption {
+  id: string;
+  name: string;
+  referencePortions?: number | string | null;
+  totalTimeMinutes: number;
+  isOnCurrentMenu: boolean;
+  menuNames: string[];
+  steps: Array<{
+    id: string;
+    order: number;
+    title: string;
+    description?: string | null;
+    estimatedMinutes: number;
+  }>;
+}
+
+export interface OperationalTaskOptions {
+  presets: Array<HrPositionTaskPreset & { positionId: string; positionName: string }>;
+  technicalSheets: OperationalTaskTechnicalSheetOption[];
 }
 
 export interface ProductionRealization {

@@ -1141,7 +1141,17 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     [activeTab],
   );
   useEffect(() => {
-    if (['production-orders', 'production-calendar', 'production-exports'].includes(activeTab)) {
+    if (
+      [
+        'production-orders',
+        'production-calendar',
+        'production-exports',
+        'production-today',
+        'production-assignments',
+        'production-materials',
+        'production-history',
+      ].includes(activeTab)
+    ) {
       setActiveTab('production-dashboard');
     }
   }, [activeTab]);
@@ -1401,29 +1411,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         isActive: isProductionTab,
         defaultTab: 'production-dashboard',
         submenu: [
-          { tab: 'production-dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
-          {
-            tab: 'production-assignments',
-            label:
-              menuModuleSettings?.usageProfile === 'CATERER'
-                ? 'Besoins des prestations'
-                : menuModuleSettings?.usageProfile === 'CENTRAL_KITCHEN'
-                  ? 'Besoins à couvrir'
-                  : 'À produire',
-            icon: ClipboardList,
-          },
-          {
-            tab: 'production-today',
-            label:
-              menuModuleSettings?.usageProfile === 'CATERER'
-                ? 'Productions des prestations'
-                : menuModuleSettings?.usageProfile === 'CENTRAL_KITCHEN'
-                  ? 'Fabrications en cours'
-                  : 'Productions',
-            icon: CalendarDays,
-          },
-          { tab: 'production-materials', label: 'Produits fabriqués', icon: Package },
-          { tab: 'production-history', label: 'Historique & traçabilité', icon: History },
+          { tab: 'production-dashboard', label: 'Planning opérationnel', icon: CalendarDays },
         ],
       },
       {
@@ -4033,31 +4021,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                 <ProductionApp
                   token={token}
                   session={session}
-                  usageProfile={menuModuleSettings?.usageProfile}
-                  tab={
-                    activeTab === 'production-today'
-                      ? 'today'
-                      : activeTab === 'production-assignments'
-                        ? 'assignments'
-                        : activeTab === 'production-materials'
-                          ? 'materials'
-                          : activeTab === 'production-history'
-                            ? 'history'
-                            : 'dashboard'
-                  }
-                  onNavigate={(next) =>
-                    setActiveTab(
-                      next === 'today'
-                        ? 'production-today'
-                        : next === 'assignments'
-                          ? 'production-assignments'
-                          : next === 'materials'
-                            ? 'production-materials'
-                            : next === 'history'
-                              ? 'production-history'
-                              : 'production-dashboard',
-                    )
-                  }
                 />
               )}
 

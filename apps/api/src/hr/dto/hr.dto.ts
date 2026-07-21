@@ -1,7 +1,16 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type, Transform } from 'class-transformer';
 import { IsArray, IsBoolean, IsEmail, IsEnum, IsInt, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min, ValidateNested } from 'class-validator';
-import { HrEmployeeStatus } from '@prisma/client';
+import { HrEmployeeStatus, OperationalTaskCategory } from '@prisma/client';
+
+export class HrPositionTaskPresetDto {
+  @IsOptional() @IsString() @MaxLength(80) id?: string;
+  @IsString() @MaxLength(180) title!: string;
+  @IsOptional() @IsString() @MaxLength(1000) description?: string;
+  @IsEnum(OperationalTaskCategory) category!: OperationalTaskCategory;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(5) defaultDurationMinutes?: number;
+  @IsOptional() @IsBoolean() requiresTechnicalSheet?: boolean;
+}
 
 export class HrListQueryDto {
   @IsOptional() @IsString() search?: string;
@@ -18,6 +27,7 @@ export class UpsertHrReferenceDto {
   @IsString() @MaxLength(160) name!: string;
   @IsOptional() @IsString() @MaxLength(6000) description?: string;
   @IsOptional() @IsUUID() departmentId?: string;
+  @IsOptional() @ValidateNested({ each: true }) @Type(() => HrPositionTaskPresetDto) @IsArray() taskPresets?: HrPositionTaskPresetDto[];
 }
 
 export class CreateHrReferencesDto {

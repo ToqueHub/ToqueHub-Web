@@ -1,9 +1,12 @@
-import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { GenerateProductionsDto, HistoryQueryDto, MenuAvailabilityQueryDto, MenuQueryDto, PlanMenuShortagesDto, PrepareMenuExportDto, ReplicateCycleDto, UpdateGuestForecastsDto, UpdateMenuSettingsDto, UpdateMenuStatusDto, UpsertCycleDto, UpsertDietDto, UpsertGuestGroupDto, UpsertMenuCategoryDto, UpsertMenuDto, UpsertMenuVariantDto } from './dto/menus.dto';
+import { MenuExportsService } from './menu-exports.service';
 import { MenusService } from './menus.service';
 
 @ApiTags('menus')
@@ -11,7 +14,7 @@ import { MenusService } from './menus.service';
 @UseGuards(JwtAuthGuard)
 @Controller('menus')
 export class MenusController {
-  constructor(private readonly service: MenusService) {}
+  constructor(private readonly service: MenusService, private readonly exportService: MenuExportsService) {}
   private org(user: AuthenticatedUser) { if (!user.organizationId) throw new BadRequestException('Organization setup is required'); return user.organizationId; }
   private actor(user: AuthenticatedUser) { return { id: user.id, role: user.role }; }
 
@@ -51,7 +54,35 @@ export class MenusController {
   @Post('guest-groups') createGuestGroup(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertGuestGroupDto) { return this.service.upsertGuestGroup(this.org(user), this.actor(user), dto); }
   @Patch('guest-groups/:id') updateGuestGroup(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpsertGuestGroupDto) { return this.service.upsertGuestGroup(this.org(user), this.actor(user), dto, id); }
 
-  @Get('exports') exports(@CurrentUser() user: AuthenticatedUser, @Query() q: MenuQueryDto) { return this.service.exports(this.org(user), q); }
-  @Post('exports') prepareExport(@CurrentUser() user: AuthenticatedUser, @Body() dto: PrepareMenuExportDto) { return this.service.prepareExport(this.org(user), this.actor(user), dto); }
+  @Get('display-templates') displayTemplates(@CurrentUser() user: AuthenticatedUser) { return this.exportService.templates(this.org(user)); }
+  @Post('display-templates')
+  @UseInterceptors(FileInterceptor('file', { limits: { files: 1, fileSize: 20 * 1024 * 1024 } }))
+  uploadDisplayTemplate(@CurrentUser() user: AuthenticatedUser, @UploadedFile() file: any, @Body('name') name?: string) { return this.exportService.uploadTemplate(this.org(user), this.actor(user), name, file); }
+  @Patch('display-templates/:id/default') setDefaultDisplayTemplate(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.exportService.setDefaultTemplate(this.org(user), this.actor(user), id); }
+  @Delete('display-templates/:id') archiveDisplayTemplate(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.exportService.archiveTemplate(this.org(user), this.actor(user), id); }
+  @Get('display-templates/:id/source') async displayTemplateSource(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Res() response: Response) {
+    const file = await this.exportService.templateSource(this.org(user), id);
+    response.setHeader('Content-Type', file.mimeType);
+    response.setHeader('Content-Disposition', this.contentDisposition('inline', file.filename));
+    response.send(file.buffer);
+  }
+
+  @Get('exports') exports(@CurrentUser() user: AuthenticatedUser, @Query('menuId') menuId?: string) { return this.exportService.list(this.org(user), { menuId }); }
+  @Post('exports') prepareExport(@CurrentUser() user: AuthenticatedUser, @Body() dto: PrepareMenuExportDto) { return this.exportService.prepare(this.org(user), this.actor(user), dto); }
+  @Get('exports/:id/download') async downloadExport(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Res() response: Response) {
+    const file = await this.exportService.download(this.org(user), id);
+    response.setHeader('Content-Type', file.mimeType);
+    response.setHeader('Content-Disposition', this.contentDisposition('attachment', file.filename));
+    response.send(file.buffer);
+  }
   @Get('history') history(@CurrentUser() user: AuthenticatedUser, @Query() q: HistoryQueryDto) { return this.service.historyList(this.org(user), q); }
+
+  private contentDisposition(disposition: 'inline' | 'attachment', filename: string) {
+    const fallback = String(filename || 'document.pdf')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9._-]+/gi, '-')
+      .replace(/^-+|-+$/g, '') || 'document.pdf';
+    return `${disposition}; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+  }
 }

@@ -16,9 +16,11 @@ import {
   Mail,
   MapPin,
   NotebookText,
+  ListChecks,
   Printer,
   Phone,
   Plus,
+  Trash2,
   Search,
   ShieldCheck,
   Sparkles,
@@ -29,7 +31,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { api } from '../api/client';
-import type { CoreUser, HrCollaborator, HrCollaboratorPayload, HrContractAnalysis, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, HrReferencePayload, HrSummary, RegulatoryCountryCode, Site } from '../types';
+import type { CoreUser, HrCollaborator, HrCollaboratorPayload, HrContractAnalysis, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, HrPositionTaskPreset, HrReferencePayload, HrSummary, OperationalTaskCategory, RegulatoryCountryCode, Site } from '../types';
 import { HR_CATALOG } from '../hr-catalog';
 import { CollaboratorModal as CollaboratorDossierModal } from './hr/collaborator/CollaboratorModal';
 
@@ -1581,8 +1583,13 @@ function ReferenceModal({
   const [name, setName] = useState(item?.name ?? '');
   const [description, setDescription] = useState(item?.description ?? '');
   const [departmentId, setDepartmentId] = useState((item as HrPosition)?.departmentId ?? (item as HrPosition)?.department?.id ?? '');
+  const [activeTab, setActiveTab] = useState<'description' | 'tasks'>('description');
+  const [taskPresets, setTaskPresets] = useState<HrPositionTaskPreset[]>(
+    type === 'position' ? ((item as HrPosition)?.taskPresets ?? []) : [],
+  );
   const [submitting, setSubmitting] = useState(false);
   const selectedDepartmentName = departments.find((department) => department.id === departmentId)?.name;
+  const canUseTechnicalSheets = type === 'position' && positionSupportsTechnicalSheets(name, selectedDepartmentName);
   const generatedDescription = type === 'position' && name.trim() ? buildJobDescription(name.trim(), selectedDepartmentName) : '';
   const completeDescription = () => {
     if (generatedDescription) setDescription(generatedDescription);
@@ -1591,12 +1598,21 @@ function ReferenceModal({
   return (
     <div className="modal-overlay">
       <motion.form
-        className="modal-card hr-modal"
+        className={`modal-card hr-modal${type === 'position' ? ' hr-position-modal' : ''}`}
         onSubmit={async (event) => {
           event.preventDefault();
           setSubmitting(true);
           try {
-            await onSubmit({ name, description: description || generatedDescription || undefined, departmentId: type === 'position' ? departmentId || null : undefined });
+            await onSubmit({
+              name,
+              description: description || generatedDescription || undefined,
+              departmentId: type === 'position' ? departmentId || null : undefined,
+              taskPresets: type === 'position'
+                ? taskPresets.map((task) => canUseTechnicalSheets
+                  ? task
+                  : { ...task, requiresTechnicalSheet: false, defaultDurationMinutes: task.defaultDurationMinutes ?? 30 })
+                : undefined,
+            });
           } finally {
             setSubmitting(false);
           }
@@ -1610,8 +1626,18 @@ function ReferenceModal({
             <X size={18} />
           </button>
         </div>
-        <div style={{ padding: '1.75rem' }}>
-          <FormSection title="Détails">
+        <div className={type === 'position' ? 'hr-reference-modal-body' : undefined} style={type === 'position' ? undefined : { padding: '1.75rem', overflowY: 'auto' }}>
+          {type === 'position' && (
+            <div className="hr-reference-tabs">
+              <button type="button" onClick={() => setActiveTab('description')} style={hrReferenceTabStyle(activeTab === 'description')}>
+                <NotebookText size={17} /> Fiche de poste
+              </button>
+              <button type="button" onClick={() => setActiveTab('tasks')} style={hrReferenceTabStyle(activeTab === 'tasks')}>
+                <ListChecks size={17} /> Tâches
+              </button>
+            </div>
+          )}
+          {(type !== 'position' || activeTab === 'description') && <div className={type === 'position' ? 'hr-reference-description' : undefined}><FormSection title="Détails">
             <input placeholder="Nom *" value={name} onChange={(event) => {
               const nextName = event.target.value;
               setName(nextName);
@@ -1638,7 +1664,56 @@ function ReferenceModal({
               </div>
             ) : null}
             <textarea className={type === 'position' ? 'hr-job-description-textarea' : undefined} placeholder={type === 'position' ? 'Fiche de poste complete...' : 'Description'} value={description} onChange={(event) => setDescription(event.target.value)} />
-          </FormSection>
+          </FormSection></div>}
+          {type === 'position' && activeTab === 'tasks' && (
+            <div className="hr-reference-tasks"><FormSection title="Tâches proposées dans Production">
+              <p style={{ margin: '0 0 .3rem', color: '#64748b', lineHeight: 1.5 }}>
+                Ces raccourcis seront proposés aux responsables lorsqu’ils planifient une tâche pour ce poste.
+              </p>
+              <div className="hr-reference-task-grid">
+                {taskPresets.map((task, index) => (
+                  <div key={task.id || index} className="hr-reference-task-card">
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: '.55rem' }}>
+                      <input
+                        value={task.title}
+                        onChange={(event) => setTaskPresets((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, title: event.target.value } : item))}
+                        placeholder="Ex. Nettoyage des toilettes"
+                        required
+                      />
+                      <button type="button" className="btn btn-secondary" aria-label="Supprimer la tâche" onClick={() => setTaskPresets((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.65rem' }}>
+                      <label>
+                        Type
+                        <select value={task.category} onChange={(event) => setTaskPresets((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, category: event.target.value as OperationalTaskCategory } : item))}>
+                          <option value="KITCHEN">Cuisine</option><option value="SERVICE">Salle / service</option><option value="HOUSEKEEPING">Ménage</option><option value="RECEPTION">Réception</option><option value="MAINTENANCE">Maintenance</option><option value="LOGISTICS">Logistique</option><option value="MANAGEMENT">Encadrement</option><option value="OTHER">Autre</option>
+                        </select>
+                      </label>
+                      <label>
+                        Durée habituelle (min)
+                        <input type="number" min="5" step="5" disabled={canUseTechnicalSheets && task.requiresTechnicalSheet} value={canUseTechnicalSheets && task.requiresTechnicalSheet ? '' : task.defaultDurationMinutes ?? 30} onChange={(event) => setTaskPresets((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, defaultDurationMinutes: Number(event.target.value) || 5 } : item))} />
+                      </label>
+                    </div>
+                    {canUseTechnicalSheets && (
+                      <>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '.55rem', fontWeight: 800 }}>
+                          <input type="checkbox" checked={Boolean(task.requiresTechnicalSheet)} onChange={(event) => setTaskPresets((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, requiresTechnicalSheet: event.target.checked, defaultDurationMinutes: event.target.checked ? null : item.defaultDurationMinutes ?? 30 } : item))} />
+                          Choisir une fiche technique ou une étape
+                        </label>
+                        {task.requiresTechnicalSheet && <small style={{ color: '#64748b' }}>La durée sera reprise automatiquement depuis la fiche choisie.</small>}
+                      </>
+                    )}
+                  </div>
+                ))}
+                {!taskPresets.length && <div style={{ padding: '1rem', borderRadius: '13px', background: '#f8fafc', color: '#64748b', textAlign: 'center' }}>Aucune tâche type. Vous pouvez en ajouter une ; les nouveaux postes reçoivent aussi des suggestions automatiquement.</div>}
+                <button type="button" className="btn btn-secondary" onClick={() => setTaskPresets((current) => [...current, { id: `task-${Date.now()}`, title: '', category: defaultTaskCategory(selectedDepartmentName), defaultDurationMinutes: 30 }])}>
+                  <Plus size={16} /> Ajouter une tâche type
+                </button>
+              </div>
+            </FormSection></div>
+          )}
         </div>
         <div className="modal-actions" style={{ padding: '1.25rem 1.75rem', borderTop: '1px solid #f1f5f9', background: '#f8fafc' }}>
           <button type="button" className="btn btn-secondary" onClick={onClose}>
@@ -1651,6 +1726,43 @@ function ReferenceModal({
       </motion.form>
     </div>
   );
+}
+
+function positionSupportsTechnicalSheets(positionName?: string, departmentName?: string) {
+  const normalize = (value = '') => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const department = normalize(departmentName);
+  const position = normalize(positionName);
+  if (/cuisine|patisserie|boulangerie/.test(department)) return true;
+  return /cuisin|chef de cuisine|sous-chef|patis|boulanger|barista|barman|barmaid|mixologue|traiteur|chocolatier|confiseur|glacier/.test(position);
+}
+
+function defaultTaskCategory(departmentName?: string): OperationalTaskCategory {
+  const name = (departmentName ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (/cuisine|patisserie|boulangerie/.test(name)) return 'KITCHEN';
+  if (/salle|bar|cafe|evenement/.test(name)) return 'SERVICE';
+  if (/hebergement|entretien|menage/.test(name)) return 'HOUSEKEEPING';
+  if (/reception/.test(name)) return 'RECEPTION';
+  if (/maintenance/.test(name)) return 'MAINTENANCE';
+  if (/achat|stock|magasin|logistique/.test(name)) return 'LOGISTICS';
+  if (/direction|administration|ressources humaines/.test(name)) return 'MANAGEMENT';
+  return 'OTHER';
+}
+
+function hrReferenceTabStyle(active: boolean): React.CSSProperties {
+  return {
+    border: 0,
+    borderRadius: '10px',
+    padding: '.7rem .8rem',
+    display: 'inline-flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: '.45rem',
+    background: active ? 'white' : 'transparent',
+    color: active ? '#059669' : '#64748b',
+    fontWeight: 900,
+    boxShadow: active ? '0 3px 10px rgba(15, 23, 42, .08)' : 'none',
+    cursor: 'pointer',
+  };
 }
 
 function CollaboratorSheet({ collaborator, regulatoryCountryCode, canWrite, onClose, onEdit, onSaveNotes, onViewDocument, onPreviewDocument, onReplaceDocument, onDeleteDocument, onDownloadDocument }: { collaborator: HrCollaborator; regulatoryCountryCode?: RegulatoryCountryCode | null; canWrite: boolean; onClose: () => void; onEdit: () => void; onSaveNotes: (notes: string) => Promise<void>; onViewDocument: (employeeId: string, document: HrDocument) => Promise<void>; onPreviewDocument: (employeeId: string, document: HrDocument) => Promise<string>; onReplaceDocument: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument: (employeeId: string, documentId: string) => Promise<void>; onDownloadDocument: (employeeId: string, document: HrDocument) => Promise<void> }) {

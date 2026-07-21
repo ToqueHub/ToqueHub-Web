@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { HrListQueryDto, UpsertHrEmployeeDto, UpsertHrReferenceDto } from './dto/hr.dto';
 import { HR_CATALOG } from './hr.catalog';
 import { HrSensitiveDataCryptoService } from './hr-sensitive-data-crypto.service';
+import { defaultTaskPresets, type HrPositionTaskPreset } from './hr-task-presets';
 
 type Actor = { id: string; role: string; employeeId?: string | null };
 type Tx = Prisma.TransactionClient;
@@ -205,7 +206,7 @@ export class HrService {
     await this.prisma.hrPosition.createMany({ data: toCreate.map((name) => {
       const departmentId = this.departmentIdForCatalogPosition(name, departments);
       const departmentName = departments.find((department) => department.id === departmentId)?.name;
-      return { organizationId, name, description: this.buildJobDescription(name, departmentName), departmentId };
+      return { organizationId, name, description: this.buildJobDescription(name, departmentName), departmentId, taskPresets: this.taskPresetsJson(defaultTaskPresets(name, departmentName)) };
     }), skipDuplicates: true });
     return { created: toCreate.length, skipped: unique.length - toCreate.length };
   }
@@ -213,7 +214,7 @@ export class HrService {
   async createPositionReferences(organizationId: string, actor: Actor, references: UpsertHrReferenceDto[]) {
     this.assertWrite(actor);
     const normalized = references
-      .map((reference) => ({ name: reference.name.trim(), description: reference.description?.trim() || undefined, departmentId: reference.departmentId || undefined }))
+      .map((reference) => ({ name: reference.name.trim(), description: reference.description?.trim() || undefined, departmentId: reference.departmentId || undefined, taskPresets: reference.taskPresets }))
       .filter((reference) => reference.name);
     if (!normalized.length) throw new BadRequestException('Aucun poste fourni.');
     const unique = new Map<string, typeof normalized[number]>();
@@ -233,13 +234,16 @@ export class HrService {
       if (!position.isArchived && position.departmentId === departmentId && position.description === description) continue;
       await this.prisma.hrPosition.update({
         where: { id: position.id, organizationId },
-        data: { isArchived: false, archivedAt: null, departmentId, description },
+        data: { isArchived: false, archivedAt: null, departmentId, description, taskPresets: selected?.taskPresets === undefined ? undefined : this.taskPresetsJson(selected.taskPresets) },
       });
     }
     const existingNames = new Set(existing.map((position) => position.name.toLowerCase()));
     const toCreate = items.filter((item) => !existingNames.has(item.name.toLowerCase()));
     if (!toCreate.length) return { created: 0, skipped: items.length };
-    await this.prisma.hrPosition.createMany({ data: toCreate.map((item) => ({ organizationId, name: item.name, description: item.description ?? this.buildJobDescription(item.name, departments.find((department) => department.id === item.departmentId)?.name), departmentId: item.departmentId ?? null })), skipDuplicates: true });
+    await this.prisma.hrPosition.createMany({ data: toCreate.map((item) => {
+      const departmentName = departments.find((department) => department.id === item.departmentId)?.name;
+      return { organizationId, name: item.name, description: item.description ?? this.buildJobDescription(item.name, departmentName), departmentId: item.departmentId ?? null, taskPresets: this.taskPresetsJson(item.taskPresets ?? defaultTaskPresets(item.name, departmentName)) };
+    }), skipDuplicates: true });
     return { created: toCreate.length, skipped: items.length - toCreate.length };
   }
 
@@ -272,18 +276,24 @@ export class HrService {
   updateDepartment(organizationId: string, actor: Actor, id: string, dto: UpsertHrReferenceDto) { this.assertWrite(actor); return this.prisma.hrDepartment.update({ where: { id, organizationId }, data: dto }); }
   archiveDepartment(organizationId: string, actor: Actor, id: string) { this.assertWrite(actor); return this.prisma.hrDepartment.update({ where: { id, organizationId }, data: { isArchived: true, archivedAt: new Date() } }); }
 
-  listPositions(organizationId: string, q: HrListQueryDto = {}) { return this.prisma.hrPosition.findMany({ where: { organizationId, ...(q.includeArchived ? {} : { isArchived: false }), departmentId: q.departmentId, name: q.search ? { contains: q.search, mode: 'insensitive' } : undefined }, include: { department: true }, orderBy: [{ department: { name: 'asc' } }, { name: 'asc' }], ...this.page(q) }); }
+  async listPositions(organizationId: string, q: HrListQueryDto = {}) {
+    const positions = await this.prisma.hrPosition.findMany({ where: { organizationId, ...(q.includeArchived ? {} : { isArchived: false }), departmentId: q.departmentId, name: q.search ? { contains: q.search, mode: 'insensitive' } : undefined }, include: { department: true }, orderBy: [{ department: { name: 'asc' } }, { name: 'asc' }], ...this.page(q) });
+    return positions.map((position) => ({
+      ...position,
+      taskPresets: this.positionTaskPresets(position.taskPresets, position.name, position.department?.name),
+    }));
+  }
   async createPosition(organizationId: string, actor: Actor, dto: UpsertHrReferenceDto) {
     this.assertWrite(actor);
     if (dto.departmentId) await this.ensureActiveDepartment(organizationId, dto.departmentId);
     const department = dto.departmentId ? await this.prisma.hrDepartment.findFirst({ where: { id: dto.departmentId, organizationId }, select: { name: true } }) : null;
-    return this.prisma.hrPosition.create({ data: { name: dto.name, description: dto.description || this.buildJobDescription(dto.name, department?.name), departmentId: dto.departmentId || null, organizationId }, include: { department: true } });
+    return this.prisma.hrPosition.create({ data: { name: dto.name, description: dto.description || this.buildJobDescription(dto.name, department?.name), departmentId: dto.departmentId || null, taskPresets: this.taskPresetsJson(dto.taskPresets ?? defaultTaskPresets(dto.name, department?.name)), organizationId }, include: { department: true } });
   }
   async updatePosition(organizationId: string, actor: Actor, id: string, dto: UpsertHrReferenceDto) {
     this.assertWrite(actor);
     if (dto.departmentId) await this.ensureActiveDepartment(organizationId, dto.departmentId);
     const department = dto.departmentId ? await this.prisma.hrDepartment.findFirst({ where: { id: dto.departmentId, organizationId }, select: { name: true } }) : null;
-    return this.prisma.hrPosition.update({ where: { id, organizationId }, data: { name: dto.name, description: dto.description || this.buildJobDescription(dto.name, department?.name), departmentId: dto.departmentId || null }, include: { department: true } });
+    return this.prisma.hrPosition.update({ where: { id, organizationId }, data: { name: dto.name, description: dto.description || this.buildJobDescription(dto.name, department?.name), departmentId: dto.departmentId || null, taskPresets: dto.taskPresets === undefined ? undefined : this.taskPresetsJson(dto.taskPresets) }, include: { department: true } });
   }
   archivePosition(organizationId: string, actor: Actor, id: string) { this.assertWrite(actor); return this.prisma.hrPosition.update({ where: { id, organizationId }, data: { isArchived: true, archivedAt: new Date() }, include: { department: true } }); }
 
@@ -582,6 +592,24 @@ export class HrService {
   private optionalDate(value?: string | null, label = 'Date') { if (!value) return null; const date = new Date(value); if (Number.isNaN(date.getTime())) throw new BadRequestException(`${label} invalide`); return date; }
   private cleanText(value?: string | null) { return value && value.trim() ? value : null; }
   private cleanTextList(values?: string[] | null) { return [...new Set((values ?? []).map((value) => value.trim()).filter(Boolean))]; }
+  private taskPresetsJson(presets: Array<Omit<HrPositionTaskPreset, 'id'> & { id?: string }>) {
+    return presets
+      .map((item, index) => {
+        const description = item.description?.trim();
+        return {
+          id: item.id?.trim() || `task-${index + 1}`,
+          title: item.title.trim(),
+          category: item.category,
+          ...(description ? { description } : {}),
+          ...(!item.requiresTechnicalSheet && item.defaultDurationMinutes ? { defaultDurationMinutes: item.defaultDurationMinutes } : {}),
+          requiresTechnicalSheet: Boolean(item.requiresTechnicalSheet),
+        };
+      })
+      .filter((item) => item.title) as Prisma.InputJsonValue;
+  }
+  private positionTaskPresets(value: Prisma.JsonValue | null, positionName: string, departmentName?: string | null) {
+    return Array.isArray(value) ? value : defaultTaskPresets(positionName, departmentName);
+  }
   private sameLabel(a?: string | null, b?: string | null) { return this.normalizeLabel(a) === this.normalizeLabel(b); }
   private normalizeLabel(value?: string | null) { return (value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim(); }
   private serializeEmployee(employee: any) {

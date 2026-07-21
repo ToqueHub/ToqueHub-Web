@@ -14,6 +14,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:reset": "prisma migrate reset --skip-seed",
     "prisma:seed": "node --env-file=../../.env --import tsx prisma/seed.ts",
+    "prisma:seed:hotel-demo": "node --env-file=../../.env --import tsx prisma/seed-hotel-demo.ts",
     "seed:legal-rights": "node --env-file=../../.env --import tsx scripts/seed-legal-rights.ts"
   },
   "dependencies": {
@@ -41,6 +42,7 @@
     "nodemailer": "^9.0.3",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
+    "pdf-lib": "^1.17.1",
     "pdfkit": "^0.19.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",

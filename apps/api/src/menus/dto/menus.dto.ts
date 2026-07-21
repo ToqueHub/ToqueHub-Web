@@ -153,6 +153,7 @@ export class PrepareMenuExportDto {
   @IsEnum(MenuExportFormat) format!: MenuExportFormat;
   @IsEnum(MenuExportAudience) audience!: MenuExportAudience;
   @IsOptional() @IsUUID() menuId?: string;
+  @IsOptional() @IsUUID() templateId?: string;
   @IsOptional() @IsString() startDate?: string;
   @IsOptional() @IsString() endDate?: string;
   @IsOptional() filters?: unknown;
