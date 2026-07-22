@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, InternalServerErrorException, NotFoundException, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { execFile } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream, existsSync } from 'node:fs';
 import { access, cp, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
@@ -14,6 +14,7 @@ const execFileAsync = promisify(execFile);
 const CONFIRMATION_PHRASE = 'RESTAURER TOQUEHUB';
 const BACKUP_PREFIX = 'toquehub-backup-';
 const BACKUP_EXT = '.tar.gz';
+const AUTH_SESSION_EPOCH_KEY = 'auth.session-epoch';
 const POSTGRES_TOOL_VERSIONS = ['18', '17', '16', '15', '14', '13'];
 const DEFAULT_SCHEDULE: BackupSchedule = {
   enabled: false,
@@ -300,6 +301,11 @@ export class BackupsService implements OnModuleInit, OnModuleDestroy {
         await this.prisma.$disconnect();
         await this.runCommand(this.pgRestorePath, ['--exit-on-error', '--no-owner', '--no-privileges', '--dbname', this.postgresToolDatabaseUrl(), dumpPath]);
         await this.restoreUploadRoots(extractDir, manifest);
+        await this.prisma.systemSetting.upsert({
+          where: { key: AUTH_SESSION_EPOCH_KEY },
+          create: { key: AUTH_SESSION_EPOCH_KEY, value: randomUUID() },
+          update: { value: randomUUID() },
+        });
         return {
           restored: true,
           restoredAt: new Date().toISOString(),
@@ -314,46 +320,7 @@ export class BackupsService implements OnModuleInit, OnModuleDestroy {
 
   private async resetPublicSchemaForRestore() {
     await this.prisma.$executeRawUnsafe(`
-      DO $$
-      DECLARE
-        item record;
-      BEGIN
-        FOR item IN
-          SELECT c.relkind, n.nspname, c.relname
-          FROM pg_class c
-          JOIN pg_namespace n ON n.oid = c.relnamespace
-          LEFT JOIN pg_depend d ON d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype = 'e'
-          WHERE n.nspname = 'public'
-            AND c.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
-            AND d.objid IS NULL
-        LOOP
-          EXECUTE format(
-            'DROP %s IF EXISTS %I.%I CASCADE',
-            CASE item.relkind
-              WHEN 'r' THEN 'TABLE'
-              WHEN 'p' THEN 'TABLE'
-              WHEN 'v' THEN 'VIEW'
-              WHEN 'm' THEN 'MATERIALIZED VIEW'
-              WHEN 'f' THEN 'FOREIGN TABLE'
-              WHEN 'S' THEN 'SEQUENCE'
-            END,
-            item.nspname,
-            item.relname
-          );
-        END LOOP;
-
-        FOR item IN
-          SELECT n.nspname, t.typname
-          FROM pg_type t
-          JOIN pg_namespace n ON n.oid = t.typnamespace
-          LEFT JOIN pg_depend d ON d.classid = 'pg_type'::regclass AND d.objid = t.oid AND d.deptype = 'e'
-          WHERE n.nspname = 'public'
-            AND t.typtype IN ('d', 'e', 'r')
-            AND d.objid IS NULL
-        LOOP
-          EXECUTE format('DROP TYPE IF EXISTS %I.%I CASCADE', item.nspname, item.typname);
-        END LOOP;
-      END $$;
+      DROP SCHEMA IF EXISTS public CASCADE;
     `);
   }
 

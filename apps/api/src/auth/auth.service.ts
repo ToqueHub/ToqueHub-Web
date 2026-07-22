@@ -24,6 +24,7 @@ type PrefillStocksDto = {
 };
 
 const ADMIN_ROLES = ['SUPER_ADMIN', 'Administrateur'];
+const AUTH_SESSION_EPOCH_KEY = 'auth.session-epoch';
 const SETTINGS_ROLES = ['SUPER_ADMIN', 'Administrateur', 'ADMIN', 'Manager', 'MANAGER'];
 const DEFAULT_STOCK_CATEGORIES = ['Sans catégorie', 'Épicerie', 'Produits frais', 'Surgelés', 'Boissons', 'Viandes', 'Poissons', 'Produits laitiers', 'Fruits et légumes'];
 const DEFAULT_STOCK_UNITS = [
@@ -925,11 +926,13 @@ export class AuthService {
       tailscaleUpdatedAt?: Date | null;
     } | null;
   }) {
+    const sessionEpoch = (await this.prisma.systemSetting.findUnique({ where: { key: AUTH_SESSION_EPOCH_KEY } }))?.value;
     const payload = {
       sub: user.id,
       email: user.email,
       organizationId: user.organizationId,
       role: user.role.name,
+      ...(sessionEpoch ? { sessionEpoch } : {}),
     };
 
     return {
