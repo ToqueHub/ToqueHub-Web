@@ -3372,6 +3372,8 @@ export interface OperationalTask {
   menuId?: string | null;
   technicalSheetId?: string | null;
   technicalSheetStepId?: string | null;
+  productionBatchId?: string | null;
+  productionOperationId?: string | null;
   positionTaskPresetId?: string | null;
   startsAt: string;
   endsAt: string;
@@ -3398,6 +3400,8 @@ export interface OperationalTask {
     description?: string | null;
     estimatedMinutes?: number | null;
   } | null;
+  productionBatch?: OperationalTaskProductionBatch | null;
+  productionOperation?: OperationalTaskProductionOperation | null;
   createdBy?: {
     id: string;
     firstName?: string | null;
@@ -3440,6 +3444,8 @@ export interface OperationalTaskPayload {
   menuId?: string;
   technicalSheetId?: string | null;
   technicalSheetStepId?: string | null;
+  productionBatchId?: string | null;
+  productionOperationId?: string | null;
   positionTaskPresetId?: string | null;
 }
 
@@ -3462,6 +3468,36 @@ export interface OperationalTaskTechnicalSheetOption {
 export interface OperationalTaskOptions {
   presets: Array<HrPositionTaskPreset & { positionId: string; positionName: string }>;
   technicalSheets: OperationalTaskTechnicalSheetOption[];
+  productionBatches: OperationalTaskProductionBatch[];
+}
+
+export interface OperationalTaskProductionOperation {
+  id: string;
+  batchId: string;
+  title: string;
+  position: number;
+  status: string;
+  activeMinutes?: number | null;
+  notes?: string | null;
+}
+
+export interface OperationalTaskProductionBatch {
+  id: string;
+  reference: string;
+  status: string;
+  plannedQuantity: number | string;
+  plannedStartAt?: string | null;
+  unit?: { id: string; name: string; symbol: string } | null;
+  order: {
+    id: string;
+    number: string;
+    name: string;
+    productionDate?: string;
+    status: string;
+    technicalSheetId?: string;
+    siteId?: string | null;
+  };
+  operations: OperationalTaskProductionOperation[];
 }
 
 export interface ProductionRealization {

@@ -214,4 +214,109 @@ describe('ProductionExecutionService', () => {
       lastProducedAt: completedAt,
     })]);
   });
+
+  it('synchronizes linked planning tasks when a batch starts', async () => {
+    const tx = {
+      productionBatch: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'batch-1',
+          reference: 'PROD-2026-001-L01',
+          orderId: 'order-1',
+          status: ProductionBatchStatus.TO_PREPARE,
+          startedAt: null,
+          unit: { id: 'portion', symbol: 'portions' },
+          plannedQuantity: new Prisma.Decimal(24),
+          actualQuantity: null,
+          producerUserId: null,
+          order: {
+            id: 'order-1',
+            status: ProductionOrderStatus.VALIDATED,
+            outputProduct: { id: 'product-1', name: 'Tarte citron', description: null, unit: { symbol: 'portions' } },
+          },
+          operations: [{ id: 'operation-1', position: 0, status: 'READY' }],
+        }),
+        update: jest.fn().mockResolvedValue({ id: 'batch-1', status: ProductionBatchStatus.PREPARING }),
+      },
+      productionOperation: { update: jest.fn().mockResolvedValue({}) },
+      productionOrder: { update: jest.fn().mockResolvedValue({}) },
+      operationalTask: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      organization: { findUnique: jest.fn().mockResolvedValue({ haccpInstalledAt: new Date() }) },
+      haccpProduct: {
+        findFirst: jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(null),
+        create: jest.fn().mockResolvedValue({ id: 'haccp-product-1' }),
+        update: jest.fn(),
+      },
+      haccpProductionSession: { upsert: jest.fn().mockResolvedValue({ id: 'haccp-session-1' }) },
+    };
+    const prisma = { $transaction: jest.fn().mockImplementation((work) => work(tx)) };
+    const service = new ProductionExecutionService(prisma as never, {} as never);
+
+    await service.startBatch('org-1', { ...actor, permissions: [...actor.permissions, 'production.batch.execute'] }, 'batch-1', {});
+
+    expect(tx.operationalTask.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { organizationId: 'org-1', productionOperationId: 'operation-1' },
+      data: expect.objectContaining({ status: 'IN_PROGRESS' }),
+    }));
+    expect(tx.operationalTask.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { organizationId: 'org-1', productionBatchId: 'batch-1', productionOperationId: null },
+      data: expect.objectContaining({ status: 'IN_PROGRESS' }),
+    }));
+    expect(tx.haccpProduct.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ sourceProductId: 'product-1', name: 'Tarte citron' }),
+    }));
+    expect(tx.haccpProductionSession.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { productionBatchId: 'batch-1' },
+      create: expect.objectContaining({ source: 'planning', status: 'en_cours', lotNumber: 'PROD-2026-001-L01' }),
+    }));
+  });
+
+  it('finalizes the same HACCP session with the output lot and traceability data', async () => {
+    const tx = {
+      organization: { findUnique: jest.fn().mockResolvedValue({ haccpInstalledAt: new Date() }) },
+      haccpProduct: { findFirst: jest.fn().mockResolvedValue({ id: 'haccp-product-1' }) },
+      haccpProductionSession: {
+        upsert: jest.fn().mockResolvedValue({ id: 'haccp-session-1' }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      haccpProcessSession: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    };
+    const service = new ProductionExecutionService({} as never, {} as never);
+    const startedAt = new Date('2026-07-22T08:00:00.000Z');
+    const completedAt = new Date('2026-07-22T09:30:00.000Z');
+    const batch = {
+      id: 'batch-1', reference: 'PROD-001-L01', producerUserId: 'user-1', startedAt,
+      plannedQuantity: new Prisma.Decimal(24), actualQuantity: null,
+      unit: { symbol: 'portions' },
+      order: { outputProduct: { id: 'product-1', name: 'Tarte citron', unit: { symbol: 'portions' } } },
+    };
+
+    await (service as any).syncHaccpProductionCompletionTx(
+      tx,
+      'org-1',
+      'user-1',
+      batch,
+      { id: 'lot-1', lotNumber: 'LOT-20260722-001' },
+      new Prisma.Decimal(22),
+      new Prisma.Decimal(2),
+      ConservationState.CHILLED,
+      new Date('2026-07-25T12:00:00.000Z'),
+      completedAt,
+      'Rendement ajusté',
+    );
+
+    expect(tx.haccpProductionSession.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { productionBatchId: 'batch-1' },
+    }));
+    expect(tx.haccpProductionSession.updateMany).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1', productionBatchId: 'batch-1' },
+      data: expect.objectContaining({
+        outputLotId: 'lot-1', lotNumber: 'LOT-20260722-001', status: 'termine',
+        conservationState: ConservationState.CHILLED, duration: 90, notes: 'Rendement ajusté',
+      }),
+    });
+    expect(tx.haccpProcessSession.updateMany).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1', productionSessionId: 'haccp-session-1' },
+      data: expect.objectContaining({ lotNumber: 'LOT-20260722-001', quantity: new Prisma.Decimal(22), unit: 'portions' }),
+    });
+  });
 });

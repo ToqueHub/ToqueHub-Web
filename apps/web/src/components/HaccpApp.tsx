@@ -507,7 +507,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
         safeList(`/cooling/${processType}/sessions`),
         safeList('/oil-equipment'),
         safeList('/oil/sessions?limit=50'),
-        safeList('/production/sessions'),
+        safeList('/production/sessions?limit=200'),
         safeList('/haccp-products'),
         safeList('/daily-reports?limit=50'),
         safeValue('sensor gateway status', () => api.haccpSensorGatewayStatus(token), null),
@@ -2546,7 +2546,7 @@ function SectionView({ section, rows, products, searchQuery, setSearchQuery, pro
               <line x1="12" y1="5" x2="12" y2="19" />
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
-            Ajouter
+            {section === 'production' ? 'Ajouter manuellement' : 'Ajouter'}
           </button>
         </div>
       </div>
@@ -5352,7 +5352,7 @@ function SimpleTable({ rows, columns, onDelete, onDownloadReport, section }: { r
                       <Download size={14} />
                     </button>
                   ) : null}
-                  {onDelete ? (
+                  {onDelete && !(section === 'production' && row.source === 'planning') ? (
                     <button type="button" className="haccp-action-btn" title="Supprimer" onClick={() => onDelete(row)}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M3 6h18" />
@@ -5472,7 +5472,7 @@ function columnsFor(section: HaccpTab) {
     receptions: ['supplier', 'productName', 'temperature', 'lotNumber', 'quantity', 'date'],
     process: ['product.name', 'equipment.name', 'startTemperature', 'endTemperature', 'status', 'sessionDate'],
     oil: ['equipment.name', 'testMethod', 'action', 'sessionDate'],
-    production: ['finishedProduct.name', 'lotNumber', 'quantity', 'unit', 'status', 'productionDate'],
+    production: ['source', 'finishedProduct.name', 'lotNumber', 'plannedQuantity', 'quantity', 'lostQuantity', 'unit', 'conservationState', 'expiresAt', 'operator.name', 'status', 'productionDate'],
     products: ['name', 'type', 'dlcDays', 'quantity', 'unit'],
     reports: ['reportDate', 'status', 'generatedAt'],
     alerts: ['sensor.assignedEquipment.name', 'sensor.userName', 'temperature', 'humidity', 'measuredAt'],
@@ -5481,6 +5481,12 @@ function columnsFor(section: HaccpTab) {
 }
 
 function headerFor(column: string) {
+  const labels: Record<string, string> = {
+    source: 'Origine', plannedQuantity: 'Prévue', quantity: 'Réalisée', lostQuantity: 'Pertes',
+    conservationState: 'Conservation', expiresAt: 'DLC', 'operator.name': 'Opérateur',
+    'finishedProduct.name': 'Produit fini', lotNumber: 'Lot', productionDate: 'Production', status: 'Statut', unit: 'Unité',
+  };
+  if (labels[column]) return labels[column];
   return column.split('.').at(-1)?.replace(/([A-Z])/g, ' $1').replace(/^./, (value) => value.toUpperCase()) ?? column;
 }
 
@@ -5493,6 +5499,12 @@ function formatCell(row: HaccpItem, column: string, section?: HaccpTab) {
   if (column === 'temperature' || column.includes('Temperature')) return value != null ? `${Number(value)}°C` : '-';
   if (column.toLowerCase().includes('date') || column.endsWith('At')) return value ? new Date(value).toLocaleString('fr-FR') : '-';
   if (section === 'reports' && column === 'status') return value === 'completed' ? 'Terminé' : value ?? '-';
+  if (section === 'production' && column === 'source') return <span className={`badge-pill ${value === 'planning' ? 'badge-purple' : 'badge-emerald'}`}>{value === 'planning' ? 'Planning' : 'Manuel'}</span>;
+  if (section === 'production' && column === 'status') {
+    const statusLabel = ({ en_cours: 'En cours', termine: 'Terminée', annule: 'Annulée' } as Record<string, string>)[String(value)] ?? value ?? '-';
+    return <span className={`badge-pill ${value === 'termine' ? 'badge-emerald' : value === 'annule' ? 'badge-red' : 'badge-blue'}`}>{statusLabel}</span>;
+  }
+  if (section === 'production' && column === 'conservationState') return ({ AMBIENT: 'Ambiant', CHILLED: 'Réfrigéré', FROZEN: 'Congelé', COOLING: 'Refroidissement' } as Record<string, string>)[String(value)] ?? value ?? '-';
   if (typeof value === 'number') return value.toLocaleString('fr-FR');
   return value ?? '-';
 }

@@ -1341,8 +1341,10 @@ export const api = {
       canCreateUnassigned: boolean;
     }>('/production/tasks/context', {}, token);
   },
-  productionTaskOptions(token: string, departmentId?: string) {
-    const qs = departmentId ? `?departmentId=${encodeURIComponent(departmentId)}` : '';
+  productionTaskOptions(token: string, params: { departmentId?: string; siteId?: string; technicalSheetId?: string; startDate?: string; endDate?: string } = {}) {
+    const search = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => { if (value) search.set(key, value); });
+    const qs = search.toString() ? `?${search.toString()}` : '';
     return request<OperationalTaskOptions>(`/production/tasks/options${qs}`, {}, token);
   },
   productionTaskAssignees(

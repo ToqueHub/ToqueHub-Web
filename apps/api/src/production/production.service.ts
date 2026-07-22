@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { AuditAction, Prisma, ProductionAlertCode, ProductionAlertSeverity, ProductionDestockingStatus, ProductionExportFormat, ProductionHistoryAction, ProductionMaterialStatus, ProductionOrderStatus, ProductionPriority, StockMovementType } from '@prisma/client';
+import { AuditAction, OperationalTaskStatus, Prisma, ProductionAlertCode, ProductionAlertSeverity, ProductionBatchStatus, ProductionDestockingStatus, ProductionExportFormat, ProductionHistoryAction, ProductionMaterialStatus, ProductionOrderStatus, ProductionPriority, StockMovementType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProductionPlanningService } from './production-planning.service';
 
@@ -102,7 +102,26 @@ export class ProductionService {
       const critical = order.alerts.filter((a) => a.severity === ProductionAlertSeverity.CRITICAL);
       if (critical.length && FINALIZING.includes(dto.status) && !dto.confirmCriticalOverride) throw new BadRequestException({ message: 'Confirmation explicite requise pour contourner les alertes critiques.', criticalAlerts: critical });
       if (critical.length && dto.confirmCriticalOverride) { if (!dto.overrideReason) throw new BadRequestException('Motif requis'); for (const a of critical) await tx.productionAlertOverride.create({ data: { organizationId, alertId: a.id, confirmedById: actor.id, reason: dto.overrideReason, snapshot: a } }); await this.recordHistory(tx, organizationId, id, actor.id, ProductionHistoryAction.ALERT_OVERRIDE_CONFIRMED, 'Contournement alertes critiques confirmé', { reason: dto.overrideReason }); }
-      const updated = await tx.productionOrder.update({ where: { id }, data: { status: dto.status, updatedById: actor.id, completedAt: dto.status === 'COMPLETED' ? new Date() : undefined, completedById: dto.status === 'COMPLETED' ? actor.id : undefined, cancelledAt: dto.status === 'CANCELLED' ? new Date() : undefined }, include: this.orderInclude(true) });
+      const statusChangedAt = new Date();
+      if (dto.status === ProductionOrderStatus.CANCELLED) {
+        await tx.haccpProcessSession.updateMany({
+          where: { organizationId, productionSession: { productionBatch: { orderId: id } }, status: 'en_cours' },
+          data: { status: 'annule', endTime: statusChangedAt, syncVersion: { increment: 1 } },
+        });
+        await tx.haccpProductionSession.updateMany({
+          where: { organizationId, productionBatch: { orderId: id }, status: 'en_cours' },
+          data: { status: 'annule', endTime: statusChangedAt, syncVersion: { increment: 1 } },
+        });
+        await tx.productionBatch.updateMany({
+          where: { orderId: id, status: { notIn: [ProductionBatchStatus.COMPLETED, ProductionBatchStatus.PARTIALLY_LOST] } },
+          data: { status: ProductionBatchStatus.CANCELLED, completedAt: statusChangedAt, optimisticVersion: { increment: 1 } },
+        });
+        await tx.operationalTask.updateMany({
+          where: { organizationId, productionBatch: { orderId: id }, status: { not: OperationalTaskStatus.COMPLETED } },
+          data: { status: OperationalTaskStatus.CANCELLED, completedAt: statusChangedAt },
+        });
+      }
+      const updated = await tx.productionOrder.update({ where: { id }, data: { status: dto.status, updatedById: actor.id, completedAt: dto.status === 'COMPLETED' ? statusChangedAt : undefined, completedById: dto.status === 'COMPLETED' ? actor.id : undefined, cancelledAt: dto.status === 'CANCELLED' ? statusChangedAt : undefined }, include: this.orderInclude(true) });
       await this.recordHistory(tx, organizationId, id, actor.id, dto.status === 'CANCELLED' ? ProductionHistoryAction.CANCELLED : dto.status === 'VALIDATED' ? ProductionHistoryAction.VALIDATED : ProductionHistoryAction.STATUS_CHANGED, `Statut ${dto.status}`); await this.refreshAlertsTx(tx, organizationId, id); return this.serializeOrder(updated);
     });
   }

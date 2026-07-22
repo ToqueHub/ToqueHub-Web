@@ -16,10 +16,12 @@ function createPrismaMock() {
     haccpTemperatureReading: { findMany: jest.fn() },
     haccpTraceability: { findMany: jest.fn() },
     haccpReception: { findMany: jest.fn() },
-    haccpProductionSession: { findMany: jest.fn() },
+    haccpProductionSession: { findMany: jest.fn(), findFirst: jest.fn() },
+    haccpProcessEquipment: { findFirst: jest.fn() },
     haccpProcessSession: {
       findMany: jest.fn(),
       findFirst: jest.fn(),
+      create: jest.fn(),
       update: jest.fn(),
     },
     haccpOilEquipment: { findMany: jest.fn() },
@@ -93,6 +95,54 @@ describe('HaccpService', () => {
     expect(prisma.haccpProcessSession.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'c1' }, data: expect.objectContaining({ endTemperature: 4, status: 'termine' }) }));
     expect(response.data).toMatchObject({ _id: 'c1', status: 'termine', endTemperature: 4 });
     expect(response.data.duration).toBeGreaterThanOrEqual(0);
+  });
+
+  it('lists today productions not yet assigned to the requested cold process', async () => {
+    const prisma = createPrismaMock();
+    const now = new Date();
+    prisma.haccpProductionSession.findMany.mockResolvedValue([
+      { id: 'production-1', lotNumber: 'LOT-1', quantity: '12', plannedQuantity: '15', unit: 'kg', status: 'en_cours', source: 'planning', productionDate: now, startTime: now, finishedProduct: { id: 'p1', name: 'Soupe', type: 'Produit fini' }, processSessions: [] },
+    ]);
+    const service = new HaccpService(prisma);
+
+    const response = await service.listAvailableProcessProductions(orgId, 'refroidissement');
+
+    expect(prisma.haccpProductionSession.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ organizationId: orgId, status: { in: ['en_cours', 'termine'] }, processSessions: { none: { type: 'refroidissement' } } }),
+    }));
+    expect(response.data[0]).toMatchObject({ _id: 'production-1', lotNumber: 'LOT-1', status: 'en_cours', plannedQuantity: 15 });
+  });
+
+  it('creates a whole-lot cold process linked to a production of the day', async () => {
+    const prisma = createPrismaMock();
+    const now = new Date();
+    prisma.haccpProductionSession.findFirst.mockResolvedValue({
+      id: 'production-1', organizationId: orgId, finishedProductId: 'p1', lotNumber: 'LOT-1', quantity: '12', plannedQuantity: '15', unit: 'kg', status: 'en_cours', productionDate: now, finishedProduct: { id: 'p1', name: 'Soupe' },
+    });
+    prisma.haccpProcessSession.findFirst.mockResolvedValue(null);
+    prisma.haccpProduct.findFirst.mockResolvedValue({ id: 'p1', organizationId: orgId });
+    prisma.haccpProcessEquipment.findFirst.mockResolvedValue({ id: 'cell-1', organizationId: orgId });
+    prisma.haccpProcessSession.create.mockImplementation(async ({ data }: any) => ({
+      id: 'process-1', ...data, product: { id: 'p1', name: 'Soupe' }, equipment: { id: 'cell-1', name: 'Cellule' }, productionSession: { id: 'production-1', lotNumber: 'LOT-1', quantity: '12', plannedQuantity: '15', unit: 'kg', status: 'en_cours', source: 'planning', productionDate: now },
+    }));
+    const service = new HaccpService(prisma);
+
+    const response = await service.createProcessSession(orgId, actor, 'refroidissement', { productionSessionId: 'production-1', productId: 'ignored', equipmentId: 'cell-1', startTemperature: 63 });
+
+    expect(prisma.haccpProcessSession.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ productionSessionId: 'production-1', productId: 'p1', lotNumber: 'LOT-1', quantity: '15', unit: 'kg', status: 'en_cours' }),
+    }));
+    expect(response.data).toMatchObject({ _id: 'process-1', lotNumber: 'LOT-1', quantity: 15, production: { _id: 'production-1' } });
+  });
+
+  it('rejects a second process of the same type for one production', async () => {
+    const prisma = createPrismaMock();
+    prisma.haccpProductionSession.findFirst.mockResolvedValue({ id: 'production-1', organizationId: orgId, finishedProductId: 'p1', productionDate: new Date(), status: 'termine' });
+    prisma.haccpProcessSession.findFirst.mockResolvedValue({ id: 'existing-process' });
+    const service = new HaccpService(prisma);
+
+    await expect(service.createProcessSession(orgId, actor, 'congelation', { productionSessionId: 'production-1', productId: 'p1', equipmentId: 'freezer-1', startTemperature: 4 })).rejects.toThrow('déjà affectée');
+    expect(prisma.haccpProcessSession.create).not.toHaveBeenCalled();
   });
 
   it('computes dashboard cards from real daily HACCP controls', async () => {

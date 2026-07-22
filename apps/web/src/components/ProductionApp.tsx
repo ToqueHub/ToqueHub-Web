@@ -59,6 +59,8 @@ type TaskDraft = {
   positionTaskPresetId: string;
   technicalSheetId: string;
   technicalSheetStepId: string;
+  productionBatchId: string;
+  productionOperationId: string;
 };
 
 const categoryOptions: Array<{ value: OperationalTaskCategory; label: string }> = [
@@ -180,6 +182,8 @@ function emptyDraft(date: string, departmentId = '', assignedEmployeeId = ''): T
     positionTaskPresetId: '',
     technicalSheetId: '',
     technicalSheetStepId: '',
+    productionBatchId: '',
+    productionOperationId: '',
   };
 }
 
@@ -236,7 +240,7 @@ export function ProductionApp({ token, session }: ProductionAppProps) {
   const [assignees, setAssignees] = useState<OperationalTaskAssignee[]>([]);
   const [assigneesLoading, setAssigneesLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [taskOptions, setTaskOptions] = useState<OperationalTaskOptions>({ presets: [], technicalSheets: [] });
+  const [taskOptions, setTaskOptions] = useState<OperationalTaskOptions>({ presets: [], technicalSheets: [], productionBatches: [] });
   const [taskOptionsLoading, setTaskOptionsLoading] = useState(false);
 
   const period = useMemo(() => {
@@ -323,17 +327,22 @@ export function ProductionApp({ token, session }: ProductionAppProps) {
 
   useEffect(() => {
     if (!editorOpen || !draft.departmentId) {
-      setTaskOptions({ presets: [], technicalSheets: [] });
+      setTaskOptions({ presets: [], technicalSheets: [], productionBatches: [] });
       return;
     }
     let active = true;
     setTaskOptionsLoading(true);
-    api.productionTaskOptions(token, draft.departmentId)
+    api.productionTaskOptions(token, {
+      departmentId: draft.departmentId,
+      technicalSheetId: draft.technicalSheetId || undefined,
+      startDate: localIso(draft.date, '00:00'),
+      endDate: localIso(addDays(draft.date, 1), '00:00'),
+    })
       .then((result) => { if (active) setTaskOptions(result); })
       .catch((optionsError) => { if (active) setError(errorMessage(optionsError)); })
       .finally(() => { if (active) setTaskOptionsLoading(false); });
     return () => { active = false; };
-  }, [draft.departmentId, editorOpen, token]);
+  }, [draft.date, draft.departmentId, draft.technicalSheetId, editorOpen, token]);
 
   const positionsForDepartment = useMemo(
     () => positions.filter((position) => !position.departmentId || position.departmentId === draft.departmentId),
@@ -341,6 +350,7 @@ export function ProductionApp({ token, session }: ProductionAppProps) {
   );
   const selectedDepartment = departments.find((department) => department.id === draft.departmentId);
   const selectedSheet = taskOptions.technicalSheets.find((sheet) => sheet.id === draft.technicalSheetId);
+  const selectedBatch = taskOptions.productionBatches.find((batch) => batch.id === draft.productionBatchId);
   const selectedAssignee = assignees.find((employee) => employee.id === draft.assignedEmployeeId);
   const presetsForAssignee = selectedAssignee?.positionId
     ? taskOptions.presets.filter((preset) => preset.positionId === selectedAssignee.positionId)
@@ -370,6 +380,8 @@ export function ProductionApp({ token, session }: ProductionAppProps) {
       positionTaskPresetId: '',
       technicalSheetId: '',
       technicalSheetStepId: '',
+      productionBatchId: '',
+      productionOperationId: '',
       title: '',
       description: '',
     }));
@@ -385,6 +397,8 @@ export function ProductionApp({ token, session }: ProductionAppProps) {
       positionTaskPresetId: '',
       technicalSheetId: '',
       technicalSheetStepId: '',
+      productionBatchId: '',
+      productionOperationId: '',
       title: '',
       description: '',
     }));
@@ -410,6 +424,8 @@ export function ProductionApp({ token, session }: ProductionAppProps) {
       positionTaskPresetId: '',
       technicalSheetId: '',
       technicalSheetStepId: '',
+      productionBatchId: '',
+      productionOperationId: '',
       quantity: '',
       unitLabel: '',
     }));
@@ -425,6 +441,8 @@ export function ProductionApp({ token, session }: ProductionAppProps) {
       ...current,
       mode,
       technicalSheetStepId: '',
+      productionBatchId: '',
+      productionOperationId: '',
       title: mode === 'TECHNICAL_SHEET' ? `Préparer · ${selectedSheet.name}` : '',
       description: mode === 'TECHNICAL_SHEET' && selectedSheet.menuNames.length ? `Fiche présente dans : ${selectedSheet.menuNames.join(', ')}.` : '',
       durationMinutes: duration,
@@ -446,6 +464,8 @@ export function ProductionApp({ token, session }: ProductionAppProps) {
         description: preset.description ?? '',
         technicalSheetId: '',
         technicalSheetStepId: '',
+        productionBatchId: '',
+        productionOperationId: '',
       }));
       return;
     }
@@ -460,6 +480,8 @@ export function ProductionApp({ token, session }: ProductionAppProps) {
       positionTaskPresetId: preset.id,
       technicalSheetId: '',
       technicalSheetStepId: '',
+      productionBatchId: '',
+      productionOperationId: '',
       durationMinutes: duration,
       endTime: endTimeFromDuration(current.startTime, duration),
     }));
@@ -468,7 +490,7 @@ export function ProductionApp({ token, session }: ProductionAppProps) {
   function selectTechnicalSheet(technicalSheetId: string) {
     const sheet = taskOptions.technicalSheets.find((item) => item.id === technicalSheetId);
     if (!sheet) {
-      setDraft((current) => ({ ...current, technicalSheetId: '', technicalSheetStepId: '', title: '' }));
+      setDraft((current) => ({ ...current, technicalSheetId: '', technicalSheetStepId: '', productionBatchId: '', productionOperationId: '', title: '' }));
       return;
     }
     const isStepMode = draft.mode === 'TECHNICAL_SHEET_STEP';
@@ -477,6 +499,8 @@ export function ProductionApp({ token, session }: ProductionAppProps) {
       ...current,
       technicalSheetId: sheet.id,
       technicalSheetStepId: '',
+      productionBatchId: '',
+      productionOperationId: '',
       title: isStepMode ? '' : `Préparer · ${sheet.name}`,
       description: isStepMode ? '' : (sheet.menuNames.length ? `Fiche présente dans : ${sheet.menuNames.join(', ')}.` : current.description),
       category: categoryForDepartment(selectedDepartment?.name),
@@ -490,9 +514,12 @@ export function ProductionApp({ token, session }: ProductionAppProps) {
   function selectTechnicalSheetStep(stepId: string) {
     const step = selectedSheet?.steps.find((item) => item.id === stepId);
     if (!step || !selectedSheet) return;
+    const stepIndex = selectedSheet.steps.findIndex((item) => item.id === stepId);
+    const matchingOperation = selectedBatch?.operations.find((operation) => operation.position === stepIndex);
     setDraft((current) => ({
       ...current,
       technicalSheetStepId: step.id,
+      productionOperationId: matchingOperation?.id ?? '',
       title: `${step.title} · ${selectedSheet.name}`,
       description: step.description ?? '',
       durationMinutes: step.estimatedMinutes,
@@ -585,6 +612,8 @@ export function ProductionApp({ token, session }: ProductionAppProps) {
       positionTaskPresetId: task.positionTaskPresetId ?? '',
       technicalSheetId: task.technicalSheetId ?? '',
       technicalSheetStepId: task.technicalSheetStepId ?? '',
+      productionBatchId: task.productionBatchId ?? '',
+      productionOperationId: task.productionOperationId ?? '',
     });
     setEditorOpen(true);
     setError('');
@@ -617,6 +646,8 @@ export function ProductionApp({ token, session }: ProductionAppProps) {
       source: editingTask?.source ?? (draft.technicalSheetId ? 'TECHNICAL_SHEET' : 'MANUAL'),
       technicalSheetId: draft.technicalSheetId || null,
       technicalSheetStepId: draft.technicalSheetStepId || null,
+      productionBatchId: draft.productionBatchId || null,
+      productionOperationId: draft.productionOperationId || null,
       positionTaskPresetId: draft.positionTaskPresetId || null,
     };
     setSaving(true);
@@ -972,6 +1003,38 @@ export function ProductionApp({ token, session }: ProductionAppProps) {
                           {!selectedSheet?.steps.length && <small style={{ color: '#b45309' }}>Cette fiche ne contient aucune étape planifiable.</small>}
                         </Field>
                       )}
+                      {draft.technicalSheetId && (
+                        <Field label="Lot d’exécution mobile (facultatif)">
+                          <select
+                            value={draft.productionBatchId}
+                            onChange={(event) => {
+                              const productionBatchId = event.target.value;
+                              const batch = taskOptions.productionBatches.find((item) => item.id === productionBatchId);
+                              const stepIndex = selectedSheet?.steps.findIndex((item) => item.id === draft.technicalSheetStepId) ?? -1;
+                              const operation = stepIndex >= 0 ? batch?.operations.find((item) => item.position === stepIndex) : undefined;
+                              setDraft((current) => ({ ...current, productionBatchId, productionOperationId: operation?.id ?? '' }));
+                            }}
+                            style={inputStyle}
+                          >
+                            <option value="">Aucun lot lié — consultation uniquement</option>
+                            {taskOptions.productionBatches.map((batch) => (
+                              <option key={batch.id} value={batch.id}>
+                                {batch.reference} · {String(batch.plannedQuantity)} {batch.unit?.symbol ?? ''} · {batch.order.number}
+                              </option>
+                            ))}
+                          </select>
+                          {!taskOptions.productionBatches.length && <small style={{ color: '#b45309' }}>Aucun lot validé et exécutable pour cette fiche à cette date.</small>}
+                        </Field>
+                      )}
+                      {draft.mode === 'TECHNICAL_SHEET_STEP' && selectedBatch && (
+                        <Field label="Opération du lot" required>
+                          <select value={draft.productionOperationId} onChange={(event) => setDraft((current) => ({ ...current, productionOperationId: event.target.value }))} style={inputStyle}>
+                            <option value="">Choisir l’opération à synchroniser…</option>
+                            {selectedBatch.operations.map((operation) => <option key={operation.id} value={operation.id}>{operation.position + 1}. {operation.title}</option>)}
+                          </select>
+                          <small style={{ color: '#64748b' }}>Cette opération sera pilotée depuis la tablette.</small>
+                        </Field>
+                      )}
                     </div>
                   )}
 
@@ -1130,6 +1193,11 @@ function TaskCard({
       {task.technicalSheet && (
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '.28rem', marginTop: '.35rem', color: '#047857', background: '#ecfdf5', borderRadius: '999px', padding: '.22rem .45rem', fontSize: '.67rem', fontWeight: 850 }}>
           <ChefHat size={12} /> {task.technicalSheetStep ? `Étape ${task.technicalSheetStep.order} · ${task.technicalSheetStep.title}` : 'Fiche complète'}
+        </div>
+      )}
+      {task.technicalSheet && (
+        <div style={{ marginTop: '.28rem', color: task.productionBatchId ? '#047857' : '#b45309', fontSize: '.68rem', fontWeight: 800 }}>
+          {task.productionBatchId ? `Lot mobile lié${task.productionBatch?.reference ? ` · ${task.productionBatch.reference}` : ''}` : 'Lot mobile non lié'}
         </div>
       )}
       {task.quantity != null && (

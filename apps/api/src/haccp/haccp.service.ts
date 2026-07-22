@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit, StreamableFile } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit, StreamableFile } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createReadStream, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, extname, join, resolve } from 'node:path';
@@ -65,7 +65,7 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
     if (!item) return item;
     const out = { ...item, _id: item.id };
     delete out.id;
-    for (const key of ['price', 'quantity', 'temperature', 'startTemperature', 'endTemperature', 'unitPrice']) {
+    for (const key of ['price', 'quantity', 'plannedQuantity', 'lostQuantity', 'temperature', 'startTemperature', 'endTemperature', 'unitPrice']) {
       if (out[key] != null) out[key] = Number(out[key]);
     }
     if (out.dlc) out.calculatedDlc = out.dlc;
@@ -145,8 +145,22 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
     const out = this.withId(item);
     out.product = item.product ? this.serializeProduct(item.product) : undefined;
     out.equipment = item.equipment ? this.serializeProcessEquipment(item.equipment) : undefined;
+    out.production = item.productionSession ? {
+      _id: item.productionSession.id,
+      lotNumber: item.productionSession.lotNumber,
+      quantity: Number(item.productionSession.quantity),
+      plannedQuantity: item.productionSession.plannedQuantity == null ? undefined : Number(item.productionSession.plannedQuantity),
+      unit: item.productionSession.unit,
+      status: item.productionSession.status,
+      source: item.productionSession.source,
+      productionDate: item.productionSession.productionDate,
+    } : undefined;
     out.duration = item.duration ?? this.duration(item.startTime, item.endTime);
     return out;
+  }
+
+  private processSessionInclude() {
+    return { product: true, equipment: true, productionSession: true };
   }
 
   private serializeOilEquipment(item: any) {
@@ -184,7 +198,31 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
     const out = this.withId(item);
     out.finishedProduct = item.finishedProduct ? this.serializeProduct(item.finishedProduct) : undefined;
     out.duration = item.duration ?? this.duration(item.startTime, item.endTime);
+    out.source = item.source || (item.productionBatchId ? 'planning' : 'manual');
+    out.operator = item.createdBy ? {
+      id: item.createdBy.id,
+      name: [item.createdBy.firstName, item.createdBy.lastName].filter(Boolean).join(' ') || item.createdBy.email,
+    } : undefined;
+    out.resumeTaskId = item.productionBatch?.operationalTasks?.find((task: any) => task.productionOperationId == null)?.id
+      ?? item.productionBatch?.operationalTasks?.[0]?.id;
+    out.site = item.productionBatch?.order?.site ? { id: item.productionBatch.order.site.id, name: item.productionBatch.order.site.name } : undefined;
+    out.location = item.outputLot?.location ? { id: item.outputLot.location.id, name: item.outputLot.location.name } : undefined;
+    out.outputLot = item.outputLot ? { id: item.outputLot.id, lotNumber: item.outputLot.lotNumber } : undefined;
     return out;
+  }
+
+  private productionSessionInclude() {
+    return {
+      finishedProduct: true,
+      createdBy: { select: { id: true, firstName: true, lastName: true, email: true } },
+      outputLot: { include: { location: true } },
+      productionBatch: {
+        include: {
+          order: { include: { site: true } },
+          operationalTasks: { orderBy: { startsAt: 'asc' as const } },
+        },
+      },
+    };
   }
 
   private serializeReport(item: any) {
@@ -485,6 +523,7 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
       ...cleaningToday.slice(0, 4).map((item) => ({ id: item.id, module: 'Nettoyage', label: `${item.completedSurfaces}/${item.totalSurfaces} surfaces`, detail: item.status, at: item.sessionDate })),
       ...processSessions.slice(0, 4).map((item) => ({ id: item.id, module: this.processLabel(item.type), label: item.product?.name ?? 'Produit', detail: item.status, at: item.sessionDate })),
       ...oil.slice(0, 4).map((item) => ({ id: item.id, module: 'Huiles', label: item.equipment?.name ?? 'Équipement', detail: item.action, at: item.sessionDate })),
+      ...production.slice(0, 4).map((item) => ({ id: item.id, module: 'Production', label: item.finishedProduct?.name ?? 'Produit fini', detail: `${item.lotNumber} · ${item.status}`, at: item.productionDate })),
     ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()).slice(0, 10);
 
     return this.ok({
@@ -744,29 +783,72 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
 
   async listProcessSessions(organizationId: string, type: string) {
     this.assertProcessType(type);
-    const items = await this.prisma.haccpProcessSession.findMany({ where: { organizationId, type, deletedAt: null }, include: { product: true, equipment: true }, orderBy: { sessionDate: 'desc' } });
+    const items = await this.prisma.haccpProcessSession.findMany({ where: { organizationId, type, deletedAt: null }, include: this.processSessionInclude(), orderBy: { sessionDate: 'desc' } });
     return this.ok(items.map((item) => this.serializeProcessSession(item)));
   }
 
   async listTodayProcessSessions(organizationId: string, type: string) {
     this.assertProcessType(type);
     const { start, end } = this.dayRange();
-    const items = await this.prisma.haccpProcessSession.findMany({ where: { organizationId, type, deletedAt: null, sessionDate: { gte: start, lt: end } }, include: { product: true, equipment: true }, orderBy: { startTime: 'desc' } });
+    const items = await this.prisma.haccpProcessSession.findMany({ where: { organizationId, type, deletedAt: null, sessionDate: { gte: start, lt: end } }, include: this.processSessionInclude(), orderBy: { startTime: 'desc' } });
     return this.ok(items.map((item) => this.serializeProcessSession(item)));
+  }
+
+  async listAvailableProcessProductions(organizationId: string, type: string) {
+    this.assertProcessType(type);
+    if (!['refroidissement', 'congelation'].includes(type)) return this.ok([]);
+    const { start, end } = this.dayRange();
+    const items = await this.prisma.haccpProductionSession.findMany({
+      where: {
+        organizationId,
+        deletedAt: null,
+        productionDate: { gte: start, lt: end },
+        status: { in: ['en_cours', 'termine'] },
+        processSessions: { none: { type } },
+      },
+      include: this.productionSessionInclude(),
+      orderBy: [{ status: 'asc' }, { startTime: 'asc' }],
+    });
+    return this.ok(items.map((item) => this.serializeProductionSession(item)));
   }
 
   async createProcessSession(organizationId: string, actor: Actor, type: string, dto: any) {
     this.assertProcessType(type);
-    await Promise.all([this.ensure('haccpProduct', organizationId, dto.productId, 'Produit introuvable'), this.ensure('haccpProcessEquipment', organizationId, dto.equipmentId, 'Équipement introuvable')]);
+    let production: any = null;
+    if (dto.productionSessionId) {
+      const { start: dayStart, end: dayEnd } = this.dayRange();
+      production = await this.prisma.haccpProductionSession.findFirst({
+        where: {
+          id: dto.productionSessionId,
+          organizationId,
+          deletedAt: null,
+          productionDate: { gte: dayStart, lt: dayEnd },
+          status: { in: ['en_cours', 'termine'] },
+        },
+        include: { finishedProduct: true },
+      });
+      if (!production) throw new BadRequestException('Production du jour introuvable ou indisponible.');
+      const existing = await this.prisma.haccpProcessSession.findFirst({ where: { productionSessionId: production.id, type } });
+      if (existing) throw new ConflictException('Cette production est déjà affectée à ce processus.');
+    }
+    const productId = production?.finishedProductId ?? dto.productId;
+    await Promise.all([this.ensure('haccpProduct', organizationId, productId, 'Produit introuvable'), this.ensure('haccpProcessEquipment', organizationId, dto.equipmentId, 'Équipement introuvable')]);
     const start = new Date();
     const end = dto.endTime ? this.parseDate(dto.endTime) : null;
     const status = dto.endTemperature != null || end ? 'termine' : 'en_cours';
-    const item = await this.prisma.haccpProcessSession.create({ data: { organizationId, createdById: actor.id, ...this.syncData(dto), type, productId: dto.productId, equipmentId: dto.equipmentId, sessionDate: start, startTime: start, endTime: end, startTemperature: dto.startTemperature, endTemperature: dto.endTemperature, status, notes: dto.notes, duration: this.duration(start, end) }, include: { product: true, equipment: true } });
-    return this.ok(this.serializeProcessSession(item));
+    try {
+      const item = await this.prisma.haccpProcessSession.create({ data: { organizationId, createdById: actor.id, ...this.syncData(dto), type, productId, productionSessionId: production?.id, equipmentId: dto.equipmentId, lotNumber: production?.lotNumber, quantity: production ? (production.status === 'termine' ? production.quantity : production.plannedQuantity ?? production.quantity) : undefined, unit: production?.unit, sessionDate: start, startTime: start, endTime: end, startTemperature: dto.startTemperature, endTemperature: dto.endTemperature, status, notes: dto.notes, duration: this.duration(start, end) }, include: this.processSessionInclude() });
+      return this.ok(this.serializeProcessSession(item));
+    } catch (error) {
+      if (production && error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('Cette production est déjà affectée à ce processus.');
+      }
+      throw error;
+    }
   }
 
   async getProcessSession(organizationId: string, id: string) {
-    const item = await this.prisma.haccpProcessSession.findFirst({ where: { id, organizationId }, include: { product: true, equipment: true } });
+    const item = await this.prisma.haccpProcessSession.findFirst({ where: { id, organizationId }, include: this.processSessionInclude() });
     if (!item) throw new NotFoundException('Session introuvable');
     return this.ok(this.serializeProcessSession(item));
   }
@@ -776,7 +858,7 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
     if (!current) throw new NotFoundException('Session introuvable');
     const endTime = dto.endTime ? this.parseDate(dto.endTime) : current.endTime;
     const endTemperature = dto.endTemperature ?? current.endTemperature;
-    const item = await this.prisma.haccpProcessSession.update({ where: { id }, data: { ...this.syncUpdateData(dto), endTime, endTemperature, notes: dto.notes, status: endTime || endTemperature != null ? 'termine' : current.status, duration: this.duration(current.startTime, endTime) }, include: { product: true, equipment: true } });
+    const item = await this.prisma.haccpProcessSession.update({ where: { id }, data: { ...this.syncUpdateData(dto), endTime, endTemperature, notes: dto.notes, status: endTime || endTemperature != null ? 'termine' : current.status, duration: this.duration(current.startTime, endTime) }, include: this.processSessionInclude() });
     return this.ok(this.serializeProcessSession(item));
   }
 
@@ -784,11 +866,14 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
     const current = await this.prisma.haccpProcessSession.findFirst({ where: { id, organizationId } });
     if (!current) throw new NotFoundException('Session introuvable');
     const endTime = new Date();
-    const item = await this.prisma.haccpProcessSession.update({ where: { id }, data: { endTemperature, endTime, status: 'termine', duration: this.duration(current.startTime, endTime), syncVersion: { increment: 1 } }, include: { product: true, equipment: true } });
+    const item = await this.prisma.haccpProcessSession.update({ where: { id }, data: { endTemperature, endTime, status: 'termine', duration: this.duration(current.startTime, endTime), syncVersion: { increment: 1 } }, include: this.processSessionInclude() });
     return this.ok(this.serializeProcessSession(item));
   }
 
   async deleteProcessSession(organizationId: string, id: string) {
+    const current = await this.prisma.haccpProcessSession.findFirst({ where: { id, organizationId } });
+    if (!current) throw new NotFoundException('Session introuvable');
+    if (current.productionSessionId) throw new BadRequestException('Une session reliée à une production ne peut pas être supprimée.');
     await this.prisma.haccpProcessSession.update({ where: { id, organizationId }, data: { deletedAt: new Date(), syncVersion: { increment: 1 } } });
     return this.ok({ deleted: true });
   }
@@ -981,26 +1066,42 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
     return countPart ? true : false;
   }
 
-  async listProductionSessions(organizationId: string) {
-    const items = await this.prisma.haccpProductionSession.findMany({ where: { organizationId, deletedAt: null }, include: { finishedProduct: true }, orderBy: { productionDate: 'desc' } });
+  async listProductionSessions(organizationId: string, q: any = {}) {
+    const dateFilter = q.startDate || q.endDate ? { gte: q.startDate ? this.parseDate(q.startDate) : undefined, lt: q.endDate ? this.parseDate(q.endDate) : undefined } : undefined;
+    const items = await this.prisma.haccpProductionSession.findMany({
+      where: {
+        organizationId,
+        deletedAt: null,
+        status: q.status || undefined,
+        source: q.source || undefined,
+        productionDate: dateFilter,
+        OR: q.search ? [
+          { lotNumber: { contains: q.search, mode: 'insensitive' } },
+          { finishedProduct: { name: { contains: q.search, mode: 'insensitive' } } },
+        ] : undefined,
+      },
+      include: this.productionSessionInclude(),
+      orderBy: { productionDate: 'desc' },
+      ...this.page(q),
+    });
     return this.ok(items.map((item) => this.serializeProductionSession(item)));
   }
 
   async listTodayProductionSessions(organizationId: string) {
     const { start, end } = this.dayRange();
-    const items = await this.prisma.haccpProductionSession.findMany({ where: { organizationId, deletedAt: null, productionDate: { gte: start, lt: end } }, include: { finishedProduct: true }, orderBy: { startTime: 'desc' } });
+    const items = await this.prisma.haccpProductionSession.findMany({ where: { organizationId, deletedAt: null, productionDate: { gte: start, lt: end } }, include: this.productionSessionInclude(), orderBy: { startTime: 'desc' } });
     return this.ok(items.map((item) => this.serializeProductionSession(item)));
   }
 
   async createProductionSession(organizationId: string, actor: Actor, dto: any) {
     await this.ensure('haccpProduct', organizationId, dto.finishedProductId, 'Produit fini introuvable');
     const now = new Date();
-    const item = await this.prisma.haccpProductionSession.create({ data: { organizationId, createdById: actor.id, ...this.syncData(dto), lotNumber: dto.lotNumber, finishedProductId: dto.finishedProductId, quantity: dto.quantity, unit: dto.unit || 'kg', notes: dto.notes, photos: Array.isArray(dto.photos) ? dto.photos : [], productionDate: now, startTime: now }, include: { finishedProduct: true } });
+    const item = await this.prisma.haccpProductionSession.create({ data: { organizationId, createdById: actor.id, ...this.syncData(dto), source: 'manual', lotNumber: dto.lotNumber, finishedProductId: dto.finishedProductId, quantity: dto.quantity, unit: dto.unit || 'kg', notes: dto.notes, photos: Array.isArray(dto.photos) ? dto.photos : [], productionDate: now, startTime: now }, include: this.productionSessionInclude() });
     return this.ok(this.serializeProductionSession(item));
   }
 
   async getProductionSession(organizationId: string, id: string) {
-    const item = await this.prisma.haccpProductionSession.findFirst({ where: { id, organizationId }, include: { finishedProduct: true } });
+    const item = await this.prisma.haccpProductionSession.findFirst({ where: { id, organizationId }, include: this.productionSessionInclude() });
     if (!item) throw new NotFoundException('Production HACCP introuvable');
     return this.ok(this.serializeProductionSession(item));
   }
@@ -1008,12 +1109,16 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   async completeProductionSession(organizationId: string, id: string) {
     const current = await this.prisma.haccpProductionSession.findFirst({ where: { id, organizationId } });
     if (!current) throw new NotFoundException('Production HACCP introuvable');
+    if (current.productionBatchId) throw new BadRequestException('Cette production doit être clôturée depuis la recette planifiée.');
     const endTime = new Date();
-    const item = await this.prisma.haccpProductionSession.update({ where: { id }, data: { endTime, status: 'termine', duration: this.duration(current.startTime, endTime), syncVersion: { increment: 1 } }, include: { finishedProduct: true } });
+    const item = await this.prisma.haccpProductionSession.update({ where: { id }, data: { endTime, status: 'termine', duration: this.duration(current.startTime, endTime), syncVersion: { increment: 1 } }, include: this.productionSessionInclude() });
     return this.ok(this.serializeProductionSession(item));
   }
 
   async deleteProductionSession(organizationId: string, id: string) {
+    const current = await this.prisma.haccpProductionSession.findFirst({ where: { id, organizationId } });
+    if (!current) throw new NotFoundException('Production HACCP introuvable');
+    if (current.productionBatchId) throw new BadRequestException('Une production issue du planning ne peut pas être supprimée depuis le HACCP.');
     await this.prisma.haccpProductionSession.update({ where: { id, organizationId }, data: { deletedAt: new Date(), syncVersion: { increment: 1 } } });
     return this.ok({ deleted: true });
   }

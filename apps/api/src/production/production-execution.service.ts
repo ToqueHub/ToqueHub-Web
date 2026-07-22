@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import {
   ConservationState,
+  OperationalTaskStatus,
   Prisma,
   ProductionBatchStatus,
   ProductionHistoryAction,
@@ -431,7 +432,11 @@ export class ProductionExecutionService {
     return this.serializable(async (tx) => {
       const batch = await tx.productionBatch.findFirst({
         where: { id, organizationId },
-        include: { order: true, operations: { orderBy: { position: 'asc' } } },
+        include: {
+          order: { include: { outputProduct: { include: { unit: true } } } },
+          unit: true,
+          operations: { orderBy: { position: 'asc' } },
+        },
       });
       if (!batch) throw new NotFoundException({ code: 'PRODUCTION_BATCH_NOT_FOUND' });
       if (([ProductionBatchStatus.COMPLETED, ProductionBatchStatus.PARTIALLY_LOST] as ProductionBatchStatus[]).includes(batch.status)) {
@@ -449,11 +454,20 @@ export class ProductionExecutionService {
           where: { id: firstOperation.id },
           data: { status: ProductionOperationStatus.IN_PROGRESS, startedAt: now },
         });
+        await tx.operationalTask.updateMany({
+          where: { organizationId, productionOperationId: firstOperation.id },
+          data: { status: OperationalTaskStatus.IN_PROGRESS, completedAt: null },
+        });
       }
+      await tx.operationalTask.updateMany({
+        where: { organizationId, productionBatchId: batch.id, productionOperationId: null },
+        data: { status: OperationalTaskStatus.IN_PROGRESS, completedAt: null },
+      });
       await tx.productionOrder.update({
         where: { id: batch.orderId },
         data: { status: ProductionOrderStatus.IN_PROGRESS, updatedById: actor.id },
       });
+      await this.syncHaccpProductionStartTx(tx, organizationId, actor.id, batch, now);
       return tx.productionBatch.update({
         where: { id },
         data: {
@@ -505,6 +519,23 @@ export class ProductionExecutionService {
           completedAt: dto.status === ProductionOperationStatus.COMPLETED ? now : undefined,
         },
       });
+      const linkedTaskStatus =
+        dto.status === ProductionOperationStatus.COMPLETED || dto.status === ProductionOperationStatus.SKIPPED
+          ? OperationalTaskStatus.COMPLETED
+          : dto.status === ProductionOperationStatus.CANCELLED
+            ? OperationalTaskStatus.CANCELLED
+            : dto.status === ProductionOperationStatus.IN_PROGRESS || dto.status === ProductionOperationStatus.BLOCKED
+              ? OperationalTaskStatus.IN_PROGRESS
+              : null;
+      if (linkedTaskStatus) {
+        await tx.operationalTask.updateMany({
+          where: { organizationId, productionOperationId: operation.id },
+          data: {
+            status: linkedTaskStatus,
+            completedAt: linkedTaskStatus === OperationalTaskStatus.COMPLETED ? now : null,
+          },
+        });
+      }
       if (dto.status === ProductionOperationStatus.COMPLETED) {
         const next = await tx.productionOperation.findFirst({
           where: {
@@ -548,12 +579,14 @@ export class ProductionExecutionService {
         include: {
           order: {
             include: {
+              outputProduct: { include: { unit: true } },
               requirements: { include: { product: { include: { unit: true } }, unit: true } },
               batches: true,
               needAllocations: { include: { need: true } },
             },
           },
           operations: true,
+          unit: true,
         },
       });
       if (!batch) throw new NotFoundException({ code: 'PRODUCTION_BATCH_NOT_FOUND' });
@@ -643,6 +676,19 @@ export class ProductionExecutionService {
           locationId: destinationLocationId,
         },
       });
+      await this.syncHaccpProductionCompletionTx(
+        tx,
+        organizationId,
+        actor.id,
+        batch,
+        lot,
+        actualQuantity,
+        lostQuantity,
+        state,
+        expiresAt,
+        producedAt,
+        dto.notes,
+      );
       const stock = await tx.stock.create({
         data: {
           organizationId,
@@ -728,6 +774,10 @@ export class ProductionExecutionService {
           optimisticVersion: { increment: 1 },
         },
       });
+      await tx.operationalTask.updateMany({
+        where: { organizationId, productionBatchId: batch.id },
+        data: { status: OperationalTaskStatus.COMPLETED, completedAt: producedAt },
+      });
       const totals = await tx.productionBatch.aggregate({
         where: {
           orderId: batch.orderId,
@@ -777,6 +827,142 @@ export class ProductionExecutionService {
           outputLots: { include: { stocks: true, product: true, variant: true } },
         },
       });
+    });
+  }
+
+  private async ensureHaccpProductTx(
+    tx: Tx,
+    organizationId: string,
+    actorId: string,
+    product: { id: string; name: string; description?: string | null; unit?: { symbol?: string | null } | null },
+  ) {
+    const organization = await tx.organization.findUnique({
+      where: { id: organizationId },
+      select: { haccpInstalledAt: true },
+    });
+    if (!organization?.haccpInstalledAt) return null;
+
+    const linked = await tx.haccpProduct.findFirst({
+      where: { organizationId, sourceProductId: product.id, deletedAt: null },
+    });
+    if (linked) return linked;
+
+    const sameName = await tx.haccpProduct.findFirst({
+      where: {
+        organizationId,
+        sourceProductId: null,
+        deletedAt: null,
+        name: { equals: product.name, mode: 'insensitive' },
+      },
+    });
+    if (sameName) {
+      return tx.haccpProduct.update({
+        where: { id: sameName.id },
+        data: { sourceProductId: product.id, unit: sameName.unit ?? product.unit?.symbol, syncVersion: { increment: 1 } },
+      });
+    }
+
+    return tx.haccpProduct.create({
+      data: {
+        organizationId,
+        createdById: actorId,
+        sourceProductId: product.id,
+        name: product.name,
+        type: 'Produit fini',
+        description: product.description,
+        unit: product.unit?.symbol,
+      },
+    });
+  }
+
+  private async syncHaccpProductionStartTx(
+    tx: Tx,
+    organizationId: string,
+    actorId: string,
+    batch: any,
+    startedAt: Date,
+  ) {
+    if (!batch.order?.outputProduct) return;
+    const product = await this.ensureHaccpProductTx(
+      tx,
+      organizationId,
+      actorId,
+      batch.order.outputProduct,
+    );
+    if (!product) return;
+    return tx.haccpProductionSession.upsert({
+      where: { productionBatchId: batch.id },
+      update: {
+        createdById: batch.producerUserId ?? actorId,
+        lotNumber: batch.reference,
+        finishedProductId: product.id,
+        plannedQuantity: batch.plannedQuantity,
+        quantity: batch.actualQuantity ?? batch.plannedQuantity,
+        unit: batch.unit.symbol,
+        productionDate: batch.startedAt ?? startedAt,
+        startTime: batch.startedAt ?? startedAt,
+        status: 'en_cours',
+        source: 'planning',
+        syncVersion: { increment: 1 },
+      },
+      create: {
+        organizationId,
+        createdById: batch.producerUserId ?? actorId,
+        productionBatchId: batch.id,
+        lotNumber: batch.reference,
+        finishedProductId: product.id,
+        plannedQuantity: batch.plannedQuantity,
+        quantity: batch.actualQuantity ?? batch.plannedQuantity,
+        unit: batch.unit.symbol,
+        productionDate: batch.startedAt ?? startedAt,
+        startTime: batch.startedAt ?? startedAt,
+        status: 'en_cours',
+        source: 'planning',
+        photos: [],
+      },
+    });
+  }
+
+  private async syncHaccpProductionCompletionTx(
+    tx: Tx,
+    organizationId: string,
+    actorId: string,
+    batch: any,
+    lot: { id: string; lotNumber: string },
+    actualQuantity: Prisma.Decimal,
+    lostQuantity: Prisma.Decimal,
+    conservationState: ConservationState,
+    expiresAt: Date | null,
+    completedAt: Date,
+    notes?: string,
+  ) {
+    const haccpSession = await this.syncHaccpProductionStartTx(tx, organizationId, actorId, batch, batch.startedAt ?? completedAt);
+    if (!haccpSession) return;
+    const startedAt = batch.startedAt ?? completedAt;
+    await tx.haccpProductionSession.updateMany({
+      where: { organizationId, productionBatchId: batch.id },
+      data: {
+        outputLotId: lot.id,
+        lotNumber: lot.lotNumber,
+        quantity: actualQuantity,
+        lostQuantity,
+        conservationState,
+        expiresAt,
+        endTime: completedAt,
+        duration: Math.max(0, Math.round((completedAt.getTime() - new Date(startedAt).getTime()) / 60_000)),
+        notes,
+        status: 'termine',
+        syncVersion: { increment: 1 },
+      },
+    });
+    await tx.haccpProcessSession.updateMany({
+      where: { organizationId, productionSessionId: haccpSession.id },
+      data: {
+        lotNumber: lot.lotNumber,
+        quantity: actualQuantity,
+        unit: batch.unit.symbol,
+        syncVersion: { increment: 1 },
+      },
     });
   }
 

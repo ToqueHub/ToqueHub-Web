@@ -6,6 +6,9 @@ const toBool = ({ value }: { value: unknown }) => value === true || value === 't
 
 export class ListHaccpQueryDto {
   @IsOptional() @IsString() type?: string;
+  @IsOptional() @IsString() status?: string;
+  @IsOptional() @IsString() source?: string;
+  @IsOptional() @IsString() search?: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) limit?: number;
   @IsOptional() @IsString() startDate?: string;
@@ -127,6 +130,7 @@ export class UpdateProcessEquipmentDto {
 
 export class ProcessSessionDto {
   @IsString() @IsNotEmpty() productId!: string;
+  @IsOptional() @IsString() productionSessionId?: string;
   @IsString() @IsNotEmpty() equipmentId!: string;
   @Transform(toNumber) @IsNumber() startTemperature!: number;
   @Transform(toNumber) @IsOptional() @IsNumber() endTemperature?: number;

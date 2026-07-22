@@ -9,6 +9,8 @@ import {
   OperationalTaskStatus,
   PlanningAssignmentStatus,
   Prisma,
+  ProductionBatchStatus,
+  ProductionOrderStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -52,8 +54,30 @@ const TASK_INCLUDE = {
   menu: { select: { id: true, name: true, date: true, service: true } },
   technicalSheet: { select: { id: true, name: true, referencePortions: true } },
   technicalSheetStep: { select: { id: true, order: true, title: true, description: true, estimatedMinutes: true } },
+  productionBatch: {
+    include: {
+      unit: true,
+      order: { select: { id: true, number: true, name: true, status: true } },
+      operations: { orderBy: { position: 'asc' } },
+    },
+  },
+  productionOperation: true,
   createdBy: { select: { id: true, firstName: true, lastName: true, email: true } },
 } satisfies Prisma.OperationalTaskInclude;
+
+const EXECUTABLE_BATCH_STATUSES: ProductionBatchStatus[] = [
+  ProductionBatchStatus.TO_PREPARE,
+  ProductionBatchStatus.PREPARING,
+  ProductionBatchStatus.COOKING,
+  ProductionBatchStatus.COOLING,
+  ProductionBatchStatus.FREEZING,
+];
+
+const EXECUTABLE_ORDER_STATUSES: ProductionOrderStatus[] = [
+  ProductionOrderStatus.VALIDATED,
+  ProductionOrderStatus.IN_PROGRESS,
+  ProductionOrderStatus.PARTIALLY_COMPLETED,
+];
 
 @Injectable()
 export class OperationalTasksService {
@@ -86,7 +110,7 @@ export class OperationalTasksService {
       }
     }
     const now = new Date();
-    const [positions, sheets] = await Promise.all([
+    const [positions, sheets, batches] = await Promise.all([
       this.prisma.hrPosition.findMany({
         where: {
           organizationId,
@@ -122,6 +146,33 @@ export class OperationalTasksService {
         orderBy: { name: 'asc' },
         take: 400,
       }),
+      query.technicalSheetId
+        ? this.prisma.productionBatch.findMany({
+            where: {
+              organizationId,
+              status: { in: EXECUTABLE_BATCH_STATUSES },
+              order: {
+                technicalSheetId: query.technicalSheetId,
+                siteId: query.siteId,
+                status: { in: EXECUTABLE_ORDER_STATUSES },
+                productionDate: query.startDate || query.endDate
+                  ? {
+                      gte: query.startDate ? this.date(query.startDate, 'Date de début invalide') : undefined,
+                      lt: query.endDate ? this.date(query.endDate, 'Date de fin invalide') : undefined,
+                    }
+                  : undefined,
+              },
+            },
+            include: {
+              unit: true,
+              destinationLocation: true,
+              order: { select: { id: true, number: true, name: true, productionDate: true, status: true, technicalSheetId: true, siteId: true } },
+              operations: { orderBy: { position: 'asc' } },
+            },
+            orderBy: [{ plannedStartAt: 'asc' }, { number: 'asc' }],
+            take: 100,
+          })
+        : Promise.resolve([]),
     ]);
     const eligiblePositions = positions.filter((position) =>
       positionSupportsTechnicalSheets(position.name, position.department?.name),
@@ -150,7 +201,7 @@ export class OperationalTasksService {
         };
       })
       .sort((a, b) => Number(b.isOnCurrentMenu) - Number(a.isOnCurrentMenu) || a.name.localeCompare(b.name, 'fr'));
-    return { presets, technicalSheets };
+    return { presets, technicalSheets, productionBatches: batches };
   }
 
   async list(organizationId: string, actor: TaskActor, query: OperationalTaskQueryDto) {
@@ -281,6 +332,8 @@ export class OperationalTasksService {
         menuId: dto.menuId ?? null,
         technicalSheetId: dto.technicalSheetId ?? null,
         technicalSheetStepId: dto.technicalSheetStepId ?? null,
+        productionBatchId: dto.productionBatchId ?? null,
+        productionOperationId: dto.productionOperationId ?? null,
         positionTaskPresetId: dto.positionTaskPresetId ?? null,
         startsAt,
         endsAt,
@@ -409,6 +462,8 @@ export class OperationalTasksService {
       menuId: dto.menuId === undefined ? existing.menuId ?? undefined : dto.menuId ?? undefined,
       technicalSheetId: dto.technicalSheetId === undefined ? existing.technicalSheetId ?? undefined : dto.technicalSheetId ?? undefined,
       technicalSheetStepId: dto.technicalSheetStepId === undefined ? existing.technicalSheetStepId ?? undefined : dto.technicalSheetStepId ?? undefined,
+      productionBatchId: dto.productionBatchId === undefined ? existing.productionBatchId ?? undefined : dto.productionBatchId ?? undefined,
+      productionOperationId: dto.productionOperationId === undefined ? existing.productionOperationId ?? undefined : dto.productionOperationId ?? undefined,
       positionTaskPresetId: dto.positionTaskPresetId === undefined ? existing.positionTaskPresetId ?? undefined : dto.positionTaskPresetId ?? undefined,
     });
     await this.assertCanCreate(scope, actor, departmentId, assignedEmployeeId ?? undefined);
@@ -445,6 +500,8 @@ export class OperationalTasksService {
         menuId: dto.menuId === undefined ? undefined : dto.menuId,
         technicalSheetId: dto.technicalSheetId === undefined ? undefined : dto.technicalSheetId,
         technicalSheetStepId: dto.technicalSheetStepId === undefined ? undefined : dto.technicalSheetStepId,
+        productionBatchId: dto.productionBatchId === undefined ? undefined : dto.productionBatchId,
+        productionOperationId: dto.productionOperationId === undefined ? undefined : dto.productionOperationId,
         positionTaskPresetId: dto.positionTaskPresetId === undefined ? undefined : dto.positionTaskPresetId,
       },
       include: TASK_INCLUDE,
@@ -467,6 +524,149 @@ export class OperationalTasksService {
       },
       include: TASK_INCLUDE,
     });
+  }
+
+  async execution(organizationId: string, actor: TaskActor, id: string) {
+    const scope = await this.scope(organizationId, actor);
+    const visibleTask = await this.getVisible(organizationId, actor, scope, id);
+    if (!visibleTask.productionBatchId) {
+      throw new BadRequestException({ code: 'PRODUCTION_TASK_BATCH_REQUIRED' });
+    }
+    const task = await this.prisma.operationalTask.findFirst({
+      where: { id, organizationId },
+      include: {
+        ...TASK_INCLUDE,
+        productionBatch: {
+          include: {
+            unit: true,
+            destinationLocation: true,
+            recipeVersion: true,
+            operations: { orderBy: { position: 'asc' } },
+            order: {
+              include: {
+                site: true,
+                outputProduct: { include: { unit: true } },
+                outputVariant: true,
+                technicalSheet: {
+                  include: {
+                    ingredients: {
+                      include: { product: true, unit: true },
+                      orderBy: { order: 'asc' },
+                    },
+                    steps: { orderBy: { order: 'asc' } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const batch = task?.productionBatch;
+    if (!task || !batch) throw new NotFoundException({ code: 'PRODUCTION_TASK_BATCH_NOT_FOUND' });
+
+    const snapshot = (batch.recipeVersion?.snapshot ?? null) as Record<string, any> | null;
+    const snapshotIngredients = Array.isArray(snapshot?.ingredients) ? snapshot.ingredients : null;
+    const sourceIngredients = snapshotIngredients ?? batch.order.technicalSheet.ingredients.map((ingredient) => ({
+      id: ingredient.id,
+      productId: ingredient.productId,
+      unitId: ingredient.unitId,
+      quantity: ingredient.quantity.toString(),
+      comment: ingredient.comment,
+      section: ingredient.section,
+      order: ingredient.order,
+      productName: ingredient.product.name,
+      unitSymbol: ingredient.unit.symbol,
+    }));
+    const productIds = [...new Set(sourceIngredients.map((ingredient: any) => ingredient.productId).filter(Boolean))] as string[];
+    const unitIds = [...new Set(sourceIngredients.map((ingredient: any) => ingredient.unitId).filter(Boolean))] as string[];
+    const [products, units, locations, profile] = await Promise.all([
+      productIds.length
+        ? this.prisma.product.findMany({ where: { organizationId, id: { in: productIds } }, select: { id: true, name: true } })
+        : Promise.resolve([]),
+      unitIds.length
+        ? this.prisma.unit.findMany({ where: { organizationId, id: { in: unitIds } }, select: { id: true, name: true, symbol: true } })
+        : Promise.resolve([]),
+      batch.order.siteId
+        ? this.prisma.location.findMany({ where: { organizationId, siteId: batch.order.siteId, isArchived: false }, orderBy: { name: 'asc' } })
+        : Promise.resolve([]),
+      batch.order.siteId
+        ? this.prisma.productionProfile.findFirst({
+            where: {
+              organizationId,
+              siteId: batch.order.siteId,
+              technicalSheetId: batch.order.technicalSheetId,
+              outputProductId: batch.order.outputProductId ?? undefined,
+              outputVariantId: batch.order.outputVariantId,
+            },
+          })
+        : Promise.resolve(null),
+    ]);
+    const productNames = new Map(products.map((product) => [product.id, product.name]));
+    const unitNames = new Map(units.map((unit) => [unit.id, unit]));
+    const referenceYield = new Prisma.Decimal(
+      batch.recipeVersion?.referenceYield ?? batch.order.technicalSheet.referencePortions ?? 1,
+    );
+    const factor = referenceYield.isZero() ? new Prisma.Decimal(1) : batch.plannedQuantity.div(referenceYield);
+    const ingredients = sourceIngredients
+      .sort((a: any, b: any) => Number(a.order ?? 0) - Number(b.order ?? 0))
+      .map((ingredient: any) => {
+        const unit = unitNames.get(ingredient.unitId);
+        return {
+          id: ingredient.id,
+          productId: ingredient.productId,
+          name: ingredient.productName ?? ingredient.productNameSnapshot ?? productNames.get(ingredient.productId) ?? 'Ingrédient',
+          quantity: new Prisma.Decimal(ingredient.quantity ?? 0).mul(factor).toFixed(3),
+          unitId: ingredient.unitId,
+          unit: ingredient.unitSymbol ?? ingredient.unitSymbolSnapshot ?? unit?.symbol ?? unit?.name ?? '',
+          comment: ingredient.comment ?? null,
+          section: ingredient.section ?? null,
+        };
+      });
+    const role = actor.role?.toUpperCase() ?? '';
+    const canExecute = Boolean(
+      actor.permissions?.includes('production.batch.execute') ||
+      role.includes('ADMIN') ||
+      role.includes('MANAGER') ||
+      role.includes('CHEF') ||
+      role.includes('SECOND'),
+    );
+    return {
+      task,
+      batch: {
+        id: batch.id,
+        reference: batch.reference,
+        status: batch.status,
+        plannedQuantity: batch.plannedQuantity.toString(),
+        actualQuantity: batch.actualQuantity?.toString() ?? null,
+        unit: batch.unit,
+        destinationLocation: batch.destinationLocation,
+        plannedStartAt: batch.plannedStartAt,
+        startedAt: batch.startedAt,
+        completedAt: batch.completedAt,
+        operations: batch.operations,
+      },
+      recipe: {
+        id: batch.order.technicalSheetId,
+        version: batch.recipeVersion?.version ?? null,
+        name: snapshot?.name ?? batch.order.technicalSheet.name,
+        description: snapshot?.description ?? batch.order.technicalSheet.description,
+        referenceYield: referenceYield.toString(),
+        ingredients,
+      },
+      completion: {
+        locations,
+        defaultLocationId: batch.destinationLocationId,
+        defaultConservationState: 'CHILLED',
+        allowedConservationStates: profile?.canFreeze
+          ? ['AMBIENT', 'CHILLED', 'COOLING', 'FROZEN']
+          : ['AMBIENT', 'CHILLED', 'COOLING'],
+        shelfLifeHours: profile?.shelfLifeHours ?? null,
+        frozenShelfLifeHours: profile?.frozenShelfLifeHours ?? null,
+      },
+      canExecute,
+      focusedOperationId: task.productionOperationId,
+    };
   }
 
   private async getVisible(
@@ -493,6 +693,8 @@ export class OperationalTasksService {
       menuId?: string;
       technicalSheetId?: string;
       technicalSheetStepId?: string;
+      productionBatchId?: string;
+      productionOperationId?: string;
       positionTaskPresetId?: string;
     },
   ) {
@@ -560,6 +762,33 @@ export class OperationalTasksService {
       if (!dto.technicalSheetId) throw new BadRequestException('Une étape doit être reliée à sa fiche technique.');
       const step = await this.prisma.technicalSheetStep.findFirst({ where: { id: dto.technicalSheetStepId, organizationId, technicalSheetId: dto.technicalSheetId } });
       if (!step) throw new BadRequestException('Étape de fiche technique introuvable.');
+    }
+    let batch: { id: string; order: { technicalSheetId: string; siteId: string | null; status: ProductionOrderStatus }; status: ProductionBatchStatus } | null = null;
+    if (dto.productionBatchId) {
+      batch = await this.prisma.productionBatch.findFirst({
+        where: { id: dto.productionBatchId, organizationId },
+        include: { order: { select: { technicalSheetId: true, siteId: true, status: true } } },
+      });
+      if (!batch) throw new BadRequestException('Lot de production introuvable.');
+      if (!EXECUTABLE_BATCH_STATUSES.includes(batch.status) || !EXECUTABLE_ORDER_STATUSES.includes(batch.order.status)) {
+        throw new BadRequestException("Ce lot n'est pas exécutable.");
+      }
+      if (!dto.technicalSheetId || batch.order.technicalSheetId !== dto.technicalSheetId) {
+        throw new BadRequestException('Le lot ne correspond pas à la fiche technique sélectionnée.');
+      }
+      if (dto.siteId && batch.order.siteId && batch.order.siteId !== dto.siteId) {
+        throw new BadRequestException('Le lot ne correspond pas au site sélectionné.');
+      }
+    }
+    if (dto.productionOperationId) {
+      if (!dto.productionBatchId) throw new BadRequestException('Une opération doit être reliée à son lot de production.');
+      const operation = await this.prisma.productionOperation.findFirst({
+        where: { id: dto.productionOperationId, organizationId, batchId: dto.productionBatchId },
+      });
+      if (!operation) throw new BadRequestException("L'opération ne correspond pas au lot sélectionné.");
+    }
+    if (dto.technicalSheetStepId && dto.productionBatchId && !dto.productionOperationId) {
+      throw new BadRequestException("Une tâche d'étape exécutable doit être reliée à une opération du lot.");
     }
     if (dto.positionTaskPresetId) {
       if (!dto.positionId) throw new BadRequestException('La tâche type doit être reliée à un poste RH.');

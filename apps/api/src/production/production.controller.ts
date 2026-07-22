@@ -33,6 +33,7 @@ export class ProductionController {
   @Get('tasks') tasks(@CurrentUser() user: AuthenticatedUser, @Query() query: OperationalTaskQueryDto) { return this.operationalTasks.list(this.org(user), this.actor(user), query); }
   @Get('tasks/context') taskContext(@CurrentUser() user: AuthenticatedUser) { return this.operationalTasks.context(this.org(user), this.actor(user)); }
   @Get('tasks/options') taskOptions(@CurrentUser() user: AuthenticatedUser, @Query() query: OperationalTaskOptionsQueryDto) { return this.operationalTasks.options(this.org(user), this.actor(user), query); }
+  @Get('tasks/:id/execution') taskExecution(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.operationalTasks.execution(this.org(user), this.actor(user), id); }
   @Get('tasks/assignees') taskAssignees(@CurrentUser() user: AuthenticatedUser, @Query() query: OperationalTaskAssigneeQueryDto) { return this.operationalTasks.assignees(this.org(user), this.actor(user), query); }
   @Post('tasks/from-menu') tasksFromMenu(@CurrentUser() user: AuthenticatedUser, @Body() dto: GenerateOperationalTasksFromMenuDto) { return this.operationalTasks.generateFromMenu(this.org(user), this.actor(user), dto); }
   @Post('tasks') createTask(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertOperationalTaskDto) { return this.operationalTasks.create(this.org(user), this.actor(user), dto); }

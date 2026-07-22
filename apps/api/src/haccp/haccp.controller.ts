@@ -85,6 +85,7 @@ export class HaccpController {
 
   @Get('cooling/:type/sessions') listProcessSessions(@CurrentUser() user: AuthenticatedUser, @Param('type') type: string) { return this.service.listProcessSessions(this.org(user), type); }
   @Get('cooling/:type/sessions/today') listTodayProcessSessions(@CurrentUser() user: AuthenticatedUser, @Param('type') type: string) { return this.service.listTodayProcessSessions(this.org(user), type); }
+  @Get('cooling/:type/available-productions') availableProcessProductions(@CurrentUser() user: AuthenticatedUser, @Param('type') type: string) { return this.service.listAvailableProcessProductions(this.org(user), type); }
   @Post('cooling/:type/sessions') createProcessSession(@CurrentUser() user: AuthenticatedUser, @Param('type') type: string, @Body() dto: ProcessSessionDto) { return this.service.createProcessSession(this.org(user), this.actor(user), type, dto); }
   @Get('cooling/sessions/:id') getProcessSession(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.service.getProcessSession(this.org(user), id); }
   @Put('cooling/sessions/:id') updateProcessSession(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpdateProcessSessionDto) { return this.service.updateProcessSession(this.org(user), id, dto); }
@@ -116,7 +117,7 @@ export class HaccpController {
   @Delete('cleaning/sessions/:id') deleteCleaningSession(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.service.deleteCleaningSession(this.org(user), id); }
   @Get('cleaning/today-surfaces') todayCleaningSurfaces(@CurrentUser() user: AuthenticatedUser) { return this.service.todayCleaningSurfaces(this.org(user)); }
 
-  @Get('production/sessions') listProductionSessions(@CurrentUser() user: AuthenticatedUser) { return this.service.listProductionSessions(this.org(user)); }
+  @Get('production/sessions') listProductionSessions(@CurrentUser() user: AuthenticatedUser, @Query() q: ListHaccpQueryDto) { return this.service.listProductionSessions(this.org(user), q); }
   @Get('production/sessions/today') listTodayProductionSessions(@CurrentUser() user: AuthenticatedUser) { return this.service.listTodayProductionSessions(this.org(user)); }
   @Post('production/sessions') createProductionSession(@CurrentUser() user: AuthenticatedUser, @Body() dto: ProductionSessionDto) { return this.service.createProductionSession(this.org(user), this.actor(user), dto); }
   @Get('production/sessions/:id') getProductionSession(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.service.getProductionSession(this.org(user), id); }

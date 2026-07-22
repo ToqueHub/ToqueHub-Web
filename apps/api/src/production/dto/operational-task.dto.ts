@@ -32,6 +32,10 @@ export class OperationalTaskAssigneeQueryDto {
 
 export class OperationalTaskOptionsQueryDto {
   @IsOptional() @IsUUID() departmentId?: string;
+  @IsOptional() @IsUUID() siteId?: string;
+  @IsOptional() @IsUUID() technicalSheetId?: string;
+  @IsOptional() @IsDateString() startDate?: string;
+  @IsOptional() @IsDateString() endDate?: string;
 }
 
 export class UpsertOperationalTaskDto {
@@ -50,6 +54,8 @@ export class UpsertOperationalTaskDto {
   @IsOptional() @IsUUID() menuId?: string;
   @IsOptional() @IsUUID() technicalSheetId?: string;
   @IsOptional() @IsUUID() technicalSheetStepId?: string;
+  @IsOptional() @IsUUID() productionBatchId?: string;
+  @IsOptional() @IsUUID() productionOperationId?: string;
   @IsOptional() @IsString() @MaxLength(80) positionTaskPresetId?: string;
 }
 
@@ -69,6 +75,8 @@ export class UpdateOperationalTaskDto {
   @IsOptional() @IsUUID() menuId?: string | null;
   @IsOptional() @IsUUID() technicalSheetId?: string | null;
   @IsOptional() @IsUUID() technicalSheetStepId?: string | null;
+  @IsOptional() @IsUUID() productionBatchId?: string | null;
+  @IsOptional() @IsUUID() productionOperationId?: string | null;
   @IsOptional() @IsString() @MaxLength(80) positionTaskPresetId?: string | null;
 }
 

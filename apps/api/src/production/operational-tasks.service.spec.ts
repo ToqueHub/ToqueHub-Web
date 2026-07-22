@@ -1,4 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { OperationalTasksService } from './operational-tasks.service';
 
 describe('OperationalTasksService', () => {
@@ -8,6 +9,12 @@ describe('OperationalTasksService', () => {
     hrPosition: { findFirst: jest.fn(), findMany: jest.fn() },
     technicalSheet: { findFirst: jest.fn(), findMany: jest.fn() },
     technicalSheetStep: { findFirst: jest.fn() },
+    productionBatch: { findFirst: jest.fn(), findMany: jest.fn() },
+    productionOperation: { findFirst: jest.fn() },
+    productionProfile: { findFirst: jest.fn() },
+    product: { findMany: jest.fn() },
+    unit: { findMany: jest.fn() },
+    location: { findMany: jest.fn() },
     site: { findFirst: jest.fn() },
     planningAssignment: { findMany: jest.fn(), findFirst: jest.fn() },
     menu: { findFirst: jest.fn() },
@@ -359,5 +366,68 @@ describe('OperationalTasksService', () => {
       unitLabel: 'portions',
     });
     expect(String(result.created[0].quantity)).toBe('24');
+  });
+
+  it('builds an immutable execution view and scales ingredients to the linked batch', async () => {
+    prisma.hrEmployee.findMany.mockResolvedValue([]);
+    const visible = {
+      id: 'task-1',
+      organizationId: 'org-1',
+      departmentId: 'kitchen',
+      productionBatchId: 'batch-1',
+      productionOperationId: null,
+      assignedEmployee: { id: 'cook', firstName: 'Lucas', lastName: 'Bernard' },
+    };
+    prisma.operationalTask.findFirst
+      .mockResolvedValueOnce(visible)
+      .mockResolvedValueOnce({
+        ...visible,
+        productionBatch: {
+          id: 'batch-1',
+          reference: 'OP-1-L01',
+          status: 'TO_PREPARE',
+          plannedQuantity: new Prisma.Decimal(25),
+          actualQuantity: null,
+          unit: { id: 'portion', name: 'Portion', symbol: 'portions' },
+          destinationLocationId: 'cold-room',
+          destinationLocation: { id: 'cold-room', name: 'Chambre froide' },
+          plannedStartAt: new Date('2026-07-20T08:00:00.000Z'),
+          startedAt: null,
+          completedAt: null,
+          recipeVersion: {
+            version: 3,
+            referenceYield: new Prisma.Decimal(10),
+            snapshot: {
+              name: 'Velouté',
+              ingredients: [{ id: 'ingredient-1', productId: 'pumpkin', unitId: 'kg', quantity: '2', order: 0 }],
+            },
+          },
+          operations: [{ id: 'operation-1', batchId: 'batch-1', position: 0, title: 'Tailler', status: 'READY' }],
+          order: {
+            technicalSheetId: 'sheet-1',
+            siteId: 'site-1',
+            outputProductId: 'soup',
+            outputVariantId: null,
+            technicalSheet: { id: 'sheet-1', name: 'Velouté', description: null, referencePortions: new Prisma.Decimal(10), ingredients: [], steps: [] },
+            site: { id: 'site-1', name: 'Cuisine' },
+            outputProduct: { id: 'soup', name: 'Velouté', unit: { symbol: 'portions' } },
+            outputVariant: null,
+          },
+        },
+      });
+    prisma.product.findMany.mockResolvedValue([{ id: 'pumpkin', name: 'Potimarron' }]);
+    prisma.unit.findMany.mockResolvedValue([{ id: 'kg', name: 'Kilogramme', symbol: 'kg' }]);
+    prisma.location.findMany.mockResolvedValue([{ id: 'cold-room', name: 'Chambre froide' }]);
+    prisma.productionProfile.findFirst.mockResolvedValue({ canFreeze: true, shelfLifeHours: 72, frozenShelfLifeHours: 720 });
+
+    const result = await service.execution('org-1', { id: 'admin', role: 'ADMIN', permissions: [] }, 'task-1');
+
+    expect(result.recipe).toMatchObject({
+      name: 'Velouté',
+      version: 3,
+      ingredients: [{ name: 'Potimarron', quantity: '5.000', unit: 'kg' }],
+    });
+    expect(result.completion.allowedConservationStates).toContain('FROZEN');
+    expect(result.canExecute).toBe(true);
   });
 });

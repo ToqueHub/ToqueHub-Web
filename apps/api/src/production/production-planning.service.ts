@@ -367,7 +367,10 @@ export class ProductionPlanningService {
     const sheet = await tx.technicalSheet.findFirst({
       where: { id: technicalSheetId, organizationId },
       include: {
-        ingredients: { orderBy: { order: 'asc' } },
+        ingredients: {
+          include: { product: { select: { name: true } }, unit: { select: { symbol: true } } },
+          orderBy: { order: 'asc' },
+        },
         steps: { orderBy: { order: 'asc' } },
       },
     });
@@ -410,6 +413,8 @@ export class ProductionPlanningService {
             sourceTechnicalSheetId: ingredient.sourceTechnicalSheetId,
             unitId: ingredient.unitId,
             quantity: ingredient.quantity.toString(),
+            productName: ingredient.product.name,
+            unitSymbol: ingredient.unit.symbol,
             comment: ingredient.comment,
             section: ingredient.section,
             order: ingredient.order,
