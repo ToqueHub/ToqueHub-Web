@@ -49,6 +49,7 @@ import type {
   OperationalTaskOptions,
   OperationalTaskStatus,
   ProductionCampaign,
+  Site,
   UserSession,
 } from '../types';
 
@@ -68,6 +69,7 @@ type TaskDraft = {
   category: OperationalTaskCategory;
   departmentId: string;
   positionId: string;
+  siteId: string;
   assignedEmployeeId: string;
   date: string;
   startTime: string;
@@ -171,14 +173,85 @@ function formatDay(value: string, options?: Intl.DateTimeFormatOptions) {
 }
 
 function formatTime(value: string) {
-  return new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' }).format(
-    new Date(value),
-  );
+  return new Intl.DateTimeFormat('fr-FR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(new Date(value));
 }
 
 function taskDay(value: string) {
   const date = new Date(value);
   return dayKey(date);
+}
+
+const TIMELINE_HOUR_HEIGHT = 108;
+const TIMELINE_MIN_TASK_MINUTES = 45;
+
+type TimelineTaskLayout = {
+  task: OperationalTask;
+  startMinute: number;
+  endMinute: number;
+  visualEndMinute: number;
+  lane: number;
+  laneCount: number;
+};
+
+function minuteInDay(value: string, day: string) {
+  const date = new Date(value);
+  const valueDay = taskDay(value);
+  if (valueDay < day) return 0;
+  if (valueDay > day) return 24 * 60;
+  return date.getHours() * 60 + date.getMinutes();
+}
+
+function formatTimelineMinute(value: number) {
+  const bounded = Math.min(24 * 60, Math.max(0, value));
+  const hours = bounded === 24 * 60 ? 24 : Math.floor(bounded / 60);
+  const minutes = bounded === 24 * 60 ? 0 : bounded % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function buildTimelineLayout(tasks: OperationalTask[], day: string): TimelineTaskLayout[] {
+  const entries = tasks
+    .map((task) => {
+      const startMinute = minuteInDay(task.startsAt, day);
+      const endMinute = Math.max(startMinute + 5, minuteInDay(task.endsAt, day));
+      return {
+        task,
+        startMinute,
+        endMinute,
+        visualEndMinute: Math.min(24 * 60, Math.max(endMinute, startMinute + TIMELINE_MIN_TASK_MINUTES)),
+      };
+    })
+    .sort((a, b) => a.startMinute - b.startMinute || a.endMinute - b.endMinute);
+  const result: TimelineTaskLayout[] = [];
+  let group: Array<Omit<TimelineTaskLayout, 'laneCount'>> = [];
+  let laneEnds: number[] = [];
+  let groupEnd = -1;
+
+  const flushGroup = () => {
+    const laneCount = Math.max(1, laneEnds.length);
+    result.push(...group.map((entry) => ({ ...entry, laneCount })));
+    group = [];
+    laneEnds = [];
+    groupEnd = -1;
+  };
+
+  entries.forEach((entry) => {
+    if (group.length && entry.startMinute >= groupEnd) flushGroup();
+    let lane = laneEnds.findIndex((endMinute) => endMinute <= entry.startMinute);
+    if (lane === -1) {
+      lane = laneEnds.length;
+      laneEnds.push(entry.visualEndMinute);
+    } else {
+      laneEnds[lane] = entry.visualEndMinute;
+    }
+    group.push({ ...entry, lane });
+    groupEnd = Math.max(groupEnd, entry.visualEndMinute);
+  });
+  if (group.length) flushGroup();
+  return result;
 }
 
 function employeeName(
@@ -188,7 +261,11 @@ function employeeName(
   return `${employee.firstName} ${employee.lastName}`.trim();
 }
 
-function emptyDraft(date: string, departmentId = '', assignedEmployeeId = ''): TaskDraft {
+function taskSiteName(task: OperationalTask) {
+  return task.site?.name ?? task.assignedEmployee?.mainSite?.name ?? task.planningAssignment?.site?.name;
+}
+
+function emptyDraft(date: string, departmentId = '', assignedEmployeeId = '', siteId = ''): TaskDraft {
   return {
     mode: '',
     title: '',
@@ -196,6 +273,7 @@ function emptyDraft(date: string, departmentId = '', assignedEmployeeId = ''): T
     category: 'OTHER',
     departmentId,
     positionId: '',
+    siteId,
     assignedEmployeeId,
     date,
     startTime: '09:00',
@@ -237,7 +315,9 @@ function categoryForDepartment(name?: string | null): OperationalTaskCategory {
 export function ProductionApp({ token, session, tab }: ProductionAppProps) {
   const [view, setView] = useState<ViewMode>('day');
   const [anchorDate, setAnchorDate] = useState(today());
+  const [siteFilter, setSiteFilter] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('');
+  const [sites, setSites] = useState<Site[]>([]);
   const [departments, setDepartments] = useState<HrDepartment[]>([]);
   const [taskContext, setTaskContext] = useState({
     ownEmployeeId: '',
@@ -259,6 +339,7 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
   const [menuDraft, setMenuDraft] = useState({
     menuId: '',
     departmentId: '',
+    siteId: '',
     date: today(),
     serviceTime: '12:00',
   });
@@ -301,15 +382,18 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
     setLoading(true);
     setError('');
     try {
-      const [hr, context, taskList] = await Promise.all([
+      const [hr, context, availableSites, taskList] = await Promise.all([
         api.hrBootstrap(token),
         api.productionTaskContext(token),
+        api.sites(token).catch(() => []),
         api.productionTasks(token, {
           startDate: localIso(period.start, '00:00'),
           endDate: localIso(period.end, '00:00'),
+          siteId: siteFilter || undefined,
           departmentId: departmentFilter || undefined,
         }),
       ]);
+      setSites(availableSites.filter((site) => !site.isArchived && !site.archivedAt));
       setDepartments(context.departments ?? []);
       setTaskContext({
         ownEmployeeId: context.ownEmployeeId ?? '',
@@ -323,7 +407,7 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
     } finally {
       setLoading(false);
     }
-  }, [departmentFilter, period.end, period.start, token]);
+  }, [departmentFilter, period.end, period.start, siteFilter, token]);
 
   useEffect(() => {
     void load();
@@ -426,6 +510,7 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
     api
       .productionTaskOptions(token, {
         departmentId: draft.departmentId,
+        siteId: draft.siteId || undefined,
         technicalSheetId: draft.technicalSheetId || undefined,
         startDate: localIso(draft.date, '00:00'),
         endDate: localIso(addDays(draft.date, 1), '00:00'),
@@ -442,7 +527,7 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
     return () => {
       active = false;
     };
-  }, [draft.date, draft.departmentId, draft.technicalSheetId, editorOpen, token]);
+  }, [draft.date, draft.departmentId, draft.siteId, draft.technicalSheetId, editorOpen, token]);
 
   const positionsForDepartment = useMemo(
     () =>
@@ -451,6 +536,7 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
       ),
     [draft.departmentId, positions],
   );
+  const selectedSite = sites.find((site) => site.id === draft.siteId);
   const selectedDepartment = departments.find((department) => department.id === draft.departmentId);
   const selectedSheet = taskOptions.technicalSheets.find(
     (sheet) => sheet.id === draft.technicalSheetId,
@@ -660,6 +746,7 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
         date,
         departmentFilter || '',
         taskContext.canCreateUnassigned ? '' : taskContext.ownEmployeeId,
+        siteFilter || '',
       ),
     );
     setEditorOpen(true);
@@ -675,6 +762,7 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
     setMenuDraft({
       menuId: '',
       departmentId: kitchenDepartment?.id ?? '',
+      siteId: siteFilter || '',
       date: anchorDate,
       serviceTime: '12:00',
     });
@@ -732,6 +820,7 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
       category: task.category,
       departmentId: task.departmentId,
       positionId: task.positionId ?? '',
+      siteId: task.siteId ?? '',
       assignedEmployeeId: task.assignedEmployeeId ?? '',
       date: taskDay(task.startsAt),
       startTime: `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`,
@@ -768,6 +857,7 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
       category: draft.category,
       departmentId: draft.departmentId,
       positionId: draft.positionId || null,
+      siteId: draft.siteId || null,
       assignedEmployeeId: draft.assignedEmployeeId || null,
       startsAt,
       endsAt,
@@ -945,21 +1035,40 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
               </button>
             </div>
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '.6rem', fontWeight: 800 }}>
-            <Users size={18} color="#64748b" />
-            <select
-              value={departmentFilter}
-              onChange={(event) => setDepartmentFilter(event.target.value)}
-              style={{ ...inputStyle, minWidth: '220px', borderRadius: '13px' }}
-            >
-              <option value="">Tous mes services</option>
-              {departments.map((department) => (
-                <option key={department.id} value={department.id}>
-                  {department.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="production-planning-filters">
+            <label>
+              <Building2 size={18} />
+              <span>Site</span>
+              <select
+                value={siteFilter}
+                onChange={(event) => setSiteFilter(event.target.value)}
+                style={{ ...inputStyle, minWidth: '190px', borderRadius: '13px' }}
+              >
+                <option value="">Tous les sites</option>
+                {sites.map((site) => (
+                  <option key={site.id} value={site.id}>
+                    {site.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <Users size={18} />
+              <span>Service</span>
+              <select
+                value={departmentFilter}
+                onChange={(event) => setDepartmentFilter(event.target.value)}
+                style={{ ...inputStyle, minWidth: '210px', borderRadius: '13px' }}
+              >
+                <option value="">Tous mes services</option>
+                {departments.map((department) => (
+                  <option key={department.id} value={department.id}>
+                    {department.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         </div>
 
         <div
@@ -1344,6 +1453,7 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
             <OperationalTaskWizardSidebar
               step={editorStep}
               editing={Boolean(editingTask)}
+              siteName={selectedSite?.name}
               departmentName={selectedDepartment?.name}
               assigneeName={
                 draft.assignedEmployeeId ? employeeName(selectedAssignee) : 'À assigner plus tard'
@@ -1357,13 +1467,25 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
               {editorStep === 1 && (
                 <section className="operational-task-step">
                   <div className="operational-task-step-heading">
-                    <span>Service responsable</span>
-                    <h2>Dans quel service se déroule la tâche ?</h2>
+                    <span>Site et service responsables</span>
+                    <h2>Où se déroule la tâche ?</h2>
                     <p>
-                      Les services viennent directement du module RH. Recherchez puis sélectionnez
-                      l’équipe concernée.
+                      Choisissez d’abord le site, puis le service issu du module RH qui réalisera
+                      la tâche.
                     </p>
                   </div>
+                  <label className="operational-task-site-select">
+                    <span><Building2 size={17} /> Site</span>
+                    <select
+                      value={draft.siteId}
+                      onChange={(event) => setDraft((current) => ({ ...current, siteId: event.target.value }))}
+                    >
+                      <option value="">Aucun site spécifique</option>
+                      {sites.map((site) => (
+                        <option key={site.id} value={site.id}>{site.name}</option>
+                      ))}
+                    </select>
+                  </label>
                   <div className="operational-task-search">
                     <Building2 size={19} />
                     <input
@@ -3486,14 +3608,16 @@ function DayColumn({
           <Plus size={16} color={isToday ? '#059669' : '#475569'} />
         </button>
       </div>
-      <div style={{ display: 'grid', gap: '.65rem', flex: 1, alignContent: 'start' }}>
-        {tasks.length === 0 ? (
+      {tasks.length === 0 ? (
+        <div style={{ flex: 1 }}>
           <button type="button" onClick={onCreate} className="production-empty-day-btn">
             <Plus size={18} />
             <span>Planifier une tâche</span>
           </button>
-        ) : (
-          tasks.map((task) => (
+        </div>
+      ) : compact ? (
+        <div style={{ display: 'grid', gap: '.65rem', flex: 1, alignContent: 'start' }}>
+          {tasks.map((task) => (
             <TaskCard
               key={task.id}
               task={task}
@@ -3501,10 +3625,148 @@ function DayColumn({
               onEdit={() => onEdit(task)}
               onStatus={(status) => onStatus(task, status)}
             />
-          ))
-        )}
+          ))}
+        </div>
+      ) : (
+        <DayTimeline
+          day={day}
+          tasks={tasks}
+          busyId={busyId}
+          onEdit={onEdit}
+          onStatus={onStatus}
+        />
+      )}
+    </div>
+  );
+}
+
+function DayTimeline({
+  day,
+  tasks,
+  busyId,
+  onEdit,
+  onStatus,
+}: {
+  day: string;
+  tasks: OperationalTask[];
+  busyId: string;
+  onEdit: (task: OperationalTask) => void;
+  onStatus: (task: OperationalTask, status: OperationalTaskStatus) => void;
+}) {
+  const layout = buildTimelineLayout(tasks, day);
+  const firstMinute = Math.floor(Math.min(...layout.map((entry) => entry.startMinute)) / 60) * 60;
+  const lastMinute = Math.min(
+    24 * 60,
+    Math.max(firstMinute + 60, Math.ceil(Math.max(...layout.map((entry) => entry.visualEndMinute)) / 60) * 60),
+  );
+  const timelineHeight = ((lastMinute - firstMinute) / 60) * TIMELINE_HOUR_HEIGHT;
+  const hourMarks = Array.from(
+    { length: Math.floor((lastMinute - firstMinute) / 60) + 1 },
+    (_, index) => firstMinute + index * 60,
+  );
+
+  return (
+    <div className="production-day-timeline">
+      <div className="production-time-rail" style={{ height: `${timelineHeight}px` }}>
+        {hourMarks.map((minute, index) => (
+          <span
+            key={minute}
+            className={`production-time-label${index === 0 ? ' first' : index === hourMarks.length - 1 ? ' last' : ''}`}
+            style={{ top: `${((minute - firstMinute) / 60) * TIMELINE_HOUR_HEIGHT}px` }}
+          >
+            {formatTimelineMinute(minute)}
+          </span>
+        ))}
+      </div>
+      <div className="production-timeline-canvas" style={{ height: `${timelineHeight}px` }}>
+        {hourMarks.map((minute) => (
+          <span
+            key={minute}
+            className="production-hour-line"
+            style={{ top: `${((minute - firstMinute) / 60) * TIMELINE_HOUR_HEIGHT}px` }}
+          />
+        ))}
+        {layout.map((entry) => {
+          const laneWidth = 100 / entry.laneCount;
+          const top = ((entry.startMinute - firstMinute) / 60) * TIMELINE_HOUR_HEIGHT;
+          const height = ((entry.visualEndMinute - entry.startMinute) / 60) * TIMELINE_HOUR_HEIGHT;
+          return (
+            <div
+              key={entry.task.id}
+              className="production-timeline-task"
+              style={{
+                top: `${top + 5}px`,
+                height: `${Math.max(54, height - 10)}px`,
+                left: `calc(${entry.lane * laneWidth}% + 8px)`,
+                width: `calc(${laneWidth}% - 12px)`,
+              }}
+            >
+              <TimelineTaskCard
+                task={entry.task}
+                busy={busyId === entry.task.id}
+                onEdit={() => onEdit(entry.task)}
+                onStatus={(status) => onStatus(entry.task, status)}
+              />
+            </div>
+          );
+        })}
       </div>
     </div>
+  );
+}
+
+function TimelineTaskCard({
+  task,
+  busy,
+  onEdit,
+  onStatus,
+}: {
+  task: OperationalTask;
+  busy: boolean;
+  onEdit: () => void;
+  onStatus: (status: OperationalTaskStatus) => void;
+}) {
+  const status = statusCopy[task.status];
+  const nextStatus =
+    task.status === 'TODO' ? 'IN_PROGRESS' : task.status === 'IN_PROGRESS' ? 'COMPLETED' : 'TODO';
+  return (
+    <article className="production-timeline-task-card">
+      <span className="production-task-accent-bar" style={{ background: categoryColor[task.category] }} />
+      <div className="production-timeline-task-main">
+        <div className="production-timeline-task-topline">
+          <span className="production-timeline-task-time">
+            <Clock3 size={13} /> {formatTime(task.startsAt)}–{formatTime(task.endsAt)}
+          </span>
+          <span style={{ color: status.color, background: status.background }} className="production-timeline-status">
+            {status.label}
+          </span>
+        </div>
+        <strong>{task.title}</strong>
+        <span className="production-timeline-task-meta">
+          {[taskSiteName(task), task.department?.name, employeeName(task.assignedEmployee)].filter(Boolean).join(' · ')}
+        </span>
+      </div>
+      <div className="production-timeline-task-actions">
+        <button type="button" aria-label="Modifier" onClick={onEdit}>
+          <Pencil size={14} />
+        </button>
+        {task.status !== 'COMPLETED' ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onStatus(nextStatus)}
+            aria-label={nextStatus === 'IN_PROGRESS' ? 'Démarrer' : 'Terminer'}
+            className={nextStatus === 'IN_PROGRESS' ? 'start' : 'complete'}
+          >
+            {busy ? <Loader2 size={14} className="spin" /> : nextStatus === 'IN_PROGRESS' ? <Play size={14} /> : <Check size={14} />}
+          </button>
+        ) : (
+          <button type="button" disabled={busy} onClick={() => onStatus('TODO')} aria-label="Rouvrir">
+            {busy ? <Loader2 size={14} className="spin" /> : <RotateCcw size={14} />}
+          </button>
+        )}
+      </div>
+    </article>
   );
 }
 
@@ -3580,7 +3842,7 @@ function TaskCard({
         </button>
       </div>
       <div style={{ color: '#64748b', fontSize: '.74rem', fontWeight: 600, marginTop: '.1rem' }}>
-        {task.department?.name ?? 'Service'} · {employeeName(task.assignedEmployee)}
+        {[taskSiteName(task), task.department?.name ?? 'Service', employeeName(task.assignedEmployee)].filter(Boolean).join(' · ')}
       </div>
       {task.technicalSheet && (
         <div
@@ -3771,18 +4033,25 @@ function Field({
 function OperationalTaskWizardSidebar({
   step,
   editing,
+  siteName,
   departmentName,
   assigneeName,
   taskName,
 }: {
   step: 1 | 2 | 3;
   editing: boolean;
+  siteName?: string;
   departmentName?: string;
   assigneeName: string;
   taskName: string;
 }) {
   const items = [
-    { index: 1, icon: Building2, label: 'Service', detail: departmentName || 'À sélectionner' },
+    {
+      index: 1,
+      icon: Building2,
+      label: 'Site & service',
+      detail: [siteName, departmentName].filter(Boolean).join(' · ') || 'À sélectionner',
+    },
     {
       index: 2,
       icon: UserRound,

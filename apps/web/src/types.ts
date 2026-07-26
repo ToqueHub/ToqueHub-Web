@@ -3609,6 +3609,7 @@ export interface OperationalTaskQuery {
   startDate: string;
   endDate: string;
   departmentId?: string;
+  siteId?: string;
   employeeId?: string;
   status?: OperationalTaskStatus;
 }

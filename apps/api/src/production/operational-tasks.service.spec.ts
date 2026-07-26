@@ -183,6 +183,23 @@ describe('OperationalTasksService', () => {
     expect(where.AND[0].OR[1].departmentId.in).toEqual(['kitchen']);
   });
 
+  it('filters the operational planning by the task or collaborator main site', async () => {
+    prisma.hrEmployee.findMany.mockResolvedValue([]);
+    prisma.operationalTask.findMany.mockResolvedValue([]);
+
+    await service.list(
+      'org-1',
+      { id: 'admin-user', role: 'ADMIN', permissions: [] },
+      { ...period, siteId: 'site-main' },
+    );
+
+    expect(prisma.operationalTask.findMany.mock.calls[0][0].where.OR).toEqual([
+      { siteId: 'site-main' },
+      { siteId: null, assignedEmployee: { mainSiteId: 'site-main' } },
+      { siteId: null, planningAssignment: { siteId: 'site-main' } },
+    ]);
+  });
+
   it('marks RH collaborators available only when Planning covers the whole task', async () => {
     const employees = [
       {

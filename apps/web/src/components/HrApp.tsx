@@ -136,23 +136,23 @@ export function HrApp({
   const [statusFilter, setStatusFilter] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('');
   const [positionFilter, setPositionFilter] = useState('');
-  const [linkFilter, setLinkFilter] = useState('');
+  const [siteFilter, setSiteFilter] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [orgDepartment, setOrgDepartment] = useState('');
 
   const activeDepartments = departments.filter((department) => !isArchived(department));
   const activePositions = positions.filter((position) => !isArchived(position));
+  const activeSites = sites.filter((site) => !isArchived(site));
   const visibleCollaborators = useMemo(() => collaborators.filter((collaborator) => {
     if (!showArchived && isArchived(collaborator)) return false;
-    const haystack = [collaborator.firstName, collaborator.lastName, collaborator.email, collaborator.department?.name, collaborator.position?.name].filter(Boolean).join(' ').toLowerCase();
+    const haystack = [collaborator.firstName, collaborator.lastName, collaborator.email, collaborator.department?.name, collaborator.position?.name, collaborator.mainSite?.name, collaborator.site?.name].filter(Boolean).join(' ').toLowerCase();
     const matchesSearch = haystack.includes(search.toLowerCase());
     const matchesStatus = !statusFilter || collaborator.status === statusFilter;
     const matchesDepartment = !departmentFilter || collaborator.departmentId === departmentFilter || collaborator.department?.id === departmentFilter;
     const matchesPosition = !positionFilter || collaborator.positionId === positionFilter || collaborator.position?.id === positionFilter;
-    const hasAccount = Boolean(collaborator.userId || collaborator.user?.id);
-    const matchesLink = !linkFilter || (linkFilter === 'linked' ? hasAccount : !hasAccount);
-    return matchesSearch && matchesStatus && matchesDepartment && matchesPosition && matchesLink;
-  }), [collaborators, search, statusFilter, departmentFilter, positionFilter, linkFilter, showArchived]);
+    const matchesSite = !siteFilter || collaborator.mainSiteId === siteFilter || collaborator.siteId === siteFilter || collaborator.mainSite?.id === siteFilter || collaborator.site?.id === siteFilter;
+    return matchesSearch && matchesStatus && matchesDepartment && matchesPosition && matchesSite;
+  }), [collaborators, search, statusFilter, departmentFilter, positionFilter, siteFilter, showArchived]);
 
   const selectableUsers = useMemo(() => {
     const merged = [...users];
@@ -229,16 +229,16 @@ export function HrApp({
           <div className="section-header-modern">
             <div className="section-info">
               <span className="card-title"><UsersRound size={18} /> Collaborateurs</span>
-              <span className="section-tagline">Une personne peut exister avec ou sans compte ToqueHub. Les archives restent consultables.</span>
+              <span className="section-tagline">Consultez le poste, le service et le site principal de chaque collaborateur. Les archives restent accessibles.</span>
             </div>
             {canWrite ? <button className="btn btn-primary" onClick={() => setCollaboratorModal('new')}><Plus size={16} /> Ajouter</button> : null}
           </div>
           <div className="filter-bar hr-filter-grid">
-            <div className="search-input-wrapper"><Search /><input className="search-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nom, email, poste, service…" /></div>
+            <div className="search-input-wrapper"><Search /><input className="search-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nom, email, poste, service, site…" /></div>
             <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">Tous statuts</option>{statusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select>
             <select value={departmentFilter} onChange={(event) => setDepartmentFilter(event.target.value)}><option value="">Tous services</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select>
             <select value={positionFilter} onChange={(event) => setPositionFilter(event.target.value)}><option value="">Tous postes</option>{positions.map((position) => <option key={position.id} value={position.id}>{position.name}</option>)}</select>
-            <select value={linkFilter} onChange={(event) => setLinkFilter(event.target.value)}><option value="">Compte ToqueHub</option><option value="linked">Avec compte</option><option value="unlinked">Sans compte</option></select>
+            <select value={siteFilter} onChange={(event) => setSiteFilter(event.target.value)}><option value="">Tous les sites</option>{activeSites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}</select>
             <label className="toggle-inline"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} /> Archives</label>
           </div>
           <CollaboratorsTable collaborators={visibleCollaborators} canWrite={canWrite} onOpen={setSelectedCollaborator} onEdit={setCollaboratorModal} onArchive={onArchiveCollaborator} onCreate={() => setCollaboratorModal('new')} />
@@ -1386,7 +1386,7 @@ function OnboardingStructureReview({ departments, positions, onOpenCollaborators
 
 function CollaboratorsTable({ collaborators, canWrite, onOpen, onEdit, onArchive, onCreate }: { collaborators: HrCollaborator[]; canWrite: boolean; onOpen: (item: HrCollaborator) => void; onEdit: (item: HrCollaborator) => void; onArchive: (id: string) => void; onCreate: () => void }) {
   if (collaborators.length === 0) return <EmptyState title="Aucun résultat" description="Aucun collaborateur ne correspond aux filtres ou le référentiel est vide." action={canWrite ? <button className="btn btn-primary" onClick={onCreate}><Plus size={16} /> Créer un collaborateur</button> : undefined} />;
-  return <div className="table-wrapper"><table className="table-modern hr-table"><thead><tr><th>Photo</th><th>Nom complet</th><th>Poste</th><th>Service</th><th>Date d’embauche</th><th>Compte ToqueHub</th><th>Statut</th><th>Actions</th></tr></thead><tbody>{collaborators.map((collaborator) => <tr key={collaborator.id}><td><AvatarInitial collaborator={collaborator} /></td><td><button className="link-button" onClick={() => onOpen(collaborator)}>{fullName(collaborator)}</button><small>{collaborator.email || 'Email non renseigné'}</small></td><td>{collaborator.position?.name ?? '—'}</td><td>{collaborator.department?.name ?? '—'}</td><td>{formatDate(collaborator.hireDate)}</td><td>{collaborator.user || collaborator.userId ? <span className="badge badge-reception">Lié</span> : <span className="badge">Aucun</span>}</td><td><StatusBadge status={collaborator.status} /></td><td><div className="row-actions"><button className="icon-btn" onClick={() => onOpen(collaborator)} title="Fiche"><ChevronRight size={16} /></button>{canWrite ? <><button className="icon-btn" onClick={() => onEdit(collaborator)} title="Modifier"><Edit3 size={16} /></button><button className="icon-btn danger" onClick={() => onArchive(collaborator.id)} title="Archiver"><Archive size={16} /></button></> : null}</div></td></tr>)}</tbody></table></div>;
+  return <div className="table-wrapper"><table className="table-modern hr-table"><thead><tr><th>Photo</th><th>Nom complet</th><th>Poste</th><th>Service</th><th>Date d’embauche</th><th>Site principal</th><th>Statut</th><th>Actions</th></tr></thead><tbody>{collaborators.map((collaborator) => <tr key={collaborator.id}><td><AvatarInitial collaborator={collaborator} /></td><td><button className="link-button" onClick={() => onOpen(collaborator)}>{fullName(collaborator)}</button><small>{collaborator.email || 'Email non renseigné'}</small></td><td>{collaborator.position?.name ?? '—'}</td><td>{collaborator.department?.name ?? '—'}</td><td>{formatDate(collaborator.hireDate)}</td><td>{collaborator.mainSite?.name || collaborator.site?.name || '—'}</td><td><StatusBadge status={collaborator.status} /></td><td><div className="row-actions"><button className="icon-btn" onClick={() => onOpen(collaborator)} title="Fiche"><ChevronRight size={16} /></button>{canWrite ? <><button className="icon-btn" onClick={() => onEdit(collaborator)} title="Modifier"><Edit3 size={16} /></button><button className="icon-btn danger" onClick={() => onArchive(collaborator.id)} title="Archiver"><Archive size={16} /></button></> : null}</div></td></tr>)}</tbody></table></div>;
 }
 
 function ReferencePage({ title, icon, description, items, canWrite, onCreate, onEdit, onArchive }: { title: string; icon: React.ReactNode; description: string; items: Array<HrDepartment | HrPosition>; canWrite: boolean; onCreate: () => void; onEdit: (item: HrDepartment | HrPosition) => void; onArchive: (id: string) => void }) {
@@ -1857,6 +1857,80 @@ function CollaboratorSheet({ collaborator, regulatoryCountryCode, canWrite, onCl
       return '';
     });
   }, [collaborator.id, detailSection]);
+  const positionName = collaborator.position?.name?.trim();
+  const departmentName = collaborator.department?.name?.trim();
+  const siteName = (collaborator.mainSite?.name || collaborator.site?.name)?.trim();
+  const managerName = collaborator.manager
+    ? `${collaborator.manager.firstName ?? ''} ${collaborator.manager.lastName ?? ''}`.trim()
+    : '';
+  const location = formatLocation(collaborator);
+  const secondaryPositions = (collaborator.secondaryPositions ?? []).filter((position) => hasText(position.name));
+  const headerDetails = [positionName, departmentName, siteName].filter(hasText);
+  const personalRows: InfoRow[] = [];
+  const professionalRows: InfoRow[] = [];
+  const organizationRows: InfoRow[] = [];
+  const compensationRows: InfoRow[] = [];
+
+  if (hasText(collaborator.email)) personalRows.push([<Mail size={14} />, collaborator.email]);
+  if (hasText(collaborator.phone)) personalRows.push([<Phone size={14} />, collaborator.phone]);
+  if (hasText(collaborator.address)) personalRows.push([<MapPin size={14} />, collaborator.address]);
+  if (hasText(location)) personalRows.push([<MapPin size={14} />, location]);
+  if (hasText(collaborator.birthDate)) personalRows.push([<CalendarDays size={14} />, formatDate(collaborator.birthDate)]);
+  if (hasText(collaborator.personalIdentityNumber)) {
+    personalRows.push([
+      <ShieldCheck size={14} />,
+      `${regulatoryCountryCode === 'FI' ? 'Henkilötunnus' : regulatoryCountryCode === 'FR' ? 'N° sécurité sociale' : 'Identifiant personnel'} : ${maskPersonalIdentityNumber(collaborator.personalIdentityNumber)}`,
+    ]);
+  }
+  if (hasText(collaborator.primaryLanguage)) personalRows.push([<NotebookText size={14} />, `Langue principale : ${collaborator.primaryLanguage}`]);
+  if (hasText(collaborator.secondaryLanguage)) personalRows.push([<NotebookText size={14} />, `Langue secondaire : ${collaborator.secondaryLanguage}`]);
+  if (hasText(collaborator.emergencyContact)) personalRows.push([<ShieldCheck size={14} />, `Contact d'urgence : ${collaborator.emergencyContact}`]);
+
+  if (hasText(positionName)) professionalRows.push([<BriefcaseBusiness size={14} />, `Poste principal : ${positionName}`]);
+  if (secondaryPositions.length) {
+    professionalRows.push([
+      <BriefcaseBusiness size={14} />,
+      <div className="hr-position-badges">
+        {secondaryPositions.map((position) => <span key={position.id} className="badge badge-reception">{position.name}</span>)}
+      </div>,
+    ]);
+  }
+  if (hasText(departmentName)) professionalRows.push([<Building2 size={14} />, `Service : ${departmentName}`]);
+  if (hasText(siteName)) professionalRows.push([<MapPin size={14} />, `Établissement : ${siteName}`]);
+  if (hasText(collaborator.hireDate)) professionalRows.push([<CalendarDays size={14} />, `Date d’embauche : ${formatDate(collaborator.hireDate)}`]);
+  if (hasText(managerName)) professionalRows.push([<UserRound size={14} />, `Responsable : ${managerName}`]);
+  if (hasText(collaborator.employeeNumber)) professionalRows.push([<NotebookText size={14} />, `Matricule : ${collaborator.employeeNumber}`]);
+  if (hasText(contractType)) professionalRows.push([<ShieldCheck size={14} />, `Contrat : ${contractType}`]);
+  if (contractWeeklyMinutes != null) professionalRows.push([<Clock size={14} />, `Durée contractuelle : ${formatMinutes(contractWeeklyMinutes)}`]);
+  if (hasText(contractEndDate)) professionalRows.push([<CalendarDays size={14} />, `Fin de contrat : ${formatDate(contractEndDate)}`]);
+  if (hasText(trialEndDate)) professionalRows.push([<CalendarDays size={14} />, `Fin période d'essai : ${formatDate(trialEndDate)}`]);
+
+  if (hasText(departmentName)) organizationRows.push([<Building2 size={14} />, `Service : ${departmentName}`]);
+  if (hasText(positionName)) organizationRows.push([<BriefcaseBusiness size={14} />, `Poste principal : ${positionName}`]);
+  if (secondaryPositions.length) {
+    organizationRows.push([
+      <BriefcaseBusiness size={14} />,
+      <div className="hr-position-badges">
+        {secondaryPositions.map((position) => <span key={position.id} className="badge badge-reception">{position.name}</span>)}
+      </div>,
+    ]);
+  }
+  if (hasText(siteName)) organizationRows.push([<MapPin size={14} />, `Établissement : ${siteName}`]);
+  if (contractWeeklyMinutes != null) organizationRows.push([<Clock size={14} />, `Durée hebdo contrat : ${formatMinutes(contractWeeklyMinutes)}`]);
+
+  if (hourlyRate != null) compensationRows.push([<ShieldCheck size={14} />, `Taux horaire : ${formatMoneyAmount(hourlyRate, compensationCurrency)}`]);
+  if (weeklyGross != null) {
+    compensationRows.push(
+      [<CalendarDays size={14} />, `Hebdomadaire brut : ${formatMoneyAmount(weeklyGross, compensationCurrency)}`],
+      [<CalendarDays size={14} />, `Mensuel brut estimé : ${formatMoneyAmount((weeklyGross * 52) / 12, compensationCurrency)}`],
+      [<CalendarDays size={14} />, `Annuel brut estimé : ${formatMoneyAmount(weeklyGross * 52, compensationCurrency)}`],
+    );
+  }
+  const lastReviewDate = collaborator.currentCompensation?.effectiveFrom ?? collaborator.rateEffectiveDate;
+  const nextReviewDate = collaborator.nextSalaryReview?.dueDate ?? collaborator.nextReviewDate;
+  if (hasText(lastReviewDate)) compensationRows.push([<CalendarDays size={14} />, `Dernière revalorisation : ${formatDate(lastReviewDate)}`]);
+  if (hasText(nextReviewDate)) compensationRows.push([<CalendarDays size={14} />, `Prochaine revalorisation : ${formatDate(nextReviewDate)}`]);
+
   return (
     <div className="modal-overlay" onClick={() => void closeSheet()}>
       <motion.div
@@ -1872,16 +1946,11 @@ function CollaboratorSheet({ collaborator, regulatoryCountryCode, canWrite, onCl
             <AvatarInitial collaborator={collaborator} />
             <div>
               <h2>{fullName(collaborator)}</h2>
-              <p>
-                {collaborator.position?.name ?? 'Poste non renseigné'}
-                {' · '}
-                {collaborator.department?.name ?? 'Service non renseigné'}
-                {collaborator.mainSite?.name || collaborator.site?.name ? ` · ${collaborator.mainSite?.name ?? collaborator.site?.name}` : null}
-              </p>
+              {headerDetails.length ? <p>{headerDetails.join(' · ')}</p> : null}
               <div className="hr-profile-badges">
                 <StatusBadge status={collaborator.status} />
                 {collaborator.user || collaborator.userId ? <span className="badge badge-reception">Compte ToqueHub</span> : null}
-                {hasContract ? <span className="badge badge-reception">Contrat {contractType}</span> : null}
+                {hasContract ? <span className="badge badge-reception">{contractType ? `Contrat ${contractType}` : 'Contrat'}</span> : null}
               </div>
             </div>
           </div>
@@ -1901,73 +1970,22 @@ function CollaboratorSheet({ collaborator, regulatoryCountryCode, canWrite, onCl
           </div>
         </div>
         <div className="hr-sheet-grid">
-          <InfoBlock
-            title="Informations personnelles"
-            rows={[
-              [<Mail size={14} />, collaborator.email || 'Non renseigné'],
-              [<Phone size={14} />, collaborator.phone || 'Non renseigné'],
-              [<MapPin size={14} />, collaborator.address || 'Non renseignée'],
-              [<MapPin size={14} />, formatLocation(collaborator)],
-              [<CalendarDays size={14} />, formatDate(collaborator.birthDate)],
-              [<ShieldCheck size={14} />, `${regulatoryCountryCode === 'FI' ? 'Henkilötunnus' : regulatoryCountryCode === 'FR' ? 'N° sécurité sociale' : 'Identifiant personnel'} : ${maskPersonalIdentityNumber(collaborator.personalIdentityNumber)}`],
-              [<NotebookText size={14} />, `Langue principale : ${collaborator.primaryLanguage || 'Non renseignée'}`],
-              [<NotebookText size={14} />, `Langue secondaire : ${collaborator.secondaryLanguage || 'Non renseignée'}`],
-              [<ShieldCheck size={14} />, `Contact d'urgence : ${collaborator.emergencyContact || 'Non renseigné'}`],
-            ]}
-          />
-          <InfoBlock
-            title="Informations professionnelles"
-            rows={[
-              [<BriefcaseBusiness size={14} />, `Poste principal : ${collaborator.position?.name ?? 'Non renseigné'}`],
-              ...(collaborator.secondaryPositions?.length ? [[<BriefcaseBusiness size={14} />, <div className="hr-position-badges">{collaborator.secondaryPositions.map((p) => <span key={p.id} className="badge badge-reception">{p.name}</span>)}</div>] as [React.ReactNode, React.ReactNode]] : []),
-              [<Building2 size={14} />, `Service : ${collaborator.department?.name ?? 'Non renseigné'}`],
-              [<MapPin size={14} />, `Établissement : ${collaborator.mainSite?.name ?? collaborator.site?.name ?? 'Non renseigné'}`],
-              [<CalendarDays size={14} />, `Date d’embauche : ${formatDate(collaborator.hireDate)}`],
-              [<UserRound size={14} />, collaborator.manager ? `Responsable : ${fullName(collaborator.manager)}` : 'Responsable : Non renseigné'],
-              [<NotebookText size={14} />, `Matricule : ${collaborator.employeeNumber || 'Non renseigné'}`],
-              [<ShieldCheck size={14} />, `Contrat : ${contractType || 'Non renseigné'}`],
-              [<Clock size={14} />, contractWeeklyMinutes != null ? `Durée contractuelle : ${formatMinutes(contractWeeklyMinutes)}` : 'Durée contractuelle : Non renseignée'],
-              [<CalendarDays size={14} />, contractEndDate ? `Fin de contrat : ${formatDate(contractEndDate)}` : 'Fin de contrat : —'],
-              [<CalendarDays size={14} />, trialEndDate ? `Fin période d'essai : ${formatDate(trialEndDate)}` : 'Fin période d\'essai : —'],
-            ] as [React.ReactNode, React.ReactNode][]}
-          />
+          <InfoBlock title="Informations personnelles" rows={personalRows} />
+          <InfoBlock title="Informations professionnelles" rows={professionalRows} />
           <InfoBlock
             title="Compte ToqueHub associé"
-            rows={[
-              [
-                <ShieldCheck size={14} />,
-                collaborator.user ? displayUser(collaborator.user) : 'Aucun compte associé',
-              ],
-            ]}
+            rows={collaborator.user ? [[<ShieldCheck size={14} />, displayUser(collaborator.user)]] : []}
+            wide
           />
-          <InfoBlock
-            title="Organisation de travail"
-            rows={[
-              [<Building2 size={14} />, `Service : ${collaborator.department?.name ?? '—'}`],
-              [<BriefcaseBusiness size={14} />, `Poste principal : ${collaborator.position?.name ?? '—'}`],
-              ...(collaborator.secondaryPositions?.length ? [[<BriefcaseBusiness size={14} />, <div className="hr-position-badges">{collaborator.secondaryPositions.map((p) => <span key={p.id} className="badge badge-reception">{p.name}</span>)}</div>] as [React.ReactNode, React.ReactNode]] : []),
-              [<MapPin size={14} />, `Établissement : ${collaborator.mainSite?.name ?? collaborator.site?.name ?? '—'}`],
-              [<Clock size={14} />, contractWeeklyMinutes != null ? `Durée hebdo contrat : ${formatMinutes(contractWeeklyMinutes)}` : 'Durée hebdo contrat : —'],
-            ] as [React.ReactNode, React.ReactNode][]}
-          />
-          <InfoBlock
-            title="Rémunération"
-            rows={[
-              [<ShieldCheck size={14} />, 'Taux horaire : ' + formatMoneyAmount(hourlyRate, compensationCurrency, 'Non renseigne')],
-              ...(weeklyGross != null ? [
-                [<CalendarDays size={14} />, 'Hebdomadaire brut : ' + formatMoneyAmount(weeklyGross, compensationCurrency)] as [React.ReactNode, React.ReactNode],
-                [<CalendarDays size={14} />, 'Mensuel brut estime : ' + formatMoneyAmount((weeklyGross * 52) / 12, compensationCurrency)] as [React.ReactNode, React.ReactNode],
-                [<CalendarDays size={14} />, 'Annuel brut estime : ' + formatMoneyAmount(weeklyGross * 52, compensationCurrency)] as [React.ReactNode, React.ReactNode],
-              ] : []),
-              [<CalendarDays size={14} />, collaborator.currentCompensation?.effectiveFrom ? `Dernière revalorisation : ${formatDate(collaborator.currentCompensation.effectiveFrom)}` : collaborator.rateEffectiveDate ? `Dernière revalorisation : ${formatDate(collaborator.rateEffectiveDate)}` : 'Dernière revalorisation : —'],
-              [<CalendarDays size={14} />, collaborator.nextSalaryReview?.dueDate ? `Prochaine revalorisation : ${formatDate(collaborator.nextSalaryReview.dueDate)}` : collaborator.nextReviewDate ? `Prochaine revalorisation : ${formatDate(collaborator.nextReviewDate)}` : 'Prochaine revalorisation : —'],
-            ] as [React.ReactNode, React.ReactNode][]}
-          />
-          <div className="hr-info-block hr-notes-editor">
-            <h3>Notes</h3>
-            <textarea value={notesDraft} onChange={(event) => setNotesDraft(event.target.value)} placeholder="Ajouter une note RH visible sur cette fiche..." />
-            <small>{savingNotes ? 'Sauvegarde en cours...' : notesDraft.trim() !== cleanLegacyHrNotes(collaborator.notes).trim() ? 'La note sera sauvegardee a la fermeture.' : 'Sauvegarde'}</small>
-          </div>
+          <InfoBlock title="Organisation de travail" rows={organizationRows} />
+          <InfoBlock title="Rémunération" rows={compensationRows} />
+          {initialNotes.trim() ? (
+            <div className="hr-info-block hr-info-block-wide hr-notes-editor">
+              <h3>Notes</h3>
+              <textarea value={notesDraft} onChange={(event) => setNotesDraft(event.target.value)} />
+              <small>{savingNotes ? 'Sauvegarde en cours...' : notesDraft.trim() !== cleanLegacyHrNotes(collaborator.notes).trim() ? 'La note sera sauvegardée à la fermeture.' : 'Sauvegardée'}</small>
+            </div>
+          ) : null}
         </div>
         <div className="card-modern" style={{ marginTop: '0.5rem', marginBottom: '1rem' }}>
           <span className="card-title">Historique</span>
@@ -2005,7 +2023,11 @@ function PersonRow({ collaborator, detail }: { collaborator: HrCollaborator; det
 function AvatarInitial({ collaborator }: { collaborator: HrCollaborator }) { const photo = collaborator.photoUrl ?? collaborator.photoDataUrl; return photo ? <img className="hr-avatar" src={photo} alt="" /> : <div className="hr-avatar">{`${collaborator.firstName?.[0] ?? ''}${collaborator.lastName?.[0] ?? ''}`.toUpperCase() || 'RH'}</div>; }
 function StatusBadge({ status }: { status?: string }) { const className = status === 'ACTIVE' ? 'badge-reception' : status === 'ABSENT' ? 'badge-warning' : status === 'LEFT' ? 'badge-danger' : ''; return <span className={`badge ${className}`}>{statusLabels[status ?? 'ACTIVE'] ?? status ?? 'Actif'}</span>; }
 function HistoryList({ history }: { history: HrHistoryEntry[] }) { return history.length === 0 ? <p className="muted">L’historique utile apparaîtra ici : création, changements de statut, service, poste, liaison et archivage.</p> : <div className="hr-history">{history.map((entry) => <div key={entry.id ?? `${entry.createdAt}-${entry.type}`}><strong>{entry.label ?? entry.type}</strong><span>{entry.description}</span><small>{formatDate(entry.createdAt)}</small></div>)}</div>; }
-function InfoBlock({ title, rows }: { title: string; rows: Array<[React.ReactNode, React.ReactNode]> }) { return <div className="hr-info-block"><h3>{title}</h3>{rows.map(([icon, value], index) => <div key={index}>{icon}<span>{value}</span></div>)}</div>; }
+type InfoRow = [React.ReactNode, React.ReactNode];
+function InfoBlock({ title, rows, wide = false }: { title: string; rows: InfoRow[]; wide?: boolean }) {
+  if (!rows.length) return null;
+  return <div className={`hr-info-block${wide ? ' hr-info-block-wide' : ''}`}><h3>{title}</h3>{rows.map(([icon, value], index) => <div key={index}>{icon}<span>{value}</span></div>)}</div>;
+}
 function DocumentList({ employeeId, documents, canWrite, selectedDocumentId, onPreview, onView, onReplace, onDelete, onDownload }: { employeeId: string; documents: HrDocument[]; canWrite: boolean; selectedDocumentId?: string | null; onPreview: (document: HrDocument) => void; onView: (employeeId: string, document: HrDocument) => Promise<void>; onReplace: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDelete: (employeeId: string, documentId: string) => Promise<void>; onDownload: (employeeId: string, document: HrDocument) => Promise<void> }) {
   return (
     <div className="hr-document-list">
@@ -2059,10 +2081,18 @@ function CollaboratorDetailPanel({ collaborator, regulatoryCountryCode, section,
           <div className="hr-detail-grid">
             {contractType ? <InfoBlock title="Contrat actif" rows={[
               [<ShieldCheck size={14} />, 'Type : ' + contractType],
-              [<CalendarDays size={14} />, 'Debut : ' + formatDate(primaryContract?.startDate ?? collaborator.hireDate)],
-              [<CalendarDays size={14} />, 'Fin : ' + (contractEndDate ? formatDate(contractEndDate) : 'Non prevue')],
-              [<CalendarDays size={14} />, "Fin periode d'essai : " + (trialEndDate ? formatDate(trialEndDate) : 'Non renseignee')],
-              [<Clock size={14} />, 'Duree hebdo : ' + (contractWeeklyMinutes != null ? formatMinutes(contractWeeklyMinutes) : 'Non renseignee')],
+              ...(hasText(primaryContract?.startDate ?? collaborator.hireDate)
+                ? [[<CalendarDays size={14} />, `Début : ${formatDate(primaryContract?.startDate ?? collaborator.hireDate)}`] as InfoRow]
+                : []),
+              ...(hasText(contractEndDate)
+                ? [[<CalendarDays size={14} />, `Fin : ${formatDate(contractEndDate)}`] as InfoRow]
+                : []),
+              ...(hasText(trialEndDate)
+                ? [[<CalendarDays size={14} />, `Fin période d'essai : ${formatDate(trialEndDate)}`] as InfoRow]
+                : []),
+              ...(contractWeeklyMinutes != null
+                ? [[<Clock size={14} />, `Durée hebdo : ${formatMinutes(contractWeeklyMinutes)}`] as InfoRow]
+                : []),
             ]} /> : null}
             {contractDocuments.length ? <DocumentList employeeId={collaborator.id} documents={contractDocuments} canWrite={canWrite} selectedDocumentId={previewDocument?.id} onPreview={onPreviewDocument} onView={onViewDocument} onReplace={onReplaceDocument} onDelete={onDeleteDocument} onDownload={onDownloadDocument} /> : null}
             {collaborator.contracts?.length ? <InfoBlock title="Historique" rows={collaborator.contracts.map((contract) => [<ShieldCheck size={14} />, contract.contractType + ' · ' + (contract.status ?? 'ACTIVE') + ' · ' + formatDate(contract.startDate) + (contract.endDate ? ' -> ' + formatDate(contract.endDate) : '')] as [React.ReactNode, React.ReactNode])} /> : null}
@@ -2361,14 +2391,15 @@ function documentCategoryLabel(value?: string | null) {
 function formatBytes(value?: number | null) { if (!value) return '—'; if (value < 1024 * 1024) return `${Math.round(value / 1024)} Ko`; return `${(value / 1024 / 1024).toFixed(1)} Mo`; }
 function maskPersonalIdentityNumber(value?: string | null) {
   const cleaned = value?.trim();
-  if (!cleaned) return 'Non renseigné';
+  if (!cleaned) return '';
   const visible = cleaned.slice(-4);
   return `${'•'.repeat(Math.max(4, Math.min(cleaned.length - visible.length, 10)))}${visible}`;
 }
 function formatLocation(collaborator: Pick<HrCollaborator, 'postalCode' | 'city' | 'country'>) {
-  const location = [collaborator.postalCode, collaborator.city, collaborator.country].filter(Boolean).join(' ');
-  return location || 'Code postal, ville et pays non renseignés';
+  const location = [collaborator.postalCode, collaborator.city, collaborator.country].filter(hasText).join(' ');
+  return location;
 }
+function hasText(value?: string | null): value is string { return Boolean(value?.trim()); }
 function formatDate(value?: string | null) { if (!value) return '—'; return new Intl.DateTimeFormat('fr-FR').format(new Date(value)); }
 function dateValue(value?: string | null) { return value ? new Date(value).getTime() : 0; }
 function toInputDate(value?: string | null) { return value ? new Date(value).toISOString().slice(0, 10) : ''; }

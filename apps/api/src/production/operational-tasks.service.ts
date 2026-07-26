@@ -219,6 +219,13 @@ export class OperationalTasksService {
       startsAt: { lt: end },
       endsAt: { gt: start },
       departmentId: query.departmentId,
+      OR: query.siteId
+        ? [
+            { siteId: query.siteId },
+            { siteId: null, assignedEmployee: { mainSiteId: query.siteId } },
+            { siteId: null, planningAssignment: { siteId: query.siteId } },
+          ]
+        : undefined,
       assignedEmployeeId: query.employeeId,
       status: query.status,
       AND: [visibility],

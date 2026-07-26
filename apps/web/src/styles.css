@@ -9207,9 +9207,8 @@ input:checked + .slider-round:before {
   gap: 0.85rem;
 }
 
-/* Make note block and accounts block wider if they are single items */
-.hr-info-block:nth-of-type(3),
-.hr-info-block:nth-of-type(4) {
+/* Make note and account blocks span the sheet without depending on hidden blocks. */
+.hr-info-block-wide {
   grid-column: span 2;
 }
 
@@ -9905,8 +9904,7 @@ input:checked + .slider-round:before {
   .hr-sheet-grid {
     grid-template-columns: 1fr;
   }
-  .hr-info-block:nth-of-type(3),
-  .hr-info-block:nth-of-type(4) {
+  .hr-info-block-wide {
     grid-column: span 1;
   }
 }
@@ -15873,6 +15871,38 @@ input:checked + .slider-round:before {
   font-size: 1.6rem;
 }
 
+.operational-task-site-select {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr);
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid #dbe3ec;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+}
+
+.operational-task-site-select > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #334155;
+  font-size: 0.8rem;
+  font-weight: 850;
+}
+
+.operational-task-site-select select {
+  min-width: 0;
+  padding: 0.62rem 0.75rem;
+  border: 1px solid #dbe3ec;
+  border-radius: 11px;
+  background: #f8fafc;
+  color: #0f172a;
+  font: inherit;
+  font-weight: 700;
+}
+
 .operational-task-search {
   display: flex;
   align-items: center;
@@ -16303,6 +16333,31 @@ input:checked + .slider-round:before {
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
 }
 
+.production-planning-filters {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.production-planning-filters label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #64748b;
+}
+
+.production-planning-filters label > span {
+  color: #334155;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.production-planning-filters select {
+  color: #0f172a;
+  font-weight: 700;
+}
+
 .production-metric-card {
   display: flex;
   align-items: center;
@@ -16396,6 +16451,173 @@ input:checked + .slider-round:before {
   left: 0;
   width: 4.5px;
   border-radius: 4px 0 0 4px;
+}
+
+.production-day-timeline {
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr);
+  min-width: 680px;
+  flex: 1;
+}
+
+.production-time-rail {
+  position: relative;
+  border-right: 1px solid #cbd5e1;
+  color: #475569;
+}
+
+.production-time-label {
+  position: absolute;
+  right: 12px;
+  transform: translateY(-50%);
+  font-size: 0.72rem;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.production-time-label.first {
+  transform: none;
+}
+
+.production-time-label.last {
+  transform: translateY(-100%);
+}
+
+.production-timeline-canvas {
+  position: relative;
+  min-width: 0;
+  background:
+    linear-gradient(90deg, rgba(248, 250, 252, 0.35), rgba(255, 255, 255, 0.72));
+}
+
+.production-hour-line {
+  position: absolute;
+  z-index: 0;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: #dbe3ec;
+}
+
+.production-timeline-task {
+  position: absolute;
+  z-index: 1;
+  min-width: 0;
+}
+
+.production-timeline-task-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  width: 100%;
+  height: 100%;
+  padding: 0.65rem 0.65rem 0.6rem 0.9rem;
+  overflow: hidden;
+  border: 1px solid #dce4ed;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 5px 16px rgba(15, 23, 42, 0.07);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+.production-timeline-task-card:hover {
+  z-index: 3;
+  border-color: #94a3b8;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+  transform: translateY(-1px);
+}
+
+.production-timeline-task-main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.18rem;
+}
+
+.production-timeline-task-topline {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.production-timeline-task-time {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.25rem;
+  color: #475569;
+  font-size: 0.7rem;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.production-timeline-status {
+  padding: 0.14rem 0.42rem;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.production-timeline-task-main > strong {
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 0.86rem;
+  font-weight: 800;
+  line-height: 1.22;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.production-timeline-task-meta {
+  overflow: hidden;
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.production-timeline-task-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.32rem;
+}
+
+.production-timeline-task-actions button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: #f1f5f9;
+  color: #475569;
+  cursor: pointer;
+}
+
+.production-timeline-task-actions button.start {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.production-timeline-task-actions button.complete {
+  background: #d1fae5;
+  color: #047857;
+}
+
+.production-timeline-task-actions button:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }
 
 .production-empty-day-btn {
@@ -16822,8 +17044,22 @@ input:checked + .slider-round:before {
 }
 
 @media (max-width: 640px) {
+  .production-planning-filters,
+  .production-planning-filters label {
+    width: 100%;
+  }
+
+  .production-planning-filters select {
+    min-width: 0 !important;
+    flex: 1;
+  }
+
   .operational-task-schedule-grid,
   .operational-task-mode-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .operational-task-site-select {
     grid-template-columns: 1fr;
   }
 
@@ -29103,5 +29339,3 @@ input:checked + .slider-round:before {
   box-shadow: var(--shadow-premium);
   padding: 1.75rem;
 }
-
-

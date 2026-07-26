@@ -19,6 +19,7 @@ export class OperationalTaskQueryDto {
   @IsDateString() startDate!: string;
   @IsDateString() endDate!: string;
   @IsOptional() @IsUUID() departmentId?: string;
+  @IsOptional() @IsUUID() siteId?: string;
   @IsOptional() @IsUUID() employeeId?: string;
   @IsOptional() @IsEnum(OperationalTaskStatus) status?: OperationalTaskStatus;
 }
