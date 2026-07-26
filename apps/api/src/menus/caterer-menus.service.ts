@@ -752,7 +752,7 @@ export class CatererMenusService {
   }
 
   private pdfDisplayName(value: string) {
-    return value.replace(/^\[Démo Traiteur\]\s*/i, '');
+    return value;
   }
 
   private fulfillmentLabel(value?: string) {

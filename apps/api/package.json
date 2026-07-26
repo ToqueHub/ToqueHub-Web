@@ -15,7 +15,6 @@
     "prisma:reset": "prisma migrate reset --skip-seed",
     "prisma:seed": "node --env-file=../../.env --import tsx prisma/seed.ts",
     "prisma:seed:hotel-demo": "node --env-file=../../.env --import tsx prisma/seed-hotel-demo.ts",
-    "prisma:seed:caterer-demo": "node --env-file=../../.env --import tsx prisma/seed-caterer-demo.ts",
     "seed:legal-rights": "node --env-file=../../.env --import tsx scripts/seed-legal-rights.ts"
   },
   "dependencies": {

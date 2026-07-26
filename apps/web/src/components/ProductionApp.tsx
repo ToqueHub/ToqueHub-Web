@@ -2141,7 +2141,7 @@ function FabricationView({
                   Filtre actif · Événement Traiteur
                 </div>
                 <strong style={{ fontSize: '1.02rem', color: '#0f172a' }}>
-                  {eventFilter.reference} · {eventFilter.name.replace(/^\[Démo Traiteur\]\s*/i, '')}
+                  {eventFilter.reference} · {eventFilter.name}
                 </strong>
                 <div style={{ color: '#64748b', fontSize: '.82rem', marginTop: '.1rem' }}>
                   {visible.length} fabrication{visible.length === 1 ? '' : 's'} liée
@@ -2467,10 +2467,7 @@ function FabricationView({
                   };
                   const priorityInfo = priorityCopy[campaign.priority] ?? priorityCopy.NORMAL;
                   const StatusIcon = statusInfo.icon;
-                  const sheetName = campaign.technicalSheet?.name?.replace(
-                    /^\[Démo Traiteur\]\s*/i,
-                    '',
-                  );
+                  const sheetName = campaign.technicalSheet?.name;
 
                   return (
                     <tr key={campaign.id} className="fabrication-table-row">
@@ -2497,7 +2494,7 @@ function FabricationView({
                       </td>
                       <td>
                         <strong style={{ fontSize: '.94rem', color: '#0f172a' }}>
-                          {campaign.name.replace(/\[Démo Traiteur\]\s*/gi, '')}
+                          {campaign.name}
                         </strong>
                         {sheetName && (
                           <div
@@ -2628,10 +2625,7 @@ function FabricationView({
               };
               const priorityInfo = priorityCopy[campaign.priority] ?? priorityCopy.NORMAL;
               const StatusIcon = statusInfo.icon;
-              const sheetName = campaign.technicalSheet?.name?.replace(
-                /^\[Démo Traiteur\]\s*/i,
-                '',
-              );
+              const sheetName = campaign.technicalSheet?.name;
 
               return (
                 <div key={campaign.id} className="fabrication-campaign-card">
@@ -2695,7 +2689,7 @@ function FabricationView({
                       lineHeight: 1.3,
                     }}
                   >
-                    {campaign.name.replace(/\[Démo Traiteur\]\s*/gi, '')}
+                    {campaign.name}
                   </h3>
 
                   {sheetName && (
@@ -2965,7 +2959,7 @@ function FabricationView({
                                 color: '#0f172a',
                               }}
                             >
-                              {campaign.name.replace(/\[Démo Traiteur\]\s*/gi, '')}
+                              {campaign.name}
                             </strong>
 
                             <div
@@ -3094,7 +3088,7 @@ function FabricationView({
                     </span>
                   </div>
                   <h2 style={{ margin: 0, fontSize: '1.45rem', fontWeight: 800, color: '#0f172a' }}>
-                    {selected.name.replace(/\[Démo Traiteur\]\s*/gi, '')}
+                    {selected.name}
                   </h2>
                   <div
                     style={{
@@ -3183,8 +3177,7 @@ function FabricationView({
                     <DetailCard
                       label="Recette de base"
                       value={
-                        selected.technicalSheet?.name?.replace(/^\[Démo Traiteur\]\s*/i, '') ??
-                        'Fiche personnalisée'
+                        selected.technicalSheet?.name ?? 'Fiche personnalisée'
                       }
                     />
                     <DetailCard

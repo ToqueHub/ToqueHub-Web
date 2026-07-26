@@ -24,7 +24,6 @@
     "prisma:reset": "npm run prisma:reset -w apps/api --",
     "prisma:restart": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/prisma-restart.ps1",
     "prisma:seed": "npm run prisma:seed -w apps/api",
-    "prisma:seed:caterer-demo": "npm run prisma:seed:caterer-demo -w apps/api",
     "seed:legal-rights": "npm run seed:legal-rights -w apps/api",
     "db:setup:local": "./scripts/setup-local-postgres.sh",
     "iot:setup": "./scripts/setup-haccp-iot.sh",
