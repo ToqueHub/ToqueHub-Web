@@ -305,6 +305,33 @@ enum MenuUsageProfile {
   CUSTOM
 }
 
+enum MenuActivity {
+  RESTAURANT_CAFE
+  CATERER
+  CENTRAL_KITCHEN
+}
+
+enum CatererEventStatus {
+  DRAFT
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+enum CatererFulfillmentMode {
+  DELIVERY
+  PICKUP
+  ON_SITE
+}
+
+enum MenuDispatchStatus {
+  PLANNED
+  PREPARED
+  DISPATCHED
+  DELIVERED
+  CANCELLED
+}
+
 enum MenuKind {
   CATALOG
   SERVICE
@@ -395,6 +422,21 @@ enum UserStatus {
   ACTIVE
   INVITED
   DISABLED
+}
+
+enum WorkspaceOnboardingStatus {
+  PENDING
+  IN_PROGRESS
+  DEFERRED
+  COMPLETED
+}
+
+enum WorkspaceOnboardingStep {
+  WELCOME
+  ECOSYSTEM
+  STARTER_BUNDLE
+  INSTALLATION
+  MINI_TOUR
 }
 
 enum UnitType {
@@ -969,6 +1011,7 @@ model Organization {
   createdAt                     DateTime  @default(now())
   updatedAt                     DateTime  @updatedAt
 
+  workspaceOnboardingProgress     WorkspaceOnboardingProgress?
   users                           User[]
   regulatoryCountrySelectedBy     User?                            @relation("OrganizationRegulatoryCountrySelectedBy", fields: [regulatoryCountrySelectedById], references: [id], onDelete: SetNull)
   primarySite                     Site?                            @relation("OrganizationPrimarySite", fields: [primarySiteId], references: [id], onDelete: SetNull)
@@ -1074,6 +1117,12 @@ model Organization {
   menuExports                     MenuExport[]
   menuHistory                     MenuHistory[]
   menuProductionLinks             MenuProductionLink[]
+  catererClients                  CatererClient[]
+  catererEvents                   CatererEvent[]
+  catererPrestations              CatererPrestation[]
+  catererEventSequences           CatererEventSequence[]
+  menuCycleForecasts              MenuCycleForecast[]
+  menuDispatches                  MenuDispatch[]
   planningViewPreferences         PlanningViewPreference[]
   dashboardPreferences            DashboardPreference[]
   backupCloudConnections          BackupCloudConnection[]
@@ -1254,6 +1303,7 @@ model User {
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
+  ownedWorkspaceOnboardings  WorkspaceOnboardingProgress[] @relation("WorkspaceOnboardingOwner")
   purchasingEmailOAuthStates PurchasingEmailOAuthState[]
 
   organization                       Organization?                  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
@@ -1346,6 +1396,26 @@ model User {
   @@index([status])
   @@index([isPrimaryAdmin])
   @@map("users")
+}
+
+model WorkspaceOnboardingProgress {
+  id             String                    @id @default(uuid()) @db.Uuid
+  organizationId String                    @unique @db.Uuid
+  ownerUserId    String                    @db.Uuid
+  version        Int                       @default(1)
+  status         WorkspaceOnboardingStatus @default(PENDING)
+  currentStep    WorkspaceOnboardingStep   @default(WELCOME)
+  startedAt      DateTime?
+  deferredAt     DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner        User         @relation("WorkspaceOnboardingOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+
+  @@index([ownerUserId])
+  @@map("workspace_onboarding_progress")
 }
 
 model Role {
@@ -1718,6 +1788,10 @@ model Site {
   productionOrders             ProductionOrder[]
   stockReservations            StockReservation[]
   operationalTasks             OperationalTask[]
+  catererProductionEvents      CatererEvent[]                @relation("CatererEventProductionSite")
+  menuDispatchDestinations     MenuDispatch[]                @relation("MenuDispatchDestinationSite")
+  cycleForecastDestinations    MenuCycleForecast[]           @relation("MenuCycleForecastDestinationSite")
+  menuForecastDestinations     MenuGuestForecast[]           @relation("MenuGuestForecastDestinationSite")
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -5220,6 +5294,9 @@ model MenuDiet {
   organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   variants       MenuVariant[]
   guestForecasts MenuGuestForecast[]
+  cycleForecasts MenuCycleForecast[]
+  menuItems      MenuItem[]
+  cycleItems     MenuCycleItem[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -5234,6 +5311,8 @@ model Menu {
   date                  DateTime?
   service               MenuServiceType
   kind                  MenuKind         @default(SERVICE)
+  activity              MenuActivity     @default(RESTAURANT_CAFE)
+  needsActivityReview   Boolean          @default(false)
   catalogType           MenuCatalogType?
   siteId                String?          @db.Uuid
   description           String?          @db.Text
@@ -5269,6 +5348,8 @@ model Menu {
   productionLinks   MenuProductionLink[]
   stockReservations StockReservation[]
   operationalTasks  OperationalTask[]
+  catererPrestation CatererPrestation?
+  dispatches        MenuDispatch[]
 
   @@index([organizationId])
   @@index([date])
@@ -5276,6 +5357,8 @@ model Menu {
   @@index([siteId])
   @@index([status])
   @@index([kind])
+  @@index([activity])
+  @@index([needsActivityReview])
   @@index([catalogType])
   @@index([isPrimary])
   @@index([cycleId])
@@ -5290,6 +5373,7 @@ model MenuItem {
   menuCategoryId      String?         @db.Uuid
   technicalSheetId    String?         @db.Uuid
   productId           String?         @db.Uuid
+  dietId              String?         @db.Uuid
   position            Int             @default(0)
   portionsOverride    Decimal?        @db.Decimal(12, 3)
   servingQuantity     Decimal         @default(1) @db.Decimal(12, 3)
@@ -5305,6 +5389,7 @@ model MenuItem {
   menuCategory   MenuCategory?            @relation(fields: [menuCategoryId], references: [id], onDelete: SetNull)
   technicalSheet TechnicalSheet?          @relation(fields: [technicalSheetId], references: [id], onDelete: Restrict)
   product        Product?                 @relation(fields: [productId], references: [id], onDelete: Restrict)
+  diet           MenuDiet?                @relation(fields: [dietId], references: [id], onDelete: SetNull)
   replacements   MenuVariantReplacement[]
 
   @@index([organizationId])
@@ -5312,6 +5397,7 @@ model MenuItem {
   @@index([technicalSheetId])
   @@index([productId])
   @@index([menuCategoryId])
+  @@index([dietId])
   @@index([section])
   @@map("menu_items")
 }
@@ -5370,8 +5456,9 @@ model MenuGuestGroup {
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
 
-  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  forecasts    MenuGuestForecast[]
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  forecasts      MenuGuestForecast[]
+  cycleForecasts MenuCycleForecast[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -5380,25 +5467,31 @@ model MenuGuestGroup {
 }
 
 model MenuGuestForecast {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @db.Uuid
-  menuId         String   @db.Uuid
-  guestGroupId   String   @db.Uuid
-  dietId         String?  @db.Uuid
-  count          Int
-  notes          String?  @db.Text
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                String   @id @default(uuid()) @db.Uuid
+  organizationId    String   @db.Uuid
+  menuId            String   @db.Uuid
+  guestGroupId      String   @db.Uuid
+  dietId            String?  @db.Uuid
+  destinationSiteId String?  @db.Uuid
+  dispatchId        String?  @db.Uuid
+  count             Int
+  notes             String?  @db.Text
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  menu         Menu           @relation(fields: [menuId], references: [id], onDelete: Cascade)
-  guestGroup   MenuGuestGroup @relation(fields: [guestGroupId], references: [id], onDelete: Restrict)
-  diet         MenuDiet?      @relation(fields: [dietId], references: [id], onDelete: SetNull)
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  menu            Menu           @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  guestGroup      MenuGuestGroup @relation(fields: [guestGroupId], references: [id], onDelete: Restrict)
+  diet            MenuDiet?      @relation(fields: [dietId], references: [id], onDelete: SetNull)
+  destinationSite Site?          @relation("MenuGuestForecastDestinationSite", fields: [destinationSiteId], references: [id], onDelete: SetNull)
+  dispatch        MenuDispatch?  @relation(fields: [dispatchId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([menuId])
   @@index([guestGroupId])
   @@index([dietId])
+  @@index([destinationSiteId])
+  @@index([dispatchId])
   @@map("menu_guest_forecasts")
 }
 
@@ -5413,11 +5506,12 @@ model MenuCycle {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
-  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  site         Site?           @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site         Site?               @relation(fields: [siteId], references: [id], onDelete: SetNull)
   items        MenuCycleItem[]
   menus        Menu[]
   history      MenuHistory[]
+  forecasts    MenuCycleForecast[]
 
   @@index([organizationId])
   @@index([siteId])
@@ -5434,6 +5528,7 @@ model MenuCycleItem {
   service          MenuServiceType
   section          MenuSectionType
   technicalSheetId String          @db.Uuid
+  dietId           String?         @db.Uuid
   position         Int             @default(0)
   notes            String?         @db.Text
   createdAt        DateTime        @default(now())
@@ -5442,12 +5537,167 @@ model MenuCycleItem {
   organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   cycle          MenuCycle      @relation(fields: [cycleId], references: [id], onDelete: Cascade)
   technicalSheet TechnicalSheet @relation(fields: [technicalSheetId], references: [id], onDelete: Restrict)
+  diet           MenuDiet?      @relation(fields: [dietId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([cycleId])
   @@index([technicalSheetId])
+  @@index([dietId])
   @@index([weekNumber, dayOfWeek, service])
   @@map("menu_cycle_items")
+}
+
+model MenuCycleForecast {
+  id                String          @id @default(uuid()) @db.Uuid
+  organizationId    String          @db.Uuid
+  cycleId           String          @db.Uuid
+  weekNumber        Int
+  dayOfWeek         Int
+  service           MenuServiceType
+  destinationSiteId String          @db.Uuid
+  guestGroupId      String          @db.Uuid
+  dietId            String?         @db.Uuid
+  count             Int
+  departureTime     String?
+  deliveryTime      String?
+  notes             String?         @db.Text
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  cycle           MenuCycle      @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  destinationSite Site           @relation("MenuCycleForecastDestinationSite", fields: [destinationSiteId], references: [id], onDelete: Restrict)
+  guestGroup      MenuGuestGroup @relation(fields: [guestGroupId], references: [id], onDelete: Restrict)
+  diet            MenuDiet?      @relation(fields: [dietId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([cycleId])
+  @@index([destinationSiteId])
+  @@index([guestGroupId])
+  @@index([dietId])
+  @@index([weekNumber, dayOfWeek, service])
+  @@map("menu_cycle_forecasts")
+}
+
+model CatererClient {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  name           String
+  contactName    String?
+  email          String?
+  phone          String?
+  address        String?   @db.Text
+  notes          String?   @db.Text
+  isArchived     Boolean   @default(false)
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  events       CatererEvent[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([isArchived])
+  @@map("caterer_clients")
+}
+
+model CatererEventSequence {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  year           Int
+  value          Int      @default(0)
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, year])
+  @@index([organizationId])
+  @@map("caterer_event_sequences")
+}
+
+model CatererEvent {
+  id               String                 @id @default(uuid()) @db.Uuid
+  organizationId   String                 @db.Uuid
+  reference        String
+  name             String
+  clientId         String?                @db.Uuid
+  clientSnapshot   Json?
+  productionSiteId String?                @db.Uuid
+  startsAt         DateTime?
+  endsAt           DateTime?
+  venueName        String?
+  address          String?                @db.Text
+  accessNotes      String?                @db.Text
+  fulfillmentMode  CatererFulfillmentMode
+  status           CatererEventStatus     @default(DRAFT)
+  needsReview      Boolean                @default(false)
+  notes            String?                @db.Text
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client         CatererClient?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  productionSite Site?               @relation("CatererEventProductionSite", fields: [productionSiteId], references: [id], onDelete: SetNull)
+  prestations    CatererPrestation[]
+
+  @@unique([organizationId, reference])
+  @@index([organizationId])
+  @@index([clientId])
+  @@index([productionSiteId])
+  @@index([startsAt])
+  @@index([status])
+  @@map("caterer_events")
+}
+
+model CatererPrestation {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  eventId        String          @db.Uuid
+  menuId         String          @unique @db.Uuid
+  name           String
+  service        MenuServiceType
+  readyAt        DateTime?
+  handoffAt      DateTime?
+  serviceAt      DateTime?
+  expectedGuests Int
+  position       Int             @default(0)
+  notes          String?         @db.Text
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  event        CatererEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  menu         Menu         @relation(fields: [menuId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([eventId])
+  @@index([serviceAt])
+  @@map("caterer_prestations")
+}
+
+model MenuDispatch {
+  id                String             @id @default(uuid()) @db.Uuid
+  organizationId    String             @db.Uuid
+  menuId            String             @db.Uuid
+  destinationSiteId String             @db.Uuid
+  departureAt       DateTime?
+  deliveryAt        DateTime?
+  status            MenuDispatchStatus @default(PLANNED)
+  notes             String?            @db.Text
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  menu            Menu                @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  destinationSite Site                @relation("MenuDispatchDestinationSite", fields: [destinationSiteId], references: [id], onDelete: Restrict)
+  forecasts       MenuGuestForecast[]
+
+  @@unique([menuId, destinationSiteId])
+  @@index([organizationId])
+  @@index([destinationSiteId])
+  @@index([status])
+  @@map("menu_dispatches")
 }
 
 model MenuProductionLink {

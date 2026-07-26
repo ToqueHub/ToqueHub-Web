@@ -415,8 +415,10 @@ CREATE INDEX "production_profiles_technicalSheetId_idx" ON "production_profiles"
 CREATE INDEX "production_profiles_outputProductId_outputVariantId_idx" ON "production_profiles"("outputProductId", "outputVariantId");
 
 -- A profile is unique for a site, recipe and output, including a null variant.
+-- PostgreSQL 14 does not support `NULLS NOT DISTINCT`; UUID text cannot be empty,
+-- so an empty-string normalization preserves the same uniqueness semantics.
 CREATE UNIQUE INDEX "production_profiles_site_sheet_output_key"
-ON "production_profiles"("organizationId", "siteId", "technicalSheetId", "outputProductId", "outputVariantId") NULLS NOT DISTINCT;
+ON "production_profiles"("organizationId", "siteId", "technicalSheetId", "outputProductId", COALESCE("outputVariantId"::text, ''));
 
 -- CreateIndex
 CREATE INDEX "production_needs_organizationId_idx" ON "production_needs"("organizationId");
@@ -543,7 +545,14 @@ CREATE INDEX "stocks_variantId_idx" ON "stocks"("variantId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "stocks_organizationId_productId_variantId_lotId_siteId_loca_key"
-ON "stocks"("organizationId", "productId", "variantId", "lotId", "siteId", "locationId") NULLS NOT DISTINCT;
+ON "stocks"(
+  "organizationId",
+  "productId",
+  COALESCE("variantId"::text, ''),
+  COALESCE("lotId"::text, ''),
+  COALESCE("siteId"::text, ''),
+  COALESCE("locationId"::text, '')
+);
 
 -- CreateIndex
 CREATE INDEX "stock_movements_variantId_idx" ON "stock_movements"("variantId");

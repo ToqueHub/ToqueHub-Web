@@ -300,6 +300,7 @@ export class BackupsService implements OnModuleInit, OnModuleDestroy {
         await this.resetPublicSchemaForRestore();
         await this.prisma.$disconnect();
         await this.runCommand(this.pgRestorePath, ['--exit-on-error', '--no-owner', '--no-privileges', '--dbname', this.postgresToolDatabaseUrl(), dumpPath]);
+        await this.deployPrismaMigrations();
         await this.restoreUploadRoots(extractDir, manifest);
         await this.prisma.systemSetting.upsert({
           where: { key: AUTH_SESSION_EPOCH_KEY },
@@ -319,9 +320,24 @@ export class BackupsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async resetPublicSchemaForRestore() {
-    await this.prisma.$executeRawUnsafe(`
-      DROP SCHEMA IF EXISTS public CASCADE;
-    `);
+    await this.prisma.$executeRawUnsafe('DROP SCHEMA IF EXISTS public CASCADE');
+  }
+
+  private async deployPrismaMigrations() {
+    const schemaPath = [
+      resolve(process.cwd(), 'apps/api/prisma/schema.prisma'),
+      resolve(process.cwd(), 'prisma/schema.prisma'),
+    ].find((candidate) => existsSync(candidate));
+    const prismaCliPath = [
+      resolve(process.cwd(), 'node_modules/prisma/build/index.js'),
+      resolve(process.cwd(), '../../node_modules/prisma/build/index.js'),
+    ].find((candidate) => existsSync(candidate));
+
+    if (!schemaPath || !prismaCliPath) {
+      throw new InternalServerErrorException('Impossible de trouver Prisma pour mettre à jour la base après restauration.');
+    }
+
+    await this.runCommand(process.execPath, [prismaCliPath, 'migrate', 'deploy', '--schema', schemaPath]);
   }
 
   private async inspectArchive(archivePath: string): Promise<{ manifest: BackupManifest; sizeBytes: number; extractDir: string }> {

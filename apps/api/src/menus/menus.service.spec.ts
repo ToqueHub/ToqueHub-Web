@@ -172,4 +172,40 @@ describe('MenusService card availability', () => {
     }));
     expect(getMenu).toHaveBeenCalledWith('org-1', 'menu-new');
   });
+
+  it('keeps the restaurant quantity rule unchanged and applies per-guest coefficients to business workflows', () => {
+    const service = new MenusService({} as any, {} as any, {} as any);
+    const technicalSheet = { id: 'sheet-1', name: 'Pièce cocktail' };
+    const restaurant = (service as any).effectiveProductionLines({
+      activity: 'RESTAURANT_CAFE',
+      expectedGuests: 20,
+      guestForecasts: [],
+      items: [{ technicalSheetId: technicalSheet.id, technicalSheet, section: 'OTHER', servingQuantity: 3 }],
+    });
+    const caterer = (service as any).effectiveProductionLines({
+      activity: 'CATERER',
+      expectedGuests: 20,
+      guestForecasts: [],
+      items: [{ technicalSheetId: technicalSheet.id, technicalSheet, section: 'OTHER', servingQuantity: 3 }],
+    });
+
+    expect(restaurant[0].portions).toBe(20);
+    expect(caterer[0].portions).toBe(60);
+  });
+
+  it('aggregates central-kitchen recipes only for the matching diet', () => {
+    const service = new MenusService({} as any, {} as any, {} as any);
+    const technicalSheet = { id: 'sheet-vegetarian', name: 'Plat végétarien' };
+    const lines = (service as any).effectiveProductionLines({
+      activity: 'CENTRAL_KITCHEN',
+      expectedGuests: 30,
+      guestForecasts: [
+        { dietId: null, count: 24 },
+        { dietId: 'diet-vegetarian', count: 6 },
+      ],
+      items: [{ technicalSheetId: technicalSheet.id, technicalSheet, dietId: 'diet-vegetarian', section: 'MAIN', servingQuantity: 1 }],
+    });
+
+    expect(lines[0].portions).toBe(6);
+  });
 });

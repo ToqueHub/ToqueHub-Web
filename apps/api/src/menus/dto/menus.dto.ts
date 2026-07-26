@@ -1,6 +1,6 @@
 import { Type, Transform } from 'class-transformer';
 import { IsArray, IsBoolean, IsEnum, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
-import { MenuCatalogType, MenuExportAudience, MenuExportFormat, MenuGuestGroupType, MenuHistoryAction, MenuKind, MenuProductionGenerationMode, MenuSectionType, MenuServiceType, MenuStatus, MenuUsageProfile, MenuVariantMode } from '@prisma/client';
+import { CatererEventStatus, CatererFulfillmentMode, MenuActivity, MenuCatalogType, MenuDispatchStatus, MenuExportAudience, MenuExportFormat, MenuGuestGroupType, MenuHistoryAction, MenuKind, MenuProductionGenerationMode, MenuSectionType, MenuServiceType, MenuStatus, MenuUsageProfile, MenuVariantMode } from '@prisma/client';
 
 export class MenuQueryDto {
   @IsOptional() @IsString() search?: string;
@@ -11,6 +11,7 @@ export class MenuQueryDto {
   @IsOptional() @IsEnum(MenuServiceType) service?: MenuServiceType;
   @IsOptional() @IsEnum(MenuStatus) status?: MenuStatus;
   @IsOptional() @IsEnum(MenuKind) kind?: MenuKind;
+  @IsOptional() @IsEnum(MenuActivity) activity?: MenuActivity;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) pageSize?: number;
 }
@@ -20,6 +21,7 @@ export class MenuItemDto {
   @IsOptional() @IsUUID() menuCategoryId?: string;
   @IsOptional() @IsUUID() technicalSheetId?: string;
   @IsOptional() @IsUUID() productId?: string;
+  @IsOptional() @IsUUID() dietId?: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) position?: number;
   @IsOptional() @Type(() => Number) @Min(0.001) portionsOverride?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0.001) servingQuantity?: number;
@@ -34,6 +36,7 @@ export class UpsertMenuDto {
   @IsOptional() @IsString() date?: string;
   @IsEnum(MenuServiceType) service!: MenuServiceType;
   @IsOptional() @IsEnum(MenuKind) kind?: MenuKind;
+  @IsOptional() @IsEnum(MenuActivity) activity?: MenuActivity;
   @IsOptional() @IsEnum(MenuCatalogType) catalogType?: MenuCatalogType;
   @IsOptional() @IsUUID() siteId?: string;
   @IsOptional() @IsString() @MaxLength(4000) description?: string;
@@ -110,6 +113,8 @@ export class UpsertGuestGroupDto {
 export class GuestForecastDto {
   @IsUUID() guestGroupId!: string;
   @IsOptional() @IsUUID() dietId?: string;
+  @IsOptional() @IsUUID() destinationSiteId?: string;
+  @IsOptional() @IsUUID() dispatchId?: string;
   @Type(() => Number) @IsInt() @Min(0) count!: number;
   @IsOptional() @IsString() @MaxLength(2000) notes?: string;
 }
@@ -124,7 +129,21 @@ export class CycleItemDto {
   @IsEnum(MenuServiceType) service!: MenuServiceType;
   @IsEnum(MenuSectionType) section!: MenuSectionType;
   @IsUUID() technicalSheetId!: string;
+  @IsOptional() @IsUUID() dietId?: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) position?: number;
+  @IsOptional() @IsString() @MaxLength(2000) notes?: string;
+}
+
+export class CycleForecastDto {
+  @Type(() => Number) @IsInt() @Min(1) @Max(52) weekNumber!: number;
+  @Type(() => Number) @IsInt() @Min(1) @Max(7) dayOfWeek!: number;
+  @IsEnum(MenuServiceType) service!: MenuServiceType;
+  @IsUUID() destinationSiteId!: string;
+  @IsUUID() guestGroupId!: string;
+  @IsOptional() @IsUUID() dietId?: string;
+  @Type(() => Number) @IsInt() @Min(0) count!: number;
+  @IsOptional() @IsString() @MaxLength(8) departureTime?: string;
+  @IsOptional() @IsString() @MaxLength(8) deliveryTime?: string;
   @IsOptional() @IsString() @MaxLength(2000) notes?: string;
 }
 
@@ -134,6 +153,7 @@ export class UpsertCycleDto {
   @Type(() => Number) @IsInt() @Min(1) @Max(52) durationWeeks!: number;
   @IsOptional() @IsUUID() siteId?: string;
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => CycleItemDto) items?: CycleItemDto[];
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => CycleForecastDto) forecasts?: CycleForecastDto[];
 }
 
 export class ReplicateCycleDto {
@@ -141,6 +161,69 @@ export class ReplicateCycleDto {
   @IsString() endDate!: string;
   @IsOptional() @IsUUID() siteId?: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) expectedGuests?: number;
+}
+
+export class CatererClientQueryDto {
+  @IsOptional() @IsString() search?: string;
+  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() includeArchived?: boolean;
+}
+
+export class UpsertCatererClientDto {
+  @IsString() @MaxLength(160) name!: string;
+  @IsOptional() @IsString() @MaxLength(160) contactName?: string;
+  @IsOptional() @IsString() @MaxLength(200) email?: string;
+  @IsOptional() @IsString() @MaxLength(60) phone?: string;
+  @IsOptional() @IsString() @MaxLength(4000) address?: string;
+  @IsOptional() @IsString() @MaxLength(4000) notes?: string;
+  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() isArchived?: boolean;
+}
+
+export class CatererPrestationDto {
+  @IsOptional() @IsUUID() id?: string;
+  @IsString() @MaxLength(160) name!: string;
+  @IsEnum(MenuServiceType) service!: MenuServiceType;
+  @IsOptional() @IsString() readyAt?: string;
+  @IsOptional() @IsString() handoffAt?: string;
+  @IsOptional() @IsString() serviceAt?: string;
+  @Type(() => Number) @IsInt() @Min(0) expectedGuests!: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) position?: number;
+  @IsOptional() @IsString() @MaxLength(2000) notes?: string;
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => MenuItemDto) items?: MenuItemDto[];
+}
+
+export class UpsertCatererEventDto {
+  @IsString() @MaxLength(160) name!: string;
+  @IsOptional() @IsUUID() clientId?: string;
+  @IsOptional() @IsUUID() productionSiteId?: string;
+  @IsOptional() @IsString() startsAt?: string;
+  @IsOptional() @IsString() endsAt?: string;
+  @IsOptional() @IsString() @MaxLength(200) venueName?: string;
+  @IsOptional() @IsString() @MaxLength(4000) address?: string;
+  @IsOptional() @IsString() @MaxLength(4000) accessNotes?: string;
+  @IsEnum(CatererFulfillmentMode) fulfillmentMode!: CatererFulfillmentMode;
+  @IsOptional() @IsString() @MaxLength(4000) notes?: string;
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => CatererPrestationDto) prestations?: CatererPrestationDto[];
+}
+
+export class CatererEventQueryDto {
+  @IsOptional() @IsString() search?: string;
+  @IsOptional() @IsEnum(CatererEventStatus) status?: CatererEventStatus;
+  @IsOptional() @IsString() startDate?: string;
+  @IsOptional() @IsString() endDate?: string;
+  @IsOptional() @IsUUID() clientId?: string;
+}
+
+export class UpdateCatererEventStatusDto {
+  @IsEnum(CatererEventStatus) status!: CatererEventStatus;
+}
+
+export class GenerateCatererEventProductionsDto {
+  @IsOptional() @IsEnum(MenuProductionGenerationMode) mode?: MenuProductionGenerationMode;
+  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() force?: boolean;
+}
+
+export class UpdateMenuDispatchStatusDto {
+  @IsEnum(MenuDispatchStatus) status!: MenuDispatchStatus;
 }
 
 export class GenerateProductionsDto {

@@ -59,10 +59,10 @@ export class MenuExportsService {
     private readonly mistral: MistralClientService,
   ) {}
 
-  async list(organizationId: string, query: { menuId?: string } = {}) {
+  async list(organizationId: string, query: { menuId?: string; activity?: string } = {}) {
     await this.assertInstalled(organizationId);
     return this.prisma.menuExport.findMany({
-      where: { organizationId, menuId: query.menuId },
+      where: { organizationId, menuId: query.menuId, menu: query.activity ? { activity: query.activity as any } : undefined },
       include: {
         requestedBy: { select: { email: true, firstName: true, lastName: true } },
         menu: true,

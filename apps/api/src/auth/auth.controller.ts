@@ -13,6 +13,7 @@ import { UpdateOrganizationApiKeysDto } from './dto/api-keys.dto';
 import { UpdateOrganizationIdentityDto } from './dto/organization-identity.dto';
 import { UpdateOrganizationRemoteAccessDto } from './dto/remote-access.dto';
 import { UpdateRegulatoryCountryDto } from './dto/regulatory-country.dto';
+import { UpdateWorkspaceOnboardingDto } from './dto/workspace-onboarding.dto';
 import { LoginDto } from './dto/login.dto';
 
 export class PrefillStocksDto {
@@ -71,6 +72,17 @@ export class AuthController {
   @ApiOkResponse({ description: 'Returns organization, installed apps and onboarding progress for the dashboard.' })
   dashboardSummary(@CurrentUser() user: AuthenticatedUser) {
     return this.authService.getDashboardSummary(user);
+  }
+
+  @Post('workspace-onboarding/progress')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOkResponse({ description: 'Persists the first workspace guided-tour progress for its creator.' })
+  updateWorkspaceOnboarding(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateWorkspaceOnboardingDto,
+  ) {
+    return this.authService.updateWorkspaceOnboarding(user, dto);
   }
 
   @Get('organization/api-keys')

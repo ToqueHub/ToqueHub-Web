@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   AlertTriangle,
+  ArrowRight,
   Bell,
+  Building2,
   CalendarDays,
+  Check,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -22,8 +25,11 @@ import {
   SlidersHorizontal,
   Sparkles,
   UserRound,
+  Users,
 } from 'lucide-react';
 import { ApiError, api } from '../api/client';
+import { GuidedWizard } from './ui/GuidedWizard';
+import { GuidedWelcome } from './ui/GuidedWelcome';
 import type {
   HrCollaborator,
   HrDepartment,
@@ -49,7 +55,7 @@ import type {
 type PlanningTab = 'dashboard' | 'planning' | 'settings' | 'attendance';
 type PlanningView = 'day' | 'week' | 'month' | 'year';
 type SettingKey = 'presets' | 'availability' | 'rules' | 'costs' | 'notifications' | 'exports';
-type InitialPlanningStep = 'services' | 'presets' | 'done';
+type InitialPlanningStep = 'welcome' | 'services' | 'presets' | 'done';
 type DashboardPeriod = 'week' | 'month' | 'year';
 type PlanningDashboardBlockKey = 'periodStatus' | 'planningSetup' | 'plannedHours' | 'estimatedCost' | 'activeAlerts' | 'alertsToReview' | 'planning' | 'departmentHours' | 'actions' | 'history';
 type PlanningBlockMode = 'day' | 'week' | 'month';
@@ -157,7 +163,7 @@ const defaultPlanningDashboardConfig: PlanningDashboardConfig = {
     history: true,
   },
 };
-const initialPlanningSteps: InitialPlanningStep[] = ['services', 'presets', 'done'];
+const initialPlanningSteps: InitialPlanningStep[] = ['welcome', 'services', 'presets', 'done'];
 const planningBusinessStatuses = [
   { value: 'work', label: 'Travail', className: 'work', countsHours: true },
   { value: 'rest', label: 'Repos', className: 'rest', countsHours: false },
@@ -323,7 +329,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
     onNavigate('settings');
   }
 
-  function openInitialSetup(step: InitialPlanningStep = 'services') {
+  function openInitialSetup(step: InitialPlanningStep = 'welcome') {
     setInitialSetupStep(step);
     setShowInitialSetup(true);
   }
@@ -748,7 +754,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
           onDeleteDayPreset={deleteDayPreset}
           onSaveWeeklyRotation={saveWeeklyRotation}
           onDeleteWeeklyRotation={deleteWeeklyRotation}
-          onClose={() => initialSetupCompleted ? setShowInitialSetup(false) : openInitialSetup('services')}
+          onClose={() => setShowInitialSetup(false)}
           onComplete={completeInitialSetup}
         />
       ) : null}
@@ -780,6 +786,101 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
           onClose={() => setShowDashboardCustomizer(false)}
         />
       ) : null}
+    </div>
+  );
+}
+
+function PlanningIllustration() {
+  return (
+    <div style={{ position: 'relative', width: '100%', maxWidth: '340px' }}>
+      <div
+        className="card-modern"
+        style={{
+          background: '#0f172a',
+          color: 'white',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          boxShadow: '0 30px 60px rgba(9, 13, 22, 0.3)',
+          padding: '1.5rem',
+          borderRadius: '22px',
+          textAlign: 'left',
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#ffffff' }}>Structure du Planning</span>
+            <span
+              className="badge badge-reception"
+              style={{
+                fontSize: '0.72rem',
+                textTransform: 'none',
+                background: 'rgba(16, 185, 129, 0.2)',
+                color: '#6ee7b7',
+                border: '1px solid rgba(110, 231, 183, 0.25)',
+              }}
+            >
+              Prêt
+            </span>
+          </div>
+
+          {[
+            { label: 'Socle RH & Collaborateurs', val: 100, color: '#10b981' },
+            { label: 'Presets & Horaires types', val: 85, color: '#34d399' },
+            { label: 'Génération & Contrôle', val: 65, color: '#38bdf8' },
+          ].map((bar) => (
+            <div key={bar.label}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.78rem', marginBottom: '.35rem', color: '#94a3b8' }}>
+                <span>{bar.label}</span>
+                <span style={{ fontWeight: 700, color: bar.color }}>{bar.val}%</span>
+              </div>
+              <div style={{ height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '999px', overflow: 'hidden' }}>
+                <div style={{ width: `${bar.val}%`, height: '100%', background: bar.color, borderRadius: '999px' }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PlanningOnboardingAside({ step }: { step: InitialPlanningStep }) {
+  const steps: Array<{ key: InitialPlanningStep; label: string; icon: any }> = [
+    { key: 'services', label: '1. Services & Collaborateurs', icon: Building2 },
+    { key: 'presets', label: '2. Presets & Roulements', icon: Clock },
+    { key: 'done', label: '3. Validation', icon: CheckCircle2 },
+  ];
+  return (
+    <div className="operational-task-wizard-sidebar">
+      <div>
+        <span className="operational-task-wizard-kicker">MODULE PLANNING</span>
+        <h2>Préparer le planning</h2>
+        <p>Un parcours guidé simple pour calibrer vos équipes et vos roulements d’horaires types.</p>
+      </div>
+      <div className="operational-task-wizard-steps">
+        {steps.map((item) => {
+          const Icon = item.icon;
+          const isCurrent = step === item.key;
+          const isDone = (step === 'presets' && item.key === 'services') || (step === 'done' && item.key !== 'done');
+          return (
+            <div
+              key={item.key}
+              className={`operational-task-wizard-step${isCurrent ? ' active' : ''}${isDone ? ' complete' : ''}`}
+            >
+              <span className="operational-task-wizard-step-icon">
+                {isDone ? <Check size={18} /> : <Icon size={18} />}
+              </span>
+              <span>
+                <strong>{item.label}</strong>
+                <small>{isDone ? 'Validé' : isCurrent ? 'En cours' : 'À venir'}</small>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="operational-task-wizard-note">
+        <Users size={18} />
+        <span>Les collaborateurs et services proviennent automatiquement du module RH.</span>
+      </div>
     </div>
   );
 }
@@ -819,58 +920,112 @@ function PlanningInitialSetupModal({
   onClose: () => void;
   onComplete: () => void;
 }) {
-  const index = initialPlanningSteps.indexOf(step);
-  const progress = Math.round(((index + 1) / initialPlanningSteps.length) * 100);
-  const canGoBack = index > 0;
-  const canGoNext = index < initialPlanningSteps.length - 1;
+  const stepOrder: InitialPlanningStep[] = ['welcome', 'services', 'presets', 'done'];
+  const realStepIndex = step === 'welcome' ? 1 : step === 'services' ? 1 : step === 'presets' ? 2 : 3;
 
   function goNext() {
-    if (canGoNext) setStep(initialPlanningSteps[index + 1]);
+    const idx = stepOrder.indexOf(step);
+    if (idx < stepOrder.length - 1) setStep(stepOrder[idx + 1]);
   }
 
   function goBack() {
-    if (canGoBack) setStep(initialPlanningSteps[index - 1]);
+    const idx = stepOrder.indexOf(step);
+    if (idx > 1) setStep(stepOrder[idx - 1]);
+    else if (idx === 1) setStep('welcome');
   }
 
   return (
-    <div className="modal-overlay hr-wizard-overlay planning-initial-overlay">
-      <motion.div className="modal-card hr-wizard-modal planning-initial-modal" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }}>
-        <div className="hr-wizard-header planning-initial-header">
-          <div>
-            <span className="welcome-tag">Configuration initiale - {progress}% prêt</span>
-            <h2>Préparer Planning</h2>
-            <p>Quelques choix simples suffisent. Vous pourrez tout ajuster plus tard dans Paramétrage.</p>
-          </div>
-          <div className="planning-initial-progress">
-            <div className="progress-bar-bg"><div className="progress-bar-fill" style={{ width: `${progress}%` }} /></div>
-          </div>
-        </div>
-
-        <div className="planning-initial-body">
-          <div className="planning-initial-rail">
-            {setup.steps.slice(0, 4).map((item) => <span key={item.key} className={item.status}>{item.title}</span>)}
-          </div>
-
-          {step === 'services' ? <InitialServicesStep departments={departments} collaborators={collaborators} /> : null}
-          {step === 'presets' ? <InitialPresetsStep dayPresets={dayPresets} weeklyRotations={weeklyRotations} departments={departments} positions={positions} sites={sites} canWrite={canWrite} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} onSaveWeeklyRotation={onSaveWeeklyRotation} onDeleteWeeklyRotation={onDeleteWeeklyRotation} /> : null}
-          {step === 'done' ? <InitialDoneStep setup={setup} /> : null}
-        </div>
-
-        <div className="hr-catalog-actions sticky planning-initial-actions">
-          <button className="btn btn-secondary" type="button" disabled={!canGoBack} onClick={goBack}>Retour</button>
-          <div className="setup-actions">
-            {step === 'done' ? (
+    <GuidedWizard
+      welcome={
+        step === 'welcome' ? (
+          <GuidedWelcome
+            title={
               <>
-                <button className="btn btn-secondary" type="button" onClick={onClose}>Fermer</button>
-                <button className="btn btn-primary" type="button" onClick={onComplete}>Ouvrir Planning</button>
+                Bienvenue sur le module <span>Planning & Roulements</span>
               </>
-            ) : (
-              <button className="btn btn-primary" type="button" onClick={goNext}>Continuer</button>
-            )}
+            }
+            description="Le socle RH (services, postes, collaborateurs) est synchronisé automatiquement. Calibrez vos créneaux d'horaires types et roulements hebdomadaires pour une gestion de planning sans effort."
+            benefits={[
+              {
+                icon: <Building2 size={16} />,
+                text: 'Organigramme RH connecté automatiquement (services, postes, collaborateurs)',
+              },
+              {
+                icon: <Clock size={16} />,
+                text: "Presets d'horaires types & roulements hebdomadaires réutilisables",
+              },
+              {
+                icon: <CalendarDays size={16} />,
+                text: 'Détection dynamique des conflits et gestion des disponibilités',
+                tone: 'warning',
+              },
+            ]}
+            illustration={<PlanningIllustration />}
+            onNext={() => setStep('services')}
+            onClose={onClose}
+          />
+        ) : undefined
+      }
+      sidebar={<PlanningOnboardingAside step={step} />}
+      step={realStepIndex}
+      totalSteps={3}
+      onClose={onClose}
+    >
+      {step === 'services' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem', minHeight: '100%' }}>
+          <InitialServicesStep departments={departments} collaborators={collaborators} />
+          <div style={{ marginTop: 'auto', paddingTop: '1.2rem', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '.65rem' }}>
+            <button className="production-btn-primary" type="button" onClick={goNext}>
+              Continuer <ChevronRight size={17} />
+            </button>
           </div>
         </div>
-      </motion.div>
-    </div>
+      )}
+
+      {step === 'presets' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+          <InitialPresetsStep
+            dayPresets={dayPresets}
+            weeklyRotations={weeklyRotations}
+            departments={departments}
+            positions={positions}
+            sites={sites}
+            canWrite={canWrite}
+            onSaveDayPreset={onSaveDayPreset}
+            onDeleteDayPreset={onDeleteDayPreset}
+            onSaveWeeklyRotation={onSaveWeeklyRotation}
+            onDeleteWeeklyRotation={onDeleteWeeklyRotation}
+          />
+          <div style={{ marginTop: 'auto', paddingTop: '1.2rem', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', gap: '.65rem' }}>
+            <button className="production-btn-glass" style={{ color: '#475569', borderColor: '#cbd5e1', background: 'white' }} type="button" onClick={goBack}>
+              <ChevronLeft size={17} /> Retour
+            </button>
+            <button className="production-btn-primary" type="button" onClick={goNext}>
+              Continuer <ChevronRight size={17} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step === 'done' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem', minHeight: '100%' }}>
+          <InitialDoneStep setup={setup} />
+          <div style={{ marginTop: 'auto', paddingTop: '1.2rem', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', gap: '.65rem' }}>
+            <button className="production-btn-glass" style={{ color: '#475569', borderColor: '#cbd5e1', background: 'white' }} type="button" onClick={goBack}>
+              <ChevronLeft size={17} /> Retour
+            </button>
+            <div style={{ display: 'flex', gap: '.65rem' }}>
+              <button className="production-btn-glass" style={{ color: '#475569', borderColor: '#cbd5e1', background: 'white' }} type="button" onClick={onClose}>
+                Fermer
+              </button>
+              <button className="production-btn-primary" type="button" onClick={onComplete}>
+                Ouvrir le Planning <ChevronRight size={17} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </GuidedWizard>
   );
 }
 
@@ -879,14 +1034,30 @@ function InitialServicesStep({ departments, collaborators }: { departments: HrDe
   const ready = departments.length > 0 && activeCollaborators.length > 0;
   return (
     <div className="planning-initial-step">
-      <div className="hr-wizard-hero-card">
-        <div className="hr-wizard-icon"><UserRound size={30} /></div>
-        <div><h3>Services à planifier</h3><p>Planning réutilise les services et collaborateurs RH. Vous n’avez rien à refaire si RH est prêt.</p></div>
+      <div className="production-metric-card" style={{ padding: '1.2rem 1.4rem', borderRadius: '20px', background: 'white', border: '1px solid #e2e8f0' }}>
+        <div style={{ display: 'grid', placeItems: 'center', width: '48px', height: '48px', borderRadius: '14px', background: '#ecfdf5', color: '#10b981', flexShrink: 0 }}>
+          <UserRound size={26} />
+        </div>
+        <div>
+          <h3 style={{ margin: '0 0 .25rem', fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>Services & Collaborateurs RH</h3>
+          <p style={{ margin: 0, color: '#64748b', fontSize: '.88rem', lineHeight: 1.5 }}>
+            Le Planning est directement alimenté par l’organigramme et les collaborateurs configurés dans le module RH. Aucune double saisie requise.
+          </p>
+        </div>
       </div>
       <div className="planning-service-summary">
-        <div><strong>{departments.length}</strong><span>services RH détectés</span></div>
-        <div><strong>{activeCollaborators.length}</strong><span>collaborateurs actifs</span></div>
-        <div className={ready ? 'ready' : 'missing'}><strong>{ready ? 'Validé' : 'À compléter'}</strong><span>{ready ? 'Socle RH suffisant' : 'Ajoutez au moins un service et un collaborateur actif dans RH.'}</span></div>
+        <div className="planning-choice-card">
+          <strong style={{ fontSize: '1.4rem', color: '#10b981' }}>{departments.length}</strong>
+          <span>Services RH détectés</span>
+        </div>
+        <div className="planning-choice-card">
+          <strong style={{ fontSize: '1.4rem', color: '#2563eb' }}>{activeCollaborators.length}</strong>
+          <span>Collaborateurs actifs</span>
+        </div>
+        <div className={ready ? 'ready' : 'missing'}>
+          <strong style={{ fontSize: '1.1rem' }}>{ready ? '✓ Socle RH opérationnel' : '⚠ Action requise'}</strong>
+          <span>{ready ? 'Votre structure RH est prête pour générer vos plannings.' : 'Ajoutez au moins un service et un collaborateur actif dans le module RH.'}</span>
+        </div>
       </div>
     </div>
   );
@@ -937,44 +1108,77 @@ function InitialPresetsStep(props: { dayPresets: PlanningTemplate[]; weeklyRotat
 
   return (
     <div className="planning-initial-step">
-      <div className="hr-wizard-hero-card">
-        <div className="hr-wizard-icon"><Clock size={30} /></div>
-        <div><h3>Presets / roulements horaires</h3><p>Créez les horaires types et les roulements semaine. Ils serviront ensuite à affecter rapidement les collaborateurs.</p></div>
+      <div className="production-metric-card" style={{ padding: '1.1rem 1.3rem', borderRadius: '20px', background: 'white', border: '1px solid #e2e8f0' }}>
+        <div style={{ display: 'grid', placeItems: 'center', width: '44px', height: '44px', borderRadius: '13px', background: '#dbeafe', color: '#1d4ed8', flexShrink: 0 }}>
+          <Clock size={24} />
+        </div>
+        <div>
+          <h3 style={{ margin: '0 0 .2rem', fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>Presets & Roulements horaires</h3>
+          <p style={{ margin: 0, color: '#64748b', fontSize: '.86rem', lineHeight: 1.45 }}>
+            Définissez des créneaux types pour accélérer la planification hebdo.
+          </p>
+        </div>
       </div>
-      <div className="planning-preset-quick-grid">
-        {quickPresets.map((preset) => <button key={preset.name} type="button" className="planning-preset-card" onClick={() => setForm((current) => ({ ...current, ...preset }))}><strong>{preset.name}</strong><span>{preset.businessStatus === 'rest' ? 'Repos' : `${preset.startTime} - ${preset.endTime}`}</span></button>)}
+
+      <div>
+        <div style={{ fontSize: '.8rem', fontWeight: 800, color: '#64748b', marginBottom: '.4rem', textTransform: 'uppercase', letterSpacing: '.06em' }}>Raccourcis d’horaires types</div>
+        <div className="planning-preset-quick-grid">
+          {quickPresets.map((preset) => (
+            <button key={preset.name} type="button" className="planning-preset-card" onClick={() => setForm((current) => ({ ...current, ...preset }))}>
+              <strong>{preset.name}</strong>
+              <span style={{ fontWeight: 700, color: preset.businessStatus === 'rest' ? '#b45309' : '#047857' }}>
+                {preset.businessStatus === 'rest' ? 'Journée de Repos' : `${preset.startTime} – ${preset.endTime}`}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
+
       <form className="planning-initial-form" onSubmit={(event) => void submit(event)}>
+        <strong style={{ fontSize: '1.02rem', color: '#0f172a' }}>Créer / Modifier un créneau type</strong>
         <div className="planning-form-row">
-          <label className="planning-field">Nom<input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} required /></label>
-          <label className="planning-field">Début<input type="time" value={form.startTime} onChange={(event) => setForm((current) => ({ ...current, startTime: event.target.value }))} required /></label>
-          <label className="planning-field">Fin<input type="time" value={form.endTime} onChange={(event) => setForm((current) => ({ ...current, endTime: event.target.value }))} required /></label>
-          <label className="planning-field">Statut<select value={form.businessStatus ?? 'work'} onChange={(event) => setForm((current) => ({ ...current, businessStatus: event.target.value }))}>{planningBusinessStatuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></label>
+          <label className="planning-field">Nom<input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} required style={{ borderRadius: '11px' }} /></label>
+          <label className="planning-field">Début<input type="time" value={form.startTime} onChange={(event) => setForm((current) => ({ ...current, startTime: event.target.value }))} required style={{ borderRadius: '11px' }} /></label>
+          <label className="planning-field">Fin<input type="time" value={form.endTime} onChange={(event) => setForm((current) => ({ ...current, endTime: event.target.value }))} required style={{ borderRadius: '11px' }} /></label>
         </div>
         <div className="planning-form-row">
-          <label className="planning-field">Service<select value={form.departmentId ?? ''} onChange={(event) => setForm((current) => ({ ...current, departmentId: event.target.value || undefined, positionId: '' }))}><option value="">Libre</option>{props.departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
-          <label className="planning-field">Poste<select value={form.positionId ?? ''} onChange={(event) => setForm((current) => ({ ...current, positionId: event.target.value || undefined }))}><option value="">Libre</option>{props.positions.filter((position) => !form.departmentId || position.departmentId === form.departmentId).map((position) => <option key={position.id} value={position.id}>{position.name}</option>)}</select></label>
-          <label className="planning-field">Pause<input type="number" min="0" max="720" value={form.breakMinutes ?? 30} onChange={(event) => setForm((current) => ({ ...current, breakMinutes: Number(event.target.value) }))} /></label>
+          <label className="planning-field">Statut<select value={form.businessStatus ?? 'work'} onChange={(event) => setForm((current) => ({ ...current, businessStatus: event.target.value }))} style={{ borderRadius: '11px' }}>{planningBusinessStatuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></label>
+          <label className="planning-field">Service<select value={form.departmentId ?? ''} onChange={(event) => setForm((current) => ({ ...current, departmentId: event.target.value || undefined, positionId: '' }))} style={{ borderRadius: '11px' }}><option value="">Libre</option>{props.departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
+          <label className="planning-field">Pause (min)<input type="number" min="0" max="720" value={form.breakMinutes ?? 30} onChange={(event) => setForm((current) => ({ ...current, breakMinutes: Number(event.target.value) }))} style={{ borderRadius: '11px' }} /></label>
         </div>
-        <div className="setup-actions">
-          <button className="btn btn-primary" type="submit" disabled={!props.canWrite}>{editingId ? 'Modifier ce preset' : 'Ajouter ce preset'}</button>
-          {editingId ? <button className="btn btn-secondary" type="button" onClick={() => { setEditingId(undefined); setForm(defaultDayPresetForm(props.departments[0]?.id)); }}>Annuler</button> : null}
+        <div style={{ display: 'flex', gap: '.65rem', justifyContent: 'flex-end', marginTop: '.3rem' }}>
+          <button className="production-btn-primary" style={{ minHeight: '38px', borderRadius: '11px', fontSize: '.84rem' }} type="submit" disabled={!props.canWrite}>
+            {editingId ? 'Enregistrer les modifications' : 'Ajouter ce créneau'}
+          </button>
+          {editingId ? <button className="production-btn-glass" style={{ color: '#475569', borderColor: '#cbd5e1', background: 'white', minHeight: '38px', borderRadius: '11px' }} type="button" onClick={() => { setEditingId(undefined); setForm(defaultDayPresetForm(props.departments[0]?.id)); }}>Annuler</button> : null}
         </div>
       </form>
+
       <PresetRuleList presets={props.dayPresets} onEdit={editPreset} onDelete={props.onDeleteDayPreset} canWrite={props.canWrite} />
+
       <form className="planning-initial-form" onSubmit={(event) => void submitRotation(event)}>
-        <strong>Roulements horaires</strong>
+        <strong style={{ fontSize: '1.02rem', color: '#0f172a' }}>Roulements hebdomadaires</strong>
         <div className="planning-form-row">
-          <label className="planning-field">Nom<input value={rotationForm.name} onChange={(event) => setRotationForm((current) => ({ ...current, name: event.target.value }))} required /></label>
-          <label className="planning-field">Service<select value={rotationForm.departmentId ?? ''} onChange={(event) => setRotationForm((current) => ({ ...current, departmentId: event.target.value || undefined }))}><option value="">Tous</option>{props.departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
-          <label className="planning-field">Site<select value={rotationForm.siteId ?? ''} onChange={(event) => setRotationForm((current) => ({ ...current, siteId: event.target.value || undefined }))}><option value="">Tous</option>{props.sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}</select></label>
+          <label className="planning-field">Nom<input value={rotationForm.name} onChange={(event) => setRotationForm((current) => ({ ...current, name: event.target.value }))} required style={{ borderRadius: '11px' }} /></label>
+          <label className="planning-field">Service<select value={rotationForm.departmentId ?? ''} onChange={(event) => setRotationForm((current) => ({ ...current, departmentId: event.target.value || undefined }))} style={{ borderRadius: '11px' }}><option value="">Tous</option>{props.departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
+          <label className="planning-field">Site<select value={rotationForm.siteId ?? ''} onChange={(event) => setRotationForm((current) => ({ ...current, siteId: event.target.value || undefined }))} style={{ borderRadius: '11px' }}><option value="">Tous</option>{props.sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}</select></label>
         </div>
-        <div className="planning-week-editor">
-          {(Array.isArray(rotationForm.days) ? rotationForm.days : defaultWeekDays()).map((day) => <div key={day.dayOfWeek} className="planning-week-row"><strong>{dayNameFromNumber(day.dayOfWeek)}</strong><label>Statut<select value={day.mode} onChange={(event) => updateRotationDay(day.dayOfWeek, { mode: event.target.value })}><option value="WORK">Travail</option><option value="REST">Repos</option><option value="LEAVE">Congé</option><option value="CLOSED">Fermé</option></select></label><label>Début<input type="time" value={day.startTime ?? ''} disabled={day.mode !== 'WORK'} onChange={(event) => updateRotationDay(day.dayOfWeek, { startTime: event.target.value })} /></label><label>Fin<input type="time" value={day.endTime ?? ''} disabled={day.mode !== 'WORK'} onChange={(event) => updateRotationDay(day.dayOfWeek, { endTime: event.target.value })} /></label><label>Pause<input type="number" min="0" max="720" value={day.breakMinutes ?? 0} disabled={day.mode !== 'WORK'} onChange={(event) => updateRotationDay(day.dayOfWeek, { breakMinutes: Number(event.target.value) })} /></label></div>)}
+        <div className="planning-week-editor" style={{ border: '1px solid #e2e8f0', borderRadius: '14px', padding: '.75rem', background: '#f8fafc' }}>
+          {(Array.isArray(rotationForm.days) ? rotationForm.days : defaultWeekDays()).map((day) => (
+            <div key={day.dayOfWeek} className="planning-week-row" style={{ display: 'grid', gridTemplateColumns: '80px repeat(4, minmax(0, 1fr))', gap: '.5rem', alignItems: 'center', marginBottom: '.4rem' }}>
+              <strong style={{ fontSize: '.85rem' }}>{dayNameFromNumber(day.dayOfWeek)}</strong>
+              <label><select value={day.mode} onChange={(event) => updateRotationDay(day.dayOfWeek, { mode: event.target.value })} style={{ width: '100%', padding: '.35rem', borderRadius: '8px', border: '1px solid #cbd5e1' }}><option value="WORK">Travail</option><option value="REST">Repos</option><option value="LEAVE">Congé</option><option value="CLOSED">Fermé</option></select></label>
+              <label><input type="time" value={day.startTime ?? ''} disabled={day.mode !== 'WORK'} onChange={(event) => updateRotationDay(day.dayOfWeek, { startTime: event.target.value })} style={{ width: '100%', padding: '.35rem', borderRadius: '8px', border: '1px solid #cbd5e1' }} /></label>
+              <label><input type="time" value={day.endTime ?? ''} disabled={day.mode !== 'WORK'} onChange={(event) => updateRotationDay(day.dayOfWeek, { endTime: event.target.value })} style={{ width: '100%', padding: '.35rem', borderRadius: '8px', border: '1px solid #cbd5e1' }} /></label>
+              <label><input type="number" min="0" max="720" value={day.breakMinutes ?? 0} disabled={day.mode !== 'WORK'} onChange={(event) => updateRotationDay(day.dayOfWeek, { breakMinutes: Number(event.target.value) })} style={{ width: '100%', padding: '.35rem', borderRadius: '8px', border: '1px solid #cbd5e1' }} /></label>
+            </div>
+          ))}
         </div>
-        <div className="setup-actions">
-          <button className="btn btn-primary" type="submit" disabled={!props.canWrite}>{editingRotationId ? 'Modifier ce roulement' : 'Ajouter ce roulement'}</button>
-          {editingRotationId ? <button className="btn btn-secondary" type="button" onClick={() => { setEditingRotationId(undefined); setRotationForm(defaultWeeklyRotationForm(props.departments[0]?.id)); }}>Annuler</button> : null}
+        <div style={{ display: 'flex', gap: '.65rem', justifyContent: 'flex-end', marginTop: '.3rem' }}>
+          <button className="production-btn-primary" style={{ minHeight: '38px', borderRadius: '11px', fontSize: '.84rem' }} type="submit" disabled={!props.canWrite}>
+            {editingRotationId ? 'Enregistrer le roulement' : 'Ajouter ce roulement'}
+          </button>
+          {editingRotationId ? <button className="production-btn-glass" style={{ color: '#475569', borderColor: '#cbd5e1', background: 'white', minHeight: '38px', borderRadius: '11px' }} type="button" onClick={() => { setEditingRotationId(undefined); setRotationForm(defaultWeeklyRotationForm(props.departments[0]?.id)); }}>Annuler</button> : null}
         </div>
       </form>
       <RotationRuleList rotations={props.weeklyRotations} onEdit={editRotation} onDelete={props.onDeleteWeeklyRotation} canWrite={props.canWrite} />
@@ -985,12 +1189,24 @@ function InitialPresetsStep(props: { dayPresets: PlanningTemplate[]; weeklyRotat
 function InitialDoneStep({ setup }: { setup: ReturnType<typeof buildPlanningSetup> }) {
   return (
     <div className="planning-initial-step done">
-      <div className="hr-wizard-hero-card">
-        <div className="hr-wizard-icon"><CheckCircle2 size={30} /></div>
-        <div><h3>Planning est prêt</h3><p>Vous pouvez ouvrir le planning complet. Cette configuration restera accessible depuis Planning &gt; Paramétrage &gt; Configuration initiale.</p></div>
+      <div className="production-metric-card" style={{ padding: '1.4rem 1.6rem', borderRadius: '22px', background: 'linear-gradient(135deg, #ecfdf5 0%, #ffffff 100%)', border: '1px solid #a7f3d0', boxShadow: '0 8px 24px rgba(16, 185, 129, 0.08)' }}>
+        <div style={{ display: 'grid', placeItems: 'center', width: '52px', height: '52px', borderRadius: '16px', background: '#10b981', color: 'white', flexShrink: 0 }}>
+          <CheckCircle2 size={30} />
+        </div>
+        <div>
+          <h3 style={{ margin: '0 0 .25rem', fontSize: '1.35rem', fontWeight: 800, color: '#047857' }}>Le module Planning est prêt !</h3>
+          <p style={{ margin: 0, color: '#334155', fontSize: '.9rem', lineHeight: 1.5 }}>
+            Votre configuration initiale est terminée. Vous pouvez ouvrir le planning complet et commencer à affecter vos équipes.
+          </p>
+        </div>
       </div>
-      <div className="planning-service-summary">
-        {setup.steps.map((item) => <div key={item.key}><strong>{setupStatusLabel(item.status)}</strong><span>{item.title}</span></div>)}
+      <div className="planning-service-summary" style={{ marginTop: '.5rem' }}>
+        {setup.steps.map((item) => (
+          <div key={item.key} className={item.status === 'done' ? 'ready' : 'missing'} style={{ borderRadius: '16px', padding: '1rem' }}>
+            <strong style={{ fontSize: '1.05rem' }}>{setupStatusLabel(item.status)}</strong>
+            <span style={{ fontSize: '.88rem', color: '#475569' }}>{item.title}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -2091,13 +2307,63 @@ function EmployerCostsSettings() {
 function PlanningSetupCompact({ setup }: { setup: ReturnType<typeof buildPlanningSetup> }) {
   const missing = setup.steps.filter((step) => step.status !== 'done').slice(0, 4);
   return (
-    <div className="card-modern planning-setup-banner">
-      <div>
-        <span className="card-title"><Sparkles size={18} /> Planning à finaliser</span>
-        <p className="muted">{setup.doneCount}/{setup.steps.length} étape(s) prêtes pour un planning exploitable.</p>
+    <div
+      className="card-modern planning-setup-banner"
+      style={{
+        padding: '1.1rem 1.4rem',
+        borderRadius: '22px',
+        background: 'linear-gradient(135deg, #091322 0%, #0f2b26 100%)',
+        color: 'white',
+        border: '1px solid rgba(16, 185, 129, 0.2)',
+        boxShadow: '0 12px 30px rgba(9, 19, 34, 0.25)',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: '.85rem' }}>
+        <div
+          style={{
+            display: 'grid',
+            placeItems: 'center',
+            width: '40px',
+            height: '40px',
+            borderRadius: '12px',
+            background: 'rgba(16, 185, 129, 0.15)',
+            color: '#6ee7b7',
+            border: '1px solid rgba(110, 231, 183, 0.25)',
+          }}
+        >
+          <Sparkles size={20} />
+        </div>
+        <div>
+          <span style={{ fontSize: '.72rem', fontWeight: 800, color: '#6ee7b7', letterSpacing: '.08em', textTransform: 'uppercase' }}>
+            CONFIGURATION INITIALE
+          </span>
+          <h4 style={{ margin: '.15rem 0 0', fontSize: '1.05rem', fontWeight: 800, color: 'white' }}>
+            Planning à finaliser
+          </h4>
+          <p style={{ margin: 0, color: '#94a3b8', fontSize: '.82rem' }}>
+            {setup.doneCount}/{setup.steps.length} étape(s) prêtes pour un planning exploitable.
+          </p>
+        </div>
       </div>
-      <div className="planning-setup-missing">
-        {missing.map((step) => <button key={step.key} type="button" onClick={step.action} className={`setup-status ${step.status}`}>{step.title}</button>)}
+      <div className="planning-setup-missing" style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap' }}>
+        {missing.map((step) => (
+          <button
+            key={step.key}
+            type="button"
+            onClick={step.action}
+            className="production-btn-glass"
+            style={{
+              padding: '.4rem .8rem',
+              minHeight: '34px',
+              fontSize: '.78rem',
+              borderRadius: '10px',
+              borderColor: step.status === 'todo' ? 'rgba(245, 158, 11, 0.3)' : 'rgba(255, 255, 255, 0.2)',
+              color: step.status === 'todo' ? '#fde68a' : 'white',
+            }}
+          >
+            {step.title}
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -2106,17 +2372,32 @@ function PlanningSetupCompact({ setup }: { setup: ReturnType<typeof buildPlannin
 function PlanningSetupPanel({ setup, compact, onOpenInitialSetup }: { setup: ReturnType<typeof buildPlanningSetup>; compact: boolean; onOpenInitialSetup: () => void }) {
   const collapsed = setup.complete;
   return (
-    <div className={`card-modern planning-setup-panel ${compact ? 'compact' : ''} ${collapsed ? 'collapsed' : ''}`}>
-      <div className="section-header-modern">
+    <div
+      className={`card-modern planning-setup-panel ${compact ? 'compact' : ''} ${collapsed ? 'collapsed' : ''}`}
+      style={{
+        padding: '1.3rem',
+        borderRadius: '22px',
+        background: '#ffffff',
+        border: '1px solid #e2e8f0',
+        boxShadow: '0 8px 24px rgba(15, 23, 42, 0.04)',
+      }}
+    >
+      <div className="section-header-modern" style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center' }}>
         <div>
-          <span className="card-title"><Sparkles size={18} /> {setup.complete ? 'Configuration Planning terminée' : 'Configuration Planning à compléter'}</span>
-          <span className="section-tagline">{setup.progress}% prêt - Mode : Hybride</span>
+          <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '.45rem', fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
+            <Sparkles size={18} color="#10b981" /> {setup.complete ? 'Configuration Planning terminée' : 'Configuration Planning à compléter'}
+          </span>
+          <span className="section-tagline" style={{ color: '#64748b', fontSize: '.82rem', fontWeight: 600 }}>{setup.progress}% prêt · Mode : Hybride</span>
         </div>
-        <button className="btn btn-secondary btn-compact" type="button" onClick={onOpenInitialSetup}>Modifier les paramètres</button>
+        <button className="production-btn-glass" style={{ color: '#334155', borderColor: '#cbd5e1', background: '#f8fafc', minHeight: '36px', fontSize: '.8rem', padding: '0 .85rem' }} type="button" onClick={onOpenInitialSetup}>
+          Modifier les paramètres
+        </button>
       </div>
       {!collapsed ? (
         <>
-          <div className="progress-bar-bg planning-setup-progress"><div className="progress-bar-fill" style={{ width: `${setup.progress}%` }} /></div>
+          <div className="progress-bar-bg planning-setup-progress" style={{ height: '7px', borderRadius: '999px', background: '#e2e8f0', margin: '1rem 0' }}>
+            <div className="progress-bar-fill" style={{ width: `${setup.progress}%`, height: '100%', borderRadius: '999px', background: 'linear-gradient(90deg, #10b981 0%, #34d399 100%)' }} />
+          </div>
           <div className="planning-setup-summary-grid">
             {setup.steps.slice(0, 4).map((step) => (
               <div key={step.key} className={`planning-setup-summary ${step.status}`}>

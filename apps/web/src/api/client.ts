@@ -139,6 +139,12 @@ import type {
   MenuSettings,
   MenuStatus,
   MenuUsageProfile,
+  CatererClient,
+  CatererEvent,
+  CatererEventPayload,
+  CatererEventStatus,
+  MenuDispatch,
+  MenuDispatchStatus,
   BackupInspection,
   BackupCloudStatus,
   BackupListResponse,
@@ -454,6 +460,24 @@ export const api = {
   },
   dashboardSummary(token: string) {
     return request<DashboardSummary>('/auth/dashboard-summary', {}, token);
+  },
+  updateWorkspaceOnboarding(
+    token: string,
+    payload: {
+      status: 'IN_PROGRESS' | 'DEFERRED' | 'COMPLETED';
+      currentStep:
+        | 'WELCOME'
+        | 'ECOSYSTEM'
+        | 'STARTER_BUNDLE'
+        | 'INSTALLATION'
+        | 'MINI_TOUR';
+    },
+  ) {
+    return request<DashboardSummary['workspaceOnboarding']>(
+      '/auth/workspace-onboarding/progress',
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
   },
   organizationApiKeys(token: string) {
     return request<DashboardSummary['organization']['apiKeys']>(
@@ -1056,8 +1080,8 @@ export const api = {
   haccpSensorSocketUrl() {
     return `${API_SOCKET_URL}/haccp-sensors`;
   },
-  menusDashboard(token: string) {
-    return request<MenuModuleDashboard>('/menus/dashboard', {}, token);
+  menusDashboard(token: string, activity?: string) {
+    return request<MenuModuleDashboard>(`/menus/dashboard${activity ? `?activity=${encodeURIComponent(activity)}` : ''}`, {}, token);
   },
   menuSettings(token: string) {
     return request<MenuSettings>('/menus/settings', {}, token);
@@ -1084,6 +1108,7 @@ export const api = {
       dateTo?: string;
       siteId?: string;
       kind?: string;
+      activity?: string;
     } = {},
   ) {
     const qs = new URLSearchParams();
@@ -1158,12 +1183,71 @@ export const api = {
   menuCycles(token: string) {
     return request<MenuCycle[]>('/menus/cycles', {}, token);
   },
+  menuDispatches(token: string, params: { menuId?: string; status?: MenuDispatchStatus } = {}) {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => value && qs.set(key, value));
+    return request<MenuDispatch[]>(`/menus/dispatches${qs.toString() ? `?${qs}` : ''}`, {}, token);
+  },
+  updateMenuDispatchStatus(token: string, id: string, status: MenuDispatchStatus) {
+    return request<MenuDispatch>(`/menus/dispatches/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }, token);
+  },
+  catererDashboard(token: string) {
+    return request<{ upcoming: CatererEvent[]; stats: { nextThirtyDays: number; confirmed: number; guests: number; productionToGenerate: number } }>('/menus/caterer/dashboard', {}, token);
+  },
+  catererClients(token: string, params: { search?: string; includeArchived?: boolean } = {}) {
+    const qs = new URLSearchParams();
+    if (params.search) qs.set('search', params.search);
+    if (params.includeArchived) qs.set('includeArchived', 'true');
+    return request<CatererClient[]>(`/menus/caterer/clients${qs.toString() ? `?${qs}` : ''}`, {}, token);
+  },
+  createCatererClient(token: string, payload: Omit<CatererClient, 'id'>) {
+    return request<CatererClient>('/menus/caterer/clients', { method: 'POST', body: JSON.stringify(payload) }, token);
+  },
+  updateCatererClient(token: string, id: string, payload: Omit<CatererClient, 'id'>) {
+    return request<CatererClient>(`/menus/caterer/clients/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
+  },
+  catererEvents(token: string, params: { search?: string; status?: CatererEventStatus; startDate?: string; endDate?: string; clientId?: string } = {}) {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => value && qs.set(key, value));
+    return request<CatererEvent[]>(`/menus/caterer/events${qs.toString() ? `?${qs}` : ''}`, {}, token);
+  },
+  catererEvent(token: string, id: string) {
+    return request<CatererEvent>(`/menus/caterer/events/${id}`, {}, token);
+  },
+  createCatererEvent(token: string, payload: CatererEventPayload) {
+    return request<CatererEvent>('/menus/caterer/events', { method: 'POST', body: JSON.stringify(payload) }, token);
+  },
+  updateCatererEvent(token: string, id: string, payload: CatererEventPayload) {
+    return request<CatererEvent>(`/menus/caterer/events/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
+  },
+  updateCatererEventStatus(token: string, id: string, status: CatererEventStatus) {
+    return request<CatererEvent>(`/menus/caterer/events/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }, token);
+  },
+  catererEventReadiness(token: string, id: string) {
+    return request<{ ready: boolean; blockers: Array<{ code: string; message: string; prestationId?: string }>; event: CatererEvent }>(`/menus/caterer/events/${id}/readiness`, {}, token);
+  },
+  generateCatererEventProductions(token: string, id: string, payload: { mode?: 'DETAILED' | 'GROUPED'; force?: boolean } = {}) {
+    return request<{ created: number; generated: unknown[]; skipped: unknown[] }>(`/menus/caterer/events/${id}/generate-productions`, { method: 'POST', body: JSON.stringify(payload) }, token);
+  },
+  async downloadCatererEventDocument(token: string, id: string, kind: 'KITCHEN' | 'HANDOFF' | 'CLIENT') {
+    const response = await fetch(`${API_URL}/api/menus/caterer/events/${id}/documents/${kind}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
+    return { blob: await response.blob(), filename: filenameFromContentDisposition(response.headers.get('Content-Disposition'), `${kind.toLowerCase()}.pdf`) };
+  },
+  async downloadCentralMenuDocument(token: string, id: string, kind: 'PRODUCTION' | 'PACKING' | 'DISPATCH') {
+    const response = await fetch(`${API_URL}/api/menus/menus/${id}/central-document/${kind}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
+    return { blob: await response.blob(), filename: filenameFromContentDisposition(response.headers.get('Content-Disposition'), `${kind.toLowerCase()}.pdf`) };
+  },
   createMenuCycle(token: string, payload: MenuCyclePayload) {
     return request<MenuCycle>(
       '/menus/cycles',
       { method: 'POST', body: JSON.stringify(payload) },
       token,
     );
+  },
+  updateMenuCycle(token: string, id: string, payload: MenuCyclePayload) {
+    return request<MenuCycle>(`/menus/cycles/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
   },
   replicateMenuCycle(
     token: string,
@@ -1221,8 +1305,11 @@ export const api = {
       token,
     );
   },
-  menuExports(token: string) {
-    return request<MenuExport[]>('/menus/exports', {}, token);
+  updateMenuGuestForecasts(token: string, menuId: string, forecasts: Array<{ guestGroupId: string; dietId?: string; destinationSiteId?: string; dispatchId?: string; count: number; notes?: string }>) {
+    return request<MenuPlan>(`/menus/menus/${menuId}/guests`, { method: 'POST', body: JSON.stringify({ forecasts }) }, token);
+  },
+  menuExports(token: string, activity?: string) {
+    return request<MenuExport[]>(`/menus/exports${activity ? `?activity=${encodeURIComponent(activity)}` : ''}`, {}, token);
   },
   menuDisplayTemplates(token: string) {
     return request<MenuDisplayTemplate[]>('/menus/display-templates', {}, token);
@@ -1305,7 +1392,7 @@ export const api = {
       filename: filenameFromContentDisposition(response.headers.get('Content-Disposition'), item.filename || 'menu.pdf'),
     };
   },
-  menuHistory(token: string, params: { menuId?: string; cycleId?: string } = {}) {
+  menuHistory(token: string, params: { menuId?: string; cycleId?: string; activity?: string } = {}) {
     const qs = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== '') qs.set(key, String(value));

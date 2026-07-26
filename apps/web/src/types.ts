@@ -391,6 +391,29 @@ export interface DevSwitchConfig {
   enabled: boolean;
 }
 
+export type WorkspaceOnboardingStatus =
+  | 'PENDING'
+  | 'IN_PROGRESS'
+  | 'DEFERRED'
+  | 'COMPLETED';
+
+export type WorkspaceOnboardingStep =
+  | 'WELCOME'
+  | 'ECOSYSTEM'
+  | 'STARTER_BUNDLE'
+  | 'INSTALLATION'
+  | 'MINI_TOUR';
+
+export interface WorkspaceOnboardingState {
+  eligible: boolean;
+  version: number;
+  status: WorkspaceOnboardingStatus | null;
+  currentStep: WorkspaceOnboardingStep | null;
+  startedAt: string | null;
+  deferredAt: string | null;
+  completedAt: string | null;
+}
+
 export interface DashboardSummary {
   user: UserSession['user'];
   organization: {
@@ -427,6 +450,7 @@ export interface DashboardSummary {
       stockMovementCreated: boolean;
     };
   };
+  workspaceOnboarding: WorkspaceOnboardingState;
 }
 
 export interface OrganizationApiKeys {
@@ -2380,6 +2404,7 @@ export type MenuServiceType = 'BREAKFAST' | 'LUNCH' | 'DINNER' | 'SNACK' | 'EVEN
 export type MenuSection = 'STARTER' | 'MAIN' | 'SIDE' | 'CHEESE' | 'DESSERT' | 'DRINK' | 'OTHER';
 export type MenuCalendarView = 'day' | 'week' | 'month' | 'year';
 export type MenuUsageProfile = 'RESTAURANT_CAFE' | 'CATERER' | 'CENTRAL_KITCHEN' | 'CUSTOM';
+export type MenuActivity = 'RESTAURANT_CAFE' | 'CATERER' | 'CENTRAL_KITCHEN';
 export type MenuKind = 'CATALOG' | 'SERVICE' | 'EVENT' | 'CYCLE';
 export type MenuCatalogType = 'FOOD' | 'DRINKS';
 
@@ -2450,6 +2475,8 @@ export interface MenuItem {
   technicalSheet?: TechnicalSheetRecipe | null;
   productId?: string | null;
   product?: Product | null;
+  dietId?: string | null;
+  diet?: MenuDiet | null;
   portionsMultiplier?: number | string | null;
   portionsOverride?: number | null;
   servingQuantity?: number;
@@ -2464,6 +2491,7 @@ export interface MenuItemPayload {
   menuCategoryId?: string;
   technicalSheetId?: string | null;
   productId?: string;
+  dietId?: string;
   portionsMultiplier?: number;
   order?: number;
   portionsOverride?: number;
@@ -2498,6 +2526,9 @@ export interface MenuGuestForecast {
   group?: MenuGuestGroup | null;
   dietId?: string | null;
   diet?: MenuDiet | null;
+  destinationSiteId?: string | null;
+  destinationSite?: Site | null;
+  dispatchId?: string | null;
   count: number;
 }
 
@@ -2507,6 +2538,8 @@ export interface MenuPlan {
   date?: string | null;
   service: MenuServiceType;
   kind?: MenuKind;
+  activity?: MenuActivity;
+  needsActivityReview?: boolean;
   catalogType?: MenuCatalogType | null;
   siteId?: string | null;
   site?: Site | null;
@@ -2528,6 +2561,7 @@ export interface MenuPlan {
   alerts?: MenuAlert[];
   hasBlockingAlerts?: boolean;
   productionGeneratedAt?: string | null;
+  productionDirtySince?: string | null;
   productionGenerationMode?: 'DETAILED' | 'GROUPED' | string | null;
   productionLinks?: Array<{ id: string; productionOrderId?: string; mode?: string }>;
   cycleId?: string | null;
@@ -2541,6 +2575,7 @@ export interface MenuPlanPayload {
   date?: string;
   service: MenuServiceType;
   kind?: MenuKind;
+  activity?: MenuActivity;
   catalogType?: MenuCatalogType;
   siteId?: string;
   description?: string;
@@ -2605,6 +2640,20 @@ export interface MenuCycle {
   site?: Site | null;
   status?: 'ACTIVE' | 'ARCHIVED' | string;
   weeks?: unknown[];
+  items?: Array<{
+    id?: string;
+    weekNumber: number;
+    dayOfWeek: number;
+    service: MenuServiceType;
+    section: MenuSection;
+    technicalSheetId: string;
+    dietId?: string;
+    diet?: MenuDiet | null;
+    technicalSheet?: TechnicalSheetRecipe;
+    position?: number;
+    notes?: string;
+  }>;
+  forecasts?: MenuCycleForecast[];
   createdAt?: string;
   updatedAt?: string;
 }
@@ -2615,6 +2664,142 @@ export interface MenuCyclePayload {
   durationWeeks: number;
   siteId?: string;
   status?: 'ACTIVE' | 'ARCHIVED';
+  items?: Array<{
+    weekNumber: number;
+    dayOfWeek: number;
+    service: MenuServiceType;
+    section: MenuSection;
+    technicalSheetId: string;
+    dietId?: string;
+    position?: number;
+    notes?: string;
+  }>;
+  forecasts?: Array<{
+    weekNumber: number;
+    dayOfWeek: number;
+    service: MenuServiceType;
+    destinationSiteId: string;
+    guestGroupId: string;
+    dietId?: string;
+    count: number;
+    departureTime?: string;
+    deliveryTime?: string;
+    notes?: string;
+  }>;
+}
+
+export interface MenuCycleForecast {
+  id: string;
+  weekNumber: number;
+  dayOfWeek: number;
+  service: MenuServiceType;
+  destinationSiteId: string;
+  destinationSite?: Site;
+  guestGroupId: string;
+  guestGroup?: MenuGuestGroup;
+  dietId?: string | null;
+  diet?: MenuDiet | null;
+  count: number;
+  departureTime?: string | null;
+  deliveryTime?: string | null;
+  notes?: string | null;
+}
+
+export type MenuDispatchStatus = 'PLANNED' | 'PREPARED' | 'DISPATCHED' | 'DELIVERED' | 'CANCELLED';
+
+export interface MenuDispatch {
+  id: string;
+  menuId: string;
+  menu?: MenuPlan;
+  destinationSiteId: string;
+  destinationSite?: Site;
+  departureAt?: string | null;
+  deliveryAt?: string | null;
+  status: MenuDispatchStatus;
+  notes?: string | null;
+  forecasts?: MenuGuestForecast[];
+}
+
+export interface CatererClient {
+  id: string;
+  name: string;
+  contactName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  notes?: string | null;
+  isArchived?: boolean;
+  archivedAt?: string | null;
+}
+
+export type CatererEventStatus = 'DRAFT' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
+export type CatererFulfillmentMode = 'DELIVERY' | 'PICKUP' | 'ON_SITE';
+export type CatererProductionState = 'NOT_GENERATED' | 'DIRTY' | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED';
+
+export interface CatererPrestation {
+  id: string;
+  name: string;
+  service: MenuServiceType;
+  readyAt?: string | null;
+  handoffAt?: string | null;
+  serviceAt?: string | null;
+  expectedGuests: number;
+  position: number;
+  notes?: string | null;
+  menuId: string;
+  menu: MenuPlan;
+}
+
+export interface CatererEvent {
+  id: string;
+  reference: string;
+  name: string;
+  clientId?: string | null;
+  client?: CatererClient | null;
+  clientSnapshot?: Partial<CatererClient> | null;
+  productionSiteId?: string | null;
+  productionSite?: Site | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  venueName?: string | null;
+  address?: string | null;
+  accessNotes?: string | null;
+  fulfillmentMode: CatererFulfillmentMode;
+  status: CatererEventStatus;
+  needsReview?: boolean;
+  notes?: string | null;
+  prestations: CatererPrestation[];
+  totalGuests: number;
+  productionState: CatererProductionState;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CatererPrestationPayload {
+  id?: string;
+  name: string;
+  service: MenuServiceType;
+  readyAt?: string;
+  handoffAt?: string;
+  serviceAt?: string;
+  expectedGuests: number;
+  position?: number;
+  notes?: string;
+  items?: MenuItemPayload[];
+}
+
+export interface CatererEventPayload {
+  name: string;
+  clientId?: string;
+  productionSiteId?: string;
+  startsAt?: string;
+  endsAt?: string;
+  venueName?: string;
+  address?: string;
+  accessNotes?: string;
+  fulfillmentMode: CatererFulfillmentMode;
+  notes?: string;
+  prestations: CatererPrestationPayload[];
 }
 
 export interface MenuProductionGenerationPayload {

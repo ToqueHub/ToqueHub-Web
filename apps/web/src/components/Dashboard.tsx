@@ -115,6 +115,7 @@ import { Modal } from './ui/Modal';
 import { GuidedWizard } from './ui/GuidedWizard';
 import { DocumentOcrAnalysisPanel } from './ui/DocumentOcrAnalysisPanel';
 import { GuidedWelcome } from './ui/GuidedWelcome';
+import { WorkspaceOnboarding } from './WorkspaceOnboarding';
 
 const PurchasingApp = lazy(() =>
   import('./PurchasingApp').then((module) => ({ default: module.PurchasingApp })),
@@ -184,6 +185,8 @@ import type {
   SystemUpdateStatus,
   OrganizationRemoteAccess,
   RemoteAccessStatus,
+  WorkspaceOnboardingState,
+  WorkspaceOnboardingStep,
 } from '../types';
 
 const movementLabels: Record<StockMovementType, string> = {
@@ -381,7 +384,7 @@ const apps = [
     changelog:
       'Lancement V1 avec vues complètes, génération déterministe, alertes, historique et exports préparés.',
     version: 'v1.0.0',
-    compatibility: 'ToqueHub Core v0.1.0+ + module RH recommandé',
+    compatibility: 'ToqueHub Core v0.1.0+ · RH est installé automatiquement si nécessaire',
     status: 'Disponible',
   },
   {
@@ -399,12 +402,12 @@ const apps = [
     tagline:
       'Planifiez repas, cycles, variantes, convives et productions depuis vos fiches techniques existantes.',
     description:
-      'Menus organise la planification culinaire sans créer recettes, produits, ingrédients, stocks ou collaborateurs. Chaque préparation référence une fiche technique existante ; coûts et allergènes sont lus depuis Fiches Techniques, puis les productions sont générées dans Production.\n\nDépendances strictes : Fiches Techniques et Production doivent être installés avant Menus.',
+      'Menus organise la planification culinaire sans créer recettes, produits, ingrédients, stocks ou collaborateurs. Chaque préparation référence une fiche technique existante ; coûts et allergènes sont lus depuis Fiches Techniques, puis les productions sont générées dans Production.\n\nStocks, Fiches Techniques et Production sont installés automatiquement si nécessaire, puis configurés progressivement.',
     screenshots: ['Tableau de bord Menus', 'Calendrier alimentaire', 'Génération Production'],
     changelog:
       'Lancement V1 avec menus, cycles, régimes, convives, exports, historique et génération Production.',
     version: 'v1.0.0',
-    compatibility: 'ToqueHub Core v0.1.0+ + Fiches Techniques et Production obligatoires',
+    compatibility: 'ToqueHub Core v0.1.0+ · Dépendances culinaires installées automatiquement',
     status: 'Disponible',
   },
 ];
@@ -608,6 +611,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [installedApps, setInstalledApps] = useState<string[]>(
     session.user.installedApplications ?? [],
   );
+  const [workspaceOnboarding, setWorkspaceOnboarding] = useState<WorkspaceOnboardingState>();
+  const [showWorkspaceOnboarding, setShowWorkspaceOnboarding] = useState(false);
+  const [workspaceOnboardingReplay, setWorkspaceOnboardingReplay] = useState(false);
   const [menuModuleSettings, setMenuModuleSettings] = useState<MenuSettings>();
   const isAdmin = ['ADMIN', 'SUPER_ADMIN', 'ADMINISTRATEUR'].includes(
     session.user.role?.toUpperCase(),
@@ -798,6 +804,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       if (summaryResult) {
         setDashboardSummary(summaryResult);
         setInstalledApps(summaryResult.installedApplications ?? []);
+        setWorkspaceOnboarding(summaryResult.workspaceOnboarding);
       }
       if (modularDashboardResult) {
         setModularDashboard(modularDashboardResult);
@@ -876,6 +883,16 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   useEffect(() => {
     if (error) addAppNotification('error', error);
   }, [error]);
+
+  useEffect(() => {
+    if (
+      workspaceOnboarding?.eligible &&
+      (workspaceOnboarding.status === 'PENDING' || workspaceOnboarding.status === 'IN_PROGRESS')
+    ) {
+      setWorkspaceOnboardingReplay(false);
+      setShowWorkspaceOnboarding(true);
+    }
+  }, [workspaceOnboarding?.eligible, workspaceOnboarding?.status]);
 
   useEffect(() => {
     if (!notificationsOpen || unreadNotifications === 0) return;
@@ -1146,7 +1163,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         'production-orders',
         'production-calendar',
         'production-exports',
-        'production-today',
         'production-assignments',
         'production-materials',
         'production-history',
@@ -1338,7 +1354,12 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           { tab: 'articles', label: 'Produits', icon: Package },
           { tab: 'suppliers', label: 'Fournisseur', icon: UsersRound },
           { tab: 'inventories', label: 'Inventaire', icon: ClipboardList },
-          { tab: 'categories', label: 'Réglage', icon: Settings, matches: STOCKS_SETTINGS_TABS },
+          {
+            tab: 'categories',
+            label: 'Réglage',
+            icon: Settings,
+            matches: STOCKS_SETTINGS_TABS,
+          },
         ],
       },
       {
@@ -1354,7 +1375,13 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           { tab: 'hr-dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
           { tab: 'hr-departments', label: 'Services', icon: Building2 },
           ...(hrOnboarding?.servicesCompletedAt
-            ? [{ tab: 'hr-positions' as const, label: 'Postes' as const, icon: BriefcaseBusiness }]
+            ? [
+                {
+                  tab: 'hr-positions' as const,
+                  label: 'Postes' as const,
+                  icon: BriefcaseBusiness,
+                },
+              ]
             : []),
           ...(hrOnboarding?.employeesUnlockedAt
             ? [
@@ -1363,7 +1390,11 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   label: 'Collaborateurs' as const,
                   icon: UsersRound,
                 },
-                { tab: 'hr-orgchart' as const, label: 'Organigramme' as const, icon: Workflow },
+                {
+                  tab: 'hr-orgchart' as const,
+                  label: 'Organigramme' as const,
+                  icon: Workflow,
+                },
               ]
             : []),
         ],
@@ -1411,7 +1442,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         isActive: isProductionTab,
         defaultTab: 'production-dashboard',
         submenu: [
-          { tab: 'production-dashboard', label: 'Planning opérationnel', icon: CalendarDays },
+          { tab: 'production-dashboard', label: 'Fabrication', icon: Factory },
+          { tab: 'production-today', label: 'Planning opérationnel', icon: CalendarDays },
         ],
       },
       {
@@ -1423,45 +1455,69 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         setExpanded: setMenusMenuExpanded,
         isActive: isMenusTab,
         defaultTab: 'menus-dashboard',
-        submenu: [
-          { tab: 'menus-dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
-          ...(menuModuleSettings?.catalogEnabled !== false
+        submenu:
+          menuModuleSettings?.usageProfile === 'CATERER'
             ? [
                 {
-                  tab: 'menus-catalog' as ActiveTab,
+                  tab: 'menus-dashboard' as ActiveTab,
+                  label: 'Tableau de bord',
+                  icon: LayoutDashboard,
+                },
+                { tab: 'menus-list' as ActiveTab, label: 'Événements', icon: ClipboardList },
+                { tab: 'menus-calendar' as ActiveTab, label: 'Calendrier', icon: Calendar },
+                { tab: 'menus-catalog' as ActiveTab, label: 'Clients', icon: UsersRound },
+                { tab: 'menus-exports' as ActiveTab, label: 'Documents', icon: Download },
+                { tab: 'menus-history' as ActiveTab, label: 'Historique', icon: History },
+              ]
+            : [
+                { tab: 'menus-dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
+                ...(menuModuleSettings?.catalogEnabled !== false
+                  ? [
+                      {
+                        tab: 'menus-catalog' as ActiveTab,
+                        label:
+                          menuModuleSettings?.usageProfile === 'RESTAURANT_CAFE'
+                            ? 'Carte'
+                            : 'Carte & disponibilités',
+                        icon: BookOpen,
+                      },
+                    ]
+                  : []),
+                ...(menuModuleSettings?.scheduledMenusEnabled !== false
+                  ? [
+                      {
+                        tab: 'menus-list' as ActiveTab,
+                        label: 'Menus planifiés',
+                        icon: ClipboardList,
+                      },
+                      { tab: 'menus-calendar' as ActiveTab, label: 'Calendrier', icon: Calendar },
+                    ]
+                  : []),
+                ...(menuModuleSettings?.cyclesEnabled !== false
+                  ? [{ tab: 'menus-cycles' as ActiveTab, label: 'Cycles', icon: RefreshCw }]
+                  : []),
+                ...(menuModuleSettings?.dietsEnabled !== false
+                  ? [
+                      {
+                        tab: 'menus-diets' as ActiveTab,
+                        label: 'Régimes alimentaires',
+                        icon: UsersRound,
+                      },
+                    ]
+                  : []),
+                ...(menuModuleSettings?.guestForecastsEnabled !== false
+                  ? [{ tab: 'menus-guests' as ActiveTab, label: 'Convives', icon: UsersRound }]
+                  : []),
+                { tab: 'menus-exports', label: 'Exports & Documents', icon: Download },
+                {
+                  tab: 'menus-history',
                   label:
                     menuModuleSettings?.usageProfile === 'RESTAURANT_CAFE'
-                      ? 'Carte'
-                      : 'Carte & disponibilités',
-                  icon: BookOpen,
+                      ? 'Historique & audit'
+                      : 'Historique',
+                  icon: History,
                 },
-              ]
-            : []),
-          ...(menuModuleSettings?.scheduledMenusEnabled !== false
-            ? [
-                { tab: 'menus-list' as ActiveTab, label: 'Menus planifiés', icon: ClipboardList },
-                { tab: 'menus-calendar' as ActiveTab, label: 'Calendrier', icon: Calendar },
-              ]
-            : []),
-          ...(menuModuleSettings?.cyclesEnabled !== false
-            ? [{ tab: 'menus-cycles' as ActiveTab, label: 'Cycles', icon: RefreshCw }]
-            : []),
-          ...(menuModuleSettings?.dietsEnabled !== false
-            ? [{ tab: 'menus-diets' as ActiveTab, label: 'Régimes alimentaires', icon: UsersRound }]
-            : []),
-          ...(menuModuleSettings?.guestForecastsEnabled !== false
-            ? [{ tab: 'menus-guests' as ActiveTab, label: 'Convives', icon: UsersRound }]
-            : []),
-          { tab: 'menus-exports', label: 'Exports & Documents', icon: Download },
-          {
-            tab: 'menus-history',
-            label:
-              menuModuleSettings?.usageProfile === 'RESTAURANT_CAFE'
-                ? 'Historique & audit'
-                : 'Historique',
-            icon: History,
-          },
-        ],
+              ],
       },
       {
         id: 'haccp',
@@ -1771,6 +1827,102 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     onSessionSwitch?.(nextSession);
   }
 
+  async function persistWorkspaceOnboarding(
+    status: 'IN_PROGRESS' | 'DEFERRED' | 'COMPLETED',
+    currentStep: WorkspaceOnboardingStep,
+  ) {
+    const next = await api.updateWorkspaceOnboarding(token, { status, currentStep });
+    setWorkspaceOnboarding(next);
+  }
+
+  async function deferWorkspaceOnboarding() {
+    if (workspaceOnboardingReplay) {
+      setWorkspaceOnboardingReplay(false);
+      setShowWorkspaceOnboarding(false);
+      return;
+    }
+    const currentStep = workspaceOnboarding?.currentStep ?? 'WELCOME';
+    await persistWorkspaceOnboarding('DEFERRED', currentStep);
+    setShowWorkspaceOnboarding(false);
+  }
+
+  async function resumeWorkspaceOnboarding() {
+    if (!workspaceOnboarding?.eligible) return;
+    try {
+      const currentStep = workspaceOnboarding.currentStep ?? 'WELCOME';
+      await persistWorkspaceOnboarding('IN_PROGRESS', currentStep);
+      setWorkspaceOnboardingReplay(false);
+      setShowWorkspaceOnboarding(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Impossible de reprendre la visite.');
+    }
+  }
+
+  function replayWorkspaceOnboarding() {
+    setWorkspaceOnboardingReplay(true);
+    setShowWorkspaceOnboarding(true);
+  }
+
+  async function installWorkspaceStarterApp(appId: string) {
+    if (installedApps.includes(appId)) return;
+    let result: any;
+    switch (appId) {
+      case 'stocks':
+        result = await api.installStocks(token);
+        break;
+      case 'technical-sheets':
+        result = await api.installTechnicalSheets(token);
+        break;
+      case 'haccp':
+        result = await api.installHaccp(token);
+        break;
+      case 'production':
+        result = await api.installProduction(token);
+        break;
+      case 'purchasing':
+        result = await api.installPurchasing(token);
+        break;
+      case 'hr':
+        result = await api.installHr(token);
+        break;
+      case 'planning':
+        result = await api.installPlanning(token);
+        break;
+      case 'menus':
+        result = await api.installMenus(token);
+        break;
+      case 'rnm-prices':
+        result = await api.installRnmPrices(token);
+        break;
+      default:
+        return;
+    }
+    setInstalledApps(
+      (current) => result?.installedApplications ?? Array.from(new Set([...current, appId])),
+    );
+    if (result && 'progress' in result) {
+      setDashboardSummary(result as DashboardSummary);
+      setWorkspaceOnboarding((result as DashboardSummary).workspaceOnboarding);
+    }
+  }
+
+  async function finishWorkspaceOnboarding(configureStocks: boolean) {
+    if (!workspaceOnboardingReplay) {
+      await persistWorkspaceOnboarding('COMPLETED', 'MINI_TOUR');
+    }
+    setWorkspaceOnboardingReplay(false);
+    setShowWorkspaceOnboarding(false);
+    setMobileMenuOpen(false);
+    setSidebarCollapsed(false);
+    await refresh();
+    if (configureStocks) {
+      setActiveTab('stocks-dashboard');
+      setShowStocksOnboarding(true);
+    } else {
+      setActiveTab('overview');
+    }
+  }
+
   async function installStocks() {
     setAppActionLoading(true);
     setError(undefined);
@@ -1991,15 +2143,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       try {
         if (appId === 'technical-sheets' && !stocksInstalled)
           throw new Error('Installez Stocks avant Fiches Techniques.');
-        if (appId === 'planning' && planningPrerequisiteMessage)
-          throw new Error(planningPrerequisiteMessage);
         if (appId === 'production' && (!stocksInstalled || !technicalSheetsInstalled))
           throw new Error(
             'Installez Stocks et Fiches Techniques avant Production. RH et Planning restent optionnels.',
-          );
-        if (appId === 'menus' && (!technicalSheetsInstalled || !productionInstalled))
-          throw new Error(
-            'Installez Fiches Techniques et Production avant Menus. Menus ne fonctionne pas en mode autonome.',
           );
         if (appId === 'purchasing' && !stocksInstalled)
           throw new Error(
@@ -3095,6 +3241,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             Mes Documents
           </div>
           <div
+            data-tour="app-store"
             className={`sidebar-item ${activeTab === 'applications' ? 'active' : ''}`}
             onClick={() => goToTab('applications')}
           >
@@ -3149,7 +3296,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           </AnimatePresence>
 
           {/* Dynamic Installed Apps */}
-          <div className="sidebar-group-installed">
+          <div className="sidebar-group-installed" data-tour="installed-apps">
             {filteredInstalledApps.length > 0 ? (
               filteredInstalledApps.map((app) => {
                 const IconComponent = app.icon;
@@ -3416,6 +3563,17 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               <BookOpen size={13} />
               Documentation
             </a>
+            {workspaceOnboarding?.eligible ? (
+              <button
+                type="button"
+                className="status-badge changelog-badge"
+                data-tour="help"
+                onClick={replayWorkspaceOnboarding}
+              >
+                <HelpCircle size={13} />
+                Visite guidée
+              </button>
+            ) : null}
             <button type="button" className="status-badge" onClick={() => void openInstanceModal()}>
               <div className="status-dot"></div>
               Instance Locale
@@ -3443,7 +3601,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           </div>
         )}
 
-        <div className="workspace-modern">
+        <div
+          className="workspace-modern"
+          data-tour={activeTab === 'overview' ? 'dashboard' : undefined}
+        >
           {/* ACTIVE TAB RENDERER */}
           <AnimatePresence mode="wait">
             <motion.div
@@ -3457,6 +3618,27 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               {/* TAB OVERVIEW */}
               {activeTab === 'overview' && (
                 <>
+                  {workspaceOnboarding?.eligible && workspaceOnboarding.status === 'DEFERRED' ? (
+                    <div className="workspace-onboarding-reminder">
+                      <span>
+                        <Sparkles size={20} />
+                      </span>
+                      <div>
+                        <strong>Terminer la mise en route</strong>
+                        <small>
+                          Reprenez la visite, installez votre socle et découvrez les repères
+                          essentiels.
+                        </small>
+                      </div>
+                      <button
+                        className="btn btn-primary"
+                        type="button"
+                        onClick={() => void resumeWorkspaceOnboarding()}
+                      >
+                        Reprendre <ArrowRight size={16} />
+                      </button>
+                    </div>
+                  ) : null}
                   {dashboardCockpit ? (
                     <DashboardCockpitOverview
                       cockpit={dashboardCockpit}
@@ -4021,6 +4203,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                 <ProductionApp
                   token={token}
                   session={session}
+                  tab={activeTab === 'production-today' ? 'planning' : 'fabrication'}
                 />
               )}
 
@@ -4075,6 +4258,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                     void refresh();
                   }}
                   onSettingsChanged={setMenuModuleSettings}
+                  onOpenProduction={(catererEventId) => {
+                    sessionStorage.setItem('toquehub.production.catererEventId', catererEventId);
+                    setActiveTab('production-dashboard');
+                  }}
                 />
               )}
 
@@ -5307,6 +5494,29 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         onValidate={handleValidateInventory}
       />
 
+      {showWorkspaceOnboarding && workspaceOnboarding?.eligible ? (
+        <WorkspaceOnboarding
+          state={workspaceOnboarding}
+          firstName={firstName}
+          organizationName={organizationName}
+          installedApps={installedApps}
+          replay={workspaceOnboardingReplay}
+          onProgress={(step) => persistWorkspaceOnboarding('IN_PROGRESS', step)}
+          onDefer={deferWorkspaceOnboarding}
+          onCloseReplay={() => {
+            setWorkspaceOnboardingReplay(false);
+            setShowWorkspaceOnboarding(false);
+          }}
+          onInstallApp={installWorkspaceStarterApp}
+          onPrepareMiniTour={() => {
+            setActiveTab('overview');
+            setMobileMenuOpen(false);
+            setSidebarCollapsed(false);
+          }}
+          onFinish={finishWorkspaceOnboarding}
+        />
+      ) : null}
+
       {showStocksOnboarding ? (
         <StocksOnboardingWizard
           readiness={stocksReadiness}
@@ -5399,6 +5609,13 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                 : selectedStoreApp.id === 'purchasing' && !stocksInstalled
                   ? 'Le module Stocks doit être installé avant Achats.'
                   : undefined
+            }
+            prerequisiteActionLabel={
+              selectedStoreApp.id === 'planning' &&
+              !installedApps.includes('planning') &&
+              planningPrerequisiteMessage
+                ? 'Installer Planning'
+                : undefined
             }
             onInstall={() => triggerInstallApp(selectedStoreApp.id)}
             onOpen={() => {
@@ -6173,7 +6390,11 @@ function getRhPlanningReadiness(
   collaborators: HrCollaborator[],
 ) {
   if (!hrInstalled) {
-    return { ready: false, message: 'Installez le module RH avant d’activer Planning.' };
+    return {
+      ready: false,
+      message:
+        'RH sera installé avec Planning. Configurez ensuite votre équipe depuis le module RH.',
+    };
   }
 
   const activeDepartments = departments.filter((department) => !isArchived(department));
@@ -6223,7 +6444,7 @@ function getRhPlanningReadiness(
 
   return {
     ready: false,
-    message: `Ajoutez ${formatMissingPlanningPrerequisites(missing)} avant d’activer Planning.`,
+    message: `À configurer dans RH après l’installation : ${formatMissingPlanningPrerequisites(missing)}.`,
   };
 }
 
@@ -7071,6 +7292,11 @@ function DashboardCockpitOverview({
     hour: '2-digit',
     minute: '2-digit',
   });
+  const primarySiteHasDistinctName =
+    !!cockpit.primarySite &&
+    cockpit.primarySite.name
+      .trim()
+      .localeCompare(cockpit.organizationName.trim(), 'fr', { sensitivity: 'base' }) !== 0;
 
   // Icon mapping helper for urgent alerts
   const getUrgentIcon = (module: string) => {
@@ -7107,8 +7333,8 @@ function DashboardCockpitOverview({
           </h1>
           <p>
             {cockpit.organizationName}
-            {cockpit.primarySite ? ` · ${cockpit.primarySite.name}` : ''} — voici les priorités de
-            votre établissement.
+            {primarySiteHasDistinctName ? ` · ${cockpit.primarySite!.name}` : ''} — voici les
+            priorités de votre établissement.
           </p>
         </div>
         <motion.div
@@ -8302,7 +8528,8 @@ function computeStocksReadiness(
   const catalogReady = Boolean(activeProducts.length);
   const hasValidatedOcr = ocrStatuses.some((status) => {
     const document = status.document as unknown as
-      { receptionId?: string | null; receptionStatus?: string | null } | undefined;
+      | { receptionId?: string | null; receptionStatus?: string | null }
+      | undefined;
     return Boolean(
       document?.receptionId ||
       document?.receptionStatus === 'VALIDATED' ||
@@ -14140,14 +14367,72 @@ function ApplicationsPage({
   onUninstallApp: (appId: string) => void;
 }) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('all');
+  const [sortBy, setSortBy] = useState<'recommended' | 'status' | 'name'>('recommended');
+
+  const storeCategories = useMemo(
+    () => [
+      { id: 'all', label: 'Tous les modules', icon: Layers },
+      { id: 'installed', label: 'Installés', icon: CheckCircle2 },
+      { id: 'kitchen', label: 'Cuisine & Recettes', icon: ChefHat },
+      { id: 'logistics', label: 'Stocks & Achats', icon: Package },
+      { id: 'hygiene', label: 'Hygiène & Veille', icon: ShieldCheck },
+      { id: 'hr', label: 'RH & Plannings', icon: UsersRound },
+    ],
+    [],
+  );
+
+  const isCategoryMatch = (app: (typeof apps)[number], catId: string) => {
+    if (catId === 'all') return true;
+    if (catId === 'installed') return installedApps.includes(app.id);
+    if (catId === 'kitchen')
+      return [
+        'Cuisine & Coûts matières',
+        'Planification culinaire',
+        'Orchestration cuisine',
+      ].includes(app.category);
+    if (catId === 'logistics')
+      return ['Logistique & Inventaire', 'Approvisionnement'].includes(app.category);
+    if (catId === 'hygiene')
+      return ['Qualité & Hygiène', 'Veille économique'].includes(app.category);
+    if (catId === 'hr') return ['Ressources Humaines', 'Planification & RH'].includes(app.category);
+    return true;
+  };
+
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    storeCategories.forEach((cat) => {
+      counts[cat.id] = apps.filter((app) => isCategoryMatch(app, cat.id)).length;
+    });
+    return counts;
+  }, [installedApps, storeCategories]);
 
   const filteredStoreApps = useMemo(() => {
-    return apps.filter(
-      (app) =>
-        app.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        app.category.toLowerCase().includes(searchQuery.toLowerCase()),
-    );
-  }, [searchQuery]);
+    let list = apps.filter((app) => {
+      const q = searchQuery.toLowerCase().trim();
+      const matchesSearch =
+        q === '' ||
+        app.title.toLowerCase().includes(q) ||
+        app.category.toLowerCase().includes(q) ||
+        app.tagline.toLowerCase().includes(q) ||
+        app.description.toLowerCase().includes(q);
+
+      const matchesCat = isCategoryMatch(app, selectedCategoryFilter);
+      return matchesSearch && matchesCat;
+    });
+
+    if (sortBy === 'name') {
+      list = [...list].sort((a, b) => a.title.localeCompare(b.title));
+    } else if (sortBy === 'status') {
+      list = [...list].sort((a, b) => {
+        const aInst = installedApps.includes(a.id) ? 0 : 1;
+        const bInst = installedApps.includes(b.id) ? 0 : 1;
+        return aInst - bInst;
+      });
+    }
+
+    return list;
+  }, [searchQuery, selectedCategoryFilter, sortBy, installedApps]);
 
   const featuredApps = useMemo(() => {
     return apps.filter((app) => app.status === 'Disponible');
@@ -14156,12 +14441,12 @@ function ApplicationsPage({
   const [featuredIndex, setFeaturedIndex] = useState(0);
 
   useEffect(() => {
-    if (searchQuery !== '') return;
+    if (searchQuery !== '' || selectedCategoryFilter !== 'all') return;
     const timer = setInterval(() => {
       setFeaturedIndex((prev) => (prev + 1) % featuredApps.length);
     }, 5500);
     return () => clearInterval(timer);
-  }, [featuredApps.length, searchQuery]);
+  }, [featuredApps.length, searchQuery, selectedCategoryFilter]);
 
   const featuredApp = featuredApps[featuredIndex] || apps[0];
   const FeaturedIcon = featuredApp.icon;
@@ -14171,6 +14456,12 @@ function ApplicationsPage({
       : featuredApp.id === 'purchasing' && !stocksInstalled
         ? 'Installez Stocks avant Achats.'
         : undefined;
+  const featuredPlanningSetupAction =
+    featuredApp.id === 'planning' &&
+    !installedApps.includes('planning') &&
+    featuredPrerequisiteMessage
+      ? 'Installer Planning'
+      : undefined;
 
   return (
     <div
@@ -14178,7 +14469,7 @@ function ApplicationsPage({
       style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}
     >
       {/* Featured Banner (À la Une) */}
-      {searchQuery === '' && (
+      {searchQuery === '' && selectedCategoryFilter === 'all' && (
         <div className="store-featured-banner">
           <AnimatePresence mode="wait">
             <motion.div
@@ -14221,7 +14512,7 @@ function ApplicationsPage({
                     >
                       Déjà installé
                     </span>
-                  ) : featuredPrerequisiteMessage ? (
+                  ) : featuredPrerequisiteMessage && !featuredPlanningSetupAction ? (
                     <button
                       className="btn btn-secondary"
                       disabled
@@ -14248,7 +14539,7 @@ function ApplicationsPage({
                         border: '1px solid rgba(255,255,255,0.15)',
                       }}
                     >
-                      Installer
+                      {featuredPlanningSetupAction ?? 'Installer'}
                     </button>
                   )}
                 </div>
@@ -14286,107 +14577,211 @@ function ApplicationsPage({
         </div>
       )}
 
-      {/* Search Bar */}
-      <div className="filter-bar" style={{ marginBottom: '0.5rem' }}>
-        <div className="search-input-wrapper" style={{ maxWidth: '100%' }}>
-          <Search />
-          <input
-            type="text"
-            placeholder="Rechercher des modules de cuisine..."
-            className="search-input"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+      {/* Modern Filter & Search Controls */}
+      <div className="store-filters-wrapper">
+        <div className="store-filters-top">
+          <div className="store-search-box">
+            <Search size={18} />
+            <input
+              type="text"
+              placeholder="Rechercher un module (ex: Stocks, HACCP, Recettes)..."
+              className="store-search-input"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                style={{
+                  position: 'absolute',
+                  right: '0.85rem',
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  display: 'grid',
+                  placeItems: 'center',
+                }}
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+
+          <div className="store-filters-actions">
+            <SlidersHorizontal size={16} style={{ color: 'var(--text-muted)' }} />
+            <select
+              className="store-sort-select"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+            >
+              <option value="recommended">Trier par : Recommandés</option>
+              <option value="status">Trier par : Installés en premier</option>
+              <option value="name">Trier par : Nom (A-Z)</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Category Pill Tabs */}
+        <div className="store-pill-tabs">
+          {storeCategories.map((cat) => {
+            const CatIcon = cat.icon;
+            const isActive = selectedCategoryFilter === cat.id;
+            const count = categoryCounts[cat.id] ?? 0;
+
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setSelectedCategoryFilter(cat.id)}
+                className={`store-pill-tab ${isActive ? 'active' : ''}`}
+              >
+                <CatIcon size={15} />
+                <span>{cat.label}</span>
+                <span className="store-pill-badge">{count}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {/* Apps Grid Section */}
       <div>
-        <h3 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '1rem' }}>
-          Découvrir les modules
-        </h3>
-        <div className="store-grid">
-          {filteredStoreApps.map((app) => {
-            const installed = installedApps.includes(app.id);
-            const available = app.status === 'Disponible';
-            const installing = installingAppId === app.id;
-            const prerequisiteMessage =
-              app.id === 'planning'
-                ? planningPrerequisiteMessage
-                : app.id === 'purchasing' && !stocksInstalled
-                  ? 'Installez Stocks avant Achats.'
-                  : undefined;
-            const Icon = app.icon;
-
-            return (
-              <div key={app.id} className="store-app-card" onClick={() => onSelectApp(app)}>
-                <div className="store-app-icon" style={{ background: app.gradient }}>
-                  <Icon size={32} />
-                </div>
-
-                <div className="store-app-info">
-                  <span className="store-app-category">{app.category}</span>
-                  <span className="store-app-title">{app.title}</span>
-                  <span className="store-app-desc">{app.tagline}</span>
-                </div>
-
-                <div onClick={(e) => e.stopPropagation()}>
-                  {installing ? (
-                    <div
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                    >
-                      <svg
-                        width="28"
-                        height="28"
-                        viewBox="0 0 32 32"
-                        style={{ transform: 'rotate(-90deg)', flexShrink: 0 }}
-                      >
-                        <circle
-                          cx="16"
-                          cy="16"
-                          r="12"
-                          stroke="rgba(16, 185, 129, 0.15)"
-                          strokeWidth="3"
-                          fill="transparent"
-                        />
-                        <circle
-                          cx="16"
-                          cy="16"
-                          r="12"
-                          stroke="var(--primary)"
-                          strokeWidth="3"
-                          fill="transparent"
-                          strokeDasharray={2 * Math.PI * 12}
-                          strokeDashoffset={2 * Math.PI * 12 * (1 - installProgress / 100)}
-                        />
-                      </svg>
-                    </div>
-                  ) : installed ? (
-                    <button className="btn btn-get installed" onClick={() => onSelectApp(app)}>
-                      Ouvrir
-                    </button>
-                  ) : available && !prerequisiteMessage ? (
-                    <button
-                      className="btn btn-get"
-                      onClick={() => onInstallApp(app.id)}
-                      disabled={installingAppId !== null}
-                    >
-                      Obtenir
-                    </button>
-                  ) : available && prerequisiteMessage ? (
-                    <button className="btn btn-get soon" disabled title={prerequisiteMessage}>
-                      Bloqué
-                    </button>
-                  ) : (
-                    <button className="btn btn-get soon" disabled>
-                      Bientôt
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '1rem',
+          }}
+        >
+          <h3 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>
+            {selectedCategoryFilter === 'all'
+              ? 'Découvrir tous les modules'
+              : (storeCategories.find((c) => c.id === selectedCategoryFilter)?.label ??
+                'Modules filtrés')}
+          </h3>
+          <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+            {filteredStoreApps.length} module{filteredStoreApps.length > 1 ? 's' : ''} disponible
+            {filteredStoreApps.length > 1 ? 's' : ''}
+          </span>
         </div>
+
+        {filteredStoreApps.length === 0 ? (
+          <div
+            style={{
+              padding: '3rem 1.5rem',
+              textAlign: 'center',
+              background: 'var(--bg-card)',
+              border: '1px dashed var(--light-border)',
+              borderRadius: '16px',
+            }}
+          >
+            <Search size={40} style={{ color: 'var(--text-muted)', marginBottom: '0.75rem' }} />
+            <h4 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: '0.25rem' }}>
+              Aucun module trouvé
+            </h4>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+              Aucun résultat ne correspond à vos filtres actuels.
+            </p>
+            <button
+              className="btn btn-secondary"
+              onClick={() => {
+                setSearchQuery('');
+                setSelectedCategoryFilter('all');
+              }}
+              style={{ marginTop: '1rem' }}
+            >
+              Réinitialiser les filtres
+            </button>
+          </div>
+        ) : (
+          <div className="store-grid">
+            {filteredStoreApps.map((app) => {
+              const installed = installedApps.includes(app.id);
+              const available = app.status === 'Disponible';
+              const installing = installingAppId === app.id;
+              const prerequisiteMessage =
+                app.id === 'planning'
+                  ? planningPrerequisiteMessage
+                  : app.id === 'purchasing' && !stocksInstalled
+                    ? 'Installez Stocks avant Achats.'
+                    : undefined;
+              const planningInstallAction =
+                app.id === 'planning' && !installed && prerequisiteMessage
+                  ? 'Installer Planning'
+                  : undefined;
+              const Icon = app.icon;
+
+              return (
+                <div key={app.id} className="store-app-card" onClick={() => onSelectApp(app)}>
+                  <div className="store-app-icon" style={{ background: app.gradient }}>
+                    <Icon size={32} />
+                  </div>
+
+                  <div className="store-app-info">
+                    <span className="store-app-category">{app.category}</span>
+                    <span className="store-app-title">{app.title}</span>
+                    <span className="store-app-desc">{app.tagline}</span>
+                  </div>
+
+                  <div onClick={(e) => e.stopPropagation()}>
+                    {installing ? (
+                      <div
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <svg
+                          width="28"
+                          height="28"
+                          viewBox="0 0 32 32"
+                          style={{ transform: 'rotate(-90deg)', flexShrink: 0 }}
+                        >
+                          <circle
+                            cx="16"
+                            cy="16"
+                            r="12"
+                            stroke="rgba(16, 185, 129, 0.15)"
+                            strokeWidth="3"
+                            fill="transparent"
+                          />
+                          <circle
+                            cx="16"
+                            cy="16"
+                            r="12"
+                            stroke="var(--primary)"
+                            strokeWidth="3"
+                            fill="transparent"
+                            strokeDasharray={2 * Math.PI * 12}
+                            strokeDashoffset={2 * Math.PI * 12 * (1 - installProgress / 100)}
+                          />
+                        </svg>
+                      </div>
+                    ) : installed ? (
+                      <button className="btn btn-get installed" onClick={() => onSelectApp(app)}>
+                        Ouvrir
+                      </button>
+                    ) : available && (!prerequisiteMessage || planningInstallAction) ? (
+                      <button
+                        className="btn btn-get"
+                        onClick={() => onInstallApp(app.id)}
+                        disabled={installingAppId !== null}
+                      >
+                        {planningInstallAction ?? 'Obtenir'}
+                      </button>
+                    ) : available && prerequisiteMessage ? (
+                      <button className="btn btn-get soon" disabled title={prerequisiteMessage}>
+                        Bloqué
+                      </button>
+                    ) : (
+                      <button className="btn btn-get soon" disabled>
+                        Bientôt
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -14399,6 +14794,7 @@ function AppStoreDetailSheet({
   installing,
   progress,
   prerequisiteMessage,
+  prerequisiteActionLabel,
   onInstall,
   onOpen,
   onUninstall,
@@ -14409,6 +14805,7 @@ function AppStoreDetailSheet({
   installing: boolean;
   progress: number;
   prerequisiteMessage?: string;
+  prerequisiteActionLabel?: string;
   onInstall: () => void;
   onOpen: () => void;
   onUninstall: () => void;
@@ -14426,9 +14823,7 @@ function AppStoreDetailSheet({
         </div>
         <div className="app-sheet-header-info">
           <span className="app-sheet-header-title">{app.title}</span>
-          <span className="app-sheet-header-subtitle">
-            {app.category} · {app.developer}
-          </span>
+          <span className="app-sheet-header-subtitle">{app.category}</span>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             {installing ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -14478,13 +14873,13 @@ function AppStoreDetailSheet({
                   <Trash2 size={14} /> Désinstaller
                 </button>
               </div>
-            ) : isAvailable && !prerequisiteMessage ? (
+            ) : isAvailable && (!prerequisiteMessage || prerequisiteActionLabel) ? (
               <button
                 className="btn btn-primary"
                 onClick={onInstall}
                 style={{ padding: '0.45rem 1.25rem', borderRadius: '20px' }}
               >
-                Obtenir
+                {prerequisiteActionLabel ?? 'Obtenir'}
               </button>
             ) : isAvailable && prerequisiteMessage ? (
               <button
@@ -14512,84 +14907,42 @@ function AppStoreDetailSheet({
         </div>
       ) : null}
 
-      {/* Meta Stats */}
-      <div className="app-sheet-stats">
-        <div className="app-sheet-stat-item">
-          <span className="app-sheet-stat-value">{app.rating} ★</span>
-          <span className="app-sheet-stat-label">{app.ratingCount} NOTES</span>
+      {/* Tagline Highlight Card */}
+      {app.tagline && (
+        <div
+          style={{
+            background:
+              'linear-gradient(135deg, rgba(248, 250, 252, 0.8) 0%, rgba(241, 245, 249, 0.9) 100%)',
+            border: '1px solid var(--light-border)',
+            borderRadius: '12px',
+            padding: '1rem 1.25rem',
+            margin: '1.25rem 0 1rem 0',
+            fontSize: '0.9rem',
+            fontWeight: 500,
+            color: 'var(--text-main)',
+            lineHeight: 1.45,
+          }}
+        >
+          {app.tagline}
         </div>
-        <div className="app-sheet-stat-item">
-          <span className="app-sheet-stat-value">Ages</span>
-          <span className="app-sheet-stat-label">{app.ageLimit}</span>
-        </div>
-        <div className="app-sheet-stat-item">
-          <span className="app-sheet-stat-value">Développeur</span>
-          <span className="app-sheet-stat-label">CORE</span>
-        </div>
-        <div className="app-sheet-stat-item">
-          <span className="app-sheet-stat-value">{app.size}</span>
-          <span className="app-sheet-stat-label">TAILLE</span>
-        </div>
-      </div>
-
-      {/* Screenshots mockups */}
-      <div className="app-sheet-screenshots">
-        {app.screenshots.map((s, idx) => (
-          <div key={idx} className="app-sheet-screenshot-card">
-            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-muted)' }}>
-              {s}
-            </span>
-            <div className="app-sheet-screenshot-wireframe-card">
-              <div
-                className="app-sheet-screenshot-wireframe-row"
-                style={{ width: '40%', background: 'rgba(16, 185, 129, 0.2)' }}
-              ></div>
-              <div className="app-sheet-screenshot-wireframe-row" style={{ width: '90%' }}></div>
-              <div className="app-sheet-screenshot-wireframe-row" style={{ width: '70%' }}></div>
-              <div style={{ display: 'flex', gap: '0.25rem', marginTop: 'auto' }}>
-                <div
-                  style={{
-                    width: '8px',
-                    height: '8px',
-                    borderRadius: '50%',
-                    background: 'var(--primary)',
-                  }}
-                ></div>
-                <div
-                  style={{
-                    width: '8px',
-                    height: '8px',
-                    borderRadius: '50%',
-                    background: '#cbd5e1',
-                  }}
-                ></div>
-                <div
-                  style={{
-                    width: '8px',
-                    height: '8px',
-                    borderRadius: '50%',
-                    background: '#cbd5e1',
-                  }}
-                ></div>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
+      )}
 
       {/* Description */}
-      <div className="app-sheet-desc">
-        <h4 className="app-sheet-desc-title">Description</h4>
-        <div style={{ whiteSpace: 'pre-line' }}>{app.description}</div>
-      </div>
-
-      {/* Changelog */}
-      <div className="app-sheet-changelog">
-        <div className="app-sheet-changelog-header">
-          <span className="app-sheet-changelog-title">Nouveautés</span>
-          <span className="app-sheet-changelog-version">{app.version}</span>
+      <div
+        className="app-sheet-desc"
+        style={{ marginTop: app.tagline ? '0.5rem' : '1.25rem', marginBottom: '1rem' }}
+      >
+        <h4 className="app-sheet-desc-title">À propos de ce module</h4>
+        <div
+          style={{
+            whiteSpace: 'pre-line',
+            fontSize: '0.88rem',
+            lineHeight: '1.6',
+            color: 'var(--text-muted)',
+          }}
+        >
+          {app.description}
         </div>
-        <p className="app-sheet-changelog-desc">{app.changelog}</p>
       </div>
 
       <div
@@ -15728,7 +16081,12 @@ type SettingsSubTab =
   | 'api-keys'
   | 'core';
 type OrganizationSettingModal =
-  'name' | 'establishmentType' | 'regulatoryCountry' | 'secondarySites' | 'siteForm' | null;
+  | 'name'
+  | 'establishmentType'
+  | 'regulatoryCountry'
+  | 'secondarySites'
+  | 'siteForm'
+  | null;
 type SiteDraft = {
   name: string;
   description: string;
@@ -18969,7 +19327,13 @@ function UnitForm({ onSubmit, onClose }: UnitFormProps) {
 
 // Product Form
 type ProductSheetTab =
-  'identity' | 'supplier' | 'stock' | 'packaging' | 'allergens' | 'nutrition' | 'storage';
+  | 'identity'
+  | 'supplier'
+  | 'stock'
+  | 'packaging'
+  | 'allergens'
+  | 'nutrition'
+  | 'storage';
 
 const PRODUCT_SHEET_TABS: Array<{ id: ProductSheetTab; label: string }> = [
   { id: 'identity', label: 'Identité' },

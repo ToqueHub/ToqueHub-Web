@@ -13,6 +13,7 @@ import { UpdateOrganizationApiKeysDto } from './dto/api-keys.dto';
 import { UpdateOrganizationIdentityDto } from './dto/organization-identity.dto';
 import { UpdateOrganizationRemoteAccessDto } from './dto/remote-access.dto';
 import { UpdateRegulatoryCountryDto } from './dto/regulatory-country.dto';
+import { UpdateWorkspaceOnboardingDto } from './dto/workspace-onboarding.dto';
 import { OrganizationApiKeySecretService } from '../common/secrets/organization-api-key-secret.service';
 
 type PrefillStocksDto = {
@@ -105,7 +106,7 @@ export class AuthService {
       await tx.organization.update({ where: { id: organization.id }, data: { primarySiteId: primarySite.id } });
       await this.createDefaultUnits(tx, organization.id);
 
-      return tx.user.create({
+      const createdUser = await tx.user.create({
         data: {
           username: dto.username,
           email: dto.email,
@@ -120,6 +121,13 @@ export class AuthService {
         },
         include: { role: { include: { permissions: { include: { permission: true } } } }, organization: true },
       });
+      await tx.workspaceOnboardingProgress.create({
+        data: {
+          organizationId: organization.id,
+          ownerUserId: createdUser.id,
+        },
+      });
+      return createdUser;
     });
 
     return this.createSession(user);
@@ -226,11 +234,18 @@ export class AuthService {
       await tx.organization.update({ where: { id: organization.id }, data: { primarySiteId: primarySite.id } });
       await this.createDefaultUnits(tx, organization.id);
 
-      return tx.user.update({
+      const updatedUser = await tx.user.update({
         where: { id: user.id },
         data: { organizationId: organization.id },
         include: { role: { include: { permissions: { include: { permission: true } } } }, organization: true },
       });
+      await tx.workspaceOnboardingProgress.create({
+        data: {
+          organizationId: organization.id,
+          ownerUserId: updatedUser.id,
+        },
+      });
+      return updatedUser;
     });
 
     return this.createSession(updatedUser);
@@ -520,25 +535,36 @@ export class AuthService {
   async installPlanningApplication(user: AuthenticatedUser) {
     if (!user.organizationId) throw new ForbiddenException('Organization setup is required before installing applications');
     const organizationId = user.organizationId;
-    const [organization, departmentCount, positionCount, activeEmployees, incompleteEmployee] = await Promise.all([
-      this.prisma.organization.findUnique({
-        where: { id: organizationId },
-        select: { hrInstalledAt: true, planningInstalledAt: true },
-      }),
-      this.prisma.hrDepartment.count({ where: { organizationId, isArchived: false } }),
-      this.prisma.hrPosition.count({ where: { organizationId, isArchived: false } }),
-      this.prisma.hrEmployee.count({ where: { organizationId, isArchived: false, status: 'ACTIVE', department: { isArchived: false }, position: { isArchived: false } } }),
-      this.prisma.hrEmployee.findFirst({ where: { organizationId, isArchived: false, status: 'ACTIVE', OR: [{ AND: [{ firstName: '' }, { lastName: '' }] }, { department: { isArchived: true } }, { position: { isArchived: true } }] }, select: { id: true } }),
-    ]);
-    const missing: string[] = [];
-    if (!organization?.hrInstalledAt) missing.push('le module RH');
-    if (!departmentCount) missing.push('un service');
-    if (!positionCount) missing.push('un poste');
-    if (!activeEmployees) missing.push('un collaborateur avec service/poste principal');
-    if (incompleteEmployee) missing.push('un nom affichable, un service principal et un poste principal pour chaque collaborateur actif');
-    if (missing.length) {
-      throw new BadRequestException(`Ajoutez ${this.formatPlanningPrerequisites(missing)} avant d’activer Planning.`);
+    let organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { hrInstalledAt: true, planningInstalledAt: true },
+    });
+    if (!organization) throw new ForbiddenException('Organization setup is required before installing applications');
+
+    // Planning consumes the RH referential. Installing Planning therefore
+    // provisions RH first, rather than presenting RH as a separate hidden
+    // prerequisite. The user is then guided to complete its structure.
+    if (!organization.hrInstalledAt) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.organization.update({
+          where: { id: organizationId },
+          data: { hrInstalledAt: new Date() },
+        });
+        await tx.auditLog.create({
+          data: {
+            organizationId,
+            userId: user.id,
+            action: AuditAction.MODULE_HR_INSTALLED,
+            entityType: 'Module',
+            entityId: 'hr',
+            entityName: 'RH',
+            details: { source: 'planning-install' },
+          },
+        });
+      });
+      organization = { ...organization, hrInstalledAt: new Date() };
     }
+
     await this.prisma.organization.update({
       where: { id: organizationId },
       data: { planningInstalledAt: organization?.planningInstalledAt ?? new Date() },
@@ -577,7 +603,7 @@ export class AuthService {
       throw new ForbiddenException('Organization setup is required before reading dashboard summary');
     }
 
-    const [currentUser, productCount, supplierCount, movementCount, hrCollaborators, technicalSheets] = await Promise.all([
+    const [currentUser, productCount, supplierCount, movementCount, hrCollaborators, technicalSheets, workspaceOnboarding] = await Promise.all([
       this.prisma.user.findUnique({
         where: { id: user.id },
         include: { role: { include: { permissions: { include: { permission: true } } } }, organization: true },
@@ -587,6 +613,9 @@ export class AuthService {
       this.prisma.stockMovement.count({ where: { organizationId: user.organizationId } }),
       this.prisma.hrEmployee.count({ where: { organizationId: user.organizationId, isArchived: false } }),
       this.prisma.technicalSheet.count({ where: { organizationId: user.organizationId, isArchived: false } }),
+      this.prisma.workspaceOnboardingProgress.findUnique({
+        where: { organizationId: user.organizationId },
+      }),
     ]);
 
     if (!currentUser?.organization) {
@@ -636,6 +665,66 @@ export class AuthService {
       counts: { products: productCount, suppliers: supplierCount, stockMovements: movementCount, activeUsers: activeUsersCount, hrCollaborators, technicalSheets },
       permissions: userPermissions,
       progress: { percent: completedCount * 25, checklist },
+      workspaceOnboarding: this.serializeWorkspaceOnboarding(workspaceOnboarding, {
+        id: currentUser.id,
+        isPrimaryAdmin: currentUser.isPrimaryAdmin,
+      }),
+    };
+  }
+
+  async updateWorkspaceOnboarding(
+    user: AuthenticatedUser,
+    dto: UpdateWorkspaceOnboardingDto,
+  ) {
+    if (!user.organizationId) {
+      throw new ForbiddenException('Organization setup is required before updating onboarding');
+    }
+    const progress = await this.prisma.workspaceOnboardingProgress.findUnique({
+      where: { organizationId: user.organizationId },
+    });
+    if (!progress || progress.ownerUserId !== user.id || !ADMIN_ROLES.includes(user.role)) {
+      throw new ForbiddenException('Only the workspace creator can update this guided tour');
+    }
+
+    const now = new Date();
+    const updated = await this.prisma.workspaceOnboardingProgress.update({
+      where: { organizationId: user.organizationId },
+      data: {
+        status: dto.status,
+        currentStep: dto.currentStep,
+        startedAt: progress.startedAt ?? now,
+        ...(dto.status === 'DEFERRED' ? { deferredAt: now } : {}),
+        ...(dto.status === 'COMPLETED' ? { completedAt: now } : {}),
+      },
+    });
+    return this.serializeWorkspaceOnboarding(updated, { id: user.id, isPrimaryAdmin: true });
+  }
+
+  private serializeWorkspaceOnboarding(
+    progress: {
+      version: number;
+      status: string;
+      currentStep: string;
+      ownerUserId: string;
+      startedAt: Date | null;
+      deferredAt: Date | null;
+      completedAt: Date | null;
+    } | null,
+    user: { id: string; isPrimaryAdmin?: boolean },
+  ) {
+    const eligible = Boolean(
+      progress &&
+        progress.ownerUserId === user.id &&
+        user.isPrimaryAdmin,
+    );
+    return {
+      eligible,
+      version: progress?.version ?? 1,
+      status: eligible ? progress?.status ?? null : null,
+      currentStep: eligible ? progress?.currentStep ?? null : null,
+      startedAt: eligible ? progress?.startedAt?.toISOString() ?? null : null,
+      deferredAt: eligible ? progress?.deferredAt?.toISOString() ?? null : null,
+      completedAt: eligible ? progress?.completedAt?.toISOString() ?? null : null,
     };
   }
 
@@ -754,12 +843,6 @@ export class AuthService {
       data: DEFAULT_STOCK_UNITS.map((unit) => ({ ...unit, organizationId })),
       skipDuplicates: true,
     });
-  }
-
-  private formatPlanningPrerequisites(items: string[]) {
-    if (items.length === 1) return `au moins ${items[0]}`;
-    if (items.length === 2) return `au moins ${items[0]} et ${items[1]}`;
-    return `au moins ${items.slice(0, -1).join(', ')} et ${items[items.length - 1]}`;
   }
 
   private primarySiteName(organizationName: string, primarySiteName?: string) {

@@ -1,9 +1,10 @@
 // @ts-nocheck
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { AuditAction, MenuExportFormat, MenuHistoryAction, MenuKind, MenuProductionGenerationMode, MenuStatus, MenuUsageProfile, Prisma, ProductionMaterialStatus, ProductionPriority } from '@prisma/client';
+import { AuditAction, MenuActivity, MenuExportFormat, MenuHistoryAction, MenuKind, MenuProductionGenerationMode, MenuStatus, MenuUsageProfile, Prisma, ProductionMaterialStatus, ProductionPriority } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProductionExecutionService } from '../production/production-execution.service';
 import { ProductionPlanningService } from '../production/production-planning.service';
+import PDFDocument from 'pdfkit';
 
 const WRITE_ROLES = ['SUPER_ADMIN', 'Administrateur', 'Manager', 'Chef', 'Second'];
 const MANAGER_ROLES = ['SUPER_ADMIN', 'Administrateur', 'Manager', 'Chef'];
@@ -49,9 +50,26 @@ export class MenusService {
   async install(organizationId: string, actor: Actor) {
     this.assertManager(actor);
     const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { stocksInstalledAt: true, rnmPricesInstalledAt: true, hrInstalledAt: true, planningInstalledAt: true, technicalSheetsInstalledAt: true, productionInstalledAt: true, menusInstalledAt: true } });
-    if (!org?.technicalSheetsInstalledAt || !org.productionInstalledAt) throw new BadRequestException('Installation impossible: Fiches Techniques et Production sont obligatoires.');
+    if (!org) throw new NotFoundException('Organisation introuvable.');
+    const installedAt = new Date();
+    const installStocks = !org.stocksInstalledAt;
+    const installTechnicalSheets = !org.technicalSheetsInstalledAt;
+    const installProduction = !org.productionInstalledAt;
     await this.prisma.$transaction(async (tx) => {
-      await tx.organization.update({ where: { id: organizationId }, data: { menusInstalledAt: new Date() } });
+      // Menus is usable immediately, while its culinary chain is configured
+      // progressively. Provision its dependencies in their natural order.
+      await tx.organization.update({
+        where: { id: organizationId },
+        data: {
+          stocksInstalledAt: org.stocksInstalledAt ?? installedAt,
+          technicalSheetsInstalledAt: org.technicalSheetsInstalledAt ?? installedAt,
+          productionInstalledAt: org.productionInstalledAt ?? installedAt,
+          menusInstalledAt: org.menusInstalledAt ?? installedAt,
+        },
+      });
+      if (installStocks) await tx.auditLog.create({ data: { organizationId, userId: actor.id, action: AuditAction.MODULE_STOCKS_INSTALLED, entityType: 'Module', entityId: 'stocks', entityName: 'Stocks', details: { source: 'menus-install' } } });
+      if (installTechnicalSheets) await tx.auditLog.create({ data: { organizationId, userId: actor.id, action: AuditAction.MODULE_TECHNICAL_SHEETS_INSTALLED, entityType: 'Module', entityId: 'technical-sheets', entityName: 'Fiches Techniques', details: { source: 'menus-install' } } });
+      if (installProduction) await tx.auditLog.create({ data: { organizationId, userId: actor.id, action: AuditAction.MODULE_PRODUCTION_INSTALLED, entityType: 'Module', entityId: 'production', entityName: 'Production', details: { source: 'menus-install' } } });
       await tx.menuSettings.upsert({
         where: { organizationId },
         update: {},
@@ -68,7 +86,7 @@ export class MenusService {
       for (const [name, type] of DEFAULT_GUEST_GROUPS) await tx.menuGuestGroup.upsert({ where: { organizationId_name: { organizationId, name } }, update: {}, create: { organizationId, name, type } });
       await tx.auditLog.create({ data: { organizationId, userId: actor.id, action: AuditAction.MODULE_MENUS_INSTALLED, entityType: 'Module', entityId: 'menus', entityName: 'Menus' } });
     });
-    return { installed: true, installedApplications: this.installedApps({ ...org, menusInstalledAt: new Date() }) };
+    return { installed: true, installedApplications: this.installedApps({ ...org, stocksInstalledAt: org.stocksInstalledAt ?? installedAt, technicalSheetsInstalledAt: org.technicalSheetsInstalledAt ?? installedAt, productionInstalledAt: org.productionInstalledAt ?? installedAt, menusInstalledAt: org.menusInstalledAt ?? installedAt }) };
   }
 
   async settings(organizationId: string) {
@@ -143,20 +161,20 @@ export class MenusService {
     return { installed: false, installedApplications: this.installedApps({ ...org, menusInstalledAt: null }) };
   }
 
-  async dashboard(organizationId: string) {
+  async dashboard(organizationId: string, activity?: string) {
     await this.assertInstalled(organizationId); const today = this.dayRange(); const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1); weekStart.setHours(0,0,0,0); const weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 7);
     const [activeMenus, weekMenus, cycles, todayMenus] = await Promise.all([
-      this.prisma.menu.count({ where: { organizationId, status: { in: ['DRAFT','VALIDATED','PUBLISHED'] } } }),
-      this.prisma.menu.findMany({ where: { organizationId, date: { gte: weekStart, lt: weekEnd } }, include: this.menuInclude() }),
-      this.prisma.menuCycle.count({ where: { organizationId, status: 'ACTIVE' } }),
-      this.prisma.menu.findMany({ where: { organizationId, date: { gte: today.start, lt: today.end } }, include: this.menuInclude() }),
+      this.prisma.menu.count({ where: { organizationId, activity: activity as any, status: { in: ['DRAFT','VALIDATED','PUBLISHED'] } } }),
+      this.prisma.menu.findMany({ where: { organizationId, activity: activity as any, date: { gte: weekStart, lt: weekEnd } }, include: this.menuInclude() }),
+      activity ? Promise.resolve(0) : this.prisma.menuCycle.count({ where: { organizationId, status: 'ACTIVE' } }),
+      this.prisma.menu.findMany({ where: { organizationId, activity: activity as any, date: { gte: today.start, lt: today.end } }, include: this.menuInclude() }),
     ]);
     const enriched = weekMenus.map((m) => this.serializeMenu(m));
     const todayEnriched = todayMenus.map((m) => this.serializeMenu(m));
     return { stats: { activeMenus, weekMenus: weekMenus.length, activeCycles: cycles, guestsToday: todayEnriched.reduce((s,m)=>s+m.totalGuests,0), averageCostPerMeal: this.avg(enriched.map(m=>m.costPerGuest)) }, alerts: enriched.flatMap((m) => m.alerts.map((a) => ({ ...a, menuId: m.id, menuName: m.name }))).slice(0, 20), week: enriched, today: todayEnriched };
   }
 
-  async listMenus(organizationId: string, q: any = {}) { await this.assertInstalled(organizationId); const { start, end } = this.dateRange(q); const where: any = { organizationId, status: q.status, service: q.service, kind: q.kind, siteId: q.siteId, date: start || end ? { gte: start, lt: end } : undefined, OR: q.search ? [{ name: { contains: q.search, mode: 'insensitive' } }, { description: { contains: q.search, mode: 'insensitive' } }] : undefined }; const [items,total] = await Promise.all([this.prisma.menu.findMany({ where, include: this.menuInclude(), orderBy: [{ isPrimary: 'desc' }, { date: 'asc' }, { service: 'asc' }], ...this.page(q) }), this.prisma.menu.count({ where })]); return { items: items.map((m)=>this.serializeMenu(m)), total, page: q.page ?? 1, pageSize: Math.min(q.pageSize ?? 50, 200) }; }
+  async listMenus(organizationId: string, q: any = {}) { await this.assertInstalled(organizationId); const { start, end } = this.dateRange(q); const where: any = { organizationId, status: q.status, service: q.service, kind: q.kind, activity: q.activity, siteId: q.siteId, date: start || end ? { gte: start, lt: end } : undefined, OR: q.search ? [{ name: { contains: q.search, mode: 'insensitive' } }, { description: { contains: q.search, mode: 'insensitive' } }] : undefined }; const [items,total] = await Promise.all([this.prisma.menu.findMany({ where, include: this.menuInclude(), orderBy: [{ isPrimary: 'desc' }, { date: 'asc' }, { service: 'asc' }], ...this.page(q) }), this.prisma.menu.count({ where })]); return { items: items.map((m)=>this.serializeMenu(m)), total, page: q.page ?? 1, pageSize: Math.min(q.pageSize ?? 50, 200) }; }
   async getMenu(organizationId: string, id: string) { await this.assertInstalled(organizationId); const m = await this.prisma.menu.findFirst({ where: { id, organizationId }, include: this.menuInclude(true) }); if (!m) throw new NotFoundException('Menu introuvable'); return this.serializeMenu(m); }
   calendar(organizationId: string, q: any = {}) { return this.listMenus(organizationId, q); }
 
@@ -174,6 +192,7 @@ export class MenusService {
         date: dto.date ? new Date(dto.date) : null,
         service: dto.service,
         kind,
+        activity: dto.activity ?? MenuActivity.RESTAURANT_CAFE,
         catalogType: dto.catalogType ?? null,
         siteId,
         description: dto.description,
@@ -202,6 +221,7 @@ export class MenusService {
         date: dto.date ? new Date(dto.date) : null,
         service: dto.service,
         kind: dto.kind,
+        activity: dto.activity ?? current.activity,
         catalogType: dto.catalogType ?? current.catalogType,
         siteId: dto.siteId || null,
         description: dto.description,
@@ -245,9 +265,135 @@ export class MenusService {
 
   async upsertVariant(organizationId: string, actor: Actor, menuId: string, dto: any, id?: string) { await this.assertInstalled(organizationId); this.assertWrite(actor); await this.ensureMenu(organizationId, menuId); await this.ensureDiet(organizationId, dto.dietId); for (const r of dto.replacements ?? []) await this.ensureTechnicalSheet(organizationId, r.replacementTechnicalSheetId); await this.prisma.$transaction(async (tx) => { const variant = id ? await tx.menuVariant.update({ where: { id, organizationId }, data: { dietId: dto.dietId, mode: dto.mode, name: dto.name, expectedGuests: dto.expectedGuests ?? 0, notes: dto.notes } }) : await tx.menuVariant.create({ data: { organizationId, menuId, dietId: dto.dietId, mode: dto.mode, name: dto.name, expectedGuests: dto.expectedGuests ?? 0, notes: dto.notes } }); await tx.menuVariantReplacement.deleteMany({ where: { variantId: variant.id } }); if (dto.replacements?.length) await tx.menuVariantReplacement.createMany({ data: dto.replacements.map((r) => ({ variantId: variant.id, ...r })) }); await tx.menu.update({ where: { id: menuId }, data: { productionDirtySince: (await tx.menu.findUnique({ where: { id: menuId } })).productionGeneratedAt ? new Date() : undefined } }); await this.history(tx, organizationId, menuId, null, actor.id, MenuHistoryAction.VARIANTS_UPDATED, 'Modification des variantes'); }); return this.getMenu(organizationId, menuId); }
 
-  async cycles(organizationId: string, q: any={}) { await this.assertInstalled(organizationId); return this.prisma.menuCycle.findMany({ where: { organizationId, status: q.status }, include: { site: true, items: { include: { technicalSheet: true }, orderBy: [{ weekNumber: 'asc' }, { dayOfWeek: 'asc' }, { service: 'asc' }, { position: 'asc' }] } }, orderBy: { updatedAt: 'desc' }, ...this.page(q) }); }
-  async upsertCycle(organizationId: string, actor: Actor, dto: any, id?: string) { await this.assertInstalled(organizationId); this.assertManager(actor); if (dto.siteId) await this.ensureSite(organizationId, dto.siteId); for (const i of dto.items ?? []) await this.ensureTechnicalSheet(organizationId, i.technicalSheetId); return this.prisma.$transaction(async (tx) => { const cycle = id ? await tx.menuCycle.update({ where: { id, organizationId }, data: { name: dto.name, description: dto.description, durationWeeks: dto.durationWeeks, siteId: dto.siteId || null } }) : await tx.menuCycle.create({ data: { organizationId, name: dto.name, description: dto.description, durationWeeks: dto.durationWeeks, siteId: dto.siteId || null } }); await tx.menuCycleItem.deleteMany({ where: { cycleId: cycle.id } }); if (dto.items?.length) await tx.menuCycleItem.createMany({ data: dto.items.map((i) => ({ organizationId, cycleId: cycle.id, ...i })) }); return cycle; }); }
-  async replicateCycle(organizationId: string, actor: Actor, cycleId: string, dto: any) { await this.assertInstalled(organizationId); this.assertManager(actor); const cycle = await this.prisma.menuCycle.findFirst({ where: { id: cycleId, organizationId }, include: { items: true } }); if (!cycle) throw new NotFoundException('Cycle introuvable'); const start = new Date(dto.startDate); const end = new Date(dto.endDate); let created = 0; return this.prisma.$transaction(async (tx) => { for (let d = new Date(start); d <= end; d.setDate(d.getDate()+1)) { const diffDays = Math.floor((+d - +start) / 86400000); const weekNumber = (Math.floor(diffDays / 7) % cycle.durationWeeks) + 1; const dayOfWeek = d.getDay() === 0 ? 7 : d.getDay(); const byService = new Map(); for (const item of cycle.items.filter((i) => i.weekNumber === weekNumber && i.dayOfWeek === dayOfWeek)) { const key = item.service; if (!byService.has(key)) byService.set(key, []); byService.get(key).push(item); } for (const [service, items] of byService) { const menu = await tx.menu.create({ data: { organizationId, name: `${cycle.name} - S${weekNumber} J${dayOfWeek} ${service}`, date: new Date(d), service, siteId: dto.siteId || cycle.siteId, expectedGuests: dto.expectedGuests ?? 0, cycleId, cycleWeek: weekNumber, cycleDay: dayOfWeek, createdById: actor.id } }); await tx.menuItem.createMany({ data: items.map((i) => ({ organizationId, menuId: menu.id, section: i.section, technicalSheetId: i.technicalSheetId, position: i.position, notes: i.notes })) }); created++; } } await this.history(tx, organizationId, null, cycleId, actor.id, MenuHistoryAction.CYCLE_REPLICATED, `${created} menus créés depuis le cycle`); return { created }; }); }
+  async cycles(organizationId: string, q: any={}) { await this.assertInstalled(organizationId); return this.prisma.menuCycle.findMany({ where: { organizationId, status: q.status }, include: { site: true, items: { include: { technicalSheet: true, diet: true }, orderBy: [{ weekNumber: 'asc' }, { dayOfWeek: 'asc' }, { service: 'asc' }, { position: 'asc' }] }, forecasts: { include: { destinationSite: true, guestGroup: true, diet: true }, orderBy: [{ weekNumber: 'asc' }, { dayOfWeek: 'asc' }, { service: 'asc' }] } }, orderBy: { updatedAt: 'desc' }, ...this.page(q) }); }
+  async upsertCycle(organizationId: string, actor: Actor, dto: any, id?: string) {
+    await this.assertInstalled(organizationId); this.assertManager(actor);
+    if (dto.siteId) await this.ensureSite(organizationId, dto.siteId);
+    for (const item of dto.items ?? []) { await this.ensureTechnicalSheet(organizationId, item.technicalSheetId); if (item.dietId) await this.ensureDiet(organizationId, item.dietId); }
+    for (const forecast of dto.forecasts ?? []) {
+      await this.ensureSite(organizationId, forecast.destinationSiteId);
+      await this.ensureGuestGroup(organizationId, forecast.guestGroupId);
+      if (forecast.dietId) await this.ensureDiet(organizationId, forecast.dietId);
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const cycle = id
+        ? await tx.menuCycle.update({ where: { id, organizationId }, data: { name: dto.name, description: dto.description, durationWeeks: dto.durationWeeks, siteId: dto.siteId || null } })
+        : await tx.menuCycle.create({ data: { organizationId, name: dto.name, description: dto.description, durationWeeks: dto.durationWeeks, siteId: dto.siteId || null } });
+      await tx.menuCycleItem.deleteMany({ where: { cycleId: cycle.id } });
+      await tx.menuCycleForecast.deleteMany({ where: { cycleId: cycle.id } });
+      if (dto.items?.length) await tx.menuCycleItem.createMany({ data: dto.items.map((item) => ({ organizationId, cycleId: cycle.id, ...item })) });
+      if (dto.forecasts?.length) await tx.menuCycleForecast.createMany({ data: dto.forecasts.map((forecast) => ({ organizationId, cycleId: cycle.id, ...forecast })) });
+      return cycle;
+    });
+  }
+  async replicateCycle(organizationId: string, actor: Actor, cycleId: string, dto: any) {
+    await this.assertInstalled(organizationId); this.assertManager(actor);
+    const cycle = await this.prisma.menuCycle.findFirst({ where: { id: cycleId, organizationId }, include: { items: true, forecasts: true } });
+    if (!cycle) throw new NotFoundException('Cycle introuvable');
+    const productionSiteId = dto.siteId || cycle.siteId;
+    if (!productionSiteId) throw new BadRequestException('Le site de production du cycle est obligatoire.');
+    const start = new Date(dto.startDate); const end = new Date(dto.endDate);
+    let created = 0; let updated = 0; const skipped = [];
+    return this.prisma.$transaction(async (tx) => {
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate()+1)) {
+        const diffDays = Math.floor((+d - +start) / 86400000);
+        const weekNumber = (Math.floor(diffDays / 7) % cycle.durationWeeks) + 1;
+        const dayOfWeek = d.getDay() === 0 ? 7 : d.getDay();
+        const services = new Set([
+          ...cycle.items.filter((item) => item.weekNumber === weekNumber && item.dayOfWeek === dayOfWeek).map((item) => item.service),
+          ...cycle.forecasts.filter((item) => item.weekNumber === weekNumber && item.dayOfWeek === dayOfWeek).map((item) => item.service),
+        ]);
+        for (const service of services) {
+          const items = cycle.items.filter((item) => item.weekNumber === weekNumber && item.dayOfWeek === dayOfWeek && item.service === service);
+          const forecasts = cycle.forecasts.filter((item) => item.weekNumber === weekNumber && item.dayOfWeek === dayOfWeek && item.service === service);
+          const dayStart = new Date(d); dayStart.setHours(0,0,0,0);
+          const dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate()+1);
+          const current = await tx.menu.findFirst({ where: { organizationId, cycleId, date: { gte: dayStart, lt: dayEnd }, service, siteId: productionSiteId } });
+          if (current && (current.status !== MenuStatus.DRAFT || current.productionGeneratedAt)) {
+            skipped.push({ menuId: current.id, date: dayStart, service, reason: 'Menu verrouillé, publié ou déjà produit' });
+            continue;
+          }
+          const expectedGuests = forecasts.length ? forecasts.reduce((sum, forecast) => sum + Number(forecast.count), 0) : Number(dto.expectedGuests ?? 0);
+          const menuData = { name: `${cycle.name} - S${weekNumber} J${dayOfWeek} ${service}`, date: new Date(d), service, kind: MenuKind.CYCLE, activity: MenuActivity.CENTRAL_KITCHEN, siteId: productionSiteId, expectedGuests, cycleId, cycleWeek: weekNumber, cycleDay: dayOfWeek, updatedById: actor.id };
+          const menu = current
+            ? await tx.menu.update({ where: { id: current.id }, data: menuData })
+            : await tx.menu.create({ data: { organizationId, ...menuData, createdById: actor.id } });
+          if (current) updated++; else created++;
+          await tx.menuItem.deleteMany({ where: { menuId: menu.id } });
+          await tx.menuGuestForecast.deleteMany({ where: { menuId: menu.id } });
+          await tx.menuDispatch.deleteMany({ where: { menuId: menu.id } });
+          if (items.length) await tx.menuItem.createMany({ data: items.map((item) => ({ organizationId, menuId: menu.id, section: item.section, technicalSheetId: item.technicalSheetId, dietId: item.dietId, position: item.position, notes: item.notes, servingQuantity: 1 })) });
+          const bySite = new Map();
+          for (const forecast of forecasts) {
+            const list = bySite.get(forecast.destinationSiteId) ?? [];
+            list.push(forecast);
+            bySite.set(forecast.destinationSiteId, list);
+          }
+          for (const [destinationSiteId, siteForecasts] of bySite.entries()) {
+            const first = siteForecasts[0];
+            const dispatch = await tx.menuDispatch.create({
+              data: {
+                organizationId, menuId: menu.id, destinationSiteId,
+                departureAt: this.dateWithTime(d, first.departureTime),
+                deliveryAt: this.dateWithTime(d, first.deliveryTime),
+              },
+            });
+            await tx.menuGuestForecast.createMany({ data: siteForecasts.map((forecast) => ({ organizationId, menuId: menu.id, dispatchId: dispatch.id, destinationSiteId, guestGroupId: forecast.guestGroupId, dietId: forecast.dietId, count: forecast.count, notes: forecast.notes })) });
+          }
+        }
+      }
+      await this.history(tx, organizationId, null, cycleId, actor.id, MenuHistoryAction.CYCLE_REPLICATED, `${created} menus créés, ${updated} actualisés, ${skipped.length} ignorés`);
+      return { created, updated, skipped };
+    });
+  }
+
+  async dispatches(organizationId: string, q: any = {}) {
+    await this.assertInstalled(organizationId);
+    return this.prisma.menuDispatch.findMany({ where: { organizationId, menuId: q.menuId, status: q.status }, include: { destinationSite: true, menu: true, forecasts: { include: { guestGroup: true, diet: true } } }, orderBy: [{ departureAt: 'asc' }, { deliveryAt: 'asc' }] });
+  }
+  async updateDispatchStatus(organizationId: string, actor: Actor, id: string, status: any) {
+    await this.assertInstalled(organizationId); this.assertWrite(actor);
+    const dispatch = await this.prisma.menuDispatch.findFirst({ where: { id, organizationId } });
+    if (!dispatch) throw new NotFoundException('Distribution introuvable.');
+    const saved = await this.prisma.menuDispatch.update({ where: { id }, data: { status } });
+    await this.prisma.menuHistory.create({ data: { organizationId, menuId: dispatch.menuId, actorUserId: actor.id, action: MenuHistoryAction.UPDATED, summary: `Distribution ${status}`, details: { dispatchId: id, status } } });
+    return saved;
+  }
+
+  async centralDocument(organizationId: string, actor: Actor, menuId: string, kind: string) {
+    await this.assertInstalled(organizationId); this.assertWrite(actor);
+    if (!['PRODUCTION', 'PACKING', 'DISPATCH'].includes(kind)) throw new BadRequestException('Type de document Cuisine centrale inconnu.');
+    const menu = await this.prisma.menu.findFirst({ where: { id: menuId, organizationId, activity: MenuActivity.CENTRAL_KITCHEN }, include: this.menuInclude(true) });
+    if (!menu) throw new NotFoundException('Menu Cuisine centrale introuvable.');
+    const serialized = this.serializeMenu(menu);
+    const buffer = await new Promise<Buffer>((resolve, reject) => {
+      const doc = new PDFDocument({ size: 'A4', margin: 45 }); const chunks = [];
+      doc.on('data', (chunk) => chunks.push(Buffer.from(chunk))); doc.on('end', () => resolve(Buffer.concat(chunks))); doc.on('error', reject);
+      doc.fontSize(20).text(kind === 'PRODUCTION' ? 'Plan de production global' : kind === 'PACKING' ? 'Fiche de conditionnement' : 'Bons de distribution');
+      doc.moveDown(.3).fontSize(11).fillColor('#475569').text(`${menu.name} · ${menu.date.toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })} · ${serialized.totalGuests} repas`);
+      doc.moveDown().fillColor('#0f172a');
+      if (kind === 'PRODUCTION') {
+        for (const line of this.effectiveProductionLines(menu)) doc.fontSize(11).text(`• ${line.technicalSheet.name} — ${line.portions} portion(s)`);
+      } else {
+        for (const dispatch of menu.dispatches ?? []) {
+          doc.fontSize(14).text(dispatch.destinationSite.name);
+          doc.fontSize(9).fillColor('#475569').text(`Départ ${dispatch.departureAt?.toLocaleString('fr-FR') ?? '—'} · Livraison ${dispatch.deliveryAt?.toLocaleString('fr-FR') ?? '—'} · ${dispatch.status}`);
+          const forecasts = (menu.guestForecasts ?? []).filter((forecast) => forecast.dispatchId === dispatch.id);
+          for (const forecast of forecasts) doc.fontSize(10).fillColor('#0f172a').text(`• ${forecast.guestGroup.name} · ${forecast.diet?.name ?? 'Standard'} — ${forecast.count} repas`);
+          if (kind === 'PACKING') {
+            for (const item of menu.items ?? []) {
+              const guests = forecasts.filter((forecast) => (forecast.dietId ?? null) === (item.dietId ?? null)).reduce((sum, forecast) => sum + forecast.count, 0);
+              if (guests) doc.fontSize(9).text(`  ${item.technicalSheet?.name ?? item.product?.name} — ${guests * Number(item.servingQuantity ?? 1)}`);
+            }
+          }
+          doc.moveDown();
+        }
+      }
+      doc.end();
+    });
+    await this.prisma.menuHistory.create({ data: { organizationId, menuId, actorUserId: actor.id, action: MenuHistoryAction.EXPORT_GENERATED, summary: `Document Cuisine centrale ${kind}`, details: { kind } } });
+    return { buffer, filename: `cuisine-centrale-${kind.toLowerCase()}-${menu.id}.pdf`, mimeType: 'application/pdf' };
+  }
 
   async availability(organizationId: string, menuId: string, requestedSiteId?: string) {
     await this.assertInstalled(organizationId);
@@ -599,9 +745,9 @@ export class MenusService {
 
   async exports(organizationId: string, q: any = {}) { await this.assertInstalled(organizationId); return this.prisma.menuExport.findMany({ where: { organizationId, menuId: q.menuId }, include: { requestedBy: { select: { email: true, firstName: true, lastName: true } }, menu: true }, orderBy: { createdAt: 'desc' }, ...this.page(q) }); }
   async prepareExport(organizationId: string, actor: Actor, dto: any) { await this.assertInstalled(organizationId); this.assertManager(actor); const menus = dto.menuId ? [await this.getMenu(organizationId, dto.menuId)] : (await this.listMenus(organizationId, { startDate: dto.startDate, endDate: dto.endDate, pageSize: 200 })).items; const snapshot = { generatedAt: new Date().toISOString(), audience: dto.audience, menus }; const ext = dto.format === MenuExportFormat.EXCEL ? 'xlsx' : dto.format === MenuExportFormat.PDF ? 'pdf' : 'print'; const exp = await this.prisma.menuExport.create({ data: { organizationId, menuId: dto.menuId || null, requestedById: actor.id, format: dto.format, audience: dto.audience, filename: `menus-${dto.audience.toLowerCase()}-${Date.now()}.${ext}`, filters: dto.filters, snapshot } }); await this.prisma.menuHistory.create({ data: { organizationId, menuId: dto.menuId || null, actorUserId: actor.id, action: MenuHistoryAction.EXPORT_GENERATED, summary: `Export ${dto.audience} ${dto.format}`, details: { exportId: exp.id } } }); return exp; }
-  async historyList(organizationId: string, q: any = {}) { await this.assertInstalled(organizationId); return this.prisma.menuHistory.findMany({ where: { organizationId, menuId: q.menuId, cycleId: q.cycleId, action: q.action }, include: { actorUser: { select: { email: true, firstName: true, lastName: true } }, menu: true, cycle: true }, orderBy: { createdAt: 'desc' }, ...this.page(q) }); }
+  async historyList(organizationId: string, q: any = {}) { await this.assertInstalled(organizationId); return this.prisma.menuHistory.findMany({ where: { organizationId, menuId: q.menuId, cycleId: q.cycleId, action: q.action, menu: q.activity ? { activity: q.activity } : undefined }, include: { actorUser: { select: { email: true, firstName: true, lastName: true } }, menu: true, cycle: true }, orderBy: { createdAt: 'desc' }, ...this.page(q) }); }
 
-  private menuInclude(full=false) { return { site: true, cycle: true, items: { include: { menuCategory: true, product: { include: { unit: true, category: true } }, technicalSheet: { include: this.sheetInclude() } }, orderBy: [{ section: 'asc' }, { position: 'asc' }] }, variants: { include: { diet: true, replacements: { include: { menuItem: true, replacementTechnicalSheet: { include: this.sheetInclude() } } } } }, guestForecasts: { include: { guestGroup: true, diet: true } }, productionLinks: { include: { productionOrder: true } }, ...(full ? { exports: { orderBy: { createdAt: 'desc' }, take: 20 }, history: { orderBy: { createdAt: 'desc' }, take: 50, include: { actorUser: { select: { email: true, firstName: true, lastName: true } } } } } : {}) }; }
+  private menuInclude(full=false) { return { site: true, cycle: true, items: { include: { menuCategory: true, diet: true, product: { include: { unit: true, category: true } }, technicalSheet: { include: this.sheetInclude() } }, orderBy: [{ section: 'asc' }, { position: 'asc' }] }, variants: { include: { diet: true, replacements: { include: { menuItem: true, replacementTechnicalSheet: { include: this.sheetInclude() } } } } }, guestForecasts: { include: { guestGroup: true, diet: true, destinationSite: true } }, dispatches: { include: { destinationSite: true } }, productionLinks: { include: { productionOrder: true } }, ...(full ? { exports: { orderBy: { createdAt: 'desc' }, take: 20 }, history: { orderBy: { createdAt: 'desc' }, take: 50, include: { actorUser: { select: { email: true, firstName: true, lastName: true } } } } } : {}) }; }
   private sheetInclude() { return { outputProduct: { include: { unit: true } }, yieldUnit: true, ingredients: { include: { allergens: { include: { allergen: true } } } } }; }
   private serializeMenu(m: any) {
     const totalGuests = (m.guestForecasts?.length ? m.guestForecasts.reduce((sum, forecast) => sum + forecast.count, 0) : m.expectedGuests) || 0;
@@ -627,12 +773,14 @@ export class MenusService {
     const items = menuItems.map((item) => ({ ...item, sourceType: item.productId ? 'PRODUCT' : 'TECHNICAL_SHEET', portionsOverride: item.portionsOverride == null ? null : Number(item.portionsOverride), servingQuantity: Number(item.servingQuantity ?? 1), targetReadyQuantity: item.targetReadyQuantity == null ? null : Number(item.targetReadyQuantity), lowStockThreshold: item.lowStockThreshold == null ? null : Number(item.lowStockThreshold) }));
     return { ...m, items, totalGuests, estimatedCost, costPerGuest: totalGuests ? estimatedCost / totalGuests : 0, allergens, alerts, hasBlockingAlerts: alerts.some((alert) => alert.blocking) };
   }
-  private effectiveProductionLines(menu: any) { const totalGuests = menu.guestForecasts?.reduce((s,f)=>s+f.count,0) || menu.expectedGuests || 0; return (menu.items ?? []).filter((item) => item.technicalSheetId && item.technicalSheet).map((i)=>({ technicalSheetId: i.technicalSheetId, technicalSheet: i.technicalSheet, section: i.section, portions: Number(i.portionsOverride ?? totalGuests) })); }
+  private effectiveProductionLines(menu: any) { const totalGuests = menu.guestForecasts?.reduce((s,f)=>s+f.count,0) || menu.expectedGuests || 0; return (menu.items ?? []).filter((item) => item.technicalSheetId && item.technicalSheet).map((i)=>{ const itemGuests = menu.activity === MenuActivity.CENTRAL_KITCHEN && menu.guestForecasts?.length ? menu.guestForecasts.filter((forecast) => (forecast.dietId ?? null) === (i.dietId ?? null)).reduce((sum, forecast) => sum + forecast.count, 0) : totalGuests; return { technicalSheetId: i.technicalSheetId, technicalSheet: i.technicalSheet, section: i.section, portions: Number(i.portionsOverride ?? (menu.activity === MenuActivity.RESTAURANT_CAFE ? itemGuests : itemGuests * Number(i.servingQuantity ?? 1))) }; }); }
+  private dateWithTime(date: Date, time?: string | null) { if (!time) return null; const [hours, minutes] = time.split(':').map(Number); const value = new Date(date); value.setHours(hours || 0, minutes || 0, 0, 0); return value; }
   private avg(v: number[]) { const f = v.filter(Number.isFinite); return f.length ? f.reduce((a,b)=>a+b,0)/f.length : 0; }
   private async ensureRefs(org: string, dto: any) {
     if (dto.siteId) await this.ensureSite(org, dto.siteId);
     for (const item of dto.items ?? []) {
       if (item.menuCategoryId) await this.ensureMenuCategory(org, item.menuCategoryId);
+      if (item.dietId) await this.ensureDiet(org, item.dietId);
       const sourceCount = Number(Boolean(item.technicalSheetId)) + Number(Boolean(item.productId));
       if (sourceCount !== 1) throw new BadRequestException('Choisissez soit un produit Stocks, soit une fiche technique.');
       if (item.productId) {
@@ -665,7 +813,7 @@ export class MenusService {
   private async ensureProduct(org: string, id: string) { const x = await this.prisma.product.findFirst({ where: { id, organizationId: org, isArchived: false } }); if (!x) throw new NotFoundException('Produit Stocks actif introuvable'); return x; }
   private async ensureMenuCategory(org: string, id: string) { const x = await this.prisma.menuCategory.findFirst({ where: { id, organizationId: org, isArchived: false } }); if (!x) throw new NotFoundException('Rubrique Menu introuvable'); return x; }
   private async ensureMenuSettings(organizationId: string) { return this.prisma.menuSettings.upsert({ where: { organizationId }, update: {}, create: { organizationId, usageProfile: MenuUsageProfile.RESTAURANT_CAFE, ...MENU_PROFILE_DEFAULTS.RESTAURANT_CAFE } }); }
-  private menuItemData(organizationId: string, menuId: string, item: any) { return { organizationId, menuId, section: item.section ?? 'OTHER', menuCategoryId: item.menuCategoryId || null, technicalSheetId: item.technicalSheetId || null, productId: item.productId || null, position: item.position ?? 0, portionsOverride: item.portionsOverride == null ? null : new Prisma.Decimal(item.portionsOverride), servingQuantity: new Prisma.Decimal(item.servingQuantity ?? 1), targetReadyQuantity: item.targetReadyQuantity == null ? null : new Prisma.Decimal(item.targetReadyQuantity), lowStockThreshold: item.lowStockThreshold == null ? null : new Prisma.Decimal(item.lowStockThreshold), availabilityEnabled: item.availabilityEnabled ?? true, notes: item.notes }; }
+  private menuItemData(organizationId: string, menuId: string, item: any) { return { organizationId, menuId, section: item.section ?? 'OTHER', menuCategoryId: item.menuCategoryId || null, technicalSheetId: item.technicalSheetId || null, productId: item.productId || null, dietId: item.dietId || null, position: item.position ?? 0, portionsOverride: item.portionsOverride == null ? null : new Prisma.Decimal(item.portionsOverride), servingQuantity: new Prisma.Decimal(item.servingQuantity ?? 1), targetReadyQuantity: item.targetReadyQuantity == null ? null : new Prisma.Decimal(item.targetReadyQuantity), lowStockThreshold: item.lowStockThreshold == null ? null : new Prisma.Decimal(item.lowStockThreshold), availabilityEnabled: item.availabilityEnabled ?? true, notes: item.notes }; }
   private async recalculateProductionOrderTx(tx: any, organizationId: string, orderId: string) { const order = await tx.productionOrder.findFirst({ where: { id: orderId, organizationId }, include: { technicalSheet: { include: { ingredients: { include: { product: { include: { unit: true, primarySupplier: true, stocks: true } }, unit: true } } } } } }); if (!order) return; await tx.productionMaterialRequirement.deleteMany({ where: { orderId } }); const factor = new Prisma.Decimal(order.plannedPortions).div(order.technicalSheet.referencePortions || 1); let estimatedCost = new Prisma.Decimal(0); for (const ing of order.technicalSheet.ingredients) { const required = new Prisma.Decimal(ing.quantity).mul(factor); const available = ing.product.stocks.reduce((s, st) => s.add(st.quantity), new Prisma.Decimal(0)); const status = ing.product.isArchived ? ProductionMaterialStatus.PRODUCT_ARCHIVED : available.isZero() ? ProductionMaterialStatus.STOCK_UNKNOWN : available.lt(required) ? ProductionMaterialStatus.INSUFFICIENT_STOCK : available.sub(required).lte(ing.product.minimumStock) ? ProductionMaterialStatus.POTENTIAL_SHORTAGE : ProductionMaterialStatus.OK; const cost = ing.cost == null ? null : new Prisma.Decimal(ing.cost).mul(factor); if (cost) estimatedCost = estimatedCost.add(cost); await tx.productionMaterialRequirement.create({ data: { organizationId, orderId, technicalSheetIngredientId: ing.id, productId: ing.productId, unitId: ing.unitId, supplierId: ing.product.primarySupplierId, requiredQuantity: required, stockAvailable: available, varianceQuantity: available.sub(required), status, estimatedCost: cost, productNameSnapshot: ing.product.name, unitSymbolSnapshot: ing.unit.symbol, supplierNameSnapshot: ing.product.primarySupplier?.name, details: { source: 'MENUS', sourceMenuOrderId: orderId } } }); } await tx.productionOrder.update({ where: { id: orderId }, data: { estimatedCost } }); }
   private async nextProductionNumber(tx: any, org: string) { const year = new Date().getFullYear(); const count = await tx.productionOrder.count({ where: { organizationId: org, number: { startsWith: `OP-${year}-` } } }); return `OP-${year}-${String(count + 1).padStart(4, '0')}`; }
   private history(tx: any, organizationId: string, menuId: string | null, cycleId: string | null, actorUserId: string | null, action: any, summary: string, details?: any) { return tx.menuHistory.create({ data: { organizationId, menuId, cycleId, actorUserId, action, summary, details } }); }
