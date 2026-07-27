@@ -111,6 +111,8 @@ import type {
   ProductionStockSummaryItem,
   ProductionSuggestion,
   CreateProductionCampaignPayload,
+  ProductionDayClosure,
+  ProductionCarryOver,
   ConservationState,
   OperationalTask,
   OperationalTaskAssignee,
@@ -136,6 +138,8 @@ import type {
   MenuPlanPayload,
   MenuProductionGenerationPayload,
   MenuProductionGenerationResult,
+  PlanCatalogProductionDayPayload,
+  PlanCatalogProductionDayResult,
   MenuSettings,
   MenuStatus,
   MenuUsageProfile,
@@ -248,9 +252,47 @@ async function readApiErrorMessage(response: Response, fallback = `Erreur API ${
   const raw = await response.text();
   if (!raw) return fallback;
   try {
-    const body = JSON.parse(raw) as { message?: string | string[] };
+    const body = JSON.parse(raw) as {
+      message?:
+        | string
+        | string[]
+        | {
+            message?: string;
+            code?: string;
+            shortages?: Array<{
+              productName?: string;
+              shortage?: string;
+              reason?: string;
+            }>;
+          };
+      code?: string;
+      shortages?: Array<{ productName?: string; shortage?: string; reason?: string }>;
+    };
     if (Array.isArray(body.message)) return body.message.join(', ');
-    if (body.message) return body.message;
+    if (typeof body.message === 'string') return body.message;
+    if (body.message && typeof body.message === 'object') {
+      if (body.message.message) return body.message.message;
+      if (body.message.code) body.code = body.message.code;
+      if (body.message.shortages) body.shortages = body.message.shortages;
+    }
+    if (body.code === 'PRODUCTION_COMPONENT_SHORTAGE') {
+      const products = (body.shortages ?? [])
+        .map((shortage) => shortage.productName)
+        .filter(Boolean)
+        .join(', ');
+      return products
+        ? `Stock insuffisant pour : ${products}.`
+        : 'Le stock des ingrédients est insuffisant pour valider cette fabrication.';
+    }
+    const knownErrors: Record<string, string> = {
+      PRODUCTION_CAMPAIGN_NOT_VALIDATABLE:
+        'Cette fabrication ne peut plus être validée dans son état actuel.',
+      PRODUCTION_CAMPAIGN_NOT_EDITABLE:
+        'Cette fabrication a déjà commencé et ne peut plus être modifiée.',
+      PRODUCTION_PROFILE_ALREADY_EXISTS:
+        'Le profil de production existe déjà pour ce site.',
+    };
+    if (body.code && knownErrors[body.code]) return knownErrors[body.code];
   } catch {
     // Keep the raw response below.
   }
@@ -276,15 +318,7 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
   });
 
   if (!response.ok) {
-    let message = `Erreur API ${response.status}`;
-    try {
-      const body = (await response.json()) as { message?: string | string[] };
-      if (Array.isArray(body.message)) message = body.message.join(', ');
-      else if (body.message) message = body.message;
-    } catch {
-      // Keep default message.
-    }
-    throw new ApiError(message, response.status);
+    throw new ApiError(await readApiErrorMessage(response), response.status);
   }
 
   const text = await response.text();
@@ -1109,6 +1143,7 @@ export const api = {
       siteId?: string;
       kind?: string;
       activity?: string;
+      pageSize?: number;
     } = {},
   ) {
     const qs = new URLSearchParams();
@@ -1168,8 +1203,25 @@ export const api = {
       `/menus/menus/${id}/generate-productions`,
       {
         method: 'POST',
-        body: JSON.stringify({ mode: payload.mode, force: payload.confirmRegeneration }),
+        body: JSON.stringify({
+          mode: payload.mode,
+          force: payload.confirmRegeneration,
+          plannedTime: payload.plannedTime,
+          serviceId: payload.serviceId,
+          lines: payload.lines,
+        }),
       },
+      token,
+    );
+  },
+  planCatalogProductionDay(
+    token: string,
+    catalogId: string,
+    payload: PlanCatalogProductionDayPayload,
+  ) {
+    return request<PlanCatalogProductionDayResult>(
+      `/menus/catalogs/${catalogId}/production-days`,
+      { method: 'POST', body: JSON.stringify(payload) },
       token,
     );
   },
@@ -1564,6 +1616,42 @@ export const api = {
       token,
     );
   },
+  updateProductionProfile(
+    token: string,
+    id: string,
+    payload: {
+      siteId: string;
+      technicalSheetId: string;
+      outputProductId: string;
+      outputVariantId?: string;
+      yieldUnitId: string;
+      mode?: string;
+      referenceYield: string;
+      minimumQuantity?: string;
+      optimalQuantity?: string;
+      maximumQuantity?: string;
+      stepQuantity?: string;
+      allowedFormats?: string[];
+      allowHalfBatch?: boolean;
+      allowDoubleBatch?: boolean;
+      quantityPerMold?: string;
+      quantityPerTray?: string;
+      quantityPerContainer?: string;
+      quantityPerCycle?: string;
+      maximumCycles?: number;
+      canFreeze?: boolean;
+      shelfLifeHours?: number;
+      frozenShelfLifeHours?: number;
+      shelfLifeAfterThawHours?: number;
+      thawingTimeMinutes?: number;
+    },
+  ) {
+    return request<ProductionProfile>(
+      `/production/profiles/${id}`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      token,
+    );
+  },
   simulateProductionSuggestion(
     token: string,
     payload: { profileId: string; grossRequirement: string; neededAt: string; storageCapacity?: string; optimizedTarget?: string },
@@ -1595,9 +1683,59 @@ export const api = {
       token,
     );
   },
+  updateProductionCampaign(
+    token: string,
+    id: string,
+    payload: {
+      grossRequirement: string;
+      plannedTime: string;
+      serviceId?: string;
+      targetPortions?: string;
+    },
+  ) {
+    return request<ProductionCampaign>(
+      `/production/campaigns/${id}`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      token,
+    );
+  },
   validateProductionCampaign(token: string, id: string, payload: { allowShortage?: boolean; overrideReason?: string; idempotencyKey?: string } = {}) {
     return request<ProductionCampaign>(
       `/production/campaigns/${id}/validate`,
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
+  },
+  productionDayClosurePreview(token: string, params: { siteId: string; date: string }) {
+    const qs = new URLSearchParams(params);
+    return request<ProductionDayClosure>(`/production/day-closures/preview?${qs.toString()}`, {}, token);
+  },
+  productionDayCarryOver(token: string, params: { siteId: string; date: string }) {
+    const qs = new URLSearchParams(params);
+    return request<ProductionCarryOver>(
+      `/production/day-closures/carry-over?${qs.toString()}`,
+      {},
+      token,
+    );
+  },
+  closeProductionDay(
+    token: string,
+    payload: {
+      siteId: string;
+      date: string;
+      notes?: string;
+      items: Array<{
+        orderId: string;
+        remainingPortions: number;
+        discardedPortions: number;
+        carryOverNextPortions: number;
+        lossReason?: string;
+        notes?: string;
+      }>;
+    },
+  ) {
+    return request<ProductionDayClosure>(
+      '/production/day-closures',
       { method: 'POST', body: JSON.stringify(payload) },
       token,
     );

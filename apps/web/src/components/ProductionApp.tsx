@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { api } from '../api/client';
 import { GuidedWizard } from './ui/GuidedWizard';
+import { ProductionFabricationCalendar } from './ProductionFabricationCalendar';
 import type {
   HrDepartment,
   HrPosition,
@@ -49,6 +50,7 @@ import type {
   OperationalTaskOptions,
   OperationalTaskStatus,
   ProductionCampaign,
+  ProductionProfile,
   Site,
   UserSession,
 } from '../types';
@@ -71,6 +73,7 @@ type TaskDraft = {
   positionId: string;
   siteId: string;
   assignedEmployeeId: string;
+  assignedEmployeeIds: string[];
   date: string;
   startTime: string;
   endTime: string;
@@ -265,6 +268,14 @@ function taskSiteName(task: OperationalTask) {
   return task.site?.name ?? task.assignedEmployee?.mainSite?.name ?? task.planningAssignment?.site?.name;
 }
 
+function taskTeamLabel(task: OperationalTask) {
+  const names = (task.assignments ?? [])
+    .map((assignment) => employeeName(assignment.employee))
+    .filter((name) => name !== 'Non assignée');
+  if (names.length) return names.join(', ');
+  return employeeName(task.assignedEmployee);
+}
+
 function emptyDraft(date: string, departmentId = '', assignedEmployeeId = '', siteId = ''): TaskDraft {
   return {
     mode: '',
@@ -275,6 +286,7 @@ function emptyDraft(date: string, departmentId = '', assignedEmployeeId = '', si
     positionId: '',
     siteId,
     assignedEmployeeId,
+    assignedEmployeeIds: assignedEmployeeId ? [assignedEmployeeId] : [],
     date,
     startTime: '09:00',
     endTime: '10:00',
@@ -355,10 +367,18 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
   });
   const [taskOptionsLoading, setTaskOptionsLoading] = useState(false);
   const [campaigns, setCampaigns] = useState<ProductionCampaign[]>([]);
+  const [productionProfiles, setProductionProfiles] = useState<ProductionProfile[]>([]);
   const [campaignsLoading, setCampaignsLoading] = useState(false);
   const [campaignError, setCampaignError] = useState('');
   const [campaignSearch, setCampaignSearch] = useState('');
   const [campaignStatus, setCampaignStatus] = useState('');
+  const [fabricationContext, setFabricationContext] = useState({
+    startDate: startOfWeek(today()),
+    endDate: addDays(startOfWeek(today()), 7),
+    siteId: '',
+    mode: 'week' as 'day' | 'week' | 'month',
+    label: '',
+  });
   const [catererEventFilter, setCatererEventFilter] = useState<{
     id: string;
     reference: string;
@@ -419,13 +439,15 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
     setCampaignError('');
     try {
       const eventId = sessionStorage.getItem('toquehub.production.catererEventId');
-      const [result, event] = await Promise.all([
+      const [result, profilesResult, event] = await Promise.all([
         api.productionCampaigns(token, { pageSize: 200 }),
+        api.productionProfiles(token, { pageSize: 200 }),
         eventId
           ? api.catererEvent(token, eventId).catch(() => undefined)
           : Promise.resolve(undefined),
       ]);
       setCampaigns(result.items ?? []);
+      setProductionProfiles(profilesResult ?? []);
       if (event) {
         const orderIds = new Set(
           event.prestations
@@ -571,6 +593,7 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
       category: categoryForDepartment(department?.name),
       positionId: '',
       assignedEmployeeId: '',
+      assignedEmployeeIds: [],
       positionTaskPresetId: '',
       technicalSheetId: '',
       technicalSheetStepId: '',
@@ -586,6 +609,7 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
     setDraft((current) => ({
       ...current,
       assignedEmployeeId,
+      assignedEmployeeIds: assignedEmployeeId ? [assignedEmployeeId] : [],
       positionId: employee?.positionId ?? '',
       mode: '',
       positionTaskPresetId: '',
@@ -596,6 +620,27 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
       title: '',
       description: '',
     }));
+  }
+
+  function toggleAssignee(employeeId: string) {
+    const employee = assignees.find((item) => item.id === employeeId);
+    setDraft((current) => {
+      const selected = current.assignedEmployeeIds.includes(employeeId);
+      const assignedEmployeeIds = selected
+        ? current.assignedEmployeeIds.filter((id) => id !== employeeId)
+        : [...current.assignedEmployeeIds, employeeId];
+      const leadId =
+        current.assignedEmployeeId === employeeId && selected
+          ? assignedEmployeeIds[0] ?? ''
+          : current.assignedEmployeeId || employeeId;
+      const lead = assignees.find((item) => item.id === leadId);
+      return {
+        ...current,
+        assignedEmployeeIds,
+        assignedEmployeeId: leadId,
+        positionId: lead?.positionId ?? employee?.positionId ?? current.positionId,
+      };
+    });
   }
 
   function selectTaskMode(mode: TaskMode) {
@@ -822,6 +867,11 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
       positionId: task.positionId ?? '',
       siteId: task.siteId ?? '',
       assignedEmployeeId: task.assignedEmployeeId ?? '',
+      assignedEmployeeIds: task.assignments?.length
+        ? task.assignments.map((assignment) => assignment.employeeId)
+        : task.assignedEmployeeId
+          ? [task.assignedEmployeeId]
+          : [],
       date: taskDay(task.startsAt),
       startTime: `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`,
       endTime: `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`,
@@ -859,6 +909,7 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
       positionId: draft.positionId || null,
       siteId: draft.siteId || null,
       assignedEmployeeId: draft.assignedEmployeeId || null,
+      assignedEmployeeIds: draft.assignedEmployeeIds,
       startsAt,
       endsAt,
       quantity: draft.quantity === '' ? null : Number(draft.quantity),
@@ -900,26 +951,57 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
   const activeTasks = tasks.filter((task) => task.status !== 'CANCELLED');
   const completedCount = activeTasks.filter((task) => task.status === 'COMPLETED').length;
   const inProgressCount = activeTasks.filter((task) => task.status === 'IN_PROGRESS').length;
-  const unassignedCount = activeTasks.filter((task) => !task.assignedEmployeeId).length;
+  const unassignedCount = activeTasks.filter(
+    (task) => !task.assignedEmployeeId && !task.assignments?.length,
+  ).length;
+  const unassignedTasks = activeTasks.filter(
+    (task) => !task.assignedEmployeeId && !task.assignments?.length,
+  );
+  const periodCampaigns = useMemo(
+    () =>
+      campaigns.filter((campaign) => {
+        const date = dayKey(new Date(campaign.productionDate));
+        return (
+          date >= fabricationContext.startDate &&
+          date < fabricationContext.endDate &&
+          (!fabricationContext.siteId || campaign.siteId === fabricationContext.siteId)
+        );
+      }),
+    [campaigns, fabricationContext.endDate, fabricationContext.siteId, fabricationContext.startDate],
+  );
 
   if (tab === 'fabrication') {
     return (
-      <FabricationView
-        token={token}
-        campaigns={campaigns}
-        loading={campaignsLoading}
-        error={campaignError}
-        search={campaignSearch}
-        status={campaignStatus}
-        eventFilter={catererEventFilter}
-        onSearch={setCampaignSearch}
-        onStatus={setCampaignStatus}
-        onClearEvent={() => {
-          sessionStorage.removeItem('toquehub.production.catererEventId');
-          setCatererEventFilter(undefined);
-        }}
-        onRefresh={() => void loadCampaigns()}
-      />
+      <section className="fabrication-unified-workspace">
+        <ProductionFabricationCalendar
+          token={token}
+          campaigns={campaigns}
+          profiles={productionProfiles}
+          sites={sites}
+          departments={departments}
+          loading={campaignsLoading}
+          onRefresh={loadCampaigns}
+          onContextChange={setFabricationContext}
+        />
+        <FabricationView
+          token={token}
+          campaigns={periodCampaigns}
+          loading={campaignsLoading}
+          error={campaignError}
+          search={campaignSearch}
+          status={campaignStatus}
+          eventFilter={catererEventFilter}
+          onSearch={setCampaignSearch}
+          onStatus={setCampaignStatus}
+          onClearEvent={() => {
+            sessionStorage.removeItem('toquehub.production.catererEventId');
+            setCatererEventFilter(undefined);
+          }}
+          onRefresh={() => void loadCampaigns()}
+          embedded
+          periodLabel={fabricationContext.label}
+        />
+      </section>
     );
   }
 
@@ -1114,6 +1196,30 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
         <div style={errorStyle}>
           <AlertCircle size={19} /> <span>{error}</span>
         </div>
+      )}
+
+      {unassignedTasks.length > 0 && (
+        <section className="production-suggestions-panel">
+          <div className="production-suggestions-heading">
+            <span><Sparkles size={17} /> Suggestions à affecter</span>
+            <strong>{unassignedTasks.length} tâche{unassignedTasks.length > 1 ? 's' : ''}</strong>
+          </div>
+          <div className="production-suggestions-list">
+            {unassignedTasks.slice(0, 8).map((task) => (
+              <button key={task.id} type="button" onClick={() => openEdit(task)}>
+                <span>
+                  <strong>{task.title}</strong>
+                  <small>
+                    {formatDay(taskDay(task.startsAt), { weekday: 'short', day: 'numeric', month: 'short' })}
+                    {' · '}{formatTime(task.startsAt)}
+                    {taskSiteName(task) ? ` · ${taskSiteName(task)}` : ''}
+                  </small>
+                </span>
+                <em>À affecter</em>
+              </button>
+            ))}
+          </div>
+        </section>
       )}
 
       {!departments.length && !loading ? (
@@ -1456,7 +1562,11 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
               siteName={selectedSite?.name}
               departmentName={selectedDepartment?.name}
               assigneeName={
-                draft.assignedEmployeeId ? employeeName(selectedAssignee) : 'À assigner plus tard'
+                draft.assignedEmployeeIds.length > 1
+                  ? `${employeeName(selectedAssignee)} + ${draft.assignedEmployeeIds.length - 1}`
+                  : draft.assignedEmployeeId
+                    ? employeeName(selectedAssignee)
+                    : 'À assigner plus tard'
               }
               taskName={draft.title}
             />
@@ -1532,11 +1642,11 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
               {editorStep === 2 && (
                 <section className="operational-task-step">
                   <div className="operational-task-step-heading">
-                    <span>Collaborateur disponible</span>
-                    <h2>À qui souhaitez-vous confier cette tâche ?</h2>
+                    <span>Équipe disponible</span>
+                    <h2>Qui doit réaliser cette tâche ?</h2>
                     <p>
-                      Les disponibilités sont vérifiées sur le planning pour le créneau indiqué.
-                      Vous pourrez encore modifier l’horaire à l’étape suivante.
+                      Sélectionnez une ou plusieurs personnes. La première devient responsable
+                      principal et chaque membre retrouvera la même tâche dans son planning.
                     </p>
                   </div>
                   {assigneesLoading ? (
@@ -1549,7 +1659,7 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
                         <button
                           type="button"
                           className={
-                            !draft.assignedEmployeeId
+                            !draft.assignedEmployeeIds.length
                               ? 'operational-task-choice active'
                               : 'operational-task-choice'
                           }
@@ -1563,21 +1673,22 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
                             <small>La tâche restera visible dans les tâches non attribuées</small>
                           </span>
                           <span className="operational-task-choice-check">
-                            {!draft.assignedEmployeeId ? <Check size={17} /> : <Circle size={15} />}
+                            {!draft.assignedEmployeeIds.length ? <Check size={17} /> : <Circle size={15} />}
                           </span>
                         </button>
                       )}
                       {assignees.map((employee) => {
-                        const active = draft.assignedEmployeeId === employee.id;
+                        const active = draft.assignedEmployeeIds.includes(employee.id);
+                        const isLead = draft.assignedEmployeeId === employee.id;
                         return (
                           <button
                             key={employee.id}
                             type="button"
-                            disabled={!employee.available}
+                            disabled={!employee.available && !active}
                             className={
                               active ? 'operational-task-choice active' : 'operational-task-choice'
                             }
-                            onClick={() => chooseAssignee(employee.id)}
+                            onClick={() => toggleAssignee(employee.id)}
                           >
                             <span className="operational-task-avatar">
                               {employee.firstName?.[0]}
@@ -1588,6 +1699,7 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
                               <small>
                                 {employee.position?.name ?? 'Sans poste'} ·{' '}
                                 {employee.availabilityLabel}
+                                {isLead ? ' · Responsable' : ''}
                               </small>
                             </span>
                             <span className="operational-task-choice-check">
@@ -2113,6 +2225,8 @@ function FabricationView({
   onStatus,
   onClearEvent,
   onRefresh,
+  embedded = false,
+  periodLabel,
 }: {
   token: string;
   campaigns: ProductionCampaign[];
@@ -2125,6 +2239,8 @@ function FabricationView({
   onStatus: (value: string) => void;
   onClearEvent: () => void;
   onRefresh: () => void;
+  embedded?: boolean;
+  periodLabel?: string;
 }) {
   const [selected, setSelected] = useState<ProductionCampaign>();
   const [viewMode, setViewMode] = useState<'table' | 'grid' | 'kanban'>('table');
@@ -2172,50 +2288,71 @@ function FabricationView({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+    <div className={embedded ? 'fabrication-details embedded' : 'fabrication-details'}>
       {/* ─── HERO CARD MODERNISÉ ─── */}
-      <motion.section
-        initial={{ opacity: 0, y: -12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="production-hero-card"
-      >
-        <div className="production-hero-glow" />
-        <div
-          style={{
-            position: 'relative',
-            zIndex: 1,
-            display: 'flex',
-            justifyContent: 'space-between',
-            gap: '1.2rem',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-          }}
+      {!embedded && (
+        <motion.section
+          initial={{ opacity: 0, y: -12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="production-hero-card"
         >
-          <div>
-            <div className="production-hero-badge">
-              <ChefHat size={13} /> FABRICATION & PRODUCTION
+          <div className="production-hero-glow" />
+          <div
+            style={{
+              position: 'relative',
+              zIndex: 1,
+              display: 'flex',
+              justifyContent: 'space-between',
+              gap: '1.2rem',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+            }}
+          >
+            <div>
+              <div className="production-hero-badge">
+                <ChefHat size={13} /> FABRICATION & PRODUCTION
+              </div>
+              <h2 className="production-hero-title">Campagnes de production</h2>
+              <p className="production-hero-desc">
+                Retrouvez les fabrications générées depuis les événements Traiteur, les menus et les
+                fiches techniques. Les équipes RH restent facultatives.
+              </p>
             </div>
-            <h2 className="production-hero-title">Campagnes de production</h2>
-            <p className="production-hero-desc">
-              Retrouvez les fabrications générées depuis les événements Traiteur, les menus et les
-              fiches techniques. Les équipes RH restent facultatives.
-            </p>
+            <div className="production-hero-actions">
+              <button
+                type="button"
+                className="production-btn-glass"
+                onClick={onRefresh}
+                disabled={loading}
+                title="Rafraîchir les campagnes"
+              >
+                <RefreshCw size={17} className={loading ? 'spin' : undefined} />
+                <span>Actualiser</span>
+              </button>
+            </div>
           </div>
-          <div className="production-hero-actions">
-            <button
-              type="button"
-              className="production-btn-glass"
-              onClick={onRefresh}
-              disabled={loading}
-              title="Rafraîchir les campagnes"
-            >
-              <RefreshCw size={17} className={loading ? 'spin' : undefined} />
-              <span>Actualiser</span>
-            </button>
+        </motion.section>
+      )}
+
+      {embedded && (
+        <div className="fabrication-details-heading">
+          <div>
+            <span><ListChecks size={15} /> Suivi de fabrication</span>
+            <h3>Productions de la période</h3>
+            <p>{periodLabel || 'Période sélectionnée'} · mêmes filtres que le calendrier</p>
           </div>
+          <button
+            type="button"
+            className="production-btn-glass"
+            onClick={onRefresh}
+            disabled={loading}
+          >
+            <RefreshCw size={17} className={loading ? 'spin' : undefined} />
+            Actualiser
+          </button>
         </div>
-      </motion.section>
+      )}
 
       {/* ─── ÉVÉNEMENT TRAITEUR ACTIF (Optionnel) ─── */}
       <AnimatePresence>
@@ -3743,7 +3880,7 @@ function TimelineTaskCard({
         </div>
         <strong>{task.title}</strong>
         <span className="production-timeline-task-meta">
-          {[taskSiteName(task), task.department?.name, employeeName(task.assignedEmployee)].filter(Boolean).join(' · ')}
+          {[taskSiteName(task), task.department?.name, taskTeamLabel(task)].filter(Boolean).join(' · ')}
         </span>
       </div>
       <div className="production-timeline-task-actions">
@@ -3842,7 +3979,7 @@ function TaskCard({
         </button>
       </div>
       <div style={{ color: '#64748b', fontSize: '.74rem', fontWeight: 600, marginTop: '.1rem' }}>
-        {[taskSiteName(task), task.department?.name ?? 'Service', employeeName(task.assignedEmployee)].filter(Boolean).join(' · ')}
+        {[taskSiteName(task), task.department?.name ?? 'Service', taskTeamLabel(task)].filter(Boolean).join(' · ')}
       </div>
       {task.technicalSheet && (
         <div

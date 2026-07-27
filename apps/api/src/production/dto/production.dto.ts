@@ -7,6 +7,7 @@ export class ProductionQueryDto {
   @IsOptional() @IsString() date?: string;
   @IsOptional() @IsString() startDate?: string;
   @IsOptional() @IsString() endDate?: string;
+  @IsOptional() @IsUUID() siteId?: string;
   @IsOptional() @IsUUID() serviceId?: string;
   @IsOptional() @IsUUID() orderId?: string;
   @IsOptional() @IsUUID() employeeId?: string;

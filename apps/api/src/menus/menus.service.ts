@@ -4,6 +4,7 @@ import { AuditAction, MenuActivity, MenuExportFormat, MenuHistoryAction, MenuKin
 import { PrismaService } from '../prisma/prisma.service';
 import { ProductionExecutionService } from '../production/production-execution.service';
 import { ProductionPlanningService } from '../production/production-planning.service';
+import { TechnicalSheetsService } from '../technical-sheets/technical-sheets.service';
 import PDFDocument from 'pdfkit';
 
 const WRITE_ROLES = ['SUPER_ADMIN', 'Administrateur', 'Manager', 'Chef', 'Second'];
@@ -32,6 +33,7 @@ export class MenusService {
     private readonly prisma: PrismaService,
     private readonly productionPlanning: ProductionPlanningService,
     private readonly productionExecution: ProductionExecutionService,
+    private readonly technicalSheets?: TechnicalSheetsService,
   ) {}
 
   private assertWrite(actor: Actor) { if (!WRITE_ROLES.includes(actor.role)) throw new ForbiddenException('Droits Menus insuffisants'); }
@@ -600,6 +602,318 @@ export class MenusService {
     return { created: created.length, needs: created, skipped, report: await this.availability(organizationId, menuId, dto.siteId) };
   }
 
+  async planCatalogProductionDay(
+    organizationId: string,
+    actor: Actor,
+    catalogId: string,
+    dto: any,
+  ) {
+    await this.assertInstalled(organizationId);
+    this.assertManager(actor);
+    if (!dto.lines?.length) {
+      throw new BadRequestException('Sélectionnez au moins un produit de la carte.');
+    }
+    const date = new Date(`${String(dto.date).slice(0, 10)}T00:00:00.000Z`);
+    if (Number.isNaN(date.getTime())) {
+      throw new BadRequestException('Date de production invalide.');
+    }
+    const nextDate = new Date(date);
+    nextDate.setUTCDate(nextDate.getUTCDate() + 1);
+    const [catalog, site, previousClosure] = await Promise.all([
+      this.prisma.menu.findFirst({
+        where: { id: catalogId, organizationId, kind: MenuKind.CATALOG },
+        include: this.menuInclude(),
+      }),
+      this.prisma.site.findFirst({
+        where: { id: dto.siteId, organizationId, isArchived: false },
+      }),
+      this.prisma.productionDayClosure.findFirst({
+        where: {
+          organizationId,
+          siteId: dto.siteId,
+          date: { lt: date },
+          status: 'CLOSED',
+        },
+        include: { items: true },
+        orderBy: { date: 'desc' },
+      }),
+    ]);
+    if (!catalog) throw new NotFoundException('Carte introuvable.');
+    if (!site) throw new NotFoundException('Site introuvable.');
+
+    const requested = new Map(dto.lines.map((line) => [line.menuItemId, line]));
+    if (requested.size !== dto.lines.length) {
+      throw new BadRequestException('Un produit de la carte est présent plusieurs fois.');
+    }
+    const sourceItems = (catalog.items ?? []).filter((item) => requested.has(item.id));
+    if (
+      sourceItems.length !== requested.size ||
+      sourceItems.some((item) => !item.technicalSheetId || !item.technicalSheet)
+    ) {
+      throw new BadRequestException(
+        'Un produit sélectionné ne correspond plus à une fiche technique active de la carte.',
+      );
+    }
+
+    const profiles = this.technicalSheets
+      ? await Promise.all(
+          sourceItems.map((item) =>
+            this.technicalSheets.ensureProductionProfile(
+              organizationId,
+              actor,
+              item.technicalSheetId,
+              dto.siteId,
+            ),
+          ),
+        )
+      : await this.prisma.productionProfile.findMany({
+          where: {
+            organizationId,
+            siteId: dto.siteId,
+            technicalSheetId: { in: sourceItems.map((item) => item.technicalSheetId) },
+          },
+          include: { outputProduct: true },
+        });
+    const profileBySheet = new Map(
+      profiles.map((profile) => [profile.technicalSheetId, profile]),
+    );
+    const missingProfile = sourceItems.find(
+      (item) => !profileBySheet.has(item.technicalSheetId),
+    );
+    if (missingProfile) {
+      throw new BadRequestException({
+        code: 'PRODUCTION_PROFILE_REQUIRED_FOR_MENU',
+        technicalSheetId: missingProfile.technicalSheetId,
+        technicalSheetName: missingProfile.technicalSheet.name,
+        siteId: dto.siteId,
+      });
+    }
+
+    const carryByProduct = new Map();
+    for (const item of previousClosure?.items ?? []) {
+      if (!item.outputProductId) continue;
+      carryByProduct.set(
+        item.outputProductId,
+        (carryByProduct.get(item.outputProductId) ?? 0) +
+          Number(item.carryOverNextPortions),
+      );
+    }
+
+    const existingDailyMenu = await this.prisma.menu.findFirst({
+      where: {
+        organizationId,
+        sourceMenuId: catalogId,
+        siteId: dto.siteId,
+        kind: MenuKind.SERVICE,
+        date: { gte: date, lt: nextDate },
+      },
+      include: this.menuInclude(),
+    });
+    const linkedItemIds = new Set();
+    const linkedSheetIds = new Set();
+    const linkedProductionByItemId = new Map();
+    const linkedProductionBySheetId = new Map();
+    for (const link of existingDailyMenu?.productionLinks ?? []) {
+      if (link.productionOrder?.status === 'CANCELLED') continue;
+      if (link.productionOrder?.technicalSheetId) {
+        linkedSheetIds.add(link.productionOrder.technicalSheetId);
+        linkedProductionBySheetId.set(link.productionOrder.technicalSheetId, link);
+      }
+      const snapshotLines = Array.isArray(link.snapshot?.lines) ? link.snapshot.lines : [];
+      snapshotLines.forEach((line) => {
+        if (line?.menuItemId) {
+          linkedItemIds.add(line.menuItemId);
+          linkedProductionByItemId.set(line.menuItemId, link);
+        }
+        if (line?.technicalSheetId) {
+          linkedProductionBySheetId.set(line.technicalSheetId, link);
+        }
+      });
+    }
+
+    const prepared = await this.prisma.$transaction(async (tx) => {
+      const dailyMenu = existingDailyMenu
+        ? await tx.menu.update({
+            where: { id: existingDailyMenu.id },
+            data: {
+              status: MenuStatus.VALIDATED,
+              updatedById: actor.id,
+              productionDirtySince: existingDailyMenu.productionGeneratedAt
+                ? new Date()
+                : existingDailyMenu.productionDirtySince,
+            },
+          })
+        : await tx.menu.create({
+            data: {
+              organizationId,
+              name: `Vitrine · ${catalog.name} · ${new Intl.DateTimeFormat('fr-FR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                timeZone: 'UTC',
+              }).format(date)}`,
+              date,
+              service: catalog.service ?? 'SNACK',
+              kind: MenuKind.SERVICE,
+              activity: MenuActivity.RESTAURANT_CAFE,
+              siteId: dto.siteId,
+              sourceMenuId: catalog.id,
+              expectedGuests: 0,
+              status: MenuStatus.VALIDATED,
+              createdById: actor.id,
+              updatedById: actor.id,
+            },
+          });
+
+      const lines = [];
+      for (const sourceItem of sourceItems) {
+        const line = requested.get(sourceItem.id);
+        const targetPortions = Number(line.targetPortions);
+        if (!Number.isFinite(targetPortions) || targetPortions <= 0) {
+          throw new BadRequestException(
+            `L’objectif de ${sourceItem.technicalSheet.name} doit être supérieur à zéro.`,
+          );
+        }
+        let dailyItem = existingDailyMenu?.items?.find(
+          (item) =>
+            item.technicalSheetId === sourceItem.technicalSheetId &&
+            (item.dietId ?? null) === (sourceItem.dietId ?? null),
+        );
+        const existingProductionLink = dailyItem
+          ? linkedProductionByItemId.get(dailyItem.id) ??
+            linkedProductionBySheetId.get(dailyItem.technicalSheetId)
+          : linkedProductionBySheetId.get(sourceItem.technicalSheetId);
+        if (dailyItem) {
+          dailyItem = await tx.menuItem.update({
+            where: { id: dailyItem.id },
+            data: { portionsOverride: new Prisma.Decimal(targetPortions) },
+          });
+        } else {
+          dailyItem = await tx.menuItem.create({
+            data: this.menuItemData(organizationId, dailyMenu.id, {
+              section: sourceItem.section,
+              menuCategoryId: sourceItem.menuCategoryId,
+              technicalSheetId: sourceItem.technicalSheetId,
+              dietId: sourceItem.dietId,
+              position: sourceItem.position,
+              portionsOverride: targetPortions,
+              servingQuantity: sourceItem.servingQuantity,
+              availabilityEnabled: sourceItem.availabilityEnabled,
+              notes: `Produit repris depuis la carte ${catalog.name}`,
+            }),
+          });
+        }
+        const profile = profileBySheet.get(sourceItem.technicalSheetId);
+        const outputProductId =
+          profile.outputProductId ?? sourceItem.technicalSheet.outputProductId;
+        const availableCarry = outputProductId
+          ? Number(carryByProduct.get(outputProductId) ?? 0)
+          : 0;
+        const openingCarryOverPortions = Math.min(availableCarry, targetPortions);
+        if (outputProductId) {
+          carryByProduct.set(
+            outputProductId,
+            Math.max(availableCarry - openingCarryOverPortions, 0),
+          );
+        }
+        lines.push({
+          menuItemId: dailyItem.id,
+          portions: Math.max(targetPortions - openingCarryOverPortions, 0),
+          targetPortions,
+          openingCarryOverPortions,
+          plannedTime: line.plannedTime || dto.plannedTime || '08:00',
+          ...(existingProductionLink
+            ? {
+                existingProductionOrderId: existingProductionLink.productionOrderId,
+                existingProductionLinkId: existingProductionLink.id,
+              }
+            : {}),
+        });
+      }
+      return { dailyMenuId: dailyMenu.id, lines };
+    });
+
+    const existingLines = prepared.lines.filter(
+      (line) => line.existingProductionOrderId && line.existingProductionLinkId,
+    );
+    const newLines = prepared.lines.filter((line) => !line.existingProductionOrderId);
+    const updatedOrders = [];
+    for (const line of existingLines) {
+      const updated = await this.productionExecution.rescheduleCampaign(
+        organizationId,
+        { ...actor, permissions: [] },
+        line.existingProductionOrderId,
+        {
+          grossRequirement: new Prisma.Decimal(line.portions).toFixed(3),
+          plannedTime: line.plannedTime,
+          serviceId: dto.serviceId,
+        },
+      );
+      const existingLink = (existingDailyMenu?.productionLinks ?? []).find(
+        (link) => link.id === line.existingProductionLinkId,
+      );
+      const snapshot =
+        existingLink?.snapshot && typeof existingLink.snapshot === 'object'
+          ? existingLink.snapshot
+          : {};
+      const snapshotLines = Array.isArray(snapshot.lines) ? snapshot.lines : [];
+      await this.prisma.menuProductionLink.update({
+        where: { id: line.existingProductionLinkId },
+        data: {
+          snapshot: {
+            ...snapshot,
+            lines: snapshotLines.map((snapshotLine) =>
+              snapshotLine?.menuItemId === line.menuItemId
+                ? {
+                    ...snapshotLine,
+                    portions: line.portions,
+                    targetPortions: line.targetPortions,
+                    openingCarryOverPortions: line.openingCarryOverPortions,
+                    plannedTime: line.plannedTime,
+                  }
+                : snapshotLine,
+            ),
+          },
+        },
+      });
+      updatedOrders.push(updated);
+    }
+    const generation = newLines.length
+      ? await this.generateProductions(
+          organizationId,
+          actor,
+          prepared.dailyMenuId,
+          {
+            mode: MenuProductionGenerationMode.DETAILED,
+            serviceId: dto.serviceId,
+            plannedTime: dto.plannedTime || '08:00',
+            lines: newLines,
+          },
+        )
+      : {
+          created: 0,
+          orders: [],
+          skipped: [],
+          allMenuProductsPlanned: true,
+        };
+    if (existingLines.length) {
+      await this.prisma.menu.update({
+        where: { id: prepared.dailyMenuId },
+        data: { productionDirtySince: null },
+      });
+    }
+    return {
+      menu: await this.getMenu(organizationId, prepared.dailyMenuId),
+      generation: {
+        ...generation,
+        updated: updatedOrders.length,
+        orders: [...updatedOrders, ...(generation.orders ?? [])],
+      },
+      previousClosureDate: previousClosure?.date ?? null,
+      lines: prepared.lines,
+    };
+  }
+
   async generateProductions(organizationId: string, actor: Actor, menuId: string, dto: any) {
     await this.assertInstalled(organizationId);
     this.assertManager(actor);
@@ -609,9 +923,10 @@ export class MenusService {
     });
     if (!menu) throw new NotFoundException('Menu introuvable');
     const serialized = this.serializeMenu(menu);
+    const hasLineSelection = Array.isArray(dto.lines) && dto.lines.length > 0;
     if (!['VALIDATED', 'PUBLISHED'].includes(menu.status))
       throw new BadRequestException('Le menu doit être validé ou publié.');
-    if (!serialized.totalGuests)
+    if (!hasLineSelection && !serialized.totalGuests)
       throw new BadRequestException('Les convives doivent être renseignés.');
     const blocking = serialized.alerts.filter((alert) => alert.blocking);
     if (blocking.length)
@@ -621,15 +936,67 @@ export class MenusService {
       });
     if (!menu.siteId)
       throw new BadRequestException('Un site est obligatoire pour générer la production.');
-    if (menu.productionGeneratedAt && !dto.force)
+    if (!menu.date)
+      throw new BadRequestException('Une date est obligatoire pour planifier la production du menu.');
+    if (!hasLineSelection && menu.productionGeneratedAt && !dto.force)
       throw new BadRequestException(
         'Productions déjà générées: confirmation force requise.',
       );
 
-    const effective = this.effectiveProductionLines(menu);
+    const effectiveAll = this.effectiveProductionLines(menu);
+    const requestedLines = new Map(
+      (dto.lines ?? []).map((line) => [line.menuItemId, line]),
+    );
+    if (
+      hasLineSelection &&
+      [...requestedLines.keys()].some(
+        (menuItemId) => !effectiveAll.some((line) => line.menuItemId === menuItemId),
+      )
+    ) {
+      throw new BadRequestException(
+        'Un produit sélectionné ne correspond plus à une fiche technique active du menu.',
+      );
+    }
+    const linkedItemIds = new Set();
+    const linkedSheetIds = new Set();
+    for (const link of menu.productionLinks ?? []) {
+      if (link.productionOrder?.status === 'CANCELLED') continue;
+      if (link.productionOrder?.technicalSheetId) {
+        linkedSheetIds.add(link.productionOrder.technicalSheetId);
+      }
+      const snapshotLines = Array.isArray(link.snapshot?.lines) ? link.snapshot.lines : [];
+      snapshotLines.forEach((line) => {
+        if (line?.menuItemId) linkedItemIds.add(line.menuItemId);
+      });
+    }
+    effectiveAll.forEach((line) => {
+      if (linkedSheetIds.has(line.technicalSheetId)) linkedItemIds.add(line.menuItemId);
+    });
+
+    const skipped = [];
+    const effective = effectiveAll
+      .filter((line) => !hasLineSelection || requestedLines.has(line.menuItemId))
+      .map((line) => {
+        const requested = requestedLines.get(line.menuItemId);
+        return {
+          ...line,
+          portions: requested ? Number(requested.portions) : line.portions,
+          plannedTime: requested?.plannedTime || dto.plannedTime || '08:00',
+        };
+      })
+      .filter((line) => {
+        if (!hasLineSelection || dto.force || !linkedItemIds.has(line.menuItemId)) return true;
+        skipped.push({
+          menuItemId: line.menuItemId,
+          name: line.technicalSheet.name,
+          reason: 'Déjà planifié dans Fabrication',
+        });
+        return false;
+      });
+
     const groups =
       dto.mode === MenuProductionGenerationMode.DETAILED
-        ? effective.map((line, index) => ({ key: `${line.technicalSheetId}:${index}`, lines: [line] }))
+        ? effective.map((line) => ({ key: line.menuItemId, lines: [line] }))
         : [...effective.reduce((map, line) => {
             const current = map.get(line.technicalSheetId) ?? [];
             current.push(line);
@@ -640,10 +1007,17 @@ export class MenusService {
     const prepared = [];
     for (const group of groups) {
       const technicalSheetId = group.lines[0].technicalSheetId;
-      const profile = await this.prisma.productionProfile.findFirst({
-        where: { organizationId, siteId: menu.siteId, technicalSheetId },
-        include: { outputProduct: true, outputVariant: true, yieldUnit: true },
-      });
+      const profile = this.technicalSheets
+        ? await this.technicalSheets.ensureProductionProfile(
+            organizationId,
+            actor,
+            technicalSheetId,
+            menu.siteId,
+          )
+        : await this.prisma.productionProfile.findFirst({
+            where: { organizationId, siteId: menu.siteId, technicalSheetId },
+            include: { outputProduct: true, outputVariant: true, yieldUnit: true },
+          });
       if (!profile) {
         throw new BadRequestException({
           code: 'PRODUCTION_PROFILE_REQUIRED_FOR_MENU',
@@ -658,7 +1032,9 @@ export class MenusService {
     const created = [];
     for (const { group, profile } of prepared) {
       const portions = group.lines.reduce((sum, line) => sum + line.portions, 0);
-      const reference = `${menu.id}:${group.key}:${menu.productionDirtySince?.toISOString() ?? 'initial'}`;
+      const reference = hasLineSelection
+        ? `${menu.id}:${group.lines.map((line) => line.menuItemId).sort().join(',')}`
+        : `${menu.id}:${group.key}:${menu.productionDirtySince?.toISOString() ?? 'initial'}`;
       let need = await this.prisma.productionNeed.findFirst({
         where: {
           organizationId,
@@ -693,7 +1069,8 @@ export class MenusService {
           profileId: profile.id,
           grossRequirement: new Prisma.Decimal(portions).toFixed(3),
           neededAt: menu.date.toISOString(),
-          plannedTime: dto.plannedTime || '08:00',
+          plannedTime: group.lines[0].plannedTime || dto.plannedTime || '08:00',
+          serviceId: dto.serviceId,
           name:
             dto.mode === MenuProductionGenerationMode.GROUPED
               ? `Menu ${menu.name} - ${group.lines[0].technicalSheet.name}`
@@ -716,18 +1093,39 @@ export class MenusService {
             profileId: profile.id,
             recipeVersionId: campaign.recipeVersionId,
             lines: group.lines.map((line) => ({
+              menuItemId: line.menuItemId,
+              technicalSheetId: line.technicalSheetId,
               section: line.section,
               portions: line.portions,
+              targetPortions:
+                requestedLines.get(line.menuItemId)?.targetPortions ?? line.portions,
+              openingCarryOverPortions:
+                requestedLines.get(line.menuItemId)?.openingCarryOverPortions ?? 0,
+              plannedTime: line.plannedTime,
             })),
           },
         },
       });
       created.push(campaign);
     }
+    const plannedAfter = new Set(linkedItemIds);
+    prepared.forEach(({ group }) => {
+      group.lines.forEach((line) => plannedAfter.add(line.menuItemId));
+    });
+    const allMenuProductsPlanned =
+      effectiveAll.length > 0 &&
+      effectiveAll.every((line) => plannedAfter.has(line.menuItemId));
     await this.prisma.$transaction(async (tx) => {
       await tx.menu.update({
         where: { id: menuId },
-        data: { productionGeneratedAt: new Date(), productionDirtySince: null },
+        data: {
+          productionGeneratedAt: allMenuProductsPlanned
+            ? new Date()
+            : menu.productionGeneratedAt,
+          productionDirtySince: allMenuProductsPlanned
+            ? null
+            : menu.productionDirtySince,
+        },
       });
       await this.history(
         tx,
@@ -736,11 +1134,24 @@ export class MenusService {
         null,
         actor.id,
         MenuHistoryAction.PRODUCTION_GENERATED,
-        `${created.length} campagnes de production générées`,
-        { mode: dto.mode, campaignIds: created.map((campaign) => campaign.id) },
+        `${created.length} campagne(s) de production planifiée(s)`,
+        {
+          mode: dto.mode,
+          campaignIds: created.map((campaign) => campaign.id),
+          menuItemIds: prepared.flatMap(({ group }) =>
+            group.lines.map((line) => line.menuItemId),
+          ),
+          skipped,
+          allMenuProductsPlanned,
+        },
       );
     });
-    return { created: created.length, orders: created };
+    return {
+      created: created.length,
+      orders: created,
+      skipped,
+      allMenuProductsPlanned,
+    };
   }
 
   async exports(organizationId: string, q: any = {}) { await this.assertInstalled(organizationId); return this.prisma.menuExport.findMany({ where: { organizationId, menuId: q.menuId }, include: { requestedBy: { select: { email: true, firstName: true, lastName: true } }, menu: true }, orderBy: { createdAt: 'desc' }, ...this.page(q) }); }
@@ -773,7 +1184,36 @@ export class MenusService {
     const items = menuItems.map((item) => ({ ...item, sourceType: item.productId ? 'PRODUCT' : 'TECHNICAL_SHEET', portionsOverride: item.portionsOverride == null ? null : Number(item.portionsOverride), servingQuantity: Number(item.servingQuantity ?? 1), targetReadyQuantity: item.targetReadyQuantity == null ? null : Number(item.targetReadyQuantity), lowStockThreshold: item.lowStockThreshold == null ? null : Number(item.lowStockThreshold) }));
     return { ...m, items, totalGuests, estimatedCost, costPerGuest: totalGuests ? estimatedCost / totalGuests : 0, allergens, alerts, hasBlockingAlerts: alerts.some((alert) => alert.blocking) };
   }
-  private effectiveProductionLines(menu: any) { const totalGuests = menu.guestForecasts?.reduce((s,f)=>s+f.count,0) || menu.expectedGuests || 0; return (menu.items ?? []).filter((item) => item.technicalSheetId && item.technicalSheet).map((i)=>{ const itemGuests = menu.activity === MenuActivity.CENTRAL_KITCHEN && menu.guestForecasts?.length ? menu.guestForecasts.filter((forecast) => (forecast.dietId ?? null) === (i.dietId ?? null)).reduce((sum, forecast) => sum + forecast.count, 0) : totalGuests; return { technicalSheetId: i.technicalSheetId, technicalSheet: i.technicalSheet, section: i.section, portions: Number(i.portionsOverride ?? (menu.activity === MenuActivity.RESTAURANT_CAFE ? itemGuests : itemGuests * Number(i.servingQuantity ?? 1))) }; }); }
+  private effectiveProductionLines(menu: any) {
+    const totalGuests =
+      menu.guestForecasts?.reduce((sum, forecast) => sum + forecast.count, 0) ||
+      menu.expectedGuests ||
+      0;
+    return (menu.items ?? [])
+      .filter((item) => item.technicalSheetId && item.technicalSheet)
+      .map((item) => {
+        const itemGuests =
+          menu.activity === MenuActivity.CENTRAL_KITCHEN && menu.guestForecasts?.length
+            ? menu.guestForecasts
+                .filter(
+                  (forecast) => (forecast.dietId ?? null) === (item.dietId ?? null),
+                )
+                .reduce((sum, forecast) => sum + forecast.count, 0)
+            : totalGuests;
+        return {
+          menuItemId: item.id,
+          technicalSheetId: item.technicalSheetId,
+          technicalSheet: item.technicalSheet,
+          section: item.section,
+          portions: Number(
+            item.portionsOverride ??
+              (menu.activity === MenuActivity.RESTAURANT_CAFE
+                ? itemGuests
+                : itemGuests * Number(item.servingQuantity ?? 1)),
+          ),
+        };
+      });
+  }
   private dateWithTime(date: Date, time?: string | null) { if (!time) return null; const [hours, minutes] = time.split(':').map(Number); const value = new Date(date); value.setHours(hours || 0, minutes || 0, 0, 0); return value; }
   private avg(v: number[]) { const f = v.filter(Number.isFinite); return f.length ? f.reduce((a,b)=>a+b,0)/f.length : 0; }
   private async ensureRefs(org: string, dto: any) {

@@ -5,7 +5,7 @@ import type { Response } from 'express';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CatererClientQueryDto, CatererEventQueryDto, GenerateCatererEventProductionsDto, GenerateProductionsDto, HistoryQueryDto, MenuAvailabilityQueryDto, MenuQueryDto, PlanMenuShortagesDto, PrepareMenuExportDto, ReplicateCycleDto, UpdateCatererEventStatusDto, UpdateGuestForecastsDto, UpdateMenuDispatchStatusDto, UpdateMenuSettingsDto, UpdateMenuStatusDto, UpsertCatererClientDto, UpsertCatererEventDto, UpsertCycleDto, UpsertDietDto, UpsertGuestGroupDto, UpsertMenuCategoryDto, UpsertMenuDto, UpsertMenuVariantDto } from './dto/menus.dto';
+import { CatererClientQueryDto, CatererEventQueryDto, GenerateCatererEventProductionsDto, GenerateProductionsDto, HistoryQueryDto, MenuAvailabilityQueryDto, MenuQueryDto, PlanCatalogProductionDayDto, PlanMenuShortagesDto, PrepareMenuExportDto, ReplicateCycleDto, UpdateCatererEventStatusDto, UpdateGuestForecastsDto, UpdateMenuDispatchStatusDto, UpdateMenuSettingsDto, UpdateMenuStatusDto, UpsertCatererClientDto, UpsertCatererEventDto, UpsertCycleDto, UpsertDietDto, UpsertGuestGroupDto, UpsertMenuCategoryDto, UpsertMenuDto, UpsertMenuVariantDto } from './dto/menus.dto';
 import { CatererMenusService } from './caterer-menus.service';
 import { MenuExportsService } from './menu-exports.service';
 import { MenusService } from './menus.service';
@@ -37,6 +37,7 @@ export class MenusController {
   @Post('menus/:id/variants') createVariant(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpsertMenuVariantDto) { return this.service.upsertVariant(this.org(user), this.actor(user), id, dto); }
   @Patch('menus/:id/variants/:variantId') updateVariant(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('variantId') variantId: string, @Body() dto: UpsertMenuVariantDto) { return this.service.upsertVariant(this.org(user), this.actor(user), id, dto, variantId); }
   @Post('menus/:id/generate-productions') generateProductions(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: GenerateProductionsDto) { return this.service.generateProductions(this.org(user), this.actor(user), id, dto); }
+  @Post('catalogs/:id/production-days') planCatalogProductionDay(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: PlanCatalogProductionDayDto) { return this.service.planCatalogProductionDay(this.org(user), this.actor(user), id, dto); }
   @Get('menus/:id/availability') availability(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Query() q: MenuAvailabilityQueryDto) { return this.service.availability(this.org(user), id, q.siteId); }
   @Post('menus/:id/plan-shortages') planShortages(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: PlanMenuShortagesDto) { return this.service.planShortages(this.org(user), this.actor(user), id, dto); }
   @Get('menus/:id/central-document/:kind') async centralDocument(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('kind') kind: string, @Res() response: Response) {

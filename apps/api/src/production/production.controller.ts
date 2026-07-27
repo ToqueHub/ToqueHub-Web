@@ -5,12 +5,14 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { ChangeProductionStatusDto, CloseProductionRealizationDto, ConfirmDestockingDto, CreateProductionOrderDto, PrepareProductionExportDto, ProductionQueryDto, UpdateProductionOrderDto, UpsertProductionAssignmentDto } from './dto/production.dto';
 import { CreateProductionNeedDto, ProductionPlanningQueryDto, SimulateProductionSuggestionDto, UpsertProductionProfileDto } from './dto/production-planning.dto';
-import { CompleteProductionBatchDto, CreateProductionCampaignDto, ProductionStockQueryDto, StartProductionBatchDto, TransitionProductionStockDto, UpdateProductionOperationDto, ValidateProductionCampaignDto } from './dto/production-execution.dto';
+import { CompleteProductionBatchDto, CreateProductionCampaignDto, ProductionStockQueryDto, StartProductionBatchDto, TransitionProductionStockDto, UpdateProductionCampaignDto, UpdateProductionOperationDto, ValidateProductionCampaignDto } from './dto/production-execution.dto';
 import { ProductionExecutionService } from './production-execution.service';
 import { ProductionPlanningService } from './production-planning.service';
 import { ProductionService } from './production.service';
 import { OperationalTasksService } from './operational-tasks.service';
 import { GenerateOperationalTasksFromMenuDto, OperationalTaskAssigneeQueryDto, OperationalTaskOptionsQueryDto, OperationalTaskQueryDto, UpdateOperationalTaskDto, UpdateOperationalTaskStatusDto, UpsertOperationalTaskDto } from './dto/operational-task.dto';
+import { CloseProductionDayDto, ProductionDayClosureQueryDto } from './dto/production-day-closure.dto';
+import { ProductionDayClosureService } from './production-day-closure.service';
 
 @ApiTags('production')
 @ApiBearerAuth()
@@ -22,6 +24,7 @@ export class ProductionController {
     private readonly planning: ProductionPlanningService,
     private readonly execution: ProductionExecutionService,
     private readonly operationalTasks: OperationalTasksService,
+    private readonly dayClosures: ProductionDayClosureService,
   ) {}
   private org(user: AuthenticatedUser) { if (!user.organizationId) throw new BadRequestException('Organization setup is required'); return user.organizationId; }
   private actor(user: AuthenticatedUser) { return { id: user.id, role: user.role, permissions: user.permissions, employeeId: user.employeeId }; }
@@ -39,6 +42,10 @@ export class ProductionController {
   @Post('tasks') createTask(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertOperationalTaskDto) { return this.operationalTasks.create(this.org(user), this.actor(user), dto); }
   @Patch('tasks/:id') updateTask(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpdateOperationalTaskDto) { return this.operationalTasks.update(this.org(user), this.actor(user), id, dto); }
   @Patch('tasks/:id/status') updateTaskStatus(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpdateOperationalTaskStatusDto) { return this.operationalTasks.updateStatus(this.org(user), this.actor(user), id, dto); }
+
+  @Get('day-closures/preview') dayClosurePreview(@CurrentUser() user: AuthenticatedUser, @Query() query: ProductionDayClosureQueryDto) { return this.dayClosures.preview(this.org(user), query); }
+  @Get('day-closures/carry-over') dayClosureCarryOver(@CurrentUser() user: AuthenticatedUser, @Query() query: ProductionDayClosureQueryDto) { return this.dayClosures.carryOver(this.org(user), query); }
+  @Post('day-closures') closeProductionDay(@CurrentUser() user: AuthenticatedUser, @Body() dto: CloseProductionDayDto) { return this.dayClosures.close(this.org(user), this.actor(user), dto); }
 
   @Get('orders') listOrders(@CurrentUser() user: AuthenticatedUser, @Query() q: ProductionQueryDto) { return this.service.listOrders(this.org(user), q); }
   @Post('orders') createOrder(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateProductionOrderDto) { return this.service.createOrder(this.org(user), this.actor(user), dto); }
@@ -63,6 +70,7 @@ export class ProductionController {
   @Post('campaigns') createCampaign(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateProductionCampaignDto) { return this.execution.createCampaign(this.org(user), this.actor(user), dto); }
   @Get('campaigns') listCampaigns(@CurrentUser() user: AuthenticatedUser, @Query() query: ProductionQueryDto) { return this.execution.listCampaigns(this.org(user), query); }
   @Get('campaigns/:id') getCampaign(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.execution.getCampaign(this.org(user), id); }
+  @Patch('campaigns/:id') updateCampaign(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpdateProductionCampaignDto) { return this.execution.rescheduleCampaign(this.org(user), this.actor(user), id, dto); }
   @Post('campaigns/:id/validate') validateCampaign(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: ValidateProductionCampaignDto) { return this.execution.validateCampaign(this.org(user), this.actor(user), id, dto); }
   @Post('batches/:id/start') startBatch(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: StartProductionBatchDto) { return this.execution.startBatch(this.org(user), this.actor(user), id, dto); }
   @Post('batches/:id/complete') completeBatch(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: CompleteProductionBatchDto) { return this.execution.completeBatch(this.org(user), this.actor(user), id, dto); }

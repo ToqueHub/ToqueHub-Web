@@ -861,6 +861,40 @@ export class StocksService {
     this.assertWrite(actor);
     const product = await this.ensureProduct(organizationId, dto.productId, true);
     const inputUnit = dto.unitId ? await this.ensureUnit(organizationId, dto.unitId) : product.unit;
+    const [organization, sourceLocation, destinationLocation] = await Promise.all([
+      this.prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { primarySiteId: true },
+      }),
+      dto.sourceLocationId
+        ? this.prisma.location.findFirst({
+            where: { id: dto.sourceLocationId, organizationId, isArchived: false },
+            select: { siteId: true },
+          })
+        : null,
+      dto.destinationLocationId
+        ? this.prisma.location.findFirst({
+            where: { id: dto.destinationLocationId, organizationId, isArchived: false },
+            select: { siteId: true },
+          })
+        : null,
+    ]);
+    if (dto.sourceLocationId && !sourceLocation)
+      throw new NotFoundException('Emplacement source introuvable');
+    if (dto.destinationLocationId && !destinationLocation)
+      throw new NotFoundException('Emplacement destination introuvable');
+    const sourceSiteId =
+      dto.sourceSiteId ??
+      sourceLocation?.siteId ??
+      (dto.type === StockMovementType.TRANSFER || NEGATIVE_TYPES.has(dto.type)
+        ? organization?.primarySiteId ?? undefined
+        : undefined);
+    const destinationSiteId =
+      dto.destinationSiteId ??
+      destinationLocation?.siteId ??
+      (dto.type === StockMovementType.TRANSFER || NEGATIVE_TYPES.has(dto.type)
+        ? undefined
+        : organization?.primarySiteId ?? undefined);
     const quantity = await this.convertToProductUnit(
       organizationId,
       inputUnit.id,
@@ -870,16 +904,16 @@ export class StocksService {
     const date = dto.movementDate ? new Date(dto.movementDate) : new Date();
     return this.prisma.$transaction(async (tx) => {
       if (dto.type === StockMovementType.TRANSFER) {
-        if (!dto.sourceSiteId && !dto.sourceLocationId)
+        if (!sourceSiteId && !dto.sourceLocationId)
           throw new BadRequestException('Transfer source is required');
-        if (!dto.destinationSiteId && !dto.destinationLocationId)
+        if (!destinationSiteId && !dto.destinationLocationId)
           throw new BadRequestException('Transfer destination is required');
         await this.applyStock(
           tx,
           organizationId,
           product.id,
           dto.lotId,
-          dto.sourceSiteId,
+          sourceSiteId,
           dto.sourceLocationId,
           quantity.neg(),
         );
@@ -888,15 +922,15 @@ export class StocksService {
           organizationId,
           product.id,
           dto.lotId,
-          dto.destinationSiteId,
+          destinationSiteId,
           dto.destinationLocationId,
           quantity,
         );
       } else {
         const signed = this.signedQuantity(dto.type, quantity);
         const targetSite = signed.isNegative()
-          ? dto.sourceSiteId
-          : (dto.destinationSiteId ?? dto.sourceSiteId);
+          ? sourceSiteId
+          : (destinationSiteId ?? sourceSiteId);
         const targetLocation = signed.isNegative()
           ? dto.sourceLocationId
           : (dto.destinationLocationId ?? dto.sourceLocationId);
@@ -927,9 +961,9 @@ export class StocksService {
           unitId: inputUnit.id,
           unitSymbolSnapshot: inputUnit.symbol,
           reason: dto.reason,
-          sourceSiteId: dto.sourceSiteId,
+          sourceSiteId,
           sourceLocationId: dto.sourceLocationId,
-          destinationSiteId: dto.destinationSiteId,
+          destinationSiteId,
           destinationLocationId: dto.destinationLocationId,
           movementDate: date,
           createdById: actor.id,

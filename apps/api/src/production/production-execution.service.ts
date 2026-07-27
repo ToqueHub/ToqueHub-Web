@@ -59,6 +59,7 @@ export class ProductionExecutionService {
         : undefined;
     const where: Prisma.ProductionOrderWhereInput = {
       organizationId,
+      siteId: query.siteId,
       status: query.status,
       serviceId: query.serviceId,
       responsibleEmployeeId: query.employeeId,
@@ -122,6 +123,12 @@ export class ProductionExecutionService {
       },
     });
     if (!profile) throw new NotFoundException({ code: 'PRODUCTION_PROFILE_NOT_FOUND' });
+    if (dto.serviceId) {
+      const service = await this.prisma.hrDepartment.findFirst({
+        where: { id: dto.serviceId, organizationId, isArchived: false },
+      });
+      if (!service) throw new BadRequestException({ code: 'PRODUCTION_SERVICE_INVALID' });
+    }
     if (dto.destinationLocationId) {
       const location = await this.prisma.location.findFirst({
         where: {
@@ -200,6 +207,7 @@ export class ProductionExecutionService {
           plannedTime: dto.plannedTime ?? '08:00',
           status: proposed.lte(0) ? ProductionOrderStatus.COMPLETED : ProductionOrderStatus.PROPOSED,
           priority: dto.priority,
+          serviceId: dto.serviceId,
           responsibleEmployeeId: dto.responsibleEmployeeId,
           plannedPortions: proposed,
           grossRequirement: gross,
@@ -293,6 +301,283 @@ export class ProductionExecutionService {
     });
   }
 
+  async rescheduleCampaign(
+    organizationId: string,
+    actor: Actor,
+    id: string,
+    input: {
+      grossRequirement: string;
+      plannedTime: string;
+      serviceId?: string;
+      targetPortions?: string;
+    },
+  ) {
+    this.assertPermission(actor, 'production.campaign.validate');
+    const gross = new Prisma.Decimal(input.grossRequirement);
+    if (!gross.isFinite() || gross.lte(0)) {
+      throw new BadRequestException({ code: 'PRODUCTION_INVALID_QUANTITY' });
+    }
+    const targetPortions =
+      input.targetPortions == null
+        ? null
+        : new Prisma.Decimal(input.targetPortions);
+    if (targetPortions && (!targetPortions.isFinite() || targetPortions.lte(0))) {
+      throw new BadRequestException({ code: 'PRODUCTION_INVALID_TARGET_QUANTITY' });
+    }
+    if (input.serviceId) {
+      const service = await this.prisma.hrDepartment.findFirst({
+        where: {
+          id: input.serviceId,
+          organizationId,
+          isArchived: false,
+        },
+        select: { id: true },
+      });
+      if (!service) {
+        throw new BadRequestException({ code: 'PRODUCTION_SERVICE_INVALID' });
+      }
+    }
+    const current = await this.prisma.productionOrder.findFirst({
+      where: { id, organizationId },
+      include: { batches: true },
+    });
+    if (!current) throw new NotFoundException({ code: 'PRODUCTION_CAMPAIGN_NOT_FOUND' });
+    const editableStatuses: ProductionOrderStatus[] = [
+      ProductionOrderStatus.DRAFT,
+      ProductionOrderStatus.PROPOSED,
+      ProductionOrderStatus.PLANNED,
+      ProductionOrderStatus.BLOCKED,
+    ];
+    if (
+      !editableStatuses.includes(current.status) ||
+      current.batches.some((batch) => batch.status !== ProductionBatchStatus.TO_PREPARE)
+    ) {
+      throw new ConflictException({
+        code: 'PRODUCTION_CAMPAIGN_NOT_EDITABLE',
+        status: current.status,
+      });
+    }
+    const profile = await this.prisma.productionProfile.findFirst({
+      where: {
+        organizationId,
+        siteId: current.siteId ?? undefined,
+        technicalSheetId: current.technicalSheetId,
+        outputProductId: current.outputProductId ?? undefined,
+        outputVariantId: current.outputVariantId,
+      },
+      include: {
+        technicalSheet: {
+          include: {
+            ingredients: {
+              include: {
+                product: { include: { unit: true, primarySupplier: true } },
+                unit: true,
+              },
+              orderBy: { order: 'asc' },
+            },
+            steps: { orderBy: { order: 'asc' } },
+          },
+        },
+      },
+    });
+    if (!profile || !current.siteId) {
+      throw new ConflictException({ code: 'PRODUCTION_PROFILE_REQUIRED_FOR_MENU' });
+    }
+    const [selected] = generateProductionScenarios({
+      grossRequirement: gross,
+      usableStock: 0,
+      confirmedProduction: 0,
+      rules: this.planning.rulesForProfile(profile),
+    });
+    if (!selected) {
+      throw new ConflictException({ code: 'PRODUCTION_NO_FEASIBLE_SCENARIO' });
+    }
+    const proposed = new Prisma.Decimal(selected.quantity);
+
+    return this.serializable(async (tx) => {
+      const order = await tx.productionOrder.findFirst({
+        where: { id, organizationId },
+        include: {
+          batches: true,
+          needAllocations: { include: { need: true } },
+          menuProductionLinks: true,
+        },
+      });
+      if (
+        !order ||
+        !editableStatuses.includes(order.status) ||
+        order.batches.some((batch) => batch.status !== ProductionBatchStatus.TO_PREPARE)
+      ) {
+        throw new ConflictException({
+          code: 'PRODUCTION_CAMPAIGN_NOT_EDITABLE',
+          status: order?.status,
+        });
+      }
+      const taskCount = await tx.operationalTask.count({
+        where: {
+          organizationId,
+          productionBatch: { orderId: id },
+          status: { not: OperationalTaskStatus.CANCELLED },
+        },
+      });
+      if (taskCount) {
+        throw new ConflictException({ code: 'PRODUCTION_CAMPAIGN_NOT_EDITABLE' });
+      }
+
+      await tx.stockReservation.updateMany({
+        where: { organizationId, orderId: id, status: StockReservationStatus.ACTIVE },
+        data: { status: StockReservationStatus.RELEASED, releasedAt: new Date() },
+      });
+      await tx.productionMaterialRequirement.deleteMany({ where: { orderId: id } });
+      await tx.productionBatch.deleteMany({ where: { orderId: id } });
+
+      await tx.productionOrder.update({
+        where: { id },
+        data: {
+          plannedTime: input.plannedTime,
+          serviceId: input.serviceId,
+          status: ProductionOrderStatus.PROPOSED,
+          plannedPortions: proposed,
+          grossRequirement: gross,
+          netRequirement: gross,
+          proposedQuantity: proposed,
+          validatedQuantity: proposed,
+          reservedQuantity: 0,
+          surplusQuantity: Prisma.Decimal.max(0, proposed.sub(gross)),
+          updatedById: actor.id,
+          optimisticVersion: { increment: 1 },
+        },
+      });
+
+      if (targetPortions && order.menuProductionLinks.length) {
+        const linkedLines = order.menuProductionLinks.flatMap((link) => {
+          const snapshot =
+            link.snapshot && typeof link.snapshot === 'object' && !Array.isArray(link.snapshot)
+              ? (link.snapshot as Record<string, any>)
+              : {};
+          const lines = Array.isArray(snapshot.lines) ? snapshot.lines : [];
+          return lines.map((line) => ({ linkId: link.id, line }));
+        });
+        const currentGrossTotal = linkedLines.reduce(
+          (sum, entry) => sum.add(Number(entry.line?.portions ?? 0)),
+          new Prisma.Decimal(0),
+        );
+        const currentTargetTotal = linkedLines.reduce(
+          (sum, entry) =>
+            sum.add(
+              Number(
+                entry.line?.targetPortions ??
+                  entry.line?.portions ??
+                  0,
+              ),
+            ),
+          new Prisma.Decimal(0),
+        );
+        const lineCount = Math.max(linkedLines.length, 1);
+
+        for (const link of order.menuProductionLinks) {
+          const snapshot =
+            link.snapshot && typeof link.snapshot === 'object' && !Array.isArray(link.snapshot)
+              ? (link.snapshot as Record<string, any>)
+              : {};
+          const lines = Array.isArray(snapshot.lines) ? snapshot.lines : [];
+          const updatedLines = lines.map((line) => {
+            const grossWeight = currentGrossTotal.gt(0)
+              ? new Prisma.Decimal(Number(line?.portions ?? 0)).div(currentGrossTotal)
+              : new Prisma.Decimal(1).div(lineCount);
+            const targetWeight = currentTargetTotal.gt(0)
+              ? new Prisma.Decimal(
+                  Number(line?.targetPortions ?? line?.portions ?? 0),
+                ).div(currentTargetTotal)
+              : grossWeight;
+            return {
+              ...line,
+              portions: Number(
+                gross.mul(grossWeight).toDecimalPlaces(3).toString(),
+              ),
+              targetPortions: Number(
+                targetPortions.mul(targetWeight).toDecimalPlaces(3).toString(),
+              ),
+              plannedTime: input.plannedTime,
+            };
+          });
+          await tx.menuProductionLink.update({
+            where: { id: link.id },
+            data: {
+              snapshot: {
+                ...snapshot,
+                lines: updatedLines,
+              } as Prisma.InputJsonValue,
+            },
+          });
+          for (const line of updatedLines) {
+            if (!line?.menuItemId) continue;
+            await tx.menuItem.updateMany({
+              where: {
+                id: line.menuItemId,
+                organizationId,
+              },
+              data: {
+                portionsOverride: new Prisma.Decimal(line.targetPortions),
+              },
+            });
+          }
+        }
+      }
+
+      if (order.needAllocations.length === 1) {
+        const allocation = order.needAllocations[0];
+        await tx.productionNeedAllocation.update({
+          where: { id: allocation.id },
+          data: { plannedQuantity: gross, reservedQuantity: 0, consumedQuantity: 0 },
+        });
+        await tx.productionNeed.update({
+          where: { id: allocation.needId },
+          data: {
+            quantity: gross,
+            status: ProductionNeedStatus.PARTIALLY_COVERED,
+          },
+        });
+      }
+
+      await this.createRequirements(
+        tx,
+        organizationId,
+        id,
+        current.siteId!,
+        profile.referenceYield,
+        proposed,
+        profile.technicalSheet.ingredients,
+      );
+      await this.createBatchesAndOperations(
+        tx,
+        organizationId,
+        id,
+        order.recipeVersionId!,
+        profile.yieldUnitId,
+        undefined,
+        order.productionDate,
+        input.plannedTime,
+        selected.batches,
+        profile.technicalSheet.steps,
+      );
+      await this.history(
+        tx,
+        organizationId,
+        id,
+        actor.id,
+        ProductionHistoryAction.UPDATED,
+        `Objectif de fabrication modifié à ${gross.toFixed(3)} portion(s)`,
+        {
+          previousGrossRequirement: order.grossRequirement.toFixed(3),
+          grossRequirement: gross.toFixed(3),
+          proposedQuantity: proposed.toFixed(3),
+        },
+      );
+      return this.getCampaignTx(tx, organizationId, id);
+    });
+  }
+
   async validateCampaign(
     organizationId: string,
     actor: Actor,
@@ -312,6 +597,12 @@ export class ProductionExecutionService {
         include: {
           requirements: { include: { product: { include: { unit: true } }, unit: true } },
           stockReservations: { where: ACTIVE_RESERVATION },
+          assignments: true,
+          technicalSheet: { include: { steps: { orderBy: { order: 'asc' } } } },
+          batches: {
+            include: { operations: { orderBy: { position: 'asc' } }, unit: true },
+            orderBy: { number: 'asc' },
+          },
         },
       });
       if (!order) throw new NotFoundException({ code: 'PRODUCTION_CAMPAIGN_NOT_FOUND' });
@@ -322,6 +613,7 @@ export class ProductionExecutionService {
           order.status,
         ) && order.stockReservations.length
       ) {
+        await this.createOperationalTasksTx(tx, organizationId, actor.id, order);
         return this.getCampaignTx(tx, organizationId, id);
       }
       if (!([ProductionOrderStatus.PROPOSED, ProductionOrderStatus.PLANNED, ProductionOrderStatus.DRAFT, ProductionOrderStatus.BLOCKED] as ProductionOrderStatus[]).includes(order.status)) {
@@ -396,6 +688,7 @@ export class ProductionExecutionService {
           optimisticVersion: { increment: 1 },
         },
       });
+      await this.createOperationalTasksTx(tx, organizationId, actor.id, order);
       if (shortages.length) {
         await tx.productionAlert.create({
           data: {
@@ -1511,6 +1804,103 @@ export class ProductionExecutionService {
     }
   }
 
+  private async createOperationalTasksTx(
+    tx: Tx,
+    organizationId: string,
+    actorId: string,
+    order: any,
+  ) {
+    if (!order.serviceId || !order.batches?.length) return;
+    const team = [...(order.assignments ?? [])];
+    const lead =
+      team.find((assignment: any) => assignment.isLead) ??
+      team.find((assignment: any) => assignment.employeeId === order.responsibleEmployeeId) ??
+      team[0];
+    const employeeIds = [
+      ...new Set([
+        ...team.map((assignment: any) => assignment.employeeId),
+        ...(order.responsibleEmployeeId ? [order.responsibleEmployeeId] : []),
+      ]),
+    ] as string[];
+
+    for (const batch of order.batches) {
+      const base = batch.plannedStartAt
+        ? new Date(batch.plannedStartAt)
+        : this.productionDateTime(order.productionDate, order.plannedTime);
+      let cursor = new Date(base);
+      for (const operation of batch.operations ?? []) {
+        const minutes = Math.max(5, operation.activeMinutes ?? 15);
+        const startsAt = new Date(cursor);
+        const endsAt = new Date(startsAt.getTime() + minutes * 60_000);
+        cursor = endsAt;
+        await tx.productionOperation.update({
+          where: { id: operation.id },
+          data: { plannedAt: startsAt },
+        });
+        const existing = await tx.operationalTask.findFirst({
+          where: { organizationId, productionOperationId: operation.id },
+          select: { id: true },
+        });
+        if (existing) continue;
+        const step = order.technicalSheet?.steps?.[operation.position];
+        const task = await tx.operationalTask.create({
+          data: {
+            organizationId,
+            title: `${operation.title} · ${order.name}`.slice(0, 180),
+            description:
+              operation.notes ??
+              `Étape générée automatiquement depuis la fabrication ${order.number}.`,
+            category: 'KITCHEN',
+            status: 'TODO',
+            source: 'PRODUCTION',
+            departmentId: order.serviceId,
+            siteId: order.siteId,
+            assignedEmployeeId: lead?.employeeId ?? order.responsibleEmployeeId ?? null,
+            planningAssignmentId: lead?.planningAssignmentId ?? null,
+            technicalSheetId: order.technicalSheetId,
+            technicalSheetStepId: step?.id ?? null,
+            productionBatchId: batch.id,
+            productionOperationId: operation.id,
+            startsAt,
+            endsAt,
+            quantity: batch.plannedQuantity,
+            unitLabel: batch.unit?.symbol ?? 'portions',
+            createdById: actorId,
+          },
+        });
+        for (const employeeId of employeeIds) {
+          const productionAssignment = team.find(
+            (assignment: any) => assignment.employeeId === employeeId,
+          );
+          await tx.operationalTaskAssignment.create({
+            data: {
+              organizationId,
+              taskId: task.id,
+              employeeId,
+              planningAssignmentId: productionAssignment?.planningAssignmentId ?? null,
+              isLead:
+                employeeId === (lead?.employeeId ?? order.responsibleEmployeeId ?? null),
+              mission: productionAssignment?.mission ?? operation.title,
+              plannedMinutes: productionAssignment?.plannedMinutes ?? minutes,
+            },
+          });
+        }
+      }
+    }
+  }
+
+  private productionDateTime(productionDate: Date, plannedTime?: string | null) {
+    const value = new Date(productionDate);
+    const [hours, minutes] = String(plannedTime ?? '08:00').split(':').map(Number);
+    value.setHours(
+      Number.isFinite(hours) ? hours : 8,
+      Number.isFinite(minutes) ? minutes : 0,
+      0,
+      0,
+    );
+    return value;
+  }
+
   private async createSubRecipeNeeds(
     tx: Tx,
     organizationId: string,
@@ -1990,8 +2380,16 @@ export class ProductionExecutionService {
       outputVariant: true,
       service: true,
       responsibleEmployee: true,
+      assignments: {
+        include: {
+          employee: { include: { position: true, department: true, mainSite: true } },
+          planningAssignment: true,
+        },
+        orderBy: [{ isLead: 'desc' }, { createdAt: 'asc' }],
+      },
       requirements: { include: { product: true, unit: true, supplier: true } },
       needAllocations: { include: { need: { include: { product: true, variant: true } } } },
+      menuProductionLinks: true,
       batches: {
         include: {
           unit: true,

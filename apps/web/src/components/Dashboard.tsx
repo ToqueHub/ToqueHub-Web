@@ -630,6 +630,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     useState(false);
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const [showMovementModal, setShowMovementModal] = useState(false);
+  const [movementProductId, setMovementProductId] = useState<string>();
   const [showSiteModal, setShowSiteModal] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [showInventoryModal, setShowInventoryModal] = useState(false);
@@ -2546,7 +2547,17 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     date?: string;
   }) {
     await submit(() => api.createMovement(token, payload), 'Mouvement de stock enregistré.');
+    closeMovementModal();
+  }
+
+  function openMovementModal(productId?: string) {
+    setMovementProductId(productId);
+    setShowMovementModal(true);
+  }
+
+  function closeMovementModal() {
     setShowMovementModal(false);
+    setMovementProductId(undefined);
   }
 
   async function handleUploadStocksOcr(files: File[]) {
@@ -4434,7 +4445,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   movements={movements}
                   ocrStatuses={ocrStatuses}
                   readiness={stocksReadiness}
-                  onCreateMovement={() => setShowMovementModal(true)}
+                  onCreateMovement={() => openMovementModal()}
                   onImportOcr={() => setShowAddImportModal(true)}
                   onOpenExtraction={handleOpenOcrExtraction}
                   onOpenStocks={() => setActiveTab('articles')}
@@ -4464,7 +4475,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                     categories={categories}
                     suppliers={suppliers}
                     onAdd={() => setShowAddImportModal(true)}
-                    onMovement={() => setShowMovementModal(true)}
+                    onMovement={openMovementModal}
                     onInventory={() => setShowInventoryModal(true)}
                     onEdit={(article) => setSelectedProductId(article.product.id)}
                     onQuery={(params) => api.articles(token, params)}
@@ -4558,7 +4569,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                       </div>
                       <button
                         className="btn btn-primary"
-                        onClick={() => setShowMovementModal(true)}
+                        onClick={() => openMovementModal()}
                       >
                         <Plus size={16} /> Enregistrer un mouvement
                       </button>
@@ -4617,7 +4628,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                                   </span>
                                   <button
                                     className="btn btn-primary"
-                                    onClick={() => setShowMovementModal(true)}
+                                    onClick={() => openMovementModal()}
                                   >
                                     <Plus size={16} /> Ajouter un mouvement
                                   </button>
@@ -4716,7 +4727,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                       </div>
                       <button
                         className="btn btn-primary"
-                        onClick={() => setShowMovementModal(true)}
+                        onClick={() => openMovementModal()}
                       >
                         <Plus size={16} /> Enregistrer un mouvement
                       </button>
@@ -5337,7 +5348,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       {/* Movement Modal */}
       <Modal
         isOpen={showMovementModal}
-        onClose={() => setShowMovementModal(false)}
+        onClose={closeMovementModal}
         title="Enregistrer un mouvement de stock"
         size="product"
       >
@@ -5347,8 +5358,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           units={units}
           sites={sites}
           locations={locations}
+          primarySiteId={session.user.primarySiteId ?? undefined}
+          initialProductId={movementProductId}
           onSubmit={handleCreateMovement}
-          onClose={() => setShowMovementModal(false)}
+          onClose={closeMovementModal}
         />
       </Modal>
 
@@ -5541,7 +5554,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           }}
           onCreateMovement={() => {
             setShowStocksOnboarding(false);
-            setShowMovementModal(true);
+            openMovementModal();
           }}
           onOpenApiKeys={() => {
             setShowStocksOnboarding(false);
@@ -11416,7 +11429,7 @@ function ArticlesPage({
   categories: Category[];
   suppliers: Supplier[];
   onAdd: () => void;
-  onMovement: () => void;
+  onMovement: (productId?: string) => void;
   onInventory: () => void;
   onEdit: (article: Article) => void;
   onQuery: (params: {
@@ -11512,7 +11525,7 @@ function ArticlesPage({
           <button className="btn btn-secondary" onClick={onInventory}>
             <ClipboardList size={15} /> Inventaire
           </button>
-          <button className="btn btn-secondary" onClick={onMovement}>
+          <button className="btn btn-secondary" onClick={() => onMovement()}>
             <ArrowRight size={15} /> Mouvement
           </button>
           <button className="btn btn-primary" onClick={onAdd}>
@@ -11811,7 +11824,11 @@ function ArticlesPage({
             article={selected}
             onClose={() => setSelected(null)}
             onEdit={() => onEdit(selected)}
-            onMovement={onMovement}
+            onMovement={() => {
+              const productId = selected.product.id;
+              setSelected(null);
+              onMovement(productId);
+            }}
             onRefresh={async () => {
               await onRefresh();
               const response = await onQueryRef.current({
@@ -23249,6 +23266,8 @@ interface MovementFormProps {
   units: Unit[];
   sites: Site[];
   locations: Location[];
+  primarySiteId?: string;
+  initialProductId?: string;
   onSubmit: (payload: {
     productId: string;
     supplierId?: string;
@@ -23266,22 +23285,77 @@ interface MovementFormProps {
   onClose: () => void;
 }
 
-function MovementForm({ products, suppliers, units, sites, onSubmit, onClose }: MovementFormProps) {
-  const [productId, setProductId] = useState(products[0]?.id || '');
+function MovementForm({
+  products,
+  suppliers,
+  units,
+  sites,
+  primarySiteId,
+  initialProductId,
+  onSubmit,
+  onClose,
+}: MovementFormProps) {
+  const availableSites = useMemo(
+    () => sites.filter((site) => !site.isArchived && !site.archivedAt),
+    [sites],
+  );
+  const defaultSiteId =
+    availableSites.find((site) => site.id === primarySiteId)?.id ??
+    availableSites.find((site) => site.isPrimary || site.isMain)?.id ??
+    availableSites[0]?.id ??
+    '';
+  const [productId, setProductId] = useState(() => {
+    if (initialProductId && products.some((product) => product.id === initialProductId)) {
+      return initialProductId;
+    }
+    return products[0]?.id || '';
+  });
   const [type, setType] = useState<StockMovementType>('IN');
   const [supplierId, setSupplierId] = useState('');
   const [unitId, setUnitId] = useState('');
-  const [sourceSiteId, setSourceSiteId] = useState('');
-  const [destinationSiteId, setDestinationSiteId] = useState('');
+  const [sourceSiteId, setSourceSiteId] = useState(defaultSiteId);
+  const [destinationSiteId, setDestinationSiteId] = useState(defaultSiteId);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [quantity, setQuantity] = useState('');
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
 
+  useEffect(() => {
+    setProductId((currentProductId) => {
+      if (currentProductId && products.some((product) => product.id === currentProductId)) {
+        return currentProductId;
+      }
+      if (initialProductId && products.some((product) => product.id === initialProductId)) {
+        return initialProductId;
+      }
+      return products[0]?.id || '';
+    });
+  }, [initialProductId, products]);
+
+  useEffect(() => {
+    setSourceSiteId((currentSiteId) =>
+      availableSites.some((site) => site.id === currentSiteId) ? currentSiteId : defaultSiteId,
+    );
+    setDestinationSiteId((currentSiteId) =>
+      availableSites.some((site) => site.id === currentSiteId) ? currentSiteId : defaultSiteId,
+    );
+  }, [availableSites, defaultSiteId]);
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!productId || !quantity) return;
+    const requiresSourceSite =
+      type === 'OUT' || type === 'EXIT' || type === 'LOSS' || type === 'TRANSFER';
+    const requiresDestinationSite =
+      type === 'IN' || type === 'ENTRY' || type === 'TRANSFER';
+    if (
+      (requiresSourceSite && !sourceSiteId) ||
+      (requiresDestinationSite && !destinationSiteId)
+    ) {
+      setError('Un site est obligatoire pour enregistrer un mouvement de stock.');
+      return;
+    }
     setSubmitting(true);
     setError(undefined);
     try {
@@ -23389,9 +23463,15 @@ function MovementForm({ products, suppliers, units, sites, onSubmit, onClose }: 
                 <>
                   <label>
                     Site source
-                    <select value={sourceSiteId} onChange={(e) => setSourceSiteId(e.target.value)}>
-                      <option value="">Non précisé</option>
-                      {sites.map((s) => (
+                    <select
+                      value={sourceSiteId}
+                      onChange={(e) => setSourceSiteId(e.target.value)}
+                      required
+                    >
+                      {!availableSites.length ? (
+                        <option value="">Aucun site disponible</option>
+                      ) : null}
+                      {availableSites.map((s) => (
                         <option key={s.id} value={s.id}>
                           {s.name}
                         </option>
@@ -23408,9 +23488,12 @@ function MovementForm({ products, suppliers, units, sites, onSubmit, onClose }: 
                     <select
                       value={destinationSiteId}
                       onChange={(e) => setDestinationSiteId(e.target.value)}
+                      required
                     >
-                      <option value="">Non précisé</option>
-                      {sites.map((s) => (
+                      {!availableSites.length ? (
+                        <option value="">Aucun site disponible</option>
+                      ) : null}
+                      {availableSites.map((s) => (
                         <option key={s.id} value={s.id}>
                           {s.name}
                         </option>

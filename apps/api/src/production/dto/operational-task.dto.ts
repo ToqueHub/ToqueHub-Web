@@ -5,6 +5,8 @@ import {
 } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
+  ArrayUnique,
+  IsArray,
   IsDateString,
   IsEnum,
   IsNumber,
@@ -47,6 +49,7 @@ export class UpsertOperationalTaskDto {
   @IsOptional() @IsUUID() positionId?: string;
   @IsOptional() @IsUUID() siteId?: string;
   @IsOptional() @IsUUID() assignedEmployeeId?: string;
+  @IsOptional() @IsArray() @ArrayUnique() @IsUUID(undefined, { each: true }) assignedEmployeeIds?: string[];
   @IsDateString() startsAt!: string;
   @IsDateString() endsAt!: string;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) quantity?: number;
@@ -68,6 +71,7 @@ export class UpdateOperationalTaskDto {
   @IsOptional() @IsUUID() positionId?: string | null;
   @IsOptional() @IsUUID() siteId?: string | null;
   @IsOptional() @IsUUID() assignedEmployeeId?: string | null;
+  @IsOptional() @IsArray() @ArrayUnique() @IsUUID(undefined, { each: true }) assignedEmployeeIds?: string[];
   @IsOptional() @IsDateString() startsAt?: string;
   @IsOptional() @IsDateString() endsAt?: string;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) quantity?: number | null;

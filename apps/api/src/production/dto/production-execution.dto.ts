@@ -28,6 +28,7 @@ export class CreateProductionCampaignDto {
   @IsOptional() @IsString() @MaxLength(8) plannedTime?: string;
   @IsOptional() @IsString() @MaxLength(160) name?: string;
   @IsOptional() @IsEnum(ProductionPriority) priority?: ProductionPriority;
+  @IsOptional() @IsUUID() serviceId?: string;
   @IsOptional() @IsUUID() responsibleEmployeeId?: string;
   @IsOptional() @IsUUID() destinationLocationId?: string;
   @IsOptional() @IsArray() @IsUUID(undefined, { each: true }) needIds?: string[];
@@ -39,6 +40,13 @@ export class CreateProductionCampaignDto {
   @IsOptional() @IsDecimal(DECIMAL_OPTIONS) optimizedTarget?: string;
   @IsOptional() @IsBoolean() createSubRecipeNeeds?: boolean;
   @IsOptional() @IsString() @MaxLength(4000) comments?: string;
+}
+
+export class UpdateProductionCampaignDto {
+  @IsDecimal(DECIMAL_OPTIONS) grossRequirement!: string;
+  @IsString() @MaxLength(8) plannedTime!: string;
+  @IsOptional() @IsUUID() serviceId?: string;
+  @IsOptional() @IsDecimal(DECIMAL_OPTIONS) targetPortions?: string;
 }
 
 export class ValidateProductionCampaignDto {

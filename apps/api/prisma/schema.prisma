@@ -181,6 +181,12 @@ enum OperationalTaskSource {
   MANUAL
   MENU
   TECHNICAL_SHEET
+  PRODUCTION
+}
+
+enum ProductionDayClosureStatus {
+  DRAFT
+  CLOSED
 }
 
 enum ProductionConsumptionKind {
@@ -1094,6 +1100,7 @@ model Organization {
   stockReservations               StockReservation[]
   productionMaterialRequirements  ProductionMaterialRequirement[]
   productionAssignments           ProductionAssignment[]
+  operationalTaskAssignments      OperationalTaskAssignment[]
   productionAlerts                ProductionAlert[]
   productionAlertOverrides        ProductionAlertOverride[]
   productionHistory               ProductionHistory[]
@@ -1103,6 +1110,8 @@ model Organization {
   productionDestockingLines       ProductionDestockingLine[]
   productionDestockingMovements   ProductionDestockingMovement[]
   operationalTasks                OperationalTask[]
+  productionDayClosures           ProductionDayClosure[]
+  productionDayClosureItems       ProductionDayClosureItem[]
   menuSettings                    MenuSettings?
   menuCategories                  MenuCategory[]
   menuDiets                       MenuDiet[]
@@ -1358,6 +1367,8 @@ model User {
   actorProductionHistory             ProductionHistory[]            @relation("ProductionHistoryActor")
   createdOperationalTasks            OperationalTask[]              @relation("OperationalTaskCreatedBy")
   productionExports                  ProductionExport[]             @relation("ProductionExportRequestedBy")
+  createdProductionDayClosures       ProductionDayClosure[]         @relation("ProductionDayClosureCreatedBy")
+  closedProductionDayClosures        ProductionDayClosure[]         @relation("ProductionDayClosureClosedBy")
   createdMenus                       Menu[]                         @relation("MenuCreatedBy")
   updatedMenus                       Menu[]                         @relation("MenuUpdatedBy")
   actorMenuHistory                   MenuHistory[]                  @relation("MenuHistoryActor")
@@ -1639,6 +1650,7 @@ model Product {
   productionConsumptions    ProductionBatchConsumption[]
   stockReservations         StockReservation[]
   productionDestockingLines ProductionDestockingLine[]
+  productionDayClosureItems ProductionDayClosureItem[]
   marginAlerts              MarginAlert[]
   supplierProductOffers     SupplierProductOffer[]
   purchaseOrderLines        PurchaseOrderLine[]
@@ -1788,6 +1800,7 @@ model Site {
   productionOrders             ProductionOrder[]
   stockReservations            StockReservation[]
   operationalTasks             OperationalTask[]
+  productionDayClosures        ProductionDayClosure[]
   catererProductionEvents      CatererEvent[]                @relation("CatererEventProductionSite")
   menuDispatchDestinations     MenuDispatch[]                @relation("MenuDispatchDestinationSite")
   cycleForecastDestinations    MenuCycleForecast[]           @relation("MenuCycleForecastDestinationSite")
@@ -2778,6 +2791,7 @@ model HrEmployee {
   productionAssignments         ProductionAssignment[]
   productionOperations          ProductionOperation[]
   operationalTasks              OperationalTask[]
+  operationalTaskAssignments    OperationalTaskAssignment[]
 
   @@unique([organizationId, email])
   @@unique([organizationId, employeeNumber])
@@ -3139,20 +3153,21 @@ model PlanningAssignment {
   createdAt             DateTime                 @default(now())
   updatedAt             DateTime                 @updatedAt
 
-  organization          Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  employee              HrEmployee                @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  department            HrDepartment              @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  position              HrPosition                @relation(fields: [positionId], references: [id], onDelete: Restrict)
-  site                  Site?                     @relation(fields: [siteId], references: [id], onDelete: SetNull)
-  rotation              HrRotation?               @relation(fields: [rotationId], references: [id], onDelete: SetNull)
-  absence               HrAbsence?                @relation(fields: [absenceId], references: [id], onDelete: SetNull)
-  createdBy             User?                     @relation("PlanningAssignmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  updatedBy             User?                     @relation("PlanningAssignmentUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
-  replacements          PlanningReplacement[]
-  conflicts             PlanningConflict[]
-  productionAssignments ProductionAssignment[]
-  attendanceEntries     PlanningAttendanceEntry[]
-  operationalTasks      OperationalTask[]
+  organization               Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee                   HrEmployee                  @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  department                 HrDepartment                @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  position                   HrPosition                  @relation(fields: [positionId], references: [id], onDelete: Restrict)
+  site                       Site?                       @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  rotation                   HrRotation?                 @relation(fields: [rotationId], references: [id], onDelete: SetNull)
+  absence                    HrAbsence?                  @relation(fields: [absenceId], references: [id], onDelete: SetNull)
+  createdBy                  User?                       @relation("PlanningAssignmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy                  User?                       @relation("PlanningAssignmentUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  replacements               PlanningReplacement[]
+  conflicts                  PlanningConflict[]
+  productionAssignments      ProductionAssignment[]
+  attendanceEntries          PlanningAttendanceEntry[]
+  operationalTasks           OperationalTask[]
+  operationalTaskAssignments OperationalTaskAssignment[]
 
   @@index([organizationId])
   @@index([employeeId])
@@ -4739,6 +4754,7 @@ model ProductionOrder {
   needAllocations     ProductionNeedAllocation[]
   batches             ProductionBatch[]
   stockReservations   StockReservation[]
+  dayClosureItems     ProductionDayClosureItem[]
 
   @@unique([organizationId, number])
   @@index([organizationId])
@@ -5018,18 +5034,19 @@ model OperationalTask {
   createdAt             DateTime                @default(now())
   updatedAt             DateTime                @updatedAt
 
-  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  department          HrDepartment         @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  position            HrPosition?          @relation(fields: [positionId], references: [id], onDelete: SetNull)
-  site                Site?                @relation(fields: [siteId], references: [id], onDelete: SetNull)
-  assignedEmployee    HrEmployee?          @relation(fields: [assignedEmployeeId], references: [id], onDelete: SetNull)
-  planningAssignment  PlanningAssignment?  @relation(fields: [planningAssignmentId], references: [id], onDelete: SetNull)
-  menu                Menu?                @relation(fields: [menuId], references: [id], onDelete: SetNull)
-  technicalSheet      TechnicalSheet?      @relation(fields: [technicalSheetId], references: [id], onDelete: SetNull)
-  technicalSheetStep  TechnicalSheetStep?  @relation(fields: [technicalSheetStepId], references: [id], onDelete: SetNull)
-  productionBatch     ProductionBatch?     @relation(fields: [productionBatchId], references: [id], onDelete: SetNull)
-  productionOperation ProductionOperation? @relation(fields: [productionOperationId], references: [id], onDelete: SetNull)
-  createdBy           User?                @relation("OperationalTaskCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  organization        Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  department          HrDepartment                @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  position            HrPosition?                 @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  site                Site?                       @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  assignedEmployee    HrEmployee?                 @relation(fields: [assignedEmployeeId], references: [id], onDelete: SetNull)
+  planningAssignment  PlanningAssignment?         @relation(fields: [planningAssignmentId], references: [id], onDelete: SetNull)
+  menu                Menu?                       @relation(fields: [menuId], references: [id], onDelete: SetNull)
+  technicalSheet      TechnicalSheet?             @relation(fields: [technicalSheetId], references: [id], onDelete: SetNull)
+  technicalSheetStep  TechnicalSheetStep?         @relation(fields: [technicalSheetStepId], references: [id], onDelete: SetNull)
+  productionBatch     ProductionBatch?            @relation(fields: [productionBatchId], references: [id], onDelete: SetNull)
+  productionOperation ProductionOperation?        @relation(fields: [productionOperationId], references: [id], onDelete: SetNull)
+  createdBy           User?                       @relation("OperationalTaskCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  assignments         OperationalTaskAssignment[]
 
   @@index([organizationId])
   @@index([departmentId])
@@ -5046,6 +5063,88 @@ model OperationalTask {
   @@index([endsAt])
   @@index([status])
   @@map("operational_tasks")
+}
+
+model OperationalTaskAssignment {
+  id                   String   @id @default(uuid()) @db.Uuid
+  organizationId       String   @db.Uuid
+  taskId               String   @db.Uuid
+  employeeId           String   @db.Uuid
+  planningAssignmentId String?  @db.Uuid
+  isLead               Boolean  @default(false)
+  mission              String?
+  plannedMinutes       Int?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task               OperationalTask     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  employee           HrEmployee          @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  planningAssignment PlanningAssignment? @relation(fields: [planningAssignmentId], references: [id], onDelete: SetNull)
+
+  @@unique([taskId, employeeId])
+  @@index([organizationId])
+  @@index([employeeId])
+  @@index([planningAssignmentId])
+  @@map("operational_task_assignments")
+}
+
+model ProductionDayClosure {
+  id             String                     @id @default(uuid()) @db.Uuid
+  organizationId String                     @db.Uuid
+  siteId         String                     @db.Uuid
+  date           DateTime                   @db.Date
+  status         ProductionDayClosureStatus @default(DRAFT)
+  createdById    String?                    @db.Uuid
+  closedById     String?                    @db.Uuid
+  closedAt       DateTime?
+  notes          String?                    @db.Text
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+
+  organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site         Site                       @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  createdBy    User?                      @relation("ProductionDayClosureCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  closedBy     User?                      @relation("ProductionDayClosureClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+  items        ProductionDayClosureItem[]
+
+  @@unique([organizationId, siteId, date])
+  @@index([organizationId])
+  @@index([siteId, date])
+  @@index([status])
+  @@map("production_day_closures")
+}
+
+model ProductionDayClosureItem {
+  id                       String   @id @default(uuid()) @db.Uuid
+  organizationId           String   @db.Uuid
+  closureId                String   @db.Uuid
+  orderId                  String   @db.Uuid
+  outputProductId          String?  @db.Uuid
+  productNameSnapshot      String
+  targetPortions           Decimal  @db.Decimal(12, 3)
+  openingCarryOverPortions Decimal  @default(0) @db.Decimal(12, 3)
+  producedPortions         Decimal  @default(0) @db.Decimal(12, 3)
+  totalAvailablePortions   Decimal  @default(0) @db.Decimal(12, 3)
+  remainingPortions        Decimal  @default(0) @db.Decimal(12, 3)
+  discardedPortions        Decimal  @default(0) @db.Decimal(12, 3)
+  estimatedOutPortions     Decimal  @default(0) @db.Decimal(12, 3)
+  carryOverNextPortions    Decimal  @default(0) @db.Decimal(12, 3)
+  lossReason               String?  @db.Text
+  notes                    String?  @db.Text
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  organization  Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  closure       ProductionDayClosure @relation(fields: [closureId], references: [id], onDelete: Cascade)
+  order         ProductionOrder      @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  outputProduct Product?             @relation(fields: [outputProductId], references: [id], onDelete: SetNull)
+
+  @@unique([closureId, orderId])
+  @@index([organizationId])
+  @@index([orderId])
+  @@index([outputProductId])
+  @@map("production_day_closure_items")
 }
 
 model ProductionAlert {

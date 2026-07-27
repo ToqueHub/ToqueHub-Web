@@ -21,9 +21,15 @@ describe('OperationalTasksService', () => {
     operationalTask: {
       findMany: jest.fn(),
       findFirst: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
     },
+    operationalTaskAssignment: {
+      deleteMany: jest.fn(),
+      upsert: jest.fn(),
+    },
+    $transaction: jest.fn(),
   };
   const service = new OperationalTasksService(prisma as any);
   const period = {
@@ -31,7 +37,10 @@ describe('OperationalTasksService', () => {
     endDate: '2026-07-27T00:00:00.000Z',
   };
 
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.$transaction.mockImplementation((callback) => callback(prisma));
+  });
 
   it('returns only the RH services inside the manager hierarchy', async () => {
     prisma.hrEmployee.findMany.mockResolvedValue([
@@ -311,7 +320,12 @@ describe('OperationalTasksService', () => {
     prisma.hrDepartment.findFirst.mockResolvedValue({ id: 'service' });
     prisma.hrEmployee.findFirst.mockResolvedValue({ id: 'employee', departmentId: 'service' });
     prisma.planningAssignment.findFirst.mockResolvedValue({ id: 'shift-1' });
-    prisma.operationalTask.create.mockImplementation(({ data }) => Promise.resolve(data));
+    let createdTask: any;
+    prisma.operationalTask.create.mockImplementation(({ data }) => {
+      createdTask = { id: 'task-created', ...data };
+      return Promise.resolve(createdTask);
+    });
+    prisma.operationalTask.findUniqueOrThrow.mockImplementation(() => Promise.resolve(createdTask));
 
     const task = await service.create(
       'org-1',

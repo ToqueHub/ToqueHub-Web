@@ -1,6 +1,6 @@
 import { TechnicalSheetsService } from './technical-sheets.service';
 import AdmZip from 'adm-zip';
-import { ProductKind } from '@prisma/client';
+import { Prisma, ProductKind } from '@prisma/client';
 
 const baseImport = {
   name: null,
@@ -170,6 +170,89 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
       data: expect.objectContaining({ name: 'Snicker', unitId: 'unit-piece', kind: 'FINISHED' }),
     }));
     expect(tx.auditLog.create).toHaveBeenCalled();
+  });
+
+  it('creates the site production profile automatically from the recipe yield', async () => {
+    const sheet = {
+      id: 'sheet-snicker',
+      name: 'Snicker',
+      mode: 'ASSEMBLY',
+      status: 'ACTIVE',
+      isArchived: false,
+      outputProductId: 'product-snicker',
+      yieldUnitId: 'unit-piece',
+      referencePortions: new Prisma.Decimal(24),
+    };
+    const profile = {
+      id: 'profile-snicker',
+      organizationId: 'org-1',
+      siteId: 'site-2',
+      technicalSheetId: sheet.id,
+      outputProductId: sheet.outputProductId,
+      outputVariantId: null,
+      yieldUnitId: sheet.yieldUnitId,
+      referenceYield: sheet.referencePortions,
+      mode: 'FIXED',
+    };
+    const tx = {
+      technicalSheet: {
+        findFirst: jest.fn().mockResolvedValue(sheet),
+        update: jest.fn(),
+      },
+      site: { findFirst: jest.fn().mockResolvedValue({ id: 'site-2' }) },
+      unit: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'unit-piece',
+          organizationId: 'org-1',
+          type: 'COUNT',
+        }),
+      },
+      product: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'product-snicker',
+          name: 'Snicker',
+          kind: 'FINISHED',
+          unitId: 'unit-piece',
+          unit: { id: 'unit-piece' },
+        }),
+        update: jest.fn(),
+      },
+      productionProfile: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue(profile),
+        update: jest.fn(),
+      },
+    };
+    const prisma = {
+      organization: {
+        findUnique: jest.fn().mockResolvedValue({
+          stocksInstalledAt: new Date(),
+          technicalSheetsInstalledAt: new Date(),
+        }),
+      },
+      $transaction: jest.fn(async (callback: any) => callback(tx)),
+    };
+    const automaticService = new TechnicalSheetsService(prisma as any, {} as any);
+
+    const result = await automaticService.ensureProductionProfile(
+      'org-1',
+      { id: 'user-1', role: 'Manager' },
+      sheet.id,
+      'site-2',
+    );
+
+    expect(tx.productionProfile.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        organizationId: 'org-1',
+        siteId: 'site-2',
+        technicalSheetId: sheet.id,
+        outputProductId: 'product-snicker',
+        yieldUnitId: 'unit-piece',
+        referenceYield: sheet.referencePortions,
+        mode: 'FIXED',
+      }),
+    });
+    expect(result).toBe(profile);
   });
 
   it('links a sub-recipe to its manufactured product', async () => {

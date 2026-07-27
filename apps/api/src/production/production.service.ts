@@ -126,8 +126,86 @@ export class ProductionService {
     });
   }
 
-  async assignEmployee(organizationId: string, actor: Actor, orderId: string, dto: any) { await this.assertInstalled(organizationId); this.assertWrite(actor); await this.ensureOrder(organizationId, orderId); await this.ensureEmployee(organizationId, dto.employeeId); const item = await this.prisma.productionAssignment.upsert({ where: { orderId_employeeId: { orderId, employeeId: dto.employeeId } }, update: dto, create: { organizationId, orderId, ...dto } }); await this.prisma.productionHistory.create({ data: { organizationId, orderId, actorUserId: actor.id, action: ProductionHistoryAction.ASSIGNMENT_ADDED, summary: 'Affectation collaborateur', details: { employeeId: dto.employeeId } } }); await this.prisma.$transaction((tx) => this.refreshAlertsTx(tx, organizationId, orderId)); return item; }
-  async removeAssignment(organizationId: string, actor: Actor, orderId: string, assignmentId: string) { await this.assertInstalled(organizationId); this.assertWrite(actor); await this.prisma.productionAssignment.delete({ where: { id: assignmentId, orderId, organizationId } }); await this.prisma.productionHistory.create({ data: { organizationId, orderId, actorUserId: actor.id, action: ProductionHistoryAction.ASSIGNMENT_REMOVED, summary: 'Suppression affectation' } }); await this.prisma.$transaction((tx) => this.refreshAlertsTx(tx, organizationId, orderId)); return { deleted: true }; }
+  async assignEmployee(organizationId: string, actor: Actor, orderId: string, dto: any) {
+    await this.assertInstalled(organizationId); this.assertWrite(actor); await this.ensureOrder(organizationId, orderId); await this.ensureEmployee(organizationId, dto.employeeId);
+    const item = await this.prisma.$transaction(async (tx) => {
+      if (dto.isLead) {
+        await tx.productionAssignment.updateMany({ where: { organizationId, orderId }, data: { isLead: false } });
+      }
+      const assignment = await tx.productionAssignment.upsert({
+        where: { orderId_employeeId: { orderId, employeeId: dto.employeeId } },
+        update: dto,
+        create: { organizationId, orderId, ...dto },
+      });
+      const tasks = await tx.operationalTask.findMany({
+        where: { organizationId, productionBatch: { orderId } },
+        select: { id: true },
+      });
+      for (const task of tasks) {
+        await tx.operationalTaskAssignment.upsert({
+          where: { taskId_employeeId: { taskId: task.id, employeeId: dto.employeeId } },
+          create: {
+            organizationId,
+            taskId: task.id,
+            employeeId: dto.employeeId,
+            planningAssignmentId: dto.planningAssignmentId ?? null,
+            isLead: Boolean(dto.isLead),
+            mission: dto.mission ?? null,
+            plannedMinutes: dto.plannedMinutes ?? null,
+          },
+          update: {
+            planningAssignmentId: dto.planningAssignmentId ?? null,
+            isLead: Boolean(dto.isLead),
+            mission: dto.mission ?? null,
+            plannedMinutes: dto.plannedMinutes ?? null,
+          },
+        });
+      }
+      if (dto.isLead) {
+        await tx.operationalTaskAssignment.updateMany({
+          where: { task: { productionBatch: { orderId } }, employeeId: { not: dto.employeeId } },
+          data: { isLead: false },
+        });
+        await tx.operationalTask.updateMany({
+          where: { organizationId, productionBatch: { orderId } },
+          data: { assignedEmployeeId: dto.employeeId },
+        });
+      }
+      return assignment;
+    });
+    await this.prisma.productionHistory.create({ data: { organizationId, orderId, actorUserId: actor.id, action: ProductionHistoryAction.ASSIGNMENT_ADDED, summary: 'Affectation collaborateur', details: { employeeId: dto.employeeId } } });
+    await this.prisma.$transaction((tx) => this.refreshAlertsTx(tx, organizationId, orderId));
+    return item;
+  }
+
+  async removeAssignment(organizationId: string, actor: Actor, orderId: string, assignmentId: string) {
+    await this.assertInstalled(organizationId); this.assertWrite(actor);
+    await this.prisma.$transaction(async (tx) => {
+      const assignment = await tx.productionAssignment.findFirst({ where: { id: assignmentId, orderId, organizationId } });
+      if (!assignment) throw new NotFoundException('Affectation introuvable');
+      await tx.productionAssignment.delete({ where: { id: assignmentId } });
+      await tx.operationalTaskAssignment.deleteMany({
+        where: { employeeId: assignment.employeeId, task: { productionBatch: { orderId } } },
+      });
+      if (assignment.isLead) {
+        const next = await tx.productionAssignment.findFirst({ where: { orderId }, orderBy: { createdAt: 'asc' } });
+        if (next) await tx.productionAssignment.update({ where: { id: next.id }, data: { isLead: true } });
+        await tx.operationalTask.updateMany({
+          where: { organizationId, productionBatch: { orderId } },
+          data: { assignedEmployeeId: next?.employeeId ?? null },
+        });
+        if (next) {
+          await tx.operationalTaskAssignment.updateMany({
+            where: { employeeId: next.employeeId, task: { productionBatch: { orderId } } },
+            data: { isLead: true },
+          });
+        }
+      }
+    });
+    await this.prisma.productionHistory.create({ data: { organizationId, orderId, actorUserId: actor.id, action: ProductionHistoryAction.ASSIGNMENT_REMOVED, summary: 'Suppression affectation' } });
+    await this.prisma.$transaction((tx) => this.refreshAlertsTx(tx, organizationId, orderId));
+    return { deleted: true };
+  }
 
   async closeRealization(organizationId: string, actor: Actor, orderId: string, dto: any) {
     await this.assertInstalled(organizationId); this.assertWrite(actor);

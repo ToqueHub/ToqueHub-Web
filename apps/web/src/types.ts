@@ -2543,12 +2543,14 @@ export interface MenuPlan {
   catalogType?: MenuCatalogType | null;
   siteId?: string | null;
   site?: Site | null;
+  sourceMenuId?: string | null;
   description?: string | null;
   activeFrom?: string | null;
   activeUntil?: string | null;
   isPrimary?: boolean;
   expectedGuests?: number | string | null;
   guestCount?: number | string | null;
+  totalGuests?: number | string | null;
   status: MenuStatus;
   items?: MenuItem[];
   variants?: MenuVariant[];
@@ -2563,7 +2565,25 @@ export interface MenuPlan {
   productionGeneratedAt?: string | null;
   productionDirtySince?: string | null;
   productionGenerationMode?: 'DETAILED' | 'GROUPED' | string | null;
-  productionLinks?: Array<{ id: string; productionOrderId?: string; mode?: string }>;
+  productionLinks?: Array<{
+    id: string;
+    productionOrderId?: string;
+    mode?: string;
+    generationMode?: string;
+    snapshot?: {
+      lines?: Array<{
+        menuItemId?: string;
+        technicalSheetId?: string;
+        section?: MenuSection;
+        portions?: number;
+        targetPortions?: number;
+        openingCarryOverPortions?: number;
+        plannedProductionPortions?: number;
+        plannedTime?: string;
+      }>;
+    } | null;
+    productionOrder?: ProductionCampaign | ProductionOrder | null;
+  }>;
   cycleId?: string | null;
   cycle?: MenuCycle | null;
   updatedAt?: string;
@@ -2805,6 +2825,15 @@ export interface CatererEventPayload {
 export interface MenuProductionGenerationPayload {
   mode: 'DETAILED' | 'GROUPED';
   confirmRegeneration?: boolean;
+  plannedTime?: string;
+  serviceId?: string;
+  lines?: Array<{
+    menuItemId: string;
+    portions: number;
+    plannedTime?: string;
+    targetPortions?: number;
+    openingCarryOverPortions?: number;
+  }>;
 }
 
 export interface MenuProductionGenerationResult {
@@ -2812,6 +2841,33 @@ export interface MenuProductionGenerationResult {
   orders?: ProductionOrder[];
   productionOrderIds?: string[];
   mode?: 'DETAILED' | 'GROUPED' | string;
+  skipped?: Array<{ menuItemId?: string; name?: string; reason: string }>;
+  allMenuProductsPlanned?: boolean;
+}
+
+export interface PlanCatalogProductionDayPayload {
+  siteId: string;
+  date: string;
+  serviceId: string;
+  plannedTime?: string;
+  lines: Array<{
+    menuItemId: string;
+    targetPortions: number;
+    plannedTime?: string;
+  }>;
+}
+
+export interface PlanCatalogProductionDayResult {
+  menu: MenuPlan;
+  generation: MenuProductionGenerationResult;
+  previousClosureDate?: string | null;
+  lines: Array<{
+    menuItemId: string;
+    portions: number;
+    targetPortions: number;
+    openingCarryOverPortions: number;
+    plannedTime: string;
+  }>;
 }
 
 export interface MenuExportPayload {
@@ -3398,6 +3454,7 @@ export interface ProductionQuery {
   date?: string;
   startDate?: string;
   endDate?: string;
+  siteId?: string;
   serviceId?: string;
   orderId?: string;
   employeeId?: string;
@@ -3540,7 +3597,19 @@ export type OperationalTaskCategory =
   | 'MANAGEMENT'
   | 'OTHER';
 
-export type OperationalTaskSource = 'MANUAL' | 'MENU' | 'TECHNICAL_SHEET';
+export type OperationalTaskSource = 'MANUAL' | 'MENU' | 'TECHNICAL_SHEET' | 'PRODUCTION';
+
+export interface OperationalTaskAssignment {
+  id: string;
+  taskId: string;
+  employeeId: string;
+  planningAssignmentId?: string | null;
+  isLead: boolean;
+  mission?: string | null;
+  plannedMinutes?: number | null;
+  employee?: HrCollaborator | null;
+  planningAssignment?: PlanningAssignment | null;
+}
 
 export interface OperationalTask {
   id: string;
@@ -3571,6 +3640,7 @@ export interface OperationalTask {
   position?: HrPosition | null;
   site?: Site | null;
   assignedEmployee?: HrCollaborator | null;
+  assignments?: OperationalTaskAssignment[];
   planningAssignment?: PlanningAssignment | null;
   menu?: { id: string; name: string; date?: string | null; service?: string | null } | null;
   technicalSheet?: {
@@ -3622,6 +3692,7 @@ export interface OperationalTaskPayload {
   positionId?: string | null;
   siteId?: string | null;
   assignedEmployeeId?: string | null;
+  assignedEmployeeIds?: string[];
   startsAt: string;
   endsAt: string;
   quantity?: number | null;
@@ -3830,6 +3901,21 @@ export interface ProductionOrder {
   needAllocations?: ProductionNeedAllocation[];
   batches?: ProductionBatch[];
   stockReservations?: ProductionStockReservation[];
+  menuProductionLinks?: Array<{
+    id: string;
+    menuId?: string;
+    productionOrderId?: string;
+    snapshot?: {
+      lines?: Array<{
+        menuItemId?: string;
+        portions?: number;
+        targetPortions?: number;
+        openingCarryOverPortions?: number;
+        plannedProductionPortions?: number;
+        plannedTime?: string;
+      }>;
+    } | null;
+  }>;
 }
 
 export interface ProductionOrdersResponse {
@@ -4113,6 +4199,7 @@ export interface CreateProductionCampaignPayload {
   plannedTime?: string;
   name?: string;
   priority?: ProductionPriority;
+  serviceId?: string;
   responsibleEmployeeId?: string;
   destinationLocationId?: string;
   needIds?: string[];
@@ -4121,4 +4208,47 @@ export interface CreateProductionCampaignPayload {
   optimizedTarget?: string;
   createSubRecipeNeeds?: boolean;
   comments?: string;
+}
+
+export interface ProductionDayClosureItem {
+  id?: string;
+  orderId: string;
+  orderNumber?: string;
+  outputProductId?: string | null;
+  productName: string;
+  plannedTime?: string;
+  status?: ProductionOrderStatus;
+  targetPortions: number;
+  openingCarryOverPortions: number;
+  producedPortions: number;
+  totalAvailablePortions: number;
+  remainingPortions: number;
+  discardedPortions: number;
+  estimatedOutPortions: number;
+  carryOverNextPortions: number;
+  lossReason?: string | null;
+  notes?: string | null;
+}
+
+export interface ProductionDayClosure {
+  id?: string | null;
+  siteId: string;
+  site?: Site | null;
+  date: string;
+  status: 'DRAFT' | 'CLOSED';
+  closedAt?: string | null;
+  previousClosureDate?: string | null;
+  notes?: string | null;
+  items: ProductionDayClosureItem[];
+}
+
+export interface ProductionCarryOver {
+  siteId: string;
+  date: string;
+  previousClosureDate?: string | null;
+  items: Array<{
+    outputProductId: string;
+    productName: string;
+    portions: number;
+  }>;
 }

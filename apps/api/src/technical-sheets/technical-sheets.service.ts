@@ -144,6 +144,93 @@ export class TechnicalSheetsService {
 
   async getRecipe(organizationId: string, id: string) { await this.assertInstalled(organizationId); const recipe = await this.prisma.technicalSheet.findFirst({ where: { id, organizationId }, include: this.recipeInclude(true) }); if (!recipe) throw new NotFoundException('Fiche technique introuvable'); return this.serializeRecipe(recipe); }
 
+  async ensureProductionProfile(
+    organizationId: string,
+    actor: Actor,
+    technicalSheetId: string,
+    siteId: string,
+  ) {
+    await this.assertInstalled(organizationId);
+    return this.prisma.$transaction(async (tx) => {
+      const [sheet, site] = await Promise.all([
+        tx.technicalSheet.findFirst({
+          where: {
+            id: technicalSheetId,
+            organizationId,
+            isArchived: false,
+            status: { in: [TechnicalSheetStatus.ACTIVE, TechnicalSheetStatus.VALIDATED] },
+          },
+        }),
+        tx.site.findFirst({
+          where: { id: siteId, organizationId, isArchived: false },
+          select: { id: true },
+        }),
+      ]);
+      if (!sheet) {
+        throw new NotFoundException('Fiche technique active introuvable.');
+      }
+      if (!site) throw new NotFoundException('Site de production introuvable.');
+      if (sheet.referencePortions.lte(0)) {
+        throw new BadRequestException(
+          `Le rendement de la fiche « ${sheet.name} » doit être supérieur à zéro.`,
+        );
+      }
+
+      const output = await this.resolveRecipeOutputTx(
+        tx,
+        organizationId,
+        {
+          name: sheet.name,
+          referencePortions: Number(sheet.referencePortions),
+          mode: sheet.mode,
+          outputProductId: sheet.outputProductId ?? undefined,
+          yieldUnitId: sheet.yieldUnitId ?? undefined,
+        },
+        sheet,
+        actor.id,
+      );
+      if (
+        sheet.outputProductId !== output.outputProductId ||
+        sheet.yieldUnitId !== output.yieldUnitId
+      ) {
+        await tx.technicalSheet.update({
+          where: { id: sheet.id },
+          data: output,
+        });
+      }
+
+      const existing = await tx.productionProfile.findFirst({
+        where: {
+          organizationId,
+          siteId,
+          technicalSheetId,
+          outputVariantId: null,
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+      const data = {
+        outputProductId: output.outputProductId!,
+        yieldUnitId: output.yieldUnitId!,
+        referenceYield: sheet.referencePortions,
+      };
+      if (existing) {
+        return tx.productionProfile.update({
+          where: { id: existing.id },
+          data,
+        });
+      }
+      return tx.productionProfile.create({
+        data: {
+          organizationId,
+          siteId,
+          technicalSheetId,
+          ...data,
+          mode: ProductionProfileMode.FIXED,
+        },
+      });
+    });
+  }
+
   async createRecipe(organizationId: string, actor: Actor, dto: UpsertTechnicalSheetDto) {
     await this.assertInstalled(organizationId);
     if (dto.categoryId) await this.ensureCategory(organizationId, dto.categoryId);

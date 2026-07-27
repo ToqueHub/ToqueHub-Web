@@ -50,6 +50,13 @@ const TASK_INCLUDE = {
   assignedEmployee: {
     include: { department: true, position: true, mainSite: true },
   },
+  assignments: {
+    include: {
+      employee: { include: { department: true, position: true, mainSite: true } },
+      planningAssignment: { include: { site: true, position: true } },
+    },
+    orderBy: [{ isLead: 'desc' as const }, { createdAt: 'asc' as const }],
+  },
   planningAssignment: true,
   menu: { select: { id: true, name: true, date: true, service: true } },
   technicalSheet: { select: { id: true, name: true, referencePortions: true } },
@@ -226,9 +233,18 @@ export class OperationalTasksService {
             { siteId: null, planningAssignment: { siteId: query.siteId } },
           ]
         : undefined,
-      assignedEmployeeId: query.employeeId,
       status: query.status,
-      AND: [visibility],
+      AND: [
+        visibility,
+        ...(query.employeeId
+          ? [{
+              OR: [
+                { assignedEmployeeId: query.employeeId },
+                { assignments: { some: { employeeId: query.employeeId } } },
+              ],
+            }]
+          : []),
+      ],
     };
     return this.prisma.operationalTask.findMany({
       where,
@@ -277,19 +293,33 @@ export class OperationalTasksService {
       ? await this.prisma.operationalTask.findMany({
           where: {
             organizationId,
-            assignedEmployeeId: { in: employees.map((employee) => employee.id) },
+            OR: [
+              { assignedEmployeeId: { in: employees.map((employee) => employee.id) } },
+              { assignments: { some: { employeeId: { in: employees.map((employee) => employee.id) } } } },
+            ],
             status: { in: ['TODO', 'IN_PROGRESS'] },
             startsAt: { lt: endsAt },
             endsAt: { gt: startsAt },
             ...(query.taskId ? { id: { not: query.taskId } } : {}),
           },
-          select: { id: true, title: true, assignedEmployeeId: true, startsAt: true, endsAt: true },
+          select: {
+            id: true,
+            title: true,
+            assignedEmployeeId: true,
+            startsAt: true,
+            endsAt: true,
+            assignments: { select: { employeeId: true } },
+          },
         })
       : [];
     const shiftByEmployee = new Map(shifts.map((shift) => [shift.employeeId, shift]));
-    const conflictByEmployee = new Map(
-      conflicts.map((task) => [task.assignedEmployeeId, task]),
-    );
+    const conflictByEmployee = new Map<string, (typeof conflicts)[number]>();
+    conflicts.forEach((task) => {
+      if (task.assignedEmployeeId) conflictByEmployee.set(task.assignedEmployeeId, task);
+      (task.assignments ?? []).forEach((assignment) =>
+        conflictByEmployee.set(assignment.employeeId, task),
+      );
+    });
     return employees.map((employee) => {
       const planningAssignment = shiftByEmployee.get(employee.id) ?? null;
       const operationalConflict = conflictByEmployee.get(employee.id) ?? null;
@@ -313,42 +343,66 @@ export class OperationalTasksService {
     const startsAt = this.date(dto.startsAt, 'Heure de début invalide');
     const endsAt = this.date(dto.endsAt, 'Heure de fin invalide');
     this.assertPeriod(startsAt, endsAt);
-    await this.validateReferences(organizationId, dto);
-    await this.assertCanCreate(scope, actor, dto.departmentId, dto.assignedEmployeeId);
-    const planningAssignmentId = dto.assignedEmployeeId
+    const employeeIds = this.assigneeIds(dto.assignedEmployeeIds, dto.assignedEmployeeId);
+    const leadEmployeeId = dto.assignedEmployeeId ?? employeeIds[0] ?? null;
+    await this.validateReferences(organizationId, {
+      ...dto,
+      assignedEmployeeId: leadEmployeeId ?? undefined,
+    });
+    await this.validateAssigneeSet(organizationId, dto.departmentId, employeeIds);
+    await Promise.all(
+      (employeeIds.length ? employeeIds : [undefined]).map((employeeId) =>
+        this.assertCanCreate(scope, actor, dto.departmentId, employeeId),
+      ),
+    );
+    const planningAssignmentId = leadEmployeeId
       ? await this.matchingPlanningAssignment(
           organizationId,
-          dto.assignedEmployeeId,
+          leadEmployeeId,
           startsAt,
           endsAt,
         )
       : null;
 
-    return this.prisma.operationalTask.create({
-      data: {
+    return this.prisma.$transaction(async (tx) => {
+      const task = await tx.operationalTask.create({
+        data: {
+          organizationId,
+          title: dto.title.trim(),
+          description: dto.description?.trim() || null,
+          category: dto.category,
+          source: dto.source ?? 'MANUAL',
+          departmentId: dto.departmentId,
+          positionId: dto.positionId ?? null,
+          siteId: dto.siteId ?? null,
+          assignedEmployeeId: leadEmployeeId,
+          planningAssignmentId,
+          menuId: dto.menuId ?? null,
+          technicalSheetId: dto.technicalSheetId ?? null,
+          technicalSheetStepId: dto.technicalSheetStepId ?? null,
+          productionBatchId: dto.productionBatchId ?? null,
+          productionOperationId: dto.productionOperationId ?? null,
+          positionTaskPresetId: dto.positionTaskPresetId ?? null,
+          startsAt,
+          endsAt,
+          quantity: dto.quantity == null ? null : new Prisma.Decimal(dto.quantity),
+          unitLabel: dto.unitLabel?.trim() || null,
+          createdById: actor.id,
+        },
+      });
+      await this.syncAssignmentsTx(
+        tx,
         organizationId,
-        title: dto.title.trim(),
-        description: dto.description?.trim() || null,
-        category: dto.category,
-        source: dto.source ?? 'MANUAL',
-        departmentId: dto.departmentId,
-        positionId: dto.positionId ?? null,
-        siteId: dto.siteId ?? null,
-        assignedEmployeeId: dto.assignedEmployeeId ?? null,
-        planningAssignmentId,
-        menuId: dto.menuId ?? null,
-        technicalSheetId: dto.technicalSheetId ?? null,
-        technicalSheetStepId: dto.technicalSheetStepId ?? null,
-        productionBatchId: dto.productionBatchId ?? null,
-        productionOperationId: dto.productionOperationId ?? null,
-        positionTaskPresetId: dto.positionTaskPresetId ?? null,
+        task.id,
+        employeeIds,
+        leadEmployeeId,
         startsAt,
         endsAt,
-        quantity: dto.quantity == null ? null : new Prisma.Decimal(dto.quantity),
-        unitLabel: dto.unitLabel?.trim() || null,
-        createdById: actor.id,
-      },
-      include: TASK_INCLUDE,
+      );
+      return tx.operationalTask.findUniqueOrThrow({
+        where: { id: task.id },
+        include: TASK_INCLUDE,
+      });
     });
   }
 
@@ -458,9 +512,21 @@ export class OperationalTasksService {
     const endsAt = dto.endsAt ? this.date(dto.endsAt, 'Heure de fin invalide') : existing.endsAt;
     this.assertPeriod(startsAt, endsAt);
     const departmentId = dto.departmentId ?? existing.departmentId;
+    const currentEmployeeIds = existing.assignments?.length
+      ? existing.assignments.map((assignment) => assignment.employeeId)
+      : existing.assignedEmployeeId
+        ? [existing.assignedEmployeeId]
+        : [];
+    const employeeIds = dto.assignedEmployeeIds !== undefined
+      ? this.assigneeIds(dto.assignedEmployeeIds, dto.assignedEmployeeId)
+      : Object.hasOwn(dto, 'assignedEmployeeId')
+        ? this.assigneeIds(undefined, dto.assignedEmployeeId ?? undefined)
+        : currentEmployeeIds;
     const assignedEmployeeId = Object.hasOwn(dto, 'assignedEmployeeId')
-      ? dto.assignedEmployeeId ?? null
-      : existing.assignedEmployeeId;
+      ? dto.assignedEmployeeId ?? employeeIds[0] ?? null
+      : existing.assignedEmployeeId && employeeIds.includes(existing.assignedEmployeeId)
+        ? existing.assignedEmployeeId
+        : employeeIds[0] ?? null;
     await this.validateReferences(organizationId, {
       departmentId,
       positionId: dto.positionId === undefined ? existing.positionId ?? undefined : dto.positionId ?? undefined,
@@ -473,7 +539,12 @@ export class OperationalTasksService {
       productionOperationId: dto.productionOperationId === undefined ? existing.productionOperationId ?? undefined : dto.productionOperationId ?? undefined,
       positionTaskPresetId: dto.positionTaskPresetId === undefined ? existing.positionTaskPresetId ?? undefined : dto.positionTaskPresetId ?? undefined,
     });
-    await this.assertCanCreate(scope, actor, departmentId, assignedEmployeeId ?? undefined);
+    await this.validateAssigneeSet(organizationId, departmentId, employeeIds);
+    await Promise.all(
+      (employeeIds.length ? employeeIds : [undefined]).map((employeeId) =>
+        this.assertCanCreate(scope, actor, departmentId, employeeId),
+      ),
+    );
     const planningAssignmentId = assignedEmployeeId
       ? await this.matchingPlanningAssignment(
           organizationId,
@@ -483,35 +554,49 @@ export class OperationalTasksService {
         )
       : null;
 
-    return this.prisma.operationalTask.update({
-      where: { id },
-      data: {
-        title: dto.title?.trim(),
-        description: dto.description === undefined ? undefined : dto.description?.trim() || null,
-        category: dto.category,
-        departmentId: dto.departmentId,
-        positionId: dto.positionId === undefined ? undefined : dto.positionId,
-        siteId: dto.siteId === undefined ? undefined : dto.siteId,
+    return this.prisma.$transaction(async (tx) => {
+      await tx.operationalTask.update({
+        where: { id },
+        data: {
+          title: dto.title?.trim(),
+          description: dto.description === undefined ? undefined : dto.description?.trim() || null,
+          category: dto.category,
+          departmentId: dto.departmentId,
+          positionId: dto.positionId === undefined ? undefined : dto.positionId,
+          siteId: dto.siteId === undefined ? undefined : dto.siteId,
+          assignedEmployeeId,
+          planningAssignmentId,
+          startsAt,
+          endsAt,
+          quantity:
+            dto.quantity === undefined
+              ? undefined
+              : dto.quantity === null
+                ? null
+                : new Prisma.Decimal(dto.quantity),
+          unitLabel: dto.unitLabel === undefined ? undefined : dto.unitLabel?.trim() || null,
+          source: dto.source,
+          menuId: dto.menuId === undefined ? undefined : dto.menuId,
+          technicalSheetId: dto.technicalSheetId === undefined ? undefined : dto.technicalSheetId,
+          technicalSheetStepId: dto.technicalSheetStepId === undefined ? undefined : dto.technicalSheetStepId,
+          productionBatchId: dto.productionBatchId === undefined ? undefined : dto.productionBatchId,
+          productionOperationId: dto.productionOperationId === undefined ? undefined : dto.productionOperationId,
+          positionTaskPresetId: dto.positionTaskPresetId === undefined ? undefined : dto.positionTaskPresetId,
+        },
+      });
+      await this.syncAssignmentsTx(
+        tx,
+        organizationId,
+        id,
+        employeeIds,
         assignedEmployeeId,
-        planningAssignmentId,
         startsAt,
         endsAt,
-        quantity:
-          dto.quantity === undefined
-            ? undefined
-            : dto.quantity === null
-              ? null
-              : new Prisma.Decimal(dto.quantity),
-        unitLabel: dto.unitLabel === undefined ? undefined : dto.unitLabel?.trim() || null,
-        source: dto.source,
-        menuId: dto.menuId === undefined ? undefined : dto.menuId,
-        technicalSheetId: dto.technicalSheetId === undefined ? undefined : dto.technicalSheetId,
-        technicalSheetStepId: dto.technicalSheetStepId === undefined ? undefined : dto.technicalSheetStepId,
-        productionBatchId: dto.productionBatchId === undefined ? undefined : dto.productionBatchId,
-        productionOperationId: dto.productionOperationId === undefined ? undefined : dto.productionOperationId,
-        positionTaskPresetId: dto.positionTaskPresetId === undefined ? undefined : dto.positionTaskPresetId,
-      },
-      include: TASK_INCLUDE,
+      );
+      return tx.operationalTask.findUniqueOrThrow({
+        where: { id },
+        include: TASK_INCLUDE,
+      });
     });
   }
 
@@ -813,6 +898,91 @@ export class OperationalTasksService {
     return department;
   }
 
+  private assigneeIds(employeeIds?: string[], leadEmployeeId?: string | null) {
+    return [...new Set([...(employeeIds ?? []), ...(leadEmployeeId ? [leadEmployeeId] : [])])];
+  }
+
+  private async validateAssigneeSet(
+    organizationId: string,
+    departmentId: string,
+    employeeIds: string[],
+  ) {
+    if (!employeeIds.length) return;
+    const employees = await this.prisma.hrEmployee.findMany({
+      where: {
+        organizationId,
+        id: { in: employeeIds },
+        departmentId,
+        status: HrEmployeeStatus.ACTIVE,
+        isArchived: false,
+      },
+      select: { id: true },
+    });
+    if (employees.length !== employeeIds.length) {
+      throw new BadRequestException(
+        'Tous les collaborateurs doivent être actifs et dépendre du service sélectionné.',
+      );
+    }
+  }
+
+  private async syncAssignmentsTx(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    taskId: string,
+    employeeIds: string[],
+    leadEmployeeId: string | null,
+    startsAt: Date,
+    endsAt: Date,
+  ) {
+    await tx.operationalTaskAssignment.deleteMany({
+      where: { taskId, employeeId: { notIn: employeeIds } },
+    });
+    for (const employeeId of employeeIds) {
+      const planningAssignmentId = await this.matchingPlanningAssignmentTx(
+        tx,
+        organizationId,
+        employeeId,
+        startsAt,
+        endsAt,
+      );
+      await tx.operationalTaskAssignment.upsert({
+        where: { taskId_employeeId: { taskId, employeeId } },
+        create: {
+          organizationId,
+          taskId,
+          employeeId,
+          planningAssignmentId,
+          isLead: employeeId === leadEmployeeId,
+          plannedMinutes: Math.max(5, Math.round((endsAt.getTime() - startsAt.getTime()) / 60_000)),
+        },
+        update: {
+          planningAssignmentId,
+          isLead: employeeId === leadEmployeeId,
+        },
+      });
+    }
+  }
+
+  private async matchingPlanningAssignmentTx(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    employeeId: string,
+    startsAt: Date,
+    endsAt: Date,
+  ) {
+    const shift = await tx.planningAssignment.findFirst({
+      where: {
+        organizationId,
+        employeeId,
+        status: { not: PlanningAssignmentStatus.CANCELLED },
+        startTime: { lte: startsAt },
+        endTime: { gte: endsAt },
+      },
+      orderBy: { startTime: 'asc' },
+    });
+    return shift?.id ?? null;
+  }
+
   private async matchingPlanningAssignment(
     organizationId: string,
     employeeId: string,
@@ -864,12 +1034,23 @@ export class OperationalTasksService {
     const own = scope.actorEmployeeId;
     if (!own) return { createdById: actor.id };
     if (!scope.managesPeople) {
-      return { OR: [{ assignedEmployeeId: own }, { createdById: actor.id }] };
+      return {
+        OR: [
+          { assignedEmployeeId: own },
+          { assignments: { some: { employeeId: own } } },
+          { createdById: actor.id },
+        ],
+      };
     }
     return {
       OR: [
         { assignedEmployeeId: { in: [...scope.employeeIds] } },
-        { assignedEmployeeId: null, departmentId: { in: [...scope.departmentIds] } },
+        {
+          assignedEmployeeId: null,
+          assignments: { none: {} },
+          departmentId: { in: [...scope.departmentIds] },
+        },
+        { assignments: { some: { employeeId: { in: [...scope.employeeIds] } } } },
         { createdById: actor.id },
       ],
     };

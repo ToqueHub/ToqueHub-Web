@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { MenusService } from './menus.service';
 
 describe('MenusService card availability', () => {
@@ -85,6 +86,380 @@ describe('MenusService card availability', () => {
       status: 'DRAFT',
     }));
     expect(prisma.menuHistory.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: 'AVAILABILITY_PLANNED' }) }));
+  });
+
+  it('plans only the selected menu products with their customized quantities and service', async () => {
+    const sheet = {
+      id: 'sheet-snicker',
+      name: 'Snicker',
+      status: 'ACTIVE',
+      isArchived: false,
+      outputProductId: 'product-snicker',
+      ingredients: [],
+    };
+    const menu = {
+      id: 'menu-1',
+      organizationId: 'org-1',
+      name: 'Menu du mardi',
+      status: 'VALIDATED',
+      activity: 'RESTAURANT_CAFE',
+      siteId: 'site-1',
+      date: new Date('2026-07-28T00:00:00.000Z'),
+      expectedGuests: 50,
+      guestForecasts: [],
+      productionGeneratedAt: null,
+      productionDirtySince: null,
+      productionLinks: [],
+      items: [{
+        id: 'item-snicker',
+        technicalSheetId: sheet.id,
+        technicalSheet: sheet,
+        section: 'DESSERT',
+        portionsOverride: null,
+        servingQuantity: 1,
+      }],
+    };
+    const tx = {
+      menu: { update: jest.fn().mockResolvedValue({}) },
+      menuHistory: { create: jest.fn().mockResolvedValue({}) },
+    };
+    const prisma = {
+      organization: { findUnique: jest.fn().mockResolvedValue(installedOrganization) },
+      menu: {
+        findFirst: jest.fn().mockResolvedValue(menu),
+        update: jest.fn(),
+      },
+      productionProfile: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'profile-snicker',
+          outputProductId: 'product-snicker',
+          outputVariantId: null,
+          yieldUnitId: 'unit-piece',
+          outputProduct: { id: 'product-snicker' },
+          outputVariant: null,
+          yieldUnit: { id: 'unit-piece' },
+        }),
+      },
+      productionNeed: { findFirst: jest.fn().mockResolvedValue(null) },
+      menuProductionLink: { create: jest.fn().mockResolvedValue({}) },
+      $transaction: jest.fn().mockImplementation((work) => work(tx)),
+    };
+    const createNeed = jest.fn().mockResolvedValue({ id: 'need-1' });
+    const createCampaign = jest.fn().mockResolvedValue({
+      id: 'campaign-1',
+      recipeVersionId: 'recipe-version-1',
+    });
+    const ensureProductionProfile = jest.fn().mockResolvedValue({
+      id: 'profile-snicker',
+      technicalSheetId: 'sheet-snicker',
+      outputProductId: 'product-snicker',
+      outputVariantId: null,
+      yieldUnitId: 'unit-piece',
+      referenceYield: new Prisma.Decimal(24),
+    });
+    const service = new MenusService(
+      prisma as any,
+      { createNeed } as any,
+      { createCampaign } as any,
+      { ensureProductionProfile } as any,
+    );
+
+    const result = await service.generateProductions(
+      'org-1',
+      { id: 'user-1', role: 'Manager' },
+      'menu-1',
+      {
+        mode: 'DETAILED',
+        serviceId: 'department-kitchen',
+        plannedTime: '07:30',
+        lines: [{ menuItemId: 'item-snicker', portions: 45 }],
+      },
+    );
+
+    expect(createCampaign).toHaveBeenCalledWith(
+      'org-1',
+      expect.anything(),
+      expect.objectContaining({
+        grossRequirement: '45.000',
+        plannedTime: '07:30',
+        serviceId: 'department-kitchen',
+      }),
+    );
+    expect(ensureProductionProfile).toHaveBeenCalledWith(
+      'org-1',
+      expect.anything(),
+      'sheet-snicker',
+      'site-1',
+    );
+    expect(prisma.menuProductionLink.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        menuId: 'menu-1',
+        snapshot: expect.objectContaining({
+          lines: [expect.objectContaining({
+            menuItemId: 'item-snicker',
+            portions: 45,
+            plannedTime: '07:30',
+          })],
+        }),
+      }),
+    });
+    expect(tx.menu.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ productionGeneratedAt: expect.any(Date) }),
+    }));
+    expect(result).toEqual(expect.objectContaining({
+      created: 1,
+      allMenuProductsPlanned: true,
+    }));
+  });
+
+  it('creates a dated production plan from the permanent card and deducts the previous carry-over', async () => {
+    const sourceItem = {
+      id: 'catalog-item-snickers',
+      section: 'DESSERT',
+      menuCategoryId: 'category-desserts',
+      dietId: null,
+      position: 0,
+      servingQuantity: new Prisma.Decimal(1),
+      availabilityEnabled: true,
+      technicalSheetId: 'sheet-snickers',
+      technicalSheet: {
+        id: 'sheet-snickers',
+        name: 'Snickers',
+        outputProductId: 'product-snickers',
+      },
+    };
+    const catalog = {
+      id: 'catalog-food',
+      name: 'Carte nourriture',
+      kind: 'CATALOG',
+      service: 'SNACK',
+      items: [sourceItem],
+    };
+    const tx = {
+      menu: {
+        create: jest.fn().mockResolvedValue({ id: 'daily-menu-1' }),
+      },
+      menuItem: {
+        create: jest.fn().mockResolvedValue({
+          id: 'daily-item-snickers',
+          technicalSheetId: 'sheet-snickers',
+        }),
+      },
+    };
+    const prisma = {
+      organization: { findUnique: jest.fn().mockResolvedValue(installedOrganization) },
+      site: { findFirst: jest.fn().mockResolvedValue({ id: 'site-1', name: 'Café' }) },
+      menu: {
+        findFirst: jest.fn()
+          .mockResolvedValueOnce(catalog)
+          .mockResolvedValueOnce(null),
+      },
+      productionDayClosure: {
+        findFirst: jest.fn().mockResolvedValue({
+          date: new Date('2026-07-27T00:00:00.000Z'),
+          items: [{
+            outputProductId: 'product-snickers',
+            carryOverNextPortions: new Prisma.Decimal(5),
+          }],
+        }),
+      },
+      productionProfile: {
+        findMany: jest.fn().mockResolvedValue([{
+          technicalSheetId: 'sheet-snickers',
+          outputProductId: 'product-snickers',
+          outputProduct: { id: 'product-snickers' },
+        }]),
+      },
+      $transaction: jest.fn().mockImplementation((work) => work(tx)),
+    };
+    const service = new MenusService(prisma as any, {} as any, {} as any);
+    const generate = jest.spyOn(service, 'generateProductions').mockResolvedValue({
+      created: 1,
+      orders: [{ id: 'order-1' }],
+    } as any);
+    jest.spyOn(service, 'getMenu').mockResolvedValue({
+      id: 'daily-menu-1',
+      name: 'Vitrine',
+    } as any);
+
+    const result = await service.planCatalogProductionDay(
+      'org-1',
+      { id: 'user-1', role: 'Manager' },
+      'catalog-food',
+      {
+        siteId: 'site-1',
+        date: '2026-07-28',
+        serviceId: 'department-kitchen',
+        plannedTime: '08:00',
+        lines: [{
+          menuItemId: 'catalog-item-snickers',
+          targetPortions: 50,
+        }],
+      },
+    );
+
+    expect(generate).toHaveBeenCalledWith(
+      'org-1',
+      expect.anything(),
+      'daily-menu-1',
+      expect.objectContaining({
+        serviceId: 'department-kitchen',
+        lines: [{
+          menuItemId: 'daily-item-snickers',
+          portions: 45,
+          targetPortions: 50,
+          openingCarryOverPortions: 5,
+          plannedTime: '08:00',
+        }],
+      }),
+    );
+    expect(result.lines[0]).toEqual(expect.objectContaining({
+      targetPortions: 50,
+      openingCarryOverPortions: 5,
+      portions: 45,
+    }));
+  });
+
+  it('updates the objective of an existing planned card product instead of creating a duplicate', async () => {
+    const sourceItem = {
+      id: 'catalog-item-veloute',
+      section: 'STARTER',
+      menuCategoryId: 'category-starters',
+      dietId: null,
+      position: 0,
+      servingQuantity: new Prisma.Decimal(1),
+      availabilityEnabled: true,
+      technicalSheetId: 'sheet-veloute',
+      technicalSheet: {
+        id: 'sheet-veloute',
+        name: 'Velouté de potimarron',
+        outputProductId: 'product-veloute',
+      },
+    };
+    const catalog = {
+      id: 'catalog-food',
+      name: 'Carte nourriture',
+      kind: 'CATALOG',
+      service: 'SNACK',
+      items: [sourceItem],
+    };
+    const existingDailyMenu = {
+      id: 'daily-menu-1',
+      productionGeneratedAt: new Date('2026-07-27T08:00:00.000Z'),
+      productionDirtySince: null,
+      items: [{
+        id: 'daily-item-veloute',
+        technicalSheetId: 'sheet-veloute',
+        dietId: null,
+        portionsOverride: new Prisma.Decimal(50),
+      }],
+      productionLinks: [{
+        id: 'link-1',
+        productionOrderId: 'order-1',
+        productionOrder: {
+          id: 'order-1',
+          technicalSheetId: 'sheet-veloute',
+          status: 'PROPOSED',
+        },
+        snapshot: {
+          lines: [{
+            menuItemId: 'daily-item-veloute',
+            technicalSheetId: 'sheet-veloute',
+            portions: 50,
+            targetPortions: 50,
+            openingCarryOverPortions: 0,
+            plannedTime: '08:00',
+          }],
+        },
+      }],
+    };
+    const tx = {
+      menu: {
+        update: jest.fn().mockResolvedValue(existingDailyMenu),
+      },
+      menuItem: {
+        update: jest.fn().mockResolvedValue(existingDailyMenu.items[0]),
+      },
+    };
+    const prisma = {
+      organization: { findUnique: jest.fn().mockResolvedValue(installedOrganization) },
+      site: { findFirst: jest.fn().mockResolvedValue({ id: 'site-1', name: 'Café' }) },
+      menu: {
+        findFirst: jest.fn()
+          .mockResolvedValueOnce(catalog)
+          .mockResolvedValueOnce(existingDailyMenu),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      productionDayClosure: { findFirst: jest.fn().mockResolvedValue(null) },
+      productionProfile: {
+        findMany: jest.fn().mockResolvedValue([{
+          technicalSheetId: 'sheet-veloute',
+          outputProductId: 'product-veloute',
+          outputProduct: { id: 'product-veloute' },
+        }]),
+      },
+      menuProductionLink: { update: jest.fn().mockResolvedValue({}) },
+      $transaction: jest.fn().mockImplementation((work) => work(tx)),
+    };
+    const rescheduleCampaign = jest.fn().mockResolvedValue({
+      id: 'order-1',
+      grossRequirement: '500.000',
+    });
+    const service = new MenusService(
+      prisma as any,
+      {} as any,
+      { rescheduleCampaign } as any,
+    );
+    const generate = jest.spyOn(service, 'generateProductions');
+    jest.spyOn(service, 'getMenu').mockResolvedValue({
+      id: 'daily-menu-1',
+      name: 'Vitrine',
+    } as any);
+
+    const result = await service.planCatalogProductionDay(
+      'org-1',
+      { id: 'user-1', role: 'Manager' },
+      'catalog-food',
+      {
+        siteId: 'site-1',
+        date: '2026-07-27',
+        serviceId: 'department-kitchen',
+        plannedTime: '09:00',
+        lines: [{
+          menuItemId: 'catalog-item-veloute',
+          targetPortions: 500,
+        }],
+      },
+    );
+
+    expect(rescheduleCampaign).toHaveBeenCalledWith(
+      'org-1',
+      expect.anything(),
+      'order-1',
+      {
+        grossRequirement: '500.000',
+        plannedTime: '09:00',
+        serviceId: 'department-kitchen',
+      },
+    );
+    expect(generate).not.toHaveBeenCalled();
+    expect(prisma.menuProductionLink.update).toHaveBeenCalledWith({
+      where: { id: 'link-1' },
+      data: {
+        snapshot: expect.objectContaining({
+          lines: [expect.objectContaining({
+            targetPortions: 500,
+            portions: 500,
+            plannedTime: '09:00',
+          })],
+        }),
+      },
+    });
+    expect(result.generation).toEqual(expect.objectContaining({
+      created: 0,
+      updated: 1,
+      orders: [expect.objectContaining({ id: 'order-1' })],
+    }));
   });
 
   it('accepts every active stock-tracked technical sheet as a menu item', async () => {

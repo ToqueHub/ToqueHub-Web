@@ -222,6 +222,31 @@ export class GenerateCatererEventProductionsDto {
   @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() force?: boolean;
 }
 
+export class GenerateMenuProductionLineDto {
+  @IsUUID() menuItemId!: string;
+  @Type(() => Number) @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) portions!: number;
+  @IsOptional() @IsString() @MaxLength(8) plannedTime?: string;
+  @IsOptional() @Type(() => Number) @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) targetPortions?: number;
+  @IsOptional() @Type(() => Number) @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) openingCarryOverPortions?: number;
+}
+
+export class PlanCatalogProductionDayLineDto {
+  @IsUUID() menuItemId!: string;
+  @Type(() => Number) @IsNumber({ maxDecimalPlaces: 3 }) @Min(0.001) targetPortions!: number;
+  @IsOptional() @IsString() @MaxLength(8) plannedTime?: string;
+}
+
+export class PlanCatalogProductionDayDto {
+  @IsUUID() siteId!: string;
+  @IsString() date!: string;
+  @IsUUID() serviceId!: string;
+  @IsOptional() @IsString() @MaxLength(8) plannedTime?: string;
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PlanCatalogProductionDayLineDto)
+  lines!: PlanCatalogProductionDayLineDto[];
+}
+
 export class UpdateMenuDispatchStatusDto {
   @IsEnum(MenuDispatchStatus) status!: MenuDispatchStatus;
 }
@@ -230,6 +255,8 @@ export class GenerateProductionsDto {
   @IsEnum(MenuProductionGenerationMode) mode!: MenuProductionGenerationMode;
   @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() force?: boolean;
   @IsOptional() @IsString() @MaxLength(8) plannedTime?: string;
+  @IsOptional() @IsUUID() serviceId?: string;
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => GenerateMenuProductionLineDto) lines?: GenerateMenuProductionLineDto[];
 }
 
 export class PrepareMenuExportDto {

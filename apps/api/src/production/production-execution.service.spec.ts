@@ -215,6 +215,133 @@ describe('ProductionExecutionService', () => {
     })]);
   });
 
+  it('recalculates a clickable calendar campaign and keeps its menu objective in sync', async () => {
+    const current = {
+      id: 'campaign-1',
+      organizationId: 'org-1',
+      siteId: 'site-1',
+      technicalSheetId: 'sheet-1',
+      outputProductId: 'product-1',
+      outputVariantId: null,
+      status: ProductionOrderStatus.PROPOSED,
+      batches: [{ id: 'batch-1', status: ProductionBatchStatus.TO_PREPARE }],
+    };
+    const order = {
+      ...current,
+      recipeVersionId: 'version-1',
+      productionDate: new Date('2026-07-27T00:00:00.000Z'),
+      grossRequirement: new Prisma.Decimal(30),
+      needAllocations: [],
+      menuProductionLinks: [{
+        id: 'link-1',
+        snapshot: {
+          lines: [{
+            menuItemId: 'menu-item-1',
+            technicalSheetId: 'sheet-1',
+            portions: 30,
+            targetPortions: 40,
+            openingCarryOverPortions: 10,
+            plannedTime: '08:00',
+          }],
+        },
+      }],
+    };
+    const tx = {
+      productionOrder: {
+        findFirst: jest.fn().mockResolvedValue(order),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      operationalTask: { count: jest.fn().mockResolvedValue(0) },
+      stockReservation: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      productionMaterialRequirement: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      productionBatch: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      menuProductionLink: { update: jest.fn().mockResolvedValue({}) },
+      menuItem: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    };
+    const prisma = {
+      hrDepartment: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'department-kitchen' }),
+      },
+      productionOrder: { findFirst: jest.fn().mockResolvedValue(current) },
+      productionProfile: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'profile-1',
+          siteId: 'site-1',
+          technicalSheetId: 'sheet-1',
+          outputProductId: 'product-1',
+          outputVariantId: null,
+          yieldUnitId: 'unit-portion',
+          mode: 'FIXED',
+          referenceYield: new Prisma.Decimal(10),
+          minimumQuantity: null,
+          optimalQuantity: null,
+          maximumQuantity: null,
+          stepQuantity: null,
+          allowedFormats: null,
+          allowHalfBatch: false,
+          allowDoubleBatch: false,
+          technicalSheet: { ingredients: [], steps: [] },
+        }),
+      },
+      $transaction: jest.fn().mockImplementation((work) => work(tx)),
+    };
+    const planning = {
+      rulesForProfile: jest.fn().mockReturnValue({
+        mode: 'FIXED',
+        referenceYield: new Prisma.Decimal(10),
+        minimumQuantity: null,
+        optimalQuantity: null,
+        maximumQuantity: null,
+        stepQuantity: null,
+        allowedFormats: [],
+        allowHalfBatch: false,
+        allowDoubleBatch: false,
+      }),
+    };
+    const service = new ProductionExecutionService(
+      prisma as never,
+      planning as never,
+    );
+    jest.spyOn(service as any, 'createRequirements').mockResolvedValue(undefined);
+    jest.spyOn(service as any, 'createBatchesAndOperations').mockResolvedValue(undefined);
+    jest.spyOn(service as any, 'history').mockResolvedValue(undefined);
+    jest.spyOn(service as any, 'getCampaignTx').mockResolvedValue({ id: 'campaign-1' });
+
+    await service.rescheduleCampaign('org-1', actor, 'campaign-1', {
+      grossRequirement: '50',
+      targetPortions: '60',
+      plannedTime: '09:00',
+      serviceId: 'department-kitchen',
+    });
+
+    expect(tx.productionOrder.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'campaign-1' },
+      data: expect.objectContaining({
+        grossRequirement: new Prisma.Decimal(50),
+        plannedTime: '09:00',
+        serviceId: 'department-kitchen',
+        status: ProductionOrderStatus.PROPOSED,
+      }),
+    }));
+    expect(tx.menuProductionLink.update).toHaveBeenCalledWith({
+      where: { id: 'link-1' },
+      data: {
+        snapshot: {
+          lines: [expect.objectContaining({
+            menuItemId: 'menu-item-1',
+            portions: 50,
+            targetPortions: 60,
+            plannedTime: '09:00',
+          })],
+        },
+      },
+    });
+    expect(tx.menuItem.updateMany).toHaveBeenCalledWith({
+      where: { id: 'menu-item-1', organizationId: 'org-1' },
+      data: { portionsOverride: new Prisma.Decimal(60) },
+    });
+  });
+
   it('synchronizes linked planning tasks when a batch starts', async () => {
     const tx = {
       productionBatch: {
