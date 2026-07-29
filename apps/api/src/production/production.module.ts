@@ -5,6 +5,7 @@ import { ProductionPlanningService } from './production-planning.service';
 import { ProductionService } from './production.service';
 import { OperationalTasksService } from './operational-tasks.service';
 import { ProductionDayClosureService } from './production-day-closure.service';
+import { ProductionOperationalExportService } from './production-operational-export.service';
 
 @Module({
   controllers: [ProductionController],
@@ -14,6 +15,7 @@ import { ProductionDayClosureService } from './production-day-closure.service';
     ProductionExecutionService,
     OperationalTasksService,
     ProductionDayClosureService,
+    ProductionOperationalExportService,
   ],
   exports: [
     ProductionService,
@@ -21,6 +23,7 @@ import { ProductionDayClosureService } from './production-day-closure.service';
     ProductionExecutionService,
     OperationalTasksService,
     ProductionDayClosureService,
+    ProductionOperationalExportService,
   ],
 })
 export class ProductionModule {}

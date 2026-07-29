@@ -391,11 +391,7 @@ export interface DevSwitchConfig {
   enabled: boolean;
 }
 
-export type WorkspaceOnboardingStatus =
-  | 'PENDING'
-  | 'IN_PROGRESS'
-  | 'DEFERRED'
-  | 'COMPLETED';
+export type WorkspaceOnboardingStatus = 'PENDING' | 'IN_PROGRESS' | 'DEFERRED' | 'COMPLETED';
 
 export type WorkspaceOnboardingStep =
   | 'WELCOME'
@@ -570,9 +566,35 @@ export type HaccpAssistantChoice = {
   description?: string;
   payload?: Record<string, unknown>;
 };
-export type HumanSupportAttachment = { id: string; filename: string; mimeType: string; size: number; createdAt: string };
-export type HumanSupportMessage = { id: string; author: 'USER' | 'VOLUNTEER' | 'SYSTEM'; content: string; volunteerName?: string | null; deliveryStatus: 'PENDING' | 'SENT' | 'FAILED'; deliveryError?: string | null; createdAt: string; attachments: HumanSupportAttachment[] };
-export type HumanSupportTicket = { id: string; status: 'OPEN' | 'IN_PROGRESS' | 'CLOSED'; contactEmail: string; contactPhone?: string | null; assignedVolunteer?: string | null; relayError?: string | null; createdAt: string; updatedAt: string; closedAt?: string | null; messages: HumanSupportMessage[] };
+export type HumanSupportAttachment = {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  createdAt: string;
+};
+export type HumanSupportMessage = {
+  id: string;
+  author: 'USER' | 'VOLUNTEER' | 'SYSTEM';
+  content: string;
+  volunteerName?: string | null;
+  deliveryStatus: 'PENDING' | 'SENT' | 'FAILED';
+  deliveryError?: string | null;
+  createdAt: string;
+  attachments: HumanSupportAttachment[];
+};
+export type HumanSupportTicket = {
+  id: string;
+  status: 'OPEN' | 'IN_PROGRESS' | 'CLOSED';
+  contactEmail: string;
+  contactPhone?: string | null;
+  assignedVolunteer?: string | null;
+  relayError?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  closedAt?: string | null;
+  messages: HumanSupportMessage[];
+};
 export interface TechnicalSheetAssistantDraft {
   id: string;
   targetTechnicalSheetId?: string | null;
@@ -1715,6 +1737,7 @@ export interface Product {
   supplierId?: string | null;
   primarySupplierId?: string | null;
   averagePrice?: string | number | null;
+  priceDisplayUnit?: string | null;
   averagePurchasePrice?: string | number | null;
   weightedAveragePrice?: string | number | null;
   minimumStock?: string | number | null;
@@ -1882,6 +1905,9 @@ export interface TechnicalSheetIngredientLine {
   allergens?: TechnicalSheetAllergen[];
   cost?: number | string | null;
   costTotal?: number | string | null;
+  unitPriceSnapshot?: number | string | null;
+  stockUnitPrice?: number | string | null;
+  stockUnitSymbol?: string | null;
   isCalculable?: boolean;
   nonCalculableReason?: string | null;
 }
@@ -1911,8 +1937,10 @@ export interface TechnicalSheetRecipe {
   outputProduct?: Product | null;
   yieldUnitId?: string | null;
   yieldUnit?: Unit | null;
+  yieldMode?: 'PORTIONS' | 'MASS';
   productionProfiles?: ProductionProfile[];
   referencePortions?: number | string | null;
+  totalMassGrams?: number | string | null;
   portions?: number | string | null;
   prepTimeMinutes?: number | string | null;
   cookTimeMinutes?: number | string | null;
@@ -1970,6 +1998,7 @@ export interface TechnicalSheetRecipePayload {
   outputProductName?: string;
   outputProductKind?: 'INTERMEDIATE' | 'FINISHED';
   yieldUnitId?: string;
+  yieldMode?: 'PORTIONS' | 'MASS';
   referencePortions: number;
   prepTimeMinutes?: number;
   cookTimeMinutes?: number;
@@ -2617,6 +2646,11 @@ export interface MenuAvailabilityComponent {
   inProductionQuantity?: number;
   missingQuantity: number;
   unit?: string;
+  unitPrice?: number | null;
+  unitPriceUnit?: string;
+  estimatedCost?: number | null;
+  recipeCost?: number | null;
+  costPerPortion?: number | null;
   status: 'READY' | 'TO_PRODUCE' | 'BLOCKED' | 'NOT_CONFIGURED';
   reason?: string;
   children?: MenuAvailabilityComponent[];
@@ -2639,6 +2673,8 @@ export interface MenuAvailabilityItem {
   toProduceQuantity?: number;
   toProducePortions?: number;
   missingStockQuantity?: number;
+  recipeCost?: number | null;
+  costPerPortion?: number | null;
   status: 'READY' | 'LOW_STOCK' | 'TO_PRODUCE' | 'COMPONENT_MISSING' | 'BLOCKED' | 'NOT_CONFIGURED';
   message?: string;
   components: MenuAvailabilityComponent[];
@@ -2754,7 +2790,12 @@ export interface CatererClient {
 
 export type CatererEventStatus = 'DRAFT' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
 export type CatererFulfillmentMode = 'DELIVERY' | 'PICKUP' | 'ON_SITE';
-export type CatererProductionState = 'NOT_GENERATED' | 'DIRTY' | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED';
+export type CatererProductionState =
+  | 'NOT_GENERATED'
+  | 'DIRTY'
+  | 'PLANNED'
+  | 'IN_PROGRESS'
+  | 'COMPLETED';
 
 export interface CatererPrestation {
   id: string;
@@ -2838,6 +2879,7 @@ export interface MenuProductionGenerationPayload {
 
 export interface MenuProductionGenerationResult {
   createdOrdersCount?: number;
+  reused?: number;
   orders?: ProductionOrder[];
   productionOrderIds?: string[];
   mode?: 'DETAILED' | 'GROUPED' | string;
@@ -3631,6 +3673,7 @@ export interface OperationalTask {
   positionTaskPresetId?: string | null;
   startsAt: string;
   endsAt: string;
+  isTimeScheduled: boolean;
   quantity?: number | string | null;
   unitLabel?: string | null;
   completedAt?: string | null;
@@ -3647,6 +3690,13 @@ export interface OperationalTask {
     id: string;
     name: string;
     referencePortions?: number | string | null;
+    steps?: Array<{
+      id: string;
+      order: number;
+      title: string;
+      description?: string | null;
+      estimatedMinutes?: number | null;
+    }>;
   } | null;
   technicalSheetStep?: {
     id: string;
@@ -3695,6 +3745,7 @@ export interface OperationalTaskPayload {
   assignedEmployeeIds?: string[];
   startsAt: string;
   endsAt: string;
+  isTimeScheduled?: boolean;
   quantity?: number | null;
   unitLabel?: string | null;
   source?: OperationalTaskSource;
@@ -3866,6 +3917,8 @@ export interface ProductionOrder {
   enrichedPriority?: ProductionPriority;
   serviceId?: string | null;
   responsibleEmployeeId?: string | null;
+  targetMode?: 'PORTIONS' | 'MASS' | null;
+  targetQuantity?: number | string | null;
   plannedPortions: number | string;
   grossRequirement?: number | string;
   netRequirement?: number | string;
@@ -4195,6 +4248,8 @@ export interface ProductionStockSummaryItem {
 export interface CreateProductionCampaignPayload {
   profileId: string;
   grossRequirement: string;
+  targetMode?: 'PORTIONS' | 'MASS';
+  targetQuantity?: string;
   neededAt: string;
   plannedTime?: string;
   name?: string;
@@ -4251,4 +4306,68 @@ export interface ProductionCarryOver {
     productName: string;
     portions: number;
   }>;
+}
+
+export interface ProductionDayValidationIngredient {
+  productId: string;
+  productName: string;
+  quantity: string;
+  reservedQuantity: string;
+  consumedQuantity: string;
+  unitId: string;
+  unitSymbol: string;
+}
+
+export interface ProductionDayValidationOrder {
+  id: string;
+  number: string;
+  name: string;
+  status: ProductionOrderStatus;
+  plannedTime: string;
+  service?: { id: string; name: string } | null;
+  quantityMode?: 'PORTIONS' | 'MASS';
+  quantityUnitLabel?: string;
+  requestedQuantity?: string;
+  referenceYield?: string;
+  requestedPortions: string;
+  plannedPortions: string;
+  referencePortions: string;
+  recipeMultiplier: string;
+  team: Array<{
+    id: string;
+    name: string;
+    isLead: boolean;
+    worksDuringProduction: boolean;
+  }>;
+  ingredients: ProductionDayValidationIngredient[];
+  batches: Array<{
+    id: string;
+    reference: string;
+    status: ProductionBatchStatus;
+    plannedQuantity: string;
+    unitSymbol: string;
+  }>;
+}
+
+export interface ProductionDayValidation {
+  site: { id: string; name: string };
+  date: string;
+  serviceId?: string | null;
+  ready: boolean;
+  completed: boolean;
+  pendingBatchCount: number;
+  blockingIssues: Array<{
+    code: string;
+    orderId: string;
+    orderName: string;
+    message: string;
+  }>;
+  totals: Array<{
+    productId: string;
+    productName: string;
+    quantity: string;
+    unitId: string;
+    unitSymbol: string;
+  }>;
+  orders: ProductionDayValidationOrder[];
 }

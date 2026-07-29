@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditAction, MenuActivity, MenuExportFormat, MenuHistoryAction, MenuKind, MenuProductionGenerationMode, MenuStatus, MenuUsageProfile, Prisma, ProductionMaterialStatus, ProductionPriority } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProductionExecutionService } from '../production/production-execution.service';
@@ -468,29 +468,106 @@ export class MenusService {
       const factor = requiredOutput / referenceYield;
       return sheet.ingredients.map((line) => {
         const requiredInLineUnit = Number(line.quantity) * factor;
+        const unitPrice = Number(line.unitPriceSnapshot ?? line.product.averagePrice ?? 0);
+        const estimatedCost = line.cost == null
+          ? null
+          : Number(line.cost) * factor;
         if (line.sourceTechnicalSheetId) {
           const source = sheetsById.get(line.sourceTechnicalSheetId);
           if (!source?.outputProductId || !source.outputProduct || !source.yieldUnitId) {
-            return { kind: 'SUB_RECIPE', technicalSheetId: line.sourceTechnicalSheetId, name: source?.name ?? line.product.name, requiredQuantity: requiredInLineUnit, unit: line.unit.symbol, status: 'NOT_CONFIGURED', missingQuantity: requiredInLineUnit, children: [] };
+            return {
+              kind: 'SUB_RECIPE',
+              technicalSheetId: line.sourceTechnicalSheetId,
+              name: source?.name ?? line.product.name,
+              requiredQuantity: requiredInLineUnit,
+              unit: line.unit.symbol,
+              unitPrice,
+              unitPriceUnit: line.product.unit?.symbol ?? line.unit.symbol,
+              estimatedCost,
+              recipeCost: source?.totalCost == null ? null : Number(source.totalCost),
+              costPerPortion: source?.costPerPortion == null ? null : Number(source.costPerPortion),
+              status: 'NOT_CONFIGURED',
+              missingQuantity: requiredInLineUnit,
+              children: [],
+            };
           }
           const requiredYield = convert(requiredInLineUnit, line.unitId, source.yieldUnitId);
           if (requiredYield == null) {
-            return { kind: 'SUB_RECIPE', technicalSheetId: source.id, name: source.name, requiredQuantity: requiredInLineUnit, unit: line.unit.symbol, status: 'BLOCKED', reason: 'Conversion d’unité manquante', missingQuantity: requiredInLineUnit, children: [] };
+            return {
+              kind: 'SUB_RECIPE',
+              technicalSheetId: source.id,
+              name: source.name,
+              requiredQuantity: requiredInLineUnit,
+              unit: line.unit.symbol,
+              unitPrice,
+              unitPriceUnit: line.product.unit?.symbol ?? line.unit.symbol,
+              estimatedCost,
+              recipeCost: Number(source.totalCost ?? 0),
+              costPerPortion: Number(source.costPerPortion ?? 0),
+              status: 'BLOCKED',
+              reason: 'Conversion d’unité manquante',
+              missingQuantity: requiredInLineUnit,
+              children: [],
+            };
           }
           const stockInYield = convert(productBalance(source.outputProductId), source.outputProduct.unitId, source.yieldUnitId) ?? 0;
           const productionInYield = convert(productionByProduct.get(source.outputProductId) ?? 0, source.outputProduct.unitId, source.yieldUnitId) ?? 0;
           const missing = Math.max(requiredYield - stockInYield - productionInYield, 0);
           const children = buildComponents(source.id, missing, [...visited, sheetId]);
           const blocked = children.some((child) => child.status === 'BLOCKED' || child.status === 'NOT_CONFIGURED');
-          return { kind: 'SUB_RECIPE', technicalSheetId: source.id, productId: source.outputProductId, name: source.name, requiredQuantity: requiredYield, availableQuantity: stockInYield, inProductionQuantity: productionInYield, missingQuantity: missing, unit: source.yieldUnit?.symbol ?? source.outputProduct.unit.symbol, status: blocked ? 'BLOCKED' : missing > 0 ? 'TO_PRODUCE' : 'READY', children };
+          return {
+            kind: 'SUB_RECIPE',
+            technicalSheetId: source.id,
+            productId: source.outputProductId,
+            name: source.name,
+            requiredQuantity: requiredYield,
+            availableQuantity: stockInYield,
+            inProductionQuantity: productionInYield,
+            missingQuantity: missing,
+            unit: source.yieldUnit?.symbol ?? source.outputProduct.unit.symbol,
+            unitPrice,
+            unitPriceUnit: line.product.unit?.symbol ?? line.unit.symbol,
+            estimatedCost,
+            recipeCost: Number(source.totalCost ?? 0),
+            costPerPortion: Number(source.costPerPortion ?? 0),
+            status: blocked ? 'BLOCKED' : missing > 0 ? 'TO_PRODUCE' : 'READY',
+            children,
+          };
         }
         const requiredProductUnit = convert(requiredInLineUnit, line.unitId, line.product.unitId);
         if (requiredProductUnit == null) {
-          return { kind: 'PRODUCT', productId: line.productId, name: line.product.name, requiredQuantity: requiredInLineUnit, availableQuantity: productBalance(line.productId), missingQuantity: requiredInLineUnit, unit: line.unit.symbol, status: 'BLOCKED', reason: 'Conversion d’unité manquante', children: [] };
+          return {
+            kind: 'PRODUCT',
+            productId: line.productId,
+            name: line.product.name,
+            requiredQuantity: requiredInLineUnit,
+            availableQuantity: productBalance(line.productId),
+            missingQuantity: requiredInLineUnit,
+            unit: line.unit.symbol,
+            unitPrice,
+            unitPriceUnit: line.product.unit?.symbol ?? line.unit.symbol,
+            estimatedCost,
+            status: 'BLOCKED',
+            reason: 'Conversion d’unité manquante',
+            children: [],
+          };
         }
         const available = productBalance(line.productId);
         const missing = Math.max(requiredProductUnit - available, 0);
-        return { kind: 'PRODUCT', productId: line.productId, name: line.product.name, requiredQuantity: requiredProductUnit, availableQuantity: available, missingQuantity: missing, unit: line.product.unit.symbol, status: missing > 0 ? 'BLOCKED' : 'READY', children: [] };
+        return {
+          kind: 'PRODUCT',
+          productId: line.productId,
+          name: line.product.name,
+          requiredQuantity: requiredProductUnit,
+          availableQuantity: available,
+          missingQuantity: missing,
+          unit: line.product.unit.symbol,
+          unitPrice,
+          unitPriceUnit: line.product.unit.symbol,
+          estimatedCost: estimatedCost ?? unitPrice * requiredProductUnit,
+          status: missing > 0 ? 'BLOCKED' : 'READY',
+          children: [],
+        };
       });
     };
 
@@ -501,11 +578,26 @@ export class MenusService {
       if (item.productId) {
         const product = item.product;
         if (!item.availabilityEnabled || !product) {
-          return { id: item.id, sourceType: 'PRODUCT', productId: item.productId, name: product?.name ?? 'Produit Stocks', category: item.menuCategory, servingQuantity, targetPortions, status: 'NOT_CONFIGURED', message: !item.availabilityEnabled ? 'Suivi désactivé' : 'Produit Stocks indisponible', components: [] };
+          const unitPrice = Number(product?.averagePrice ?? 0);
+          return {
+            id: item.id,
+            sourceType: 'PRODUCT',
+            productId: item.productId,
+            name: product?.name ?? 'Produit Stocks',
+            category: item.menuCategory,
+            servingQuantity,
+            targetPortions,
+            recipeCost: unitPrice,
+            costPerPortion: unitPrice * servingQuantity,
+            status: 'NOT_CONFIGURED',
+            message: !item.availabilityEnabled ? 'Suivi désactivé' : 'Produit Stocks indisponible',
+            components: [],
+          };
         }
         const stockQuantity = productBalance(product.id);
         const targetQuantity = targetPortions * servingQuantity;
         const missingQuantity = Math.max(targetQuantity - stockQuantity, 0);
+        const unitPrice = Number(product.averagePrice ?? 0);
         return {
           id: item.id,
           sourceType: 'PRODUCT',
@@ -523,23 +615,65 @@ export class MenusService {
           toProduceQuantity: 0,
           toProducePortions: 0,
           missingStockQuantity: missingQuantity,
+          recipeCost: unitPrice,
+          costPerPortion: unitPrice * servingQuantity,
           status: missingQuantity > 0 ? 'BLOCKED' : 'READY',
           message: missingQuantity > 0 ? `Stock insuffisant : ${missingQuantity.toFixed(3)} ${product.unit?.symbol ?? ''} à approvisionner` : undefined,
-          components: [{ kind: 'PRODUCT', productId: product.id, name: product.name, requiredQuantity: targetQuantity, availableQuantity: stockQuantity, missingQuantity, unit: product.unit?.symbol, status: missingQuantity > 0 ? 'BLOCKED' : 'READY', children: [] }],
+          components: [{
+            kind: 'PRODUCT',
+            productId: product.id,
+            name: product.name,
+            requiredQuantity: targetQuantity,
+            availableQuantity: stockQuantity,
+            missingQuantity,
+            unit: product.unit?.symbol,
+            unitPrice,
+            unitPriceUnit: product.unit?.symbol,
+            estimatedCost: unitPrice * targetQuantity,
+            status: missingQuantity > 0 ? 'BLOCKED' : 'READY',
+            children: [],
+          }],
         };
       }
       const sheet = sheetsById.get(item.technicalSheetId) ?? item.technicalSheet;
       const outputProduct = sheet?.outputProduct;
       if (!item.availabilityEnabled || !sheet?.outputProductId || !outputProduct || !sheet.yieldUnitId) {
-        return { id: item.id, sourceType: 'TECHNICAL_SHEET', technicalSheetId: item.technicalSheetId, name: sheet?.name ?? 'Fiche technique', category: item.menuCategory, servingQuantity, targetPortions, status: 'NOT_CONFIGURED', message: !item.availabilityEnabled ? 'Suivi désactivé' : 'Produit fabriqué non configuré dans la fiche technique', components: [] };
+        const components = sheet
+          ? buildComponents(
+              sheet.id,
+              targetPortions > 0
+                ? targetPortions * servingQuantity
+                : Math.max(Number(sheet.referencePortions ?? 1), 0.001),
+            )
+          : [];
+        return {
+          id: item.id,
+          sourceType: 'TECHNICAL_SHEET',
+          technicalSheetId: item.technicalSheetId,
+          name: sheet?.name ?? 'Fiche technique',
+          category: item.menuCategory,
+          servingQuantity,
+          targetPortions,
+          recipeCost: Number(sheet?.totalCost ?? 0),
+          costPerPortion: Number(sheet?.costPerPortion ?? 0),
+          status: 'NOT_CONFIGURED',
+          message: !item.availabilityEnabled ? 'Suivi désactivé' : 'Produit fabriqué non configuré dans la fiche technique',
+          components,
+        };
       }
       const availableOutput = convert(productBalance(sheet.outputProductId), outputProduct.unitId, sheet.yieldUnitId) ?? 0;
       const inProductionOutput = convert(productionByProduct.get(sheet.outputProductId) ?? 0, outputProduct.unitId, sheet.yieldUnitId) ?? 0;
       const targetOutput = targetPortions * servingQuantity;
       const toProduceOutput = Math.max(targetOutput - availableOutput - inProductionOutput, 0);
-      const components = buildComponents(sheet.id, toProduceOutput);
+      const productionComponents = buildComponents(sheet.id, toProduceOutput);
+      const components = buildComponents(
+        sheet.id,
+        targetOutput > 0
+          ? targetOutput
+          : Math.max(Number(sheet.referencePortions ?? 1), 0.001),
+      );
       const flattened = (nodes: any[]): any[] => nodes.flatMap((node) => [node, ...flattened(node.children ?? [])]);
-      const allComponents = flattened(components);
+      const allComponents = flattened(productionComponents);
       const hasBlockedComponent = allComponents.some((component) => component.status === 'BLOCKED' || component.status === 'NOT_CONFIGURED');
       const hasMissingPreparation = allComponents.some((component) => component.kind === 'SUB_RECIPE' && component.missingQuantity > 0);
       const availablePortions = Math.floor(availableOutput / servingQuantity);
@@ -562,6 +696,8 @@ export class MenusService {
         projectedPortions,
         toProduceQuantity: toProduceOutput,
         toProducePortions: Math.ceil(toProduceOutput / servingQuantity),
+        recipeCost: Number(sheet.totalCost ?? 0),
+        costPerPortion: Number(sheet.costPerPortion ?? 0),
         status,
         components,
       };
@@ -619,23 +755,13 @@ export class MenusService {
     }
     const nextDate = new Date(date);
     nextDate.setUTCDate(nextDate.getUTCDate() + 1);
-    const [catalog, site, previousClosure] = await Promise.all([
+    const [catalog, site] = await Promise.all([
       this.prisma.menu.findFirst({
         where: { id: catalogId, organizationId, kind: MenuKind.CATALOG },
         include: this.menuInclude(),
       }),
       this.prisma.site.findFirst({
         where: { id: dto.siteId, organizationId, isArchived: false },
-      }),
-      this.prisma.productionDayClosure.findFirst({
-        where: {
-          organizationId,
-          siteId: dto.siteId,
-          date: { lt: date },
-          status: 'CLOSED',
-        },
-        include: { items: true },
-        orderBy: { date: 'desc' },
       }),
     ]);
     if (!catalog) throw new NotFoundException('Carte introuvable.');
@@ -689,16 +815,6 @@ export class MenusService {
       });
     }
 
-    const carryByProduct = new Map();
-    for (const item of previousClosure?.items ?? []) {
-      if (!item.outputProductId) continue;
-      carryByProduct.set(
-        item.outputProductId,
-        (carryByProduct.get(item.outputProductId) ?? 0) +
-          Number(item.carryOverNextPortions),
-      );
-    }
-
     const existingDailyMenu = await this.prisma.menu.findFirst({
       where: {
         organizationId,
@@ -746,7 +862,7 @@ export class MenusService {
         : await tx.menu.create({
             data: {
               organizationId,
-              name: `Vitrine · ${catalog.name} · ${new Intl.DateTimeFormat('fr-FR', {
+              name: `Production · ${catalog.name} · ${new Intl.DateTimeFormat('fr-FR', {
                 day: '2-digit',
                 month: '2-digit',
                 year: 'numeric',
@@ -771,7 +887,7 @@ export class MenusService {
         const targetPortions = Number(line.targetPortions);
         if (!Number.isFinite(targetPortions) || targetPortions <= 0) {
           throw new BadRequestException(
-            `L’objectif de ${sourceItem.technicalSheet.name} doit être supérieur à zéro.`,
+            `Le nombre de portions de ${sourceItem.technicalSheet.name} doit être supérieur à zéro.`,
           );
         }
         let dailyItem = existingDailyMenu?.items?.find(
@@ -803,24 +919,11 @@ export class MenusService {
             }),
           });
         }
-        const profile = profileBySheet.get(sourceItem.technicalSheetId);
-        const outputProductId =
-          profile.outputProductId ?? sourceItem.technicalSheet.outputProductId;
-        const availableCarry = outputProductId
-          ? Number(carryByProduct.get(outputProductId) ?? 0)
-          : 0;
-        const openingCarryOverPortions = Math.min(availableCarry, targetPortions);
-        if (outputProductId) {
-          carryByProduct.set(
-            outputProductId,
-            Math.max(availableCarry - openingCarryOverPortions, 0),
-          );
-        }
         lines.push({
           menuItemId: dailyItem.id,
-          portions: Math.max(targetPortions - openingCarryOverPortions, 0),
+          portions: targetPortions,
           targetPortions,
-          openingCarryOverPortions,
+          openingCarryOverPortions: 0,
           plannedTime: line.plannedTime || dto.plannedTime || '08:00',
           ...(existingProductionLink
             ? {
@@ -909,7 +1012,7 @@ export class MenusService {
         updated: updatedOrders.length,
         orders: [...updatedOrders, ...(generation.orders ?? [])],
       },
-      previousClosureDate: previousClosure?.date ?? null,
+      previousClosureDate: null,
       lines: prepared.lines,
     };
   }
@@ -1030,6 +1133,7 @@ export class MenusService {
     }
 
     const created = [];
+    const reused = [];
     for (const { group, profile } of prepared) {
       const portions = group.lines.reduce((sum, line) => sum + line.portions, 0);
       const reference = hasLineSelection
@@ -1062,25 +1166,46 @@ export class MenusService {
           },
         );
       }
-      const campaign = await this.productionExecution.createCampaign(
-        organizationId,
-        { id: actor.id, role: actor.role, permissions: [] },
-        {
-          profileId: profile.id,
-          grossRequirement: new Prisma.Decimal(portions).toFixed(3),
-          neededAt: menu.date.toISOString(),
-          plannedTime: group.lines[0].plannedTime || dto.plannedTime || '08:00',
-          serviceId: dto.serviceId,
-          name:
-            dto.mode === MenuProductionGenerationMode.GROUPED
-              ? `Menu ${menu.name} - ${group.lines[0].technicalSheet.name}`
-              : group.lines[0].technicalSheet.name,
-          priority: ProductionPriority.NORMAL,
-          needIds: [need.id],
-          createSubRecipeNeeds: true,
-          comments: `Généré depuis Menus: ${menu.name}`,
-        },
-      );
+      const campaignPayload = {
+        profileId: profile.id,
+        grossRequirement: new Prisma.Decimal(portions).toFixed(3),
+        neededAt: menu.date.toISOString(),
+        plannedTime: group.lines[0].plannedTime || dto.plannedTime || '08:00',
+        serviceId: dto.serviceId,
+        name:
+          dto.mode === MenuProductionGenerationMode.GROUPED
+            ? `Menu ${menu.name} - ${group.lines[0].technicalSheet.name}`
+            : group.lines[0].technicalSheet.name,
+        priority: ProductionPriority.NORMAL,
+        needIds: [need.id],
+        createSubRecipeNeeds: true,
+        comments: `Généré depuis Menus: ${menu.name}`,
+      };
+      let campaign;
+      let reusedExistingCampaign = false;
+      try {
+        campaign = await this.productionExecution.createCampaign(
+          organizationId,
+          { id: actor.id, role: actor.role, permissions: [] },
+          campaignPayload,
+        );
+      } catch (error) {
+        const response = error instanceof ConflictException ? error.getResponse() : null;
+        const code =
+          response && typeof response === 'object' && 'code' in response
+            ? response.code
+            : null;
+        if (code !== 'PRODUCTION_NEED_COVERED_BY_CONFIRMED_FUTURE_OUTPUT') {
+          throw error;
+        }
+        campaign = await this.productionExecution.attachNeedToCompatibleCampaign(
+          organizationId,
+          { id: actor.id, role: actor.role, permissions: [] },
+          need.id,
+        );
+        if (!campaign) throw error;
+        reusedExistingCampaign = true;
+      }
       await this.prisma.menuProductionLink.create({
         data: {
           organizationId,
@@ -1106,7 +1231,8 @@ export class MenusService {
           },
         },
       });
-      created.push(campaign);
+      if (reusedExistingCampaign) reused.push(campaign);
+      else created.push(campaign);
     }
     const plannedAfter = new Set(linkedItemIds);
     prepared.forEach(({ group }) => {
@@ -1134,10 +1260,11 @@ export class MenusService {
         null,
         actor.id,
         MenuHistoryAction.PRODUCTION_GENERATED,
-        `${created.length} campagne(s) de production planifiée(s)`,
+        `${created.length} campagne(s) créée(s), ${reused.length} fabrication(s) existante(s) réutilisée(s)`,
         {
           mode: dto.mode,
           campaignIds: created.map((campaign) => campaign.id),
+          reusedCampaignIds: reused.map((campaign) => campaign.id),
           menuItemIds: prepared.flatMap(({ group }) =>
             group.lines.map((line) => line.menuItemId),
           ),
@@ -1148,7 +1275,8 @@ export class MenusService {
     });
     return {
       created: created.length,
-      orders: created,
+      reused: reused.length,
+      orders: [...created, ...reused],
       skipped,
       allMenuProductsPlanned,
     };

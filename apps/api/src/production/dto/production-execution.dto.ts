@@ -2,6 +2,7 @@ import {
   ConservationState,
   ProductionOperationStatus,
   ProductionPriority,
+  TechnicalSheetYieldMode,
 } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
@@ -24,6 +25,8 @@ const DECIMAL_OPTIONS = { decimal_digits: '0,3', force_decimal: false } as const
 export class CreateProductionCampaignDto {
   @IsUUID() profileId!: string;
   @IsDecimal(DECIMAL_OPTIONS) grossRequirement!: string;
+  @IsOptional() @IsEnum(TechnicalSheetYieldMode) targetMode?: TechnicalSheetYieldMode;
+  @IsOptional() @IsDecimal(DECIMAL_OPTIONS) targetQuantity?: string;
   @IsString() neededAt!: string;
   @IsOptional() @IsString() @MaxLength(8) plannedTime?: string;
   @IsOptional() @IsString() @MaxLength(160) name?: string;
@@ -44,6 +47,8 @@ export class CreateProductionCampaignDto {
 
 export class UpdateProductionCampaignDto {
   @IsDecimal(DECIMAL_OPTIONS) grossRequirement!: string;
+  @IsOptional() @IsEnum(TechnicalSheetYieldMode) targetMode?: TechnicalSheetYieldMode;
+  @IsOptional() @IsDecimal(DECIMAL_OPTIONS) targetQuantity?: string;
   @IsString() @MaxLength(8) plannedTime!: string;
   @IsOptional() @IsUUID() serviceId?: string;
   @IsOptional() @IsDecimal(DECIMAL_OPTIONS) targetPortions?: string;
@@ -53,6 +58,22 @@ export class ValidateProductionCampaignDto {
   @IsOptional() @IsBoolean() allowShortage?: boolean;
   @IsOptional() @IsString() @MaxLength(1000) overrideReason?: string;
   @IsOptional() @IsString() @MaxLength(120) idempotencyKey?: string;
+}
+
+export class ProductionDayValidationQueryDto {
+  @IsUUID() siteId!: string;
+  @IsString() date!: string;
+  @IsOptional() @IsUUID() serviceId?: string;
+}
+
+export class ValidateProductionDayDto extends ProductionDayValidationQueryDto {
+  @IsString() @MaxLength(120) idempotencyKey!: string;
+}
+
+export class ProductionOperationalExportQueryDto {
+  @IsString() date!: string;
+  @IsUUID() serviceId!: string;
+  @IsOptional() @IsUUID() siteId?: string;
 }
 
 export class StartProductionBatchDto {

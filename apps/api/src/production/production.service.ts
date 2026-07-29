@@ -127,15 +127,49 @@ export class ProductionService {
   }
 
   async assignEmployee(organizationId: string, actor: Actor, orderId: string, dto: any) {
-    await this.assertInstalled(organizationId); this.assertWrite(actor); await this.ensureOrder(organizationId, orderId); await this.ensureEmployee(organizationId, dto.employeeId);
+    await this.assertInstalled(organizationId);
+    this.assertWrite(actor);
+    const order = await this.ensureOrder(organizationId, orderId);
+    const employee = await this.ensureEmployee(organizationId, dto.employeeId);
+    if (!order.serviceId) {
+      throw new BadRequestException('Choisissez le service responsable avant d’affecter l’équipe.');
+    }
+    if (employee.departmentId !== order.serviceId) {
+      throw new BadRequestException('Le collaborateur ne dépend pas du service sélectionné.');
+    }
+    const startsAt = new Date(order.productionDate);
+    const [hours, minutes] = String(order.plannedTime || '08:00').split(':').map(Number);
+    startsAt.setHours(hours || 0, minutes || 0, 0, 0);
+    const endsAt = new Date(
+      startsAt.getTime() + Math.max(Number(dto.plannedMinutes || 60), 5) * 60_000,
+    );
+    const planningAssignment = await this.prisma.planningAssignment.findFirst({
+      where: {
+        organizationId,
+        employeeId: dto.employeeId,
+        ...(dto.planningAssignmentId ? { id: dto.planningAssignmentId } : {}),
+        status: { not: 'CANCELLED' },
+        startTime: { lte: startsAt },
+        endTime: { gte: endsAt },
+      },
+    });
+    if (!planningAssignment) {
+      throw new BadRequestException(
+        'Cette personne ne travaille pas sur le créneau de production sélectionné.',
+      );
+    }
+    const assignmentDto = {
+      ...dto,
+      planningAssignmentId: planningAssignment.id,
+    };
     const item = await this.prisma.$transaction(async (tx) => {
-      if (dto.isLead) {
+      if (assignmentDto.isLead) {
         await tx.productionAssignment.updateMany({ where: { organizationId, orderId }, data: { isLead: false } });
       }
       const assignment = await tx.productionAssignment.upsert({
-        where: { orderId_employeeId: { orderId, employeeId: dto.employeeId } },
-        update: dto,
-        create: { organizationId, orderId, ...dto },
+        where: { orderId_employeeId: { orderId, employeeId: assignmentDto.employeeId } },
+        update: assignmentDto,
+        create: { organizationId, orderId, ...assignmentDto },
       });
       const tasks = await tx.operationalTask.findMany({
         where: { organizationId, productionBatch: { orderId } },
@@ -147,33 +181,33 @@ export class ProductionService {
           create: {
             organizationId,
             taskId: task.id,
-            employeeId: dto.employeeId,
-            planningAssignmentId: dto.planningAssignmentId ?? null,
-            isLead: Boolean(dto.isLead),
-            mission: dto.mission ?? null,
-            plannedMinutes: dto.plannedMinutes ?? null,
+            employeeId: assignmentDto.employeeId,
+            planningAssignmentId: assignmentDto.planningAssignmentId,
+            isLead: Boolean(assignmentDto.isLead),
+            mission: assignmentDto.mission ?? null,
+            plannedMinutes: assignmentDto.plannedMinutes ?? null,
           },
           update: {
-            planningAssignmentId: dto.planningAssignmentId ?? null,
-            isLead: Boolean(dto.isLead),
-            mission: dto.mission ?? null,
-            plannedMinutes: dto.plannedMinutes ?? null,
+            planningAssignmentId: assignmentDto.planningAssignmentId,
+            isLead: Boolean(assignmentDto.isLead),
+            mission: assignmentDto.mission ?? null,
+            plannedMinutes: assignmentDto.plannedMinutes ?? null,
           },
         });
       }
-      if (dto.isLead) {
+      if (assignmentDto.isLead) {
         await tx.operationalTaskAssignment.updateMany({
-          where: { task: { productionBatch: { orderId } }, employeeId: { not: dto.employeeId } },
+          where: { task: { productionBatch: { orderId } }, employeeId: { not: assignmentDto.employeeId } },
           data: { isLead: false },
         });
         await tx.operationalTask.updateMany({
           where: { organizationId, productionBatch: { orderId } },
-          data: { assignedEmployeeId: dto.employeeId },
+          data: { assignedEmployeeId: assignmentDto.employeeId },
         });
       }
       return assignment;
     });
-    await this.prisma.productionHistory.create({ data: { organizationId, orderId, actorUserId: actor.id, action: ProductionHistoryAction.ASSIGNMENT_ADDED, summary: 'Affectation collaborateur', details: { employeeId: dto.employeeId } } });
+    await this.prisma.productionHistory.create({ data: { organizationId, orderId, actorUserId: actor.id, action: ProductionHistoryAction.ASSIGNMENT_ADDED, summary: 'Affectation collaborateur', details: { employeeId: assignmentDto.employeeId } } });
     await this.prisma.$transaction((tx) => this.refreshAlertsTx(tx, organizationId, orderId));
     return item;
   }

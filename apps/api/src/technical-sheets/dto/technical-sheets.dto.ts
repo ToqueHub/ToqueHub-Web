@@ -1,10 +1,33 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsEnum, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min, ValidateNested } from 'class-validator';
-import { ProductKind, TechnicalSheetMode, TechnicalSheetStatus, TechnicalSheetStockPolicy } from '@prisma/client';
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  Min,
+  ValidateNested,
+} from 'class-validator';
+import {
+  ProductKind,
+  TechnicalSheetMode,
+  TechnicalSheetStatus,
+  TechnicalSheetStockPolicy,
+  TechnicalSheetYieldMode,
+} from '@prisma/client';
 
 export class TechnicalSheetListQueryDto {
   @IsOptional() @IsString() search?: string;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() includeArchived?: boolean;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  includeArchived?: boolean;
   @IsOptional() @IsUUID() categoryId?: string;
   @IsOptional() @IsEnum(TechnicalSheetStatus) status?: TechnicalSheetStatus;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(1) page?: number;
@@ -50,8 +73,8 @@ export class UpsertStepDto {
   @IsString() @MaxLength(180) title!: string;
   @IsString() @MaxLength(5000) description!: string;
   @IsOptional() @IsString() @MaxLength(120) section?: string;
-  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) estimatedMinutes?: number;
-  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) estimatedTimeMinutes?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) estimatedMinutes?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) estimatedTimeMinutes?: number;
 }
 
 export class UpsertTechnicalSheetDto {
@@ -63,35 +86,72 @@ export class UpsertTechnicalSheetDto {
   @IsOptional() @IsString() photoDataUrl?: string;
   @IsOptional() @IsEnum(TechnicalSheetMode) mode?: TechnicalSheetMode;
   @IsOptional() @IsEnum(TechnicalSheetStockPolicy) stockPolicy?: TechnicalSheetStockPolicy;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() trackOutputStock?: boolean;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  trackOutputStock?: boolean;
   @IsOptional() @IsUUID() outputProductId?: string;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() createOutputProduct?: boolean;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  createOutputProduct?: boolean;
   @IsOptional() @IsString() @MaxLength(220) outputProductName?: string;
   @IsOptional() @IsEnum(ProductKind) outputProductKind?: ProductKind;
   @IsOptional() @IsUUID() yieldUnitId?: string;
-  @Type(() => Number) @IsNumber({ maxDecimalPlaces: 3 }) @Min(0.001) referencePortions!: number;
+  @IsOptional() @IsEnum(TechnicalSheetYieldMode) yieldMode?: TechnicalSheetYieldMode;
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0.001)
+  referencePortions?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) preparationTimeMinutes?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) prepTimeMinutes?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) cookingTimeMinutes?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) cookTimeMinutes?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) totalTimeMinutes?: number;
   @IsOptional() @IsEnum(TechnicalSheetStatus) status?: TechnicalSheetStatus;
-  @IsOptional() @ValidateNested({ each: true }) @Type(() => UpsertIngredientDto) ingredients?: UpsertIngredientDto[];
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => UpsertIngredientDto)
+  ingredients?: UpsertIngredientDto[];
   @IsOptional() @ValidateNested({ each: true }) @Type(() => UpsertStepDto) steps?: UpsertStepDto[];
 }
 
 export class UpdateTechnicalSheetPricingDto {
-  @IsOptional() @Type(() => Number) @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) targetSellingPriceExclTax?: number | null;
-  @IsOptional() @Type(() => Number) @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) targetSellingPriceInclTax?: number | null;
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  targetSellingPriceExclTax?: number | null;
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  targetSellingPriceInclTax?: number | null;
 }
 
 export class DuplicateTechnicalSheetDto {
   @IsOptional() @IsString() @MaxLength(220) name?: string;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() copyGeneral?: boolean;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() copyPhoto?: boolean;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() copyIngredients?: boolean;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() copySteps?: boolean;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() copyCategory?: boolean;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  copyGeneral?: boolean;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  copyPhoto?: boolean;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  copyIngredients?: boolean;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  copySteps?: boolean;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  copyCategory?: boolean;
 }
 
 export class ProductionSimulationDto {

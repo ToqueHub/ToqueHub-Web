@@ -1,6 +1,7 @@
 import { Prisma, ProductKind, StockMovementType } from '@prisma/client';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
+import { AdjustProductStockDto } from './dto/adjust-product-stock.dto';
 import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
 import { StocksService } from './stocks.service';
 
@@ -79,5 +80,125 @@ describe('CreateStockMovementDto manual movement types', () => {
   it.each([StockMovementType.RECEPTION, StockMovementType.PRODUCTION, StockMovementType.CORRECTION, StockMovementType.INVENTORY])('rejects manual %s', async (type) => {
     const errors = await validate(plainToInstance(CreateStockMovementDto, { ...payload, type }));
     expect(errors.some((error) => Boolean(error.constraints?.isIn))).toBe(true);
+  });
+});
+
+describe('StocksService manual product stock adjustment', () => {
+  const organizationId = '11111111-1111-4111-8111-111111111111';
+  const productId = '22222222-2222-4222-8222-222222222222';
+  const stockId = '33333333-3333-4333-8333-333333333333';
+  const siteId = '44444444-4444-4444-8444-444444444444';
+  const actor = { id: '55555555-5555-4555-8555-555555555555', role: 'Chef' };
+
+  it('sets the counted quantity and records the signed variance as an inventory movement', async () => {
+    const stock = {
+      id: stockId,
+      organizationId,
+      productId,
+      siteId,
+      locationId: null,
+      quantity: new Prisma.Decimal(200000),
+    };
+    const tx = {
+      stock: {
+        update: jest.fn().mockResolvedValue({
+          ...stock,
+          quantity: new Prisma.Decimal(180000),
+        }),
+        create: jest.fn(),
+      },
+      stockMovement: {
+        create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'movement-1', ...data })),
+      },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
+    };
+    const prisma = {
+      product: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: productId,
+          unitId: 'unit-g',
+          unit: { id: 'unit-g', symbol: 'g' },
+          name: 'Rose noire',
+        }),
+      },
+      organization: {
+        findUnique: jest.fn().mockResolvedValue({ primarySiteId: siteId }),
+      },
+      stock: { findFirst: jest.fn().mockResolvedValue(stock) },
+      location: { findFirst: jest.fn() },
+      site: { findFirst: jest.fn().mockResolvedValue({ id: siteId }) },
+      $transaction: jest.fn().mockImplementation((callback) => callback(tx)),
+    };
+    const service = new StocksService(prisma as any);
+
+    await service.adjustProductStock(organizationId, actor, productId, {
+      stockId,
+      quantity: 180000,
+      reason: 'Comptage initial',
+    });
+
+    expect(tx.stock.update).toHaveBeenCalledWith({
+      where: { id: stockId },
+      data: { quantity: new Prisma.Decimal(180000) },
+    });
+    expect(tx.stockMovement.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: StockMovementType.INVENTORY,
+          quantity: new Prisma.Decimal(-20000),
+          inputQuantity: new Prisma.Decimal(180000),
+          sourceSiteId: siteId,
+          destinationSiteId: null,
+          reason: 'Comptage initial',
+        }),
+      }),
+    );
+    expect(tx.auditLog.create).toHaveBeenCalled();
+  });
+
+  it('rejects a quantity identical to the current projection', async () => {
+    const prisma = {
+      product: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: productId,
+          unitId: 'unit-g',
+          unit: { id: 'unit-g', symbol: 'g' },
+          name: 'Rose noire',
+        }),
+      },
+      organization: {
+        findUnique: jest.fn().mockResolvedValue({ primarySiteId: siteId }),
+      },
+      stock: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: stockId,
+          productId,
+          siteId,
+          locationId: null,
+          quantity: new Prisma.Decimal(200000),
+        }),
+      },
+      location: { findFirst: jest.fn() },
+      site: { findFirst: jest.fn().mockResolvedValue({ id: siteId }) },
+      $transaction: jest.fn(),
+    };
+    const service = new StocksService(prisma as any);
+
+    await expect(
+      service.adjustProductStock(organizationId, actor, productId, {
+        stockId,
+        quantity: 200000,
+      }),
+    ).rejects.toThrow('La quantité saisie est identique au stock actuel');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe('AdjustProductStockDto', () => {
+  it('rejects a negative counted quantity', async () => {
+    const errors = await validate(
+      plainToInstance(AdjustProductStockDto, { quantity: -1 }),
+    );
+    expect(errors.some((error) => Boolean(error.constraints?.min))).toBe(true);
   });
 });

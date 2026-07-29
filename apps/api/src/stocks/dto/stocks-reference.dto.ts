@@ -218,9 +218,14 @@ export class UpsertProductDto {
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 4 })
+  @IsNumber({ maxDecimalPlaces: 6 })
   @Min(0)
   averagePrice?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(24)
+  priceDisplayUnit?: string | null;
 
   @IsOptional()
   @Type(() => Number)

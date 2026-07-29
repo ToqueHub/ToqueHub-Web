@@ -112,6 +112,7 @@ import type {
   ProductionSuggestion,
   CreateProductionCampaignPayload,
   ProductionDayClosure,
+  ProductionDayValidation,
   ProductionCarryOver,
   ConservationState,
   OperationalTask,
@@ -212,6 +213,7 @@ type ProductMutationPayload = {
   supplierId?: string | null;
   primarySupplierId?: string | null;
   averagePrice?: number;
+  priceDisplayUnit?: string | null;
   averagePurchasePrice?: number;
   minimumStock?: number;
   gtin?: string | null;
@@ -289,8 +291,7 @@ async function readApiErrorMessage(response: Response, fallback = `Erreur API ${
         'Cette fabrication ne peut plus être validée dans son état actuel.',
       PRODUCTION_CAMPAIGN_NOT_EDITABLE:
         'Cette fabrication a déjà commencé et ne peut plus être modifiée.',
-      PRODUCTION_PROFILE_ALREADY_EXISTS:
-        'Le profil de production existe déjà pour ce site.',
+      PRODUCTION_PROFILE_ALREADY_EXISTS: 'Le profil de production existe déjà pour ce site.',
     };
     if (body.code && knownErrors[body.code]) return knownErrors[body.code];
   } catch {
@@ -499,12 +500,7 @@ export const api = {
     token: string,
     payload: {
       status: 'IN_PROGRESS' | 'DEFERRED' | 'COMPLETED';
-      currentStep:
-        | 'WELCOME'
-        | 'ECOSYSTEM'
-        | 'STARTER_BUNDLE'
-        | 'INSTALLATION'
-        | 'MINI_TOUR';
+      currentStep: 'WELCOME' | 'ECOSYSTEM' | 'STARTER_BUNDLE' | 'INSTALLATION' | 'MINI_TOUR';
     },
   ) {
     return request<DashboardSummary['workspaceOnboarding']>(
@@ -669,23 +665,72 @@ export const api = {
   purchasingEmailConnections(token: string) {
     return request<PurchasingEmailConnection[]>('/purchasing/email-connections', {}, token);
   },
-  configurePurchasingEmailConnection(token: string, payload: { provider: PurchasingEmailConnection['provider']; senderEmail?: string; senderName?: string; smtpHost?: string; smtpPort?: number; smtpSecure?: boolean; smtpUsername?: string; smtpPassword?: string }) {
-    return request<PurchasingEmailConnection>('/purchasing/email-connections', { method: 'POST', body: JSON.stringify(payload) }, token);
+  configurePurchasingEmailConnection(
+    token: string,
+    payload: {
+      provider: PurchasingEmailConnection['provider'];
+      senderEmail?: string;
+      senderName?: string;
+      smtpHost?: string;
+      smtpPort?: number;
+      smtpSecure?: boolean;
+      smtpUsername?: string;
+      smtpPassword?: string;
+    },
+  ) {
+    return request<PurchasingEmailConnection>(
+      '/purchasing/email-connections',
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
   },
   testPurchasingEmailConnection(token: string, provider: PurchasingEmailConnection['provider']) {
-    return request<PurchasingEmailConnection>(`/purchasing/email-connections/${provider}/test`, { method: 'POST' }, token);
+    return request<PurchasingEmailConnection>(
+      `/purchasing/email-connections/${provider}/test`,
+      { method: 'POST' },
+      token,
+    );
   },
-  activatePurchasingEmailConnection(token: string, provider: PurchasingEmailConnection['provider']) {
-    return request<PurchasingEmailConnection[]>(`/purchasing/email-connections/${provider}/activate`, { method: 'POST' }, token);
+  activatePurchasingEmailConnection(
+    token: string,
+    provider: PurchasingEmailConnection['provider'],
+  ) {
+    return request<PurchasingEmailConnection[]>(
+      `/purchasing/email-connections/${provider}/activate`,
+      { method: 'POST' },
+      token,
+    );
   },
   startPurchasingEmailOAuth(token: string, provider: 'GOOGLE' | 'MICROSOFT') {
-    return request<{ url: string }>(`/purchasing/email-connections/${provider}/oauth/start`, { method: 'POST' }, token);
+    return request<{ url: string }>(
+      `/purchasing/email-connections/${provider}/oauth/start`,
+      { method: 'POST' },
+      token,
+    );
   },
   purchasingOAuthConfig(token: string, provider: 'GOOGLE' | 'MICROSOFT') {
-    return request<{ provider: string; configured: boolean; clientId?: string | null; redirectUri: string }>(`/purchasing/oauth/config/${provider}`, {}, token);
+    return request<{
+      provider: string;
+      configured: boolean;
+      clientId?: string | null;
+      redirectUri: string;
+    }>(`/purchasing/oauth/config/${provider}`, {}, token);
   },
-  configurePurchasingOAuth(token: string, payload: { provider: 'GOOGLE' | 'MICROSOFT'; clientId: string; clientSecret?: string; tenantId?: string }) {
-    return request<{ provider: string; configured: boolean; clientId: string; redirectUri: string }>('/purchasing/oauth/config', { method: 'POST', body: JSON.stringify(payload) }, token);
+  configurePurchasingOAuth(
+    token: string,
+    payload: {
+      provider: 'GOOGLE' | 'MICROSOFT';
+      clientId: string;
+      clientSecret?: string;
+      tenantId?: string;
+    },
+  ) {
+    return request<{
+      provider: string;
+      configured: boolean;
+      clientId: string;
+      redirectUri: string;
+    }>('/purchasing/oauth/config', { method: 'POST', body: JSON.stringify(payload) }, token);
   },
   updatePurchasingOnboarding(
     token: string,
@@ -835,7 +880,11 @@ export const api = {
     );
   },
   purchaseOrderEmailPreview(token: string, id: string, recipient?: string) {
-    return request<PurchaseEmailPreview>(`/purchasing/orders/${id}/email-preview${recipient ? `?recipient=${encodeURIComponent(recipient)}` : ''}`, {}, token);
+    return request<PurchaseEmailPreview>(
+      `/purchasing/orders/${id}/email-preview${recipient ? `?recipient=${encodeURIComponent(recipient)}` : ''}`,
+      {},
+      token,
+    );
   },
   acknowledgePurchaseOrder(token: string, id: string) {
     return request<PurchaseOrder>(
@@ -1115,22 +1164,60 @@ export const api = {
     return `${API_SOCKET_URL}/haccp-sensors`;
   },
   menusDashboard(token: string, activity?: string) {
-    return request<MenuModuleDashboard>(`/menus/dashboard${activity ? `?activity=${encodeURIComponent(activity)}` : ''}`, {}, token);
+    return request<MenuModuleDashboard>(
+      `/menus/dashboard${activity ? `?activity=${encodeURIComponent(activity)}` : ''}`,
+      {},
+      token,
+    );
   },
   menuSettings(token: string) {
     return request<MenuSettings>('/menus/settings', {}, token);
   },
-  updateMenuSettings(token: string, payload: Partial<MenuSettings> & { usageProfile: MenuUsageProfile }) {
-    return request<MenuSettings>('/menus/settings', { method: 'PATCH', body: JSON.stringify(payload) }, token);
+  updateMenuSettings(
+    token: string,
+    payload: Partial<MenuSettings> & { usageProfile: MenuUsageProfile },
+  ) {
+    return request<MenuSettings>(
+      '/menus/settings',
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      token,
+    );
   },
   menuCategories(token: string) {
     return request<MenuCategory[]>('/menus/categories', {}, token);
   },
-  createMenuCategory(token: string, payload: { name: string; position?: number; color?: string; icon?: string; catalogType?: 'FOOD' | 'DRINKS' }) {
-    return request<MenuCategory>('/menus/categories', { method: 'POST', body: JSON.stringify(payload) }, token);
+  createMenuCategory(
+    token: string,
+    payload: {
+      name: string;
+      position?: number;
+      color?: string;
+      icon?: string;
+      catalogType?: 'FOOD' | 'DRINKS';
+    },
+  ) {
+    return request<MenuCategory>(
+      '/menus/categories',
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
   },
-  updateMenuCategory(token: string, id: string, payload: { name: string; position?: number; color?: string; icon?: string; catalogType?: 'FOOD' | 'DRINKS' }) {
-    return request<MenuCategory>(`/menus/categories/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
+  updateMenuCategory(
+    token: string,
+    id: string,
+    payload: {
+      name: string;
+      position?: number;
+      color?: string;
+      icon?: string;
+      catalogType?: 'FOOD' | 'DRINKS';
+    },
+  ) {
+    return request<MenuCategory>(
+      `/menus/categories/${id}`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      token,
+    );
   },
   menusList(
     token: string,
@@ -1229,8 +1316,21 @@ export const api = {
     const query = siteId ? `?siteId=${encodeURIComponent(siteId)}` : '';
     return request<MenuAvailabilityReport>(`/menus/menus/${id}/availability${query}`, {}, token);
   },
-  planMenuShortages(token: string, id: string, payload: { siteId?: string; itemIds?: string[]; neededAt?: string }) {
-    return request<{ created: number; needs: ProductionNeed[]; skipped: Array<{ itemId: string; name: string; reason: string }>; report: MenuAvailabilityReport }>(`/menus/menus/${id}/plan-shortages`, { method: 'POST', body: JSON.stringify(payload) }, token);
+  planMenuShortages(
+    token: string,
+    id: string,
+    payload: { siteId?: string; itemIds?: string[]; neededAt?: string },
+  ) {
+    return request<{
+      created: number;
+      needs: ProductionNeed[];
+      skipped: Array<{ itemId: string; name: string; reason: string }>;
+      report: MenuAvailabilityReport;
+    }>(
+      `/menus/menus/${id}/plan-shortages`,
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
   },
   menuCycles(token: string) {
     return request<MenuCycle[]>('/menus/cycles', {}, token);
@@ -1241,55 +1341,140 @@ export const api = {
     return request<MenuDispatch[]>(`/menus/dispatches${qs.toString() ? `?${qs}` : ''}`, {}, token);
   },
   updateMenuDispatchStatus(token: string, id: string, status: MenuDispatchStatus) {
-    return request<MenuDispatch>(`/menus/dispatches/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }, token);
+    return request<MenuDispatch>(
+      `/menus/dispatches/${id}/status`,
+      { method: 'PATCH', body: JSON.stringify({ status }) },
+      token,
+    );
   },
   catererDashboard(token: string) {
-    return request<{ upcoming: CatererEvent[]; stats: { nextThirtyDays: number; confirmed: number; guests: number; productionToGenerate: number } }>('/menus/caterer/dashboard', {}, token);
+    return request<{
+      upcoming: CatererEvent[];
+      stats: {
+        nextThirtyDays: number;
+        confirmed: number;
+        guests: number;
+        productionToGenerate: number;
+      };
+    }>('/menus/caterer/dashboard', {}, token);
   },
   catererClients(token: string, params: { search?: string; includeArchived?: boolean } = {}) {
     const qs = new URLSearchParams();
     if (params.search) qs.set('search', params.search);
     if (params.includeArchived) qs.set('includeArchived', 'true');
-    return request<CatererClient[]>(`/menus/caterer/clients${qs.toString() ? `?${qs}` : ''}`, {}, token);
+    return request<CatererClient[]>(
+      `/menus/caterer/clients${qs.toString() ? `?${qs}` : ''}`,
+      {},
+      token,
+    );
   },
   createCatererClient(token: string, payload: Omit<CatererClient, 'id'>) {
-    return request<CatererClient>('/menus/caterer/clients', { method: 'POST', body: JSON.stringify(payload) }, token);
+    return request<CatererClient>(
+      '/menus/caterer/clients',
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
   },
   updateCatererClient(token: string, id: string, payload: Omit<CatererClient, 'id'>) {
-    return request<CatererClient>(`/menus/caterer/clients/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
+    return request<CatererClient>(
+      `/menus/caterer/clients/${id}`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      token,
+    );
   },
-  catererEvents(token: string, params: { search?: string; status?: CatererEventStatus; startDate?: string; endDate?: string; clientId?: string } = {}) {
+  catererEvents(
+    token: string,
+    params: {
+      search?: string;
+      status?: CatererEventStatus;
+      startDate?: string;
+      endDate?: string;
+      clientId?: string;
+    } = {},
+  ) {
     const qs = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => value && qs.set(key, value));
-    return request<CatererEvent[]>(`/menus/caterer/events${qs.toString() ? `?${qs}` : ''}`, {}, token);
+    return request<CatererEvent[]>(
+      `/menus/caterer/events${qs.toString() ? `?${qs}` : ''}`,
+      {},
+      token,
+    );
   },
   catererEvent(token: string, id: string) {
     return request<CatererEvent>(`/menus/caterer/events/${id}`, {}, token);
   },
   createCatererEvent(token: string, payload: CatererEventPayload) {
-    return request<CatererEvent>('/menus/caterer/events', { method: 'POST', body: JSON.stringify(payload) }, token);
+    return request<CatererEvent>(
+      '/menus/caterer/events',
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
   },
   updateCatererEvent(token: string, id: string, payload: CatererEventPayload) {
-    return request<CatererEvent>(`/menus/caterer/events/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
+    return request<CatererEvent>(
+      `/menus/caterer/events/${id}`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      token,
+    );
   },
   updateCatererEventStatus(token: string, id: string, status: CatererEventStatus) {
-    return request<CatererEvent>(`/menus/caterer/events/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }, token);
+    return request<CatererEvent>(
+      `/menus/caterer/events/${id}/status`,
+      { method: 'PATCH', body: JSON.stringify({ status }) },
+      token,
+    );
   },
   catererEventReadiness(token: string, id: string) {
-    return request<{ ready: boolean; blockers: Array<{ code: string; message: string; prestationId?: string }>; event: CatererEvent }>(`/menus/caterer/events/${id}/readiness`, {}, token);
+    return request<{
+      ready: boolean;
+      blockers: Array<{ code: string; message: string; prestationId?: string }>;
+      event: CatererEvent;
+    }>(`/menus/caterer/events/${id}/readiness`, {}, token);
   },
-  generateCatererEventProductions(token: string, id: string, payload: { mode?: 'DETAILED' | 'GROUPED'; force?: boolean } = {}) {
-    return request<{ created: number; generated: unknown[]; skipped: unknown[] }>(`/menus/caterer/events/${id}/generate-productions`, { method: 'POST', body: JSON.stringify(payload) }, token);
+  generateCatererEventProductions(
+    token: string,
+    id: string,
+    payload: { mode?: 'DETAILED' | 'GROUPED'; force?: boolean } = {},
+  ) {
+    return request<{ created: number; generated: unknown[]; skipped: unknown[] }>(
+      `/menus/caterer/events/${id}/generate-productions`,
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
   },
-  async downloadCatererEventDocument(token: string, id: string, kind: 'KITCHEN' | 'HANDOFF' | 'CLIENT') {
-    const response = await fetch(`${API_URL}/api/menus/caterer/events/${id}/documents/${kind}`, { headers: { Authorization: `Bearer ${token}` } });
+  async downloadCatererEventDocument(
+    token: string,
+    id: string,
+    kind: 'KITCHEN' | 'HANDOFF' | 'CLIENT',
+  ) {
+    const response = await fetch(`${API_URL}/api/menus/caterer/events/${id}/documents/${kind}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
-    return { blob: await response.blob(), filename: filenameFromContentDisposition(response.headers.get('Content-Disposition'), `${kind.toLowerCase()}.pdf`) };
+    return {
+      blob: await response.blob(),
+      filename: filenameFromContentDisposition(
+        response.headers.get('Content-Disposition'),
+        `${kind.toLowerCase()}.pdf`,
+      ),
+    };
   },
-  async downloadCentralMenuDocument(token: string, id: string, kind: 'PRODUCTION' | 'PACKING' | 'DISPATCH') {
-    const response = await fetch(`${API_URL}/api/menus/menus/${id}/central-document/${kind}`, { headers: { Authorization: `Bearer ${token}` } });
+  async downloadCentralMenuDocument(
+    token: string,
+    id: string,
+    kind: 'PRODUCTION' | 'PACKING' | 'DISPATCH',
+  ) {
+    const response = await fetch(`${API_URL}/api/menus/menus/${id}/central-document/${kind}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
-    return { blob: await response.blob(), filename: filenameFromContentDisposition(response.headers.get('Content-Disposition'), `${kind.toLowerCase()}.pdf`) };
+    return {
+      blob: await response.blob(),
+      filename: filenameFromContentDisposition(
+        response.headers.get('Content-Disposition'),
+        `${kind.toLowerCase()}.pdf`,
+      ),
+    };
   },
   createMenuCycle(token: string, payload: MenuCyclePayload) {
     return request<MenuCycle>(
@@ -1299,7 +1484,11 @@ export const api = {
     );
   },
   updateMenuCycle(token: string, id: string, payload: MenuCyclePayload) {
-    return request<MenuCycle>(`/menus/cycles/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
+    return request<MenuCycle>(
+      `/menus/cycles/${id}`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      token,
+    );
   },
   replicateMenuCycle(
     token: string,
@@ -1357,11 +1546,30 @@ export const api = {
       token,
     );
   },
-  updateMenuGuestForecasts(token: string, menuId: string, forecasts: Array<{ guestGroupId: string; dietId?: string; destinationSiteId?: string; dispatchId?: string; count: number; notes?: string }>) {
-    return request<MenuPlan>(`/menus/menus/${menuId}/guests`, { method: 'POST', body: JSON.stringify({ forecasts }) }, token);
+  updateMenuGuestForecasts(
+    token: string,
+    menuId: string,
+    forecasts: Array<{
+      guestGroupId: string;
+      dietId?: string;
+      destinationSiteId?: string;
+      dispatchId?: string;
+      count: number;
+      notes?: string;
+    }>,
+  ) {
+    return request<MenuPlan>(
+      `/menus/menus/${menuId}/guests`,
+      { method: 'POST', body: JSON.stringify({ forecasts }) },
+      token,
+    );
   },
   menuExports(token: string, activity?: string) {
-    return request<MenuExport[]>(`/menus/exports${activity ? `?activity=${encodeURIComponent(activity)}` : ''}`, {}, token);
+    return request<MenuExport[]>(
+      `/menus/exports${activity ? `?activity=${encodeURIComponent(activity)}` : ''}`,
+      {},
+      token,
+    );
   },
   menuDisplayTemplates(token: string) {
     return request<MenuDisplayTemplate[]>('/menus/display-templates', {}, token);
@@ -1379,7 +1587,8 @@ export const api = {
       let message = 'Import du modèle impossible.';
       try {
         const body = await response.json();
-        if (body?.message) message = Array.isArray(body.message) ? body.message.join(', ') : body.message;
+        if (body?.message)
+          message = Array.isArray(body.message) ? body.message.join(', ') : body.message;
       } catch {
         // Keep fallback.
       }
@@ -1433,7 +1642,8 @@ export const api = {
       let message = 'Téléchargement de l’export impossible.';
       try {
         const body = await response.json();
-        if (body?.message) message = Array.isArray(body.message) ? body.message.join(', ') : body.message;
+        if (body?.message)
+          message = Array.isArray(body.message) ? body.message.join(', ') : body.message;
       } catch {
         // Keep fallback.
       }
@@ -1441,10 +1651,16 @@ export const api = {
     }
     return {
       blob: await response.blob(),
-      filename: filenameFromContentDisposition(response.headers.get('Content-Disposition'), item.filename || 'menu.pdf'),
+      filename: filenameFromContentDisposition(
+        response.headers.get('Content-Disposition'),
+        item.filename || 'menu.pdf',
+      ),
     };
   },
-  menuHistory(token: string, params: { menuId?: string; cycleId?: string; activity?: string } = {}) {
+  menuHistory(
+    token: string,
+    params: { menuId?: string; cycleId?: string; activity?: string } = {},
+  ) {
     const qs = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== '') qs.set(key, String(value));
@@ -1480,9 +1696,20 @@ export const api = {
       canCreateUnassigned: boolean;
     }>('/production/tasks/context', {}, token);
   },
-  productionTaskOptions(token: string, params: { departmentId?: string; siteId?: string; technicalSheetId?: string; startDate?: string; endDate?: string } = {}) {
+  productionTaskOptions(
+    token: string,
+    params: {
+      departmentId?: string;
+      siteId?: string;
+      technicalSheetId?: string;
+      startDate?: string;
+      endDate?: string;
+    } = {},
+  ) {
     const search = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => { if (value) search.set(key, value); });
+    Object.entries(params).forEach(([key, value]) => {
+      if (value) search.set(key, value);
+    });
     const qs = search.toString() ? `?${search.toString()}` : '';
     return request<OperationalTaskOptions>(`/production/tasks/options${qs}`, {}, token);
   },
@@ -1500,6 +1727,32 @@ export const api = {
       token,
     );
   },
+  async downloadProductionOperationalPdf(
+    token: string,
+    params: { date: string; serviceId: string; siteId?: string },
+  ) {
+    const search = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value) search.set(key, value);
+    });
+    const response = await fetch(
+      `${API_URL}/api/production/tasks/export.pdf?${search.toString()}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!response.ok) {
+      throw new ApiError(await readApiErrorMessage(response), response.status);
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get('Content-Disposition') ?? '';
+    const filename =
+      disposition.match(/filename="?([^"]+)"?/)?.[1] ?? `planning-production-${params.date}.pdf`;
+    const url = URL.createObjectURL(blob);
+    const link = globalThis.document.createElement('a');
+    link.href = url;
+    link.download = decodeURIComponent(filename);
+    link.click();
+    URL.revokeObjectURL(url);
+  },
   createProductionTask(token: string, payload: OperationalTaskPayload) {
     return request<OperationalTask>(
       '/production/tasks',
@@ -1509,22 +1762,31 @@ export const api = {
   },
   generateProductionTasksFromMenu(
     token: string,
-    payload: { menuId: string; departmentId: string; date: string; serviceTime: string; siteId?: string },
+    payload: {
+      menuId: string;
+      departmentId: string;
+      date: string;
+      serviceTime: string;
+      siteId?: string;
+    },
   ) {
     return request<{
       menu: { id: string; name: string };
       created: OperationalTask[];
       skipped: Array<{ technicalSheetId: string; name: string; reason: string }>;
-    }>(
-      '/production/tasks/from-menu',
-      { method: 'POST', body: JSON.stringify(payload) },
-      token,
-    );
+    }>('/production/tasks/from-menu', { method: 'POST', body: JSON.stringify(payload) }, token);
   },
   updateProductionTask(token: string, id: string, payload: Partial<OperationalTaskPayload>) {
     return request<OperationalTask>(
       `/production/tasks/${id}`,
       { method: 'PATCH', body: JSON.stringify(payload) },
+      token,
+    );
+  },
+  splitProductionRecipeTask(token: string, id: string) {
+    return request<OperationalTask[]>(
+      `/production/tasks/${id}/split-steps`,
+      { method: 'POST' },
       token,
     );
   },
@@ -1537,7 +1799,14 @@ export const api = {
   },
   productionNeeds(
     token: string,
-    params: { siteId?: string; productId?: string; status?: string; startDate?: string; endDate?: string; pageSize?: number } = {},
+    params: {
+      siteId?: string;
+      productId?: string;
+      status?: string;
+      startDate?: string;
+      endDate?: string;
+      pageSize?: number;
+    } = {},
   ) {
     const qs = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
@@ -1570,7 +1839,15 @@ export const api = {
       token,
     );
   },
-  productionProfiles(token: string, params: { siteId?: string; productId?: string; technicalSheetId?: string; pageSize?: number } = {}) {
+  productionProfiles(
+    token: string,
+    params: {
+      siteId?: string;
+      productId?: string;
+      technicalSheetId?: string;
+      pageSize?: number;
+    } = {},
+  ) {
     const qs = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== '') qs.set(key, String(value));
@@ -1654,7 +1931,13 @@ export const api = {
   },
   simulateProductionSuggestion(
     token: string,
-    payload: { profileId: string; grossRequirement: string; neededAt: string; storageCapacity?: string; optimizedTarget?: string },
+    payload: {
+      profileId: string;
+      grossRequirement: string;
+      neededAt: string;
+      storageCapacity?: string;
+      optimizedTarget?: string;
+    },
   ) {
     return request<ProductionSuggestion>(
       '/production/simulations/suggestions',
@@ -1676,6 +1959,13 @@ export const api = {
   productionCampaign(token: string, id: string) {
     return request<ProductionCampaign>(`/production/campaigns/${id}`, {}, token);
   },
+  expireUnassignedProductionCampaigns(token: string) {
+    return request<{
+      cutoff: string;
+      cancelledCount: number;
+      cancelled: Array<{ id: string; number: string; name: string }>;
+    }>('/production/campaigns/expire-unassigned', { method: 'POST' }, token);
+  },
   createProductionCampaign(token: string, payload: CreateProductionCampaignPayload) {
     return request<ProductionCampaign>(
       '/production/campaigns',
@@ -1691,6 +1981,8 @@ export const api = {
       plannedTime: string;
       serviceId?: string;
       targetPortions?: string;
+      targetMode?: 'PORTIONS' | 'MASS';
+      targetQuantity?: string;
     },
   ) {
     return request<ProductionCampaign>(
@@ -1699,16 +1991,53 @@ export const api = {
       token,
     );
   },
-  validateProductionCampaign(token: string, id: string, payload: { allowShortage?: boolean; overrideReason?: string; idempotencyKey?: string } = {}) {
+  validateProductionCampaign(
+    token: string,
+    id: string,
+    payload: { allowShortage?: boolean; overrideReason?: string; idempotencyKey?: string } = {},
+  ) {
     return request<ProductionCampaign>(
       `/production/campaigns/${id}/validate`,
       { method: 'POST', body: JSON.stringify(payload) },
       token,
     );
   },
+  productionDayValidationPreview(
+    token: string,
+    params: { siteId: string; date: string; serviceId?: string },
+  ) {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value) qs.set(key, value);
+    });
+    return request<ProductionDayValidation>(
+      `/production/day-validation/preview?${qs.toString()}`,
+      {},
+      token,
+    );
+  },
+  validateProductionDay(
+    token: string,
+    payload: {
+      siteId: string;
+      date: string;
+      serviceId?: string;
+      idempotencyKey: string;
+    },
+  ) {
+    return request<ProductionDayValidation>(
+      '/production/day-validation/complete',
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
+  },
   productionDayClosurePreview(token: string, params: { siteId: string; date: string }) {
     const qs = new URLSearchParams(params);
-    return request<ProductionDayClosure>(`/production/day-closures/preview?${qs.toString()}`, {}, token);
+    return request<ProductionDayClosure>(
+      `/production/day-closures/preview?${qs.toString()}`,
+      {},
+      token,
+    );
   },
   productionDayCarryOver(token: string, params: { siteId: string; date: string }) {
     const qs = new URLSearchParams(params);
@@ -1750,7 +2079,15 @@ export const api = {
   completeProductionBatch(
     token: string,
     id: string,
-    payload: { actualQuantity: string; lostQuantity?: string; destinationLocationId?: string; conservationState?: ConservationState; expiresAt?: string; notes?: string; idempotencyKey: string },
+    payload: {
+      actualQuantity: string;
+      lostQuantity?: string;
+      destinationLocationId?: string;
+      conservationState?: ConservationState;
+      expiresAt?: string;
+      notes?: string;
+      idempotencyKey: string;
+    },
   ) {
     return request<ProductionBatch>(
       `/production/batches/${id}/complete`,
@@ -1758,28 +2095,48 @@ export const api = {
       token,
     );
   },
-  updateProductionOperation(token: string, id: string, payload: { status: string; notes?: string; responsibleEmployeeId?: string }) {
+  updateProductionOperation(
+    token: string,
+    id: string,
+    payload: { status: string; notes?: string; responsibleEmployeeId?: string },
+  ) {
     return request(
       `/production/operations/${id}`,
       { method: 'PATCH', body: JSON.stringify(payload) },
       token,
     );
   },
-  productionStock(token: string, params: { siteId?: string; productId?: string; state?: ConservationState; search?: string; pageSize?: number } = {}) {
+  productionStock(
+    token: string,
+    params: {
+      siteId?: string;
+      productId?: string;
+      state?: ConservationState;
+      search?: string;
+      pageSize?: number;
+    } = {},
+  ) {
     const qs = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== '') qs.set(key, String(value));
     });
-    return request<{ items: ProductionStockItem[]; summary: ProductionStockSummaryItem[]; total: number }>(
-      `/production/stock${qs.toString() ? `?${qs.toString()}` : ''}`,
-      {},
-      token,
-    );
+    return request<{
+      items: ProductionStockItem[];
+      summary: ProductionStockSummaryItem[];
+      total: number;
+    }>(`/production/stock${qs.toString() ? `?${qs.toString()}` : ''}`, {}, token);
   },
   transitionProductionStock(
     token: string,
     stockId: string,
-    payload: { quantity: string; destinationState: ConservationState; availableAt?: string; expiresAt?: string; reason?: string; idempotencyKey: string },
+    payload: {
+      quantity: string;
+      destinationState: ConservationState;
+      availableAt?: string;
+      expiresAt?: string;
+      reason?: string;
+      idempotencyKey: string;
+    },
   ) {
     return request(
       `/production/stock/${stockId}/transition`,
@@ -2804,7 +3161,8 @@ export const api = {
   ) {
     const query = new URLSearchParams();
     if (params.search) query.set('search', params.search);
-    if (params.includeArchived !== undefined) query.set('includeArchived', String(params.includeArchived));
+    if (params.includeArchived !== undefined)
+      query.set('includeArchived', String(params.includeArchived));
     if (params.page) query.set('page', String(params.page));
     if (params.pageSize) query.set('pageSize', String(params.pageSize));
     return request<Product[]>(`/products${query.toString() ? `?${query}` : ''}`, {}, token);
@@ -2814,7 +3172,8 @@ export const api = {
     const items: Product[] = [];
     for (let page = 1; ; page += 1) {
       const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
-      if (params.includeArchived !== undefined) query.set('includeArchived', String(params.includeArchived));
+      if (params.includeArchived !== undefined)
+        query.set('includeArchived', String(params.includeArchived));
       const batch = await request<Product[]>(`/products?${query}`, {}, token);
       items.push(...batch);
       if (batch.length < pageSize) return items;
@@ -2871,6 +3230,23 @@ export const api = {
           primarySupplierId: uuidOrNullOrUndefined(primarySupplierId),
         }),
       },
+      token,
+    );
+  },
+  adjustProductStock(
+    token: string,
+    productId: string,
+    payload: {
+      stockId?: string;
+      siteId?: string;
+      locationId?: string;
+      quantity: number;
+      reason?: string;
+    },
+  ) {
+    return request<StockMovement>(
+      `/products/${productId}/stock-adjustment`,
+      { method: 'POST', body: JSON.stringify(payload) },
       token,
     );
   },
@@ -3229,23 +3605,74 @@ export const api = {
       token,
     );
   },
-  humanSupportActive(token: string) { return request<import('../types').HumanSupportTicket | null>('/human-support/active', {}, token); },
-  humanSupportUnreadCount(token: string) { return request<{ unread: number }>('/human-support/unread-count', {}, token); },
-  async createHumanSupportTicket(token: string, input: { content: string; email: string; phone?: string; transcript?: string }, file?: File) {
-    const body = new FormData(); body.append('content', input.content); body.append('email', input.email); if (input.phone) body.append('phone', input.phone); if (input.transcript) body.append('transcript', input.transcript); if (file) body.append('file', file);
-    const response = await fetch(`${API_URL}/api/human-support/tickets`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body });
-    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status); return response.json() as Promise<import('../types').HumanSupportTicket>;
+  humanSupportActive(token: string) {
+    return request<import('../types').HumanSupportTicket | null>(
+      '/human-support/active',
+      {},
+      token,
+    );
   },
-  humanSupportTicket(token: string, ticketId: string) { return request<import('../types').HumanSupportTicket>(`/human-support/tickets/${ticketId}`, {}, token); },
-  humanSupportMessages(token: string, ticketId: string, after?: string) { return request<import('../types').HumanSupportMessage[]>(`/human-support/tickets/${ticketId}/messages${after ? `?after=${encodeURIComponent(after)}` : ''}`, {}, token); },
+  humanSupportUnreadCount(token: string) {
+    return request<{ unread: number }>('/human-support/unread-count', {}, token);
+  },
+  async createHumanSupportTicket(
+    token: string,
+    input: { content: string; email: string; phone?: string; transcript?: string },
+    file?: File,
+  ) {
+    const body = new FormData();
+    body.append('content', input.content);
+    body.append('email', input.email);
+    if (input.phone) body.append('phone', input.phone);
+    if (input.transcript) body.append('transcript', input.transcript);
+    if (file) body.append('file', file);
+    const response = await fetch(`${API_URL}/api/human-support/tickets`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    });
+    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
+    return response.json() as Promise<import('../types').HumanSupportTicket>;
+  },
+  humanSupportTicket(token: string, ticketId: string) {
+    return request<import('../types').HumanSupportTicket>(
+      `/human-support/tickets/${ticketId}`,
+      {},
+      token,
+    );
+  },
+  humanSupportMessages(token: string, ticketId: string, after?: string) {
+    return request<import('../types').HumanSupportMessage[]>(
+      `/human-support/tickets/${ticketId}/messages${after ? `?after=${encodeURIComponent(after)}` : ''}`,
+      {},
+      token,
+    );
+  },
   async sendHumanSupportMessage(token: string, ticketId: string, content?: string, file?: File) {
-    const body = new FormData(); if (content) body.append('content', content); if (file) body.append('file', file);
-    const response = await fetch(`${API_URL}/api/human-support/tickets/${ticketId}/messages`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body });
-    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status); return response.json() as Promise<import('../types').HumanSupportMessage>;
+    const body = new FormData();
+    if (content) body.append('content', content);
+    if (file) body.append('file', file);
+    const response = await fetch(`${API_URL}/api/human-support/tickets/${ticketId}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    });
+    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
+    return response.json() as Promise<import('../types').HumanSupportMessage>;
   },
-  markHumanSupportRead(token: string, ticketId: string) { return request(`/human-support/tickets/${ticketId}/read`, { method: 'POST' }, token); },
-  closeHumanSupportTicket(token: string, ticketId: string) { return request<import('../types').HumanSupportTicket>(`/human-support/tickets/${ticketId}/close`, { method: 'POST' }, token); },
-  humanSupportAttachmentUrl(attachmentId: string) { return `${API_URL}/api/human-support/attachments/${attachmentId}/download`; },
+  markHumanSupportRead(token: string, ticketId: string) {
+    return request(`/human-support/tickets/${ticketId}/read`, { method: 'POST' }, token);
+  },
+  closeHumanSupportTicket(token: string, ticketId: string) {
+    return request<import('../types').HumanSupportTicket>(
+      `/human-support/tickets/${ticketId}/close`,
+      { method: 'POST' },
+      token,
+    );
+  },
+  humanSupportAttachmentUrl(attachmentId: string) {
+    return `${API_URL}/api/human-support/attachments/${attachmentId}/download`;
+  },
   createTechnicalSheetAssistantConversation(token: string) {
     return request<import('../types').TechnicalSheetAssistantConversation>(
       '/technical-sheet-assistant/conversations',

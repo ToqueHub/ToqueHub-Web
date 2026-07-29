@@ -23,7 +23,6 @@ import {
   Settings,
   Sparkles,
   Truck,
-  Upload,
   Utensils,
   UsersRound,
   Wine,
@@ -41,7 +40,6 @@ import type {
   MenuCycle,
   MenuCyclePayload,
   MenuDiet,
-  MenuDisplayTemplate,
   MenuExport,
   MenuExportPayload,
   MenuGuestGroup,
@@ -202,7 +200,6 @@ export function MenusApp({
   const [cycles, setCycles] = useState<MenuCycle[]>([]);
   const [diets, setDiets] = useState<MenuDiet[]>([]);
   const [guestGroups, setGuestGroups] = useState<MenuGuestGroup[]>([]);
-  const [displayTemplates, setDisplayTemplates] = useState<MenuDisplayTemplate[]>([]);
   const [exportsList, setExportsList] = useState<MenuExport[]>([]);
   const [history, setHistory] = useState<MenuHistoryEntry[]>([]);
   const [recipes, setRecipes] = useState<TechnicalSheetRecipe[]>([]);
@@ -246,9 +243,6 @@ export function MenusApp({
   const [generationMode, setGenerationMode] = useState<'DETAILED' | 'GROUPED'>('DETAILED');
   const [generationResult, setGenerationResult] = useState<MenuProductionGenerationResult>();
   const [exportKind, setExportKind] = useState<MenuExportPayload['kind']>('PUBLIC_DISPLAY');
-  const [selectedTemplateId, setSelectedTemplateId] = useState('');
-  const [templateName, setTemplateName] = useState('');
-  const [templateFile, setTemplateFile] = useState<File>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
@@ -380,7 +374,6 @@ export function MenusApp({
         dietsResult,
         groupsResult,
         exportsResult,
-        templatesResult,
         historyResult,
         recipesResult,
         productsResult,
@@ -393,7 +386,6 @@ export function MenusApp({
         api.menuDiets(token).catch(() => []),
         api.menuGuestGroups(token).catch(() => []),
         api.menuExports(token, activityFilter).catch(() => []),
-        api.menuDisplayTemplates(token).catch(() => []),
         api.menuHistory(token, activityFilter ? { activity: activityFilter } : {}).catch(() => []),
         api
           .technicalSheetRecipes(token, { includeArchived: true, pageSize: 200 })
@@ -409,14 +401,6 @@ export function MenusApp({
       setDiets(dietsResult);
       setGuestGroups(groupsResult);
       setExportsList(exportsResult);
-      setDisplayTemplates(templatesResult);
-      setSelectedTemplateId(
-        (current) =>
-          current ||
-          templatesResult.find((template) => template.isDefault)?.id ||
-          templatesResult[0]?.id ||
-          '',
-      );
       setHistory(historyResult);
       setRecipes(recipesResult);
       setProducts(productsResult);
@@ -623,26 +607,6 @@ export function MenusApp({
     setCatalogSourceSearch('');
   }
 
-  async function updateCatalogTarget(itemId: string, targetReadyQuantity: number) {
-    if (!selectedCatalog) return;
-    const items = menuItemsPayload(selectedCatalog).map((item, index) => ({
-      ...item,
-      targetReadyQuantity:
-        selectedCatalog.items?.[index]?.id === itemId
-          ? Math.max(targetReadyQuantity, 0)
-          : item.targetReadyQuantity,
-    }));
-    await saveCatalogItems(items, 'Objectif de disponibilité mis à jour.');
-  }
-
-  async function removeCatalogItem(itemId: string) {
-    if (!selectedCatalog) return;
-    const items = menuItemsPayload(selectedCatalog).filter(
-      (_, index) => selectedCatalog.items?.[index]?.id !== itemId,
-    );
-    await saveCatalogItems(items, 'Article retiré de la carte.');
-  }
-
   async function createCategory(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!categoryName.trim()) return;
@@ -762,56 +726,10 @@ export function MenusApp({
         menuId: selectedMenu.id,
         kind: exportKind,
         format: 'PDF',
-        templateId:
-          exportKind === 'PUBLIC_DISPLAY' && selectedTemplateId ? selectedTemplateId : undefined,
       });
       await downloadExportFile(item);
       await refresh();
     }, 'PDF généré, téléchargé et historisé.');
-  }
-
-  async function uploadDisplayTemplate(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!templateFile) return;
-    await run(async () => {
-      const template = await api.uploadMenuDisplayTemplate(
-        token,
-        templateFile,
-        templateName || undefined,
-      );
-      setSelectedTemplateId(template.id);
-      setTemplateFile(undefined);
-      setTemplateName('');
-      await refresh();
-    }, 'Modèle analysé par OCR et prêt pour l’affichage public.');
-  }
-
-  async function chooseDefaultTemplate(id: string) {
-    await run(async () => {
-      await api.setDefaultMenuDisplayTemplate(token, id);
-      setSelectedTemplateId(id);
-      await refresh();
-    }, 'Modèle public défini par défaut.');
-  }
-
-  async function archiveDisplayTemplate(id: string) {
-    if (
-      !window.confirm('Archiver ce modèle de carte ? Les exports déjà générés restent disponibles.')
-    )
-      return;
-    await run(async () => {
-      await api.archiveMenuDisplayTemplate(token, id);
-      if (selectedTemplateId === id) setSelectedTemplateId('');
-      await refresh();
-    }, 'Modèle archivé.');
-  }
-
-  async function previewDisplayTemplate(id: string) {
-    await run(async () => {
-      const url = await api.menuDisplayTemplateSource(token, id);
-      window.open(url, '_blank', 'noopener,noreferrer');
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    }, 'Aperçu du modèle ouvert.');
   }
 
   async function downloadExportFile(item: MenuExport) {
@@ -1510,18 +1428,7 @@ export function MenusApp({
                                 style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
                               >
                                 {categoryItems.map((item) => (
-                                  <CatalogAvailabilityCard
-                                    key={item.id}
-                                    item={item}
-                                    target={
-                                      selectedCatalog?.items?.find(
-                                        (menuItem) => menuItem.id === item.id,
-                                      )?.targetReadyQuantity ?? item.targetPortions
-                                    }
-                                    saving={saving}
-                                    onTarget={updateCatalogTarget}
-                                    onRemove={removeCatalogItem}
-                                  />
+                                  <CatalogAvailabilityCard key={item.id} item={item} />
                                 ))}
                               </div>
                             </section>
@@ -1535,18 +1442,7 @@ export function MenusApp({
                             {availability.items
                               .filter((item) => !item.category)
                               .map((item) => (
-                                <CatalogAvailabilityCard
-                                  key={item.id}
-                                  item={item}
-                                  target={
-                                    selectedCatalog?.items?.find(
-                                      (menuItem) => menuItem.id === item.id,
-                                    )?.targetReadyQuantity ?? item.targetPortions
-                                  }
-                                  saving={saving}
-                                  onTarget={updateCatalogTarget}
-                                  onRemove={removeCatalogItem}
-                                />
+                                <CatalogAvailabilityCard key={item.id} item={item} />
                               ))}
                           </div>
                         </section>
@@ -2602,35 +2498,81 @@ export function MenusApp({
                       ))}
                     </select>
                   </label>
-                  <label className="menus-form-span">
-                    Modèle d'affichage / Document
-                    <select
-                      value={exportKind}
-                      onChange={(e) => setExportKind(e.target.value as MenuExportPayload['kind'])}
+                  <div className="menus-form-span">
+                    <strong style={{ display: 'block', marginBottom: '.65rem' }}>
+                      Document à générer
+                    </strong>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                        gap: '.75rem',
+                      }}
                     >
-                      <option value="KITCHEN">Fiche Cuisine</option>
-                      <option value="DINING_ROOM">Fiche Salle</option>
-                      <option value="PUBLIC_DISPLAY">Affichage public</option>
-                    </select>
-                  </label>
-
-                  {exportKind === 'PUBLIC_DISPLAY' && (
-                    <label className="menus-form-span">
-                      Design de la carte
-                      <select
-                        value={selectedTemplateId}
-                        onChange={(event) => setSelectedTemplateId(event.target.value)}
-                      >
-                        <option value="">Design ToqueHub</option>
-                        {displayTemplates.map((template) => (
-                          <option key={template.id} value={template.id}>
-                            {template.name}
-                            {template.isDefault ? ' · par défaut' : ''}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
+                      {[
+                        {
+                          kind: 'KITCHEN' as const,
+                          title: 'Dossier cuisine',
+                          description: 'Quantités, allergènes et contrôles pour la brigade.',
+                          icon: <ChefHat size={22} />,
+                        },
+                        {
+                          kind: 'DINING_ROOM' as const,
+                          title: 'Fiche salle',
+                          description: 'Briefing, allergènes et informations de présentation.',
+                          icon: <ClipboardList size={22} />,
+                        },
+                        {
+                          kind: 'PUBLIC_DISPLAY' as const,
+                          title: 'Menu client',
+                          description: 'Présentation élégante prête à imprimer ou envoyer.',
+                          icon: <FileText size={22} />,
+                        },
+                      ].map((documentOption) => {
+                        const selected = exportKind === documentOption.kind;
+                        return (
+                          <button
+                            key={documentOption.kind}
+                            type="button"
+                            aria-pressed={selected}
+                            onClick={() => setExportKind(documentOption.kind)}
+                            style={{
+                              minHeight: 150,
+                              padding: '1rem',
+                              borderRadius: 16,
+                              border: selected ? '2px solid #10b981' : '1px solid #dbe4ee',
+                              background: selected ? '#f0fdf4' : '#ffffff',
+                              color: '#0f172a',
+                              textAlign: 'left',
+                              cursor: 'pointer',
+                              boxShadow: selected ? '0 10px 26px rgba(16, 185, 129, .12)' : 'none',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '.65rem',
+                            }}
+                          >
+                            <span
+                              style={{
+                                width: 42,
+                                height: 42,
+                                borderRadius: 12,
+                                display: 'grid',
+                                placeItems: 'center',
+                                color: '#059669',
+                                background: '#ecfdf5',
+                              }}
+                            >
+                              {documentOption.icon}
+                            </span>
+                            <strong style={{ fontSize: '1rem' }}>{documentOption.title}</strong>
+                            <span className="muted" style={{ fontSize: '.8rem', lineHeight: 1.45 }}>
+                              {documentOption.description}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
 
                   <button
                     className="btn btn-primary menus-form-span"
@@ -2652,8 +2594,8 @@ export function MenusApp({
                     gap: '0.35rem',
                   }}
                 >
-                  <AlertCircle size={14} /> Cuisine et Salle utilisent le design ToqueHub.
-                  L’affichage public reprend le modèle graphique importé.
+                  <AlertCircle size={14} /> Le Dossier cuisine et le Menu client reprennent la même
+                  charte que la section Traiteur & Événementiel.
                 </p>
 
                 {exportKind === 'KITCHEN' && (
@@ -2667,11 +2609,11 @@ export function MenusApp({
                     }}
                   >
                     <strong style={{ display: 'block', marginBottom: '.3rem' }}>
-                      Contenu de la fiche cuisine
+                      Contenu du dossier cuisine
                     </strong>
                     <span className="muted" style={{ fontSize: '.84rem' }}>
-                      Le menu complet, puis les fiches techniques associées avec quantités
-                      recalculées, ingrédients, rendements, temps et étapes.
+                      Un document opérationnel synthétique : site, service, volume, composition à
+                      produire, quantités calculées, allergènes et cases de contrôle.
                     </span>
                   </div>
                 )}
@@ -2697,140 +2639,22 @@ export function MenusApp({
                 )}
 
                 {exportKind === 'PUBLIC_DISPLAY' && (
-                  <div style={{ marginTop: '1.25rem', display: 'grid', gap: '.85rem' }}>
-                    <div
-                      style={{
-                        padding: '1rem',
-                        borderRadius: 14,
-                        background: '#f8fafc',
-                        border: '1px solid #dbe4ee',
-                      }}
-                    >
-                      <strong style={{ display: 'flex', alignItems: 'center', gap: '.45rem' }}>
-                        <Sparkles size={16} color="#10b981" /> Modèles de carte analysés
-                      </strong>
-                      <p className="muted" style={{ margin: '.35rem 0 .8rem', fontSize: '.82rem' }}>
-                        L’OCR repère le titre et la zone des articles. Le PDF original reste le fond
-                        graphique ; seuls les textes du menu sont remplacés.
-                      </p>
-                      {displayTemplates.length ? (
-                        <div style={{ display: 'grid', gap: '.55rem' }}>
-                          {displayTemplates.map((template) => (
-                            <div
-                              key={template.id}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                gap: '.65rem',
-                                padding: '.7rem .8rem',
-                                borderRadius: 12,
-                                background:
-                                  selectedTemplateId === template.id ? '#ecfdf5' : '#ffffff',
-                                border:
-                                  selectedTemplateId === template.id
-                                    ? '1px solid #6ee7b7'
-                                    : '1px solid #e2e8f0',
-                              }}
-                            >
-                              <button
-                                type="button"
-                                onClick={() => setSelectedTemplateId(template.id)}
-                                style={{
-                                  border: 0,
-                                  padding: 0,
-                                  background: 'transparent',
-                                  textAlign: 'left',
-                                  cursor: 'pointer',
-                                  flex: 1,
-                                  color: 'inherit',
-                                }}
-                              >
-                                <strong style={{ display: 'block' }}>
-                                  {template.name}
-                                  {template.isDefault ? ' · par défaut' : ''}
-                                </strong>
-                                <small className="muted">
-                                  {template.originalName} · {template.pageCount ?? 1} page
-                                  {(template.pageCount ?? 1) > 1 ? 's' : ''}
-                                </small>
-                              </button>
-                              <div style={{ display: 'flex', gap: '.35rem' }}>
-                                <button
-                                  type="button"
-                                  className="btn btn-secondary"
-                                  onClick={() => void previewDisplayTemplate(template.id)}
-                                  style={{ padding: '.45rem .6rem' }}
-                                >
-                                  Voir
-                                </button>
-                                {!template.isDefault && (
-                                  <button
-                                    type="button"
-                                    className="btn btn-secondary"
-                                    onClick={() => void chooseDefaultTemplate(template.id)}
-                                    style={{ padding: '.45rem .6rem' }}
-                                  >
-                                    Défaut
-                                  </button>
-                                )}
-                                <button
-                                  type="button"
-                                  className="btn btn-secondary"
-                                  aria-label="Archiver le modèle"
-                                  onClick={() => void archiveDisplayTemplate(template.id)}
-                                  style={{ padding: '.45rem .6rem', color: '#b91c1c' }}
-                                >
-                                  <Archive size={14} />
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="muted" style={{ fontSize: '.84rem' }}>
-                          Aucun modèle importé. Le design ToqueHub sera utilisé.
-                        </span>
-                      )}
-                    </div>
-
-                    <form
-                      onSubmit={(event) => void uploadDisplayTemplate(event)}
-                      style={{
-                        padding: '1rem',
-                        borderRadius: 14,
-                        border: '1px dashed #94a3b8',
-                        display: 'grid',
-                        gap: '.7rem',
-                      }}
-                    >
-                      <strong style={{ display: 'flex', gap: '.45rem', alignItems: 'center' }}>
-                        <Upload size={16} /> Importer un modèle existant
-                      </strong>
-                      <input
-                        value={templateName}
-                        onChange={(event) => setTemplateName(event.target.value)}
-                        placeholder="Nom du modèle, ex. Carte été"
-                      />
-                      <input
-                        type="file"
-                        accept="application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg"
-                        onChange={(event) => setTemplateFile(event.target.files?.[0])}
-                        required
-                      />
-                      <small className="muted">
-                        PDF, PNG ou JPEG, 20 Mo maximum. L’analyse OCR peut prendre quelques
-                        secondes.
-                      </small>
-                      <button
-                        className="btn btn-secondary"
-                        type="submit"
-                        disabled={!templateFile || !canManage || saving}
-                      >
-                        <Sparkles size={15} />{' '}
-                        {saving ? 'Analyse en cours…' : 'Importer et analyser par OCR'}
-                      </button>
-                    </form>
+                  <div
+                    style={{
+                      marginTop: '1rem',
+                      padding: '1rem',
+                      borderRadius: 14,
+                      background: '#fafaf9',
+                      border: '1px solid #e7e5e4',
+                    }}
+                  >
+                    <strong style={{ display: 'block', marginBottom: '.3rem' }}>
+                      Contenu du menu client
+                    </strong>
+                    <span className="muted" style={{ fontSize: '.84rem' }}>
+                      Le nom du menu, la date, le lieu et les plats classés par rubrique dans une
+                      présentation sans annotations internes, prête pour le client.
+                    </span>
                   </div>
                 )}
               </div>
@@ -3965,133 +3789,110 @@ function MenuProfileSetup({
   );
 }
 
-function CatalogAvailabilityCard({
-  item,
-  target,
-  saving,
-  onTarget,
-  onRemove,
-}: {
-  item: MenuAvailabilityReport['items'][number];
-  target: number;
-  saving: boolean;
-  onTarget: (id: string, target: number) => void;
-  onRemove: (id: string) => void;
-}) {
+function CatalogAvailabilityCard({ item }: { item: MenuAvailabilityReport['items'][number] }) {
   const [expanded, setExpanded] = useState(false);
-  const [targetValue, setTargetValue] = useState(Number(target ?? 0));
-  useEffect(() => setTargetValue(Number(target ?? 0)), [target]);
-  const status = availabilityStatus(item.status);
+  const isRecipe = item.sourceType !== 'PRODUCT';
   return (
     <div
       style={{
-        border: `1px solid ${status.border}`,
-        borderRadius: 12,
+        border: '1px solid #dbe4ee',
+        borderRadius: 16,
         background: '#fff',
         overflow: 'hidden',
+        boxShadow: '0 8px 24px rgba(15, 23, 42, 0.05)',
       }}
     >
       <div
         style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(180px, 1.4fr) repeat(3, minmax(90px, 0.65fr)) auto',
-          gap: '0.85rem',
-          alignItems: 'center',
-          padding: '0.9rem 1rem',
+          padding: '1.35rem 1.25rem 1.2rem',
+          textAlign: 'center',
+          background:
+            'linear-gradient(180deg, rgba(240, 253, 250, 0.72) 0%, rgba(255, 255, 255, 0) 100%)',
         }}
       >
-        <div>
-          <strong style={{ color: '#0f172a', display: 'block' }}>{item.name}</strong>
-          <small className="muted">
-            {item.sourceType === 'PRODUCT' ? 'Produit Stocks' : 'Fiche technique'}
-          </small>
-          <span
+        <strong
+          style={{
+            color: '#0f172a',
+            display: 'block',
+            fontSize: '1.18rem',
+            lineHeight: 1.3,
+            maxWidth: 650,
+            margin: '0 auto',
+          }}
+        >
+          {item.name}
+        </strong>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, minmax(150px, 220px))',
+            justifyContent: 'center',
+            gap: '0.75rem',
+            marginTop: '1rem',
+          }}
+        >
+          <div
             style={{
-              display: 'inline-flex',
-              marginTop: '0.3rem',
-              padding: '0.15rem 0.45rem',
-              borderRadius: 999,
-              background: status.background,
-              color: status.color,
-              fontSize: '0.7rem',
-              fontWeight: 800,
+              padding: '0.7rem 0.85rem',
+              borderRadius: 12,
+              background: '#ffffff',
+              border: '1px solid #ccfbf1',
             }}
           >
-            {status.label}
-          </span>
-          {item.message ? (
-            <small style={{ display: 'block', color: '#b45309', marginTop: '0.35rem' }}>
-              {item.message}
-            </small>
-          ) : null}
-        </div>
-        <AvailabilityNumber
-          label="Disponible"
-          value={item.availablePortions ?? 0}
-          suffix="port."
-          color="#047857"
-        />
-        <AvailabilityNumber
-          label={item.sourceType === 'PRODUCT' ? 'Réservé en production' : 'En production'}
-          value={
-            item.servingQuantity
-              ? Math.floor(Number(item.inProductionQuantity ?? 0) / item.servingQuantity)
-              : 0
-          }
-          suffix="port."
-          color="#2563eb"
-        />
-        <AvailabilityNumber
-          label={item.sourceType === 'PRODUCT' ? 'À approvisionner' : 'À produire'}
-          value={
-            item.sourceType === 'PRODUCT'
-              ? Math.ceil(Number(item.missingStockQuantity ?? 0) / item.servingQuantity)
-              : (item.toProducePortions ?? 0)
-          }
-          suffix="port."
-          color={
-            Number(
-              item.sourceType === 'PRODUCT' ? item.missingStockQuantity : item.toProducePortions,
-            ) > 0
-              ? '#c2410c'
-              : '#64748b'
-          }
-        />
-        <div style={{ display: 'flex', alignItems: 'end', gap: '0.4rem' }}>
-          <label style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 700 }}>
-            Objectif
-            <input
-              type="number"
-              min="0"
-              step="any"
-              value={targetValue}
-              onChange={(event) => setTargetValue(Number(event.target.value))}
-              style={{ width: 70, padding: '0.35rem', marginTop: '0.2rem' }}
-            />
-          </label>
-          <button
-            className="btn btn-secondary btn-sm"
-            disabled={saving || targetValue === Number(target ?? 0)}
-            onClick={() => onTarget(item.id, targetValue)}
-          >
-            OK
-          </button>
-          <button
-            type="button"
-            title="Retirer de la carte"
-            disabled={saving}
-            onClick={() => onRemove(item.id)}
+            <span
+              style={{
+                display: 'block',
+                color: '#64748b',
+                fontSize: '0.68rem',
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                letterSpacing: '.04em',
+              }}
+            >
+              {isRecipe ? 'Coût de la recette' : "Prix de l'article"}
+            </span>
+            <strong
+              style={{
+                display: 'block',
+                color: '#0f766e',
+                fontSize: '1.15rem',
+                marginTop: '.25rem',
+              }}
+            >
+              {money(item.recipeCost)} €
+            </strong>
+          </div>
+          <div
             style={{
-              border: 0,
-              background: '#fef2f2',
-              color: '#dc2626',
-              borderRadius: 7,
-              padding: '0.4rem',
-              cursor: 'pointer',
+              padding: '0.7rem 0.85rem',
+              borderRadius: 12,
+              background: '#ffffff',
+              border: '1px solid #fde68a',
             }}
           >
-            <X size={14} />
-          </button>
+            <span
+              style={{
+                display: 'block',
+                color: '#64748b',
+                fontSize: '0.68rem',
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                letterSpacing: '.04em',
+              }}
+            >
+              Coût matière par portion
+            </span>
+            <strong
+              style={{
+                display: 'block',
+                color: '#a16207',
+                fontSize: '1.15rem',
+                marginTop: '.25rem',
+              }}
+            >
+              {money(item.costPerPortion)} €
+            </strong>
+          </div>
         </div>
       </div>
       {item.components?.length ? (
@@ -4102,15 +3903,16 @@ function CatalogAvailabilityCard({
             style={{
               width: '100%',
               border: 0,
-              background: '#f8fafc',
-              color: '#475569',
+              background: expanded ? '#f0fdfa' : '#f8fafc',
+              color: '#0f766e',
               display: 'flex',
               alignItems: 'center',
+              justifyContent: 'center',
               gap: '0.4rem',
-              padding: '0.55rem 1rem',
-              fontSize: '0.75rem',
+              padding: '0.7rem 1rem',
+              fontSize: '0.78rem',
               cursor: 'pointer',
-              fontWeight: 700,
+              fontWeight: 800,
             }}
           >
             {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}{' '}
@@ -4119,7 +3921,26 @@ function CatalogAvailabilityCard({
               : 'Situation des préparations et matières'}
           </button>
           {expanded ? (
-            <div style={{ padding: '0.65rem 1rem 0.85rem' }}>
+            <div style={{ padding: '0.8rem 1rem 1rem', overflowX: 'auto' }}>
+              <div
+                style={{
+                  minWidth: 650,
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(210px, 1.5fr) repeat(3, minmax(110px, .7fr))',
+                  gap: '0.75rem',
+                  padding: '0 0.55rem 0.45rem',
+                  color: '#64748b',
+                  fontSize: '0.66rem',
+                  fontWeight: 800,
+                  textTransform: 'uppercase',
+                  letterSpacing: '.04em',
+                }}
+              >
+                <span>Ingrédient ou préparation</span>
+                <span>Besoin</span>
+                <span>Prix ingrédient</span>
+                <span>Coût matière</span>
+              </div>
               {item.components.map((component, index) => (
                 <AvailabilityComponentRow
                   key={`${component.kind}-${component.technicalSheetId || component.productId}-${index}`}
@@ -4134,30 +3955,6 @@ function CatalogAvailabilityCard({
   );
 }
 
-function AvailabilityNumber({
-  label,
-  value,
-  suffix,
-  color,
-}: {
-  label: string;
-  value: number;
-  suffix: string;
-  color: string;
-}) {
-  return (
-    <div>
-      <span style={{ display: 'block', fontSize: '0.68rem', color: '#64748b', fontWeight: 700 }}>
-        {label}
-      </span>
-      <strong style={{ color, fontSize: '1rem' }}>
-        {Number(value).toLocaleString('fr-FR', { maximumFractionDigits: 2 })}{' '}
-        <small>{suffix}</small>
-      </strong>
-    </div>
-  );
-}
-
 function AvailabilityComponentRow({
   component,
   depth = 0,
@@ -4167,21 +3964,25 @@ function AvailabilityComponentRow({
 }) {
   const [expanded, setExpanded] = useState(true);
   const hasChildren = Boolean(component.children?.length);
+  const availabilityLabel =
+    component.missingQuantity > 0
+      ? `Manque ${Number(component.missingQuantity).toLocaleString('fr-FR', {
+          maximumFractionDigits: 3,
+        })} ${component.unit ?? ''}`
+      : 'Matière disponible';
   return (
-    <div
-      style={{
-        marginLeft: depth ? '0.8rem' : 0,
-        borderLeft: depth ? '2px solid #dbeafe' : undefined,
-        paddingLeft: depth ? '0.65rem' : 0,
-      }}
-    >
+    <div>
       <div
         style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          gap: '1rem',
-          padding: '0.4rem 0',
+          minWidth: 650,
+          display: 'grid',
+          gridTemplateColumns: 'minmax(210px, 1.5fr) repeat(3, minmax(110px, .7fr))',
+          gap: '0.75rem',
+          alignItems: 'center',
+          padding: '0.65rem 0.55rem',
           fontSize: '0.76rem',
+          borderTop: '1px solid #e2e8f0',
+          background: depth ? '#f8fafc' : '#ffffff',
         }}
       >
         <button
@@ -4190,7 +3991,7 @@ function AvailabilityComponentRow({
           style={{
             border: 0,
             background: 'transparent',
-            padding: 0,
+            padding: `0 0 0 ${depth * 0.8}rem`,
             color: '#334155',
             cursor: hasChildren ? 'pointer' : 'default',
             display: 'flex',
@@ -4208,22 +4009,38 @@ function AvailabilityComponentRow({
           ) : (
             <span style={{ width: 13 }} />
           )}
-          <strong>
-            {component.kind === 'SUB_RECIPE' ? 'Préparation · ' : ''}
-            {component.name}
-          </strong>
+          <span>
+            <strong style={{ display: 'block' }}>{component.name}</strong>
+            <small
+              style={{
+                display: 'block',
+                color: component.missingQuantity > 0 ? '#c2410c' : '#047857',
+                marginTop: '.15rem',
+              }}
+            >
+              {component.kind === 'SUB_RECIPE' ? 'Préparation · ' : ''}
+              {availabilityLabel}
+            </small>
+          </span>
         </button>
-        <span
-          style={{
-            color: component.missingQuantity > 0 ? '#c2410c' : '#047857',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {component.missingQuantity > 0
-            ? `Manque ${Number(component.missingQuantity).toLocaleString('fr-FR', { maximumFractionDigits: 3 })}`
-            : 'Disponible'}{' '}
+        <strong style={{ color: '#334155', whiteSpace: 'nowrap' }}>
+          {Number(component.requiredQuantity).toLocaleString('fr-FR', {
+            maximumFractionDigits: 3,
+          })}{' '}
           {component.unit}
-        </span>
+        </strong>
+        <strong style={{ color: '#0f766e', whiteSpace: 'nowrap' }}>
+          {component.unitPrice == null ? '—' : `${money(component.unitPrice)} €`}
+          {component.unitPrice != null ? (
+            <small style={{ color: '#64748b', fontWeight: 600 }}>
+              {' '}
+              / {component.unitPriceUnit ?? component.unit}
+            </small>
+          ) : null}
+        </strong>
+        <strong style={{ color: '#a16207', whiteSpace: 'nowrap' }}>
+          {component.estimatedCost == null ? 'Non calculé' : `${money(component.estimatedCost)} €`}
+        </strong>
       </div>
       {component.reason ? (
         <div style={{ color: '#b91c1c', fontSize: '0.7rem', marginLeft: '1rem' }}>
@@ -4241,30 +4058,6 @@ function AvailabilityComponentRow({
         : null}
     </div>
   );
-}
-
-function availabilityStatus(status: string) {
-  if (status === 'READY')
-    return { label: 'Disponible', color: '#047857', background: '#ecfdf5', border: '#a7f3d0' };
-  if (status === 'LOW_STOCK')
-    return {
-      label: 'Production en cours',
-      color: '#1d4ed8',
-      background: '#eff6ff',
-      border: '#bfdbfe',
-    };
-  if (status === 'TO_PRODUCE')
-    return { label: 'À produire', color: '#c2410c', background: '#fff7ed', border: '#fed7aa' };
-  if (status === 'COMPONENT_MISSING')
-    return {
-      label: 'Préparation à refaire',
-      color: '#a16207',
-      background: '#fefce8',
-      border: '#fde68a',
-    };
-  if (status === 'NOT_CONFIGURED')
-    return { label: 'À configurer', color: '#7c3aed', background: '#f5f3ff', border: '#ddd6fe' };
-  return { label: 'Matière manquante', color: '#b91c1c', background: '#fef2f2', border: '#fecaca' };
 }
 
 function CompositionBuilder({
@@ -4440,9 +4233,9 @@ function serviceLabel(service?: string) {
   return services.find((s) => s.value === service)?.label ?? service ?? '—';
 }
 function menuExportLabel(audience?: string) {
-  if (audience === 'KITCHEN') return 'Fiche cuisine';
+  if (audience === 'KITCHEN') return 'Dossier cuisine';
   if (audience === 'DINING_ROOM') return 'Fiche salle';
-  if (audience === 'PUBLIC_DISPLAY') return 'Affichage public';
+  if (audience === 'PUBLIC_DISPLAY') return 'Menu client';
   return audience ?? 'Export';
 }
 function sectionLabel(section?: string) {

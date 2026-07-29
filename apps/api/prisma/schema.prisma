@@ -73,6 +73,11 @@ enum TechnicalSheetMode {
   PRODUCTION
 }
 
+enum TechnicalSheetYieldMode {
+  PORTIONS
+  MASS
+}
+
 enum TechnicalSheetStockPolicy {
   MAKE_TO_ORDER
   MAKE_TO_STOCK
@@ -1594,7 +1599,8 @@ model Product {
   name                    String
   sku                     String?
   description             String?
-  averagePrice            Decimal     @default(0) @db.Decimal(12, 4)
+  averagePrice            Decimal     @default(0) @db.Decimal(14, 6)
+  priceDisplayUnit        String?
   minimumStock            Decimal     @default(0) @db.Decimal(12, 3)
   gtin                    String?
   originCountry           String?
@@ -4230,7 +4236,9 @@ model TechnicalSheet {
   description                    String?                   @db.Text
   photoUrl                       String?                   @db.Text
   photoDataUrl                   String?                   @db.Text
+  yieldMode                      TechnicalSheetYieldMode   @default(PORTIONS)
   referencePortions              Decimal                   @default(1) @db.Decimal(12, 3)
+  totalMassGrams                 Decimal                   @default(0) @db.Decimal(14, 3)
   preparationTimeMinutes         Int?                      @default(0)
   cookingTimeMinutes             Int?                      @default(0)
   totalTimeMinutes               Int?                      @default(0)
@@ -4275,6 +4283,7 @@ model TechnicalSheet {
   @@index([categoryId])
   @@index([outputProductId])
   @@index([yieldUnitId])
+  @@index([yieldMode])
   @@index([mode])
   @@index([status])
   @@index([isArchived])
@@ -4293,7 +4302,7 @@ model TechnicalSheetIngredient {
   comment                   String?  @db.Text
   section                   String?
   order                     Int      @default(0)
-  unitPriceSnapshot         Decimal? @db.Decimal(12, 4)
+  unitPriceSnapshot         Decimal? @db.Decimal(14, 6)
   cost                      Decimal? @db.Decimal(12, 4)
   isCalculable              Boolean  @default(true)
   nonCalculableReason       String?  @db.Text
@@ -4711,6 +4720,8 @@ model ProductionOrder {
   priority              ProductionPriority    @default(NORMAL)
   serviceId             String?               @db.Uuid
   responsibleEmployeeId String?               @db.Uuid
+  targetMode            TechnicalSheetYieldMode?
+  targetQuantity        Decimal?              @db.Decimal(14, 3)
   plannedPortions       Decimal               @db.Decimal(12, 3)
   grossRequirement      Decimal               @default(0) @db.Decimal(12, 3)
   netRequirement        Decimal               @default(0) @db.Decimal(12, 3)
@@ -5027,6 +5038,7 @@ model OperationalTask {
   positionTaskPresetId  String?
   startsAt              DateTime
   endsAt                DateTime
+  isTimeScheduled       Boolean                 @default(true)
   quantity              Decimal?                @db.Decimal(12, 3)
   unitLabel             String?
   completedAt           DateTime?
@@ -5061,6 +5073,7 @@ model OperationalTask {
   @@index([productionOperationId])
   @@index([startsAt])
   @@index([endsAt])
+  @@index([isTimeScheduled])
   @@index([status])
   @@map("operational_tasks")
 }

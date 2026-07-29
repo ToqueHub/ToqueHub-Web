@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type DragEvent, type FormEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   AlertCircle,
@@ -15,6 +15,7 @@ import {
   Eye,
   FileText,
   Filter,
+  GripVertical,
   Kanban,
   LayoutGrid,
   Loader2,
@@ -26,6 +27,7 @@ import {
   Printer,
   RefreshCw,
   RotateCcw,
+  Scissors,
   Search,
   ShieldCheck,
   SlidersHorizontal,
@@ -39,6 +41,10 @@ import {
 import { api } from '../api/client';
 import { GuidedWizard } from './ui/GuidedWizard';
 import { ProductionFabricationCalendar } from './ProductionFabricationCalendar';
+import {
+  TechnicalSheetPickerModal,
+  type TechnicalSheetPickerItem,
+} from './TechnicalSheetPickerModal';
 import type {
   HrDepartment,
   HrPosition,
@@ -48,7 +54,6 @@ import type {
   OperationalTaskCategory,
   OperationalTaskPayload,
   OperationalTaskOptions,
-  OperationalTaskStatus,
   ProductionCampaign,
   ProductionProfile,
   Site,
@@ -97,16 +102,6 @@ const categoryOptions: Array<{ value: OperationalTaskCategory; label: string }> 
   { value: 'MANAGEMENT', label: 'Encadrement' },
   { value: 'OTHER', label: 'Autre' },
 ];
-
-const statusCopy: Record<
-  OperationalTaskStatus,
-  { label: string; color: string; background: string }
-> = {
-  TODO: { label: 'À faire', color: '#475569', background: '#f1f5f9' },
-  IN_PROGRESS: { label: 'En cours', color: '#1d4ed8', background: '#dbeafe' },
-  COMPLETED: { label: 'Terminée', color: '#047857', background: '#d1fae5' },
-  CANCELLED: { label: 'Annulée', color: '#b91c1c', background: '#fee2e2' },
-};
 
 const categoryColor: Record<OperationalTaskCategory, string> = {
   KITCHEN: '#f97316',
@@ -188,8 +183,10 @@ function taskDay(value: string) {
   return dayKey(date);
 }
 
-const TIMELINE_HOUR_HEIGHT = 108;
-const TIMELINE_MIN_TASK_MINUTES = 45;
+const TIMELINE_HOUR_HEIGHT = 72;
+const TIMELINE_MIN_TASK_MINUTES = 60;
+const TIMELINE_DEFAULT_START = 0;
+const TIMELINE_DEFAULT_END = 24 * 60;
 
 type TimelineTaskLayout = {
   task: OperationalTask;
@@ -224,7 +221,10 @@ function buildTimelineLayout(tasks: OperationalTask[], day: string): TimelineTas
         task,
         startMinute,
         endMinute,
-        visualEndMinute: Math.min(24 * 60, Math.max(endMinute, startMinute + TIMELINE_MIN_TASK_MINUTES)),
+        visualEndMinute: Math.min(
+          24 * 60,
+          Math.max(endMinute, startMinute + TIMELINE_MIN_TASK_MINUTES),
+        ),
       };
     })
     .sort((a, b) => a.startMinute - b.startMinute || a.endMinute - b.endMinute);
@@ -265,7 +265,9 @@ function employeeName(
 }
 
 function taskSiteName(task: OperationalTask) {
-  return task.site?.name ?? task.assignedEmployee?.mainSite?.name ?? task.planningAssignment?.site?.name;
+  return (
+    task.site?.name ?? task.assignedEmployee?.mainSite?.name ?? task.planningAssignment?.site?.name
+  );
 }
 
 function taskTeamLabel(task: OperationalTask) {
@@ -276,7 +278,38 @@ function taskTeamLabel(task: OperationalTask) {
   return employeeName(task.assignedEmployee);
 }
 
-function emptyDraft(date: string, departmentId = '', assignedEmployeeId = '', siteId = ''): TaskDraft {
+function productionStepCount(task: OperationalTask) {
+  return task.technicalSheet?.steps?.length ?? task.productionBatch?.operations?.length ?? 0;
+}
+
+function canSplitProductionRecipe(task: OperationalTask) {
+  return (
+    task.source === 'PRODUCTION' &&
+    Boolean(task.productionBatchId) &&
+    !task.productionOperationId &&
+    !task.technicalSheetStepId &&
+    productionStepCount(task) > 1
+  );
+}
+
+function campaignQuantity(campaign: ProductionCampaign) {
+  const mode =
+    campaign.targetMode ?? (campaign.technicalSheet?.yieldMode === 'MASS' ? 'MASS' : 'PORTIONS');
+  const raw = Number(
+    campaign.targetQuantity ?? campaign.grossRequirement ?? campaign.plannedPortions,
+  );
+  return {
+    value: mode === 'MASS' ? raw / 1000 : raw,
+    unit: mode === 'MASS' ? 'kg' : 'portions',
+  };
+}
+
+function emptyDraft(
+  date: string,
+  departmentId = '',
+  assignedEmployeeId = '',
+  siteId = '',
+): TaskDraft {
   return {
     mode: '',
     title: '',
@@ -340,9 +373,12 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
   const [tasks, setTasks] = useState<OperationalTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [error, setError] = useState('');
+  const [expiryNotice, setExpiryNotice] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorStep, setEditorStep] = useState<1 | 2 | 3>(1);
+  const [taskSheetPickerMode, setTaskSheetPickerMode] = useState<'sheet' | 'step' | null>(null);
   const [serviceSearch, setServiceSearch] = useState('');
   const [menuImporterOpen, setMenuImporterOpen] = useState(false);
   const [menus, setMenus] = useState<MenuPlan[]>([]);
@@ -402,6 +438,14 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
     setLoading(true);
     setError('');
     try {
+      const expiry = await api.expireUnassignedProductionCampaigns(token);
+      if (expiry.cancelledCount > 0) {
+        setExpiryNotice(
+          `${expiry.cancelledCount} fabrication${expiry.cancelledCount > 1 ? 's' : ''} échue${
+            expiry.cancelledCount > 1 ? 's' : ''
+          } annulée${expiry.cancelledCount > 1 ? 's' : ''} automatiquement · stocks libérés.`,
+        );
+      }
       const [hr, context, availableSites, taskList] = await Promise.all([
         api.hrBootstrap(token),
         api.productionTaskContext(token),
@@ -438,6 +482,14 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
     setCampaignsLoading(true);
     setCampaignError('');
     try {
+      const expiry = await api.expireUnassignedProductionCampaigns(token);
+      if (expiry.cancelledCount > 0) {
+        setExpiryNotice(
+          `${expiry.cancelledCount} fabrication${expiry.cancelledCount > 1 ? 's' : ''} échue${
+            expiry.cancelledCount > 1 ? 's' : ''
+          } annulée${expiry.cancelledCount > 1 ? 's' : ''} automatiquement · stocks libérés.`,
+        );
+      }
       const eventId = sessionStorage.getItem('toquehub.production.catererEventId');
       const [result, profilesResult, event] = await Promise.all([
         api.productionCampaigns(token, { pageSize: 200 }),
@@ -563,6 +615,32 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
   const selectedSheet = taskOptions.technicalSheets.find(
     (sheet) => sheet.id === draft.technicalSheetId,
   );
+  const taskSheetPickerItems = useMemo<TechnicalSheetPickerItem[]>(
+    () =>
+      taskOptions.technicalSheets.map((sheet) => ({
+        id: sheet.id,
+        name: sheet.name,
+        category: sheet.isOnCurrentMenu ? 'Au menu actuellement' : 'Fiche active',
+        group: sheet.isOnCurrentMenu ? 'Au menu actuellement' : 'Autres fiches actives',
+        referenceLabel: sheet.referencePortions
+          ? `${Number(sheet.referencePortions).toLocaleString('fr-FR')} portions`
+          : null,
+        durationMinutes: sheet.totalTimeMinutes,
+        contextLabel: sheet.menuNames.length ? sheet.menuNames.join(', ') : null,
+        featured: sheet.isOnCurrentMenu,
+        steps: sheet.steps.map((step) => ({
+          id: step.id,
+          order: step.order,
+          title: step.title,
+          description: step.description,
+          estimatedMinutes: step.estimatedMinutes,
+        })),
+      })),
+    [taskOptions.technicalSheets],
+  );
+  const selectedTechnicalSheetStep = selectedSheet?.steps.find(
+    (step) => step.id === draft.technicalSheetStepId,
+  );
   const selectedBatch = taskOptions.productionBatches.find(
     (batch) => batch.id === draft.productionBatchId,
   );
@@ -631,7 +709,7 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
         : [...current.assignedEmployeeIds, employeeId];
       const leadId =
         current.assignedEmployeeId === employeeId && selected
-          ? assignedEmployeeIds[0] ?? ''
+          ? (assignedEmployeeIds[0] ?? '')
           : current.assignedEmployeeId || employeeId;
       const lead = assignees.find((item) => item.id === leadId);
       return {
@@ -668,6 +746,12 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
       quantity: '',
       unitLabel: '',
     }));
+  }
+
+  function openTaskSheetPicker(mode: 'sheet' | 'step') {
+    const taskMode = mode === 'step' ? 'TECHNICAL_SHEET_STEP' : 'TECHNICAL_SHEET';
+    selectTaskMode(taskMode);
+    setTaskSheetPickerMode(mode);
   }
 
   function switchTechnicalSheetMode(mode: 'TECHNICAL_SHEET' | 'TECHNICAL_SHEET_STEP') {
@@ -764,21 +848,34 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
     }));
   }
 
-  function selectTechnicalSheetStep(stepId: string) {
-    const step = selectedSheet?.steps.find((item) => item.id === stepId);
-    if (!step || !selectedSheet) return;
-    const stepIndex = selectedSheet.steps.findIndex((item) => item.id === stepId);
-    const matchingOperation = selectedBatch?.operations.find(
-      (operation) => operation.position === stepIndex,
-    );
+  function selectTechnicalSheetStep(stepId: string, technicalSheetId = selectedSheet?.id ?? '') {
+    const sheet = taskOptions.technicalSheets.find((item) => item.id === technicalSheetId);
+    const step = sheet?.steps.find((item) => item.id === stepId);
+    if (!step || !sheet) return;
+    const stepIndex = sheet.steps.findIndex((item) => item.id === stepId);
     setDraft((current) => ({
       ...current,
+      mode: 'TECHNICAL_SHEET_STEP',
+      technicalSheetId: sheet.id,
       technicalSheetStepId: step.id,
-      productionOperationId: matchingOperation?.id ?? '',
-      title: `${step.title} · ${selectedSheet.name}`,
+      productionBatchId:
+        taskOptions.productionBatches.find(
+          (batch) =>
+            batch.id === current.productionBatchId && batch.order.technicalSheetId === sheet.id,
+        )?.id ?? '',
+      productionOperationId:
+        taskOptions.productionBatches
+          .find(
+            (batch) =>
+              batch.id === current.productionBatchId && batch.order.technicalSheetId === sheet.id,
+          )
+          ?.operations.find((operation) => operation.position === stepIndex)?.id ?? '',
+      title: `${step.title} · ${sheet.name}`,
       description: step.description ?? '',
       durationMinutes: step.estimatedMinutes,
       endTime: endTimeFromDuration(current.startTime, step.estimatedMinutes),
+      quantity: current.quantity || String(sheet.referencePortions ?? ''),
+      unitLabel: current.unitLabel || 'portions',
     }));
   }
 
@@ -850,7 +947,7 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
     const start = new Date(task.startsAt);
     const end = new Date(task.endsAt);
     setEditingTask(task);
-    setEditorStep(1);
+    setEditorStep(3);
     setServiceSearch('');
     setDraft({
       mode: task.technicalSheetStepId
@@ -912,6 +1009,8 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
       assignedEmployeeIds: draft.assignedEmployeeIds,
       startsAt,
       endsAt,
+      isTimeScheduled:
+        editingTask?.source === 'PRODUCTION' ? true : (editingTask?.isTimeScheduled ?? true),
       quantity: draft.quantity === '' ? null : Number(draft.quantity),
       unitLabel: draft.unitLabel.trim() || null,
       source: editingTask?.source ?? (draft.technicalSheetId ? 'TECHNICAL_SHEET' : 'MANUAL'),
@@ -935,26 +1034,86 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
     }
   }
 
-  async function changeStatus(task: OperationalTask, status: OperationalTaskStatus) {
+  async function splitRecipeTask(task: OperationalTask) {
     setBusyId(task.id);
     setError('');
     try {
-      const updated = await api.updateProductionTaskStatus(token, task.id, status);
-      setTasks((current) => current.map((item) => (item.id === task.id ? updated : item)));
-    } catch (statusError) {
-      setError(errorMessage(statusError));
+      await api.splitProductionRecipeTask(token, task.id);
+      setEditorOpen(false);
+      setEditingTask(null);
+      await load();
+    } catch (splitError) {
+      setError(errorMessage(splitError));
     } finally {
       setBusyId('');
     }
   }
 
+  async function scheduleProductionTask(taskId: string, day: string, startMinute?: number) {
+    const task = tasks.find((item) => item.id === taskId);
+    if (!task || task.source !== 'PRODUCTION' || !task.productionBatchId) {
+      return;
+    }
+    const originalStart = new Date(task.startsAt);
+    const originalEnd = new Date(task.endsAt);
+    const startsAt = parseDay(day);
+    const boundedStartMinute =
+      startMinute == null
+        ? originalStart.getHours() * 60 + originalStart.getMinutes()
+        : Math.min(23 * 60 + 45, Math.max(0, Math.round(startMinute / 15) * 15));
+    startsAt.setHours(Math.floor(boundedStartMinute / 60), boundedStartMinute % 60, 0, 0);
+    const endsAt = new Date(
+      startsAt.getTime() + Math.max(5 * 60_000, originalEnd.getTime() - originalStart.getTime()),
+    );
+    setBusyId(task.id);
+    setError('');
+    try {
+      const updated = await api.updateProductionTask(token, task.id, {
+        startsAt: startsAt.toISOString(),
+        endsAt: endsAt.toISOString(),
+        isTimeScheduled: true,
+      });
+      setTasks((current) => current.map((item) => (item.id === task.id ? updated : item)));
+    } catch (moveError) {
+      setError(errorMessage(moveError));
+    } finally {
+      setBusyId('');
+    }
+  }
+
+  async function exportSelectedServicePdf() {
+    if (!departmentFilter) return;
+    setExportingPdf(true);
+    setError('');
+    try {
+      await api.downloadProductionOperationalPdf(token, {
+        date: anchorDate,
+        serviceId: departmentFilter,
+        siteId: siteFilter || undefined,
+      });
+    } catch (exportError) {
+      setError(errorMessage(exportError));
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
   const activeTasks = tasks.filter((task) => task.status !== 'CANCELLED');
-  const completedCount = activeTasks.filter((task) => task.status === 'COMPLETED').length;
-  const inProgressCount = activeTasks.filter((task) => task.status === 'IN_PROGRESS').length;
-  const unassignedCount = activeTasks.filter(
-    (task) => !task.assignedEmployeeId && !task.assignments?.length,
-  ).length;
-  const unassignedTasks = activeTasks.filter(
+  const pendingProductionTasks = activeTasks.filter(
+    (task) =>
+      task.source === 'PRODUCTION' &&
+      Boolean(task.productionBatchId) &&
+      task.isTimeScheduled === false,
+  );
+  const scheduledTasks = activeTasks.filter(
+    (task) =>
+      !(
+        task.source === 'PRODUCTION' &&
+        Boolean(task.productionBatchId) &&
+        task.isTimeScheduled === false
+      ),
+  );
+  const unassignedTasks = scheduledTasks.filter(
     (task) => !task.assignedEmployeeId && !task.assignments?.length,
   );
   const periodCampaigns = useMemo(
@@ -967,7 +1126,12 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
           (!fabricationContext.siteId || campaign.siteId === fabricationContext.siteId)
         );
       }),
-    [campaigns, fabricationContext.endDate, fabricationContext.siteId, fabricationContext.startDate],
+    [
+      campaigns,
+      fabricationContext.endDate,
+      fabricationContext.siteId,
+      fabricationContext.startDate,
+    ],
   );
 
   if (tab === 'fabrication') {
@@ -982,25 +1146,26 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
           loading={campaignsLoading}
           onRefresh={loadCampaigns}
           onContextChange={setFabricationContext}
-        />
-        <FabricationView
-          token={token}
-          campaigns={periodCampaigns}
-          loading={campaignsLoading}
-          error={campaignError}
-          search={campaignSearch}
-          status={campaignStatus}
-          eventFilter={catererEventFilter}
-          onSearch={setCampaignSearch}
-          onStatus={setCampaignStatus}
-          onClearEvent={() => {
-            sessionStorage.removeItem('toquehub.production.catererEventId');
-            setCatererEventFilter(undefined);
-          }}
-          onRefresh={() => void loadCampaigns()}
-          embedded
-          periodLabel={fabricationContext.label}
-        />
+        >
+          <FabricationView
+            token={token}
+            campaigns={periodCampaigns}
+            loading={campaignsLoading}
+            error={campaignError}
+            search={campaignSearch}
+            status={campaignStatus}
+            eventFilter={catererEventFilter}
+            onSearch={setCampaignSearch}
+            onStatus={setCampaignStatus}
+            onClearEvent={() => {
+              sessionStorage.removeItem('toquehub.production.catererEventId');
+              setCatererEventFilter(undefined);
+            }}
+            onRefresh={() => void loadCampaigns()}
+            embedded
+            periodLabel={fabricationContext.label}
+          />
+        </ProductionFabricationCalendar>
       </section>
     );
   }
@@ -1038,6 +1203,17 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
             </p>
           </div>
           <div className="production-hero-actions">
+            {departmentFilter && view === 'day' && (
+              <button
+                type="button"
+                onClick={() => void exportSelectedServicePdf()}
+                className="production-btn-glass"
+                disabled={exportingPdf}
+              >
+                {exportingPdf ? <Loader2 size={18} className="spin" /> : <Printer size={18} />}
+                Exporter le service en PDF
+              </button>
+            )}
             <button
               type="button"
               onClick={() => void openMenuImporter()}
@@ -1153,38 +1329,10 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
           </div>
         </div>
 
-        <div
-          style={{
-            marginTop: '1.1rem',
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-            gap: '.75rem',
-          }}
-        >
+        <div className="production-placement-indicator">
           <Metric
-            label="Tâches actives"
-            value={activeTasks.length}
-            icon={ListChecks}
-            color="#0f172a"
-            bg="#f1f5f9"
-          />
-          <Metric
-            label="En cours"
-            value={inProgressCount}
-            icon={Clock3}
-            color="#1d4ed8"
-            bg="#dbeafe"
-          />
-          <Metric
-            label="Terminées"
-            value={completedCount}
-            icon={Check}
-            color="#047857"
-            bg="#d1fae5"
-          />
-          <Metric
-            label="À assigner"
-            value={unassignedCount}
+            label="À placer"
+            value={pendingProductionTasks.length}
             icon={AlertCircle}
             color="#d97706"
             bg="#fef3c7"
@@ -1198,11 +1346,51 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
         </div>
       )}
 
+      {expiryNotice && (
+        <div
+          role="status"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.65rem',
+            padding: '0.9rem 1.05rem',
+            border: '1px solid #a7f3d0',
+            borderRadius: '14px',
+            color: '#047857',
+            background: '#ecfdf5',
+            fontWeight: 700,
+          }}
+        >
+          <CheckCircle2 size={19} />
+          <span>{expiryNotice}</span>
+          <button
+            type="button"
+            aria-label="Fermer l’information"
+            onClick={() => setExpiryNotice('')}
+            style={{
+              marginLeft: 'auto',
+              display: 'grid',
+              placeItems: 'center',
+              border: 0,
+              color: 'inherit',
+              background: 'transparent',
+              cursor: 'pointer',
+            }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+      )}
+
       {unassignedTasks.length > 0 && (
         <section className="production-suggestions-panel">
           <div className="production-suggestions-heading">
-            <span><Sparkles size={17} /> Suggestions à affecter</span>
-            <strong>{unassignedTasks.length} tâche{unassignedTasks.length > 1 ? 's' : ''}</strong>
+            <span>
+              <Sparkles size={17} /> Suggestions à affecter
+            </span>
+            <strong>
+              {unassignedTasks.length} tâche{unassignedTasks.length > 1 ? 's' : ''}
+            </strong>
           </div>
           <div className="production-suggestions-list">
             {unassignedTasks.slice(0, 8).map((task) => (
@@ -1210,8 +1398,13 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
                 <span>
                   <strong>{task.title}</strong>
                   <small>
-                    {formatDay(taskDay(task.startsAt), { weekday: 'short', day: 'numeric', month: 'short' })}
-                    {' · '}{formatTime(task.startsAt)}
+                    {formatDay(taskDay(task.startsAt), {
+                      weekday: 'short',
+                      day: 'numeric',
+                      month: 'short',
+                    })}
+                    {' · '}
+                    {formatTime(task.startsAt)}
                     {taskSiteName(task) ? ` · ${taskSiteName(task)}` : ''}
                   </small>
                 </span>
@@ -1222,104 +1415,120 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
         </section>
       )}
 
-      {!departments.length && !loading ? (
-        <section
-          style={{
-            ...panelStyle,
-            textAlign: 'center',
-            padding: '3.5rem 1.5rem',
-            borderRadius: '24px',
-          }}
-        >
-          <div
-            style={{
-              display: 'inline-grid',
-              placeItems: 'center',
-              width: '64px',
-              height: '64px',
-              borderRadius: '20px',
-              background: '#ecfdf5',
-              color: '#10b981',
-              marginBottom: '1rem',
-            }}
-          >
-            <Users size={32} />
-          </div>
-          <h3 style={{ margin: '0 0 .4rem', fontSize: '1.35rem', fontWeight: 800 }}>
-            Commencez par vos services RH
-          </h3>
-          <p
-            style={{
-              margin: 0,
-              color: '#64748b',
-              maxWidth: '480px',
-              marginInline: 'auto',
-              lineHeight: 1.5,
-            }}
-          >
-            Créez vos services et collaborateurs dans le module RH. Ils seront automatiquement
-            synchronisés dans le planning opérationnel.
-          </p>
-        </section>
-      ) : loading ? (
-        <section
-          style={{
-            ...panelStyle,
-            display: 'grid',
-            placeItems: 'center',
-            minHeight: '300px',
-            borderRadius: '24px',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '.75rem',
-              color: '#64748b',
-              fontWeight: 800,
-              fontSize: '1.05rem',
-            }}
-          >
-            <Loader2 size={24} className="spin" color="#10b981" /> Chargement du planning
-            opérationnel…
-          </div>
-        </section>
-      ) : (
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.1 }}
-          className="production-panel"
-          style={{ padding: view === 'week' ? '.9rem' : '1.25rem', overflowX: 'auto' }}
-        >
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: view === 'week' ? 'repeat(7, minmax(230px, 1fr))' : '1fr',
-              gap: '.85rem',
-              minWidth: view === 'week' ? '1610px' : undefined,
-            }}
-          >
-            {days.map((day) => {
-              const dayTasks = activeTasks.filter((task) => taskDay(task.startsAt) === day);
-              return (
-                <DayColumn
-                  key={day}
-                  day={day}
-                  tasks={dayTasks}
-                  today={day === today()}
-                  compact={view === 'week'}
-                  busyId={busyId}
-                  onCreate={() => openCreate(day)}
-                  onEdit={openEdit}
-                  onStatus={changeStatus}
-                />
-              );
-            })}
-          </div>
-        </motion.section>
-      )}
+      <div
+        className={`production-planning-workspace${
+          pendingProductionTasks.length > 0 ? ' has-queue' : ''
+        }`}
+      >
+        <div className="production-planning-calendar-region">
+          {!departments.length && !loading ? (
+            <section
+              style={{
+                ...panelStyle,
+                textAlign: 'center',
+                padding: '3.5rem 1.5rem',
+                borderRadius: '24px',
+              }}
+            >
+              <div
+                style={{
+                  display: 'inline-grid',
+                  placeItems: 'center',
+                  width: '64px',
+                  height: '64px',
+                  borderRadius: '20px',
+                  background: '#ecfdf5',
+                  color: '#10b981',
+                  marginBottom: '1rem',
+                }}
+              >
+                <Users size={32} />
+              </div>
+              <h3 style={{ margin: '0 0 .4rem', fontSize: '1.35rem', fontWeight: 800 }}>
+                Commencez par vos services RH
+              </h3>
+              <p
+                style={{
+                  margin: 0,
+                  color: '#64748b',
+                  maxWidth: '480px',
+                  marginInline: 'auto',
+                  lineHeight: 1.5,
+                }}
+              >
+                Créez vos services et collaborateurs dans le module RH. Ils seront automatiquement
+                synchronisés dans le planning opérationnel.
+              </p>
+            </section>
+          ) : loading ? (
+            <section
+              style={{
+                ...panelStyle,
+                display: 'grid',
+                placeItems: 'center',
+                minHeight: '300px',
+                borderRadius: '24px',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '.75rem',
+                  color: '#64748b',
+                  fontWeight: 800,
+                  fontSize: '1.05rem',
+                }}
+              >
+                <Loader2 size={24} className="spin" color="#10b981" /> Chargement du planning
+                opérationnel…
+              </div>
+            </section>
+          ) : (
+            <motion.section
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.1 }}
+              className="production-panel production-planning-calendar-panel"
+              style={{ padding: view === 'week' ? '.9rem' : '1.25rem', overflowX: 'auto' }}
+            >
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: view === 'week' ? 'repeat(7, minmax(230px, 1fr))' : '1fr',
+                  gap: '.85rem',
+                  minWidth: view === 'week' ? '1610px' : undefined,
+                }}
+              >
+                {days.map((day) => {
+                  const dayTasks = scheduledTasks.filter((task) => taskDay(task.startsAt) === day);
+                  return (
+                    <DayColumn
+                      key={day}
+                      day={day}
+                      tasks={dayTasks}
+                      today={day === today()}
+                      compact={view === 'week'}
+                      onCreate={() => openCreate(day)}
+                      onEdit={openEdit}
+                      onMoveTask={scheduleProductionTask}
+                    />
+                  );
+                })}
+              </div>
+            </motion.section>
+          )}
+        </div>
+
+        {pendingProductionTasks.length > 0 && (
+          <ProductionPlanningQueue
+            tasks={pendingProductionTasks}
+            busyId={busyId}
+            onEdit={openEdit}
+            onSplit={splitRecipeTask}
+          />
+        )}
+      </div>
 
       <AnimatePresence>
         {menuImporterOpen && (
@@ -1552,21 +1761,23 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
 
       {editorOpen && (
         <GuidedWizard
-          step={editorStep}
-          totalSteps={3}
+          step={editingTask ? 1 : editorStep}
+          totalSteps={editingTask ? 1 : 3}
           onClose={() => setEditorOpen(false)}
           sidebar={
             <OperationalTaskWizardSidebar
-              step={editorStep}
+              step={editingTask ? 3 : editorStep}
               editing={Boolean(editingTask)}
               siteName={selectedSite?.name}
               departmentName={selectedDepartment?.name}
               assigneeName={
-                draft.assignedEmployeeIds.length > 1
-                  ? `${employeeName(selectedAssignee)} + ${draft.assignedEmployeeIds.length - 1}`
-                  : draft.assignedEmployeeId
-                    ? employeeName(selectedAssignee)
-                    : 'À assigner plus tard'
+                editingTask
+                  ? taskTeamLabel(editingTask)
+                  : draft.assignedEmployeeIds.length > 1
+                    ? `${employeeName(selectedAssignee)} + ${draft.assignedEmployeeIds.length - 1}`
+                    : draft.assignedEmployeeId
+                      ? employeeName(selectedAssignee)
+                      : 'À assigner plus tard'
               }
               taskName={draft.title}
             />
@@ -1580,19 +1791,25 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
                     <span>Site et service responsables</span>
                     <h2>Où se déroule la tâche ?</h2>
                     <p>
-                      Choisissez d’abord le site, puis le service issu du module RH qui réalisera
-                      la tâche.
+                      Choisissez d’abord le site, puis le service issu du module RH qui réalisera la
+                      tâche.
                     </p>
                   </div>
                   <label className="operational-task-site-select">
-                    <span><Building2 size={17} /> Site</span>
+                    <span>
+                      <Building2 size={17} /> Site
+                    </span>
                     <select
                       value={draft.siteId}
-                      onChange={(event) => setDraft((current) => ({ ...current, siteId: event.target.value }))}
+                      onChange={(event) =>
+                        setDraft((current) => ({ ...current, siteId: event.target.value }))
+                      }
                     >
                       <option value="">Aucun site spécifique</option>
                       {sites.map((site) => (
-                        <option key={site.id} value={site.id}>{site.name}</option>
+                        <option key={site.id} value={site.id}>
+                          {site.name}
+                        </option>
                       ))}
                     </select>
                   </label>
@@ -1673,7 +1890,11 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
                             <small>La tâche restera visible dans les tâches non attribuées</small>
                           </span>
                           <span className="operational-task-choice-check">
-                            {!draft.assignedEmployeeIds.length ? <Check size={17} /> : <Circle size={15} />}
+                            {!draft.assignedEmployeeIds.length ? (
+                              <Check size={17} />
+                            ) : (
+                              <Circle size={15} />
+                            )}
                           </span>
                         </button>
                       )}
@@ -1721,231 +1942,382 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
               {editorStep === 3 && (
                 <section className="operational-task-step">
                   <div className="operational-task-step-heading compact">
-                    <span>Tâche et horaire</span>
-                    <h2>Que faut-il réaliser ?</h2>
+                    <span>{editingTask ? 'Modification rapide' : 'Tâche et horaire'}</span>
+                    <h2>{editingTask ? 'Récapitulatif de la tâche' : 'Que faut-il réaliser ?'}</h2>
                     <p>
-                      Choisissez un raccourci du poste, une fiche technique pour les métiers
-                      concernés, ou saisissez librement la tâche.
+                      {editingTask
+                        ? 'Modifiez directement les informations utiles sans recommencer le parcours de planification.'
+                        : 'Choisissez un raccourci du poste, une fiche technique pour les métiers concernés, ou saisissez librement la tâche.'}
                     </p>
                   </div>
-                  {taskOptionsLoading ? (
-                    <div className="operational-task-loading">
-                      <Loader2 size={24} className="spin" /> Chargement des tâches proposées…
-                    </div>
-                  ) : (
-                    <div className="operational-task-mode-grid">
-                      {supportsTechnicalSheets && (
-                        <button
-                          type="button"
-                          onClick={() => selectTaskMode('TECHNICAL_SHEET')}
-                          style={taskModeButtonStyle(draft.mode === 'TECHNICAL_SHEET')}
-                        >
-                          <ChefHat size={20} /> Fiche complète
-                        </button>
-                      )}
-                      {supportsTechnicalSheets && (
-                        <button
-                          type="button"
-                          onClick={() => selectTaskMode('TECHNICAL_SHEET_STEP')}
-                          style={taskModeButtonStyle(draft.mode === 'TECHNICAL_SHEET_STEP')}
-                        >
-                          <ListChecks size={20} /> Une étape
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => selectTaskMode('PRESET')}
-                        style={taskModeButtonStyle(draft.mode === 'PRESET')}
-                      >
-                        <RotateCcw size={20} /> Tâche du poste
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => selectTaskMode('MANUAL')}
-                        style={taskModeButtonStyle(draft.mode === 'MANUAL')}
-                      >
-                        <Pencil size={20} /> Saisie libre
-                      </button>
-                    </div>
-                  )}
-
-                  {draft.mode === 'PRESET' && (
-                    <div className="operational-task-selection-panel">
-                      <Field label="Tâche habituelle du poste" required>
-                        <select
-                          value={
-                            draft.positionTaskPresetId
-                              ? `${draft.positionId}:${draft.positionTaskPresetId}`
-                              : ''
-                          }
-                          onChange={(event) => selectPreset(event.target.value)}
-                          style={inputStyle}
-                        >
-                          <option value="">Choisir une tâche…</option>
-                          {presetsForAssignee.map((preset) => (
-                            <option
-                              key={`${preset.positionId}:${preset.id}`}
-                              value={`${preset.positionId}:${preset.id}`}
+                  {!editingTask && (
+                    <>
+                      {taskOptionsLoading ? (
+                        <div className="operational-task-loading">
+                          <Loader2 size={24} className="spin" /> Chargement des tâches proposées…
+                        </div>
+                      ) : (
+                        <div className="operational-task-mode-grid">
+                          {supportsTechnicalSheets && (
+                            <button
+                              type="button"
+                              onClick={() => openTaskSheetPicker('sheet')}
+                              style={taskModeButtonStyle(draft.mode === 'TECHNICAL_SHEET')}
                             >
-                              {preset.positionName} · {preset.title}
-                            </option>
-                          ))}
-                        </select>
-                        {!presetsForAssignee.length && (
-                          <small style={{ color: '#b45309' }}>
-                            Ajoutez les tâches types depuis RH → Postes → Modifier → Tâches.
-                          </small>
-                        )}
-                      </Field>
-                    </div>
-                  )}
-
-                  {(draft.mode === 'TECHNICAL_SHEET' || draft.mode === 'TECHNICAL_SHEET_STEP') && (
-                    <div className="operational-task-selection-panel technical-sheet">
-                      <div style={{ display: 'flex', gap: '.45rem', flexWrap: 'wrap' }}>
-                        <button
-                          type="button"
-                          onClick={() => switchTechnicalSheetMode('TECHNICAL_SHEET')}
-                          style={smallSegmentStyle(draft.mode === 'TECHNICAL_SHEET')}
-                        >
-                          Fiche complète
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => switchTechnicalSheetMode('TECHNICAL_SHEET_STEP')}
-                          style={smallSegmentStyle(draft.mode === 'TECHNICAL_SHEET_STEP')}
-                        >
-                          Une étape
-                        </button>
-                      </div>
-                      <Field label="Fiche technique" required>
-                        <select
-                          value={draft.technicalSheetId}
-                          onChange={(event) => selectTechnicalSheet(event.target.value)}
-                          style={inputStyle}
-                        >
-                          <option value="">Choisir une fiche…</option>
-                          {taskOptions.technicalSheets.some((sheet) => sheet.isOnCurrentMenu) && (
-                            <optgroup label="Au menu actuellement">
-                              {taskOptions.technicalSheets
-                                .filter((sheet) => sheet.isOnCurrentMenu)
-                                .map((sheet) => (
-                                  <option key={sheet.id} value={sheet.id}>
-                                    {sheet.name} · {sheet.totalTimeMinutes} min
-                                  </option>
-                                ))}
-                            </optgroup>
+                              <ChefHat size={20} /> Fiche complète
+                            </button>
                           )}
-                          <optgroup label="Autres fiches actives">
-                            {taskOptions.technicalSheets
-                              .filter((sheet) => !sheet.isOnCurrentMenu)
-                              .map((sheet) => (
-                                <option key={sheet.id} value={sheet.id}>
-                                  {sheet.name} · {sheet.totalTimeMinutes} min
+                          {supportsTechnicalSheets && (
+                            <button
+                              type="button"
+                              onClick={() => openTaskSheetPicker('step')}
+                              style={taskModeButtonStyle(draft.mode === 'TECHNICAL_SHEET_STEP')}
+                            >
+                              <ListChecks size={20} /> Une étape
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => selectTaskMode('PRESET')}
+                            style={taskModeButtonStyle(draft.mode === 'PRESET')}
+                          >
+                            <RotateCcw size={20} /> Tâche du poste
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => selectTaskMode('MANUAL')}
+                            style={taskModeButtonStyle(draft.mode === 'MANUAL')}
+                          >
+                            <Pencil size={20} /> Saisie libre
+                          </button>
+                        </div>
+                      )}
+
+                      {draft.mode === 'PRESET' && (
+                        <div className="operational-task-selection-panel">
+                          <Field label="Tâche habituelle du poste" required>
+                            <select
+                              value={
+                                draft.positionTaskPresetId
+                                  ? `${draft.positionId}:${draft.positionTaskPresetId}`
+                                  : ''
+                              }
+                              onChange={(event) => selectPreset(event.target.value)}
+                              style={inputStyle}
+                            >
+                              <option value="">Choisir une tâche…</option>
+                              {presetsForAssignee.map((preset) => (
+                                <option
+                                  key={`${preset.positionId}:${preset.id}`}
+                                  value={`${preset.positionId}:${preset.id}`}
+                                >
+                                  {preset.positionName} · {preset.title}
                                 </option>
                               ))}
-                          </optgroup>
-                        </select>
-                        {selectedSheet?.isOnCurrentMenu && (
-                          <small style={{ color: '#047857', fontWeight: 800 }}>
-                            Présente dans : {selectedSheet.menuNames.join(', ')}
-                          </small>
-                        )}
-                      </Field>
-                      {draft.mode === 'TECHNICAL_SHEET_STEP' && draft.technicalSheetId && (
-                        <Field label="Étape à réaliser" required>
-                          <select
-                            value={draft.technicalSheetStepId}
-                            onChange={(event) => selectTechnicalSheetStep(event.target.value)}
-                            style={inputStyle}
-                          >
-                            <option value="">Choisir une étape…</option>
-                            {selectedSheet?.steps.map((step) => (
-                              <option key={step.id} value={step.id}>
-                                {step.order}. {step.title} · {step.estimatedMinutes} min
-                              </option>
-                            ))}
-                          </select>
-                          {!selectedSheet?.steps.length && (
-                            <small style={{ color: '#b45309' }}>
-                              Cette fiche ne contient aucune étape planifiable.
-                            </small>
+                            </select>
+                            {!presetsForAssignee.length && (
+                              <small style={{ color: '#b45309' }}>
+                                Ajoutez les tâches types depuis RH → Postes → Modifier → Tâches.
+                              </small>
+                            )}
+                          </Field>
+                        </div>
+                      )}
+
+                      {(draft.mode === 'TECHNICAL_SHEET' ||
+                        draft.mode === 'TECHNICAL_SHEET_STEP') && (
+                        <div className="operational-task-selection-panel technical-sheet">
+                          <div style={{ display: 'flex', gap: '.45rem', flexWrap: 'wrap' }}>
+                            <button
+                              type="button"
+                              onClick={() => openTaskSheetPicker('sheet')}
+                              style={smallSegmentStyle(draft.mode === 'TECHNICAL_SHEET')}
+                            >
+                              Fiche complète
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openTaskSheetPicker('step')}
+                              style={smallSegmentStyle(draft.mode === 'TECHNICAL_SHEET_STEP')}
+                            >
+                              Une étape
+                            </button>
+                          </div>
+                          <Field label="Fiche technique" required>
+                            <button
+                              type="button"
+                              className={
+                                selectedSheet
+                                  ? 'technical-sheet-picker-trigger selected'
+                                  : 'technical-sheet-picker-trigger'
+                              }
+                              onClick={() =>
+                                openTaskSheetPicker(
+                                  draft.mode === 'TECHNICAL_SHEET_STEP' ? 'step' : 'sheet',
+                                )
+                              }
+                            >
+                              <span className="technical-sheet-picker-trigger-icon">
+                                <Search size={18} />
+                              </span>
+                              <span className="technical-sheet-picker-trigger-copy">
+                                <strong>
+                                  {selectedSheet?.name ?? 'Rechercher une fiche technique'}
+                                </strong>
+                                <small>
+                                  {selectedSheet
+                                    ? `${selectedSheet.totalTimeMinutes} min${
+                                        selectedSheet.referencePortions
+                                          ? ` · ${Number(
+                                              selectedSheet.referencePortions,
+                                            ).toLocaleString('fr-FR')} portions`
+                                          : ''
+                                      }`
+                                    : `${taskOptions.technicalSheets.length} fiche(s) active(s) disponible(s)`}
+                                </small>
+                              </span>
+                              <span className="technical-sheet-picker-trigger-action">
+                                {selectedSheet ? 'Changer' : 'Rechercher'}
+                              </span>
+                            </button>
+                            {selectedSheet?.isOnCurrentMenu && (
+                              <small style={{ color: '#047857', fontWeight: 800 }}>
+                                Présente dans : {selectedSheet.menuNames.join(', ')}
+                              </small>
+                            )}
+                          </Field>
+                          {draft.mode === 'TECHNICAL_SHEET_STEP' && draft.technicalSheetId && (
+                            <Field label="Étape à réaliser" required>
+                              <button
+                                type="button"
+                                className={
+                                  selectedTechnicalSheetStep
+                                    ? 'technical-sheet-picker-trigger step selected'
+                                    : 'technical-sheet-picker-trigger step'
+                                }
+                                onClick={() => setTaskSheetPickerMode('step')}
+                              >
+                                <span className="technical-sheet-picker-trigger-icon">
+                                  <ListChecks size={18} />
+                                </span>
+                                <span className="technical-sheet-picker-trigger-copy">
+                                  <strong>
+                                    {selectedTechnicalSheetStep
+                                      ? `${selectedTechnicalSheetStep.order}. ${selectedTechnicalSheetStep.title}`
+                                      : 'Choisir une étape'}
+                                  </strong>
+                                  <small>
+                                    {selectedTechnicalSheetStep
+                                      ? `${selectedTechnicalSheetStep.estimatedMinutes} min · ${
+                                          selectedSheet?.name ?? 'Fiche technique'
+                                        }`
+                                      : `${selectedSheet?.steps.length ?? 0} étape(s) disponible(s)`}
+                                  </small>
+                                </span>
+                                <span className="technical-sheet-picker-trigger-action">
+                                  {selectedTechnicalSheetStep ? 'Changer' : 'Choisir'}
+                                </span>
+                              </button>
+                              {!selectedSheet?.steps.length && (
+                                <small style={{ color: '#b45309' }}>
+                                  Cette fiche ne contient aucune étape planifiable.
+                                </small>
+                              )}
+                            </Field>
                           )}
-                        </Field>
-                      )}
-                      {draft.technicalSheetId && (
-                        <Field label="Lot d’exécution mobile (facultatif)">
-                          <select
-                            value={draft.productionBatchId}
-                            onChange={(event) => {
-                              const productionBatchId = event.target.value;
-                              const batch = taskOptions.productionBatches.find(
-                                (item) => item.id === productionBatchId,
-                              );
-                              const stepIndex =
-                                selectedSheet?.steps.findIndex(
-                                  (item) => item.id === draft.technicalSheetStepId,
-                                ) ?? -1;
-                              const operation =
-                                stepIndex >= 0
-                                  ? batch?.operations.find((item) => item.position === stepIndex)
-                                  : undefined;
-                              setDraft((current) => ({
-                                ...current,
-                                productionBatchId,
-                                productionOperationId: operation?.id ?? '',
-                              }));
-                            }}
-                            style={inputStyle}
-                          >
-                            <option value="">Aucun lot lié — consultation uniquement</option>
-                            {taskOptions.productionBatches.map((batch) => (
-                              <option key={batch.id} value={batch.id}>
-                                {batch.reference} · {String(batch.plannedQuantity)}{' '}
-                                {batch.unit?.symbol ?? ''} · {batch.order.number}
-                              </option>
-                            ))}
-                          </select>
-                          {!taskOptions.productionBatches.length && (
-                            <small style={{ color: '#b45309' }}>
-                              Aucun lot validé et exécutable pour cette fiche à cette date.
-                            </small>
+                          {draft.technicalSheetId && (
+                            <Field label="Lot d’exécution mobile (facultatif)">
+                              <select
+                                value={draft.productionBatchId}
+                                onChange={(event) => {
+                                  const productionBatchId = event.target.value;
+                                  const batch = taskOptions.productionBatches.find(
+                                    (item) => item.id === productionBatchId,
+                                  );
+                                  const stepIndex =
+                                    selectedSheet?.steps.findIndex(
+                                      (item) => item.id === draft.technicalSheetStepId,
+                                    ) ?? -1;
+                                  const operation =
+                                    stepIndex >= 0
+                                      ? batch?.operations.find(
+                                          (item) => item.position === stepIndex,
+                                        )
+                                      : undefined;
+                                  setDraft((current) => ({
+                                    ...current,
+                                    productionBatchId,
+                                    productionOperationId: operation?.id ?? '',
+                                  }));
+                                }}
+                                style={inputStyle}
+                              >
+                                <option value="">Aucun lot lié — consultation uniquement</option>
+                                {taskOptions.productionBatches.map((batch) => (
+                                  <option key={batch.id} value={batch.id}>
+                                    {batch.reference} · {String(batch.plannedQuantity)}{' '}
+                                    {batch.unit?.symbol ?? ''} · {batch.order.number}
+                                  </option>
+                                ))}
+                              </select>
+                              {!taskOptions.productionBatches.length && (
+                                <small style={{ color: '#b45309' }}>
+                                  Aucun lot validé et exécutable pour cette fiche à cette date.
+                                </small>
+                              )}
+                            </Field>
                           )}
-                        </Field>
+                          {draft.mode === 'TECHNICAL_SHEET_STEP' && selectedBatch && (
+                            <Field label="Opération du lot" required>
+                              <select
+                                value={draft.productionOperationId}
+                                onChange={(event) =>
+                                  setDraft((current) => ({
+                                    ...current,
+                                    productionOperationId: event.target.value,
+                                  }))
+                                }
+                                style={inputStyle}
+                              >
+                                <option value="">Choisir l’opération à synchroniser…</option>
+                                {selectedBatch.operations.map((operation) => (
+                                  <option key={operation.id} value={operation.id}>
+                                    {operation.position + 1}. {operation.title}
+                                  </option>
+                                ))}
+                              </select>
+                              <small style={{ color: '#64748b' }}>
+                                Cette opération sera pilotée depuis la tablette.
+                              </small>
+                            </Field>
+                          )}
+                        </div>
                       )}
-                      {draft.mode === 'TECHNICAL_SHEET_STEP' && selectedBatch && (
-                        <Field label="Opération du lot" required>
-                          <select
-                            value={draft.productionOperationId}
-                            onChange={(event) =>
-                              setDraft((current) => ({
-                                ...current,
-                                productionOperationId: event.target.value,
-                              }))
-                            }
-                            style={inputStyle}
-                          >
-                            <option value="">Choisir l’opération à synchroniser…</option>
-                            {selectedBatch.operations.map((operation) => (
-                              <option key={operation.id} value={operation.id}>
-                                {operation.position + 1}. {operation.title}
-                              </option>
-                            ))}
-                          </select>
-                          <small style={{ color: '#64748b' }}>
-                            Cette opération sera pilotée depuis la tablette.
-                          </small>
-                        </Field>
-                      )}
-                    </div>
+                    </>
                   )}
 
-                  {taskSelectionComplete && (
+                  {(editingTask || taskSelectionComplete) && (
                     <div className="operational-task-recap">
                       <div className="operational-task-recap-title">
-                        <Check size={18} />
-                        <span>Récapitulatif de la tâche</span>
+                        <div>
+                          <Check size={18} />
+                          <span>
+                            {editingTask ? 'Informations modifiables' : 'Récapitulatif de la tâche'}
+                          </span>
+                        </div>
+                        {editingTask && canSplitProductionRecipe(editingTask) && (
+                          <button
+                            type="button"
+                            className="production-planning-split-button"
+                            disabled={busyId === editingTask.id}
+                            onClick={() => splitRecipeTask(editingTask)}
+                          >
+                            {busyId === editingTask.id ? (
+                              <Loader2 size={14} className="spin" />
+                            ) : (
+                              <Scissors size={14} />
+                            )}
+                            Découper en {productionStepCount(editingTask)} étapes
+                          </button>
+                        )}
                       </div>
+                      {editingTask && (
+                        <>
+                          <div className="operational-task-quick-context">
+                            <Field label="Site">
+                              <select
+                                value={draft.siteId}
+                                onChange={(event) =>
+                                  setDraft((current) => ({
+                                    ...current,
+                                    siteId: event.target.value,
+                                  }))
+                                }
+                                style={inputStyle}
+                              >
+                                <option value="">Aucun site spécifique</option>
+                                {sites.map((site) => (
+                                  <option key={site.id} value={site.id}>
+                                    {site.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </Field>
+                            <Field label="Service responsable" required>
+                              <select
+                                value={draft.departmentId}
+                                onChange={(event) => {
+                                  const department = departments.find(
+                                    (item) => item.id === event.target.value,
+                                  );
+                                  setDraft((current) => ({
+                                    ...current,
+                                    departmentId: event.target.value,
+                                    category: categoryForDepartment(department?.name),
+                                    positionId: '',
+                                    assignedEmployeeId: '',
+                                    assignedEmployeeIds: [],
+                                  }));
+                                }}
+                                style={inputStyle}
+                              >
+                                {departments.map((department) => (
+                                  <option key={department.id} value={department.id}>
+                                    {department.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </Field>
+                          </div>
+                          <div className="operational-task-quick-team">
+                            <span>Équipe affectée</span>
+                            {assigneesLoading ? (
+                              <div className="operational-task-loading compact">
+                                <Loader2 size={18} className="spin" /> Disponibilités…
+                              </div>
+                            ) : (
+                              <div className="operational-task-quick-team-list">
+                                {taskContext.canCreateUnassigned && (
+                                  <button
+                                    type="button"
+                                    className={
+                                      !draft.assignedEmployeeIds.length ? 'active' : undefined
+                                    }
+                                    onClick={() =>
+                                      setDraft((current) => ({
+                                        ...current,
+                                        assignedEmployeeId: '',
+                                        assignedEmployeeIds: [],
+                                        positionId: '',
+                                      }))
+                                    }
+                                  >
+                                    Non affectée
+                                  </button>
+                                )}
+                                {assignees.map((employee) => (
+                                  <button
+                                    key={employee.id}
+                                    type="button"
+                                    disabled={
+                                      !employee.available &&
+                                      !draft.assignedEmployeeIds.includes(employee.id)
+                                    }
+                                    className={
+                                      draft.assignedEmployeeIds.includes(employee.id)
+                                        ? 'active'
+                                        : undefined
+                                    }
+                                    onClick={() => toggleAssignee(employee.id)}
+                                  >
+                                    {employeeName(employee)}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
                       <div className="operational-task-recap-grid">
                         <div className="operational-task-recap-column">
                           <Field label="Que faut-il faire ?" required>
@@ -2130,50 +2502,103 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
             </div>
 
             <footer className="operational-task-wizard-footer">
-              {editorStep === 1 && (
-                <button
-                  type="button"
-                  onClick={() => setEditorOpen(false)}
-                  style={secondaryButtonStyle}
-                >
-                  Annuler
-                </button>
-              )}
-              {editorStep > 1 && (
-                <button
-                  type="button"
-                  onClick={() => setEditorStep((editorStep - 1) as 1 | 2)}
-                  style={secondaryButtonStyle}
-                >
-                  <ChevronLeft size={17} /> Retour
-                </button>
-              )}
-              <span />
-              {editorStep < 3 ? (
-                <button
-                  type="button"
-                  onClick={() => setEditorStep((editorStep + 1) as 2 | 3)}
-                  style={primaryButtonStyle}
-                  disabled={
-                    editorStep === 1 ? !draft.departmentId : assigneesLoading || !personStepComplete
-                  }
-                >
-                  Continuer <ChevronRight size={17} />
-                </button>
+              {editingTask ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setEditorOpen(false)}
+                    style={secondaryButtonStyle}
+                  >
+                    Annuler
+                  </button>
+                  <span />
+                  <button
+                    type="submit"
+                    style={primaryButtonStyle}
+                    disabled={saving || !draft.title.trim() || !draft.departmentId}
+                  >
+                    {saving ? <Loader2 size={18} className="spin" /> : <Check size={18} />}
+                    Enregistrer les modifications
+                  </button>
+                </>
               ) : (
-                <button
-                  type="submit"
-                  style={primaryButtonStyle}
-                  disabled={saving || !taskSelectionComplete || !draft.title.trim()}
-                >
-                  {saving ? <Loader2 size={18} className="spin" /> : <Check size={18} />}
-                  {editingTask ? 'Enregistrer les modifications' : 'Créer la tâche'}
-                </button>
+                <>
+                  {editorStep === 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setEditorOpen(false)}
+                      style={secondaryButtonStyle}
+                    >
+                      Annuler
+                    </button>
+                  )}
+                  {editorStep > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setEditorStep((editorStep - 1) as 1 | 2)}
+                      style={secondaryButtonStyle}
+                    >
+                      <ChevronLeft size={17} /> Retour
+                    </button>
+                  )}
+                  <span />
+                  {editorStep < 3 ? (
+                    <button
+                      type="button"
+                      onClick={() => setEditorStep((editorStep + 1) as 2 | 3)}
+                      style={primaryButtonStyle}
+                      disabled={
+                        editorStep === 1
+                          ? !draft.departmentId
+                          : assigneesLoading || !personStepComplete
+                      }
+                    >
+                      Continuer <ChevronRight size={17} />
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      style={primaryButtonStyle}
+                      disabled={saving || !taskSelectionComplete || !draft.title.trim()}
+                    >
+                      {saving ? <Loader2 size={18} className="spin" /> : <Check size={18} />}
+                      Créer la tâche
+                    </button>
+                  )}
+                </>
               )}
             </footer>
           </form>
         </GuidedWizard>
       )}
+
+      <TechnicalSheetPickerModal
+        open={Boolean(taskSheetPickerMode && editorOpen)}
+        items={taskSheetPickerItems}
+        selectionMode={taskSheetPickerMode ?? 'sheet'}
+        initialSheetId={taskSheetPickerMode === 'step' ? draft.technicalSheetId : ''}
+        selectedSheetId={draft.technicalSheetId}
+        selectedStepId={draft.technicalSheetStepId}
+        title={
+          taskSheetPickerMode === 'step'
+            ? 'Choisir une recette et une étape'
+            : 'Catalogue des fiches techniques'
+        }
+        subtitle={
+          taskSheetPickerMode === 'step'
+            ? 'Recherchez la recette, puis sélectionnez l’étape précise à placer sur le planning.'
+            : 'Recherchez la recette complète à placer sur le planning opérationnel.'
+        }
+        onClose={() => setTaskSheetPickerMode(null)}
+        onSelectSheet={(item) => {
+          selectTechnicalSheet(item.id);
+          setTaskSheetPickerMode(null);
+        }}
+        onSelectStep={(item, step) => {
+          selectTechnicalSheetStep(step.id, item.id);
+          setTaskSheetPickerMode(null);
+        }}
+      />
 
       <div style={{ color: '#64748b', fontSize: '.82rem', textAlign: 'center' }}>
         Connecté en tant que {session.user.firstName || session.user.email}. Les droits
@@ -2261,10 +2686,14 @@ function FabricationView({
     });
   }, [campaigns, eventFilter, priorityFilter, search, status]);
 
-  const portions = visible.reduce(
-    (sum, campaign) => sum + Number(campaign.plannedPortions ?? 0),
-    0,
-  );
+  const portions = visible.reduce((sum, campaign) => {
+    const quantity = campaignQuantity(campaign);
+    return quantity.unit === 'portions' ? sum + quantity.value : sum;
+  }, 0);
+  const kilograms = visible.reduce((sum, campaign) => {
+    const quantity = campaignQuantity(campaign);
+    return quantity.unit === 'kg' ? sum + quantity.value : sum;
+  }, 0);
   const activeCount = visible.filter((campaign) =>
     ['VALIDATED', 'IN_PROGRESS', 'PARTIALLY_COMPLETED'].includes(campaign.status),
   ).length;
@@ -2338,9 +2767,14 @@ function FabricationView({
       {embedded && (
         <div className="fabrication-details-heading">
           <div>
-            <span><ListChecks size={15} /> Suivi de fabrication</span>
-            <h3>Productions de la période</h3>
-            <p>{periodLabel || 'Période sélectionnée'} · mêmes filtres que le calendrier</p>
+            <span>
+              <ListChecks size={15} /> Suivi de fabrication
+            </span>
+            <h3>Fabrications intégrées au calendrier</h3>
+            <p>
+              {periodLabel || 'Période sélectionnée'} · événements traiteur, menus et recettes
+              libres
+            </p>
           </div>
           <button
             type="button"
@@ -2420,7 +2854,7 @@ function FabricationView({
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, delay: 0.05 }}
-        className="production-panel"
+        className="production-panel fabrication-tracking-overview"
       >
         <div
           style={{
@@ -2527,9 +2961,14 @@ function FabricationView({
             </div>
             <div>
               <div className="production-metric-val" style={{ color: '#7c3aed' }}>
-                {Math.round(portions).toLocaleString('fr-FR')}
+                {Math.round(portions).toLocaleString('fr-FR')} port.
+                {kilograms > 0
+                  ? ` · ${kilograms.toLocaleString('fr-FR', {
+                      maximumFractionDigits: 2,
+                    })} kg`
+                  : ''}
               </div>
-              <div className="production-metric-lbl">Portions planifiées</div>
+              <div className="production-metric-lbl">Quantités planifiées</div>
             </div>
           </div>
         </div>
@@ -2550,7 +2989,15 @@ function FabricationView({
                 <button
                   type="button"
                   onClick={() => onSearch('')}
-                  style={{ border: 0, background: 'transparent', cursor: 'pointer', padding: 0, display: 'grid', placeItems: 'center', flexShrink: 0 }}
+                  style={{
+                    border: 0,
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    padding: 0,
+                    display: 'grid',
+                    placeItems: 'center',
+                    flexShrink: 0,
+                  }}
                 >
                   <X size={15} color="#94a3b8" />
                 </button>
@@ -2567,10 +3014,16 @@ function FabricationView({
               >
                 <option value="">Tous les statuts</option>
                 {Object.entries(productionStatusCopy).map(([val, copy]) => (
-                  <option key={val} value={val}>{copy.label}</option>
+                  <option key={val} value={val}>
+                    {copy.label}
+                  </option>
                 ))}
               </select>
-              <ChevronDown size={14} color="#64748b" style={{ position: 'absolute', right: '10px', pointerEvents: 'none' }} />
+              <ChevronDown
+                size={14}
+                color="#64748b"
+                style={{ position: 'absolute', right: '10px', pointerEvents: 'none' }}
+              />
             </div>
 
             {/* Select Priorité */}
@@ -2587,7 +3040,11 @@ function FabricationView({
                 <option value="NORMAL">Normale</option>
                 <option value="LOW">Basse</option>
               </select>
-              <ChevronDown size={14} color="#64748b" style={{ position: 'absolute', right: '10px', pointerEvents: 'none' }} />
+              <ChevronDown
+                size={14}
+                color="#64748b"
+                style={{ position: 'absolute', right: '10px', pointerEvents: 'none' }}
+              />
             </div>
           </div>
 
@@ -2629,7 +3086,7 @@ function FabricationView({
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, delay: 0.1 }}
-        className="production-panel"
+        className="production-panel fabrication-tracking-results"
         style={{ padding: viewMode === 'kanban' ? '1rem' : 0, overflow: 'hidden' }}
       >
         {loading ? (
@@ -2792,9 +3249,11 @@ function FabricationView({
                       </td>
                       <td>
                         <div style={{ fontWeight: 850, fontSize: '.95rem', color: '#0f172a' }}>
-                          {Number(campaign.plannedPortions).toLocaleString('fr-FR')}{' '}
+                          {campaignQuantity(campaign).value.toLocaleString('fr-FR', {
+                            maximumFractionDigits: 3,
+                          })}{' '}
                           <span style={{ fontSize: '.78rem', color: '#64748b', fontWeight: 600 }}>
-                            portions
+                            {campaignQuantity(campaign).unit}
                           </span>
                         </div>
                         {campaign.requirements?.length ? (
@@ -3000,7 +3459,7 @@ function FabricationView({
                           textTransform: 'uppercase',
                         }}
                       >
-                        Portions
+                        Quantité
                       </div>
                       <div
                         style={{
@@ -3010,7 +3469,10 @@ function FabricationView({
                           marginTop: '.1rem',
                         }}
                       >
-                        {Number(campaign.plannedPortions).toLocaleString('fr-FR')}
+                        {campaignQuantity(campaign).value.toLocaleString('fr-FR', {
+                          maximumFractionDigits: 3,
+                        })}{' '}
+                        {campaignQuantity(campaign).unit}
                       </div>
                     </div>
                     <div>
@@ -3233,9 +3695,11 @@ function FabricationView({
                             >
                               <span>
                                 <strong>
-                                  {Number(campaign.plannedPortions).toLocaleString('fr-FR')}
+                                  {campaignQuantity(campaign).value.toLocaleString('fr-FR', {
+                                    maximumFractionDigits: 3,
+                                  })}
                                 </strong>{' '}
-                                portions
+                                {campaignQuantity(campaign).unit}
                               </span>
                               <button
                                 type="button"
@@ -3435,13 +3899,13 @@ function FabricationView({
                   >
                     <DetailCard
                       label="Recette de base"
-                      value={
-                        selected.technicalSheet?.name ?? 'Fiche personnalisée'
-                      }
+                      value={selected.technicalSheet?.name ?? 'Fiche personnalisée'}
                     />
                     <DetailCard
                       label="Quantité planifiée"
-                      value={`${Number(selected.plannedPortions).toLocaleString('fr-FR')} portions`}
+                      value={`${campaignQuantity(selected).value.toLocaleString('fr-FR', {
+                        maximumFractionDigits: 3,
+                      })} ${campaignQuantity(selected).unit}`}
                     />
                     <DetailCard
                       label="Site de fabrication"
@@ -3682,27 +4146,218 @@ function DetailCard({ label, value }: { label: string; value: string }) {
   );
 }
 
+function ProductionPlanningQueue({
+  tasks,
+  busyId,
+  onEdit,
+  onSplit,
+}: {
+  tasks: OperationalTask[];
+  busyId: string;
+  onEdit: (task: OperationalTask) => void;
+  onSplit: (task: OperationalTask) => void;
+}) {
+  const recipeGroups = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        tasks: OperationalTask[];
+      }
+    >();
+
+    tasks.forEach((task) => {
+      const id =
+        task.productionBatch?.order.id ??
+        task.productionBatchId ??
+        task.technicalSheetId ??
+        task.id;
+      const current = groups.get(id);
+      const name = task.technicalSheet?.name ?? task.productionBatch?.order.name ?? task.title;
+      if (current) {
+        current.tasks.push(task);
+      } else {
+        groups.set(id, { id, name, tasks: [task] });
+      }
+    });
+
+    return Array.from(groups.values()).map((group) => ({
+      ...group,
+      tasks: group.tasks.sort((left, right) => {
+        const leftOrder =
+          left.technicalSheetStep?.order ??
+          (left.productionOperation ? left.productionOperation.position + 1 : 0);
+        const rightOrder =
+          right.technicalSheetStep?.order ??
+          (right.productionOperation ? right.productionOperation.position + 1 : 0);
+        return leftOrder - rightOrder;
+      }),
+    }));
+  }, [tasks]);
+
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="production-planning-queue"
+    >
+      <div className="production-planning-queue-heading">
+        <div>
+          <span>
+            <ChefHat size={16} /> Fabrications à organiser
+          </span>
+          <h3>À placer sur le planning</h3>
+          <p>Glissez la recette entière ou une étape sur l’heure souhaitée.</p>
+        </div>
+        <strong>
+          {recipeGroups.length} recette{recipeGroups.length > 1 ? 's' : ''}
+        </strong>
+      </div>
+      <div className="production-planning-recipe-list">
+        {recipeGroups.map((group) => {
+          const recipeTask = group.tasks.find((task) => !task.technicalSheetStepId);
+          const referenceTask = recipeTask ?? group.tasks[0];
+          const stepCount = productionStepCount(referenceTask);
+          return (
+            <article key={group.id} className="production-planning-recipe">
+              <div className="production-planning-recipe-heading">
+                <div>
+                  <span>Recette</span>
+                  <h4>{group.name}</h4>
+                  <p>
+                    {referenceTask.quantity != null && (
+                      <>
+                        {String(referenceTask.quantity)} {referenceTask.unitLabel ?? ''}
+                        {' · '}
+                      </>
+                    )}
+                    {taskTeamLabel(referenceTask)}
+                  </p>
+                </div>
+                {recipeTask && canSplitProductionRecipe(recipeTask) && (
+                  <button
+                    type="button"
+                    className="production-planning-split-button"
+                    disabled={busyId === recipeTask.id}
+                    onClick={() => onSplit(recipeTask)}
+                  >
+                    {busyId === recipeTask.id ? (
+                      <Loader2 size={14} className="spin" />
+                    ) : (
+                      <Scissors size={14} />
+                    )}
+                    {stepCount} étapes
+                  </button>
+                )}
+              </div>
+
+              <div className="production-planning-recipe-tasks">
+                {group.tasks.map((task) => {
+                  const isStep = Boolean(task.technicalSheetStepId || task.productionOperationId);
+                  const stepOrder =
+                    task.technicalSheetStep?.order ??
+                    (task.productionOperation ? task.productionOperation.position + 1 : undefined);
+                  const taskLabel = isStep
+                    ? (task.technicalSheetStep?.title ??
+                      task.productionOperation?.title ??
+                      task.title.split(' · ')[0])
+                    : 'Recette entière';
+                  const duration = Math.max(
+                    5,
+                    Math.round(
+                      (new Date(task.endsAt).getTime() - new Date(task.startsAt).getTime()) /
+                        60_000,
+                    ),
+                  );
+                  return (
+                    <div
+                      key={task.id}
+                      className={`production-planning-compact-task${
+                        isStep ? ' is-step' : ' is-recipe'
+                      }`}
+                      draggable={Boolean(task.productionBatchId)}
+                      onDragStart={(event) => {
+                        event.dataTransfer.setData(
+                          'application/x-toquehub-production-task',
+                          task.id,
+                        );
+                        event.dataTransfer.effectAllowed = 'move';
+                      }}
+                    >
+                      <div className="production-planning-compact-task-top">
+                        <span>
+                          {isStep ? `Étape ${stepOrder ?? '—'}/${stepCount}` : 'Ensemble'}
+                        </span>
+                        <GripVertical size={14} />
+                      </div>
+                      <strong title={taskLabel}>{taskLabel}</strong>
+                      <div className="production-planning-compact-task-footer">
+                        <span>
+                          <Clock3 size={12} /> {duration} min
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`Choisir la date et l’heure pour ${taskLabel}`}
+                          title="Choisir la date et l’heure"
+                          onClick={() => onEdit(task)}
+                        >
+                          <CalendarDays size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+      <div className="production-planning-queue-help">
+        <GripVertical size={16} />
+        Glissez un bloc sur l’heure de démarrage.
+      </div>
+    </motion.section>
+  );
+}
+
 function DayColumn({
   day,
   tasks,
   today: isToday,
   compact,
-  busyId,
   onCreate,
   onEdit,
-  onStatus,
+  onMoveTask,
 }: {
   day: string;
   tasks: OperationalTask[];
   today: boolean;
   compact: boolean;
-  busyId: string;
   onCreate: () => void;
   onEdit: (task: OperationalTask) => void;
-  onStatus: (task: OperationalTask, status: OperationalTaskStatus) => void;
+  onMoveTask: (taskId: string, day: string, startMinute?: number) => void;
 }) {
+  function handleDragOver(event: DragEvent<HTMLDivElement>) {
+    if (event.dataTransfer.types.includes('application/x-toquehub-production-task')) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+    }
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    const taskId = event.dataTransfer.getData('application/x-toquehub-production-task');
+    if (!taskId) return;
+    event.preventDefault();
+    onMoveTask(taskId, day);
+  }
+
   return (
-    <div className={`production-day-col${isToday ? ' is-today' : ''}`}>
+    <div
+      className={`production-day-col${isToday ? ' is-today' : ''}`}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
       <div className="production-day-header">
         <div>
           <div
@@ -3745,33 +4400,23 @@ function DayColumn({
           <Plus size={16} color={isToday ? '#059669' : '#475569'} />
         </button>
       </div>
-      {tasks.length === 0 ? (
-        <div style={{ flex: 1 }}>
-          <button type="button" onClick={onCreate} className="production-empty-day-btn">
-            <Plus size={18} />
-            <span>Planifier une tâche</span>
-          </button>
-        </div>
-      ) : compact ? (
-        <div style={{ display: 'grid', gap: '.65rem', flex: 1, alignContent: 'start' }}>
-          {tasks.map((task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              busy={busyId === task.id}
-              onEdit={() => onEdit(task)}
-              onStatus={(status) => onStatus(task, status)}
-            />
-          ))}
-        </div>
+      {compact ? (
+        tasks.length ? (
+          <div style={{ display: 'grid', gap: '.65rem', flex: 1, alignContent: 'start' }}>
+            {tasks.map((task) => (
+              <TaskCard key={task.id} task={task} onEdit={() => onEdit(task)} />
+            ))}
+          </div>
+        ) : (
+          <div style={{ flex: 1 }}>
+            <button type="button" onClick={onCreate} className="production-empty-day-btn">
+              <Plus size={18} />
+              <span>Planifier une tâche</span>
+            </button>
+          </div>
+        )
       ) : (
-        <DayTimeline
-          day={day}
-          tasks={tasks}
-          busyId={busyId}
-          onEdit={onEdit}
-          onStatus={onStatus}
-        />
+        <DayTimeline day={day} tasks={tasks} onEdit={onEdit} onMoveTask={onMoveTask} />
       )}
     </div>
   );
@@ -3780,31 +4425,61 @@ function DayColumn({
 function DayTimeline({
   day,
   tasks,
-  busyId,
   onEdit,
-  onStatus,
+  onMoveTask,
 }: {
   day: string;
   tasks: OperationalTask[];
-  busyId: string;
   onEdit: (task: OperationalTask) => void;
-  onStatus: (task: OperationalTask, status: OperationalTaskStatus) => void;
+  onMoveTask: (taskId: string, day: string, startMinute: number) => void;
 }) {
+  const [dragPreviewMinute, setDragPreviewMinute] = useState<number | null>(null);
   const layout = buildTimelineLayout(tasks, day);
-  const firstMinute = Math.floor(Math.min(...layout.map((entry) => entry.startMinute)) / 60) * 60;
+  const firstMinute = layout.length
+    ? Math.min(
+        TIMELINE_DEFAULT_START,
+        Math.floor(Math.min(...layout.map((entry) => entry.startMinute)) / 60) * 60,
+      )
+    : TIMELINE_DEFAULT_START;
   const lastMinute = Math.min(
     24 * 60,
-    Math.max(firstMinute + 60, Math.ceil(Math.max(...layout.map((entry) => entry.visualEndMinute)) / 60) * 60),
+    Math.max(
+      TIMELINE_DEFAULT_END,
+      layout.length
+        ? Math.ceil(Math.max(...layout.map((entry) => entry.visualEndMinute)) / 60) * 60
+        : TIMELINE_DEFAULT_END,
+    ),
   );
   const timelineHeight = ((lastMinute - firstMinute) / 60) * TIMELINE_HOUR_HEIGHT;
   const hourMarks = Array.from(
     { length: Math.floor((lastMinute - firstMinute) / 60) + 1 },
     (_, index) => firstMinute + index * 60,
   );
+  const quarterMarks = Array.from(
+    { length: Math.floor((lastMinute - firstMinute) / 15) + 1 },
+    (_, index) => firstMinute + index * 15,
+  );
+
+  function pointerMinute(event: DragEvent<HTMLDivElement>) {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const relativeY = Math.min(bounds.height, Math.max(0, event.clientY - bounds.top));
+    const rawMinute =
+      firstMinute + (relativeY / Math.max(1, bounds.height)) * (lastMinute - firstMinute);
+    return Math.min(lastMinute - 15, Math.max(firstMinute, Math.round(rawMinute / 15) * 15));
+  }
 
   return (
     <div className="production-day-timeline">
       <div className="production-time-rail" style={{ height: `${timelineHeight}px` }}>
+        {quarterMarks
+          .filter((minute) => minute % 60 !== 0)
+          .map((minute) => (
+            <span
+              key={`tick-${minute}`}
+              className={`production-quarter-tick${minute % 30 === 0 ? ' is-half' : ''}`}
+              style={{ top: `${((minute - firstMinute) / 60) * TIMELINE_HOUR_HEIGHT}px` }}
+            />
+          ))}
         {hourMarks.map((minute, index) => (
           <span
             key={minute}
@@ -3814,15 +4489,62 @@ function DayTimeline({
             {formatTimelineMinute(minute)}
           </span>
         ))}
+        {dragPreviewMinute != null && (
+          <span
+            className="production-drag-time-marker"
+            style={{
+              top: `${((dragPreviewMinute - firstMinute) / 60) * TIMELINE_HOUR_HEIGHT}px`,
+            }}
+          >
+            {formatTimelineMinute(dragPreviewMinute)}
+          </span>
+        )}
       </div>
-      <div className="production-timeline-canvas" style={{ height: `${timelineHeight}px` }}>
-        {hourMarks.map((minute) => (
+      <div
+        className="production-timeline-canvas"
+        style={{ height: `${timelineHeight}px` }}
+        onDragOver={(event) => {
+          if (event.dataTransfer.types.includes('application/x-toquehub-production-task')) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+            setDragPreviewMinute(pointerMinute(event));
+          }
+        }}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+            setDragPreviewMinute(null);
+          }
+        }}
+        onDrop={(event) => {
+          const taskId = event.dataTransfer.getData('application/x-toquehub-production-task');
+          if (!taskId) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const startMinute = pointerMinute(event);
+          setDragPreviewMinute(null);
+          onMoveTask(taskId, day, startMinute);
+        }}
+      >
+        {quarterMarks.map((minute) => (
           <span
             key={minute}
-            className="production-hour-line"
+            className={`production-quarter-line${
+              minute % 60 === 0 ? ' is-hour' : minute % 30 === 0 ? ' is-half' : ''
+            }`}
             style={{ top: `${((minute - firstMinute) / 60) * TIMELINE_HOUR_HEIGHT}px` }}
           />
         ))}
+        {dragPreviewMinute != null && (
+          <div
+            className="production-drop-preview"
+            style={{
+              top: `${((dragPreviewMinute - firstMinute) / 60) * TIMELINE_HOUR_HEIGHT}px`,
+              height: `${TIMELINE_HOUR_HEIGHT / 4}px`,
+            }}
+          >
+            <span>Départ {formatTimelineMinute(dragPreviewMinute)} · créneau de 15 min</span>
+          </div>
+        )}
         {layout.map((entry) => {
           const laneWidth = 100 / entry.laneCount;
           const top = ((entry.startMinute - firstMinute) / 60) * TIMELINE_HOUR_HEIGHT;
@@ -3833,20 +4555,26 @@ function DayTimeline({
               className="production-timeline-task"
               style={{
                 top: `${top + 5}px`,
-                height: `${Math.max(54, height - 10)}px`,
+                height: `${Math.max(64, height - 8)}px`,
                 left: `calc(${entry.lane * laneWidth}% + 8px)`,
                 width: `calc(${laneWidth}% - 12px)`,
               }}
             >
               <TimelineTaskCard
                 task={entry.task}
-                busy={busyId === entry.task.id}
+                dense={entry.laneCount >= 4}
                 onEdit={() => onEdit(entry.task)}
-                onStatus={(status) => onStatus(entry.task, status)}
               />
             </div>
           );
         })}
+        {layout.length === 0 && (
+          <div className="production-timeline-empty-hint">
+            <GripVertical size={20} />
+            <strong>Déposez ici une recette ou une étape</strong>
+            <span>Choisissez précisément son heure de démarrage.</span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -3854,132 +4582,113 @@ function DayTimeline({
 
 function TimelineTaskCard({
   task,
-  busy,
+  dense,
   onEdit,
-  onStatus,
 }: {
   task: OperationalTask;
-  busy: boolean;
+  dense: boolean;
   onEdit: () => void;
-  onStatus: (status: OperationalTaskStatus) => void;
 }) {
-  const status = statusCopy[task.status];
-  const nextStatus =
-    task.status === 'TODO' ? 'IN_PROGRESS' : task.status === 'IN_PROGRESS' ? 'COMPLETED' : 'TODO';
   return (
-    <article className="production-timeline-task-card">
-      <span className="production-task-accent-bar" style={{ background: categoryColor[task.category] }} />
+    <article
+      className={`production-timeline-task-card${dense ? ' is-dense' : ''}`}
+      role="button"
+      tabIndex={0}
+      aria-label={`Modifier ${task.title}`}
+      title={`${task.title} — cliquer pour modifier`}
+      draggable={Boolean(task.source === 'PRODUCTION' && task.productionBatchId)}
+      onClick={onEdit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onEdit();
+        }
+      }}
+      onDragStart={(event) => {
+        if (!task.productionBatchId) return;
+        event.dataTransfer.setData('application/x-toquehub-production-task', task.id);
+        event.dataTransfer.effectAllowed = 'move';
+      }}
+    >
+      <span
+        className="production-task-accent-bar"
+        style={{ background: categoryColor[task.category] }}
+      />
       <div className="production-timeline-task-main">
         <div className="production-timeline-task-topline">
           <span className="production-timeline-task-time">
             <Clock3 size={13} /> {formatTime(task.startsAt)}–{formatTime(task.endsAt)}
           </span>
-          <span style={{ color: status.color, background: status.background }} className="production-timeline-status">
-            {status.label}
-          </span>
         </div>
         <strong>{task.title}</strong>
         <span className="production-timeline-task-meta">
-          {[taskSiteName(task), task.department?.name, taskTeamLabel(task)].filter(Boolean).join(' · ')}
+          {[taskSiteName(task), task.department?.name, taskTeamLabel(task)]
+            .filter(Boolean)
+            .join(' · ')}
         </span>
-      </div>
-      <div className="production-timeline-task-actions">
-        <button type="button" aria-label="Modifier" onClick={onEdit}>
-          <Pencil size={14} />
-        </button>
-        {task.status !== 'COMPLETED' ? (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => onStatus(nextStatus)}
-            aria-label={nextStatus === 'IN_PROGRESS' ? 'Démarrer' : 'Terminer'}
-            className={nextStatus === 'IN_PROGRESS' ? 'start' : 'complete'}
-          >
-            {busy ? <Loader2 size={14} className="spin" /> : nextStatus === 'IN_PROGRESS' ? <Play size={14} /> : <Check size={14} />}
-          </button>
-        ) : (
-          <button type="button" disabled={busy} onClick={() => onStatus('TODO')} aria-label="Rouvrir">
-            {busy ? <Loader2 size={14} className="spin" /> : <RotateCcw size={14} />}
-          </button>
-        )}
       </div>
     </article>
   );
 }
 
-function TaskCard({
-  task,
-  busy,
-  onEdit,
-  onStatus,
-}: {
-  task: OperationalTask;
-  busy: boolean;
-  onEdit: () => void;
-  onStatus: (status: OperationalTaskStatus) => void;
-}) {
-  const status = statusCopy[task.status];
-  const nextStatus =
-    task.status === 'TODO' ? 'IN_PROGRESS' : task.status === 'IN_PROGRESS' ? 'COMPLETED' : 'TODO';
+function TaskCard({ task, onEdit }: { task: OperationalTask; onEdit: () => void }) {
   return (
-    <article className="production-task-card-v2">
+    <article
+      className="production-task-card-v2"
+      role="button"
+      tabIndex={0}
+      aria-label={`Modifier ${task.title}`}
+      title={`${task.title} — cliquer pour modifier`}
+      draggable={Boolean(task.source === 'PRODUCTION' && task.productionBatchId)}
+      onClick={onEdit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onEdit();
+        }
+      }}
+      onDragStart={(event) => {
+        if (!task.productionBatchId) return;
+        event.dataTransfer.setData('application/x-toquehub-production-task', task.id);
+        event.dataTransfer.effectAllowed = 'move';
+      }}
+    >
       <div
         className="production-task-accent-bar"
         style={{ background: categoryColor[task.category] }}
       />
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          gap: '.4rem',
-          alignItems: 'flex-start',
-        }}
-      >
-        <div style={{ minWidth: 0 }}>
-          <div
-            style={{
-              display: 'flex',
-              gap: '.35rem',
-              alignItems: 'center',
-              color: '#64748b',
-              fontSize: '.72rem',
-              fontWeight: 800,
-            }}
-          >
-            <Clock3 size={13} color="#94a3b8" /> {formatTime(task.startsAt)}–
-            {formatTime(task.endsAt)}
-          </div>
-          <h4
-            style={{
-              margin: '.25rem 0 .15rem',
-              fontSize: '.92rem',
-              fontWeight: 750,
-              color: '#0f172a',
-              lineHeight: 1.3,
-            }}
-          >
-            {task.title}
-          </h4>
-        </div>
-        <button
-          type="button"
-          aria-label="Modifier"
-          onClick={onEdit}
+      <div style={{ minWidth: 0 }}>
+        <div
           style={{
-            ...iconButtonStyle,
-            width: '30px',
-            height: '30px',
-            borderRadius: '8px',
-            flexShrink: 0,
-            border: '0',
-            background: '#f8fafc',
+            display: 'flex',
+            gap: '.35rem',
+            alignItems: 'center',
+            color: '#64748b',
+            fontSize: '.72rem',
+            fontWeight: 800,
           }}
         >
-          <Pencil size={13} color="#64748b" />
-        </button>
+          {task.source === 'PRODUCTION' && task.productionBatchId && (
+            <GripVertical size={13} color="#94a3b8" />
+          )}
+          <Clock3 size={13} color="#94a3b8" /> {formatTime(task.startsAt)}–{formatTime(task.endsAt)}
+        </div>
+        <h4
+          style={{
+            margin: '.25rem 0 .15rem',
+            fontSize: '.92rem',
+            fontWeight: 750,
+            color: '#0f172a',
+            lineHeight: 1.3,
+          }}
+        >
+          {task.title}
+        </h4>
       </div>
       <div style={{ color: '#64748b', fontSize: '.74rem', fontWeight: 600, marginTop: '.1rem' }}>
-        {[taskSiteName(task), task.department?.name ?? 'Service', taskTeamLabel(task)].filter(Boolean).join(' · ')}
+        {[taskSiteName(task), task.department?.name ?? 'Service', taskTeamLabel(task)]
+          .filter(Boolean)
+          .join(' · ')}
       </div>
       {task.technicalSheet && (
         <div
@@ -4037,76 +4746,6 @@ function TaskCard({
           <AlertCircle size={12} /> Hors créneau Planning
         </div>
       )}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '.4rem',
-          marginTop: '.65rem',
-          paddingTop: '.5rem',
-          borderTop: '1px solid #f1f5f9',
-        }}
-      >
-        <span
-          style={{
-            color: status.color,
-            background: status.background,
-            borderRadius: '999px',
-            padding: '.22rem .52rem',
-            fontSize: '.68rem',
-            fontWeight: 800,
-          }}
-        >
-          {status.label}
-        </span>
-        <div style={{ display: 'flex', gap: '.3rem' }}>
-          {task.status !== 'COMPLETED' && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => onStatus(nextStatus)}
-              title={nextStatus === 'IN_PROGRESS' ? 'Démarrer' : 'Terminer'}
-              style={{
-                ...iconButtonStyle,
-                width: '30px',
-                height: '30px',
-                borderRadius: '8px',
-                border: 0,
-                background: nextStatus === 'IN_PROGRESS' ? '#dbeafe' : '#d1fae5',
-                color: nextStatus === 'IN_PROGRESS' ? '#1d4ed8' : '#047857',
-              }}
-            >
-              {busy ? (
-                <Loader2 size={14} className="spin" />
-              ) : nextStatus === 'IN_PROGRESS' ? (
-                <Play size={13} />
-              ) : (
-                <Check size={14} />
-              )}
-            </button>
-          )}
-          {task.status === 'COMPLETED' && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => onStatus('TODO')}
-              title="Rouvrir"
-              style={{
-                ...iconButtonStyle,
-                width: '30px',
-                height: '30px',
-                borderRadius: '8px',
-                border: 0,
-                background: '#f1f5f9',
-                color: '#475569',
-              }}
-            >
-              {busy ? <Loader2 size={14} className="spin" /> : <RotateCcw size={13} />}
-            </button>
-          )}
-        </div>
-      </div>
     </article>
   );
 }
@@ -4182,6 +4821,47 @@ function OperationalTaskWizardSidebar({
   assigneeName: string;
   taskName: string;
 }) {
+  if (editing) {
+    return (
+      <div className="operational-task-wizard-sidebar">
+        <div>
+          <span className="operational-task-wizard-kicker">MODIFICATION RAPIDE</span>
+          <h2>Modifier la tâche</h2>
+          <p>Toutes les informations utiles sont réunies sur un seul écran.</p>
+        </div>
+        <div className="operational-task-quick-summary">
+          <div>
+            <ListChecks size={18} />
+            <span>
+              <strong>Tâche</strong>
+              <small>{taskName || 'Sans titre'}</small>
+            </span>
+          </div>
+          <div>
+            <Building2 size={18} />
+            <span>
+              <strong>Lieu et service</strong>
+              <small>
+                {[siteName, departmentName].filter(Boolean).join(' · ') || 'Non renseigné'}
+              </small>
+            </span>
+          </div>
+          <div>
+            <UserRound size={18} />
+            <span>
+              <strong>Équipe</strong>
+              <small>{assigneeName}</small>
+            </span>
+          </div>
+        </div>
+        <div className="operational-task-wizard-note">
+          <CheckCircle2 size={18} />
+          <span>Un seul enregistrement met à jour la tâche et son horaire.</span>
+        </div>
+      </div>
+    );
+  }
+
   const items = [
     {
       index: 1,
@@ -4201,7 +4881,7 @@ function OperationalTaskWizardSidebar({
     <div className="operational-task-wizard-sidebar">
       <div>
         <span className="operational-task-wizard-kicker">PLANNING OPÉRATIONNEL</span>
-        <h2>{editing ? 'Modifier la tâche' : 'Planifier une tâche'}</h2>
+        <h2>Planifier une tâche</h2>
         <p>
           Un parcours court, alimenté par les services, les postes et les collaborateurs déjà
           configurés dans RH.

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -59,8 +60,26 @@ const TASK_INCLUDE = {
   },
   planningAssignment: true,
   menu: { select: { id: true, name: true, date: true, service: true } },
-  technicalSheet: { select: { id: true, name: true, referencePortions: true } },
-  technicalSheetStep: { select: { id: true, order: true, title: true, description: true, estimatedMinutes: true } },
+  technicalSheet: {
+    select: {
+      id: true,
+      name: true,
+      referencePortions: true,
+      steps: {
+        orderBy: { order: 'asc' as const },
+        select: {
+          id: true,
+          order: true,
+          title: true,
+          description: true,
+          estimatedMinutes: true,
+        },
+      },
+    },
+  },
+  technicalSheetStep: {
+    select: { id: true, order: true, title: true, description: true, estimatedMinutes: true },
+  },
   productionBatch: {
     include: {
       unit: true,
@@ -122,7 +141,9 @@ export class OperationalTasksService {
         where: {
           organizationId,
           isArchived: false,
-          ...(query.departmentId ? { OR: [{ departmentId: query.departmentId }, { departmentId: null }] } : {}),
+          ...(query.departmentId
+            ? { OR: [{ departmentId: query.departmentId }, { departmentId: null }] }
+            : {}),
         },
         include: { department: true },
         orderBy: { name: 'asc' },
@@ -136,7 +157,16 @@ export class OperationalTasksService {
           totalTimeMinutes: true,
           preparationTimeMinutes: true,
           cookingTimeMinutes: true,
-          steps: { orderBy: { order: 'asc' }, select: { id: true, order: true, title: true, description: true, estimatedMinutes: true } },
+          steps: {
+            orderBy: { order: 'asc' },
+            select: {
+              id: true,
+              order: true,
+              title: true,
+              description: true,
+              estimatedMinutes: true,
+            },
+          },
           menuItems: {
             where: {
               menu: {
@@ -162,18 +192,33 @@ export class OperationalTasksService {
                 technicalSheetId: query.technicalSheetId,
                 siteId: query.siteId,
                 status: { in: EXECUTABLE_ORDER_STATUSES },
-                productionDate: query.startDate || query.endDate
-                  ? {
-                      gte: query.startDate ? this.date(query.startDate, 'Date de début invalide') : undefined,
-                      lt: query.endDate ? this.date(query.endDate, 'Date de fin invalide') : undefined,
-                    }
-                  : undefined,
+                productionDate:
+                  query.startDate || query.endDate
+                    ? {
+                        gte: query.startDate
+                          ? this.date(query.startDate, 'Date de début invalide')
+                          : undefined,
+                        lt: query.endDate
+                          ? this.date(query.endDate, 'Date de fin invalide')
+                          : undefined,
+                      }
+                    : undefined,
               },
             },
             include: {
               unit: true,
               destinationLocation: true,
-              order: { select: { id: true, number: true, name: true, productionDate: true, status: true, technicalSheetId: true, siteId: true } },
+              order: {
+                select: {
+                  id: true,
+                  number: true,
+                  name: true,
+                  productionDate: true,
+                  status: true,
+                  technicalSheetId: true,
+                  siteId: true,
+                },
+              },
               operations: { orderBy: { position: 'asc' } },
             },
             orderBy: [{ plannedStartAt: 'asc' }, { number: 'asc' }],
@@ -185,8 +230,15 @@ export class OperationalTasksService {
       positionSupportsTechnicalSheets(position.name, position.department?.name),
     );
     const presets = positions.flatMap((position) => {
-      const supportsTechnicalSheets = positionSupportsTechnicalSheets(position.name, position.department?.name);
-      return this.positionTaskPresets(position.taskPresets, position.name, position.department?.name)
+      const supportsTechnicalSheets = positionSupportsTechnicalSheets(
+        position.name,
+        position.department?.name,
+      );
+      return this.positionTaskPresets(
+        position.taskPresets,
+        position.name,
+        position.department?.name,
+      )
         .filter((task) => !task.requiresTechnicalSheet || supportsTechnicalSheets)
         .map((task) => ({
           ...task,
@@ -201,13 +253,26 @@ export class OperationalTasksService {
           id: sheet.id,
           name: sheet.name,
           referencePortions: sheet.referencePortions,
-          totalTimeMinutes: Math.max(5, sheet.totalTimeMinutes || (sheet.preparationTimeMinutes ?? 0) + (sheet.cookingTimeMinutes ?? 0) || sheet.steps.reduce((total, step) => total + (step.estimatedMinutes ?? 0), 0) || 30),
+          totalTimeMinutes: Math.max(
+            5,
+            sheet.totalTimeMinutes ||
+              (sheet.preparationTimeMinutes ?? 0) + (sheet.cookingTimeMinutes ?? 0) ||
+              sheet.steps.reduce((total, step) => total + (step.estimatedMinutes ?? 0), 0) ||
+              30,
+          ),
           isOnCurrentMenu: menuNames.length > 0,
           menuNames,
-          steps: sheet.steps.map((step) => ({ ...step, estimatedMinutes: Math.max(5, step.estimatedMinutes ?? 15) })),
+          steps: sheet.steps.map((step) => ({
+            ...step,
+            estimatedMinutes: Math.max(5, step.estimatedMinutes ?? 15),
+          })),
         };
       })
-      .sort((a, b) => Number(b.isOnCurrentMenu) - Number(a.isOnCurrentMenu) || a.name.localeCompare(b.name, 'fr'));
+      .sort(
+        (a, b) =>
+          Number(b.isOnCurrentMenu) - Number(a.isOnCurrentMenu) ||
+          a.name.localeCompare(b.name, 'fr'),
+      );
     return { presets, technicalSheets, productionBatches: batches };
   }
 
@@ -237,12 +302,14 @@ export class OperationalTasksService {
       AND: [
         visibility,
         ...(query.employeeId
-          ? [{
-              OR: [
-                { assignedEmployeeId: query.employeeId },
-                { assignments: { some: { employeeId: query.employeeId } } },
-              ],
-            }]
+          ? [
+              {
+                OR: [
+                  { assignedEmployeeId: query.employeeId },
+                  { assignments: { some: { employeeId: query.employeeId } } },
+                ],
+              },
+            ]
           : []),
       ],
     };
@@ -295,9 +362,14 @@ export class OperationalTasksService {
             organizationId,
             OR: [
               { assignedEmployeeId: { in: employees.map((employee) => employee.id) } },
-              { assignments: { some: { employeeId: { in: employees.map((employee) => employee.id) } } } },
+              {
+                assignments: {
+                  some: { employeeId: { in: employees.map((employee) => employee.id) } },
+                },
+              },
             ],
             status: { in: ['TODO', 'IN_PROGRESS'] },
+            isTimeScheduled: true,
             startsAt: { lt: endsAt },
             endsAt: { gt: startsAt },
             ...(query.taskId ? { id: { not: query.taskId } } : {}),
@@ -323,7 +395,7 @@ export class OperationalTasksService {
     return employees.map((employee) => {
       const planningAssignment = shiftByEmployee.get(employee.id) ?? null;
       const operationalConflict = conflictByEmployee.get(employee.id) ?? null;
-      const available = Boolean(planningAssignment) && !operationalConflict;
+      const available = Boolean(planningAssignment);
       return {
         ...employee,
         available,
@@ -332,7 +404,7 @@ export class OperationalTasksService {
         availabilityLabel: !planningAssignment
           ? 'Hors planning'
           : operationalConflict
-            ? `Déjà occupé · ${operationalConflict.title}`
+            ? `Déjà affecté en parallèle · ${operationalConflict.title}`
             : 'Disponible sur son planning',
       };
     });
@@ -345,6 +417,7 @@ export class OperationalTasksService {
     this.assertPeriod(startsAt, endsAt);
     const employeeIds = this.assigneeIds(dto.assignedEmployeeIds, dto.assignedEmployeeId);
     const leadEmployeeId = dto.assignedEmployeeId ?? employeeIds[0] ?? null;
+    const isTimeScheduled = dto.isTimeScheduled ?? true;
     await this.validateReferences(organizationId, {
       ...dto,
       assignedEmployeeId: leadEmployeeId ?? undefined,
@@ -355,14 +428,10 @@ export class OperationalTasksService {
         this.assertCanCreate(scope, actor, dto.departmentId, employeeId),
       ),
     );
-    const planningAssignmentId = leadEmployeeId
-      ? await this.matchingPlanningAssignment(
-          organizationId,
-          leadEmployeeId,
-          startsAt,
-          endsAt,
-        )
-      : null;
+    const planningAssignmentId =
+      isTimeScheduled && leadEmployeeId
+        ? await this.matchingPlanningAssignment(organizationId, leadEmployeeId, startsAt, endsAt)
+        : null;
 
     return this.prisma.$transaction(async (tx) => {
       const task = await tx.operationalTask.create({
@@ -385,6 +454,7 @@ export class OperationalTasksService {
           positionTaskPresetId: dto.positionTaskPresetId ?? null,
           startsAt,
           endsAt,
+          isTimeScheduled,
           quantity: dto.quantity == null ? null : new Prisma.Decimal(dto.quantity),
           unitLabel: dto.unitLabel?.trim() || null,
           createdById: actor.id,
@@ -398,6 +468,7 @@ export class OperationalTasksService {
         leadEmployeeId,
         startsAt,
         endsAt,
+        isTimeScheduled,
       );
       return tx.operationalTask.findUniqueOrThrow({
         where: { id: task.id },
@@ -429,18 +500,13 @@ export class OperationalTasksService {
       (item) => item.technicalSheet && !item.technicalSheet.isArchived,
     );
     if (!items.length) {
-      throw new BadRequestException(
-        'Ce menu ne contient aucune fiche technique à planifier.',
-      );
+      throw new BadRequestException('Ce menu ne contient aucune fiche technique à planifier.');
     }
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(dto.serviceTime)) {
       throw new BadRequestException("L'heure de service est invalide.");
     }
     const day = dto.date.slice(0, 10);
-    const serviceAt = this.date(
-      `${day}T${dto.serviceTime}:00`,
-      'Date de service invalide',
-    );
+    const serviceAt = this.date(`${day}T${dto.serviceTime}:00`, 'Date de service invalide');
     const created = [];
     const skipped: Array<{ technicalSheetId: string; name: string; reason: string }> = [];
 
@@ -508,36 +574,58 @@ export class OperationalTasksService {
   ) {
     const scope = await this.scope(organizationId, actor);
     const existing = await this.getVisible(organizationId, actor, scope, id);
-    const startsAt = dto.startsAt ? this.date(dto.startsAt, 'Heure de début invalide') : existing.startsAt;
+    const startsAt = dto.startsAt
+      ? this.date(dto.startsAt, 'Heure de début invalide')
+      : existing.startsAt;
     const endsAt = dto.endsAt ? this.date(dto.endsAt, 'Heure de fin invalide') : existing.endsAt;
     this.assertPeriod(startsAt, endsAt);
+    const isTimeScheduled = dto.isTimeScheduled ?? existing.isTimeScheduled;
     const departmentId = dto.departmentId ?? existing.departmentId;
     const currentEmployeeIds = existing.assignments?.length
       ? existing.assignments.map((assignment) => assignment.employeeId)
       : existing.assignedEmployeeId
         ? [existing.assignedEmployeeId]
         : [];
-    const employeeIds = dto.assignedEmployeeIds !== undefined
-      ? this.assigneeIds(dto.assignedEmployeeIds, dto.assignedEmployeeId)
-      : Object.hasOwn(dto, 'assignedEmployeeId')
-        ? this.assigneeIds(undefined, dto.assignedEmployeeId ?? undefined)
-        : currentEmployeeIds;
+    const employeeIds =
+      dto.assignedEmployeeIds !== undefined
+        ? this.assigneeIds(dto.assignedEmployeeIds, dto.assignedEmployeeId)
+        : Object.hasOwn(dto, 'assignedEmployeeId')
+          ? this.assigneeIds(undefined, dto.assignedEmployeeId ?? undefined)
+          : currentEmployeeIds;
     const assignedEmployeeId = Object.hasOwn(dto, 'assignedEmployeeId')
-      ? dto.assignedEmployeeId ?? employeeIds[0] ?? null
+      ? (dto.assignedEmployeeId ?? employeeIds[0] ?? null)
       : existing.assignedEmployeeId && employeeIds.includes(existing.assignedEmployeeId)
         ? existing.assignedEmployeeId
-        : employeeIds[0] ?? null;
+        : (employeeIds[0] ?? null);
     await this.validateReferences(organizationId, {
       departmentId,
-      positionId: dto.positionId === undefined ? existing.positionId ?? undefined : dto.positionId ?? undefined,
-      siteId: dto.siteId === undefined ? existing.siteId ?? undefined : dto.siteId ?? undefined,
+      positionId:
+        dto.positionId === undefined
+          ? (existing.positionId ?? undefined)
+          : (dto.positionId ?? undefined),
+      siteId: dto.siteId === undefined ? (existing.siteId ?? undefined) : (dto.siteId ?? undefined),
       assignedEmployeeId: assignedEmployeeId ?? undefined,
-      menuId: dto.menuId === undefined ? existing.menuId ?? undefined : dto.menuId ?? undefined,
-      technicalSheetId: dto.technicalSheetId === undefined ? existing.technicalSheetId ?? undefined : dto.technicalSheetId ?? undefined,
-      technicalSheetStepId: dto.technicalSheetStepId === undefined ? existing.technicalSheetStepId ?? undefined : dto.technicalSheetStepId ?? undefined,
-      productionBatchId: dto.productionBatchId === undefined ? existing.productionBatchId ?? undefined : dto.productionBatchId ?? undefined,
-      productionOperationId: dto.productionOperationId === undefined ? existing.productionOperationId ?? undefined : dto.productionOperationId ?? undefined,
-      positionTaskPresetId: dto.positionTaskPresetId === undefined ? existing.positionTaskPresetId ?? undefined : dto.positionTaskPresetId ?? undefined,
+      menuId: dto.menuId === undefined ? (existing.menuId ?? undefined) : (dto.menuId ?? undefined),
+      technicalSheetId:
+        dto.technicalSheetId === undefined
+          ? (existing.technicalSheetId ?? undefined)
+          : (dto.technicalSheetId ?? undefined),
+      technicalSheetStepId:
+        dto.technicalSheetStepId === undefined
+          ? (existing.technicalSheetStepId ?? undefined)
+          : (dto.technicalSheetStepId ?? undefined),
+      productionBatchId:
+        dto.productionBatchId === undefined
+          ? (existing.productionBatchId ?? undefined)
+          : (dto.productionBatchId ?? undefined),
+      productionOperationId:
+        dto.productionOperationId === undefined
+          ? (existing.productionOperationId ?? undefined)
+          : (dto.productionOperationId ?? undefined),
+      positionTaskPresetId:
+        dto.positionTaskPresetId === undefined
+          ? (existing.positionTaskPresetId ?? undefined)
+          : (dto.positionTaskPresetId ?? undefined),
     });
     await this.validateAssigneeSet(organizationId, departmentId, employeeIds);
     await Promise.all(
@@ -545,14 +633,36 @@ export class OperationalTasksService {
         this.assertCanCreate(scope, actor, departmentId, employeeId),
       ),
     );
-    const planningAssignmentId = assignedEmployeeId
-      ? await this.matchingPlanningAssignment(
-          organizationId,
-          assignedEmployeeId,
-          startsAt,
-          endsAt,
-        )
-      : null;
+    const planningAssignmentId =
+      isTimeScheduled && assignedEmployeeId
+        ? await this.matchingPlanningAssignment(
+            organizationId,
+            assignedEmployeeId,
+            startsAt,
+            endsAt,
+          )
+        : null;
+    if (
+      existing.source === 'PRODUCTION' &&
+      isTimeScheduled &&
+      employeeIds.length &&
+      (dto.startsAt !== undefined ||
+        dto.endsAt !== undefined ||
+        dto.isTimeScheduled !== undefined ||
+        dto.assignedEmployeeId !== undefined ||
+        dto.assignedEmployeeIds !== undefined)
+    ) {
+      const scheduling = await Promise.all(
+        employeeIds.map((employeeId) =>
+          this.matchingPlanningAssignment(organizationId, employeeId, startsAt, endsAt),
+        ),
+      );
+      if (scheduling.some((assignmentId) => !assignmentId)) {
+        throw new BadRequestException(
+          'Une personne affectée ne travaille pas sur le nouveau créneau. Modifiez l’équipe ou choisissez un créneau couvert par son planning.',
+        );
+      }
+    }
 
     return this.prisma.$transaction(async (tx) => {
       await tx.operationalTask.update({
@@ -568,6 +678,7 @@ export class OperationalTasksService {
           planningAssignmentId,
           startsAt,
           endsAt,
+          isTimeScheduled,
           quantity:
             dto.quantity === undefined
               ? undefined
@@ -578,12 +689,26 @@ export class OperationalTasksService {
           source: dto.source,
           menuId: dto.menuId === undefined ? undefined : dto.menuId,
           technicalSheetId: dto.technicalSheetId === undefined ? undefined : dto.technicalSheetId,
-          technicalSheetStepId: dto.technicalSheetStepId === undefined ? undefined : dto.technicalSheetStepId,
-          productionBatchId: dto.productionBatchId === undefined ? undefined : dto.productionBatchId,
-          productionOperationId: dto.productionOperationId === undefined ? undefined : dto.productionOperationId,
-          positionTaskPresetId: dto.positionTaskPresetId === undefined ? undefined : dto.positionTaskPresetId,
+          technicalSheetStepId:
+            dto.technicalSheetStepId === undefined ? undefined : dto.technicalSheetStepId,
+          productionBatchId:
+            dto.productionBatchId === undefined ? undefined : dto.productionBatchId,
+          productionOperationId:
+            dto.productionOperationId === undefined ? undefined : dto.productionOperationId,
+          positionTaskPresetId:
+            dto.positionTaskPresetId === undefined ? undefined : dto.positionTaskPresetId,
         },
       });
+      const productionOperationId =
+        dto.productionOperationId === undefined
+          ? existing.productionOperationId
+          : dto.productionOperationId;
+      if (productionOperationId && (dto.startsAt !== undefined || dto.endsAt !== undefined)) {
+        await tx.productionOperation.update({
+          where: { id: productionOperationId },
+          data: { plannedAt: startsAt },
+        });
+      }
       await this.syncAssignmentsTx(
         tx,
         organizationId,
@@ -592,6 +717,7 @@ export class OperationalTasksService {
         assignedEmployeeId,
         startsAt,
         endsAt,
+        isTimeScheduled,
       );
       return tx.operationalTask.findUniqueOrThrow({
         where: { id },
@@ -615,6 +741,146 @@ export class OperationalTasksService {
         completedAt: dto.status === OperationalTaskStatus.COMPLETED ? new Date() : null,
       },
       include: TASK_INCLUDE,
+    });
+  }
+
+  async splitProductionRecipeTask(organizationId: string, actor: TaskActor, id: string) {
+    const scope = await this.scope(organizationId, actor);
+    const source = await this.getVisible(organizationId, actor, scope, id);
+    if (
+      source.source !== 'PRODUCTION' ||
+      !source.productionBatchId ||
+      source.productionOperationId
+    ) {
+      throw new BadRequestException(
+        'Seule une tâche de recette complète issue d’une fabrication peut être découpée.',
+      );
+    }
+    if (source.status === OperationalTaskStatus.CANCELLED) {
+      const existingSteps = await this.prisma.operationalTask.findMany({
+        where: {
+          organizationId,
+          productionBatchId: source.productionBatchId,
+          productionOperationId: { not: null },
+          status: { not: OperationalTaskStatus.CANCELLED },
+        },
+        include: TASK_INCLUDE,
+        orderBy: [{ startsAt: 'asc' }, { title: 'asc' }],
+      });
+      if (existingSteps.length) return existingSteps;
+    }
+    if (
+      source.status === OperationalTaskStatus.COMPLETED ||
+      source.status === OperationalTaskStatus.CANCELLED
+    ) {
+      throw new ConflictException('Cette recette ne peut plus être découpée dans son état actuel.');
+    }
+    const operations = [...(source.productionBatch?.operations ?? [])].sort(
+      (left, right) => left.position - right.position,
+    );
+    if (operations.length < 2) {
+      throw new BadRequestException('Cette fiche ne comporte pas plusieurs étapes à planifier.');
+    }
+    const steps = source.technicalSheetId
+      ? await this.prisma.technicalSheetStep.findMany({
+          where: {
+            organizationId,
+            technicalSheetId: source.technicalSheetId,
+          },
+          orderBy: { order: 'asc' },
+        })
+      : [];
+    const employeeIds = source.assignments?.length
+      ? source.assignments.map((assignment) => assignment.employeeId)
+      : source.assignedEmployeeId
+        ? [source.assignedEmployeeId]
+        : [];
+
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.operationalTask.findMany({
+        where: {
+          organizationId,
+          productionBatchId: source.productionBatchId,
+          productionOperationId: { not: null },
+          status: { not: OperationalTaskStatus.CANCELLED },
+        },
+        include: TASK_INCLUDE,
+      });
+      const byOperation = new Map(existing.map((task) => [task.productionOperationId, task]));
+      let cursor = new Date(source.startsAt);
+
+      for (const operation of operations) {
+        const minutes = Math.max(5, operation.activeMinutes ?? 15);
+        const startsAt = new Date(cursor);
+        const endsAt = new Date(startsAt.getTime() + minutes * 60_000);
+        cursor = endsAt;
+        await tx.productionOperation.update({
+          where: { id: operation.id },
+          data: { plannedAt: startsAt },
+        });
+        if (byOperation.has(operation.id)) continue;
+
+        const step = steps[operation.position] ?? null;
+        const task = await tx.operationalTask.create({
+          data: {
+            organizationId,
+            title: `${operation.title} · ${source.technicalSheet?.name ?? source.title}`.slice(
+              0,
+              180,
+            ),
+            description:
+              operation.notes ??
+              step?.description ??
+              'Étape issue du découpage de la recette complète.',
+            category: source.category,
+            status: 'TODO',
+            source: 'PRODUCTION',
+            departmentId: source.departmentId,
+            positionId: source.positionId,
+            siteId: source.siteId,
+            assignedEmployeeId: source.assignedEmployeeId,
+            planningAssignmentId: source.planningAssignmentId,
+            technicalSheetId: source.technicalSheetId,
+            technicalSheetStepId: step?.id ?? null,
+            productionBatchId: source.productionBatchId,
+            productionOperationId: operation.id,
+            startsAt,
+            endsAt,
+            isTimeScheduled: false,
+            quantity: source.quantity,
+            unitLabel: source.unitLabel,
+            createdById: actor.id,
+          },
+        });
+        await this.syncAssignmentsTx(
+          tx,
+          organizationId,
+          task.id,
+          employeeIds,
+          source.assignedEmployeeId,
+          startsAt,
+          endsAt,
+          false,
+        );
+      }
+
+      await tx.operationalTask.update({
+        where: { id: source.id },
+        data: {
+          status: OperationalTaskStatus.CANCELLED,
+          completedAt: null,
+        },
+      });
+      return tx.operationalTask.findMany({
+        where: {
+          organizationId,
+          productionBatchId: source.productionBatchId,
+          productionOperationId: { not: null },
+          status: { not: OperationalTaskStatus.CANCELLED },
+        },
+        include: TASK_INCLUDE,
+        orderBy: [{ startsAt: 'asc' }, { title: 'asc' }],
+      });
     });
   }
 
@@ -659,28 +925,43 @@ export class OperationalTasksService {
 
     const snapshot = (batch.recipeVersion?.snapshot ?? null) as Record<string, any> | null;
     const snapshotIngredients = Array.isArray(snapshot?.ingredients) ? snapshot.ingredients : null;
-    const sourceIngredients = snapshotIngredients ?? batch.order.technicalSheet.ingredients.map((ingredient) => ({
-      id: ingredient.id,
-      productId: ingredient.productId,
-      unitId: ingredient.unitId,
-      quantity: ingredient.quantity.toString(),
-      comment: ingredient.comment,
-      section: ingredient.section,
-      order: ingredient.order,
-      productName: ingredient.product.name,
-      unitSymbol: ingredient.unit.symbol,
-    }));
-    const productIds = [...new Set(sourceIngredients.map((ingredient: any) => ingredient.productId).filter(Boolean))] as string[];
-    const unitIds = [...new Set(sourceIngredients.map((ingredient: any) => ingredient.unitId).filter(Boolean))] as string[];
+    const sourceIngredients =
+      snapshotIngredients ??
+      batch.order.technicalSheet.ingredients.map((ingredient) => ({
+        id: ingredient.id,
+        productId: ingredient.productId,
+        unitId: ingredient.unitId,
+        quantity: ingredient.quantity.toString(),
+        comment: ingredient.comment,
+        section: ingredient.section,
+        order: ingredient.order,
+        productName: ingredient.product.name,
+        unitSymbol: ingredient.unit.symbol,
+      }));
+    const productIds = [
+      ...new Set(sourceIngredients.map((ingredient: any) => ingredient.productId).filter(Boolean)),
+    ] as string[];
+    const unitIds = [
+      ...new Set(sourceIngredients.map((ingredient: any) => ingredient.unitId).filter(Boolean)),
+    ] as string[];
     const [products, units, locations, profile] = await Promise.all([
       productIds.length
-        ? this.prisma.product.findMany({ where: { organizationId, id: { in: productIds } }, select: { id: true, name: true } })
+        ? this.prisma.product.findMany({
+            where: { organizationId, id: { in: productIds } },
+            select: { id: true, name: true },
+          })
         : Promise.resolve([]),
       unitIds.length
-        ? this.prisma.unit.findMany({ where: { organizationId, id: { in: unitIds } }, select: { id: true, name: true, symbol: true } })
+        ? this.prisma.unit.findMany({
+            where: { organizationId, id: { in: unitIds } },
+            select: { id: true, name: true, symbol: true },
+          })
         : Promise.resolve([]),
       batch.order.siteId
-        ? this.prisma.location.findMany({ where: { organizationId, siteId: batch.order.siteId, isArchived: false }, orderBy: { name: 'asc' } })
+        ? this.prisma.location.findMany({
+            where: { organizationId, siteId: batch.order.siteId, isArchived: false },
+            orderBy: { name: 'asc' },
+          })
         : Promise.resolve([]),
       batch.order.siteId
         ? this.prisma.productionProfile.findFirst({
@@ -696,10 +977,21 @@ export class OperationalTasksService {
     ]);
     const productNames = new Map(products.map((product) => [product.id, product.name]));
     const unitNames = new Map(units.map((unit) => [unit.id, unit]));
+    const snapshotYieldMode = snapshot?.yieldMode ?? batch.order.technicalSheet.yieldMode;
     const referenceYield = new Prisma.Decimal(
-      batch.recipeVersion?.referenceYield ?? batch.order.technicalSheet.referencePortions ?? 1,
+      snapshotYieldMode === 'MASS'
+        ? (snapshot?.totalMassGrams ??
+            batch.order.technicalSheet.totalMassGrams ??
+            batch.recipeVersion?.referenceYield ??
+            1)
+        : (batch.recipeVersion?.referenceYield ??
+            snapshot?.referencePortions ??
+            batch.order.technicalSheet.referencePortions ??
+            1),
     );
-    const factor = referenceYield.isZero() ? new Prisma.Decimal(1) : batch.plannedQuantity.div(referenceYield);
+    const factor = referenceYield.isZero()
+      ? new Prisma.Decimal(1)
+      : batch.plannedQuantity.div(referenceYield);
     const ingredients = sourceIngredients
       .sort((a: any, b: any) => Number(a.order ?? 0) - Number(b.order ?? 0))
       .map((ingredient: any) => {
@@ -707,10 +999,19 @@ export class OperationalTasksService {
         return {
           id: ingredient.id,
           productId: ingredient.productId,
-          name: ingredient.productName ?? ingredient.productNameSnapshot ?? productNames.get(ingredient.productId) ?? 'Ingrédient',
+          name:
+            ingredient.productName ??
+            ingredient.productNameSnapshot ??
+            productNames.get(ingredient.productId) ??
+            'Ingrédient',
           quantity: new Prisma.Decimal(ingredient.quantity ?? 0).mul(factor).toFixed(3),
           unitId: ingredient.unitId,
-          unit: ingredient.unitSymbol ?? ingredient.unitSymbolSnapshot ?? unit?.symbol ?? unit?.name ?? '',
+          unit:
+            ingredient.unitSymbol ??
+            ingredient.unitSymbolSnapshot ??
+            unit?.symbol ??
+            unit?.name ??
+            '',
           comment: ingredient.comment ?? null,
           section: ingredient.section ?? null,
         };
@@ -761,12 +1062,7 @@ export class OperationalTasksService {
     };
   }
 
-  private async getVisible(
-    organizationId: string,
-    actor: TaskActor,
-    scope: TaskScope,
-    id: string,
-  ) {
+  private async getVisible(organizationId: string, actor: TaskActor, scope: TaskScope, id: string) {
     const task = await this.prisma.operationalTask.findFirst({
       where: { id, organizationId, AND: [this.visibilityWhere(scope, actor)] },
       include: TASK_INCLUDE,
@@ -791,7 +1087,12 @@ export class OperationalTasksService {
     },
   ) {
     const department = await this.department(organizationId, dto.departmentId);
-    let selectedPosition: { id: string; name: string; departmentId: string | null; department?: { name: string } | null } | null = null;
+    let selectedPosition: {
+      id: string;
+      name: string;
+      departmentId: string | null;
+      department?: { name: string } | null;
+    } | null = null;
     if (dto.positionId) {
       selectedPosition = await this.prisma.hrPosition.findFirst({
         where: { id: dto.positionId, organizationId, isArchived: false },
@@ -808,7 +1109,10 @@ export class OperationalTasksService {
       });
       if (!site) throw new BadRequestException('Site introuvable.');
     }
-    let assignedEmployee: { departmentId: string; position?: { id: string; name: string; department?: { name: string } | null } | null } | null = null;
+    let assignedEmployee: {
+      departmentId: string;
+      position?: { id: string; name: string; department?: { name: string } | null } | null;
+    } | null = null;
     if (dto.assignedEmployeeId) {
       assignedEmployee = await this.prisma.hrEmployee.findFirst({
         where: {
@@ -831,8 +1135,15 @@ export class OperationalTasksService {
     if (dto.technicalSheetId) {
       const productionPosition = assignedEmployee?.position ?? selectedPosition;
       if (productionPosition) {
-        if (!positionSupportsTechnicalSheets(productionPosition.name, productionPosition.department?.name)) {
-          throw new BadRequestException('Les fiches techniques sont réservées aux métiers de production alimentaire et de boissons.');
+        if (
+          !positionSupportsTechnicalSheets(
+            productionPosition.name,
+            productionPosition.department?.name,
+          )
+        ) {
+          throw new BadRequestException(
+            'Les fiches techniques sont réservées aux métiers de production alimentaire et de boissons.',
+          );
         }
       } else {
         const departmentPositions = await this.prisma.hrPosition.findMany({
@@ -843,49 +1154,88 @@ export class OperationalTasksService {
           },
           include: { department: { select: { name: true } } },
         });
-        if (!departmentPositions.some((position) => positionSupportsTechnicalSheets(position.name, position.department?.name))) {
-          throw new BadRequestException('Ce service ne comporte aucun métier autorisé à réaliser une fiche technique.');
+        if (
+          !departmentPositions.some((position) =>
+            positionSupportsTechnicalSheets(position.name, position.department?.name),
+          )
+        ) {
+          throw new BadRequestException(
+            'Ce service ne comporte aucun métier autorisé à réaliser une fiche technique.',
+          );
         }
       }
-      const technicalSheet = await this.prisma.technicalSheet.findFirst({ where: { id: dto.technicalSheetId, organizationId, isArchived: false } });
-      if (!technicalSheet) throw new BadRequestException('Fiche technique introuvable ou archivée.');
+      const technicalSheet = await this.prisma.technicalSheet.findFirst({
+        where: { id: dto.technicalSheetId, organizationId, isArchived: false },
+      });
+      if (!technicalSheet)
+        throw new BadRequestException('Fiche technique introuvable ou archivée.');
     }
     if (dto.technicalSheetStepId) {
-      if (!dto.technicalSheetId) throw new BadRequestException('Une étape doit être reliée à sa fiche technique.');
-      const step = await this.prisma.technicalSheetStep.findFirst({ where: { id: dto.technicalSheetStepId, organizationId, technicalSheetId: dto.technicalSheetId } });
+      if (!dto.technicalSheetId)
+        throw new BadRequestException('Une étape doit être reliée à sa fiche technique.');
+      const step = await this.prisma.technicalSheetStep.findFirst({
+        where: {
+          id: dto.technicalSheetStepId,
+          organizationId,
+          technicalSheetId: dto.technicalSheetId,
+        },
+      });
       if (!step) throw new BadRequestException('Étape de fiche technique introuvable.');
     }
-    let batch: { id: string; order: { technicalSheetId: string; siteId: string | null; status: ProductionOrderStatus }; status: ProductionBatchStatus } | null = null;
+    let batch: {
+      id: string;
+      order: { technicalSheetId: string; siteId: string | null; status: ProductionOrderStatus };
+      status: ProductionBatchStatus;
+    } | null = null;
     if (dto.productionBatchId) {
       batch = await this.prisma.productionBatch.findFirst({
         where: { id: dto.productionBatchId, organizationId },
         include: { order: { select: { technicalSheetId: true, siteId: true, status: true } } },
       });
       if (!batch) throw new BadRequestException('Lot de production introuvable.');
-      if (!EXECUTABLE_BATCH_STATUSES.includes(batch.status) || !EXECUTABLE_ORDER_STATUSES.includes(batch.order.status)) {
+      if (
+        !EXECUTABLE_BATCH_STATUSES.includes(batch.status) ||
+        !EXECUTABLE_ORDER_STATUSES.includes(batch.order.status)
+      ) {
         throw new BadRequestException("Ce lot n'est pas exécutable.");
       }
       if (!dto.technicalSheetId || batch.order.technicalSheetId !== dto.technicalSheetId) {
-        throw new BadRequestException('Le lot ne correspond pas à la fiche technique sélectionnée.');
+        throw new BadRequestException(
+          'Le lot ne correspond pas à la fiche technique sélectionnée.',
+        );
       }
       if (dto.siteId && batch.order.siteId && batch.order.siteId !== dto.siteId) {
         throw new BadRequestException('Le lot ne correspond pas au site sélectionné.');
       }
     }
     if (dto.productionOperationId) {
-      if (!dto.productionBatchId) throw new BadRequestException('Une opération doit être reliée à son lot de production.');
+      if (!dto.productionBatchId)
+        throw new BadRequestException('Une opération doit être reliée à son lot de production.');
       const operation = await this.prisma.productionOperation.findFirst({
         where: { id: dto.productionOperationId, organizationId, batchId: dto.productionBatchId },
       });
-      if (!operation) throw new BadRequestException("L'opération ne correspond pas au lot sélectionné.");
+      if (!operation)
+        throw new BadRequestException("L'opération ne correspond pas au lot sélectionné.");
     }
     if (dto.technicalSheetStepId && dto.productionBatchId && !dto.productionOperationId) {
-      throw new BadRequestException("Une tâche d'étape exécutable doit être reliée à une opération du lot.");
+      throw new BadRequestException(
+        "Une tâche d'étape exécutable doit être reliée à une opération du lot.",
+      );
     }
     if (dto.positionTaskPresetId) {
-      if (!dto.positionId) throw new BadRequestException('La tâche type doit être reliée à un poste RH.');
-      const position = await this.prisma.hrPosition.findFirst({ where: { id: dto.positionId, organizationId, isArchived: false }, include: { department: true } });
-      const exists = position && this.positionTaskPresets(position.taskPresets, position.name, position.department?.name).some((preset) => preset.id === dto.positionTaskPresetId);
+      if (!dto.positionId)
+        throw new BadRequestException('La tâche type doit être reliée à un poste RH.');
+      const position = await this.prisma.hrPosition.findFirst({
+        where: { id: dto.positionId, organizationId, isArchived: false },
+        include: { department: true },
+      });
+      const exists =
+        position &&
+        this.positionTaskPresets(
+          position.taskPresets,
+          position.name,
+          position.department?.name,
+        ).some((preset) => preset.id === dto.positionTaskPresetId);
       if (!exists) throw new BadRequestException('Tâche type introuvable pour ce poste RH.');
     }
   }
@@ -933,18 +1283,15 @@ export class OperationalTasksService {
     leadEmployeeId: string | null,
     startsAt: Date,
     endsAt: Date,
+    isTimeScheduled = true,
   ) {
     await tx.operationalTaskAssignment.deleteMany({
       where: { taskId, employeeId: { notIn: employeeIds } },
     });
     for (const employeeId of employeeIds) {
-      const planningAssignmentId = await this.matchingPlanningAssignmentTx(
-        tx,
-        organizationId,
-        employeeId,
-        startsAt,
-        endsAt,
-      );
+      const planningAssignmentId = isTimeScheduled
+        ? await this.matchingPlanningAssignmentTx(tx, organizationId, employeeId, startsAt, endsAt)
+        : null;
       await tx.operationalTaskAssignment.upsert({
         where: { taskId_employeeId: { taskId, employeeId } },
         create: {
@@ -1090,7 +1437,11 @@ export class OperationalTasksService {
     while (changed) {
       changed = false;
       for (const employee of employees) {
-        if (employee.managerId && employeeIds.has(employee.managerId) && !employeeIds.has(employee.id)) {
+        if (
+          employee.managerId &&
+          employeeIds.has(employee.managerId) &&
+          !employeeIds.has(employee.id)
+        ) {
           employeeIds.add(employee.id);
           changed = true;
         }
@@ -1125,7 +1476,13 @@ export class OperationalTasksService {
     }
   }
 
-  private positionTaskPresets(value: Prisma.JsonValue | null, positionName: string, departmentName?: string | null) {
-    return (Array.isArray(value) ? value : defaultTaskPresets(positionName, departmentName)) as unknown as HrPositionTaskPreset[];
+  private positionTaskPresets(
+    value: Prisma.JsonValue | null,
+    positionName: string,
+    departmentName?: string | null,
+  ) {
+    return (Array.isArray(value)
+      ? value
+      : defaultTaskPresets(positionName, departmentName)) as unknown as HrPositionTaskPreset[];
   }
 }

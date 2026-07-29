@@ -71,8 +71,14 @@ export class TechnicalSheetAssistantService implements OnModuleInit, OnModuleDes
     if (tool === 'get_recipe_details' || tool === 'get_recipe_cost') {
       const recipe = await this.resolveRecipe(organizationId, args.recipeId || args.targetTechnicalSheetId || conversation.state?.activeRecipeId, args.query || args.recipeQuery);
       if (!recipe) return this.clarify('Quelle fiche technique voulez-vous consulter ?');
-      const cost = `Coût matière : ${Number(recipe.totalCost || 0).toFixed(2)} € · ${Number(recipe.costPerPortion || 0).toFixed(2)} € / portion.`;
-      return { assistantMessage: tool === 'get_recipe_cost' ? `${recipe.name}\n\n${cost}` : `${recipe.name} — ${Number(recipe.referencePortions)} portions, ${recipe.ingredients?.length || 0} ingrédients, ${recipe.steps?.length || 0} étapes.\n\n${cost}`, data: recipe, statePatch: { activeRecipeId: recipe.id, activeRecipeName: recipe.name } };
+      const yieldLabel = recipe.yieldMode === 'MASS'
+        ? `${Number(recipe.totalMassGrams || 0) / 1000} kg`
+        : `${Number(recipe.referencePortions)} portions`;
+      const unitCost = recipe.yieldMode === 'MASS'
+        ? `${Number(recipe.costPerKg || 0).toFixed(2)} € / kg`
+        : `${Number(recipe.costPerPortion || 0).toFixed(2)} € / portion`;
+      const cost = `Coût matière : ${Number(recipe.totalCost || 0).toFixed(2)} € · ${unitCost}.`;
+      return { assistantMessage: tool === 'get_recipe_cost' ? `${recipe.name}\n\n${cost}` : `${recipe.name} — ${yieldLabel}, ${recipe.ingredients?.length || 0} ingrédients, ${recipe.steps?.length || 0} étapes.\n\n${cost}`, data: recipe, statePatch: { activeRecipeId: recipe.id, activeRecipeName: recipe.name } };
     }
     if (tool === 'search_stock_products') {
       const products = await this.products(organizationId, String(args.query || ''));
@@ -119,7 +125,7 @@ export class TechnicalSheetAssistantService implements OnModuleInit, OnModuleDes
       return { productId: product?.id, productName: product ? undefined : name || undefined, createProduct: !product && Boolean(name), unitId: unit?.id, quantity: Math.max(Number(line.quantity || 1), .001), comment: line.comment || undefined, order };
     })).then((lines) => lines.filter((line) => line.unitId));
   }
-  private payloadFromRecipe(recipe: any) { return { name: recipe.name, description: recipe.description, categoryId: recipe.categoryId, referencePortions: recipe.referencePortions, prepTimeMinutes: recipe.prepTimeMinutes, cookTimeMinutes: recipe.cookTimeMinutes, status: recipe.status, ingredients: (recipe.ingredients || []).map((l: any) => ({ productId: l.productId, unitId: l.unitId, quantity: l.quantity, comment: l.comment, order: l.order })), steps: (recipe.steps || []).map((s: any) => ({ order: s.order, title: s.title, description: s.description, estimatedTimeMinutes: s.estimatedTimeMinutes })) }; }
+  private payloadFromRecipe(recipe: any) { return { name: recipe.name, description: recipe.description, categoryId: recipe.categoryId, yieldMode: recipe.yieldMode, referencePortions: recipe.referencePortions, prepTimeMinutes: recipe.prepTimeMinutes, cookTimeMinutes: recipe.cookTimeMinutes, status: recipe.status, ingredients: (recipe.ingredients || []).map((l: any) => ({ productId: l.productId, unitId: l.unitId, quantity: l.quantity, comment: l.comment, order: l.order })), steps: (recipe.steps || []).map((s: any) => ({ order: s.order, title: s.title, description: s.description, estimatedTimeMinutes: s.estimatedTimeMinutes })) }; }
   private async createDraft(organizationId: string, conversationId: string, payload: any, targetTechnicalSheetId: string | null, metadata: any) { return (this.prisma as any).technicalSheetAssistantDraft.create({ data: { organizationId, conversationId, targetTechnicalSheetId, payload, metadata, expiresAt: ttl() } }); }
   private async resolveRecipe(organizationId: string, id?: string, query?: string) { if (id) return this.sheets.getRecipe(organizationId, id).catch(() => null); const result: any = await this.sheets.listRecipes(organizationId, { search: String(query || ''), pageSize: 2 }); return result.items?.length === 1 ? result.items[0] : null; }
   private products(organizationId: string, query: string) { return (this.prisma as any).product.findMany({ where: { organizationId, isArchived: false, name: query ? { contains: query, mode: 'insensitive' } : undefined }, include: { unit: true }, orderBy: { name: 'asc' }, take: 80 }); }

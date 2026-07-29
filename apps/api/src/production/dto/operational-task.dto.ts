@@ -7,6 +7,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayUnique,
   IsArray,
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsNumber,
@@ -49,9 +50,14 @@ export class UpsertOperationalTaskDto {
   @IsOptional() @IsUUID() positionId?: string;
   @IsOptional() @IsUUID() siteId?: string;
   @IsOptional() @IsUUID() assignedEmployeeId?: string;
-  @IsOptional() @IsArray() @ArrayUnique() @IsUUID(undefined, { each: true }) assignedEmployeeIds?: string[];
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsUUID(undefined, { each: true })
+  assignedEmployeeIds?: string[];
   @IsDateString() startsAt!: string;
   @IsDateString() endsAt!: string;
+  @IsOptional() @IsBoolean() isTimeScheduled?: boolean;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) quantity?: number;
   @IsOptional() @IsString() @MaxLength(40) unitLabel?: string;
   @IsOptional() @IsEnum(OperationalTaskSource) source?: OperationalTaskSource;
@@ -71,9 +77,14 @@ export class UpdateOperationalTaskDto {
   @IsOptional() @IsUUID() positionId?: string | null;
   @IsOptional() @IsUUID() siteId?: string | null;
   @IsOptional() @IsUUID() assignedEmployeeId?: string | null;
-  @IsOptional() @IsArray() @ArrayUnique() @IsUUID(undefined, { each: true }) assignedEmployeeIds?: string[];
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsUUID(undefined, { each: true })
+  assignedEmployeeIds?: string[];
   @IsOptional() @IsDateString() startsAt?: string;
   @IsOptional() @IsDateString() endsAt?: string;
+  @IsOptional() @IsBoolean() isTimeScheduled?: boolean;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) quantity?: number | null;
   @IsOptional() @IsString() @MaxLength(40) unitLabel?: string | null;
   @IsOptional() @IsEnum(OperationalTaskSource) source?: OperationalTaskSource;

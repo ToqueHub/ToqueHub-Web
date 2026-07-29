@@ -15,6 +15,7 @@ import {
   UnitType,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AdjustProductStockDto } from './dto/adjust-product-stock.dto';
 import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
 import { CreateInventoryDto, UpdateInventoryCountsDto } from './dto/inventory.dto';
 import {
@@ -661,6 +662,144 @@ export class StocksService {
         await this.recalculateTechnicalSheetsForProductTx(tx, organizationId, item.id, actor.id);
       }
       return item;
+    });
+  }
+  async adjustProductStock(
+    organizationId: string,
+    actor: Actor,
+    productId: string,
+    dto: AdjustProductStockDto,
+  ) {
+    this.assertWrite(actor);
+    const product = await this.ensureProduct(organizationId, productId, true);
+    const [organization, requestedStock, requestedLocation] = await Promise.all([
+      this.prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { primarySiteId: true },
+      }),
+      dto.stockId
+        ? this.prisma.stock.findFirst({
+            where: { id: dto.stockId, organizationId, productId },
+          })
+        : null,
+      dto.locationId
+        ? this.prisma.location.findFirst({
+            where: { id: dto.locationId, organizationId, isArchived: false },
+            select: { id: true, siteId: true },
+          })
+        : null,
+    ]);
+    if (dto.stockId && !requestedStock)
+      throw new NotFoundException('Projection de stock introuvable pour ce produit');
+    if (dto.locationId && !requestedLocation)
+      throw new NotFoundException('Emplacement de stock introuvable');
+
+    const siteId =
+      requestedStock?.siteId ??
+      requestedLocation?.siteId ??
+      dto.siteId ??
+      organization?.primarySiteId ??
+      null;
+    if (
+      dto.siteId &&
+      requestedLocation?.siteId &&
+      dto.siteId !== requestedLocation.siteId
+    )
+      throw new BadRequestException("L'emplacement ne correspond pas au site sélectionné");
+    if (siteId) {
+      const site = await this.prisma.site.findFirst({
+        where: { id: siteId, organizationId, isArchived: false },
+        select: { id: true },
+      });
+      if (!site) throw new NotFoundException('Site de stock introuvable');
+    }
+
+    const stock =
+      requestedStock ??
+      (await this.prisma.stock.findFirst({
+        where: {
+          organizationId,
+          productId,
+          variantId: null,
+          lotId: null,
+          siteId,
+          locationId: requestedLocation?.id ?? null,
+        },
+      }));
+    const previousQuantity = stock?.quantity ?? new Prisma.Decimal(0);
+    const targetQuantity = new Prisma.Decimal(dto.quantity);
+    const delta = targetQuantity.sub(previousQuantity);
+    if (delta.isZero())
+      throw new BadRequestException('La quantité saisie est identique au stock actuel');
+
+    return this.prisma.$transaction(async (tx) => {
+      const adjustedStock = stock
+        ? await tx.stock.update({
+            where: { id: stock.id },
+            data: { quantity: targetQuantity },
+          })
+        : await tx.stock.create({
+            data: {
+              organizationId,
+              productId,
+              siteId,
+              locationId: requestedLocation?.id ?? null,
+              quantity: targetQuantity,
+            },
+          });
+      const reason =
+        dto.reason?.trim() || 'Correction manuelle depuis la fiche produit';
+      const movement = await tx.stockMovement.create({
+        data: {
+          organizationId,
+          productId,
+          variantId: adjustedStock.variantId,
+          lotId: adjustedStock.lotId,
+          type: StockMovementType.INVENTORY,
+          quantity: delta,
+          inputQuantity: targetQuantity,
+          unitId: product.unitId,
+          unitSymbolSnapshot: product.unit.symbol,
+          reason,
+          sourceSiteId: delta.isNegative() ? siteId : null,
+          sourceLocationId: delta.isNegative()
+            ? adjustedStock.locationId
+            : null,
+          destinationSiteId: delta.isPositive() ? siteId : null,
+          destinationLocationId: delta.isPositive()
+            ? adjustedStock.locationId
+            : null,
+          movementDate: new Date(),
+          createdById: actor.id,
+          sourceEntityType: 'ProductStockManualAdjustment',
+          sourceEntityId: adjustedStock.id,
+        },
+        include: {
+          product: { include: { unit: true } },
+          sourceSite: true,
+          sourceLocation: true,
+          destinationSite: true,
+          destinationLocation: true,
+        },
+      });
+      await this.audit(
+        tx,
+        organizationId,
+        actor.id,
+        AuditAction.MOVEMENT_CREATED,
+        'StockMovement',
+        movement.id,
+        product.name,
+        {
+          type: StockMovementType.INVENTORY,
+          source: 'product-detail-manual-adjustment',
+          stockId: adjustedStock.id,
+          previousQuantity: previousQuantity.toString(),
+          targetQuantity: targetQuantity.toString(),
+          delta: delta.toString(),
+        },
+      );
+      return movement;
     });
   }
   archiveProduct(organizationId: string, actor: Actor, id: string) {

@@ -5,6 +5,7 @@ import type { Response } from 'express';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { AdjustProductStockDto } from './dto/adjust-product-stock.dto';
 import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
 import { CreateInventoryDto, UpdateInventoryCountsDto } from './dto/inventory.dto';
 import { GenerateMarginReportDto, MarginsQueryDto, UpdateMarginSettingsDto } from './dto/stocks-margins.dto';
@@ -111,6 +112,7 @@ export class StocksController {
   @Get('articles') listArticles(@CurrentUser() u: AuthenticatedUser, @Query() q: ListArticlesQueryDto) { return this.stocksService.listArticles(this.org(u), q); }
   @Post('products') createProduct(@CurrentUser() u: AuthenticatedUser, @Body() d: UpsertProductDto) { return this.stocksService.createProduct(this.org(u), this.actor(u), d); }
   @Patch('products/:id') updateProduct(@CurrentUser() u: AuthenticatedUser, @Param('id') id: string, @Body() d: UpsertProductDto) { return this.stocksService.updateProduct(this.org(u), this.actor(u), id, d); }
+  @Post('products/:id/stock-adjustment') adjustProductStock(@CurrentUser() u: AuthenticatedUser, @Param('id') id: string, @Body() d: AdjustProductStockDto) { return this.stocksService.adjustProductStock(this.org(u), this.actor(u), id, d); }
   @Post('products/:id/archive') archiveProduct(@CurrentUser() u: AuthenticatedUser, @Param('id') id: string) { return this.stocksService.archiveProduct(this.org(u), this.actor(u), id); }
   @Get('products/import/template.csv')
   @Header('Content-Type', 'text/csv; charset=utf-8')

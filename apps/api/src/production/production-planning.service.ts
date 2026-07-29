@@ -137,7 +137,18 @@ export class ProductionPlanningService {
       },
       include: {
         site: true,
-        technicalSheet: true,
+        technicalSheet: {
+          include: {
+            ingredients: {
+              include: {
+                product: { include: { unit: true } },
+                unit: true,
+              },
+              orderBy: { order: 'asc' },
+            },
+            steps: { orderBy: { order: 'asc' } },
+          },
+        },
         outputProduct: true,
         outputVariant: true,
         yieldUnit: true,
@@ -217,15 +228,10 @@ export class ProductionPlanningService {
       optimizedTarget: dto.optimizedTarget,
       rules: this.rulesFromProfile(profile),
     });
-    const recommendedQuantity = scenarios.find((item) => item.kind === 'RECOMMENDED')?.quantity ?? '0';
+    const recommendedQuantity =
+      scenarios.find((item) => item.kind === 'RECOMMENDED')?.quantity ?? '0';
     const [componentPlan, capacity] = await Promise.all([
-      this.buildComponentPlan(
-        organizationId,
-        profile.id,
-        recommendedQuantity,
-        neededAt,
-        [],
-      ),
+      this.buildComponentPlan(organizationId, profile.id, recommendedQuantity, neededAt, []),
       Promise.resolve(this.capacityAssessment(profile, scenarios)),
     ]);
     return { profile, neededAt, availability, scenarios, componentPlan, capacity };
@@ -395,11 +401,13 @@ export class ProductionPlanningService {
         technicalSheetId,
         version: (latest?.version ?? 0) + 1,
         sourceUpdatedAt: sheet.updatedAt,
-        referenceYield: sheet.referencePortions,
+        referenceYield: sheet.yieldMode === 'MASS' ? sheet.totalMassGrams : sheet.referencePortions,
         snapshot: {
           name: sheet.name,
           description: sheet.description,
+          yieldMode: sheet.yieldMode,
           referencePortions: sheet.referencePortions.toString(),
+          totalMassGrams: sheet.totalMassGrams.toString(),
           preparationTimeMinutes: sheet.preparationTimeMinutes,
           cookingTimeMinutes: sheet.cookingTimeMinutes,
           totalTimeMinutes: sheet.totalTimeMinutes,

@@ -2477,6 +2477,22 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     await submit(() => api.updateProduct(token, productId, payload), 'Fiche produit mise à jour.');
   }
 
+  async function handleAdjustProductStock(
+    productId: string,
+    payload: {
+      stockId?: string;
+      siteId?: string;
+      locationId?: string;
+      quantity: number;
+      reason?: string;
+    },
+  ) {
+    await submit(
+      () => api.adjustProductStock(token, productId, payload),
+      'Quantité de stock corrigée et mouvement d’inventaire enregistré.',
+    );
+  }
+
   async function handleDeleteProduct(productId: string) {
     await submit(() => api.archiveProduct(token, productId), 'Produit supprimé avec succès.');
   }
@@ -5313,8 +5329,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         categories={categories}
         units={units}
         suppliers={suppliers}
+        sites={sites}
         onClose={() => setSelectedProductId(null)}
         onUpdate={handleUpdateProduct}
+        onAdjustStock={handleAdjustProductStock}
         onDelete={handleDeleteProduct}
       />
 
@@ -11964,7 +11982,14 @@ function ArticleDrawer({
               </div>
               <div className="article-detail-row-premium">
                 <span className="row-label">Prix moyen</span>
-                <strong className="row-value">{numeric(product.averagePrice).toFixed(2)} €</strong>
+                <strong className="row-value">
+                  {stockUnitPriceToReferencePrice(
+                    numeric(product.averagePrice),
+                    product.unit,
+                    productPreferredPriceUnit(product.unit, product.priceDisplayUnit),
+                  ).toFixed(2)}{' '}
+                  € / {productPreferredPriceUnit(product.unit, product.priceDisplayUnit)}
+                </strong>
               </div>
             </div>
           </div>
@@ -19438,6 +19463,7 @@ type ProductFormPayload = {
   categoryId?: string | null;
   primarySupplierId?: string | null;
   averagePrice?: number;
+  priceDisplayUnit?: string | null;
   minimumStock?: number;
   gtin?: string | null;
   originCountry?: string | null;
@@ -19499,6 +19525,124 @@ function productNullableNumber(value: string, clearWhenEmpty: boolean) {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+type ProductPriceReference = {
+  value: string;
+  label: string;
+  stockUnitFactor: number;
+};
+
+function normalizedProductUnitSymbol(symbol?: string | null) {
+  return String(symbol ?? '')
+    .trim()
+    .toLocaleLowerCase('fr-FR');
+}
+
+function productUnitCanonicalFactor(unit?: Unit | null) {
+  const symbol = normalizedProductUnitSymbol(unit?.symbol);
+  const type = String(unit?.type ?? unit?.unitType ?? '').toUpperCase();
+  if (type === 'MASS') {
+    return {
+      t: 1_000_000,
+      tonne: 1_000_000,
+      tonnes: 1_000_000,
+      kg: 1_000,
+      kilo: 1_000,
+      kilogramme: 1_000,
+      g: 1,
+      gr: 1,
+      gramme: 1,
+      mg: 0.001,
+    }[symbol] ?? null;
+  }
+  if (type === 'VOLUME') {
+    return {
+      l: 1_000,
+      litre: 1_000,
+      dl: 100,
+      cl: 10,
+      ml: 1,
+      millilitre: 1,
+    }[symbol] ?? null;
+  }
+  return null;
+}
+
+function productPriceReferences(unit?: Unit | null): ProductPriceReference[] {
+  if (!unit) return [];
+  const stockFactor = productUnitCanonicalFactor(unit);
+  const type = String(unit.type ?? unit.unitType ?? '').toUpperCase();
+  const candidates: Array<{ value: string; label: string; canonicalFactor: number }> = [];
+  if (type === 'MASS' && stockFactor != null) {
+    candidates.push({ value: 'kg', label: '€ / kg', canonicalFactor: 1_000 });
+  } else if (type === 'VOLUME' && stockFactor != null) {
+    candidates.push({ value: 'L', label: '€ / L', canonicalFactor: 1_000 });
+  }
+  candidates.push({
+    value: unit.symbol,
+    label: `€ / ${unit.symbol}`,
+    canonicalFactor: stockFactor ?? 1,
+  });
+  const seen = new Set<string>();
+  return candidates
+    .filter((candidate) => {
+      const key = normalizedProductUnitSymbol(candidate.value);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((candidate) => ({
+      value: candidate.value,
+      label: candidate.label,
+      stockUnitFactor:
+        stockFactor != null && stockFactor > 0
+          ? candidate.canonicalFactor / stockFactor
+          : 1,
+    }));
+}
+
+function productPreferredPriceUnit(unit?: Unit | null, requested?: string | null) {
+  const references = productPriceReferences(unit);
+  const requestedReference = references.find(
+    (reference) =>
+      normalizedProductUnitSymbol(reference.value) ===
+      normalizedProductUnitSymbol(requested),
+  );
+  return requestedReference?.value ?? references[0]?.value ?? unit?.symbol ?? '';
+}
+
+function productPriceReference(unit: Unit | null | undefined, referenceUnit: string) {
+  return (
+    productPriceReferences(unit).find(
+      (reference) =>
+        normalizedProductUnitSymbol(reference.value) ===
+        normalizedProductUnitSymbol(referenceUnit),
+    ) ?? productPriceReferences(unit)[0]
+  );
+}
+
+function stockUnitPriceToReferencePrice(
+  stockUnitPrice: number,
+  unit: Unit | null | undefined,
+  referenceUnit: string,
+) {
+  return stockUnitPrice * (productPriceReference(unit, referenceUnit)?.stockUnitFactor ?? 1);
+}
+
+function referencePriceToStockUnitPrice(
+  referencePrice: number | undefined,
+  unit: Unit | null | undefined,
+  referenceUnit: string,
+) {
+  if (referencePrice === undefined) return undefined;
+  const factor = productPriceReference(unit, referenceUnit)?.stockUnitFactor ?? 1;
+  return factor > 0 ? referencePrice / factor : referencePrice;
+}
+
+function productPriceInput(value: number) {
+  if (!Number.isFinite(value) || value === 0) return '';
+  return value.toFixed(6).replace(/\.?0+$/, '');
+}
+
 function initialNutritionState(product?: Product | null) {
   return PRODUCT_NUTRITION_FIELDS.reduce(
     (acc, field) => {
@@ -19539,17 +19683,28 @@ function ProductForm({
       initialProduct?.supplier?.id ??
       '',
   );
+  const initialUnit =
+    units.find((unit) => unit.id === (initialProduct?.unitId || units[0]?.id)) ?? null;
+  const initialPriceDisplayUnit = productPreferredPriceUnit(
+    initialUnit,
+    initialProduct?.priceDisplayUnit,
+  );
   const [averagePrice, setAveragePrice] = useState(
-    String(
+    productPriceInput(
       initialProduct
-        ? numeric(
-            initialProduct.averagePrice ??
-              initialProduct.averagePurchasePrice ??
-              initialProduct.weightedAveragePrice,
-          ) || ''
-        : '',
+        ? stockUnitPriceToReferencePrice(
+            numeric(
+              initialProduct.averagePrice ??
+                initialProduct.averagePurchasePrice ??
+                initialProduct.weightedAveragePrice,
+            ),
+            initialUnit,
+            initialPriceDisplayUnit,
+          )
+        : 0,
     ),
   );
+  const [priceDisplayUnit, setPriceDisplayUnit] = useState(initialPriceDisplayUnit);
   const [minimumStock, setMinimumStock] = useState(
     String(
       initialProduct ? numeric(initialProduct.minimumStock ?? initialProduct.minStock) || '' : '',
@@ -19590,6 +19745,27 @@ function ProductForm({
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
+  const selectedUnit = units.find((unit) => unit.id === unitId);
+  const priceReferences = productPriceReferences(selectedUnit);
+  const storedInitialPrice = initialProduct
+    ? numeric(
+        initialProduct.averagePrice ??
+          initialProduct.averagePurchasePrice ??
+          initialProduct.weightedAveragePrice,
+      )
+    : 0;
+  const selectedPriceReference = productPriceReference(selectedUnit, priceDisplayUnit);
+  const legacyPriceLikely =
+    Boolean(initialProduct) &&
+    !initialProduct?.priceDisplayUnit &&
+    storedInitialPrice >= 1 &&
+    storedInitialPrice < 1_000 &&
+    (selectedPriceReference?.stockUnitFactor ?? 1) >= 100 &&
+    stockUnitPriceToReferencePrice(
+      storedInitialPrice,
+      selectedUnit,
+      priceDisplayUnit,
+    ) >= 5_000;
 
   useEffect(() => {
     setActiveFormTab('identity');
@@ -19605,15 +19781,26 @@ function ProductForm({
         initialProduct?.supplier?.id ??
         '',
     );
+    const nextUnit =
+      units.find((unit) => unit.id === (initialProduct?.unitId || units[0]?.id)) ?? null;
+    const nextPriceDisplayUnit = productPreferredPriceUnit(
+      nextUnit,
+      initialProduct?.priceDisplayUnit,
+    );
+    setPriceDisplayUnit(nextPriceDisplayUnit);
     setAveragePrice(
-      String(
+      productPriceInput(
         initialProduct
-          ? numeric(
-              initialProduct.averagePrice ??
-                initialProduct.averagePurchasePrice ??
-                initialProduct.weightedAveragePrice,
-            ) || ''
-          : '',
+          ? stockUnitPriceToReferencePrice(
+              numeric(
+                initialProduct.averagePrice ??
+                  initialProduct.averagePurchasePrice ??
+                  initialProduct.weightedAveragePrice,
+              ),
+              nextUnit,
+              nextPriceDisplayUnit,
+            )
+          : 0,
       ),
     );
     setMinimumStock(
@@ -19658,7 +19845,12 @@ function ProductForm({
         unitId,
         categoryId: categoryId || (initialProduct ? null : undefined),
         primarySupplierId: supplierId || (initialProduct ? null : undefined),
-        averagePrice: productOptionalNumber(averagePrice),
+        averagePrice: referencePriceToStockUnitPrice(
+          productOptionalNumber(averagePrice),
+          selectedUnit,
+          priceDisplayUnit,
+        ),
+        priceDisplayUnit: priceDisplayUnit || null,
         minimumStock: productOptionalNumber(minimumStock),
         gtin: productNullableText(gtin, clearWhenEmpty),
         originCountry: productNullableText(originCountry, clearWhenEmpty),
@@ -19683,7 +19875,6 @@ function ProductForm({
     }
   }
 
-  const selectedUnit = units.find((unit) => unit.id === unitId);
   const computedNetWeight =
     productOptionalNumber(unitsPerPackage) != null && productOptionalNumber(unitWeightGrams) != null
       ? (productOptionalNumber(unitsPerPackage) ?? 0) *
@@ -19794,7 +19985,30 @@ function ProductForm({
               </label>
               <label>
                 Unité de stock *
-                <select value={unitId} onChange={(e) => setUnitId(e.target.value)} required>
+                <select
+                  value={unitId}
+                  onChange={(e) => {
+                    const normalizedCurrentPrice = referencePriceToStockUnitPrice(
+                      productOptionalNumber(averagePrice),
+                      selectedUnit,
+                      priceDisplayUnit,
+                    );
+                    const nextUnit = units.find((unit) => unit.id === e.target.value) ?? null;
+                    const nextPriceDisplayUnit = productPreferredPriceUnit(nextUnit);
+                    setUnitId(e.target.value);
+                    setPriceDisplayUnit(nextPriceDisplayUnit);
+                    setAveragePrice(
+                      productPriceInput(
+                        stockUnitPriceToReferencePrice(
+                          normalizedCurrentPrice ?? 0,
+                          nextUnit,
+                          nextPriceDisplayUnit,
+                        ),
+                      ),
+                    );
+                  }}
+                  required
+                >
                   <option value="">Choisir l'unité...</option>
                   {units.map((u) => (
                     <option key={u.id} value={u.id}>
@@ -19814,15 +20028,67 @@ function ProductForm({
                 />
               </label>
               <label>
-                Prix d'achat HT
-                <input
-                  type="number"
-                  min="0"
-                  step="0.0001"
-                  value={averagePrice}
-                  onChange={(e) => setAveragePrice(e.target.value)}
-                />
+                Prix d'achat HT et base tarifaire
+                <span className="product-price-input">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.0001"
+                    value={averagePrice}
+                    onChange={(e) => setAveragePrice(e.target.value)}
+                    aria-label="Prix d'achat HT"
+                  />
+                  <select
+                    value={priceDisplayUnit}
+                    onChange={(e) => {
+                      const normalizedPrice = referencePriceToStockUnitPrice(
+                        productOptionalNumber(averagePrice),
+                        selectedUnit,
+                        priceDisplayUnit,
+                      );
+                      setPriceDisplayUnit(e.target.value);
+                      setAveragePrice(
+                        productPriceInput(
+                          stockUnitPriceToReferencePrice(
+                            normalizedPrice ?? 0,
+                            selectedUnit,
+                            e.target.value,
+                          ),
+                        ),
+                      );
+                    }}
+                    aria-label="Unité du prix d'achat"
+                  >
+                    {priceReferences.map((reference) => (
+                      <option key={reference.value} value={reference.value}>
+                        {reference.label}
+                      </option>
+                    ))}
+                  </select>
+                </span>
+                <small>
+                  Le coût est automatiquement converti en {selectedUnit?.symbol ?? 'unité de stock'}.
+                </small>
               </label>
+              {legacyPriceLikely ? (
+                <div className="product-price-warning product-sheet-wide">
+                  <AlertTriangle size={18} />
+                  <div>
+                    <strong>Ancien prix probablement enregistré dans la mauvaise unité</strong>
+                    <span>
+                      {storedInitialPrice.toFixed(2)} € semble avoir été saisi par{' '}
+                      {priceDisplayUnit}, mais enregistré par {selectedUnit?.symbol}.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setAveragePrice(productPriceInput(storedInitialPrice))}
+                  >
+                    Corriger à {storedInitialPrice.toFixed(2)} € / {priceDisplayUnit}
+                  </button>
+                </div>
+              ) : null}
               <div className="product-readonly-field product-sheet-wide">
                 <span>Quantité actuelle</span>
                 <strong>
@@ -20157,8 +20423,10 @@ function ProductDetailModal({
   categories,
   units,
   suppliers,
+  sites,
   onClose,
   onUpdate,
+  onAdjustStock,
   onDelete,
 }: {
   product: Product | null;
@@ -20167,21 +20435,44 @@ function ProductDetailModal({
   categories: Category[];
   units: Unit[];
   suppliers: Supplier[];
+  sites: Site[];
   onClose: () => void;
   onUpdate: (productId: string, payload: ProductFormPayload) => Promise<void>;
+  onAdjustStock: (
+    productId: string,
+    payload: {
+      stockId?: string;
+      siteId?: string;
+      locationId?: string;
+      quantity: number;
+      reason?: string;
+    },
+  ) => Promise<void>;
   onDelete: (productId: string) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
   const [detailTab, setDetailTab] = useState<ProductSheetTab>('identity');
+  const [adjustingStockId, setAdjustingStockId] = useState<string | 'new' | null>(null);
+  const [adjustmentSiteId, setAdjustmentSiteId] = useState('');
+  const [adjustedQuantity, setAdjustedQuantity] = useState('');
+  const [adjustmentReason, setAdjustmentReason] = useState('');
+  const [adjustmentSubmitting, setAdjustmentSubmitting] = useState(false);
+  const [adjustmentError, setAdjustmentError] = useState<string>();
 
   useEffect(() => {
     setEditing(false);
     setDetailTab('identity');
+    setAdjustingStockId(null);
+    setAdjustmentSiteId('');
+    setAdjustedQuantity('');
+    setAdjustmentReason('');
+    setAdjustmentError(undefined);
   }, [product?.id]);
 
   if (!product) return null;
+  const activeProduct = product;
 
-  const productStocks = stocks.filter((stock) => stock.product?.id === product.id);
+  const productStocks = stocks.filter((stock) => stock.product?.id === activeProduct.id);
   const productMovements = movements
     .filter((movement) => movement.product?.id === product.id)
     .slice(0, 6);
@@ -20191,6 +20482,15 @@ function ProductDetailModal({
   );
   const averagePrice = numeric(
     product.averagePrice ?? product.averagePurchasePrice ?? product.weightedAveragePrice,
+  );
+  const priceReferenceUnit = productPreferredPriceUnit(
+    product.unit,
+    product.priceDisplayUnit,
+  );
+  const displayedAveragePrice = stockUnitPriceToReferencePrice(
+    averagePrice,
+    product.unit,
+    priceReferenceUnit,
   );
   const stockValue = productStocks.reduce(
     (sum, stock) =>
@@ -20206,6 +20506,72 @@ function ProductDetailModal({
   const supplierName = product.primarySupplier?.name ?? product.supplier?.name ?? 'Non renseigné';
   const completion = computeProductCompletion(product);
   const netWeight = productCalculatedNetWeight(product);
+  const activeSites = sites.filter((site) => !site.isArchived && !site.archivedAt);
+  const stockBeingAdjusted =
+    adjustingStockId && adjustingStockId !== 'new'
+      ? productStocks.find((stock) => stock.id === adjustingStockId) ?? null
+      : null;
+  const currentAdjustedQuantity = stockBeingAdjusted
+    ? numeric(stockBeingAdjusted.currentQuantity ?? stockBeingAdjusted.quantity)
+    : 0;
+
+  function openStockAdjustment(stock?: Stock) {
+    setAdjustingStockId(stock?.id ?? 'new');
+    setAdjustmentSiteId(
+      stock?.siteId ??
+        activeSites.find((site) => site.isPrimary || site.isMain)?.id ??
+        activeSites[0]?.id ??
+        '',
+    );
+    setAdjustedQuantity(
+      stock
+        ? String(numeric(stock.currentQuantity ?? stock.quantity))
+        : '0',
+    );
+    setAdjustmentReason(
+      stock ? 'Correction manuelle après comptage' : 'Stock initial à l’ouverture du compte',
+    );
+    setAdjustmentError(undefined);
+  }
+
+  async function submitStockAdjustment(event: FormEvent) {
+    event.preventDefault();
+    const nextQuantity = Number(adjustedQuantity);
+    if (!Number.isFinite(nextQuantity) || nextQuantity < 0) {
+      setAdjustmentError('Saisissez une quantité positive ou égale à zéro.');
+      return;
+    }
+    if (adjustingStockId === 'new' && activeSites.length > 0 && !adjustmentSiteId) {
+      setAdjustmentError('Sélectionnez le site concerné.');
+      return;
+    }
+    const siteName =
+      stockBeingAdjusted?.site?.name ??
+      activeSites.find((site) => site.id === adjustmentSiteId)?.name ??
+      'stock général';
+    const confirmed = window.confirm(
+      `Êtes-vous sûr de vouloir modifier le stock de "${activeProduct.name}" sur ${siteName} de ${productNumberDisplay(currentAdjustedQuantity, activeProduct.unit?.symbol ?? '')} à ${productNumberDisplay(nextQuantity, activeProduct.unit?.symbol ?? '')} ? Un mouvement d’inventaire sera enregistré dans l’historique.`,
+    );
+    if (!confirmed) return;
+    setAdjustmentSubmitting(true);
+    setAdjustmentError(undefined);
+    try {
+      await onAdjustStock(activeProduct.id, {
+        stockId: stockBeingAdjusted?.id,
+        siteId: (stockBeingAdjusted?.siteId ?? adjustmentSiteId) || undefined,
+        locationId: stockBeingAdjusted?.locationId ?? undefined,
+        quantity: nextQuantity,
+        reason: adjustmentReason.trim() || undefined,
+      });
+      setAdjustingStockId(null);
+    } catch (error) {
+      setAdjustmentError(
+        error instanceof Error ? error.message : 'La quantité n’a pas pu être corrigée.',
+      );
+    } finally {
+      setAdjustmentSubmitting(false);
+    }
+  }
 
   return (
     <Modal isOpen={Boolean(product)} onClose={onClose} title={product.name} size="xl">
@@ -20298,7 +20664,7 @@ function ProductDetailModal({
             />
             <Metric
               icon={<Scale size={18} />}
-              value={`${averagePrice.toFixed(2)} €`}
+              value={`${displayedAveragePrice.toFixed(2)} € / ${priceReferenceUnit}`}
               label="Prix d'achat HT"
               tone="amber"
             />
@@ -20416,7 +20782,9 @@ function ProductDetailModal({
                     </div>
                     <div>
                       <dt>Prix d'achat HT</dt>
-                      <dd>{averagePrice.toFixed(2)} €</dd>
+                      <dd>
+                        {displayedAveragePrice.toFixed(2)} € / {priceReferenceUnit}
+                      </dd>
                     </div>
                   </dl>
                 </div>
@@ -20426,22 +20794,116 @@ function ProductDetailModal({
                     <div className="product-detail-mini-table">
                       {productStocks.map((stock) => (
                         <div key={stock.id}>
-                          <span>{stock.site?.name ?? 'Site'}</span>
+                          <span>
+                            {stock.site?.name ?? 'Stock général'}
+                            {stock.location?.name ? ` · ${stock.location.name}` : ''}
+                          </span>
                           <strong>
                             {productNumberDisplay(
                               stock.currentQuantity ?? stock.quantity,
                               product.unit?.symbol ?? '',
                             )}
                           </strong>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => openStockAdjustment(stock)}
+                          >
+                            Corriger
+                          </button>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <EmptyMini
-                      title="Aucun stock"
-                      text="Ce produit n'a pas encore de quantité projetée."
-                    />
+                    <>
+                      <EmptyMini
+                        title="Aucun stock"
+                        text="Ce produit n'a pas encore de quantité projetée."
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => openStockAdjustment()}
+                        style={{ marginTop: '0.65rem' }}
+                      >
+                        <Plus size={14} /> Définir le stock initial
+                      </button>
+                    </>
                   )}
+                  {adjustingStockId ? (
+                    <form className="product-stock-adjustment" onSubmit={submitStockAdjustment}>
+                      <div className="product-stock-adjustment-heading">
+                        <div>
+                          <strong>
+                            {adjustingStockId === 'new'
+                              ? 'Définir le stock initial'
+                              : 'Corriger la quantité constatée'}
+                          </strong>
+                          <span>
+                            Cette action reste tracée comme mouvement d’inventaire.
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="icon-button"
+                          onClick={() => setAdjustingStockId(null)}
+                          aria-label="Fermer la correction de stock"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                      {adjustingStockId === 'new' && activeSites.length ? (
+                        <label>
+                          Site concerné
+                          <select
+                            value={adjustmentSiteId}
+                            onChange={(event) => setAdjustmentSiteId(event.target.value)}
+                            required
+                          >
+                            {activeSites.map((site) => (
+                              <option key={site.id} value={site.id}>
+                                {site.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : null}
+                      <label>
+                        Quantité réellement constatée ({product.unit?.symbol ?? 'unité'})
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.001"
+                          value={adjustedQuantity}
+                          onChange={(event) => setAdjustedQuantity(event.target.value)}
+                          required
+                          autoFocus
+                        />
+                      </label>
+                      <label>
+                        Motif
+                        <input
+                          value={adjustmentReason}
+                          onChange={(event) => setAdjustmentReason(event.target.value)}
+                          maxLength={500}
+                        />
+                      </label>
+                      {adjustmentError ? (
+                        <div className="alert-modern error">
+                          <AlertCircle size={15} /> {adjustmentError}
+                        </div>
+                      ) : null}
+                      <button
+                        type="submit"
+                        className="btn btn-primary"
+                        disabled={adjustmentSubmitting}
+                      >
+                        {adjustmentSubmitting
+                          ? 'Enregistrement...'
+                          : 'Vérifier et enregistrer'}
+                      </button>
+                    </form>
+                  ) : null}
                 </div>
                 <div className="product-sheet-wide">
                   <span className="product-detail-section-title">Derniers mouvements</span>
