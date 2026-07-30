@@ -134,6 +134,8 @@ import type {
   Inventory,
   Location,
   Product,
+  ProductLabelOcrBatchStatus,
+  ProductLabelOcrResult,
   Article,
   ArticlesResponse,
   ProductImportCommitResult,
@@ -535,6 +537,12 @@ type AppNotification = {
   createdAt: Date;
   read: boolean;
 };
+type ProductOcrReviewRequest = {
+  batchId: string;
+  productId: string;
+  result: ProductLabelOcrResult;
+  evidence: ProductOcrEvidence;
+};
 type StocksOnboardingStep = 'welcome' | 'reception' | 'review';
 type StocksReadiness = {
   foundationReady: boolean;
@@ -636,7 +644,14 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [showInventoryModal, setShowInventoryModal] = useState(false);
   const [showOcrImportModal, setShowOcrImportModal] = useState(false);
   const [showOcrReviewModal, setShowOcrReviewModal] = useState(false);
+  const [showProductOcrTracking, setShowProductOcrTracking] = useState(false);
   const [ocrStatuses, setOcrStatuses] = useState<StocksOcrStatus[]>([]);
+  const [productLabelOcrStatuses, setProductLabelOcrStatuses] = useState<
+    ProductLabelOcrBatchStatus[]
+  >([]);
+  const productLabelReadyNotifiedRef = useRef(new Set<string>());
+  const [productOcrReviewRequest, setProductOcrReviewRequest] =
+    useState<ProductOcrReviewRequest | null>(null);
   const [selectedOcrExtraction, setSelectedOcrExtraction] = useState<StocksOcrExtraction | null>(
     null,
   );
@@ -1002,6 +1017,33 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     }
   }
 
+  async function refreshProductLabelOcrStatuses() {
+    try {
+      const result = await api.productLabelImportStatuses(token);
+      const nextStatuses = result.statuses ?? [];
+      const newlyReady = nextStatuses.filter(
+        (status) =>
+          status.state === 'vérifier' &&
+          !productLabelReadyNotifiedRef.current.has(status.batchId),
+      );
+      if (newlyReady.length) {
+        newlyReady.forEach((status) =>
+          productLabelReadyNotifiedRef.current.add(status.batchId),
+        );
+        addAppNotification(
+          'success',
+          newlyReady.length === 1
+            ? `1 produit prêt à vérifier : ${newlyReady[0].product.name}.`
+            : `${newlyReady.length} produits prêts à vérifier.`,
+        );
+      }
+      setProductLabelOcrStatuses(nextStatuses);
+      return nextStatuses;
+    } catch {
+      return productLabelOcrStatuses;
+    }
+  }
+
   async function refreshMyDocuments() {
     setDocumentsLoading(true);
     try {
@@ -1024,9 +1066,11 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     if (!installedApps.includes('stocks')) {
       setOcrStatuses([]);
       setOcrPollingActive(false);
+      setProductLabelOcrStatuses([]);
       return;
     }
     void refreshOcrStatusesFromServer();
+    void refreshProductLabelOcrStatuses();
   }, [token, installedApps.join('|')]);
 
   useEffect(() => {
@@ -1036,6 +1080,25 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     }, 2500);
     return () => window.clearInterval(timer);
   }, [ocrPollingActive, ocrStatuses, token]);
+
+  useEffect(() => {
+    if (
+      !productLabelOcrStatuses.some(
+        (status) => status.state === 'analyse' || status.state === 'en attente',
+      )
+    ) {
+      return undefined;
+    }
+    const timer = window.setInterval(() => {
+      void refreshProductLabelOcrStatuses();
+    }, 2500);
+    return () => window.clearInterval(timer);
+  }, [
+    token,
+    productLabelOcrStatuses.some(
+      (status) => status.state === 'analyse' || status.state === 'en attente',
+    ),
+  ]);
 
   useEffect(() => {
     if (activeTab !== 'organization-documents') return;
@@ -2475,6 +2538,74 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
   async function handleUpdateProduct(productId: string, payload: ProductFormPayload) {
     await submit(() => api.updateProduct(token, productId, payload), 'Fiche produit mise à jour.');
+  }
+
+  async function handleUploadProductLabelOcr(productId: string, files: File[]) {
+    setError(undefined);
+    const response = await api.uploadProductLabelImports(token, productId, files);
+    productLabelReadyNotifiedRef.current.delete(response.batchId);
+    await refreshProductLabelOcrStatuses();
+    setSuccess(
+      `${files.length} capture${files.length > 1 ? 's' : ''} envoyée${files.length > 1 ? 's' : ''} en analyse pour ${response.product.name}. Le traitement continue pendant votre navigation.`,
+    );
+  }
+
+  async function handleOpenProductLabelOcrReview(status: ProductLabelOcrBatchStatus) {
+    if (!status.results.length) {
+      setError('Cette analyse ne contient encore aucun résultat à vérifier.');
+      return;
+    }
+    setError(undefined);
+    try {
+      const evidenceDocuments = (
+        await Promise.all(
+          status.documents.map(async ({ document }) => {
+            try {
+              const previewUrl = await api.viewStocksDocument(token, document.id);
+              return {
+                documentId: document.id,
+                previewUrl,
+                filename: document.originalName,
+                mimeType: document.mimeType,
+              };
+            } catch {
+              return null;
+            }
+          }),
+        )
+      ).filter((item): item is NonNullable<typeof item> => Boolean(item));
+      const result = mergeProductLabelOcrResults(status.product.id, status.results);
+      const firstEvidence = evidenceDocuments[0];
+      setProductOcrReviewRequest({
+        batchId: status.batchId,
+        productId: status.product.id,
+        result,
+        evidence: {
+          previewUrl: firstEvidence?.previewUrl ?? '',
+          filename:
+            evidenceDocuments.length > 1
+              ? `${evidenceDocuments.length} captures`
+              : (firstEvidence?.filename ?? result.filename),
+          mimeType: firstEvidence?.mimeType ?? result.mimeType,
+          pageCount: result.pageCount,
+          confidence: result.confidence,
+          warnings: result.warnings,
+          documents: evidenceDocuments,
+        },
+      });
+      setSelectedProductId(status.product.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Impossible d’ouvrir le résultat OCR produit.');
+    }
+  }
+
+  async function handleProductLabelOcrReviewed(productId: string, batchId: string) {
+    await api.reviewProductLabelImport(token, productId, batchId);
+    productLabelReadyNotifiedRef.current.delete(batchId);
+    setProductLabelOcrStatuses((current) =>
+      current.filter((status) => status.batchId !== batchId),
+    );
+    setProductOcrReviewRequest(null);
   }
 
   async function handleAdjustProductStock(
@@ -4867,6 +4998,11 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               {activeTab === 'products' && (
                 <>
                   {renderStocksModuleNav()}
+                  <ProductLabelOcrStatusBar
+                    statuses={productLabelOcrStatuses}
+                    onOpenResult={handleOpenProductLabelOcrReview}
+                    onOpenTracking={() => setShowProductOcrTracking(true)}
+                  />
                   <div className="card-modern">
                     <div className="section-header-modern">
                       <div className="section-info">
@@ -5322,6 +5458,21 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         />
       </Modal>
 
+      <Modal
+        isOpen={showProductOcrTracking}
+        onClose={() => setShowProductOcrTracking(false)}
+        title="Suivi des analyses OCR produits"
+        size="lg"
+      >
+        <ProductLabelOcrTrackingPanel
+          statuses={productLabelOcrStatuses}
+          onOpenResult={async (status) => {
+            setShowProductOcrTracking(false);
+            await handleOpenProductLabelOcrReview(status);
+          }}
+        />
+      </Modal>
+
       <ProductDetailModal
         product={selectedProduct}
         stocks={stocks}
@@ -5330,8 +5481,15 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         units={units}
         suppliers={suppliers}
         sites={sites}
-        onClose={() => setSelectedProductId(null)}
+        onClose={() => {
+          setSelectedProductId(null);
+          setProductOcrReviewRequest(null);
+        }}
         onUpdate={handleUpdateProduct}
+        onUploadOcr={handleUploadProductLabelOcr}
+        initialOcrReview={productOcrReviewRequest}
+        onOcrReviewSaved={handleProductLabelOcrReviewed}
+        onCancelOcrReview={() => setProductOcrReviewRequest(null)}
         onAdjustStock={handleAdjustProductStock}
         onDelete={handleDeleteProduct}
       />
@@ -12357,6 +12515,153 @@ function StocksOcrDashboardStatusBar({
         </button>
       </div>
     </motion.section>
+  );
+}
+
+function ProductLabelOcrStatusBar({
+  statuses,
+  onOpenResult,
+  onOpenTracking,
+}: {
+  statuses: ProductLabelOcrBatchStatus[];
+  onOpenResult: (status: ProductLabelOcrBatchStatus) => Promise<void>;
+  onOpenTracking: () => void;
+}) {
+  if (!statuses.length) return null;
+  const readyStatuses = statuses.filter((status) => status.state === 'vérifier');
+  const workingStatuses = statuses.filter(
+    (status) => status.state === 'analyse' || status.state === 'en attente',
+  );
+  const errorStatuses = statuses.filter((status) => status.state === 'erreur');
+  const featured = readyStatuses[0] ?? workingStatuses[0] ?? statuses[0];
+  const readyCount = readyStatuses.length;
+  const tone = readyCount
+    ? 'ready'
+    : errorStatuses.length && !workingStatuses.length
+      ? 'error'
+      : 'working';
+  const label = readyCount
+    ? `${readyCount} produit${readyCount > 1 ? 's' : ''} prêt${readyCount > 1 ? 's' : ''} à vérifier`
+    : errorStatuses.length && !workingStatuses.length
+      ? `${errorStatuses.length} produit${errorStatuses.length > 1 ? 's' : ''} en erreur`
+      : `${workingStatuses.length} produit${workingStatuses.length > 1 ? 's' : ''} en cours d’analyse`;
+  const fileCount = statuses.reduce((sum, status) => sum + status.documents.length, 0);
+  const progressClass =
+    featured.state === 'vérifier'
+      ? 'success'
+      : featured.state === 'erreur'
+        ? 'error'
+        : featured.state === 'analyse'
+          ? 'analyzing'
+          : 'pending';
+  return (
+    <motion.section
+      className={`stocks-ocr-dashboard-status ${tone}`}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+    >
+      <div className="stocks-ocr-dashboard-status-main">
+        <div className="stocks-ocr-dashboard-status-icon">
+          {readyCount ? (
+            <CheckCircle2 size={18} />
+          ) : errorStatuses.length && !workingStatuses.length ? (
+            <AlertCircle size={18} />
+          ) : (
+            <Clock size={18} />
+          )}
+        </div>
+        <div className="stocks-ocr-dashboard-status-copy">
+          <span>{label}</span>
+          <small>
+            {fileCount} fichier{fileCount > 1 ? 's' : ''} suivi{fileCount > 1 ? 's' : ''} · le
+            traitement continue pendant la navigation
+          </small>
+          <div className="ocr-status-progress-bar">
+            <div
+              className={`ocr-status-progress-fill ${progressClass}`}
+              style={{ width: `${featured.progress}%` }}
+            />
+          </div>
+        </div>
+      </div>
+      <div className="stocks-ocr-dashboard-status-actions">
+        {readyStatuses[0] ? (
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={() => void onOpenResult(readyStatuses[0])}
+          >
+            Vérifier <ArrowRight size={13} />
+          </button>
+        ) : null}
+        <button className="btn btn-secondary btn-sm" onClick={onOpenTracking}>
+          Suivi des imports
+        </button>
+      </div>
+    </motion.section>
+  );
+}
+
+function ProductLabelOcrTrackingPanel({
+  statuses,
+  onOpenResult,
+}: {
+  statuses: ProductLabelOcrBatchStatus[];
+  onOpenResult: (status: ProductLabelOcrBatchStatus) => Promise<void>;
+}) {
+  if (!statuses.length) {
+    return (
+      <div className="empty-state">
+        <CheckCircle2 size={28} />
+        <span className="empty-state-title">Aucune analyse en attente</span>
+        <span className="empty-state-desc">
+          Les prochains imports OCR de fiches produits apparaîtront ici.
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="ocr-statuses-list product-ocr-tracking-list">
+      {statuses.map((status) => (
+        <div className="ocr-status-card" key={status.batchId}>
+          <div className="ocr-status-card-main">
+            <div>
+              <strong>{status.product.name}</strong>
+              <span>
+                {status.documents.length} capture{status.documents.length > 1 ? 's' : ''} ·{' '}
+                {status.state === 'vérifier'
+                  ? 'Produit prêt à vérifier'
+                  : status.state === 'erreur'
+                    ? 'Analyse en erreur'
+                    : 'Analyse en arrière-plan'}
+              </span>
+            </div>
+            <span className={`badge ${ocrStateClass(status.state)}`}>{status.state}</span>
+          </div>
+          <div className="ocr-status-progress-bar">
+            <div
+              className={`ocr-status-progress-fill ${
+                status.state === 'vérifier'
+                  ? 'success'
+                  : status.state === 'erreur'
+                    ? 'error'
+                    : 'analyzing'
+              }`}
+              style={{ width: `${status.progress}%` }}
+            />
+          </div>
+          {status.documents.some((item) => item.errorMessage) ? (
+            <small className="text-danger">
+              {status.documents.find((item) => item.errorMessage)?.errorMessage}
+            </small>
+          ) : null}
+          {status.state === 'vérifier' ? (
+            <button className="btn btn-primary btn-sm" onClick={() => void onOpenResult(status)}>
+              Vérifier les informations <ArrowRight size={13} />
+            </button>
+          ) : null}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -19490,12 +19795,29 @@ type ProductFormPayload = {
   preparationInstructions?: string | null;
 };
 
+type ProductOcrEvidence = {
+  previewUrl: string;
+  filename: string;
+  mimeType: string;
+  pageCount?: number | null;
+  confidence?: number | null;
+  warnings: string[];
+  documents?: Array<{
+    documentId: string;
+    previewUrl: string;
+    filename: string;
+    mimeType: string;
+  }>;
+};
+
 interface ProductFormProps {
   categories: Category[];
   units: Unit[];
   suppliers: Supplier[];
   initialName?: string;
   initialProduct?: Product | null;
+  initialTab?: ProductSheetTab;
+  ocrEvidence?: ProductOcrEvidence | null;
   currentQuantity?: number | null;
   submitLabel?: string;
   onSubmit: (payload: ProductFormPayload) => Promise<void>;
@@ -19663,12 +19985,14 @@ function ProductForm({
   suppliers,
   initialName = '',
   initialProduct = null,
+  initialTab = 'identity',
+  ocrEvidence = null,
   currentQuantity = null,
   submitLabel,
   onSubmit,
   onClose,
 }: ProductFormProps) {
-  const [activeFormTab, setActiveFormTab] = useState<ProductSheetTab>('identity');
+  const [activeFormTab, setActiveFormTab] = useState<ProductSheetTab>(initialTab);
   const [name, setName] = useState(initialProduct?.name ?? initialName);
   const [sku, setSku] = useState(initialProduct?.sku ?? initialProduct?.reference ?? '');
   const [description, setDescription] = useState(initialProduct?.description ?? '');
@@ -19768,7 +20092,7 @@ function ProductForm({
     ) >= 5_000;
 
   useEffect(() => {
-    setActiveFormTab('identity');
+    setActiveFormTab(initialTab);
     setName(initialProduct?.name ?? initialName);
     setSku(initialProduct?.sku ?? initialProduct?.reference ?? '');
     setDescription(initialProduct?.description ?? '');
@@ -19823,7 +20147,7 @@ function ProductForm({
     setShelfLifeAfterOpening(initialProduct?.shelfLifeAfterOpening ?? '');
     setStorageInstructions(initialProduct?.storageInstructions ?? '');
     setPreparationInstructions(initialProduct?.preparationInstructions ?? '');
-  }, [initialName, initialProduct, units]);
+  }, [initialName, initialProduct, initialTab, units]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -19880,6 +20204,20 @@ function ProductForm({
       ? (productOptionalNumber(unitsPerPackage) ?? 0) *
         (productOptionalNumber(unitWeightGrams) ?? 0)
       : null;
+  const showingOcrEvidence =
+    Boolean(ocrEvidence) && (activeFormTab === 'allergens' || activeFormTab === 'nutrition');
+  const ocrEvidenceDocuments = ocrEvidence?.documents?.length
+    ? ocrEvidence.documents
+    : ocrEvidence?.previewUrl
+      ? [
+          {
+            documentId: 'single-preview',
+            previewUrl: ocrEvidence.previewUrl,
+            filename: ocrEvidence.filename,
+            mimeType: ocrEvidence.mimeType,
+          },
+        ]
+      : [];
 
   return (
     <form onSubmit={handleSubmit} className="product-sheet-form">
@@ -19889,7 +20227,9 @@ function ProductForm({
           <span>{error}</span>
         </div>
       )}
-      <div className="product-sheet-form-body">
+      <div
+        className={`product-sheet-form-body${showingOcrEvidence ? ' product-sheet-form-body-ocr' : ''}`}
+      >
         <div className="product-sheet-tabs" role="tablist" aria-label="Sections fiche produit">
           {PRODUCT_SHEET_TABS.map((tab) => (
             <button
@@ -20300,6 +20640,62 @@ function ProductForm({
             </div>
           ) : null}
         </div>
+        {showingOcrEvidence && ocrEvidence ? (
+          <aside className="product-ocr-evidence" aria-label="Document importé pour vérification">
+            <div className="product-ocr-evidence-header">
+              <div>
+                <span>
+                  {ocrEvidenceDocuments.length > 1 ? 'Documents importés' : 'Document importé'}
+                </span>
+                <strong>{ocrEvidence.filename}</strong>
+              </div>
+              {ocrEvidence.confidence != null ? (
+                <span className="badge badge-reception">
+                  OCR {Math.round(ocrEvidence.confidence * 100)} %
+                </span>
+              ) : null}
+            </div>
+            <div className="product-ocr-preview-grid">
+              {ocrEvidenceDocuments.map((document) => (
+                <div className="product-ocr-preview-card" key={document.documentId}>
+                  <strong title={document.filename}>{document.filename}</strong>
+                  <div className="product-ocr-preview">
+                    {document.mimeType === 'application/pdf' ? (
+                      <object
+                        data={document.previewUrl}
+                        type="application/pdf"
+                        aria-label={`Aperçu de ${document.filename}`}
+                      >
+                        <a href={document.previewUrl} target="_blank" rel="noreferrer">
+                          Ouvrir le document
+                        </a>
+                      </object>
+                    ) : (
+                      <img
+                        src={document.previewUrl}
+                        alt={`Étiquette ${document.filename}`}
+                      />
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {ocrEvidence.warnings.length ? (
+              <div className="product-ocr-warnings">
+                <strong>Points à vérifier</strong>
+                <ul>
+                  {ocrEvidence.warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="product-ocr-success">
+                Les données détectées sont préremplies. Vérifiez-les avant d’enregistrer.
+              </p>
+            )}
+          </aside>
+        ) : null}
       </div>
 
       <div className="modal-footer product-sheet-footer">
@@ -20416,6 +20812,82 @@ function ProductTagBadges({
   );
 }
 
+function mergeProductLabelOcr(product: Product, result: ProductLabelOcrResult): Product {
+  const merged: Product = { ...product };
+  if (result.ingredients?.trim()) merged.ingredients = result.ingredients.trim();
+  PRODUCT_NUTRITION_FIELDS.forEach((field) => {
+    const value = result.nutrition[field.key];
+    if (value !== null && Number.isFinite(value)) {
+      Object.assign(merged, { [field.key]: value });
+    }
+  });
+  const allergensPresent = [
+    ...new Set([...(product.allergensPresent ?? []), ...result.allergensPresent]),
+  ];
+  const presentSet = new Set(allergensPresent);
+  const possibleTraces = [
+    ...new Set([...(product.possibleTraces ?? []), ...result.possibleTraces]),
+  ].filter((allergen) => !presentSet.has(allergen));
+  return { ...merged, allergensPresent, possibleTraces };
+}
+
+function mergeProductLabelOcrResults(
+  productId: string,
+  results: ProductLabelOcrResult[],
+): ProductLabelOcrResult {
+  const nutrition = PRODUCT_NUTRITION_FIELDS.reduce(
+    (values, field) => ({ ...values, [field.key]: null }),
+    {} as ProductLabelOcrResult['nutrition'],
+  );
+  const ingredientCandidates = [
+    ...new Set(results.map((result) => result.ingredients?.trim()).filter(Boolean)),
+  ] as string[];
+  const ingredients = ingredientCandidates
+    .filter(
+      (candidate) =>
+        !ingredientCandidates.some(
+          (other) => other !== candidate && other.length > candidate.length && other.includes(candidate),
+        ),
+    )
+    .join(' ')
+    .trim() || null;
+  const allergensPresent = new Set<string>();
+  const possibleTraces = new Set<string>();
+  const warnings = new Set<string>();
+  const confidenceValues: number[] = [];
+  let pageCount = 0;
+  results.forEach((result) => {
+    PRODUCT_NUTRITION_FIELDS.forEach((field) => {
+      const value = result.nutrition[field.key];
+      if (nutrition[field.key] === null && value !== null && Number.isFinite(value)) {
+        nutrition[field.key] = value;
+      }
+    });
+    result.allergensPresent.forEach((allergen) => allergensPresent.add(allergen));
+    result.possibleTraces.forEach((allergen) => possibleTraces.add(allergen));
+    result.warnings.forEach((warning) => warnings.add(warning));
+    if (typeof result.confidence === 'number' && Number.isFinite(result.confidence)) {
+      confidenceValues.push(result.confidence);
+    }
+    pageCount += Number(result.pageCount ?? 0);
+  });
+  allergensPresent.forEach((allergen) => possibleTraces.delete(allergen));
+  return {
+    productId,
+    filename: results.length > 1 ? `${results.length} captures` : results[0].filename,
+    mimeType: results[0].mimeType,
+    pageCount: pageCount || null,
+    ingredients,
+    nutrition,
+    allergensPresent: [...allergensPresent],
+    possibleTraces: [...possibleTraces],
+    confidence: confidenceValues.length
+      ? confidenceValues.reduce((sum, value) => sum + value, 0) / confidenceValues.length
+      : null,
+    warnings: [...warnings],
+  };
+}
+
 function ProductDetailModal({
   product,
   stocks,
@@ -20426,6 +20898,10 @@ function ProductDetailModal({
   sites,
   onClose,
   onUpdate,
+  onUploadOcr,
+  initialOcrReview,
+  onOcrReviewSaved,
+  onCancelOcrReview,
   onAdjustStock,
   onDelete,
 }: {
@@ -20438,6 +20914,10 @@ function ProductDetailModal({
   sites: Site[];
   onClose: () => void;
   onUpdate: (productId: string, payload: ProductFormPayload) => Promise<void>;
+  onUploadOcr: (productId: string, files: File[]) => Promise<void>;
+  initialOcrReview?: ProductOcrReviewRequest | null;
+  onOcrReviewSaved: (productId: string, batchId: string) => Promise<void>;
+  onCancelOcrReview: () => void;
   onAdjustStock: (
     productId: string,
     payload: {
@@ -20458,8 +20938,36 @@ function ProductDetailModal({
   const [adjustmentReason, setAdjustmentReason] = useState('');
   const [adjustmentSubmitting, setAdjustmentSubmitting] = useState(false);
   const [adjustmentError, setAdjustmentError] = useState<string>();
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrError, setOcrError] = useState<string>();
+  const [ocrReview, setOcrReview] = useState<{
+    result: ProductLabelOcrResult;
+    evidence: ProductOcrEvidence;
+    batchId?: string;
+  } | null>(null);
+  const ocrFileInputRef = useRef<HTMLInputElement>(null);
+  const ocrPreviewUrlsRef = useRef<string[]>([]);
+  const ocrRequestIdRef = useRef(0);
+  const editableProduct = useMemo(
+    () => (product && ocrReview ? mergeProductLabelOcr(product, ocrReview.result) : product),
+    [product, ocrReview],
+  );
+
+  function releaseOcrPreview() {
+    ocrPreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    ocrPreviewUrlsRef.current = [];
+  }
+
+  function clearOcrReview() {
+    ocrRequestIdRef.current += 1;
+    releaseOcrPreview();
+    setOcrReview(null);
+    setOcrError(undefined);
+  }
 
   useEffect(() => {
+    ocrRequestIdRef.current += 1;
+    releaseOcrPreview();
     setEditing(false);
     setDetailTab('identity');
     setAdjustingStockId(null);
@@ -20467,7 +20975,33 @@ function ProductDetailModal({
     setAdjustedQuantity('');
     setAdjustmentReason('');
     setAdjustmentError(undefined);
-  }, [product?.id]);
+    setOcrLoading(false);
+    if (
+      initialOcrReview &&
+      product &&
+      initialOcrReview.productId === product.id
+    ) {
+      ocrPreviewUrlsRef.current =
+        initialOcrReview.evidence.documents?.map((document) => document.previewUrl) ??
+        (initialOcrReview.evidence.previewUrl ? [initialOcrReview.evidence.previewUrl] : []);
+      setOcrReview({
+        result: initialOcrReview.result,
+        evidence: initialOcrReview.evidence,
+        batchId: initialOcrReview.batchId,
+      });
+      setEditing(true);
+    } else {
+      setOcrReview(null);
+    }
+    setOcrError(undefined);
+  }, [product?.id, initialOcrReview?.batchId]);
+
+  useEffect(
+    () => () => {
+      releaseOcrPreview();
+    },
+    [],
+  );
 
   if (!product) return null;
   const activeProduct = product;
@@ -20573,21 +21107,67 @@ function ProductDetailModal({
     }
   }
 
+  async function handleOcrFiles(files: File[]) {
+    if (!files.length) return;
+    const requestId = ocrRequestIdRef.current + 1;
+    ocrRequestIdRef.current = requestId;
+    setOcrLoading(true);
+    setOcrError(undefined);
+    try {
+      await onUploadOcr(activeProduct.id, files);
+      if (ocrRequestIdRef.current !== requestId) return;
+      closeProductModal();
+    } catch (error) {
+      if (ocrRequestIdRef.current !== requestId) return;
+      setOcrError(
+        error instanceof Error
+          ? error.message
+          : 'L’étiquette n’a pas pu être analysée. Vérifiez la photo et réessayez.',
+      );
+    } finally {
+      if (ocrRequestIdRef.current === requestId) setOcrLoading(false);
+      if (ocrFileInputRef.current) ocrFileInputRef.current.value = '';
+    }
+  }
+
+  function closeEditForm() {
+    clearOcrReview();
+    onCancelOcrReview();
+    setEditing(false);
+  }
+
+  function closeProductModal() {
+    clearOcrReview();
+    onCancelOcrReview();
+    onClose();
+  }
+
   return (
-    <Modal isOpen={Boolean(product)} onClose={onClose} title={product.name} size="xl">
+    <Modal
+      isOpen={Boolean(product)}
+      onClose={closeProductModal}
+      title={product.name}
+      size={ocrReview ? 'full' : 'xl'}
+    >
       {editing ? (
         <ProductForm
           categories={categories}
           units={units}
           suppliers={suppliers}
-          initialProduct={product}
+          initialProduct={editableProduct}
+          initialTab={ocrReview ? 'allergens' : 'identity'}
+          ocrEvidence={ocrReview?.evidence}
           currentQuantity={totalQuantity}
           submitLabel="Enregistrer les modifications"
           onSubmit={async (payload) => {
             await onUpdate(product.id, payload);
+            if (ocrReview?.batchId) {
+              await onOcrReviewSaved(product.id, ocrReview.batchId);
+            }
+            clearOcrReview();
             setEditing(false);
           }}
-          onClose={() => setEditing(false)}
+          onClose={closeEditForm}
         />
       ) : (
         <div className="product-detail">
@@ -20609,6 +21189,36 @@ function ProductDetailModal({
               </div>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <input
+                ref={ocrFileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/avif,image/heic,image/heif"
+                multiple
+                hidden
+                onChange={(event) =>
+                  void handleOcrFiles(Array.from(event.target.files ?? []).slice(0, 8))
+                }
+              />
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => ocrFileInputRef.current?.click()}
+                disabled={ocrLoading}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  padding: '0.5rem 0.85rem',
+                  fontSize: '0.85rem',
+                }}
+              >
+                {ocrLoading ? (
+                  <RefreshCw size={14} className="spin" />
+                ) : (
+                  <Sparkles size={14} />
+                )}
+                {ocrLoading ? 'Analyse en cours...' : 'Compléter avec OCR'}
+              </button>
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -20648,6 +21258,12 @@ function ProductDetailModal({
               </button>
             </div>
           </div>
+          {ocrError ? (
+            <div className="alert-modern error product-ocr-error">
+              <AlertCircle size={16} />
+              <span>{ocrError}</span>
+            </div>
+          ) : null}
 
           <div className="product-detail-metrics">
             <Metric

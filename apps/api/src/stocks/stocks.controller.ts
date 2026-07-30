@@ -110,7 +110,25 @@ export class StocksController {
 
   @Get('products') listProducts(@CurrentUser() u: AuthenticatedUser, @Query() q: ListQueryDto) { return this.stocksService.listProducts(this.org(u), q); }
   @Get('articles') listArticles(@CurrentUser() u: AuthenticatedUser, @Query() q: ListArticlesQueryDto) { return this.stocksService.listArticles(this.org(u), q); }
+  @Get('products/ocr-label/imports/statuses')
+  productLabelImportStatuses(@CurrentUser() u: AuthenticatedUser) {
+    return this.stocksOcrService.listProductLabelImportStatuses(this.org(u), this.actor(u));
+  }
   @Post('products') createProduct(@CurrentUser() u: AuthenticatedUser, @Body() d: UpsertProductDto) { return this.stocksService.createProduct(this.org(u), this.actor(u), d); }
+  @Post('products/:id/ocr-label/imports')
+  @UseInterceptors(FilesInterceptor('files', 8, { limits: { files: 8, fileSize: 20 * 1024 * 1024 } }))
+  uploadProductLabelImports(@CurrentUser() u: AuthenticatedUser, @Param('id') id: string, @UploadedFiles() files: any[]) {
+    return this.stocksOcrService.uploadProductLabelImports(this.org(u), this.actor(u), id, files);
+  }
+  @Post('products/:id/ocr-label/imports/:batchId/reviewed')
+  reviewProductLabelImport(@CurrentUser() u: AuthenticatedUser, @Param('id') id: string, @Param('batchId') batchId: string) {
+    return this.stocksOcrService.reviewProductLabelImport(this.org(u), this.actor(u), id, batchId);
+  }
+  @Post('products/:id/ocr-label')
+  @UseInterceptors(FileInterceptor('file', { limits: { files: 1, fileSize: 20 * 1024 * 1024 } }))
+  analyzeProductLabel(@CurrentUser() u: AuthenticatedUser, @Param('id') id: string, @UploadedFile() file: any) {
+    return this.stocksOcrService.analyzeProductLabel(this.org(u), this.actor(u), id, file);
+  }
   @Patch('products/:id') updateProduct(@CurrentUser() u: AuthenticatedUser, @Param('id') id: string, @Body() d: UpsertProductDto) { return this.stocksService.updateProduct(this.org(u), this.actor(u), id, d); }
   @Post('products/:id/stock-adjustment') adjustProductStock(@CurrentUser() u: AuthenticatedUser, @Param('id') id: string, @Body() d: AdjustProductStockDto) { return this.stocksService.adjustProductStock(this.org(u), this.actor(u), id, d); }
   @Post('products/:id/archive') archiveProduct(@CurrentUser() u: AuthenticatedUser, @Param('id') id: string) { return this.stocksService.archiveProduct(this.org(u), this.actor(u), id); }

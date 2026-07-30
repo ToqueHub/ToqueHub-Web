@@ -1777,6 +1777,55 @@ export interface Product {
   primarySupplier?: Supplier | null;
 }
 
+export interface ProductLabelOcrResult {
+  productId: string;
+  filename: string;
+  mimeType: string;
+  pageCount?: number | null;
+  ingredients?: string | null;
+  nutrition: {
+    energyKj: number | null;
+    energyKcal: number | null;
+    fatGrams: number | null;
+    saturatedFatGrams: number | null;
+    carbohydratesGrams: number | null;
+    sugarsGrams: number | null;
+    fiberGrams: number | null;
+    proteinGrams: number | null;
+    saltGrams: number | null;
+  };
+  allergensPresent: string[];
+  possibleTraces: string[];
+  confidence?: number | null;
+  warnings: string[];
+}
+
+export interface ProductLabelOcrDocumentStatus {
+  document: {
+    id: string;
+    originalName: string;
+    mimeType: string;
+    sizeBytes: number;
+    status: string;
+    createdAt: string;
+    updatedAt: string;
+  };
+  state: 'en attente' | 'analyse' | 'vérifier' | 'erreur';
+  progress: number;
+  result?: ProductLabelOcrResult | null;
+  errorMessage?: string | null;
+}
+
+export interface ProductLabelOcrBatchStatus {
+  batchId: string;
+  product: { id: string; name: string };
+  state: 'en attente' | 'analyse' | 'vérifier' | 'erreur';
+  progress: number;
+  documents: ProductLabelOcrDocumentStatus[];
+  results: ProductLabelOcrResult[];
+  errors: number;
+}
+
 export type ProductImportStatus = 'ready' | 'needs_review' | 'duplicate' | 'ignored' | 'error';
 
 export type ProductImportField =

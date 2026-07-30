@@ -13,6 +13,8 @@ import type {
   Location,
   Lot,
   Product,
+  ProductLabelOcrBatchStatus,
+  ProductLabelOcrResult,
   ProductImportCommitResult,
   ProductImportField,
   ProductImportPreview,
@@ -3230,6 +3232,59 @@ export const api = {
           primarySupplierId: uuidOrNullOrUndefined(primarySupplierId),
         }),
       },
+      token,
+    );
+  },
+  async analyzeProductLabel(token: string, productId: string, file: File) {
+    const body = new FormData();
+    body.append('file', file);
+    const response = await fetch(`${API_URL}/api/products/${productId}/ocr-label`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    });
+    if (!response.ok) {
+      throw new ApiError(await readApiErrorMessage(response), response.status);
+    }
+    return response.json() as Promise<ProductLabelOcrResult>;
+  },
+  async uploadProductLabelImports(token: string, productId: string, files: File[]) {
+    const body = new FormData();
+    files.forEach((file) => body.append('files', file));
+    const response = await fetch(`${API_URL}/api/products/${productId}/ocr-label/imports`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    });
+    if (!response.ok) {
+      throw new ApiError(await readApiErrorMessage(response), response.status);
+    }
+    return response.json() as Promise<{
+      batchId: string;
+      product: { id: string; name: string };
+      documents: Array<{
+        id: string;
+        originalName: string;
+        mimeType: string;
+        status: string;
+      }>;
+    }>;
+  },
+  productLabelImportStatuses(token: string) {
+    return request<{ statuses: ProductLabelOcrBatchStatus[] }>(
+      '/products/ocr-label/imports/statuses',
+      {},
+      token,
+    );
+  },
+  reviewProductLabelImport(
+    token: string,
+    productId: string,
+    batchId: string,
+  ) {
+    return request<{ reviewed: boolean }>(
+      `/products/${productId}/ocr-label/imports/${batchId}/reviewed`,
+      { method: 'POST' },
       token,
     );
   },
