@@ -6,13 +6,19 @@ import { dirname, extname, join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import PDFDocument from 'pdfkit';
+import { ProductionIngredientTraceabilityService } from '../production/production-ingredient-traceability.service';
 
 type Actor = { id: string; role: string };
 
-const HACCP_UPLOAD_ROOT = resolve(process.env.HACCP_UPLOAD_DIR || process.env.UPLOAD_DIR || 'uploads', 'haccp');
+// Keep the same stable directory as production ingredient traceability.
+const HACCP_UPLOAD_ROOT = resolve(
+  process.env.HACCP_UPLOAD_DIR || process.env.UPLOAD_DIR || join(__dirname, '..', 'uploads'),
+  'haccp',
+);
 const PROCESS_TYPES = new Set(['refroidissement', 'congelation', 'rechauffement']);
 const REPORTS_ROOT = join(HACCP_UPLOAD_ROOT, 'daily-reports');
-const HACCP_AUTOMATIC_TEMPERATURE_TIME_ZONE = 'Europe/Paris';
+const HACCP_TIME_ZONE = 'Europe/Paris';
 
 @Injectable()
 export class HaccpService implements OnModuleInit, OnModuleDestroy {
@@ -20,16 +26,19 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   private dailyCloseTimer?: NodeJS.Timeout;
   private dailyCloseInProgress = false;
 
-  constructor(private readonly prisma: PrismaService, private readonly configService?: ConfigService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly configService?: ConfigService,
+    private readonly productionTraceability?: ProductionIngredientTraceabilityService,
+  ) {}
 
   onModuleInit() {
-    this.dailyCloseTimer = setInterval(() => void this.runAutomaticDailyClosure(), 60_000);
-    this.dailyCloseTimer.unref?.();
-    void this.runAutomaticDailyClosure();
+    void this.runAutomaticDailyClosure(true);
+    this.scheduleNextDailyClosure();
   }
 
   onModuleDestroy() {
-    if (this.dailyCloseTimer) clearInterval(this.dailyCloseTimer);
+    if (this.dailyCloseTimer) clearTimeout(this.dailyCloseTimer);
   }
 
   private page(q: any = {}) {
@@ -38,10 +47,25 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   private dayRange(date = new Date()) {
-    const start = new Date(date);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 1);
+    const parts = this.zonedParts(date, HACCP_TIME_ZONE);
+    const start = this.zonedDateTimeToUtc(
+      parts.year,
+      parts.month,
+      parts.day,
+      0,
+      0,
+      0,
+      HACCP_TIME_ZONE,
+    );
+    const end = this.zonedDateTimeToUtc(
+      parts.year,
+      parts.month,
+      parts.day + 1,
+      0,
+      0,
+      0,
+      HACCP_TIME_ZONE,
+    );
     return { start, end };
   }
 
@@ -103,9 +127,9 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
     if (!Number.isFinite(hour)) return null;
     const measured = new Date(date);
     if (Number.isNaN(measured.getTime())) return null;
-    const parts = this.zonedParts(measured, HACCP_AUTOMATIC_TEMPERATURE_TIME_ZONE);
+    const parts = this.zonedParts(measured, HACCP_TIME_ZONE);
     const candidates = [-1, 0, 1].map((dayOffset) => {
-      const candidate = this.zonedDateTimeToUtc(parts.year, parts.month, parts.day + dayOffset, hour, 0, 0, HACCP_AUTOMATIC_TEMPERATURE_TIME_ZONE);
+      const candidate = this.zonedDateTimeToUtc(parts.year, parts.month, parts.day + dayOffset, hour, 0, 0, HACCP_TIME_ZONE);
       return { candidate, distance: Math.abs(candidate.getTime() - measured.getTime()) };
     }).sort((a, b) => a.distance - b.distance);
     return candidates[0]?.distance <= 3 * 60 * 60 * 1000 ? candidates[0].candidate : null;
@@ -622,6 +646,47 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   async listReceptions(organizationId: string) {
     const items = await this.prisma.haccpReception.findMany({ where: { organizationId, deletedAt: null }, orderBy: { date: 'desc' } });
     return this.ok(items.map((item) => this.withId(item)));
+  }
+
+  async listUnifiedReceptions(organizationId: string) {
+    const [stock, legacy] = await Promise.all([
+      this.prisma.stockReception.findMany({
+        where: { organizationId, status: { in: ['VALIDATED', 'CANCELLED'] } },
+        include: { supplier: true, document: true, site: true, location: true, lines: { include: { product: true, unitModel: true } }, purchaseReceipt: { include: { order: true } } },
+        orderBy: { deliveryDate: 'desc' },
+      }),
+      this.prisma.haccpReception.findMany({ where: { organizationId, deletedAt: null }, orderBy: { date: 'desc' } }),
+    ]);
+    const rows = [
+      ...stock.map((item: any) => this.serializeUnifiedStockReception(item)),
+      ...legacy.map((item: any) => ({ id: `legacy:${item.id}`, source: 'LEGACY', status: 'UNCONTROLLED', supplierName: item.supplier, deliveryDate: item.date, deliveryTemperature: item.temperature, controlNotes: null, deliveryNoteNumber: null, document: null, site: null, location: null, lines: [{ id: item.id, label: item.productName, lotNumber: item.lotNumber, unit: item.unit, documentedQuantity: item.quantity, deliveredQuantity: item.quantity, acceptedQuantity: item.quantity, unitPrice: item.unitPrice }] })),
+    ];
+    return this.ok(rows.sort((a: any, b: any) => new Date(b.deliveryDate).getTime() - new Date(a.deliveryDate).getTime()));
+  }
+
+  async unifiedReceptionDetail(organizationId: string, id: string) {
+    const rows = await this.listUnifiedReceptions(organizationId);
+    const row = rows?.data?.find((item: any) => item.id === id);
+    if (!row) throw new NotFoundException('Réception introuvable');
+    return this.ok(row);
+  }
+
+  private serializeUnifiedStockReception(item: any) {
+    return {
+      id: `stock:${item.id}`,
+      source: item.purchaseReceiptId ? 'ORDER' : 'FREE',
+      status: item.controlStatus || 'UNCONTROLLED',
+      supplierName: item.supplier?.name || item.supplierName || 'Fournisseur non renseigné',
+      orderNumber: item.purchaseReceipt?.order?.number || item.purchaseOrderNumber || null,
+      deliveryDate: item.deliveryDate || item.createdAt,
+      deliveryTemperature: item.deliveryTemperature,
+      controlNotes: item.controlNotes,
+      deliveryNoteNumber: item.deliveryNoteNumber,
+      document: item.document ? { id: item.document.id, name: item.document.originalName, mimeType: item.document.mimeType } : null,
+      site: item.site ? { id: item.site.id, name: item.site.name } : null,
+      location: item.location ? { id: item.location.id, name: item.location.name } : null,
+      lines: item.lines.map((line: any) => ({ id: line.id, productId: line.productId, label: line.product?.name || line.ocrLabel, lotNumber: line.lotNumber, unit: line.unitModel?.symbol || line.unit, documentedQuantity: line.documentedQuantity ?? line.deliveredQuantity ?? line.quantity, deliveredQuantity: line.deliveredQuantity ?? line.quantity, acceptedQuantity: line.acceptedQuantity ?? line.quantity, unitPrice: line.unitPrice })),
+    };
   }
 
   async createReception(organizationId: string, actor: Actor, dto: any) {
@@ -1144,27 +1209,40 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   async generateDailyReport(organizationId: string, actor: Partial<Actor> | null, date = new Date()) {
     const dailyData = await this.buildDailyReportData(organizationId, date);
     const { start, modules, summary } = dailyData;
-    if ((summary.totalActivities ?? 0) <= 0) {
-      return this.ok({
-        skipped: true,
-        reason: 'Aucune donnée HACCP quotidienne à archiver',
-        reportDate: start,
-        modules,
-        summary,
-        pdfPath: null,
-        fileSize: 0,
-        status: 'skipped',
-      });
-    }
     const createdById = actor?.id ?? null;
     const report = await this.prisma.haccpDailyReport.upsert({ where: { organizationId_reportDate: { organizationId, reportDate: start } }, update: { createdById, modules, summary, generatedAt: new Date(), status: 'completed', errorMessage: null, syncVersion: { increment: 1 } }, create: { organizationId, createdById, reportDate: start, modules, summary, status: 'completed' } });
-    const pdf = this.writeDailyReportPdf(organizationId, report.id, start, modules, summary);
+    const pdf = await this.writeDailyReportPdf(organizationId, report.id, start, modules, summary);
     const updated = await this.prisma.haccpDailyReport.update({ where: { id: report.id }, data: { pdfPath: pdf.path, fileSize: pdf.size, status: 'completed', errorMessage: null } });
     return this.ok(this.serializeReport(updated));
   }
 
   private async buildDailyReportData(organizationId: string, date = new Date()) {
     const { start, end } = this.dayRange(date);
+    const flowDayParts = this.zonedParts(start, HACCP_TIME_ZONE);
+    const flowDay = `${flowDayParts.year}-${String(flowDayParts.month).padStart(2, '0')}-${String(flowDayParts.day).padStart(2, '0')}`;
+    const productionFlowIndex = this.productionTraceability
+      ? await this.productionTraceability.flowDay(organizationId, flowDay)
+      : {
+          date: flowDay,
+          summary: {
+            planned: 0,
+            inProgress: 0,
+            completed: 0,
+            traceabilityCompleted: 0,
+            traceabilityExpected: 0,
+          },
+          items: [],
+        };
+    const productionFlow = this.productionTraceability
+      ? {
+          ...productionFlowIndex,
+          items: await Promise.all(
+            productionFlowIndex.items.map((item) =>
+              this.productionTraceability.flowDetail(organizationId, item.batch.id),
+            ),
+          ),
+        }
+      : productionFlowIndex;
     const [
       temperatureEquipment,
       temperature,
@@ -1172,6 +1250,7 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
       cleaning,
       traceability,
       reception,
+      stockReceptions,
       production,
       refroidissement,
       congelation,
@@ -1185,6 +1264,7 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
       this.prisma.haccpCleaningSession.findMany({ where: { organizationId, deletedAt: null, sessionDate: { gte: start, lt: end } }, include: { cleanedSurfaces: true } }),
       this.prisma.haccpTraceability.findMany({ where: { organizationId, deletedAt: null, date: { gte: start, lt: end } } }),
       this.prisma.haccpReception.findMany({ where: { organizationId, deletedAt: null, date: { gte: start, lt: end } } }),
+      (this.prisma as any).stockReception?.findMany?.({ where: { organizationId, deliveryDate: { gte: start, lt: end }, status: { in: ['VALIDATED', 'CANCELLED'] } }, include: { supplier: true, lines: { include: { product: true, unitModel: true } }, purchaseReceipt: { include: { order: true } } } }) ?? Promise.resolve([]),
       this.prisma.haccpProductionSession.findMany({ where: { organizationId, deletedAt: null, productionDate: { gte: start, lt: end } }, include: { finishedProduct: true } }),
       this.prisma.haccpProcessSession.findMany({ where: { organizationId, deletedAt: null, type: 'refroidissement', sessionDate: { gte: start, lt: end } }, include: { product: true, equipment: true } }),
       this.prisma.haccpProcessSession.findMany({ where: { organizationId, deletedAt: null, type: 'congelation', sessionDate: { gte: start, lt: end } }, include: { product: true, equipment: true } }),
@@ -1192,6 +1272,27 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
       this.prisma.haccpOilEquipment.findMany({ where: { organizationId, isActive: true, deletedAt: null } }),
       this.prisma.haccpOilSession.findMany({ where: { organizationId, deletedAt: null, sessionDate: { gte: start, lt: end } }, include: { equipment: true } }),
     ]);
+    for (const item of stockReceptions as any[]) {
+      for (const line of item.lines ?? []) {
+        reception.push({
+          id: `stock:${item.id}:${line.id}`,
+          supplier: item.supplier?.name || item.supplierName || 'Fournisseur non renseigné',
+          productName: line.product?.name || line.ocrLabel,
+          temperature: item.deliveryTemperature == null ? '' : String(item.deliveryTemperature),
+          lotNumber: line.lotNumber,
+          quantity: line.acceptedQuantity ?? line.quantity ?? 0,
+          unit: line.unitModel?.symbol || line.unit || '',
+          unitPrice: line.unitPrice ?? 0,
+          date: item.deliveryDate || item.createdAt,
+          controlStatus: item.controlStatus || 'UNCONTROLLED',
+          documentedQuantity: line.documentedQuantity ?? line.deliveredQuantity ?? line.quantity ?? 0,
+          deliveredQuantity: line.deliveredQuantity ?? line.quantity ?? 0,
+          acceptedQuantity: line.acceptedQuantity ?? line.quantity ?? 0,
+          purchaseOrderNumber: item.purchaseReceipt?.order?.number || item.purchaseOrderNumber || null,
+          deliveryNoteNumber: item.deliveryNoteNumber || null,
+        });
+      }
+    }
     const processSessions = [...refroidissement, ...congelation, ...rechauffement];
     const cleanedSurfaceIds = new Set(cleaning.flatMap((session) => (session.cleanedSurfaces ?? []).map((surface) => surface.surfaceId)));
     const completedProcess = processSessions.filter((session) => session.status === 'termine' && session.endTime && session.endTemperature != null).length;
@@ -1200,6 +1301,13 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
     const missingCleaning = cleaningDue.filter((surface) => !cleanedSurfaceIds.has(surface.surfaceId)).length;
     const incompleteProcess = processSessions.length - completedProcess;
     const incompleteProduction = production.length - completedProduction;
+    const startedProductionFlow = productionFlow.items.filter((item) =>
+      !['TO_PREPARE', 'CANCELLED'].includes(item.batch.status),
+    );
+    const missingProductionEvidence = startedProductionFlow.reduce(
+      (sum, item) => sum + item.summary.missing,
+      0,
+    );
     const receptionIssues = reception.filter((item) => !item.temperature || !item.supplier || !item.productName).length;
     const traceabilityIssues = traceability.filter((item) => !item.photo || !item.lotNumber || !item.productName).length;
     const oilMissing = Math.max(oilEquipment.length - new Set(oil.map((item) => item.equipmentId)).size, 0);
@@ -1219,6 +1327,7 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
       traceability: { count: traceability.length, data: traceability.map((item) => this.withId(item)) },
       reception: { count: reception.length, data: reception.map((item) => this.withId(item)) },
       production: { count: production.length, data: production.map((item) => this.serializeProductionSession(item)) },
+      productionFlow: { count: productionFlow.items.length, data: productionFlow.items },
       cooling: {
         refroidissement: { count: refroidissement.length, data: refroidissement.map((item) => this.serializeProcessSession(item)) },
         congelation: { count: congelation.length, data: congelation.map((item) => this.serializeProcessSession(item)) },
@@ -1228,8 +1337,10 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
       cleaning: { count: cleaning.length, data: cleaning.map((item) => this.serializeCleaningSession(item)) },
       compliance: complianceModules,
     };
-    const flatCounts = [modules.temperature, modules.traceability, modules.reception, modules.production, modules.cooling.refroidissement, modules.cooling.congelation, modules.cooling.rechauffement, modules.oil, modules.cleaning];
-    const totalActivities = flatCounts.reduce((sum, item) => sum + item.count, 0);
+    const flatCounts = [modules.temperature, modules.traceability, modules.reception, modules.cooling.refroidissement, modules.cooling.congelation, modules.cooling.rechauffement, modules.oil, modules.cleaning];
+    const totalActivities =
+      flatCounts.reduce((sum, item) => sum + item.count, 0) +
+      Math.max(modules.production.count, modules.productionFlow.count);
     const totalWeight = complianceModules.reduce((sum, item) => sum + item.weight, 0) || 1;
     const score = Math.round((complianceModules.reduce((sum, item) => sum + item.scoreContribution, 0) / totalWeight) * 100);
     const alerts = [
@@ -1237,6 +1348,7 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
       ...this.alertIf(missingCleaning > 0, 'cleaning', 'critical', `${missingCleaning} surface(s) prévues restent à nettoyer.`),
       ...this.alertIf(incompleteProcess > 0, 'process', 'warning', `${incompleteProcess} session(s) froid/chaud non terminée(s).`),
       ...this.alertIf(incompleteProduction > 0, 'production', 'warning', `${incompleteProduction} production(s) non terminée(s).`),
+      ...this.alertIf(missingProductionEvidence > 0, 'production', 'warning', `${missingProductionEvidence} preuve(s) ingrédient manquante(s) sur les productions démarrées.`),
       ...this.alertIf(receptionIssues > 0, 'receptions', 'warning', `${receptionIssues} réception(s) incomplète(s).`),
       ...this.alertIf(traceabilityIssues > 0, 'traceability', 'warning', `${traceabilityIssues} traçabilité(s) sans photo, lot ou produit.`),
       ...this.alertIf(oilMissing > 0, 'oil', 'warning', `${oilMissing} équipement(s) huile sans contrôle.`),
@@ -1248,7 +1360,8 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
       modules: complianceModules,
       alerts,
       criticalAlerts: alerts.filter((alert) => alert.severity === 'critical'),
-      modulesCovered: Object.entries({ temperature: modules.temperature.count, traceability: modules.traceability.count, reception: modules.reception.count, production: modules.production.count, refroidissement: modules.cooling.refroidissement.count, congelation: modules.cooling.congelation.count, rechauffement: modules.cooling.rechauffement.count, oil: modules.oil.count, cleaning: modules.cleaning.count }).filter(([, count]) => count > 0).map(([name]) => name),
+      modulesCovered: Object.entries({ temperature: modules.temperature.count, traceability: modules.traceability.count, reception: modules.reception.count, production: Math.max(modules.production.count, modules.productionFlow.count), refroidissement: modules.cooling.refroidissement.count, congelation: modules.cooling.congelation.count, rechauffement: modules.cooling.rechauffement.count, oil: modules.oil.count, cleaning: modules.cleaning.count }).filter(([, count]) => count > 0).map(([name]) => name),
+      productionTraceability: productionFlow.summary,
     };
     return { start, end, modules, summary };
   }
@@ -1311,15 +1424,48 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
     return { stream: new StreamableFile(payload), filename: `rapport_haccp_${this.formatReportDate(report.reportDate)}.json`, contentType: 'application/json; charset=utf-8' };
   }
 
-  private async runAutomaticDailyClosure() {
+  private scheduleNextDailyClosure() {
+    if (this.dailyCloseTimer) clearTimeout(this.dailyCloseTimer);
+    const now = new Date();
+    const parts = this.zonedParts(now, HACCP_TIME_ZONE);
+    const nextMidnight = this.zonedDateTimeToUtc(
+      parts.year,
+      parts.month,
+      parts.day + 1,
+      0,
+      0,
+      0,
+      HACCP_TIME_ZONE,
+    );
+    const delay = Math.max(nextMidnight.getTime() - now.getTime(), 1_000);
+    this.dailyCloseTimer = setTimeout(async () => {
+      try {
+        await this.runAutomaticDailyClosure(true);
+      } finally {
+        this.scheduleNextDailyClosure();
+      }
+    }, delay);
+    this.dailyCloseTimer.unref?.();
+  }
+
+  private async runAutomaticDailyClosure(allowCatchUp = false) {
     if (this.dailyCloseInProgress) return;
     const now = new Date();
-    if (now.getHours() !== 0) return;
+    const nowInParis = this.zonedParts(now, HACCP_TIME_ZONE);
+    if (!allowCatchUp && nowInParis.hour !== 0) return;
     this.dailyCloseInProgress = true;
     try {
-      const reportDate = new Date(now);
-      reportDate.setDate(reportDate.getDate() - 1);
+      const reportDate = this.zonedDateTimeToUtc(
+        nowInParis.year,
+        nowInParis.month,
+        nowInParis.day - 1,
+        12,
+        0,
+        0,
+        HACCP_TIME_ZONE,
+      );
       const { start } = this.dayRange(reportDate);
+      const currentDayStart = this.dayRange(now).start;
       const organizations = await this.prisma.organization.findMany({
         where: { haccpInstalledAt: { not: null } },
         select: { id: true, name: true },
@@ -1327,13 +1473,9 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
       for (const organization of organizations) {
         try {
           const existing = await this.prisma.haccpDailyReport.findUnique({ where: { organizationId_reportDate: { organizationId: organization.id, reportDate: start } } });
-          if (existing?.generatedAt && existing.generatedAt >= this.dayRange(now).start) continue;
-          const response = await this.generateDailyReport(organization.id, null, start);
-          if (response.data?.skipped) {
-            this.logger.log(`Rapport HACCP journalier ignoré pour ${organization.name} (${this.formatReportDate(start)}): aucune donnée`);
-          } else {
-            this.logger.log(`Rapport HACCP journalier clôturé pour ${organization.name} (${this.formatReportDate(start)})`);
-          }
+          if (existing?.generatedAt && existing.generatedAt >= currentDayStart) continue;
+          await this.generateDailyReport(organization.id, null, start);
+          this.logger.log(`Rapport HACCP journalier clôturé pour ${organization.name} (${this.formatReportDate(start)})`);
         } catch (error: any) {
           this.logger.error(`Clôture HACCP impossible pour ${organization.name}: ${error?.message || error}`);
         }
@@ -1343,12 +1485,384 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private writeDailyReportPdf(organizationId: string, reportId: string, reportDate: Date, modules: any, summary: any) {
+  private async writeDailyReportPdf(
+    organizationId: string,
+    reportId: string,
+    reportDate: Date,
+    modules: any,
+    summary: any,
+  ) {
     const dir = join(REPORTS_ROOT, organizationId);
     mkdirSync(dir, { recursive: true });
     const filename = `rapport-haccp-${this.formatReportDate(reportDate)}-${reportId}.pdf`;
     const path = join(dir, filename);
-    const pdf = this.buildSimplePdf(this.dailyReportPdfLines(reportDate, modules, summary));
+    const doc = new PDFDocument({
+      size: 'A4',
+      margin: 42,
+      bufferPages: true,
+      info: {
+        Title: `Rapport HACCP - ${this.formatReportDate(reportDate)}`,
+        Author: 'ToqueHub',
+      },
+    });
+    const chunks: Buffer[] = [];
+    doc.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+    const finished = new Promise<Buffer>((resolvePdf, rejectPdf) => {
+      doc.on('end', () => resolvePdf(Buffer.concat(chunks)));
+      doc.on('error', rejectPdf);
+    });
+
+    const contentWidth = doc.page.width - 84;
+    const bottom = doc.page.height - 58;
+    const ensureSpace = (height: number) => {
+      if (doc.y + height > bottom) doc.addPage();
+    };
+    const sectionTitle = (title: string, color = '#0f766e') => {
+      ensureSpace(34);
+      doc.moveDown(0.35);
+      doc
+        .fillColor(color)
+        .font('Helvetica-Bold')
+        .fontSize(13)
+        .text(title, 42, doc.y, { width: contentWidth });
+      doc
+        .moveTo(42, doc.y + 4)
+        .lineTo(42 + contentWidth, doc.y + 4)
+        .strokeColor('#dbe5e1')
+        .lineWidth(0.8)
+        .stroke();
+      doc.moveDown(0.65);
+    };
+    const simpleRows = (
+      title: string,
+      rows: any[] = [],
+      formatter: (item: any) => string,
+    ) => {
+      sectionTitle(title);
+      if (!rows.length) {
+        doc.fillColor('#94a3b8').font('Helvetica').fontSize(8.5).text('Aucune entrée.');
+        return;
+      }
+      rows.forEach((row) => {
+        ensureSpace(26);
+        const y = doc.y;
+        doc.roundedRect(42, y, contentWidth, 21, 5).fill('#f8fafc');
+        doc
+          .fillColor('#334155')
+          .font('Helvetica')
+          .fontSize(7.8)
+          .text(formatter(row), 50, y + 6, { width: contentWidth - 16, ellipsis: true });
+        doc.y = y + 25;
+      });
+    };
+
+    doc.rect(0, 0, doc.page.width, 126).fill('#103f35');
+    doc
+      .fillColor('#a7f3d0')
+      .font('Helvetica-Bold')
+      .fontSize(8)
+      .text('TOQUEHUB - QUALITÉ & HYGIÈNE', 42, 34, { characterSpacing: 1.1 });
+    doc
+      .fillColor('#ffffff')
+      .font('Helvetica-Bold')
+      .fontSize(24)
+      .text('Rapport HACCP quotidien', 42, 52);
+    doc
+      .fillColor('#d1fae5')
+      .font('Helvetica')
+      .fontSize(10)
+      .text(
+        `${this.formatReportDate(reportDate)} - Généré le ${this.formatReportDateTime(new Date())}`,
+        42,
+        84,
+      );
+    doc.y = 148;
+
+    const metricGap = 10;
+    const metricWidth = (contentWidth - metricGap) / 2;
+    [
+      ['Score global', `${summary.score ?? 0}%`],
+      ['Activités HACCP', String(summary.totalActivities ?? 0)],
+    ].forEach(([label, value], index) => {
+      const x = 42 + index * (metricWidth + metricGap);
+      doc.roundedRect(x, 142, metricWidth, 62, 10).fill('#f1f5f9');
+      doc
+        .fillColor('#64748b')
+        .font('Helvetica-Bold')
+        .fontSize(7)
+        .text(label.toUpperCase(), x + 12, 155, { width: metricWidth - 24 });
+      doc
+        .fillColor('#0f172a')
+        .font('Helvetica-Bold')
+        .fontSize(19)
+        .text(value, x + 12, 172, { width: metricWidth - 24 });
+    });
+    doc.y = 218;
+
+    sectionTitle('Synthèse de conformité');
+    for (const module of summary.modules ?? modules.compliance ?? []) {
+      ensureSpace(31);
+      const y = doc.y;
+      const expected = Number(module.expected ?? 0);
+      const completed = Number(module.completed ?? 0);
+      const ratio = expected ? Math.min(completed / expected, 1) : 1;
+      doc
+        .fillColor('#0f172a')
+        .font('Helvetica-Bold')
+        .fontSize(8.5)
+        .text(module.label, 42, y, { width: 150 });
+      doc
+        .fillColor('#64748b')
+        .font('Helvetica')
+        .fontSize(7.5)
+        .text(
+          expected ? `${completed}/${expected} - ${module.score}%` : 'Aucun contrôle prévu',
+          198,
+          y,
+          { width: 120 },
+        );
+      doc.roundedRect(326, y + 1, contentWidth - 284, 7, 3.5).fill('#e2e8f0');
+      doc
+        .roundedRect(326, y + 1, (contentWidth - 284) * ratio, 7, 3.5)
+        .fill(module.issues ? '#f59e0b' : '#10b981');
+      doc.y = y + 22;
+    }
+
+    sectionTitle('Alertes');
+    const alerts = summary.alerts ?? [];
+    if (!alerts.length) {
+      doc.fillColor('#047857').font('Helvetica-Bold').fontSize(8.5).text('Aucune alerte.');
+    } else {
+      alerts.forEach((alert) => {
+        ensureSpace(28);
+        const y = doc.y;
+        const critical = alert.severity === 'critical';
+        doc.roundedRect(42, y, contentWidth, 23, 6).fill(critical ? '#fff1f2' : '#fffbeb');
+        doc
+          .fillColor(critical ? '#b91c1c' : '#92400e')
+          .font('Helvetica-Bold')
+          .fontSize(7.7)
+          .text(
+            `${this.alertSeverityLabel(alert.severity)} - ${alert.message}`,
+            50,
+            y + 7,
+            { width: contentWidth - 16 },
+          );
+        doc.y = y + 28;
+      });
+    }
+
+    simpleRows(
+      'Températures',
+      modules.temperature?.data,
+      (item) =>
+        `${this.formatReportDateTime(item.date)} - ${item.equipment?.name ?? 'Équipement'} - ${item.temperature} C - ${item.notes ?? ''}`,
+    );
+    simpleRows(
+      'Traçabilité générale',
+      modules.traceability?.data,
+      (item) =>
+        `${this.formatReportDateTime(item.date)} - ${item.productName} - lot ${item.lotNumber} - ${item.barcode ?? 'sans code-barres'}`,
+    );
+    simpleRows(
+      'Réceptions',
+      modules.reception?.data,
+      (item) =>
+        `${this.formatReportDateTime(item.date)} - ${item.supplier ?? 'Fournisseur non renseigné'} - ${item.productName ?? 'Produit non renseigné'} - lot ${item.lotNumber ?? '-'} - commandé ${item.documentedQuantity ?? item.deliveredQuantity ?? item.quantity ?? '-'} / livré ${item.deliveredQuantity ?? item.quantity ?? '-'} / accepté ${item.acceptedQuantity ?? item.quantity ?? '-'} ${item.unit ?? ''} - ${item.temperature ?? '-'} C - ${item.controlStatus ?? 'UNCONTROLLED'}${item.purchaseOrderNumber ? ` - commande ${item.purchaseOrderNumber}` : ''}${item.deliveryNoteNumber ? ` - BL ${item.deliveryNoteNumber}` : ''}`,
+    );
+    simpleRows(
+      'Process froid & chaud',
+      [
+        ...(modules.cooling?.refroidissement?.data ?? []),
+        ...(modules.cooling?.congelation?.data ?? []),
+        ...(modules.cooling?.rechauffement?.data ?? []),
+      ],
+      (item) =>
+        `${this.processLabel(item.type)} - ${item.product?.name ?? 'Produit'} - ${item.startTemperature} -> ${item.endTemperature ?? '-'} C - ${item.status}`,
+    );
+    simpleRows(
+      'Productions manuelles',
+      (modules.production?.data ?? []).filter((item) => !item.productionBatchId),
+      (item) =>
+        `${this.formatReportDateTime(item.productionDate)} - ${item.finishedProduct?.name ?? 'Produit'} - lot ${item.lotNumber ?? '-'} - ${item.quantity ?? '-'} ${item.unit ?? ''} - ${item.status ?? '-'}`,
+    );
+
+    const productionFlow = modules.productionFlow?.data ?? [];
+    for (const production of productionFlow) {
+      doc.addPage();
+      doc.rect(0, 0, doc.page.width, 92).fill('#103f35');
+      doc
+        .fillColor('#a7f3d0')
+        .font('Helvetica-Bold')
+        .fontSize(8)
+        .text(`PRODUCTION HACCP - LOT ${production.batch.reference}`, 42, 28, {
+          characterSpacing: 0.8,
+        });
+      doc
+        .fillColor('#ffffff')
+        .font('Helvetica-Bold')
+        .fontSize(19)
+        .text(production.recipe.name, 42, 45, { width: contentWidth - 150 });
+      doc
+        .fillColor('#d1fae5')
+        .font('Helvetica')
+        .fontSize(8.5)
+        .text(
+          `Version ${production.recipe.version ?? '-'} - ${production.batch.plannedQuantity} ${production.batch.unit?.symbol ?? ''} - statut ${production.batch.status}`,
+          42,
+          70,
+        );
+      doc.y = 112;
+
+      sectionTitle('Planning et équipe');
+      for (const task of production.tasks ?? []) {
+        ensureSpace(26);
+        doc
+          .fillColor('#0f172a')
+          .font('Helvetica-Bold')
+          .fontSize(8)
+          .text(
+            `${this.formatReportDateTime(task.startsAt)} - ${task.title}`,
+            42,
+            doc.y,
+            { width: 330 },
+          );
+        doc
+          .fillColor('#64748b')
+          .font('Helvetica')
+          .fontSize(7.5)
+          .text(task.assignedEmployee?.name ?? 'Non assignée', 380, doc.y - 9, {
+            width: 173,
+            align: 'right',
+          });
+        doc.moveDown(0.55);
+      }
+
+      sectionTitle(
+        `Traçabilité ingrédients - ${production.summary.completed}/${production.summary.expected}`,
+      );
+      for (const ingredient of production.ingredients ?? []) {
+        const photos = Array.isArray(ingredient.photos) ? ingredient.photos.slice(0, 3) : [];
+        const blockHeight = photos.length ? 132 : 48;
+        ensureSpace(blockHeight + 10);
+        const y = doc.y;
+        doc
+          .roundedRect(42, y, contentWidth, blockHeight, 9)
+          .lineWidth(0.8)
+          .fillAndStroke(
+            ingredient.completed ? '#f8fffc' : '#fffbeb',
+            ingredient.completed ? '#a7f3d0' : '#fde68a',
+          );
+        doc
+          .fillColor('#0f172a')
+          .font('Helvetica-Bold')
+          .fontSize(9)
+          .text(ingredient.name, 53, y + 10, { width: 220 });
+        doc
+          .fillColor('#64748b')
+          .font('Helvetica')
+          .fontSize(7.5)
+          .text(
+            `${Number(ingredient.quantity).toLocaleString('fr-FR', { maximumFractionDigits: 3 })} ${ingredient.unit}`,
+            53,
+            y + 24,
+            { width: 100 },
+          );
+        doc
+          .fillColor(ingredient.completed ? '#047857' : '#b45309')
+          .font('Helvetica-Bold')
+          .fontSize(7.5)
+          .text(
+            ingredient.completed ? `${photos.length} photo(s)` : 'PHOTO MANQUANTE',
+            426,
+            y + 11,
+            { width: 116, align: 'right' },
+          );
+        doc
+          .fillColor('#475569')
+          .font('Helvetica')
+          .fontSize(7)
+          .text(`Lot fournisseur: ${ingredient.lotNumber || 'non renseigné'}`, 180, y + 11, {
+            width: 220,
+          });
+        doc.text(`Code-barres: ${ingredient.barcode || 'non renseigné'}`, 180, y + 24, {
+          width: 220,
+        });
+
+        if (photos.length) {
+          const gap = 8;
+          const imageWidth = (contentWidth - 22 - gap * 2) / 3;
+          photos.forEach((photo, index) => {
+            const x = 53 + index * (imageWidth + gap);
+            const imageY = y + 42;
+            doc.roundedRect(x, imageY, imageWidth, 78, 6).fill('#e2e8f0');
+            const absolutePath = join(HACCP_UPLOAD_ROOT, String(photo.storagePath || ''));
+            try {
+              if (
+                absolutePath.startsWith(`${HACCP_UPLOAD_ROOT}/`) &&
+                existsSync(absolutePath)
+              ) {
+                doc.image(absolutePath, x, imageY, {
+                  fit: [imageWidth, 78],
+                  align: 'center',
+                  valign: 'center',
+                });
+              } else {
+                throw new Error('missing');
+              }
+            } catch {
+              doc
+                .fillColor('#64748b')
+                .font('Helvetica')
+                .fontSize(7)
+                .text('Image indisponible', x + 8, imageY + 34, {
+                  width: imageWidth - 16,
+                  align: 'center',
+                });
+            }
+          });
+        } else {
+          doc
+            .fillColor('#92400e')
+            .font('Helvetica')
+            .fontSize(6.8)
+            .text('Aucune preuve photo enregistrée pour cet ingrédient.', 53, y + 35, {
+              width: contentWidth - 22,
+            });
+        }
+        doc.y = y + blockHeight + 6;
+      }
+    }
+
+    simpleRows(
+      'Huiles',
+      modules.oil?.data,
+      (item) =>
+        `${this.formatReportDateTime(item.sessionDate)} - ${item.equipment?.name ?? 'Équipement'} - ${item.testMethod} - ${item.action}`,
+    );
+    simpleRows(
+      'Nettoyage',
+      modules.cleaning?.data,
+      (item) =>
+        `${this.formatReportDateTime(item.sessionDate)} - ${item.status} - ${item.completedSurfaces}/${item.totalSurfaces} surfaces`,
+    );
+
+    const pageRange = doc.bufferedPageRange();
+    for (let index = 0; index < pageRange.count; index += 1) {
+      doc.switchToPage(pageRange.start + index);
+      doc
+        .fillColor('#94a3b8')
+        .font('Helvetica')
+        .fontSize(7)
+        .text(
+          `ToqueHub - Rapport HACCP - Page ${index + 1}/${pageRange.count}`,
+          42,
+          doc.page.height - 62,
+          { width: contentWidth, align: 'center', lineBreak: false },
+        );
+    }
+    doc.end();
+    const pdf = await finished;
     writeFileSync(path, pdf);
     return { path, size: pdf.byteLength };
   }
@@ -1360,7 +1874,7 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
       `Rapport HACCP quotidien - ${this.formatReportDate(reportDate)}`,
       `Genere le ${this.formatReportDateTime(new Date())}`,
       '',
-      `Score global: ${summary.score ?? 0}% - Niveau ${summary.grade ?? '-'}`,
+      `Score global: ${summary.score ?? 0}%`,
       `Total activites HACCP: ${summary.totalActivities ?? 0}`,
       `Modules couverts: ${(summary.modulesCovered ?? []).join(', ') || 'Aucun'}`,
       '',
@@ -1376,7 +1890,7 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
 
     this.appendPdfSection(lines, 'Temperatures', modules.temperature.data, (item) => `${this.formatReportDateTime(item.date)} | ${item.equipment?.name ?? 'Equipement'} | ${item.temperature} C | ${item.notes ?? ''}`);
     this.appendPdfSection(lines, 'Tracabilite', modules.traceability.data, (item) => `${this.formatReportDateTime(item.date)} | ${item.productName} | lot ${item.lotNumber} | ${item.barcode ?? ''}`);
-    this.appendPdfSection(lines, 'Receptions', modules.reception.data, (item) => `${this.formatReportDateTime(item.date)} | ${item.supplier} | ${item.productName} | lot ${item.lotNumber ?? '-'} | ${item.quantity} ${item.unit} | temp. ${item.temperature}`);
+    this.appendPdfSection(lines, 'Receptions', modules.reception.data, (item) => `${this.formatReportDateTime(item.date)} | ${item.supplier} | ${item.productName} | lot ${item.lotNumber ?? '-'} | commandé ${item.documentedQuantity ?? item.deliveredQuantity ?? item.quantity} ${item.unit} / livré ${item.deliveredQuantity ?? item.quantity} ${item.unit} / accepté ${item.acceptedQuantity ?? item.quantity} ${item.unit} | temp. ${item.temperature || '-'} | ${item.controlStatus ?? 'UNCONTROLLED'}${item.purchaseOrderNumber ? ` | commande ${item.purchaseOrderNumber}` : ''}${item.deliveryNoteNumber ? ` | BL ${item.deliveryNoteNumber}` : ''}`);
     this.appendPdfSection(lines, 'Production', modules.production.data, (item) => `${this.formatReportDateTime(item.productionDate)} | ${item.finishedProduct?.name ?? 'Produit'} | lot ${item.lotNumber} | ${item.quantity} ${item.unit} | ${item.status}`);
     this.appendPdfSection(lines, 'Refroidissement', modules.cooling.refroidissement.data, (item) => `${this.formatReportDateTime(item.sessionDate)} | ${item.product?.name ?? 'Produit'} | ${item.equipment?.name ?? 'Equipement'} | ${item.startTemperature} -> ${item.endTemperature ?? '-'} C | ${item.status}`);
     this.appendPdfSection(lines, 'Congelation', modules.cooling.congelation.data, (item) => `${this.formatReportDateTime(item.sessionDate)} | ${item.product?.name ?? 'Produit'} | ${item.equipment?.name ?? 'Equipement'} | ${item.startTemperature} -> ${item.endTemperature ?? '-'} C | ${item.status}`);
@@ -1456,17 +1970,19 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   private formatReportDate(value: any) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '-';
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
+    const parts = this.zonedParts(date, HACCP_TIME_ZONE);
+    const year = parts.year;
+    const month = String(parts.month).padStart(2, '0');
+    const day = String(parts.day).padStart(2, '0');
     return `${year}-${month}-${day}`;
   }
 
   private formatReportDateTime(value: any) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '-';
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const parts = this.zonedParts(date, HACCP_TIME_ZONE);
+    const hours = String(parts.hour).padStart(2, '0');
+    const minutes = String(parts.minute).padStart(2, '0');
     return `${this.formatReportDate(date)} ${hours}:${minutes}`;
   }
 

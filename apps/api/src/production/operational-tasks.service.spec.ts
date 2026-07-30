@@ -27,6 +27,7 @@ describe('OperationalTasksService', () => {
     },
     operationalTaskAssignment: {
       deleteMany: jest.fn(),
+      updateMany: jest.fn(),
       upsert: jest.fn(),
     },
     $transaction: jest.fn(),
@@ -367,6 +368,59 @@ describe('OperationalTasksService', () => {
     });
   });
 
+  it('refuses to resize an assigned manual task outside the employee schedule', async () => {
+    prisma.hrEmployee.findMany.mockResolvedValue([
+      {
+        id: 'waiter',
+        managerId: null,
+        departmentId: 'service',
+      },
+    ]);
+    prisma.operationalTask.findFirst.mockResolvedValue({
+      id: 'manual-task',
+      organizationId: 'org-1',
+      title: 'Préparer la salle',
+      source: 'MANUAL',
+      status: 'TODO',
+      departmentId: 'service',
+      positionId: null,
+      siteId: null,
+      assignedEmployeeId: 'waiter',
+      planningAssignmentId: 'shift-1',
+      menuId: null,
+      technicalSheetId: null,
+      technicalSheetStepId: null,
+      productionBatchId: null,
+      productionOperationId: null,
+      positionTaskPresetId: null,
+      startsAt: new Date('2026-07-20T08:00:00.000Z'),
+      endsAt: new Date('2026-07-20T09:00:00.000Z'),
+      isTimeScheduled: true,
+      assignments: [{ employeeId: 'waiter' }],
+    });
+    prisma.hrDepartment.findFirst.mockResolvedValue({ id: 'service' });
+    prisma.hrEmployee.findFirst.mockResolvedValue({
+      id: 'waiter',
+      departmentId: 'service',
+      position: null,
+    });
+    prisma.planningAssignment.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.update(
+        'org-1',
+        { id: 'admin-user', role: 'ADMIN', permissions: [] },
+        'manual-task',
+        {
+          startsAt: '2026-07-20T05:00:00.000Z',
+          endsAt: '2026-07-20T06:00:00.000Z',
+        },
+      ),
+    ).rejects.toThrow(
+      'Une personne affectée ne travaille pas sur le nouveau créneau.',
+    );
+  });
+
   it('creates one simple operational task per menu recipe', async () => {
     prisma.hrEmployee.findMany.mockResolvedValue([]);
     prisma.hrDepartment.findFirst.mockResolvedValue({ id: 'kitchen' });
@@ -489,6 +543,201 @@ describe('OperationalTasksService', () => {
       data: { status: 'CANCELLED', completedAt: null },
     });
     expect(result).toHaveLength(2);
+  });
+
+  it('recomposes unplaced production steps into the original whole recipe', async () => {
+    prisma.hrEmployee.findMany.mockResolvedValue([]);
+    const sourceStep = {
+      id: 'task-step-1',
+      organizationId: 'org-1',
+      source: 'PRODUCTION',
+      status: 'TODO',
+      productionBatchId: 'batch-1',
+      productionOperationId: 'op-1',
+      technicalSheetStepId: 'step-1',
+      isTimeScheduled: false,
+    };
+    const wholeTask = {
+      id: 'task-whole',
+      organizationId: 'org-1',
+      source: 'PRODUCTION',
+      status: 'CANCELLED',
+      productionBatchId: 'batch-1',
+      productionOperationId: null,
+      technicalSheetStepId: null,
+      isTimeScheduled: false,
+    };
+    const secondStep = {
+      ...sourceStep,
+      id: 'task-step-2',
+      productionOperationId: 'op-2',
+      technicalSheetStepId: 'step-2',
+    };
+    prisma.operationalTask.findFirst.mockResolvedValue(sourceStep);
+    prisma.operationalTask.findMany.mockResolvedValue([
+      wholeTask,
+      sourceStep,
+      secondStep,
+    ]);
+    prisma.operationalTask.findUniqueOrThrow.mockResolvedValue({
+      ...wholeTask,
+      status: 'TODO',
+    });
+
+    const result = await service.mergeProductionRecipeTask(
+      'org-1',
+      { id: 'admin-user', role: 'ADMIN', permissions: [] },
+      'task-step-1',
+    );
+
+    expect(prisma.operationalTask.update).toHaveBeenCalledWith({
+      where: { id: 'task-step-1' },
+      data: { status: 'CANCELLED', completedAt: null },
+    });
+    expect(prisma.operationalTask.update).toHaveBeenCalledWith({
+      where: { id: 'task-step-2' },
+      data: { status: 'CANCELLED', completedAt: null },
+    });
+    expect(prisma.operationalTask.update).toHaveBeenCalledWith({
+      where: { id: 'task-whole' },
+      data: {
+        status: 'TODO',
+        isTimeScheduled: false,
+        planningAssignmentId: null,
+        completedAt: null,
+      },
+    });
+    expect(result).toMatchObject({ id: 'task-whole', status: 'TODO' });
+  });
+
+  it('refuses to recompose when one production step is already scheduled', async () => {
+    prisma.hrEmployee.findMany.mockResolvedValue([]);
+    const sourceStep = {
+      id: 'task-step-1',
+      organizationId: 'org-1',
+      source: 'PRODUCTION',
+      status: 'TODO',
+      productionBatchId: 'batch-1',
+      productionOperationId: 'op-1',
+      technicalSheetStepId: 'step-1',
+      isTimeScheduled: false,
+    };
+    prisma.operationalTask.findFirst.mockResolvedValue(sourceStep);
+    prisma.operationalTask.findMany.mockResolvedValue([
+      {
+        id: 'task-whole',
+        source: 'PRODUCTION',
+        status: 'CANCELLED',
+        productionBatchId: 'batch-1',
+        productionOperationId: null,
+        technicalSheetStepId: null,
+        isTimeScheduled: false,
+      },
+      sourceStep,
+      {
+        ...sourceStep,
+        id: 'task-step-2',
+        productionOperationId: 'op-2',
+        technicalSheetStepId: 'step-2',
+        isTimeScheduled: true,
+      },
+    ]);
+
+    await expect(
+      service.mergeProductionRecipeTask(
+        'org-1',
+        { id: 'admin-user', role: 'ADMIN', permissions: [] },
+        'task-step-1',
+      ),
+    ).rejects.toThrow(
+      'Recomposition impossible : toutes les étapes doivent être à placer et non démarrées.',
+    );
+  });
+
+  it('reactivates cancelled step tasks when the same recipe is split again', async () => {
+    prisma.hrEmployee.findMany.mockResolvedValue([]);
+    const source = {
+      id: 'task-whole',
+      organizationId: 'org-1',
+      title: 'Recette complète · Velouté',
+      source: 'PRODUCTION',
+      category: 'KITCHEN',
+      status: 'TODO',
+      departmentId: 'kitchen',
+      positionId: null,
+      siteId: 'site-1',
+      assignedEmployeeId: null,
+      planningAssignmentId: null,
+      technicalSheetId: 'sheet-1',
+      technicalSheetStepId: null,
+      productionBatchId: 'batch-1',
+      productionOperationId: null,
+      startsAt: new Date('2026-07-20T07:00:00.000Z'),
+      endsAt: new Date('2026-07-20T08:00:00.000Z'),
+      quantity: new Prisma.Decimal(40),
+      unitLabel: 'portions',
+      assignments: [],
+      technicalSheet: { id: 'sheet-1', name: 'Velouté' },
+      productionBatch: {
+        id: 'batch-1',
+        operations: [
+          { id: 'op-1', position: 0, title: 'Tailler', activeMinutes: 20, notes: null },
+          { id: 'op-2', position: 1, title: 'Mixer', activeMinutes: 15, notes: null },
+        ],
+      },
+    };
+    prisma.operationalTask.findFirst.mockResolvedValue(source);
+    prisma.technicalSheetStep.findMany.mockResolvedValue([
+      { id: 'step-1', order: 1, title: 'Tailler', description: 'Tailler.' },
+      { id: 'step-2', order: 2, title: 'Mixer', description: 'Mixer.' },
+    ]);
+    prisma.operationalTask.findMany
+      .mockResolvedValueOnce([
+        {
+          id: 'task-step-1',
+          productionOperationId: 'op-1',
+          status: 'CANCELLED',
+          createdAt: new Date(),
+        },
+        {
+          id: 'task-step-2',
+          productionOperationId: 'op-2',
+          status: 'CANCELLED',
+          createdAt: new Date(),
+        },
+      ])
+      .mockResolvedValueOnce([
+        { id: 'task-step-1', productionOperationId: 'op-1' },
+        { id: 'task-step-2', productionOperationId: 'op-2' },
+      ]);
+
+    await service.splitProductionRecipeTask(
+      'org-1',
+      { id: 'admin-user', role: 'ADMIN', permissions: [] },
+      'task-whole',
+    );
+
+    expect(prisma.operationalTask.create).not.toHaveBeenCalled();
+    expect(prisma.operationalTask.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'task-step-1' },
+        data: expect.objectContaining({
+          status: 'TODO',
+          isTimeScheduled: false,
+          planningAssignmentId: null,
+        }),
+      }),
+    );
+    expect(prisma.operationalTask.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'task-step-2' },
+        data: expect.objectContaining({
+          status: 'TODO',
+          isTimeScheduled: false,
+          planningAssignmentId: null,
+        }),
+      }),
+    );
   });
 
   it('builds an immutable execution view and scales ingredients to the linked batch', async () => {

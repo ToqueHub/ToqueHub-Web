@@ -29,6 +29,9 @@ export class MdnsPublisher {
       port: options.port,
       host: options.host,
       txt: options.txt,
+      // The instance id makes this name unique. Skipping the library probe also
+      // prevents stale records from a hot restart being reported as conflicts.
+      probe: false,
     });
 
     this.service.on('up', () => {

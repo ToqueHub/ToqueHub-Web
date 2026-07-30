@@ -6,6 +6,8 @@ import { ProductionService } from './production.service';
 import { OperationalTasksService } from './operational-tasks.service';
 import { ProductionDayClosureService } from './production-day-closure.service';
 import { ProductionOperationalExportService } from './production-operational-export.service';
+import { CatererEventLifecycleService } from './caterer-event-lifecycle.service';
+import { ProductionIngredientTraceabilityService } from './production-ingredient-traceability.service';
 
 @Module({
   controllers: [ProductionController],
@@ -16,6 +18,8 @@ import { ProductionOperationalExportService } from './production-operational-exp
     OperationalTasksService,
     ProductionDayClosureService,
     ProductionOperationalExportService,
+    CatererEventLifecycleService,
+    ProductionIngredientTraceabilityService,
   ],
   exports: [
     ProductionService,
@@ -24,6 +28,8 @@ import { ProductionOperationalExportService } from './production-operational-exp
     OperationalTasksService,
     ProductionDayClosureService,
     ProductionOperationalExportService,
+    CatererEventLifecycleService,
+    ProductionIngredientTraceabilityService,
   ],
 })
 export class ProductionModule {}

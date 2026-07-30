@@ -5,6 +5,7 @@ import {
   PurchaseOrderStatus,
   PurchaseReceiptLineStatus,
   PurchaseReceiptStatus,
+  HaccpReceptionControlStatus,
   StockReceptionStatus,
 } from '@prisma/client';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
@@ -46,8 +47,6 @@ export class PurchaseReceiptValidationService {
       throw new BadRequestException(
         'Résolvez toutes les correspondances produit et unité avant validation.',
       );
-    if (!receipt.lines.some((line) => Number(line.acceptedQuantity) > 0))
-      throw new BadRequestException('Aucune quantité acceptée à réceptionner.');
 
     return this.prisma
       .$transaction(async (tx) => {
@@ -87,6 +86,13 @@ export class PurchaseReceiptValidationService {
         ]);
         const productsById = new Map(products.map((product) => [product.id, product]));
         const unitsById = new Map(units.map((unit) => [unit.id, unit]));
+        const acceptedTotal = lockedReceipt.lines.reduce((sum, line) => sum + Number(line.acceptedQuantity || 0), 0);
+        const deliveredTotal = lockedReceipt.lines.reduce((sum, line) => sum + Number(line.deliveredQuantity || 0), 0);
+        const controlStatus = acceptedTotal <= 0
+          ? HaccpReceptionControlStatus.REJECTED
+          : (!lockedReceipt.controlConforming || acceptedTotal < deliveredTotal)
+            ? HaccpReceptionControlStatus.PARTIAL
+            : HaccpReceptionControlStatus.CONFORMING;
         const stockReception = await tx.stockReception.create({
           data: {
             organizationId,
@@ -101,19 +107,41 @@ export class PurchaseReceiptValidationService {
             totalExcludingTax: order.totalExcludingTax,
             totalTax: order.totalTax,
             totalIncludingTax: order.totalIncludingTax,
-            status: StockReceptionStatus.VALIDATED,
+            status: acceptedTotal > 0 ? StockReceptionStatus.VALIDATED : StockReceptionStatus.CANCELLED,
             createdById: actor.id,
             siteId: lockedReceipt.siteId,
             locationId: lockedReceipt.locationId,
             validatedAt: new Date(),
             purchaseReceiptId: id,
+            deliveryTemperature: lockedReceipt.deliveryTemperature,
+            controlStatus,
+            controlNotes: lockedReceipt.controlNotes || lockedReceipt.notes,
           },
         });
 
         const receivedByOrderLine = new Map<string, Prisma.Decimal>();
         for (const line of lockedReceipt.lines) {
           const accepted = new Prisma.Decimal(line.acceptedQuantity);
-          if (accepted.lte(0) || !line.productId || !line.unitId) continue;
+          if (accepted.lte(0)) {
+            await tx.stockReceptionLine.create({
+              data: {
+                receptionId: stockReception.id,
+                productId: line.productId,
+                unitId: line.unitId,
+                ocrLabel: line.label,
+                reference: line.reference,
+                quantity: accepted,
+                documentedQuantity: line.orderLine?.orderedQuantity ?? line.deliveredQuantity,
+                deliveredQuantity: line.deliveredQuantity,
+                acceptedQuantity: accepted,
+                unitPrice: line.unitPrice,
+                matchingStatus: line.productId && line.unitId ? 'RECOGNIZED' : 'NEEDS_REVIEW',
+                userCorrection: { source: 'PURCHASING', purchaseReceiptLineId: line.id, refused: true },
+              },
+            });
+            continue;
+          }
+          if (!line.productId || !line.unitId) continue;
           const product = productsById.get(line.productId);
           const unit = unitsById.get(line.unitId);
           if (!product || !unit)
@@ -133,6 +161,11 @@ export class PurchaseReceiptValidationService {
             locationId: lockedReceipt.locationId,
             stockQuantity: baseQuantity,
             inputQuantity: accepted,
+            documentedQuantity: new Prisma.Decimal(
+              line.orderLine?.orderedQuantity ?? line.deliveredQuantity,
+            ),
+            deliveredQuantity: new Prisma.Decimal(line.deliveredQuantity),
+            acceptedQuantity: accepted,
             baseUnitPrice,
             unitPrice: effectiveOrderUnitPrice,
             lineTotal: accepted.mul(effectiveOrderUnitPrice),
@@ -170,7 +203,9 @@ export class PurchaseReceiptValidationService {
         const partial = linesAfter.some((line) =>
           new Prisma.Decimal(line.receivedQuantity).gt(0),
         );
-        const nextStatus = complete
+        const nextStatus = acceptedTotal <= 0
+          ? order.status
+          : complete
           ? PurchaseOrderStatus.RECEIVED
           : partial
             ? PurchaseOrderStatus.PARTIALLY_RECEIVED
@@ -183,7 +218,7 @@ export class PurchaseReceiptValidationService {
         const validated = await tx.purchaseReceipt.update({
           where: { id, organizationId },
           data: {
-            status: PurchaseReceiptStatus.VALIDATED,
+            status: acceptedTotal > 0 ? PurchaseReceiptStatus.VALIDATED : PurchaseReceiptStatus.CANCELLED,
             validatedAt: new Date(),
             validatedById: actor.id,
           },

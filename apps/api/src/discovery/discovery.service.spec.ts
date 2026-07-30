@@ -56,7 +56,7 @@ describe('DiscoveryService', () => {
     await service.publish();
 
     expect(publisher.publish).toHaveBeenCalledWith(expect.objectContaining({
-      name: 'Restaurant Les Pins',
+      name: expect.stringMatching(/^Restaurant Les Pins \([a-f0-9]{8}\)$/),
       port: 3000,
       txt: expect.objectContaining({
         instanceName: 'Restaurant Les Pins',

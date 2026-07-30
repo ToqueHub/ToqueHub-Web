@@ -28,6 +28,7 @@ export class CreateProductionCampaignDto {
   @IsOptional() @IsEnum(TechnicalSheetYieldMode) targetMode?: TechnicalSheetYieldMode;
   @IsOptional() @IsDecimal(DECIMAL_OPTIONS) targetQuantity?: string;
   @IsString() neededAt!: string;
+  @IsOptional() @IsString() productionDate?: string;
   @IsOptional() @IsString() @MaxLength(8) plannedTime?: string;
   @IsOptional() @IsString() @MaxLength(160) name?: string;
   @IsOptional() @IsEnum(ProductionPriority) priority?: ProductionPriority;
@@ -50,6 +51,7 @@ export class UpdateProductionCampaignDto {
   @IsOptional() @IsEnum(TechnicalSheetYieldMode) targetMode?: TechnicalSheetYieldMode;
   @IsOptional() @IsDecimal(DECIMAL_OPTIONS) targetQuantity?: string;
   @IsString() @MaxLength(8) plannedTime!: string;
+  @IsOptional() @IsString() productionDate?: string;
   @IsOptional() @IsUUID() serviceId?: string;
   @IsOptional() @IsDecimal(DECIMAL_OPTIONS) targetPortions?: string;
 }

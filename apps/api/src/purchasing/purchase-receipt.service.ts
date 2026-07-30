@@ -45,11 +45,26 @@ export class PurchaseReceiptService {
   ) {
     await this.context.assertInstalled(organizationId);
     this.policy.assertPermission(actor, 'purchasing.receive');
-    const order = await this.prisma.purchaseOrder.findFirst({
+    let order = await this.prisma.purchaseOrder.findFirst({
       where: { id: orderId, organizationId },
       include: { lines: true },
     });
     if (!order) throw new NotFoundException('Commande introuvable.');
+    if (order.status === PurchaseOrderStatus.SENT) {
+      order = await this.prisma.purchaseOrder.update({
+        where: { id: order.id },
+        data: { status: PurchaseOrderStatus.ACKNOWLEDGED, acknowledgedAt: new Date() },
+        include: { lines: true },
+      });
+      await createPurchaseOrderEvent(
+        this.prisma,
+        organizationId,
+        order.id,
+        actor.id,
+        'ORDER_ACKNOWLEDGED_FOR_RECEIPT',
+        `Commande ${order.number} confirmée au démarrage de la réception`,
+      );
+    }
     if (!RECEIVABLE_ORDER_STATUSES.includes(order.status))
       throw new BadRequestException('La commande doit être envoyée avant sa réception.');
     await Promise.all([
@@ -71,6 +86,9 @@ export class PurchaseReceiptService {
         deliveryNoteNumber: dto.deliveryNoteNumber,
         deliveryDate: dto.deliveryDate ? this.delivery.dateOnly(dto.deliveryDate) : null,
         notes: dto.notes,
+        deliveryTemperature: dto.deliveryTemperature,
+        controlConforming: dto.controlConforming,
+        controlNotes: dto.controlNotes,
         status,
         createdById: actor.id,
         lines: { create: lines },
@@ -125,6 +143,9 @@ export class PurchaseReceiptService {
             deliveryNoteNumber: dto.deliveryNoteNumber,
             deliveryDate: dto.deliveryDate ? this.delivery.dateOnly(dto.deliveryDate) : null,
             notes: dto.notes,
+            deliveryTemperature: dto.deliveryTemperature,
+            controlConforming: dto.controlConforming,
+            controlNotes: dto.controlNotes,
             status,
             lines: { create: lines },
           },

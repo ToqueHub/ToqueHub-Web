@@ -4,7 +4,6 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-RUN_SEED="${RUN_SEED:-1}"
 RUN_DB_SETUP="${RUN_DB_SETUP:-1}"
 RESET_DB="${RESET_DB:-0}"
 
@@ -18,17 +17,14 @@ Prepares a freshly pulled main branch for local development:
   3. Prepares the local PostgreSQL role/database
   4. Generates Prisma Client
   5. Applies pending Prisma migrations without deleting data
-  6. Seeds demo data unless disabled
 
 Options:
   --no-db-setup   Skip local PostgreSQL setup
-  --no-seed       Skip demo seed data
   --reset-db      Drop local data and replay migrations before seeding
   -h, --help      Show this help
 
 Environment:
   RUN_DB_SETUP=0  Same as --no-db-setup
-  RUN_SEED=0      Same as --no-seed
   RESET_DB=1      Same as --reset-db
 MSG
 }
@@ -37,9 +33,6 @@ for arg in "$@"; do
   case "$arg" in
     --no-db-setup)
       RUN_DB_SETUP=0
-      ;;
-    --no-seed)
-      RUN_SEED=0
       ;;
     --reset-db)
       RESET_DB=1
@@ -100,13 +93,6 @@ To keep local data, recover the missing migration/code instead of resetting.
 MSG
     exit 1
   fi
-fi
-
-if [[ "$RUN_SEED" == "1" ]]; then
-  log "Seeding demo data"
-  npm run prisma:seed
-else
-  log "Skipping seed"
 fi
 
 cat <<'MSG'

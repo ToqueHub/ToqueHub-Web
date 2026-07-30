@@ -70,7 +70,25 @@ export class CorrectedReceptionLineDto {
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0)
+  documentedQuantity?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  deliveredQuantity?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
   quantity?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  acceptedQuantity?: number;
 
   @IsOptional()
   @IsString()
@@ -191,6 +209,20 @@ export class SaveOcrCorrectionDto {
   @IsOptional()
   @IsUUID()
   locationId?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  deliveryTemperature?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  controlConforming?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  controlNotes?: string;
 
   @IsOptional()
   @Type(() => Number)

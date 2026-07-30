@@ -1,7 +1,8 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { json, urlencoded } from 'express';
+import { json, static as expressStatic, urlencoded } from 'express';
+import { join, resolve } from 'node:path';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 
@@ -26,6 +27,14 @@ async function bootstrap() {
     credentials: true,
     exposedHeaders: ['Content-Disposition'],
   });
+  const haccpUploadRoot = resolve(
+    process.env.HACCP_UPLOAD_DIR || process.env.UPLOAD_DIR || join(__dirname, '..', 'uploads'),
+    'haccp',
+  );
+  // Production evidence stores public image paths under /uploads/haccp/… .
+  // Serving the exact root also prevents the web app from resolving against a
+  // different working directory than the API process.
+  app.use('/uploads/haccp', expressStatic(haccpUploadRoot));
   app.setGlobalPrefix('api');
   app.useGlobalPipes(
     new ValidationPipe({

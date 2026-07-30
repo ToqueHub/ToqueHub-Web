@@ -10,6 +10,7 @@ import {
   Prisma,
   StockReceptionLineMatchingStatus,
   StockReceptionStatus,
+  HaccpReceptionControlStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MistralClientService } from '../mistral/mistral-client.service';
@@ -25,9 +26,6 @@ const OCR_AI_MODEL = process.env.OCR_MISTRAL_AI_MODEL || 'mistral-large-latest';
 const OCR_PROVIDER = process.env.OCR_PROVIDER || 'mistral';
 const OCR_DOCUMENT_ANNOTATION_ENABLED = process.env.OCR_MISTRAL_DOCUMENT_ANNOTATION !== 'false';
 const STOCKS_OCR_UPLOAD_ROOT = resolve(process.env.STOCKS_OCR_UPLOAD_DIR || process.env.UPLOAD_DIR || 'uploads', 'stocks-ocr');
-const PRODUCT_LABEL_OCR_SOURCE = 'product-label-ocr';
-const PRODUCT_LABEL_OCR_REVIEWED_SOURCE = 'product-label-ocr-reviewed';
-const MAX_PRODUCT_LABEL_FILES = 8;
 const ACCEPTED_MIME = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif', 'image/avif']);
 const ACCEPTED_EXT = new Set(['.pdf', '.png', '.jpg', '.jpeg', '.webp', '.heic', '.heif', '.avif']);
 const EXCLUDED_LINE_RE = /\b(total|tva|remise|consigne|transport|frais|port|sous-total|net a payer|net à payer|acompte)\b/i;
@@ -84,88 +82,6 @@ interface ExtractedLine {
   warnings?: string[];
   sourceText?: string | null;
 }
-
-type ProductNutritionKey =
-  | 'energyKj'
-  | 'energyKcal'
-  | 'fatGrams'
-  | 'saturatedFatGrams'
-  | 'carbohydratesGrams'
-  | 'sugarsGrams'
-  | 'fiberGrams'
-  | 'proteinGrams'
-  | 'saltGrams';
-
-type ProductLabelAiExtraction = {
-  ingredients: string | null;
-  nutrition: Record<ProductNutritionKey, number | null>;
-  allergensPresent: string[];
-  possibleTraces: string[];
-  confidence: number | null;
-  warnings: string[];
-};
-
-const PRODUCT_LABEL_ALLERGENS = [
-  'Gluten',
-  'Blé',
-  'Seigle',
-  'Orge',
-  'Avoine',
-  'Épeautre',
-  'Kamut',
-  'Lait',
-  'Œuf',
-  'Poisson',
-  'Crustacés',
-  'Mollusques',
-  'Fruits à coque',
-  'Amande',
-  'Noisette',
-  'Noix',
-  'Noix de cajou',
-  'Noix de pécan',
-  'Noix du Brésil',
-  'Pistache',
-  'Macadamia',
-  'Arachide',
-  'Soja',
-  'Sésame',
-  'Céleri',
-  'Moutarde',
-  'Lupin',
-  'Sulfites',
-] as const;
-
-const PRODUCT_LABEL_ALLERGEN_ALIASES: Array<[RegExp, (typeof PRODUCT_LABEL_ALLERGENS)[number][]]> = [
-  [/\b(gluten|gluteeni|gluteen)\b/i, ['Gluten']],
-  [/\b(wheat|ble|vehn[aä]|vete)\b/i, ['Gluten', 'Blé']],
-  [/\b(rye|seigle|ruis|rag)\b/i, ['Gluten', 'Seigle']],
-  [/\b(barley|orge|ohra|korn)\b/i, ['Gluten', 'Orge']],
-  [/\b(oat|oats|avoine|kaura|havre)\b/i, ['Gluten', 'Avoine']],
-  [/\b(spelt|epeautre|speltti|dinkel)\b/i, ['Gluten', 'Épeautre']],
-  [/\b(kamut)\b/i, ['Gluten', 'Kamut']],
-  [/\b(milk|lait|maito|mjolk|dairy)\b/i, ['Lait']],
-  [/\b(egg|eggs|oeuf|mun[aä]|agg)\b/i, ['Œuf']],
-  [/\b(fish|poisson|kala|fisk)\b/i, ['Poisson']],
-  [/\b(crustace|crustacean|rapu|kraftdjur)\b/i, ['Crustacés']],
-  [/\b(mollusc|mollusque|nilviainen|blotdjur)\b/i, ['Mollusques']],
-  [/\b(tree nuts?|fruits? a coque|p[aä]hkin[aä]t?|notter)\b/i, ['Fruits à coque']],
-  [/\b(almond|amande|manteli|mandel)\b/i, ['Fruits à coque', 'Amande']],
-  [/\b(hazelnut|noisette|hasselp[aä]hkin[aä]|hasselnot)\b/i, ['Fruits à coque', 'Noisette']],
-  [/\b(walnut|noix|saksanp[aä]hkin[aä]|valnot)\b/i, ['Fruits à coque', 'Noix']],
-  [/\b(cashew|cajou|cashewp[aä]hkin[aä]|cashewnot)\b/i, ['Fruits à coque', 'Noix de cajou']],
-  [/\b(pecan|pecanp[aä]hkin[aä]|pekannot)\b/i, ['Fruits à coque', 'Noix de pécan']],
-  [/\b(brazil nut|noix du bresil|parap[aä]hkin[aä]|paranot)\b/i, ['Fruits à coque', 'Noix du Brésil']],
-  [/\b(pistachio|pistache|pistaasi)\b/i, ['Fruits à coque', 'Pistache']],
-  [/\b(macadamia)\b/i, ['Fruits à coque', 'Macadamia']],
-  [/\b(peanut|arachide|maap[aä]hkin[aä]|jordnot)\b/i, ['Arachide']],
-  [/\b(soy|soya|soybeans?|soja)\b/i, ['Soja']],
-  [/\b(sesame|sesam|seesami)\b/i, ['Sésame']],
-  [/\b(celery|celeri|selleri)\b/i, ['Céleri']],
-  [/\b(mustard|moutarde|sinappi|senap)\b/i, ['Moutarde']],
-  [/\b(lupin|lupiini)\b/i, ['Lupin']],
-  [/\b(sulphite|sulfite|sulfiitti)\b/i, ['Sulfites']],
-];
 
 /** Makes invoice OCR output immediately compatible with the stock unit catalogue. */
 function normalizeCatalogProduct(input: Record<string, unknown>) {
@@ -341,477 +257,6 @@ export class StocksOcrService {
       configured: Boolean(apiKey),
       source: apiKey && (process.env.MISTRAL_API_KEY || process.env.OCR_MISTRAL_API_KEY) === apiKey ? 'environment' : apiKey ? 'organization' : null,
     };
-  }
-
-  async analyzeProductLabel(
-    organizationId: string,
-    actor: Actor,
-    productId: string,
-    file: UploadedFile,
-  ) {
-    this.assertOcr(actor);
-    await this.assertOcrConfigured(organizationId);
-    if (!file) throw new BadRequestException('Ajoutez une photo lisible de l’étiquette produit.');
-    this.validateFile(file);
-
-    const product = await this.prisma.product.findFirst({
-      where: { id: productId, organizationId, isArchived: false },
-      select: { id: true, name: true },
-    });
-    if (!product) throw new NotFoundException('Produit introuvable');
-
-    const result = await this.mistralClient.ocrMarkdown(organizationId, {
-      buffer: file.buffer,
-      mimeType: this.mimeForDocument(file.mimetype, file.originalname),
-      model: OCR_MODEL,
-      withAnnotation: false,
-    });
-    const markdown = result.markdown?.trim();
-    if (!markdown) {
-      throw new BadRequestException(
-        'Aucun texte lisible n’a été trouvé. Reprenez la photo de face, avec un bon éclairage.',
-      );
-    }
-
-    const nullableNumber = { anyOf: [{ type: 'number' }, { type: 'null' }] };
-    const nutritionProperties = {
-      energyKj: nullableNumber,
-      energyKcal: nullableNumber,
-      fatGrams: nullableNumber,
-      saturatedFatGrams: nullableNumber,
-      carbohydratesGrams: nullableNumber,
-      sugarsGrams: nullableNumber,
-      fiberGrams: nullableNumber,
-      proteinGrams: nullableNumber,
-      saltGrams: nullableNumber,
-    };
-    const schema = {
-      type: 'object',
-      additionalProperties: false,
-      required: [
-        'ingredients',
-        'nutrition',
-        'allergensPresent',
-        'possibleTraces',
-        'confidence',
-        'warnings',
-      ],
-      properties: {
-        ingredients: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-        nutrition: {
-          type: 'object',
-          additionalProperties: false,
-          required: Object.keys(nutritionProperties),
-          properties: nutritionProperties,
-        },
-        allergensPresent: { type: 'array', items: { type: 'string' } },
-        possibleTraces: { type: 'array', items: { type: 'string' } },
-        confidence: nullableNumber,
-        warnings: { type: 'array', items: { type: 'string' } },
-      },
-    } as Record<string, unknown>;
-
-    let extraction: ProductLabelAiExtraction;
-    try {
-      extraction = await this.mistralClient.chatJson<ProductLabelAiExtraction>(
-        organizationId,
-        [
-          {
-            role: 'system',
-            content: [
-              'Tu extrais la liste complète des ingrédients, les valeurs nutritionnelles POUR 100 g et les allergènes d’une étiquette alimentaire.',
-              'Pour ingredients, retranscris fidèlement la liste telle qu’elle apparaît, sans la traduire, sans résumer et sans ajouter les titres voisins (importateur, origine, conservation ou nutrition).',
-              'N’invente jamais de valeur. Si une donnée pour 100 g est absente ou ambiguë, retourne null.',
-              'Sépare strictement les allergènes certains (Contains, Contient, Sisältää, Innehåller) des traces possibles (May contain, Peut contenir, Saattaa sisältää, Kan innehålla).',
-              'Ne classe jamais une mention de traces parmi les allergènes présents.',
-              `Pour les allergènes, utilise uniquement ces libellés français : ${PRODUCT_LABEL_ALLERGENS.join(', ')}.`,
-              'Pour une céréale nommée, retourne aussi Gluten. Pour un fruit à coque nommé, retourne aussi Fruits à coque.',
-              'Les quantités nutritionnelles sont des nombres sans unité : kJ, kcal et grammes.',
-              'Place dans warnings les informations visibles mais non prises en charge ou toute ambiguïté utile à la vérification humaine.',
-            ].join(' '),
-          },
-          {
-            role: 'user',
-            content: `Produit : ${product.name}\n\nTexte OCR de l’étiquette :\n${markdown.slice(0, 80_000)}`,
-          },
-        ],
-        'toquehub_product_label',
-        schema,
-        { temperature: 0, fallbackToJsonObject: true, timeoutMs: 12_000 },
-      );
-    } catch (error) {
-      this.logger.warn(
-        `Structuration IA de l’étiquette indisponible product=${product.id}: ${error instanceof Error ? error.message : error}`,
-      );
-      extraction = this.extractProductLabelFromOcrText(markdown);
-    }
-
-    const warnings = (extraction.warnings ?? [])
-      .map((warning) => String(warning).trim())
-      .filter(Boolean)
-      .slice(0, 12);
-    const ingredients = String(extraction.ingredients ?? '')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 20_000) || null;
-    const nutrition = this.normalizeProductLabelNutrition(extraction.nutrition, warnings);
-    const allergensPresent = this.normalizeProductLabelAllergens(extraction.allergensPresent);
-    const presentSet = new Set(allergensPresent);
-    const possibleTraces = this.normalizeProductLabelAllergens(extraction.possibleTraces).filter(
-      (allergen) => !presentSet.has(allergen),
-    );
-    const detectedCount =
-      (ingredients ? 1 : 0) +
-      Object.values(nutrition).filter((value) => value !== null).length +
-      allergensPresent.length +
-      possibleTraces.length;
-    if (!detectedCount) {
-      warnings.push(
-        'Aucune valeur nutritionnelle ni aucun allergène fiable n’a été détecté sur cette photo.',
-      );
-    }
-
-    this.logger.log(
-      `OCR étiquette produit terminé product=${product.id} org=${organizationId} user=${actor.id} pages=${result.pageCount ?? 0} champs=${detectedCount}`,
-    );
-    return {
-      productId: product.id,
-      filename: file.originalname,
-      mimeType: file.mimetype,
-      pageCount: result.pageCount,
-      ingredients,
-      nutrition,
-      allergensPresent,
-      possibleTraces,
-      confidence:
-        typeof extraction.confidence === 'number' && Number.isFinite(extraction.confidence)
-          ? Math.max(0, Math.min(1, extraction.confidence))
-          : null,
-      warnings: [...new Set(warnings)],
-    };
-  }
-
-  async uploadProductLabelImports(
-    organizationId: string,
-    actor: Actor,
-    productId: string,
-    files: UploadedFile[],
-  ) {
-    this.assertOcr(actor);
-    await this.assertOcrConfigured(organizationId);
-    if (!files?.length) throw new BadRequestException('Ajoutez au moins une photo de l’étiquette.');
-    if (files.length > MAX_PRODUCT_LABEL_FILES) {
-      throw new BadRequestException(
-        `Vous pouvez ajouter ${MAX_PRODUCT_LABEL_FILES} captures maximum par analyse.`,
-      );
-    }
-    const product = await this.prisma.product.findFirst({
-      where: { id: productId, organizationId, isArchived: false },
-      select: { id: true, name: true },
-    });
-    if (!product) throw new NotFoundException('Produit introuvable');
-
-    const batchId = randomUUID();
-    const sourceType = `${PRODUCT_LABEL_OCR_SOURCE}:${batchId}`;
-    await mkdir(join(STOCKS_OCR_UPLOAD_ROOT, organizationId), { recursive: true });
-    const documents: Array<{
-      id: string;
-      originalName: string;
-      mimeType: string;
-      status: DocumentStatus;
-    }> = [];
-    for (const file of files) {
-      this.validateFile(file);
-      const fileId = randomUUID();
-      const extension = this.safeExtension(file);
-      const internalFilename = `${fileId}${extension}`;
-      const storagePath = join(organizationId, internalFilename);
-      await writeFile(join(STOCKS_OCR_UPLOAD_ROOT, storagePath), file.buffer);
-      const document = await this.prisma.$transaction(async (tx) => {
-        const created = await tx.document.create({
-          data: {
-            organizationId,
-            uploadedById: actor.id,
-            internalFilename,
-            originalName: file.originalname,
-            mimeType: file.mimetype || 'application/octet-stream',
-            sizeBytes: file.size ?? file.buffer.length,
-            storagePath,
-            contentSha256: createHash('sha256').update(file.buffer).digest('hex'),
-            sourceModule: 'stocks',
-            sourceType,
-            sourceId: product.id,
-            status: DocumentStatus.UPLOADED,
-          },
-        });
-        await tx.ocrDocument.create({
-          data: {
-            organizationId,
-            documentId: created.id,
-            provider: OCR_PROVIDER,
-            model: OCR_MODEL,
-            status: OcrProcessingStatus.PENDING,
-          },
-        });
-        return created;
-      });
-      documents.push(document);
-    }
-
-    setImmediate(() => {
-      void this.processProductLabelBatch(
-        organizationId,
-        actor,
-        product.id,
-        documents.map((document) => document.id),
-      );
-    });
-    return {
-      batchId,
-      product,
-      documents: documents.map((document) => ({
-        id: document.id,
-        originalName: document.originalName,
-        mimeType: document.mimeType,
-        status: document.status,
-      })),
-    };
-  }
-
-  async listProductLabelImportStatuses(organizationId: string, actor: Actor) {
-    this.assertOcr(actor);
-    const documents = await this.prisma.document.findMany({
-      where: {
-        organizationId,
-        sourceModule: 'stocks',
-        sourceType: { startsWith: `${PRODUCT_LABEL_OCR_SOURCE}:` },
-      },
-      include: {
-        ocrDocuments: {
-          include: { extractions: { orderBy: { updatedAt: 'desc' }, take: 1 } },
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-        },
-      },
-      orderBy: { updatedAt: 'desc' },
-      take: 80,
-    });
-    const productIds = [...new Set(documents.map((document) => document.sourceId).filter(Boolean))] as string[];
-    const products = productIds.length
-      ? await this.prisma.product.findMany({
-          where: { organizationId, id: { in: productIds } },
-          select: { id: true, name: true },
-        })
-      : [];
-    const productById = new Map(products.map((product) => [product.id, product]));
-    const grouped = new Map<string, typeof documents>();
-    for (const document of documents) {
-      const key = document.sourceType ?? '';
-      grouped.set(key, [...(grouped.get(key) ?? []), document]);
-    }
-
-    return {
-      statuses: [...grouped.entries()].slice(0, 20).map(([sourceType, batchDocuments]) => {
-        const batchId = sourceType.slice(`${PRODUCT_LABEL_OCR_SOURCE}:`.length);
-        const product = productById.get(batchDocuments[0]?.sourceId ?? '') ?? {
-          id: batchDocuments[0]?.sourceId ?? '',
-          name: 'Produit archivé',
-        };
-        const documentStatuses = batchDocuments.map((document) => {
-          const ocr = document.ocrDocuments[0] ?? null;
-          const extraction = ocr?.extractions[0] ?? null;
-          const failed =
-            document.status === DocumentStatus.FAILED ||
-            ocr?.status === OcrProcessingStatus.FAILED;
-          const ready = Boolean(extraction) && document.status === DocumentStatus.PROCESSED;
-          const processing =
-            document.status === DocumentStatus.PROCESSING ||
-            ocr?.status === OcrProcessingStatus.PROCESSING;
-          return {
-            document: {
-              id: document.id,
-              originalName: document.originalName,
-              mimeType: document.mimeType,
-              sizeBytes: document.sizeBytes,
-              status: document.status,
-              createdAt: document.createdAt,
-              updatedAt: document.updatedAt,
-            },
-            state: failed ? 'erreur' : ready ? 'vérifier' : processing ? 'analyse' : 'en attente',
-            progress: failed || ready ? 100 : processing ? 55 : 12,
-            result: ready ? extraction?.extractedJson : null,
-            errorMessage: failed ? ocr?.errorMessage || 'Analyse OCR impossible.' : null,
-          };
-        });
-        const ready = documentStatuses.some((status) => status.state === 'vérifier');
-        const working = documentStatuses.some(
-          (status) => status.state === 'analyse' || status.state === 'en attente',
-        );
-        const errors = documentStatuses.filter((status) => status.state === 'erreur').length;
-        return {
-          batchId,
-          product,
-          state: ready && !working ? 'vérifier' : working ? 'analyse' : errors ? 'erreur' : 'en attente',
-          progress: working
-            ? Math.round(
-                documentStatuses.reduce((sum, status) => sum + status.progress, 0) /
-                  Math.max(documentStatuses.length, 1),
-              )
-            : 100,
-          documents: documentStatuses,
-          results: documentStatuses
-            .map((status) => status.result)
-            .filter((result): result is NonNullable<typeof result> => Boolean(result)),
-          errors,
-        };
-      }),
-    };
-  }
-
-  async reviewProductLabelImport(
-    organizationId: string,
-    actor: Actor,
-    productId: string,
-    batchId: string,
-  ) {
-    this.assertOcr(actor);
-    const sourceType = `${PRODUCT_LABEL_OCR_SOURCE}:${batchId}`;
-    const documents = await this.prisma.document.findMany({
-      where: { organizationId, sourceModule: 'stocks', sourceType, sourceId: productId },
-      include: { ocrDocuments: { select: { id: true } } },
-    });
-    if (!documents.length) throw new NotFoundException('Analyse OCR produit introuvable.');
-    const ocrDocumentIds = documents.flatMap((document) =>
-      document.ocrDocuments.map((ocr) => ocr.id),
-    );
-    await this.prisma.$transaction([
-      this.prisma.document.updateMany({
-        where: { id: { in: documents.map((document) => document.id) } },
-        data: { sourceType: `${PRODUCT_LABEL_OCR_REVIEWED_SOURCE}:${batchId}` },
-      }),
-      this.prisma.ocrBusinessExtraction.updateMany({
-        where: { ocrDocumentId: { in: ocrDocumentIds } },
-        data: { status: OcrBusinessExtractionStatus.REVIEWED },
-      }),
-    ]);
-    return { reviewed: true };
-  }
-
-  private async processProductLabelBatch(
-    organizationId: string,
-    actor: Actor,
-    productId: string,
-    documentIds: string[],
-  ) {
-    for (const documentId of documentIds) {
-      await this.processProductLabelImport(organizationId, actor, productId, documentId).catch(
-        (error) => {
-          this.logger.warn(
-            `Analyse OCR produit échouée document=${documentId}: ${error instanceof Error ? error.message : error}`,
-          );
-        },
-      );
-    }
-  }
-
-  private async processProductLabelImport(
-    organizationId: string,
-    actor: Actor,
-    productId: string,
-    documentId: string,
-  ) {
-    const document = await this.prisma.document.findFirst({
-      where: {
-        id: documentId,
-        organizationId,
-        sourceModule: 'stocks',
-        sourceType: { startsWith: `${PRODUCT_LABEL_OCR_SOURCE}:` },
-        sourceId: productId,
-      },
-      include: { ocrDocuments: { orderBy: { createdAt: 'desc' }, take: 1 } },
-    });
-    if (!document) throw new NotFoundException('Capture OCR produit introuvable.');
-    const ocr =
-      document.ocrDocuments[0] ??
-      (await this.prisma.ocrDocument.create({
-        data: {
-          organizationId,
-          documentId,
-          provider: OCR_PROVIDER,
-          model: OCR_MODEL,
-          status: OcrProcessingStatus.PENDING,
-        },
-      }));
-    const started = Date.now();
-    await this.prisma.$transaction([
-      this.prisma.document.update({
-        where: { id: document.id },
-        data: { status: DocumentStatus.PROCESSING },
-      }),
-      this.prisma.ocrDocument.update({
-        where: { id: ocr.id },
-        data: {
-          status: OcrProcessingStatus.PROCESSING,
-          errorCode: null,
-          errorMessage: null,
-        },
-      }),
-    ]);
-    try {
-      const buffer = await readFile(join(STOCKS_OCR_UPLOAD_ROOT, document.storagePath));
-      const result = await this.analyzeProductLabel(organizationId, actor, productId, {
-        originalname: document.originalName,
-        mimetype: document.mimeType,
-        size: document.sizeBytes,
-        buffer,
-      });
-      await this.prisma.$transaction(async (tx) => {
-        await tx.ocrDocument.update({
-          where: { id: ocr.id },
-          data: {
-            status: OcrProcessingStatus.COMPLETED,
-            rawJson: result as unknown as Prisma.InputJsonValue,
-            pageCount: result.pageCount,
-            processingDurationMs: Date.now() - started,
-          },
-        });
-        await tx.ocrBusinessExtraction.deleteMany({ where: { ocrDocumentId: ocr.id } });
-        await tx.ocrBusinessExtraction.create({
-          data: {
-            organizationId,
-            ocrDocumentId: ocr.id,
-            type: OcrExtractionType.UNKNOWN,
-            status: OcrBusinessExtractionStatus.DRAFT,
-            extractedJson: result as unknown as Prisma.InputJsonValue,
-            confidenceScore: this.decimalOrNull(result.confidence),
-          },
-        });
-        await tx.document.update({
-          where: { id: document.id },
-          data: { status: DocumentStatus.PROCESSED },
-        });
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Analyse OCR produit impossible.';
-      await this.prisma
-        .$transaction([
-          this.prisma.document.update({
-            where: { id: document.id },
-            data: { status: DocumentStatus.FAILED },
-          }),
-          this.prisma.ocrDocument.update({
-            where: { id: ocr.id },
-            data: {
-              status: OcrProcessingStatus.FAILED,
-              errorCode: 'PRODUCT_LABEL_OCR_FAILED',
-              errorMessage: message,
-              processingDurationMs: Date.now() - started,
-            },
-          }),
-        ])
-        .catch(() => undefined);
-      throw error;
-    }
   }
 
   async uploadDocuments(organizationId: string, actor: Actor, files: UploadedFile[]) {
@@ -1084,6 +529,7 @@ export class StocksOcrService {
       if (line.quantity == null || line.quantity <= 0) throw new BadRequestException('Chaque ligne validée doit avoir une quantité strictement positive.');
       if (!line.unitId && !line.unit) throw new BadRequestException('Chaque ligne validée doit avoir une unité.');
     }
+    const acceptedTotal = lines.reduce((sum, line) => sum + Number(line.acceptedQuantity ?? line.quantity ?? 0), 0);
     const reception = await this.prisma.$transaction(async (tx) => {
       const duplicateReception = await tx.stockReception.findFirst({ where: { organizationId, extractionId } });
       if (duplicateReception) throw new BadRequestException('Cette extraction OCR a déjà été validée en réception.');
@@ -1102,11 +548,14 @@ export class StocksOcrService {
           totalExcludingTax: this.decimalOrNull(corrected.totalExcludingTax),
           totalTax: this.decimalOrNull(corrected.totalTax),
           totalIncludingTax: this.decimalOrNull(corrected.totalIncludingTax),
-          status: StockReceptionStatus.VALIDATED,
+          status: acceptedTotal > 0 ? StockReceptionStatus.VALIDATED : StockReceptionStatus.CANCELLED,
           createdById: actor.id,
           siteId: corrected.siteId,
           locationId: corrected.locationId,
           validatedAt: new Date(),
+          deliveryTemperature: corrected.deliveryTemperature ?? null,
+          controlStatus: this.controlStatus(corrected),
+          controlNotes: corrected.controlNotes ?? null,
         },
       });
       for (const line of lines) {
@@ -1123,8 +572,29 @@ export class StocksOcrService {
               create: { organizationId, productId: product.id, supplierId: corrected.supplierId, lotNumber: line.lotNumber || `OCR-${created.id}-${product.id}`, expiresAt: line.bestBeforeDate ? new Date(line.bestBeforeDate) : undefined, siteId: corrected.siteId, locationId: corrected.locationId },
             })
           : null;
-        const quantity = await this.convertToProductUnitTx(tx, organizationId, unit.id, product.unitId, line.quantity!);
-        const inputQuantity = new Prisma.Decimal(line.quantity!);
+        const acceptedRaw = line.acceptedQuantity ?? line.quantity!;
+        if (acceptedRaw <= 0) {
+          await tx.stockReceptionLine.create({
+            data: {
+              receptionId: created.id,
+              productId: product.id,
+              unitId: unit.id,
+              ocrLabel: line.ocrLabel || product.name,
+              reference: line.reference,
+              quantity: 0,
+              documentedQuantity: line.documentedQuantity ?? line.quantity,
+              deliveredQuantity: line.quantity,
+              acceptedQuantity: 0,
+              unit: unit.symbol,
+              unitPrice: this.decimalOrNull(line.unitPrice),
+              matchingStatus: StockReceptionLineMatchingStatus.RECOGNIZED,
+              userCorrection: line as Prisma.InputJsonValue,
+            },
+          });
+          continue;
+        }
+        const quantity = await this.convertToProductUnitTx(tx, organizationId, unit.id, product.unitId, acceptedRaw);
+        const inputQuantity = new Prisma.Decimal(acceptedRaw);
         const lineTotal = this.decimalOrNull(line.lineTotal);
         const unitPrice = this.decimalOrNull(line.unitPrice);
         await this.receptionInventory.applyValidatedLineTx(tx, {
@@ -1138,6 +608,9 @@ export class StocksOcrService {
           locationId: corrected.locationId,
           stockQuantity: quantity,
           inputQuantity,
+          documentedQuantity: new Prisma.Decimal(line.documentedQuantity ?? line.quantity!),
+          deliveredQuantity: new Prisma.Decimal(line.quantity!),
+          acceptedQuantity: inputQuantity,
           baseUnitPrice: lineTotal && !quantity.isZero() ? lineTotal.div(quantity) : unitPrice,
           unitPrice,
           lineTotal,
@@ -1166,6 +639,66 @@ export class StocksOcrService {
       });
     });
     return reception;
+  }
+
+  private controlStatus(value: { controlConforming?: boolean | null; lines: Array<{ quantity?: number | null; acceptedQuantity?: number | null }> }) {
+    const delivered = value.lines.reduce((sum, line) => sum + Number(line.quantity || 0), 0);
+    const accepted = value.lines.reduce((sum, line) => sum + Number(line.acceptedQuantity ?? line.quantity ?? 0), 0);
+    if (accepted <= 0) return HaccpReceptionControlStatus.REJECTED;
+    return !value.controlConforming || accepted < delivered
+      ? HaccpReceptionControlStatus.PARTIAL
+      : HaccpReceptionControlStatus.CONFORMING;
+  }
+
+  /** Réception libre : même écriture Stocks/HACCP que l'OCR, sans document source. */
+  async createManualReception(organizationId: string, actor: Actor, dto: SaveOcrCorrectionDto) {
+    this.assertOcr(actor);
+    if (dto.supplierId) await this.ensureSupplier(organizationId, dto.supplierId);
+    if (dto.siteId) await this.ensureSite(organizationId, dto.siteId);
+    if (dto.locationId) await this.ensureLocation(organizationId, dto.locationId);
+    const corrected = this.normalizeCorrectionPayload(dto);
+    const lines = corrected.lines.filter((line) => !line.ignored);
+    if (!lines.length) throw new BadRequestException('Ajoutez au moins un produit à réceptionner.');
+    if (corrected.deliveryTemperature == null || corrected.controlConforming == null)
+      throw new BadRequestException('La température et le contrôle de réception sont requis.');
+    const acceptedTotal = lines.reduce((sum, line) => sum + Number(line.acceptedQuantity ?? line.quantity ?? 0), 0);
+    return this.prisma.$transaction(async (tx) => {
+      const reception = await tx.stockReception.create({
+        data: {
+          organizationId,
+          supplierId: corrected.supplierId,
+          supplierName: corrected.supplierName,
+          invoiceNumber: corrected.invoiceNumber,
+          deliveryNoteNumber: corrected.deliveryNoteNumber,
+          deliveryDate: corrected.deliveryDate ? new Date(corrected.deliveryDate) : new Date(),
+          status: acceptedTotal > 0 ? StockReceptionStatus.VALIDATED : StockReceptionStatus.CANCELLED,
+          createdById: actor.id,
+          siteId: corrected.siteId,
+          locationId: corrected.locationId,
+          validatedAt: new Date(),
+          deliveryTemperature: corrected.deliveryTemperature,
+          controlStatus: this.controlStatus(corrected),
+          controlNotes: corrected.controlNotes ?? null,
+        },
+      });
+      for (const line of lines) {
+        if (!line.productId || !line.unitId || line.quantity == null)
+          throw new BadRequestException('Chaque ligne doit être associée à un produit et une unité.');
+        const product = await tx.product.findFirst({ where: { id: line.productId, organizationId, isArchived: false }, include: { unit: true } });
+        const unit = await tx.unit.findFirst({ where: { id: line.unitId, organizationId, isArchived: false } });
+        if (!product || !unit) throw new BadRequestException('Produit ou unité introuvable.');
+        const accepted = Number(line.acceptedQuantity ?? line.quantity);
+        if (accepted <= 0) {
+          await tx.stockReceptionLine.create({ data: { receptionId: reception.id, productId: product.id, unitId: unit.id, unit: unit.symbol, ocrLabel: line.ocrLabel || product.name, reference: line.reference, quantity: 0, documentedQuantity: line.documentedQuantity ?? line.quantity, deliveredQuantity: line.quantity, acceptedQuantity: 0, unitPrice: this.decimalOrNull(line.unitPrice), matchingStatus: StockReceptionLineMatchingStatus.RECOGNIZED, userCorrection: line as Prisma.InputJsonValue } });
+          continue;
+        }
+        const stockQuantity = await this.convertToProductUnitTx(tx, organizationId, unit.id, product.unitId, accepted);
+        const inputQuantity = new Prisma.Decimal(accepted);
+        const unitPrice = this.decimalOrNull(line.unitPrice);
+        await this.receptionInventory.applyValidatedLineTx(tx, { organizationId, receptionId: reception.id, product, unit, supplierId: corrected.supplierId, siteId: corrected.siteId, locationId: corrected.locationId, stockQuantity, inputQuantity, documentedQuantity: new Prisma.Decimal(line.documentedQuantity ?? line.quantity), deliveredQuantity: new Prisma.Decimal(line.quantity), acceptedQuantity: inputQuantity, baseUnitPrice: unitPrice, unitPrice, lineTotal: this.decimalOrNull(line.lineTotal), vatRate: this.decimalOrNull(line.vatRate), label: line.ocrLabel || product.name, reference: line.reference, lotNumber: line.lotNumber, bestBeforeDate: line.bestBeforeDate ? new Date(line.bestBeforeDate) : null, userCorrection: line as Prisma.InputJsonValue, movementReason: `Réception libre ${corrected.deliveryNoteNumber || ''}`.trim(), movementDate: corrected.deliveryDate ? new Date(corrected.deliveryDate) : new Date(), actorId: actor.id, priceMode: 'replace' });
+      }
+      return tx.stockReception.findUnique({ where: { id: reception.id }, include: { lines: { include: { product: { include: { unit: true } }, unitModel: true } }, supplier: true, site: true, location: true } });
+    });
   }
 
   private async createProductForReceptionLineTx(tx: Tx, organizationId: string, supplierId: string | null, line: ReturnType<StocksOcrService['normalizeCorrectionPayload']>['lines'][number]) {
@@ -2495,267 +2028,6 @@ export class StocksOcrService {
     return dp[a.length][b.length];
   }
 
-  private normalizeProductLabelNutrition(
-    input: Partial<Record<ProductNutritionKey, number | null>> | null | undefined,
-    warnings: string[],
-  ): Record<ProductNutritionKey, number | null> {
-    const limits: Record<ProductNutritionKey, number> = {
-      energyKj: 10_000,
-      energyKcal: 2_500,
-      fatGrams: 100,
-      saturatedFatGrams: 100,
-      carbohydratesGrams: 100,
-      sugarsGrams: 100,
-      fiberGrams: 100,
-      proteinGrams: 100,
-      saltGrams: 100,
-    };
-    const labels: Record<ProductNutritionKey, string> = {
-      energyKj: 'énergie (kJ)',
-      energyKcal: 'énergie (kcal)',
-      fatGrams: 'matières grasses',
-      saturatedFatGrams: 'acides gras saturés',
-      carbohydratesGrams: 'glucides',
-      sugarsGrams: 'sucres',
-      fiberGrams: 'fibres',
-      proteinGrams: 'protéines',
-      saltGrams: 'sel',
-    };
-    const keys = Object.keys(limits) as ProductNutritionKey[];
-    return keys.reduce(
-      (normalized, key) => {
-        const value = input?.[key];
-        if (value === null || value === undefined) {
-          normalized[key] = null;
-          return normalized;
-        }
-        if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > limits[key]) {
-          normalized[key] = null;
-          warnings.push(`La valeur détectée pour ${labels[key]} paraît incohérente et doit être vérifiée.`);
-          return normalized;
-        }
-        normalized[key] = Math.round(value * 1_000) / 1_000;
-        return normalized;
-      },
-      {} as Record<ProductNutritionKey, number | null>,
-    );
-  }
-
-  private extractProductLabelFromOcrText(markdown: string): ProductLabelAiExtraction {
-    const nutrition: Record<ProductNutritionKey, number | null> = {
-      energyKj: null,
-      energyKcal: null,
-      fatGrams: null,
-      saturatedFatGrams: null,
-      carbohydratesGrams: null,
-      sugarsGrams: null,
-      fiberGrams: null,
-      proteinGrams: null,
-      saltGrams: null,
-    };
-    const lines = markdown
-      .split(/\r?\n/)
-      .map((line) =>
-        line
-          .replace(/!\[[^\]]*]\([^)]*\)/g, ' ')
-          .replace(/[*_`#|]/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim(),
-      )
-      .filter(Boolean);
-    const perHundredIndex = lines.findIndex((line) => /\b100\s*g\b/i.test(line));
-    const nutritionLines =
-      perHundredIndex >= 0 ? lines.slice(perHundredIndex, perHundredIndex + 35) : lines;
-    const nutritionText = nutritionLines.join('\n');
-    const ingredientHeading = /^(ingredients?|ingredient list|liste des ingredients|ainesosat|ingredienser)\b/i;
-    const ingredientStopHeading =
-      /^(additives?|allergens?|allerge?nes?|nutrition|nutritional information|valeurs nutritionnelles|ravintoarvot|naringsvarden|importer|importateur|country|pays|origin|origine|storage|conservation|preparation)\b/i;
-    let ingredients: string | null = null;
-    const ingredientStart = lines.findIndex((line) => ingredientHeading.test(this.normalize(line)));
-    if (ingredientStart >= 0) {
-      const collected: string[] = [];
-      const firstLine = lines[ingredientStart]
-        .replace(
-          /^\s*(?:ingredients?|ingredient list|liste des ingrédients|ainesosat|ingredienser)\s*[:\-]?\s*/i,
-          '',
-        )
-        .trim();
-      if (firstLine) collected.push(firstLine);
-      for (const line of lines.slice(ingredientStart + 1)) {
-        if (ingredientStopHeading.test(this.normalize(line))) break;
-        collected.push(line);
-      }
-      ingredients = collected.join(' ').replace(/\s+/g, ' ').trim().slice(0, 20_000) || null;
-    }
-    const decimal = (value: string | undefined) => {
-      if (!value?.trim()) return null;
-      const parsed = Number(value.replace(',', '.'));
-      return Number.isFinite(parsed) ? parsed : null;
-    };
-    nutrition.energyKj = decimal(
-      nutritionText.match(/(\d+(?:[.,]\d+)?)\s*k\s*j\b/i)?.[1],
-    );
-    nutrition.energyKcal = decimal(
-      nutritionText.match(/(\d+(?:[.,]\d+)?)\s*kcal\b/i)?.[1],
-    );
-
-    const gramFields: Array<{
-      key: ProductNutritionKey;
-      include: RegExp;
-      exclude?: RegExp;
-    }> = [
-      {
-        key: 'saturatedFatGrams',
-        include: /\b(saturat\w*|sature\w*|tyydytty\w*|mattat\w*)\b/i,
-      },
-      {
-        key: 'sugarsGrams',
-        include: /\b(sugars?|sucres?|soker|socker)\b/i,
-      },
-      {
-        key: 'fiberGrams',
-        include: /\b(fibers?|fibres?|kuitu)\b/i,
-      },
-      {
-        key: 'carbohydratesGrams',
-        include: /\b(carbohydrates?|glucides?|hiilihydra\w*|kolhydrat\w*)\b/i,
-        exclude: /\b(sugars?|sucres?|soker|socker)\b/i,
-      },
-      {
-        key: 'fatGrams',
-        include: /\b(fat|fats|grasses?|rasva|fett)\b/i,
-        exclude: /\b(saturat\w*|sature\w*|tyydytty\w*|mattat\w*)\b/i,
-      },
-      {
-        key: 'proteinGrams',
-        include: /\b(proteins?|proteines?|proteiini)\b/i,
-      },
-      {
-        key: 'saltGrams',
-        include: /\b(salt|sel|suola)\b/i,
-      },
-    ];
-    for (const { key, include, exclude } of gramFields) {
-      const line = nutritionLines.find(
-        (candidate) => include.test(this.normalize(candidate)) && !exclude?.test(this.normalize(candidate)),
-      );
-      const value = decimal(line?.match(/(\d+(?:[.,]\d+)?)\s*g\b/i)?.[1]);
-      if (value !== null) nutrition[key] = value;
-    }
-
-    const allergensPresent: string[] = [];
-    const possibleTraces: string[] = [];
-    let allergenMode: 'present' | 'trace' | null = null;
-    const containsMarkers = [
-      'contains',
-      'contient',
-      'contient des',
-      'sisaltaa',
-      'innehaller',
-    ];
-    const traceMarkers = [
-      'may contain',
-      'peut contenir',
-      'saattaa sisaltaa',
-      'kan innehalla',
-    ];
-    const stopMarkers = [
-      'we recommend',
-      'nous recommandons',
-      'nutritional claims',
-      'allegations nutritionnelles',
-      'frozen product',
-      'produit surgele',
-    ];
-    const afterMarker = (line: string, markers: string[]) => {
-      const normalizedLine = this.normalize(line);
-      const marker = markers.find((candidate) => normalizedLine.includes(candidate));
-      if (!marker) return '';
-      const markerWords = marker.split(' ').length;
-      return normalizedLine.split(' ').slice(normalizedLine.split(' ').indexOf(marker.split(' ')[0]) + markerWords).join(' ');
-    };
-    for (const line of lines) {
-      const normalizedLine = this.normalize(line);
-      if (stopMarkers.some((marker) => normalizedLine.includes(marker))) {
-        allergenMode = null;
-        continue;
-      }
-      if (traceMarkers.some((marker) => normalizedLine.includes(marker))) {
-        allergenMode = 'trace';
-        const remainder = afterMarker(line, traceMarkers);
-        if (remainder) possibleTraces.push(remainder);
-        continue;
-      }
-      if (containsMarkers.some((marker) => normalizedLine.includes(marker))) {
-        allergenMode = 'present';
-        const remainder = afterMarker(line, containsMarkers);
-        if (remainder) allergensPresent.push(remainder);
-        continue;
-      }
-      if (
-        allergenMode &&
-        normalizedLine !== 'hide' &&
-        !/\b(nutrition|energy|energie|fat|grasses|carbohydrate|glucide|protein|proteine|salt|sel)\b/i.test(
-          normalizedLine,
-        )
-      ) {
-        (allergenMode === 'present' ? allergensPresent : possibleTraces).push(line);
-      }
-    }
-
-    const detectedCount =
-      (ingredients ? 1 : 0) +
-      Object.values(nutrition).filter((value) => value !== null).length +
-      allergensPresent.length +
-      possibleTraces.length;
-    return {
-      ingredients,
-      nutrition,
-      allergensPresent,
-      possibleTraces,
-      confidence: detectedCount ? 0.55 : 0.25,
-      warnings: [
-        'La structuration Mistral était indisponible : les champs ont été récupérés directement depuis le texte OCR. Vérifiez-les avant l’enregistrement.',
-      ],
-    };
-  }
-
-  private normalizeProductLabelAllergens(values: string[] | null | undefined) {
-    const detected = new Set<(typeof PRODUCT_LABEL_ALLERGENS)[number]>();
-    for (const value of values ?? []) {
-      const normalizedValue = this.normalize(String(value));
-      if (!normalizedValue) continue;
-      const exact = PRODUCT_LABEL_ALLERGENS.find(
-        (allergen) => this.normalize(allergen) === normalizedValue,
-      );
-      if (exact) {
-        detected.add(exact);
-        if (['Blé', 'Seigle', 'Orge', 'Avoine', 'Épeautre', 'Kamut'].includes(exact)) {
-          detected.add('Gluten');
-        }
-        if (
-          [
-            'Amande',
-            'Noisette',
-            'Noix',
-            'Noix de cajou',
-            'Noix de pécan',
-            'Noix du Brésil',
-            'Pistache',
-            'Macadamia',
-          ].includes(exact)
-        ) {
-          detected.add('Fruits à coque');
-        }
-        continue;
-      }
-      for (const [pattern, allergens] of PRODUCT_LABEL_ALLERGEN_ALIASES) {
-        if (pattern.test(normalizedValue)) allergens.forEach((allergen) => detected.add(allergen));
-      }
-    }
-    return PRODUCT_LABEL_ALLERGENS.filter((allergen) => detected.has(allergen));
-  }
-
   private validateFile(file: UploadedFile) {
     if (!file) throw new BadRequestException('Aucun fichier fourni');
     if (file.size > MAX_FILE_BYTES) throw new BadRequestException('Le fichier dépasse la taille maximale autorisée.');
@@ -2946,6 +2218,9 @@ export class StocksOcrService {
       totalIncludingTax: dto.totalIncludingTax ?? null,
       siteId: dto.siteId || null,
       locationId: dto.locationId || null,
+      deliveryTemperature: dto.deliveryTemperature ?? null,
+      controlConforming: dto.controlConforming ?? null,
+      controlNotes: dto.controlNotes || null,
       documentConfidence: dto.documentConfidence ?? null,
       warnings: dto.warnings ?? [],
       suggestedActions: dto.suggestedActions ?? [],
@@ -2955,7 +2230,12 @@ export class StocksOcrService {
         productId: line.productId || null,
         createProduct: Boolean(line.createProduct && !line.productId),
         unitId: line.unitId || null,
-        quantity: line.quantity ?? null,
+        // quantity stays the legacy physical-delivery field.  The document value
+        // is retained separately so the mobile UI can show Commandé / Livré.
+        documentedQuantity: line.documentedQuantity ?? line.quantity ?? null,
+        deliveredQuantity: line.deliveredQuantity ?? line.quantity ?? null,
+        quantity: line.deliveredQuantity ?? line.quantity ?? null,
+        acceptedQuantity: line.acceptedQuantity ?? null,
         unitPrice: line.unitPrice ?? null,
         lineTotal: line.lineTotal ?? null,
         vatRate: line.vatRate ?? null,

@@ -332,6 +332,26 @@ export class PurchasingController {
     return { documents: uploaded.documents, jobs };
   }
 
+  /** Stores a delivery note for a receipt without sending it to Mistral OCR. */
+  @Post('orders/:orderId/delivery-note-attachments')
+  @UseInterceptors(
+    FilesInterceptor('files', 1, { limits: { files: 1, fileSize: 20 * 1024 * 1024 } }),
+  )
+  async uploadDeliveryNoteAttachment(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('orderId') orderId: string,
+    @UploadedFiles() files: PurchasingUploadedFile[],
+  ) {
+    const organizationId = this.org(user);
+    await this.settingsService.assertReceiptUpload(organizationId, user, orderId);
+    const uploaded = await this.stocksOcr.uploadPurchasingDocuments(
+      organizationId,
+      this.ocrActor(user),
+      files,
+    );
+    return { documents: uploaded.documents };
+  }
+
   @Get('delivery-notes/:documentId/status') status(
     @CurrentUser() user: AuthenticatedUser,
     @Param('documentId') documentId: string,

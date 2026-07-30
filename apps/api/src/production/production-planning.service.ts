@@ -407,7 +407,7 @@ export class ProductionPlanningService {
           description: sheet.description,
           yieldMode: sheet.yieldMode,
           referencePortions: sheet.referencePortions.toString(),
-          totalMassGrams: sheet.totalMassGrams.toString(),
+          totalMassGrams: sheet.totalMassGrams?.toString() ?? '0',
           preparationTimeMinutes: sheet.preparationTimeMinutes,
           cookingTimeMinutes: sheet.cookingTimeMinutes,
           totalTimeMinutes: sheet.totalTimeMinutes,

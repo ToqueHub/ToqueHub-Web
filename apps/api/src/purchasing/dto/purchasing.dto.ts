@@ -154,6 +154,9 @@ export class CreatePurchaseReceiptDto {
   @IsOptional() @IsString() @MaxLength(120) deliveryNoteNumber?: string;
   @IsOptional() @IsString() deliveryDate?: string;
   @IsOptional() @IsString() @MaxLength(4000) notes?: string;
+  @IsOptional() @Type(() => Number) @IsNumber({ maxDecimalPlaces: 2 }) deliveryTemperature?: number;
+  @IsOptional() @IsBoolean() controlConforming?: boolean;
+  @IsOptional() @IsString() @MaxLength(4000) controlNotes?: string;
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => PurchaseReceiptLineDto)

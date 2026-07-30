@@ -28,6 +28,7 @@ import {
   positionSupportsTechnicalSheets,
   type HrPositionTaskPreset,
 } from '../hr/hr-task-presets';
+import { CatererEventLifecycleService } from './caterer-event-lifecycle.service';
 
 type TaskActor = {
   id: string;
@@ -107,7 +108,10 @@ const EXECUTABLE_ORDER_STATUSES: ProductionOrderStatus[] = [
 
 @Injectable()
 export class OperationalTasksService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly catererLifecycle?: CatererEventLifecycleService,
+  ) {}
 
   async context(organizationId: string, actor: TaskActor) {
     const scope = await this.scope(organizationId, actor);
@@ -437,6 +441,7 @@ export class OperationalTasksService {
       const task = await tx.operationalTask.create({
         data: {
           organizationId,
+          sourceKey: dto.sourceKey?.trim() || null,
           title: dto.title.trim(),
           description: dto.description?.trim() || null,
           category: dto.category,
@@ -643,7 +648,6 @@ export class OperationalTasksService {
           )
         : null;
     if (
-      existing.source === 'PRODUCTION' &&
       isTimeScheduled &&
       employeeIds.length &&
       (dto.startsAt !== undefined ||
@@ -669,6 +673,8 @@ export class OperationalTasksService {
         where: { id },
         data: {
           title: dto.title?.trim(),
+          sourceKey:
+            dto.sourceKey === undefined ? undefined : dto.sourceKey?.trim() || null,
           description: dto.description === undefined ? undefined : dto.description?.trim() || null,
           category: dto.category,
           departmentId: dto.departmentId,
@@ -734,7 +740,7 @@ export class OperationalTasksService {
   ) {
     const scope = await this.scope(organizationId, actor);
     await this.getVisible(organizationId, actor, scope, id);
-    return this.prisma.operationalTask.update({
+    const task = await this.prisma.operationalTask.update({
       where: { id },
       data: {
         status: dto.status,
@@ -742,6 +748,8 @@ export class OperationalTasksService {
       },
       include: TASK_INCLUDE,
     });
+    await this.catererLifecycle?.evaluateForTask(organizationId, task.id);
+    return task;
   }
 
   async splitProductionRecipeTask(organizationId: string, actor: TaskActor, id: string) {
@@ -802,11 +810,16 @@ export class OperationalTasksService {
           organizationId,
           productionBatchId: source.productionBatchId,
           productionOperationId: { not: null },
-          status: { not: OperationalTaskStatus.CANCELLED },
         },
         include: TASK_INCLUDE,
+        orderBy: [{ createdAt: 'desc' }],
       });
-      const byOperation = new Map(existing.map((task) => [task.productionOperationId, task]));
+      const byOperation = new Map<string, (typeof existing)[number]>();
+      for (const task of existing) {
+        if (task.productionOperationId && !byOperation.has(task.productionOperationId)) {
+          byOperation.set(task.productionOperationId, task);
+        }
+      }
       let cursor = new Date(source.startsAt);
 
       for (const operation of operations) {
@@ -818,9 +831,56 @@ export class OperationalTasksService {
           where: { id: operation.id },
           data: { plannedAt: startsAt },
         });
-        if (byOperation.has(operation.id)) continue;
-
         const step = steps[operation.position] ?? null;
+        const reusable = byOperation.get(operation.id);
+        if (reusable?.status !== OperationalTaskStatus.CANCELLED) {
+          if (reusable) continue;
+        } else {
+          await tx.operationalTask.update({
+            where: { id: reusable.id },
+            data: {
+              title: `${operation.title} · ${source.technicalSheet?.name ?? source.title}`.slice(
+                0,
+                180,
+              ),
+              description:
+                operation.notes ??
+                step?.description ??
+                'Étape issue du découpage de la recette complète.',
+              category: source.category,
+              status: OperationalTaskStatus.TODO,
+              departmentId: source.departmentId,
+              positionId: source.positionId,
+              siteId: source.siteId,
+              assignedEmployeeId: source.assignedEmployeeId,
+              planningAssignmentId: null,
+              technicalSheetId: source.technicalSheetId,
+              technicalSheetStepId: step?.id ?? null,
+              startsAt,
+              endsAt,
+              isTimeScheduled: false,
+              quantity: source.quantity,
+              unitLabel: source.unitLabel,
+              completedAt: null,
+            },
+          });
+          await tx.operationalTaskAssignment.updateMany({
+            where: { taskId: reusable.id },
+            data: { planningAssignmentId: null },
+          });
+          await this.syncAssignmentsTx(
+            tx,
+            organizationId,
+            reusable.id,
+            employeeIds,
+            source.assignedEmployeeId,
+            startsAt,
+            endsAt,
+            false,
+          );
+          continue;
+        }
+
         const task = await tx.operationalTask.create({
           data: {
             organizationId,
@@ -880,6 +940,78 @@ export class OperationalTasksService {
         },
         include: TASK_INCLUDE,
         orderBy: [{ startsAt: 'asc' }, { title: 'asc' }],
+      });
+    });
+  }
+
+  async mergeProductionRecipeTask(organizationId: string, actor: TaskActor, id: string) {
+    const scope = await this.scope(organizationId, actor);
+    const source = await this.getVisible(organizationId, actor, scope, id);
+    if (source.source !== 'PRODUCTION' || !source.productionBatchId) {
+      throw new BadRequestException(
+        'Seules les étapes issues d’une fabrication peuvent être recomposées.',
+      );
+    }
+    const tasks = await this.prisma.operationalTask.findMany({
+      where: {
+        organizationId,
+        productionBatchId: source.productionBatchId,
+      },
+      include: TASK_INCLUDE,
+      orderBy: [{ createdAt: 'asc' }],
+    });
+    const wholeTask = tasks.find(
+      (task) => !task.productionOperationId && !task.technicalSheetStepId,
+    );
+    if (!wholeTask) {
+      throw new BadRequestException('La tâche de recette entière est introuvable.');
+    }
+    const activeSteps = tasks.filter(
+      (task) =>
+        Boolean(task.productionOperationId || task.technicalSheetStepId) &&
+        task.status !== OperationalTaskStatus.CANCELLED,
+    );
+    if (!activeSteps.length && wholeTask.status === OperationalTaskStatus.TODO) {
+      return wholeTask;
+    }
+    if (
+      wholeTask.status !== OperationalTaskStatus.CANCELLED ||
+      activeSteps.some(
+        (task) =>
+          task.status !== OperationalTaskStatus.TODO || task.isTimeScheduled,
+      )
+    ) {
+      throw new ConflictException(
+        'Recomposition impossible : toutes les étapes doivent être à placer et non démarrées.',
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      for (const step of activeSteps) {
+        await tx.operationalTask.update({
+          where: { id: step.id },
+          data: {
+            status: OperationalTaskStatus.CANCELLED,
+            completedAt: null,
+          },
+        });
+      }
+      await tx.operationalTask.update({
+        where: { id: wholeTask.id },
+        data: {
+          status: OperationalTaskStatus.TODO,
+          isTimeScheduled: false,
+          planningAssignmentId: null,
+          completedAt: null,
+        },
+      });
+      await tx.operationalTaskAssignment.updateMany({
+        where: { taskId: wholeTask.id },
+        data: { planningAssignmentId: null },
+      });
+      return tx.operationalTask.findUniqueOrThrow({
+        where: { id: wholeTask.id },
+        include: TASK_INCLUDE,
       });
     });
   }
@@ -1024,6 +1156,16 @@ export class OperationalTasksService {
       role.includes('CHEF') ||
       role.includes('SECOND'),
     );
+    const traceabilityRecords =
+      await this.prisma.haccpProductionIngredientTraceability.findMany({
+        where: { organizationId, productionBatchId: batch.id },
+        select: { ingredientKey: true, photos: true },
+      });
+    const completedTraceabilityKeys = new Set(
+      traceabilityRecords
+        .filter((record) => Array.isArray(record.photos) && record.photos.length > 0)
+        .map((record) => record.ingredientKey),
+    );
     return {
       task,
       batch: {
@@ -1059,6 +1201,18 @@ export class OperationalTasksService {
       },
       canExecute,
       focusedOperationId: task.productionOperationId,
+      traceabilitySummary: {
+        expected: ingredients.length,
+        completed: ingredients.filter((ingredient) =>
+          completedTraceabilityKeys.has(String(ingredient.id)),
+        ).length,
+        missing: ingredients.filter(
+          (ingredient) => !completedTraceabilityKeys.has(String(ingredient.id)),
+        ).length,
+        isComplete: ingredients.every((ingredient) =>
+          completedTraceabilityKeys.has(String(ingredient.id)),
+        ),
+      },
     };
   }
 

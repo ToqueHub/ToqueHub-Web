@@ -13,8 +13,5 @@ try {
 
 export default defineConfig({
   schema: 'apps/api/prisma/schema.prisma',
-  migrations: {
-    path: 'apps/api/prisma/migrations',
-    seed: 'node --import tsx apps/api/prisma/seed.ts',
-  },
+  migrations: { path: 'apps/api/prisma/migrations' },
 });

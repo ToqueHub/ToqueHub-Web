@@ -521,6 +521,12 @@ enum StockReceptionStatus {
   CANCELLED
 }
 
+enum HaccpReceptionControlStatus {
+  CONFORMING
+  PARTIAL
+  REJECTED
+}
+
 enum StockReceptionLineMatchingStatus {
   RECOGNIZED
   NEEDS_REVIEW
@@ -1022,164 +1028,165 @@ model Organization {
   createdAt                     DateTime  @default(now())
   updatedAt                     DateTime  @updatedAt
 
-  workspaceOnboardingProgress     WorkspaceOnboardingProgress?
-  users                           User[]
-  regulatoryCountrySelectedBy     User?                            @relation("OrganizationRegulatoryCountrySelectedBy", fields: [regulatoryCountrySelectedById], references: [id], onDelete: SetNull)
-  primarySite                     Site?                            @relation("OrganizationPrimarySite", fields: [primarySiteId], references: [id], onDelete: SetNull)
-  categories                      Category[]
-  units                           Unit[]
-  products                        Product[]
-  productVariants                 ProductVariant[]
-  packagingCompositionItems       PackagingCompositionItem[]
-  suppliers                       Supplier[]
-  sites                           Site[]                           @relation("OrganizationSites")
-  locations                       Location[]
-  lots                            Lot[]
-  stocks                          Stock[]
-  stockMovements                  StockMovement[]
-  documents                       Document[]
-  ocrDocuments                    OcrDocument[]
-  ocrBusinessExtractions          OcrBusinessExtraction[]
-  stockReceptions                 StockReception[]
-  marginSettings                  MarginSettings?
-  marginAlerts                    MarginAlert[]
-  marginReports                   MarginReport[]
-  inventories                     Inventory[]
-  auditLogs                       AuditLog[]
-  rnmFavorites                    RnmProductFavorite[]
-  unitConversions                 UnitConversion[]
-  hrDepartments                   HrDepartment[]
-  hrPositions                     HrPosition[]
-  employees                       HrEmployee[]
-  employeeHistory                 HrEmployeeHistory[]
-  hrOnboardingProgress            HrOnboardingProgress?
-  hrEmploymentContracts           HrEmploymentContract[]
-  hrDocuments                     HrDocument[]
-  hrRotations                     HrRotation[]
-  hrRotationAssignments           HrRotationAssignment[]
-  hrAbsences                      HrAbsence[]
-  hrSkills                        HrSkill[]
-  planningAssignments             PlanningAssignment[]
-  planningReplacements            PlanningReplacement[]
-  planningNeeds                   PlanningOperationalNeed[]
-  planningTemplates               PlanningTemplate[]
-  planningTemplateApplications    PlanningTemplateApplication[]
-  planningGenerations             PlanningGeneration[]
-  planningConflicts               PlanningConflict[]
-  planningNotifications           PlanningNotification[]
-  planningHistory                 PlanningHistory[]
-  planningExports                 PlanningExport[]
-  planningDayStatuses             PlanningDayStatus[]
-  planningCodeDictionary          PlanningCodeDictionary[]
-  planningPolicyProfiles          PlanningPolicyProfile[]
-  workTimeRegulation              EstablishmentWorkTimeRegulation?
-  hrTimeAccounts                  HrTimeAccount[]
-  hrTimeAccountTransactions       HrTimeAccountTransaction[]
-  planningAttendanceEntries       PlanningAttendanceEntry[]
-  hrEntitlementCatalogItems       HrEntitlementCatalogItem[]
-  hrEntitlementRules              HrEntitlementRule[]
-  hrEmployeeEntitlements          HrEmployeeEntitlement[]
-  employeeLegalProfiles           EmployeeLegalProfile[]
-  legalRightCounters              LegalRightCounter[]
-  legalRightCounterTransactions   LegalRightCounterTransaction[]
-  legalCalculationRuns            LegalCalculationRun[]
-  legalCalculationAuditLogs       LegalCalculationAuditLog[]
-  recipeCategories                TechnicalSheetCategory[]
-  technicalSheets                 TechnicalSheet[]
-  technicalSheetIngredients       TechnicalSheetIngredient[]
-  technicalSheetSteps             TechnicalSheetStep[]
-  technicalSheetAllergens         TechnicalSheetAllergen[]
-  technicalSheetCostSnapshots     TechnicalSheetCostSnapshot[]
-  technicalSheetSimulations       TechnicalSheetSimulation[]
-  technicalSheetExports           TechnicalSheetExport[]
-  technicalSheetHistory           TechnicalSheetHistory[]
-  technicalSheetVersions          TechnicalSheetVersion[]
-  productionProfiles              ProductionProfile[]
-  productionNeeds                 ProductionNeed[]
-  productionNeedAllocations       ProductionNeedAllocation[]
-  productionOrders                ProductionOrder[]
-  productionBatches               ProductionBatch[]
-  productionOperations            ProductionOperation[]
-  productionOperationDependencies ProductionOperationDependency[]
-  productionBatchConsumptions     ProductionBatchConsumption[]
-  stockReservations               StockReservation[]
-  productionMaterialRequirements  ProductionMaterialRequirement[]
-  productionAssignments           ProductionAssignment[]
-  operationalTaskAssignments      OperationalTaskAssignment[]
-  productionAlerts                ProductionAlert[]
-  productionAlertOverrides        ProductionAlertOverride[]
-  productionHistory               ProductionHistory[]
-  productionExports               ProductionExport[]
-  productionRealizations          ProductionRealization[]
-  productionDestockingProposals   ProductionDestockingProposal[]
-  productionDestockingLines       ProductionDestockingLine[]
-  productionDestockingMovements   ProductionDestockingMovement[]
-  operationalTasks                OperationalTask[]
-  productionDayClosures           ProductionDayClosure[]
-  productionDayClosureItems       ProductionDayClosureItem[]
-  menuSettings                    MenuSettings?
-  menuCategories                  MenuCategory[]
-  menuDiets                       MenuDiet[]
-  menus                           Menu[]
-  menuItems                       MenuItem[]
-  menuVariants                    MenuVariant[]
-  menuGuestGroups                 MenuGuestGroup[]
-  menuGuestForecasts              MenuGuestForecast[]
-  menuCycles                      MenuCycle[]
-  menuCycleItems                  MenuCycleItem[]
-  menuDisplayTemplates            MenuDisplayTemplate[]
-  menuExports                     MenuExport[]
-  menuHistory                     MenuHistory[]
-  menuProductionLinks             MenuProductionLink[]
-  catererClients                  CatererClient[]
-  catererEvents                   CatererEvent[]
-  catererPrestations              CatererPrestation[]
-  catererEventSequences           CatererEventSequence[]
-  menuCycleForecasts              MenuCycleForecast[]
-  menuDispatches                  MenuDispatch[]
-  planningViewPreferences         PlanningViewPreference[]
-  dashboardPreferences            DashboardPreference[]
-  backupCloudConnections          BackupCloudConnection[]
-  backupCloudObjects              BackupCloudObject[]
-  backupCloudOAuthStates          BackupCloudOAuthState[]
-  haccpProducts                   HaccpProduct[]
-  haccpTemperatureEquipment       HaccpTemperatureEquipment[]
-  haccpTemperatureReadings        HaccpTemperatureReading[]
-  haccpReceptions                 HaccpReception[]
-  haccpTraceabilityItems          HaccpTraceability[]
-  haccpProcessEquipment           HaccpProcessEquipment[]
-  haccpProcessSessions            HaccpProcessSession[]
-  haccpOilEquipment               HaccpOilEquipment[]
-  haccpOilSessions                HaccpOilSession[]
-  haccpCleaningZones              HaccpCleaningZone[]
-  haccpCleaningSurfaces           HaccpCleaningSurface[]
-  haccpCleaningSessions           HaccpCleaningSession[]
-  haccpCleanedSurfaces            HaccpCleanedSurface[]
-  haccpProductionSessions         HaccpProductionSession[]
-  haccpDailyReports               HaccpDailyReport[]
-  iotSensors                      IotSensor[]
-  iotSensorReadings               IotSensorReading[]
-  iotSensorAssignments            IotSensorAssignment[]
-  iotSensorEvents                 IotSensorEvent[]
-  iotPairingSessions              IotPairingSession[]
-  iotAlertEvents                  IotAlertEvent[]
-  haccpSensorNotificationSettings HaccpSensorNotificationSettings?
-  mobilePushTokens                MobilePushToken[]
-  purchasingSettings              PurchasingSettings?
-  purchasingOnboardingProgress    PurchasingOnboardingProgress?
-  supplierPurchasingProfiles      SupplierPurchasingProfile[]
-  supplierProductOffers           SupplierProductOffer[]
-  supplierProductPriceHistory     SupplierProductPriceHistory[]
-  purchaseNumberSequences         PurchaseNumberSequence[]
-  purchaseOrders                  PurchaseOrder[]
-  purchaseOrderLines              PurchaseOrderLine[]
-  purchaseOrderDispatches         PurchaseOrderDispatch[]
-  purchaseReceipts                PurchaseReceipt[]
-  purchaseReceiptLines            PurchaseReceiptLine[]
-  purchaseOrderEvents             PurchaseOrderEvent[]
-  purchasingEmailConnections      PurchasingEmailConnection[]
-  purchasingEmailOAuthStates      PurchasingEmailOAuthState[]
-  humanSupportTickets             HumanSupportTicket[]
+  workspaceOnboardingProgress           WorkspaceOnboardingProgress?
+  users                                 User[]
+  regulatoryCountrySelectedBy           User?                                   @relation("OrganizationRegulatoryCountrySelectedBy", fields: [regulatoryCountrySelectedById], references: [id], onDelete: SetNull)
+  primarySite                           Site?                                   @relation("OrganizationPrimarySite", fields: [primarySiteId], references: [id], onDelete: SetNull)
+  categories                            Category[]
+  units                                 Unit[]
+  products                              Product[]
+  productVariants                       ProductVariant[]
+  packagingCompositionItems             PackagingCompositionItem[]
+  suppliers                             Supplier[]
+  sites                                 Site[]                                  @relation("OrganizationSites")
+  locations                             Location[]
+  lots                                  Lot[]
+  stocks                                Stock[]
+  stockMovements                        StockMovement[]
+  documents                             Document[]
+  ocrDocuments                          OcrDocument[]
+  ocrBusinessExtractions                OcrBusinessExtraction[]
+  stockReceptions                       StockReception[]
+  marginSettings                        MarginSettings?
+  marginAlerts                          MarginAlert[]
+  marginReports                         MarginReport[]
+  inventories                           Inventory[]
+  auditLogs                             AuditLog[]
+  rnmFavorites                          RnmProductFavorite[]
+  unitConversions                       UnitConversion[]
+  hrDepartments                         HrDepartment[]
+  hrPositions                           HrPosition[]
+  employees                             HrEmployee[]
+  employeeHistory                       HrEmployeeHistory[]
+  hrOnboardingProgress                  HrOnboardingProgress?
+  hrEmploymentContracts                 HrEmploymentContract[]
+  hrDocuments                           HrDocument[]
+  hrRotations                           HrRotation[]
+  hrRotationAssignments                 HrRotationAssignment[]
+  hrAbsences                            HrAbsence[]
+  hrSkills                              HrSkill[]
+  planningAssignments                   PlanningAssignment[]
+  planningReplacements                  PlanningReplacement[]
+  planningNeeds                         PlanningOperationalNeed[]
+  planningTemplates                     PlanningTemplate[]
+  planningTemplateApplications          PlanningTemplateApplication[]
+  planningGenerations                   PlanningGeneration[]
+  planningConflicts                     PlanningConflict[]
+  planningNotifications                 PlanningNotification[]
+  planningHistory                       PlanningHistory[]
+  planningExports                       PlanningExport[]
+  planningDayStatuses                   PlanningDayStatus[]
+  planningCodeDictionary                PlanningCodeDictionary[]
+  planningPolicyProfiles                PlanningPolicyProfile[]
+  workTimeRegulation                    EstablishmentWorkTimeRegulation?
+  hrTimeAccounts                        HrTimeAccount[]
+  hrTimeAccountTransactions             HrTimeAccountTransaction[]
+  planningAttendanceEntries             PlanningAttendanceEntry[]
+  hrEntitlementCatalogItems             HrEntitlementCatalogItem[]
+  hrEntitlementRules                    HrEntitlementRule[]
+  hrEmployeeEntitlements                HrEmployeeEntitlement[]
+  employeeLegalProfiles                 EmployeeLegalProfile[]
+  legalRightCounters                    LegalRightCounter[]
+  legalRightCounterTransactions         LegalRightCounterTransaction[]
+  legalCalculationRuns                  LegalCalculationRun[]
+  legalCalculationAuditLogs             LegalCalculationAuditLog[]
+  recipeCategories                      TechnicalSheetCategory[]
+  technicalSheets                       TechnicalSheet[]
+  technicalSheetIngredients             TechnicalSheetIngredient[]
+  technicalSheetSteps                   TechnicalSheetStep[]
+  technicalSheetAllergens               TechnicalSheetAllergen[]
+  technicalSheetCostSnapshots           TechnicalSheetCostSnapshot[]
+  technicalSheetSimulations             TechnicalSheetSimulation[]
+  technicalSheetExports                 TechnicalSheetExport[]
+  technicalSheetHistory                 TechnicalSheetHistory[]
+  technicalSheetVersions                TechnicalSheetVersion[]
+  productionProfiles                    ProductionProfile[]
+  productionNeeds                       ProductionNeed[]
+  productionNeedAllocations             ProductionNeedAllocation[]
+  productionOrders                      ProductionOrder[]
+  productionBatches                     ProductionBatch[]
+  productionOperations                  ProductionOperation[]
+  productionOperationDependencies       ProductionOperationDependency[]
+  productionBatchConsumptions           ProductionBatchConsumption[]
+  stockReservations                     StockReservation[]
+  productionMaterialRequirements        ProductionMaterialRequirement[]
+  productionAssignments                 ProductionAssignment[]
+  operationalTaskAssignments            OperationalTaskAssignment[]
+  productionAlerts                      ProductionAlert[]
+  productionAlertOverrides              ProductionAlertOverride[]
+  productionHistory                     ProductionHistory[]
+  productionExports                     ProductionExport[]
+  productionRealizations                ProductionRealization[]
+  productionDestockingProposals         ProductionDestockingProposal[]
+  productionDestockingLines             ProductionDestockingLine[]
+  productionDestockingMovements         ProductionDestockingMovement[]
+  operationalTasks                      OperationalTask[]
+  productionDayClosures                 ProductionDayClosure[]
+  productionDayClosureItems             ProductionDayClosureItem[]
+  menuSettings                          MenuSettings?
+  menuCategories                        MenuCategory[]
+  menuDiets                             MenuDiet[]
+  menus                                 Menu[]
+  menuItems                             MenuItem[]
+  menuVariants                          MenuVariant[]
+  menuGuestGroups                       MenuGuestGroup[]
+  menuGuestForecasts                    MenuGuestForecast[]
+  menuCycles                            MenuCycle[]
+  menuCycleItems                        MenuCycleItem[]
+  menuDisplayTemplates                  MenuDisplayTemplate[]
+  menuExports                           MenuExport[]
+  menuHistory                           MenuHistory[]
+  menuProductionLinks                   MenuProductionLink[]
+  catererClients                        CatererClient[]
+  catererEvents                         CatererEvent[]
+  catererPrestations                    CatererPrestation[]
+  catererEventSequences                 CatererEventSequence[]
+  menuCycleForecasts                    MenuCycleForecast[]
+  menuDispatches                        MenuDispatch[]
+  planningViewPreferences               PlanningViewPreference[]
+  dashboardPreferences                  DashboardPreference[]
+  backupCloudConnections                BackupCloudConnection[]
+  backupCloudObjects                    BackupCloudObject[]
+  backupCloudOAuthStates                BackupCloudOAuthState[]
+  haccpProducts                         HaccpProduct[]
+  haccpTemperatureEquipment             HaccpTemperatureEquipment[]
+  haccpTemperatureReadings              HaccpTemperatureReading[]
+  haccpReceptions                       HaccpReception[]
+  haccpTraceabilityItems                HaccpTraceability[]
+  haccpProcessEquipment                 HaccpProcessEquipment[]
+  haccpProcessSessions                  HaccpProcessSession[]
+  haccpOilEquipment                     HaccpOilEquipment[]
+  haccpOilSessions                      HaccpOilSession[]
+  haccpCleaningZones                    HaccpCleaningZone[]
+  haccpCleaningSurfaces                 HaccpCleaningSurface[]
+  haccpCleaningSessions                 HaccpCleaningSession[]
+  haccpCleanedSurfaces                  HaccpCleanedSurface[]
+  haccpProductionSessions               HaccpProductionSession[]
+  haccpProductionIngredientTraceability HaccpProductionIngredientTraceability[]
+  haccpDailyReports                     HaccpDailyReport[]
+  iotSensors                            IotSensor[]
+  iotSensorReadings                     IotSensorReading[]
+  iotSensorAssignments                  IotSensorAssignment[]
+  iotSensorEvents                       IotSensorEvent[]
+  iotPairingSessions                    IotPairingSession[]
+  iotAlertEvents                        IotAlertEvent[]
+  haccpSensorNotificationSettings       HaccpSensorNotificationSettings?
+  mobilePushTokens                      MobilePushToken[]
+  purchasingSettings                    PurchasingSettings?
+  purchasingOnboardingProgress          PurchasingOnboardingProgress?
+  supplierPurchasingProfiles            SupplierPurchasingProfile[]
+  supplierProductOffers                 SupplierProductOffer[]
+  supplierProductPriceHistory           SupplierProductPriceHistory[]
+  purchaseNumberSequences               PurchaseNumberSequence[]
+  purchaseOrders                        PurchaseOrder[]
+  purchaseOrderLines                    PurchaseOrderLine[]
+  purchaseOrderDispatches               PurchaseOrderDispatch[]
+  purchaseReceipts                      PurchaseReceipt[]
+  purchaseReceiptLines                  PurchaseReceiptLine[]
+  purchaseOrderEvents                   PurchaseOrderEvent[]
+  purchasingEmailConnections            PurchasingEmailConnection[]
+  purchasingEmailOAuthStates            PurchasingEmailOAuthState[]
+  humanSupportTickets                   HumanSupportTicket[]
 
   @@index([regulatoryCountryCode])
   @@index([regulatoryCountrySelectedById])
@@ -1473,6 +1480,7 @@ model DashboardPreference {
   layout          Json
   hiddenWidgetIds String[] @default([])
   pinnedWidgetIds String[] @default([])
+  autoHideSidebar Boolean  @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -1635,34 +1643,35 @@ model Product {
   createdAt               DateTime    @default(now())
   updatedAt               DateTime    @updatedAt
 
-  organization              Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  category                  Category?                       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  unit                      Unit                            @relation(fields: [unitId], references: [id], onDelete: Restrict)
-  primarySupplier           Supplier?                       @relation("ProductPrimarySupplier", fields: [primarySupplierId], references: [id], onDelete: SetNull)
-  stocks                    Stock[]
-  movements                 StockMovement[]
-  stockReceptionLines       StockReceptionLine[]
-  lots                      Lot[]
-  technicalSheetIngredients TechnicalSheetIngredient[]
-  technicalSheetOutputs     TechnicalSheet[]                @relation("TechnicalSheetOutputProduct")
-  inventoryLines            InventoryLine[]
-  productionRequirements    ProductionMaterialRequirement[]
-  variants                  ProductVariant[]
-  packagingOutputs          PackagingCompositionItem[]      @relation("PackagingOutputProduct")
-  packagingComponents       PackagingCompositionItem[]      @relation("PackagingComponentProduct")
-  productionProfiles        ProductionProfile[]             @relation("ProductionProfileOutputProduct")
-  productionNeeds           ProductionNeed[]
-  productionOrderOutputs    ProductionOrder[]               @relation("ProductionOrderOutputProduct")
-  productionConsumptions    ProductionBatchConsumption[]
-  stockReservations         StockReservation[]
-  productionDestockingLines ProductionDestockingLine[]
-  productionDayClosureItems ProductionDayClosureItem[]
-  marginAlerts              MarginAlert[]
-  supplierProductOffers     SupplierProductOffer[]
-  purchaseOrderLines        PurchaseOrderLine[]
-  purchaseReceiptLines      PurchaseReceiptLine[]
-  menuItems                 MenuItem[]
-  haccpProducts             HaccpProduct[]
+  organization                          Organization                            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category                              Category?                               @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  unit                                  Unit                                    @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  primarySupplier                       Supplier?                               @relation("ProductPrimarySupplier", fields: [primarySupplierId], references: [id], onDelete: SetNull)
+  stocks                                Stock[]
+  movements                             StockMovement[]
+  stockReceptionLines                   StockReceptionLine[]
+  lots                                  Lot[]
+  technicalSheetIngredients             TechnicalSheetIngredient[]
+  technicalSheetOutputs                 TechnicalSheet[]                        @relation("TechnicalSheetOutputProduct")
+  inventoryLines                        InventoryLine[]
+  productionRequirements                ProductionMaterialRequirement[]
+  variants                              ProductVariant[]
+  packagingOutputs                      PackagingCompositionItem[]              @relation("PackagingOutputProduct")
+  packagingComponents                   PackagingCompositionItem[]              @relation("PackagingComponentProduct")
+  productionProfiles                    ProductionProfile[]                     @relation("ProductionProfileOutputProduct")
+  productionNeeds                       ProductionNeed[]
+  productionOrderOutputs                ProductionOrder[]                       @relation("ProductionOrderOutputProduct")
+  productionConsumptions                ProductionBatchConsumption[]
+  stockReservations                     StockReservation[]
+  productionDestockingLines             ProductionDestockingLine[]
+  productionDayClosureItems             ProductionDayClosureItem[]
+  marginAlerts                          MarginAlert[]
+  supplierProductOffers                 SupplierProductOffer[]
+  purchaseOrderLines                    PurchaseOrderLine[]
+  purchaseReceiptLines                  PurchaseReceiptLine[]
+  menuItems                             MenuItem[]
+  haccpProducts                         HaccpProduct[]
+  haccpProductionIngredientTraceability HaccpProductionIngredientTraceability[]
 
   @@unique([organizationId, name])
   @@unique([organizationId, sku])
@@ -2090,6 +2099,9 @@ model StockReception {
   siteId              String?              @db.Uuid
   locationId          String?              @db.Uuid
   purchaseReceiptId   String?              @unique @db.Uuid
+  deliveryTemperature Decimal?             @db.Decimal(7, 2)
+  controlStatus       HaccpReceptionControlStatus?
+  controlNotes        String?              @db.Text
   validatedAt         DateTime?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
@@ -2120,6 +2132,9 @@ model StockReceptionLine {
   ocrLabel       String
   reference      String?
   quantity       Decimal?                         @db.Decimal(12, 3)
+  documentedQuantity Decimal?                     @db.Decimal(12, 3)
+  deliveredQuantity Decimal?                      @db.Decimal(12, 3)
+  acceptedQuantity  Decimal?                      @db.Decimal(12, 3)
   unit           String?
   unitId         String?                          @db.Uuid
   unitPrice      Decimal?                         @db.Decimal(12, 4)
@@ -2448,6 +2463,9 @@ model PurchaseReceipt {
   deliveryNoteNumber     String?
   deliveryDate           DateTime?
   notes                  String?               @db.Text
+  deliveryTemperature    Decimal?              @db.Decimal(7, 2)
+  controlConforming      Boolean?
+  controlNotes           String?               @db.Text
   createdById            String                @db.Uuid
   validatedById          String?               @db.Uuid
   validatedAt            DateTime?
@@ -4705,43 +4723,43 @@ model ProductionNeedAllocation {
 }
 
 model ProductionOrder {
-  id                    String                @id @default(uuid()) @db.Uuid
-  organizationId        String                @db.Uuid
-  siteId                String?               @db.Uuid
+  id                    String                   @id @default(uuid()) @db.Uuid
+  organizationId        String                   @db.Uuid
+  siteId                String?                  @db.Uuid
   number                String
   name                  String
-  technicalSheetId      String                @db.Uuid
-  recipeVersionId       String?               @db.Uuid
-  outputProductId       String?               @db.Uuid
-  outputVariantId       String?               @db.Uuid
+  technicalSheetId      String                   @db.Uuid
+  recipeVersionId       String?                  @db.Uuid
+  outputProductId       String?                  @db.Uuid
+  outputVariantId       String?                  @db.Uuid
   productionDate        DateTime
   plannedTime           String
-  status                ProductionOrderStatus @default(PLANNED)
-  priority              ProductionPriority    @default(NORMAL)
-  serviceId             String?               @db.Uuid
-  responsibleEmployeeId String?               @db.Uuid
+  status                ProductionOrderStatus    @default(PLANNED)
+  priority              ProductionPriority       @default(NORMAL)
+  serviceId             String?                  @db.Uuid
+  responsibleEmployeeId String?                  @db.Uuid
   targetMode            TechnicalSheetYieldMode?
-  targetQuantity        Decimal?              @db.Decimal(14, 3)
-  plannedPortions       Decimal               @db.Decimal(12, 3)
-  grossRequirement      Decimal               @default(0) @db.Decimal(12, 3)
-  netRequirement        Decimal               @default(0) @db.Decimal(12, 3)
-  proposedQuantity      Decimal               @default(0) @db.Decimal(12, 3)
-  validatedQuantity     Decimal               @default(0) @db.Decimal(12, 3)
-  reservedQuantity      Decimal               @default(0) @db.Decimal(12, 3)
-  surplusQuantity       Decimal               @default(0) @db.Decimal(12, 3)
-  realizedPortions      Decimal?              @db.Decimal(12, 3)
-  estimatedCost         Decimal               @default(0) @db.Decimal(12, 4)
-  actualCost            Decimal?              @db.Decimal(12, 4)
-  comments              String?               @db.Text
-  source                String                @default("MANUAL")
-  createdById           String?               @db.Uuid
-  updatedById           String?               @db.Uuid
-  completedById         String?               @db.Uuid
+  targetQuantity        Decimal?                 @db.Decimal(14, 3)
+  plannedPortions       Decimal                  @db.Decimal(12, 3)
+  grossRequirement      Decimal                  @default(0) @db.Decimal(12, 3)
+  netRequirement        Decimal                  @default(0) @db.Decimal(12, 3)
+  proposedQuantity      Decimal                  @default(0) @db.Decimal(12, 3)
+  validatedQuantity     Decimal                  @default(0) @db.Decimal(12, 3)
+  reservedQuantity      Decimal                  @default(0) @db.Decimal(12, 3)
+  surplusQuantity       Decimal                  @default(0) @db.Decimal(12, 3)
+  realizedPortions      Decimal?                 @db.Decimal(12, 3)
+  estimatedCost         Decimal                  @default(0) @db.Decimal(12, 4)
+  actualCost            Decimal?                 @db.Decimal(12, 4)
+  comments              String?                  @db.Text
+  source                String                   @default("MANUAL")
+  createdById           String?                  @db.Uuid
+  updatedById           String?                  @db.Uuid
+  completedById         String?                  @db.Uuid
   completedAt           DateTime?
   cancelledAt           DateTime?
-  optimisticVersion     Int                   @default(1)
-  createdAt             DateTime              @default(now())
-  updatedAt             DateTime              @updatedAt
+  optimisticVersion     Int                      @default(1)
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
 
   organization        Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   site                Site?                           @relation(fields: [siteId], references: [id], onDelete: Restrict)
@@ -4804,18 +4822,19 @@ model ProductionBatch {
   createdAt             DateTime              @default(now())
   updatedAt             DateTime              @updatedAt
 
-  organization           Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  order                  ProductionOrder              @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  recipeVersion          TechnicalSheetVersion?       @relation(fields: [recipeVersionId], references: [id], onDelete: Restrict)
-  unit                   Unit                         @relation(fields: [unitId], references: [id], onDelete: Restrict)
-  destinationLocation    Location?                    @relation(fields: [destinationLocationId], references: [id], onDelete: SetNull)
-  producerUser           User?                        @relation("ProductionBatchProducer", fields: [producerUserId], references: [id], onDelete: SetNull)
-  completedBy            User?                        @relation("ProductionBatchCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
-  operations             ProductionOperation[]
-  consumptions           ProductionBatchConsumption[]
-  outputLots             Lot[]
-  operationalTasks       OperationalTask[]
-  haccpProductionSession HaccpProductionSession?
+  organization                Organization                            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order                       ProductionOrder                         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  recipeVersion               TechnicalSheetVersion?                  @relation(fields: [recipeVersionId], references: [id], onDelete: Restrict)
+  unit                        Unit                                    @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  destinationLocation         Location?                               @relation(fields: [destinationLocationId], references: [id], onDelete: SetNull)
+  producerUser                User?                                   @relation("ProductionBatchProducer", fields: [producerUserId], references: [id], onDelete: SetNull)
+  completedBy                 User?                                   @relation("ProductionBatchCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+  operations                  ProductionOperation[]
+  consumptions                ProductionBatchConsumption[]
+  outputLots                  Lot[]
+  operationalTasks            OperationalTask[]
+  haccpProductionSession      HaccpProductionSession?
+  haccpIngredientTraceability HaccpProductionIngredientTraceability[]
 
   @@unique([orderId, number])
   @@unique([organizationId, reference])
@@ -5020,6 +5039,7 @@ model ProductionAssignment {
 model OperationalTask {
   id                    String                  @id @default(uuid()) @db.Uuid
   organizationId        String                  @db.Uuid
+  sourceKey             String?
   title                 String
   description           String?                 @db.Text
   category              OperationalTaskCategory @default(OTHER)
@@ -5060,6 +5080,7 @@ model OperationalTask {
   createdBy           User?                       @relation("OperationalTaskCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   assignments         OperationalTaskAssignment[]
 
+  @@unique([organizationId, sourceKey])
   @@index([organizationId])
   @@index([departmentId])
   @@index([positionId])
@@ -6657,6 +6678,37 @@ model HaccpProductionSession {
   @@index([productionDate])
   @@index([status])
   @@map("haccp_production_sessions")
+}
+
+model HaccpProductionIngredientTraceability {
+  id                     String    @id @default(uuid()) @db.Uuid
+  organizationId         String    @db.Uuid
+  productionBatchId      String    @db.Uuid
+  productId              String?   @db.Uuid
+  ingredientKey          String
+  ingredientNameSnapshot String
+  quantitySnapshot       Decimal   @db.Decimal(12, 3)
+  unitSnapshot           String
+  lotNumber              String?
+  barcode                String?
+  photos                 Json      @default("[]")
+  idempotencyKey         String?
+  createdById            String?   @db.Uuid
+  completedAt            DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  productionBatch ProductionBatch @relation(fields: [productionBatchId], references: [id], onDelete: Cascade)
+  product         Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@unique([productionBatchId, ingredientKey])
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId])
+  @@index([productionBatchId])
+  @@index([productId])
+  @@index([completedAt])
+  @@map("haccp_production_ingredient_traceability")
 }
 
 model HaccpDailyReport {

@@ -6,7 +6,6 @@ $ApiDir = Join-Path $RootDir 'apps/api'
 $EnvFile = Join-Path $RootDir '.env'
 $EnvExample = Join-Path $RootDir '.env.example'
 $PrismaCli = Join-Path $RootDir 'node_modules/prisma/build/index.js'
-$RunSeed = $env:RUN_SEED -ne '0'
 
 function Show-Usage {
   @'
@@ -16,14 +15,9 @@ Windows-friendly Prisma reset for the local development database:
   1. Ensures .env exists at the repository root
   2. Runs Prisma migrate reset with --force and --skip-seed
   3. Regenerates Prisma Client
-  4. Seeds demo data unless disabled
 
 Options:
-  --no-seed       Skip demo seed data
   -h, --help      Show this help
-
-Environment:
-  RUN_SEED=0      Same as --no-seed
 
 Warning:
   This resets the local database configured by DATABASE_URL.
@@ -32,7 +26,6 @@ Warning:
 
 foreach ($Arg in $args) {
   switch ($Arg) {
-    '--no-seed' { $RunSeed = $false; continue }
     '-h' { Show-Usage; exit 0 }
     '--help' { Show-Usage; exit 0 }
     default {
@@ -96,13 +89,6 @@ Invoke-Checked 'node' @('--env-file=../../.env', $PrismaCli, 'migrate', 'reset',
 
 Write-Step 'Generating Prisma Client'
 Invoke-Checked 'node' @('--env-file=../../.env', $PrismaCli, 'generate') $ApiDir
-
-if ($RunSeed) {
-  Write-Step 'Seeding demo data'
-  Invoke-Checked 'node' @('--env-file=../../.env', '--import', 'tsx', 'prisma/seed.ts') $ApiDir
-} else {
-  Write-Step 'Skipping seed'
-}
 
 Write-Host ''
 Write-Host 'Prisma restart complete.'

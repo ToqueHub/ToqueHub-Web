@@ -34,6 +34,7 @@ type DashboardPreferences = {
   layout: Record<Zone, string[]>;
   hiddenWidgetIds: string[];
   pinnedWidgetIds: string[];
+  autoHideSidebar: boolean;
 };
 
 type OrganizationInstallState = {
@@ -173,12 +174,21 @@ export class DashboardService {
   }
 
   async updatePreferences(userId: string, organizationId: string, body: unknown) {
+    if (
+      body &&
+      typeof body === 'object' &&
+      'autoHideSidebar' in body &&
+      (body as { autoHideSidebar?: unknown }).autoHideSidebar !== undefined &&
+      typeof (body as { autoHideSidebar?: unknown }).autoHideSidebar !== 'boolean'
+    ) {
+      throw new BadRequestException('autoHideSidebar doit être un booléen');
+    }
     const current = await this.getOrCreatePreferences(userId, organizationId);
     const next = this.normalizePreferences({ ...current, ...(body as Partial<DashboardPreferences> ?? {}) });
     await (this.prisma as any).dashboardPreference.upsert({
       where: { userId_organizationId: { userId, organizationId } },
-      update: { layout: next.layout as Prisma.InputJsonValue, hiddenWidgetIds: next.hiddenWidgetIds, pinnedWidgetIds: next.pinnedWidgetIds },
-      create: { userId, organizationId, layout: next.layout as Prisma.InputJsonValue, hiddenWidgetIds: next.hiddenWidgetIds, pinnedWidgetIds: next.pinnedWidgetIds },
+      update: { layout: next.layout as Prisma.InputJsonValue, hiddenWidgetIds: next.hiddenWidgetIds, pinnedWidgetIds: next.pinnedWidgetIds, autoHideSidebar: next.autoHideSidebar },
+      create: { userId, organizationId, layout: next.layout as Prisma.InputJsonValue, hiddenWidgetIds: next.hiddenWidgetIds, pinnedWidgetIds: next.pinnedWidgetIds, autoHideSidebar: next.autoHideSidebar },
     });
     return this.getDashboard(userId, organizationId);
   }
@@ -205,7 +215,7 @@ export class DashboardService {
   private async getOrCreatePreferences(userId: string, organizationId: string): Promise<DashboardPreferences> {
     const row = await (this.prisma as any).dashboardPreference.findUnique({ where: { userId_organizationId: { userId, organizationId } } });
     if (!row) return this.defaultPreferences();
-    return this.normalizePreferences({ layout: row.layout, hiddenWidgetIds: row.hiddenWidgetIds, pinnedWidgetIds: row.pinnedWidgetIds });
+    return this.normalizePreferences({ layout: row.layout, hiddenWidgetIds: row.hiddenWidgetIds, pinnedWidgetIds: row.pinnedWidgetIds, autoHideSidebar: row.autoHideSidebar });
   }
 
   private serializeDashboard(widgets: Widget[], preferences: DashboardPreferences, context: Awaited<ReturnType<DashboardService['getContext']>>) {
@@ -285,7 +295,7 @@ export class DashboardService {
   private normalizePreferences(input: Partial<DashboardPreferences>): DashboardPreferences {
     const ids = new Set(REGISTRY.map((w) => w.id));
     const layout = Object.fromEntries(ZONES.map((zone) => [zone, [...new Set((input.layout?.[zone] ?? []).filter((id) => ids.has(id)))]])) as Record<Zone, string[]>;
-    return { layout, hiddenWidgetIds: [...new Set(input.hiddenWidgetIds ?? [])].filter((id) => ids.has(id)), pinnedWidgetIds: [...new Set(input.pinnedWidgetIds ?? [])].filter((id) => ids.has(id)) };
+    return { layout, hiddenWidgetIds: [...new Set(input.hiddenWidgetIds ?? [])].filter((id) => ids.has(id)), pinnedWidgetIds: [...new Set(input.pinnedWidgetIds ?? [])].filter((id) => ids.has(id)), autoHideSidebar: input.autoHideSidebar === true };
   }
 
   private sortZone(widgets: Widget[], preferences: DashboardPreferences) {

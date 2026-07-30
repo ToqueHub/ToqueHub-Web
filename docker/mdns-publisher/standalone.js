@@ -45,6 +45,8 @@ const publish = async () => {
   if (!enabled) return;
   const info = await readDiscoveryInfo();
   const name = String(process.env.TOQUEHUB_DISCOVERY_NAME || info.instanceName || 'ToqueHub').trim();
+  const instanceSuffix = String(info.instanceId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 8);
+  const serviceName = instanceSuffix ? `${name} (${instanceSuffix})` : name;
   const organization = String(process.env.TOQUEHUB_DISCOVERY_ORGANIZATION || info.organization || name).trim();
 
   stop();
@@ -53,11 +55,14 @@ const publish = async () => {
   });
 
   service = bonjour.publish({
-    name,
+    name: serviceName,
     type: 'toquehub',
     protocol: 'tcp',
     port,
     host: host || undefined,
+    // The stable instance suffix prevents collisions with other ToqueHub
+    // servers; skipping the probe avoids stale records after a restart.
+    probe: false,
     txt: {
       instanceId: String(info.instanceId),
       instanceName: name,
@@ -71,7 +76,7 @@ const publish = async () => {
   });
 
   service.on('up', () => {
-    console.log(`ToqueHub mDNS published: ${name}._toquehub._tcp.local -> ${host || 'default-host'}:${port}`);
+    console.log(`ToqueHub mDNS published: ${serviceName}._toquehub._tcp.local -> ${host || 'default-host'}:${port}`);
   });
   service.on('error', (error) => {
     console.warn(`mDNS publish failed: ${error.message}`);

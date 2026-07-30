@@ -36,6 +36,8 @@ import {
 } from './dto/production-execution.dto';
 import { ProductionQueryDto } from './dto/production.dto';
 import { ProductionPlanningService } from './production-planning.service';
+import { CatererEventLifecycleService } from './caterer-event-lifecycle.service';
+import { ProductionIngredientTraceabilityService } from './production-ingredient-traceability.service';
 
 type Actor = { id: string; role: string; permissions: string[] };
 type Tx = Prisma.TransactionClient;
@@ -54,6 +56,8 @@ export class ProductionExecutionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly planning: ProductionPlanningService,
+    private readonly catererLifecycle?: CatererEventLifecycleService,
+    private readonly ingredientTraceability?: ProductionIngredientTraceabilityService,
   ) {}
 
   async listCampaigns(organizationId: string, query: ProductionQueryDto) {
@@ -103,6 +107,118 @@ export class ProductionExecutionService {
     });
     if (!campaign) throw new NotFoundException({ code: 'PRODUCTION_CAMPAIGN_NOT_FOUND' });
     return campaign;
+  }
+
+  async cancelCampaign(
+    organizationId: string,
+    actor: Actor,
+    id: string,
+    reason = 'Fabrication annulée depuis le dossier Traiteur',
+  ) {
+    this.assertPermission(actor, 'production.campaign.validate');
+    const cancellableStatuses: ProductionOrderStatus[] = [
+      ProductionOrderStatus.DRAFT,
+      ProductionOrderStatus.PROPOSED,
+      ProductionOrderStatus.PLANNED,
+      ProductionOrderStatus.VALIDATED,
+      ProductionOrderStatus.BLOCKED,
+    ];
+    const completed = await this.serializable(async (tx) => {
+      const order = await tx.productionOrder.findFirst({
+        where: { id, organizationId },
+        include: {
+          batches: { include: { operationalTasks: true } },
+          needAllocations: true,
+        },
+      });
+      if (!order) throw new NotFoundException({ code: 'PRODUCTION_CAMPAIGN_NOT_FOUND' });
+      if (
+        !cancellableStatuses.includes(order.status) ||
+        order.batches.some(
+          (batch) =>
+            batch.status !== ProductionBatchStatus.TO_PREPARE ||
+            batch.operationalTasks.some(
+              (task) =>
+                task.status === OperationalTaskStatus.IN_PROGRESS ||
+                task.status === OperationalTaskStatus.COMPLETED,
+            ),
+        )
+      ) {
+        throw new ConflictException({
+          code: 'PRODUCTION_CAMPAIGN_ALREADY_STARTED',
+          status: order.status,
+        });
+      }
+      const now = new Date();
+      await tx.stockReservation.updateMany({
+        where: { organizationId, orderId: id, status: StockReservationStatus.ACTIVE },
+        data: {
+          status: StockReservationStatus.RELEASED,
+          releasedAt: now,
+          reason,
+        },
+      });
+      await tx.productionOperation.updateMany({
+        where: {
+          organizationId,
+          batch: { orderId: id },
+          status: { not: ProductionOperationStatus.COMPLETED },
+        },
+        data: { status: ProductionOperationStatus.CANCELLED, completedAt: now },
+      });
+      await tx.productionBatch.updateMany({
+        where: { organizationId, orderId: id },
+        data: {
+          status: ProductionBatchStatus.CANCELLED,
+          completedAt: now,
+          optimisticVersion: { increment: 1 },
+        },
+      });
+      await tx.operationalTask.updateMany({
+        where: { organizationId, productionBatch: { orderId: id } },
+        data: { status: OperationalTaskStatus.CANCELLED, completedAt: null },
+      });
+      await tx.productionOrder.update({
+        where: { id },
+        data: {
+          status: ProductionOrderStatus.CANCELLED,
+          cancelledAt: now,
+          updatedById: actor.id,
+          optimisticVersion: { increment: 1 },
+        },
+      });
+      for (const needId of [...new Set(order.needAllocations.map((allocation) => allocation.needId))]) {
+        const otherAllocations = await tx.productionNeedAllocation.count({
+          where: {
+            needId,
+            orderId: { not: id },
+            order: { status: { not: ProductionOrderStatus.CANCELLED } },
+          },
+        });
+        if (!otherAllocations) {
+          await tx.productionNeed.updateMany({
+            where: {
+              id: needId,
+              organizationId,
+              status: { not: ProductionNeedStatus.COVERED },
+            },
+            data: { status: ProductionNeedStatus.CANCELLED },
+          });
+        }
+      }
+      await this.history(
+        tx,
+        organizationId,
+        id,
+        actor.id,
+        ProductionHistoryAction.CANCELLED,
+        reason,
+        { stockReservationsReleased: true },
+      );
+      return this.getCampaignTx(tx, organizationId, id);
+    });
+    await this.catererLifecycle?.evaluateForOrder(organizationId, completed.id);
+    return completed;
   }
 
   async cancelExpiredUnassignedCampaigns(organizationId: string, actor: Actor, now = new Date()) {
@@ -299,6 +415,12 @@ export class ProductionExecutionService {
   async createCampaign(organizationId: string, actor: Actor, dto: CreateProductionCampaignDto) {
     this.assertPermission(actor, 'production.campaign.validate');
     const neededAt = this.date(dto.neededAt, 'PRODUCTION_INVALID_NEEDED_AT');
+    const productionDate = dto.productionDate
+      ? this.date(dto.productionDate, 'PRODUCTION_INVALID_PRODUCTION_DATE')
+      : neededAt;
+    if (productionDate > neededAt) {
+      throw new BadRequestException({ code: 'PRODUCTION_DATE_AFTER_NEEDED_AT' });
+    }
     const profile = await this.prisma.productionProfile.findFirst({
       where: { id: dto.profileId, organizationId },
       include: {
@@ -427,7 +549,7 @@ export class ProductionExecutionService {
           recipeVersionId: recipeVersion.id,
           outputProductId: profile.outputProductId,
           outputVariantId: profile.outputVariantId,
-          productionDate: neededAt,
+          productionDate,
           plannedTime: dto.plannedTime ?? '08:00',
           status: proposed.lte(0)
             ? ProductionOrderStatus.COMPLETED
@@ -509,7 +631,7 @@ export class ProductionExecutionService {
         recipeVersion.id,
         profile.yieldUnitId,
         dto.destinationLocationId,
-        neededAt,
+        productionDate,
         dto.plannedTime ?? '08:00',
         selected.batches,
         profile.technicalSheet.steps,
@@ -674,6 +796,7 @@ export class ProductionExecutionService {
     input: {
       grossRequirement: string;
       plannedTime: string;
+      productionDate?: string;
       serviceId?: string;
       targetPortions?: string;
       targetMode?: 'PORTIONS' | 'MASS';
@@ -682,6 +805,9 @@ export class ProductionExecutionService {
   ) {
     this.assertPermission(actor, 'production.campaign.validate');
     const gross = new Prisma.Decimal(input.grossRequirement);
+    const productionDate = input.productionDate
+      ? this.date(input.productionDate, 'PRODUCTION_INVALID_PRODUCTION_DATE')
+      : null;
     if (!gross.isFinite() || gross.lte(0)) {
       throw new BadRequestException({ code: 'PRODUCTION_INVALID_QUANTITY' });
     }
@@ -710,7 +836,7 @@ export class ProductionExecutionService {
     }
     const current = await this.prisma.productionOrder.findFirst({
       where: { id, organizationId },
-      include: { batches: true },
+      include: { batches: true, needAllocations: { include: { need: true } } },
     });
     if (!current) throw new NotFoundException({ code: 'PRODUCTION_CAMPAIGN_NOT_FOUND' });
     const editableStatuses: ProductionOrderStatus[] = [
@@ -727,6 +853,12 @@ export class ProductionExecutionService {
         code: 'PRODUCTION_CAMPAIGN_NOT_EDITABLE',
         status: current.status,
       });
+    }
+    if (
+      productionDate &&
+      current.needAllocations.some((allocation) => productionDate > allocation.need.neededAt)
+    ) {
+      throw new BadRequestException({ code: 'PRODUCTION_DATE_AFTER_NEEDED_AT' });
     }
     const profile = await this.prisma.productionProfile.findFirst({
       where: {
@@ -806,6 +938,7 @@ export class ProductionExecutionService {
         where: { id },
         data: {
           plannedTime: input.plannedTime,
+          productionDate: productionDate ?? order.productionDate,
           serviceId: input.serviceId,
           targetMode: input.targetMode,
           targetQuantity,
@@ -863,6 +996,7 @@ export class ProductionExecutionService {
                 targetPortions.mul(targetWeight).toDecimalPlaces(3).toString(),
               ),
               plannedTime: input.plannedTime,
+              productionDate: (productionDate ?? order.productionDate).toISOString(),
             };
           });
           await tx.menuProductionLink.update({
@@ -920,7 +1054,7 @@ export class ProductionExecutionService {
         order.recipeVersionId!,
         profile.yieldUnitId,
         undefined,
-        order.productionDate,
+        productionDate ?? order.productionDate,
         input.plannedTime,
         selected.batches,
         profile.technicalSheet.steps,
@@ -936,6 +1070,7 @@ export class ProductionExecutionService {
           previousGrossRequirement: order.grossRequirement.toFixed(3),
           grossRequirement: gross.toFixed(3),
           proposedQuantity: proposed.toFixed(3),
+          productionDate: (productionDate ?? order.productionDate).toISOString(),
         },
       );
       return this.getCampaignTx(tx, organizationId, id);
@@ -1229,6 +1364,87 @@ export class ProductionExecutionService {
     });
   }
 
+  /**
+   * Restarts the execution workflow without touching HACCP ingredient evidence.
+   * A completed batch cannot safely be reopened because it may already have
+   * created stock movements and an output lot.
+   */
+  async restartBatch(organizationId: string, actor: Actor, id: string) {
+    this.assertPermission(actor, 'production.batch.execute');
+    return this.serializable(async (tx) => {
+      const batch = await tx.productionBatch.findFirst({
+        where: { id, organizationId },
+        include: {
+          order: { include: { batches: { select: { id: true, status: true } } } },
+          operations: { orderBy: { position: 'asc' } },
+        },
+      });
+      if (!batch) throw new NotFoundException({ code: 'PRODUCTION_BATCH_NOT_FOUND' });
+      const terminalStatuses: ProductionBatchStatus[] = [
+        ProductionBatchStatus.COMPLETED,
+        ProductionBatchStatus.PARTIALLY_LOST,
+      ];
+      if (terminalStatuses.includes(batch.status)) {
+        throw new ConflictException({
+          code: 'PRODUCTION_BATCH_RESTART_NOT_ALLOWED',
+          status: batch.status,
+          message: 'Un lot clôturé ne peut pas être recommencé.',
+        });
+      }
+
+      const firstOperation = batch.operations[0];
+      await Promise.all(
+        batch.operations.map((operation) =>
+          tx.productionOperation.update({
+            where: { id: operation.id },
+            data: {
+              status:
+                operation.id === firstOperation?.id
+                  ? ProductionOperationStatus.READY
+                  : ProductionOperationStatus.PENDING,
+              startedAt: null,
+              completedAt: null,
+            },
+          }),
+        ),
+      );
+      await tx.operationalTask.updateMany({
+        where: { organizationId, productionBatchId: batch.id },
+        data: { status: OperationalTaskStatus.TODO, completedAt: null },
+      });
+
+      const activeStatuses: ProductionBatchStatus[] = [
+        ProductionBatchStatus.PREPARING,
+        ProductionBatchStatus.COOKING,
+        ProductionBatchStatus.COOLING,
+        ProductionBatchStatus.FREEZING,
+      ];
+      const otherActiveBatches = batch.order.batches.some(
+        (other) =>
+          other.id !== batch.id &&
+          activeStatuses.includes(other.status),
+      );
+      await tx.productionOrder.update({
+        where: { id: batch.orderId },
+        data: {
+          status: otherActiveBatches ? ProductionOrderStatus.IN_PROGRESS : ProductionOrderStatus.VALIDATED,
+          updatedById: actor.id,
+        },
+      });
+
+      return tx.productionBatch.update({
+        where: { id: batch.id },
+        data: {
+          status: ProductionBatchStatus.TO_PREPARE,
+          startedAt: null,
+          producerUserId: null,
+          optimisticVersion: { increment: 1 },
+        },
+        include: { order: true, operations: { orderBy: { position: 'asc' } } },
+      });
+    });
+  }
+
   async updateOperation(
     organizationId: string,
     actor: Actor,
@@ -1318,7 +1534,7 @@ export class ProductionExecutionService {
     if (actualQuantity.lt(0) || lostQuantity.lt(0)) {
       throw new BadRequestException({ code: 'PRODUCTION_NEGATIVE_QUANTITY' });
     }
-    return this.serializable(async (tx) => {
+    const completed = await this.serializable(async (tx) => {
       const existing = await tx.productionBatch.findFirst({
         where: { organizationId, idempotencyKey: dto.idempotencyKey },
         include: { outputLots: { include: { stocks: true } }, order: true },
@@ -1340,6 +1556,7 @@ export class ProductionExecutionService {
         },
       });
       if (!batch) throw new NotFoundException({ code: 'PRODUCTION_BATCH_NOT_FOUND' });
+      await this.ingredientTraceability?.assertCompleteTx(tx, organizationId, batch.id);
       if (
         !(
           [
@@ -1606,6 +1823,8 @@ export class ProductionExecutionService {
         },
       });
     });
+    await this.catererLifecycle?.evaluateForOrder(organizationId, completed.orderId);
+    return completed;
   }
 
   private async productionDaySnapshot(

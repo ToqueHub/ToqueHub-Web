@@ -687,6 +687,7 @@ export interface ModularDashboardPreferences {
   hiddenWidgetIds: string[];
   pinnedWidgetIds: string[];
   zoneOrder: Record<'kpi' | 'activity' | 'analytics' | 'alerts', string[]>;
+  autoHideSidebar: boolean;
 }
 
 export interface ModularDashboard {
@@ -1777,55 +1778,6 @@ export interface Product {
   primarySupplier?: Supplier | null;
 }
 
-export interface ProductLabelOcrResult {
-  productId: string;
-  filename: string;
-  mimeType: string;
-  pageCount?: number | null;
-  ingredients?: string | null;
-  nutrition: {
-    energyKj: number | null;
-    energyKcal: number | null;
-    fatGrams: number | null;
-    saturatedFatGrams: number | null;
-    carbohydratesGrams: number | null;
-    sugarsGrams: number | null;
-    fiberGrams: number | null;
-    proteinGrams: number | null;
-    saltGrams: number | null;
-  };
-  allergensPresent: string[];
-  possibleTraces: string[];
-  confidence?: number | null;
-  warnings: string[];
-}
-
-export interface ProductLabelOcrDocumentStatus {
-  document: {
-    id: string;
-    originalName: string;
-    mimeType: string;
-    sizeBytes: number;
-    status: string;
-    createdAt: string;
-    updatedAt: string;
-  };
-  state: 'en attente' | 'analyse' | 'vérifier' | 'erreur';
-  progress: number;
-  result?: ProductLabelOcrResult | null;
-  errorMessage?: string | null;
-}
-
-export interface ProductLabelOcrBatchStatus {
-  batchId: string;
-  product: { id: string; name: string };
-  state: 'en attente' | 'analyse' | 'vérifier' | 'erreur';
-  progress: number;
-  documents: ProductLabelOcrDocumentStatus[];
-  results: ProductLabelOcrResult[];
-  errors: number;
-}
-
 export type ProductImportStatus = 'ready' | 'needs_review' | 'duplicate' | 'ignored' | 'error';
 
 export type ProductImportField =
@@ -2565,6 +2517,7 @@ export interface MenuItem {
 }
 
 export interface MenuItemPayload {
+  id?: string;
   section: MenuSection;
   menuCategoryId?: string;
   technicalSheetId?: string | null;
@@ -2658,6 +2611,7 @@ export interface MenuPlan {
         openingCarryOverPortions?: number;
         plannedProductionPortions?: number;
         plannedTime?: string;
+        productionDate?: string;
       }>;
     } | null;
     productionOrder?: ProductionCampaign | ProductionOrder | null;
@@ -2912,15 +2866,85 @@ export interface CatererEventPayload {
   prestations: CatererPrestationPayload[];
 }
 
+export interface CatererProductionPlanLine {
+  menuItemId: string;
+  prestationId: string;
+  prestationName: string;
+  menuId: string;
+  technicalSheetId: string;
+  technicalSheetName: string;
+  section: MenuSection;
+  portions: number;
+  readyAt: string;
+  productionDate: string;
+  plannedTime: string;
+  serviceId?: string | null;
+  productionOrderId?: string | null;
+  productionOrderStatus?: string | null;
+  editable: boolean;
+}
+
+export interface CatererProductionPlanLogisticsLine {
+  key: string;
+  prestationId: string;
+  prestationName: string;
+  menuId: string;
+  title: string;
+  description?: string;
+  startsAt: string;
+  endsAt: string;
+  category: 'LOGISTICS';
+  enabled: boolean;
+  task?: OperationalTask | null;
+}
+
+export interface CatererProductionPlan {
+  event: CatererEvent;
+  lines: CatererProductionPlanLine[];
+  stockProducts: Array<{
+    menuItemId: string;
+    prestationId: string;
+    prestationName: string;
+    productId: string;
+    productName: string;
+    quantity: number;
+  }>;
+  logistics: CatererProductionPlanLogisticsLine[];
+  focusDate: string;
+  createdOrderIds?: string[];
+  updatedOrderIds?: string[];
+  cancelledOrderIds?: string[];
+  logisticsTaskIds?: string[];
+}
+
+export interface CatererProductionPlanPayload {
+  serviceId: string;
+  logisticsDepartmentId?: string;
+  lines: Array<{
+    menuItemId: string;
+    portions: number;
+    productionDate: string;
+    plannedTime: string;
+  }>;
+  logistics: Array<{
+    key: string;
+    enabled: boolean;
+    startsAt: string;
+    endsAt: string;
+  }>;
+}
+
 export interface MenuProductionGenerationPayload {
   mode: 'DETAILED' | 'GROUPED';
   confirmRegeneration?: boolean;
   plannedTime?: string;
   serviceId?: string;
+  neededAt?: string;
   lines?: Array<{
     menuItemId: string;
     portions: number;
     plannedTime?: string;
+    productionDate?: string;
     targetPortions?: number;
     openingCarryOverPortions?: number;
   }>;
@@ -3709,6 +3733,7 @@ export interface OperationalTask {
   category: OperationalTaskCategory;
   status: OperationalTaskStatus;
   source: OperationalTaskSource;
+  sourceKey?: string | null;
   departmentId: string;
   positionId?: string | null;
   siteId?: string | null;
@@ -3798,6 +3823,7 @@ export interface OperationalTaskPayload {
   quantity?: number | null;
   unitLabel?: string | null;
   source?: OperationalTaskSource;
+  sourceKey?: string;
   menuId?: string;
   technicalSheetId?: string | null;
   technicalSheetStepId?: string | null;

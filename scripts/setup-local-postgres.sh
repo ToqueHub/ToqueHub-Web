@@ -144,5 +144,4 @@ postgresql://$DB_USER:$DB_PASSWORD@$DB_HOST:$DB_PORT/$DB_NAME?schema=public
 
 Next commands:
   npm run prisma:migrate
-  npm run prisma:seed
 MSG

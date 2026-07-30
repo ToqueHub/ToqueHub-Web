@@ -43,6 +43,7 @@ export class OperationalTaskOptionsQueryDto {
 }
 
 export class UpsertOperationalTaskDto {
+  @IsOptional() @IsString() @MaxLength(220) sourceKey?: string;
   @IsString() @MaxLength(180) title!: string;
   @IsOptional() @IsString() @MaxLength(4000) description?: string;
   @IsEnum(OperationalTaskCategory) category!: OperationalTaskCategory;
@@ -70,6 +71,7 @@ export class UpsertOperationalTaskDto {
 }
 
 export class UpdateOperationalTaskDto {
+  @IsOptional() @IsString() @MaxLength(220) sourceKey?: string | null;
   @IsOptional() @IsString() @MaxLength(180) title?: string;
   @IsOptional() @IsString() @MaxLength(4000) description?: string;
   @IsOptional() @IsEnum(OperationalTaskCategory) category?: OperationalTaskCategory;

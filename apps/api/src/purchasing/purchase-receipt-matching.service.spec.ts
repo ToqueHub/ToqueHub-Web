@@ -46,6 +46,23 @@ describe('PurchaseReceiptMatchingService', () => {
     expect(extraction.deliveryNoteNumber).toBe('BL-42');
   });
 
+  it('accepts a manually added product outside the purchase order', () => {
+    const [line] = matching.normalize('org-1', [orderLine()], [
+      {
+        productId: 'product-extra',
+        unitId: 'unit-1',
+        label: 'Produit supplémentaire',
+        deliveredQuantity: 4,
+        acceptedQuantity: 4,
+      },
+    ]);
+
+    expect(line.status).toBe(PurchaseReceiptLineStatus.UNEXPECTED);
+    expect(line.purchaseOrderLineId).toBeUndefined();
+    expect(line.productId).toBe('product-extra');
+    expect(Number(line.acceptedQuantity)).toBe(4);
+  });
+
   it('rejects malformed OCR JSON before converting it to business data', () => {
     expect(() => matching.fromOcr({ lines: [{ quantity: 'invalide' }] })).toThrow(
       'quantité OCR',

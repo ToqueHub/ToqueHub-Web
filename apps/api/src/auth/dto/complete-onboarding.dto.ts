@@ -36,7 +36,7 @@ export class CompleteOnboardingDto {
   @MaxLength(80)
   lastName!: string;
 
-  @ApiProperty({ example: 'admin@toquehub.local' })
+  @ApiProperty({ example: 'admin@mon-etablissement.fr' })
   @IsEmail()
   @MaxLength(180)
   email!: string;

@@ -71,11 +71,16 @@ export class DiscoveryService implements OnApplicationBootstrap, OnApplicationSh
     const txt = this.toTxtRecords(info, host, port);
 
     this.publisher.publish({
-      name: info.instanceName,
+      name: this.resolveServiceName(info.instanceName, info.instanceId),
       port,
       host,
       txt,
     });
+  }
+
+  private resolveServiceName(instanceName: string, instanceId: string) {
+    const suffix = instanceId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8);
+    return suffix ? `${instanceName} (${suffix})` : instanceName;
   }
 
   private discoveryEnabled() {

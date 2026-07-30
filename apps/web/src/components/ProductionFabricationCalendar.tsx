@@ -48,6 +48,9 @@ type Props = {
   sites: Site[];
   departments: HrDepartment[];
   loading: boolean;
+  focusDate?: string;
+  focusMode?: CalendarMode;
+  campaignIds?: Set<string>;
   onRefresh: () => Promise<void> | void;
   children?: ReactNode;
   onContextChange?: (context: {
@@ -268,6 +271,9 @@ export function ProductionFabricationCalendar({
   sites,
   departments,
   loading,
+  focusDate,
+  focusMode,
+  campaignIds,
   onRefresh,
   children,
   onContextChange,
@@ -327,6 +333,7 @@ export function ProductionFabricationCalendar({
   const [editError, setEditError] = useState('');
   const [editDraft, setEditDraft] = useState({
     serviceId: '',
+    productionDate: dayKey(new Date()),
     plannedTime: '08:00',
     quantityMode: 'PORTIONS' as ProductionQuantityMode,
     targetPortions: '1',
@@ -349,12 +356,20 @@ export function ProductionFabricationCalendar({
     if (!siteId && sites.length === 1) setSiteId(sites[0].id);
   }, [siteId, sites]);
 
+  useEffect(() => {
+    if (focusDate) setAnchor(dayKey(focusDate));
+    if (focusMode) setMode(focusMode);
+  }, [focusDate, focusMode]);
+
   const visibleCampaigns = useMemo(
     () =>
       campaigns.filter(
-        (campaign) => campaign.status !== 'CANCELLED' && (!siteId || campaign.siteId === siteId),
+        (campaign) =>
+          campaign.status !== 'CANCELLED' &&
+          (!siteId || campaign.siteId === siteId) &&
+          (!campaignIds || campaignIds.has(campaign.id)),
       ),
-    [campaigns, siteId],
+    [campaignIds, campaigns, siteId],
   );
 
   const calendarDays = useMemo(() => {
@@ -905,6 +920,7 @@ export function ProductionFabricationCalendar({
     setEditingCampaign(campaign);
     setEditDraft({
       serviceId: campaign.serviceId ?? '',
+      productionDate: dayKey(campaign.productionDate),
       plannedTime: campaign.plannedTime || '08:00',
       quantityMode: target.mode,
       targetPortions: String(Math.max(target.value || (target.mode === 'MASS' ? 0.001 : 1), 0.001)),
@@ -945,6 +961,7 @@ export function ProductionFabricationCalendar({
     try {
       await api.updateProductionCampaign(token, editingCampaign.id, {
         grossRequirement: String(grossRequirement),
+        productionDate: `${editDraft.productionDate}T${editDraft.plannedTime}:00`,
         plannedTime: editDraft.plannedTime,
         serviceId: editDraft.serviceId,
         targetMode: editDraft.quantityMode,
@@ -1267,7 +1284,7 @@ export function ProductionFabricationCalendar({
                   ) : (
                     <CheckCircle2 size={17} />
                   )}
-                  Clôturer la vitrine
+                  Clôturer la journée
                 </button>
                 <button
                   type="button"
@@ -1638,7 +1655,7 @@ export function ProductionFabricationCalendar({
                 </label>
                 <label>
                   <span>
-                    <Clock3 size={15} /> Prêt pour
+                    <Clock3 size={15} /> Heure
                   </span>
                   <input
                     type="time"
@@ -1911,7 +1928,23 @@ export function ProductionFabricationCalendar({
                 </label>
                 <label>
                   <span>
-                    <Clock3 size={15} /> Prêt pour
+                    <CalendarDays size={15} /> Jour de fabrication
+                  </span>
+                  <input
+                    type="date"
+                    value={editDraft.productionDate}
+                    disabled={!campaignIsEditable(editingCampaign) || editSaving}
+                    onChange={(event) =>
+                      setEditDraft((current) => ({
+                        ...current,
+                        productionDate: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  <span>
+                    <Clock3 size={15} /> Heure de fabrication
                   </span>
                   <input
                     type="time"
@@ -3079,7 +3112,7 @@ export function ProductionFabricationCalendar({
               <header>
                 <div>
                   <span>
-                    <CheckCircle2 size={16} /> Clôture de la vitrine
+                    <CheckCircle2 size={16} /> Clôture de la journée
                   </span>
                   <h2>{formatDay(dayKey(closure.date))}</h2>
                   <p>

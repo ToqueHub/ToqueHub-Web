@@ -6,11 +6,15 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   BadRequestException,
   Res,
+  UploadedFiles,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
@@ -64,6 +68,7 @@ import {
 } from './dto/production-day-closure.dto';
 import { ProductionDayClosureService } from './production-day-closure.service';
 import { ProductionOperationalExportService } from './production-operational-export.service';
+import { ProductionIngredientTraceabilityService } from './production-ingredient-traceability.service';
 
 @ApiTags('production')
 @ApiBearerAuth()
@@ -77,6 +82,7 @@ export class ProductionController {
     private readonly operationalTasks: OperationalTasksService,
     private readonly dayClosures: ProductionDayClosureService,
     private readonly operationalExport: ProductionOperationalExportService,
+    private readonly ingredientTraceability: ProductionIngredientTraceabilityService,
   ) {}
   private org(user: AuthenticatedUser) {
     if (!user.organizationId) throw new BadRequestException('Organization setup is required');
@@ -156,6 +162,12 @@ export class ProductionController {
     @Param('id') id: string,
   ) {
     return this.operationalTasks.splitProductionRecipeTask(this.org(user), this.actor(user), id);
+  }
+  @Post('tasks/:id/merge-recipe') mergeProductionRecipeTask(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.operationalTasks.mergeProductionRecipeTask(this.org(user), this.actor(user), id);
   }
   @Patch('tasks/:id') updateTask(
     @CurrentUser() user: AuthenticatedUser,
@@ -355,12 +367,47 @@ export class ProductionController {
   ) {
     return this.execution.startBatch(this.org(user), this.actor(user), id, dto);
   }
+  @Post('batches/:id/restart') restartBatch(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.execution.restartBatch(this.org(user), this.actor(user), id);
+  }
   @Post('batches/:id/complete') completeBatch(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Body() dto: CompleteProductionBatchDto,
   ) {
     return this.execution.completeBatch(this.org(user), this.actor(user), id, dto);
+  }
+  @Get('batches/:id/traceability')
+  batchTraceability(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.ingredientTraceability.get(this.org(user), id);
+  }
+  @Put('batches/:id/traceability/:ingredientKey')
+  @UseInterceptors(
+    FilesInterceptor('photos', 3, {
+      limits: { fileSize: 8 * 1024 * 1024, files: 3 },
+    }),
+  )
+  saveBatchTraceability(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Param('ingredientKey') ingredientKey: string,
+    @Body() body: Record<string, unknown>,
+    @UploadedFiles() files: any[],
+  ) {
+    return this.ingredientTraceability.save(
+      this.org(user),
+      this.actor(user),
+      id,
+      ingredientKey,
+      body,
+      files,
+    );
   }
   @Patch('operations/:id') updateOperation(
     @CurrentUser() user: AuthenticatedUser,

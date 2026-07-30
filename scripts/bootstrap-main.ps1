@@ -4,7 +4,6 @@ Set-StrictMode -Version Latest
 $RootDir = Resolve-Path (Join-Path $PSScriptRoot '..')
 Set-Location $RootDir
 
-$RunSeed = $env:RUN_SEED -ne '0'
 $RunDbSetup = $env:RUN_DB_SETUP -ne '0'
 $ResetDb = $env:RESET_DB -eq '1'
 
@@ -18,17 +17,14 @@ Prepares a freshly pulled branch for local development on Windows:
   3. Prepares a local PostgreSQL database
   4. Generates Prisma Client
   5. Applies pending Prisma migrations without deleting data
-  6. Seeds demo data unless disabled
 
 Options:
   --no-db-setup   Skip local PostgreSQL setup
-  --no-seed       Skip demo seed data
   --reset-db      Drop local data and replay migrations before seeding
   -h, --help      Show this help
 
 Environment:
   RUN_DB_SETUP=0  Same as --no-db-setup
-  RUN_SEED=0      Same as --no-seed
   RESET_DB=1      Same as --reset-db
 
 PostgreSQL:
@@ -41,7 +37,6 @@ PostgreSQL:
 foreach ($Arg in $args) {
   switch ($Arg) {
     '--no-db-setup' { $RunDbSetup = $false; continue }
-    '--no-seed' { $RunSeed = $false; continue }
     '--reset-db' { $ResetDb = $true; continue }
     '-h' { Show-Usage; exit 0 }
     '--help' { Show-Usage; exit 0 }
@@ -296,13 +291,6 @@ To keep local data, recover the missing migration/code instead of resetting.
 '@ | Write-Error
     exit 1
   }
-}
-
-if ($RunSeed) {
-  Write-Step 'Seeding demo data'
-  Invoke-Checked 'npm' @('run', 'prisma:seed')
-} else {
-  Write-Step 'Skipping seed'
 }
 
 @'

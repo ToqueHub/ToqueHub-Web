@@ -15,6 +15,9 @@ export type ValidatedReceptionLineInput = {
   locationId?: string | null;
   stockQuantity: Prisma.Decimal;
   inputQuantity: Prisma.Decimal;
+  documentedQuantity?: Prisma.Decimal | null;
+  deliveredQuantity?: Prisma.Decimal | null;
+  acceptedQuantity?: Prisma.Decimal | null;
   baseUnitPrice?: Prisma.Decimal | null;
   unitPrice?: Prisma.Decimal | null;
   lineTotal?: Prisma.Decimal | null;
@@ -60,6 +63,9 @@ export class StocksReceptionInventoryService {
         ocrLabel: input.label,
         reference: input.reference,
         quantity: input.inputQuantity,
+        documentedQuantity: input.documentedQuantity ?? input.deliveredQuantity ?? input.inputQuantity,
+        deliveredQuantity: input.deliveredQuantity ?? input.inputQuantity,
+        acceptedQuantity: input.acceptedQuantity ?? input.inputQuantity,
         unit: input.unit.symbol,
         unitId: input.unit.id,
         unitPrice: input.unitPrice,

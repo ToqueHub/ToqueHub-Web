@@ -170,7 +170,6 @@ npm install
 npm run db:setup:local
 npm run prisma:generate
 npm run prisma:migrate
-npm run prisma:seed
 ```
 
 Lancer l'API:
@@ -191,12 +190,7 @@ URLs locales:
 - Swagger: `http://localhost:3000/api/docs`
 - Web: `http://localhost:5173`
 
-Compte de démo seedé:
-
-```text
-admin@toquehub.local
-toquehub
-```
+Au premier démarrage, créez le compte administrateur et l’établissement depuis l’écran d’onboarding.
 
 ## Docker, Ubuntu et Raspberry Pi
 
@@ -258,7 +252,6 @@ toquehub restart
 | `npm run prisma:generate` | Génère le client Prisma. |
 | `npm run prisma:migrate` | Applique les migrations en développement. |
 | `npm run prisma:reset` | Réinitialise la base locale sans seed. |
-| `npm run prisma:seed` | Charge les données de démo. |
 | `npm run typecheck` | Vérifie le typage des workspaces. |
 | `npm run build` | Compile les workspaces. |
 | `npm run docker:up` | Lance la stack Docker complète. |

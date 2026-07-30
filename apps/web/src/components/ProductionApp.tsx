@@ -1,5 +1,15 @@
-import { useCallback, useEffect, useMemo, useState, type DragEvent, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type FormEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { createPortal } from 'react-dom';
 import {
   AlertCircle,
   Building2,
@@ -48,6 +58,8 @@ import {
 import type {
   HrDepartment,
   HrPosition,
+  CatererProductionPlan,
+  CatererProductionPlanPayload,
   MenuPlan,
   OperationalTask,
   OperationalTaskAssignee,
@@ -64,6 +76,7 @@ type ProductionAppProps = {
   token: string;
   session: UserSession;
   tab: 'fabrication' | 'planning';
+  onNavigate?: (tab: 'fabrication' | 'planning') => void;
 };
 
 type ViewMode = 'day' | 'week';
@@ -184,7 +197,7 @@ function taskDay(value: string) {
 }
 
 const TIMELINE_HOUR_HEIGHT = 72;
-const TIMELINE_MIN_TASK_MINUTES = 60;
+const TIMELINE_MIN_TASK_MINUTES = 15;
 const TIMELINE_DEFAULT_START = 0;
 const TIMELINE_DEFAULT_END = 24 * 60;
 
@@ -210,6 +223,12 @@ function formatTimelineMinute(value: number) {
   const hours = bounded === 24 * 60 ? 24 : Math.floor(bounded / 60);
   const minutes = bounded === 24 * 60 ? 0 : bounded % 60;
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function dateAtTimelineMinute(day: string, minute: number) {
+  const date = parseDay(day);
+  date.setMinutes(minute, 0, 0);
+  return date;
 }
 
 function buildTimelineLayout(tasks: OperationalTask[], day: string): TimelineTaskLayout[] {
@@ -292,6 +311,13 @@ function canSplitProductionRecipe(task: OperationalTask) {
   );
 }
 
+function canPlaceOperationalTask(task: OperationalTask) {
+  return Boolean(
+    (task.source === 'PRODUCTION' && task.productionBatchId) ||
+      (task.status === 'TODO' && task.sourceKey?.startsWith('CATERER:')),
+  );
+}
+
 function campaignQuantity(campaign: ProductionCampaign) {
   const mode =
     campaign.targetMode ?? (campaign.technicalSheet?.yieldMode === 'MASS' ? 'MASS' : 'PORTIONS');
@@ -357,7 +383,7 @@ function categoryForDepartment(name?: string | null): OperationalTaskCategory {
   return 'OTHER';
 }
 
-export function ProductionApp({ token, session, tab }: ProductionAppProps) {
+export function ProductionApp({ token, session, tab, onNavigate }: ProductionAppProps) {
   const [view, setView] = useState<ViewMode>('day');
   const [anchorDate, setAnchorDate] = useState(today());
   const [siteFilter, setSiteFilter] = useState('');
@@ -371,6 +397,7 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
   });
   const [positions, setPositions] = useState<HrPosition[]>([]);
   const [tasks, setTasks] = useState<OperationalTask[]>([]);
+  const [queueScopeTasks, setQueueScopeTasks] = useState<OperationalTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
   const [exportingPdf, setExportingPdf] = useState(false);
@@ -421,6 +448,10 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
     name: string;
     orderIds: Set<string>;
   }>();
+  const [catererPlan, setCatererPlan] = useState<CatererProductionPlan>();
+  const [logisticsSetupOpen, setLogisticsSetupOpen] = useState(false);
+  const [logisticsDepartmentId, setLogisticsDepartmentId] = useState('');
+  const [logisticsSaving, setLogisticsSaving] = useState(false);
 
   const period = useMemo(() => {
     const start = view === 'week' ? startOfWeek(anchorDate) : anchorDate;
@@ -446,7 +477,9 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
           } annulée${expiry.cancelledCount > 1 ? 's' : ''} automatiquement · stocks libérés.`,
         );
       }
-      const [hr, context, availableSites, taskList] = await Promise.all([
+      const queueStart = addDays(anchorDate, -30);
+      const queueEnd = addDays(anchorDate, 60);
+      const [hr, context, availableSites, taskList, queueTaskList] = await Promise.all([
         api.hrBootstrap(token),
         api.productionTaskContext(token),
         api.sites(token).catch(() => []),
@@ -456,6 +489,14 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
           siteId: siteFilter || undefined,
           departmentId: departmentFilter || undefined,
         }),
+        view === 'day'
+          ? api.productionTasks(token, {
+              startDate: localIso(queueStart, '00:00'),
+              endDate: localIso(queueEnd, '00:00'),
+              siteId: siteFilter || undefined,
+              departmentId: departmentFilter || undefined,
+            })
+          : Promise.resolve([]),
       ]);
       setSites(availableSites.filter((site) => !site.isArchived && !site.archivedAt));
       setDepartments(context.departments ?? []);
@@ -465,17 +506,59 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
         canCreateUnassigned: context.canCreateUnassigned,
       });
       setPositions((hr.positions ?? []).filter((item) => !item.isArchived));
-      setTasks(taskList);
+      const mergedTasks = new Map(taskList.map((task) => [task.id, task] as const));
+      queueTaskList
+        .filter(
+          (task) => canPlaceOperationalTask(task) && task.isTimeScheduled === false,
+        )
+        .forEach((task) => mergedTasks.set(task.id, task));
+      setTasks([...mergedTasks.values()]);
+      setQueueScopeTasks(view === 'day' ? queueTaskList : taskList);
     } catch (loadError) {
       setError(errorMessage(loadError));
     } finally {
       setLoading(false);
     }
-  }, [departmentFilter, period.end, period.start, siteFilter, token]);
+  }, [anchorDate, departmentFilter, period.end, period.start, siteFilter, token, view]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const loadCatererPlan = useCallback(async () => {
+    const eventId = sessionStorage.getItem('toquehub.production.catererEventId');
+    if (!eventId) {
+      setCatererPlan(undefined);
+      setCatererEventFilter(undefined);
+      return;
+    }
+    try {
+      const plan = await api.catererEventProductionPlan(token, eventId);
+      const orderIds = new Set(
+        plan.lines
+          .map((line) => line.productionOrderId)
+          .filter((id): id is string => Boolean(id)),
+      );
+      setCatererPlan(plan);
+      setCatererEventFilter({
+        id: plan.event.id,
+        reference: plan.event.reference,
+        name: plan.event.name,
+        orderIds,
+      });
+      const existingLogisticsDepartment =
+        plan.logistics.find((line) => line.task?.departmentId)?.task?.departmentId;
+      setLogisticsDepartmentId((current) => current || existingLogisticsDepartment || '');
+    } catch {
+      setCatererPlan(undefined);
+      setCatererEventFilter(undefined);
+      sessionStorage.removeItem('toquehub.production.catererEventId');
+    }
+  }, [token]);
+
+  useEffect(() => {
+    void loadCatererPlan();
+  }, [loadCatererPlan, tab]);
 
   const loadCampaigns = useCallback(async () => {
     if (tab !== 'fabrication') return;
@@ -490,34 +573,12 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
           } annulée${expiry.cancelledCount > 1 ? 's' : ''} automatiquement · stocks libérés.`,
         );
       }
-      const eventId = sessionStorage.getItem('toquehub.production.catererEventId');
-      const [result, profilesResult, event] = await Promise.all([
+      const [result, profilesResult] = await Promise.all([
         api.productionCampaigns(token, { pageSize: 200 }),
         api.productionProfiles(token, { pageSize: 200 }),
-        eventId
-          ? api.catererEvent(token, eventId).catch(() => undefined)
-          : Promise.resolve(undefined),
       ]);
       setCampaigns(result.items ?? []);
       setProductionProfiles(profilesResult ?? []);
-      if (event) {
-        const orderIds = new Set(
-          event.prestations
-            .flatMap((prestation) =>
-              (prestation.menu.productionLinks ?? []).map((link) => link.productionOrderId),
-            )
-            .filter((id): id is string => Boolean(id)),
-        );
-        setCatererEventFilter({
-          id: event.id,
-          reference: event.reference,
-          name: event.name,
-          orderIds,
-        });
-      } else {
-        setCatererEventFilter(undefined);
-        sessionStorage.removeItem('toquehub.production.catererEventId');
-      }
     } catch (loadError) {
       setCampaignError(errorMessage(loadError));
     } finally {
@@ -528,6 +589,21 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
   useEffect(() => {
     void loadCampaigns();
   }, [loadCampaigns]);
+
+  const refreshFabrication = useCallback(async () => {
+    await Promise.all([loadCampaigns(), loadCatererPlan()]);
+  }, [loadCampaigns, loadCatererPlan]);
+
+  useEffect(() => {
+    if (tab !== 'planning' || !catererPlan) return;
+    const storedDate = sessionStorage.getItem('toquehub.production.focusDate');
+    const focusDate = storedDate || dayKey(new Date(catererPlan.focusDate));
+    setAnchorDate(focusDate);
+    setView('day');
+    if (catererPlan.event.productionSiteId) {
+      setSiteFilter(catererPlan.event.productionSiteId);
+    }
+  }, [catererPlan?.event.id, tab]);
 
   useEffect(() => {
     if (!editorOpen || !draft.departmentId || !draft.date || !draft.startTime || !draft.endTime) {
@@ -1049,9 +1125,105 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
     }
   }
 
+  async function mergeRecipeTask(task: OperationalTask) {
+    setBusyId(task.id);
+    setError('');
+    try {
+      await api.mergeProductionRecipeTask(token, task.id);
+      setEditorOpen(false);
+      setEditingTask(null);
+      await load();
+    } catch (mergeError) {
+      setError(errorMessage(mergeError));
+    } finally {
+      setBusyId('');
+    }
+  }
+
+  function navigateToOperationalPlanning(plan: CatererProductionPlan) {
+    const focusDate = dayKey(new Date(plan.focusDate));
+    sessionStorage.setItem('toquehub.production.catererEventId', plan.event.id);
+    sessionStorage.setItem('toquehub.production.focusDate', focusDate);
+    setAnchorDate(focusDate);
+    setView('day');
+    if (plan.event.productionSiteId) setSiteFilter(plan.event.productionSiteId);
+    onNavigate?.('planning');
+  }
+
+  function openOperationalPlanning() {
+    if (!catererPlan) return;
+    const missingLogistics = catererPlan.logistics.some(
+      (line) => !line.task || line.task.status === 'CANCELLED',
+    );
+    if (!missingLogistics) {
+      navigateToOperationalPlanning(catererPlan);
+      return;
+    }
+    const suggestedDepartment =
+      catererPlan.logistics.find((line) => line.task?.departmentId)?.task?.departmentId ??
+      departments.find((department) => /logistique|livraison|transport/i.test(department.name))
+        ?.id ??
+      '';
+    setLogisticsDepartmentId((current) => current || suggestedDepartment);
+    setLogisticsSetupOpen(true);
+  }
+
+  async function saveLogisticsAndOpen(event: FormEvent) {
+    event.preventDefault();
+    if (!catererPlan || !logisticsDepartmentId) return;
+    const serviceId = catererPlan.lines.find((line) => line.serviceId)?.serviceId;
+    if (!serviceId) {
+      setCampaignError(
+        'Le service cuisine doit être défini sur les fabrications avant le passage au planning.',
+      );
+      return;
+    }
+    setLogisticsSaving(true);
+    setCampaignError('');
+    try {
+      const saved = await api.saveCatererEventProductionPlan(
+        token,
+        catererPlan.event.id,
+        {
+          serviceId,
+          logisticsDepartmentId,
+          lines: catererPlan.lines.map((line) => ({
+            menuItemId: line.menuItemId,
+            portions: Number(line.portions),
+            productionDate: line.productionDate,
+            plannedTime: line.plannedTime,
+          })),
+          logistics: catererPlan.logistics.map((line) => ({
+            key: line.key,
+            enabled: true,
+            startsAt: line.startsAt,
+            endsAt: line.endsAt,
+          })),
+        },
+      );
+      setCatererPlan(saved);
+      setCatererEventFilter({
+        id: saved.event.id,
+        reference: saved.event.reference,
+        name: saved.event.name,
+        orderIds: new Set(
+          saved.lines
+            .map((line) => line.productionOrderId)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      });
+      setLogisticsSetupOpen(false);
+      navigateToOperationalPlanning(saved);
+    } catch (logisticsError) {
+      setCampaignError(errorMessage(logisticsError));
+    } finally {
+      setLogisticsSaving(false);
+    }
+  }
+
   async function scheduleProductionTask(taskId: string, day: string, startMinute?: number) {
     const task = tasks.find((item) => item.id === taskId);
-    if (!task || task.source !== 'PRODUCTION' || !task.productionBatchId) {
+    if (!task || !canPlaceOperationalTask(task)) {
       return;
     }
     const originalStart = new Date(task.startsAt);
@@ -1074,8 +1246,45 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
         isTimeScheduled: true,
       });
       setTasks((current) => current.map((item) => (item.id === task.id ? updated : item)));
+      setQueueScopeTasks((current) =>
+        current.map((item) => (item.id === task.id ? updated : item)),
+      );
     } catch (moveError) {
       setError(errorMessage(moveError));
+    } finally {
+      setBusyId('');
+    }
+  }
+
+  async function resizeProductionTask(taskId: string, startsAt: Date, endsAt: Date) {
+    const task = tasks.find((item) => item.id === taskId);
+    if (!task || startsAt >= endsAt) return;
+
+    const optimisticTask: OperationalTask = {
+      ...task,
+      startsAt: startsAt.toISOString(),
+      endsAt: endsAt.toISOString(),
+      isTimeScheduled: true,
+    };
+    const replaceTask = (items: OperationalTask[], replacement: OperationalTask) =>
+      items.map((item) => (item.id === taskId ? replacement : item));
+
+    setBusyId(taskId);
+    setError('');
+    setTasks((current) => replaceTask(current, optimisticTask));
+    setQueueScopeTasks((current) => replaceTask(current, optimisticTask));
+    try {
+      const updated = await api.updateProductionTask(token, taskId, {
+        startsAt: startsAt.toISOString(),
+        endsAt: endsAt.toISOString(),
+        isTimeScheduled: true,
+      });
+      setTasks((current) => replaceTask(current, updated));
+      setQueueScopeTasks((current) => replaceTask(current, updated));
+    } catch (resizeError) {
+      setTasks((current) => replaceTask(current, task));
+      setQueueScopeTasks((current) => replaceTask(current, task));
+      setError(errorMessage(resizeError));
     } finally {
       setBusyId('');
     }
@@ -1100,19 +1309,63 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
 
   const activeTasks = tasks.filter((task) => task.status !== 'CANCELLED');
   const pendingProductionTasks = activeTasks.filter(
-    (task) =>
-      task.source === 'PRODUCTION' &&
-      Boolean(task.productionBatchId) &&
-      task.isTimeScheduled === false,
+    (task) => canPlaceOperationalTask(task) && task.isTimeScheduled === false,
   );
   const scheduledTasks = activeTasks.filter(
-    (task) =>
-      !(
-        task.source === 'PRODUCTION' &&
-        Boolean(task.productionBatchId) &&
-        task.isTimeScheduled === false
+    (task) => !(canPlaceOperationalTask(task) && task.isTimeScheduled === false),
+  );
+  const queueEligibilityTasks = [
+    ...new Map(
+      [...queueScopeTasks, ...activeTasks]
+        .filter((task) => task.status !== 'CANCELLED')
+        .map((task) => [task.id, task] as const),
+    ).values(),
+  ];
+  const catererTaskIds = useMemo(() => {
+    const ids = new Set<string>();
+    const orderIds = new Set(
+      catererPlan?.lines
+        .map((line) => line.productionOrderId)
+        .filter((id): id is string => Boolean(id)) ?? [],
+    );
+    tasks.forEach((task) => {
+      if (
+        (task.productionBatch?.order.id && orderIds.has(task.productionBatch.order.id)) ||
+        task.sourceKey?.startsWith(`CATERER:${catererPlan?.event.id}:`)
+      ) {
+        ids.add(task.id);
+      }
+    });
+    catererPlan?.logistics.forEach((line) => {
+      if (line.task?.id) ids.add(line.task.id);
+    });
+    return ids;
+  }, [catererPlan, tasks]);
+  const catererProductionDays = useMemo(() => {
+    const values = new Set<string>();
+    catererPlan?.lines.forEach((line) => values.add(dayKey(new Date(line.productionDate))));
+    catererPlan?.logistics.forEach((line) => {
+      if (line.task && line.task.status !== 'CANCELLED') {
+        values.add(taskDay(line.task.startsAt));
+      }
+    });
+    return [...values].sort();
+  }, [catererPlan]);
+  const catererReadyForPlanning = Boolean(
+    catererPlan?.lines.length &&
+      catererPlan.lines.every(
+        (line) =>
+          line.productionOrderId &&
+          ['VALIDATED', 'IN_PROGRESS', 'PARTIALLY_COMPLETED', 'COMPLETED'].includes(
+            line.productionOrderStatus ?? '',
+          ),
       ),
   );
+  const catererFocusDate =
+    (catererPlan && sessionStorage.getItem('toquehub.production.focusDate')) ||
+    catererPlan?.focusDate;
+  const catererFocusMode =
+    sessionStorage.getItem('toquehub.production.focusMode') === 'day' ? 'day' : undefined;
   const unassignedTasks = scheduledTasks.filter(
     (task) => !task.assignedEmployeeId && !task.assignments?.length,
   );
@@ -1137,6 +1390,38 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
   if (tab === 'fabrication') {
     return (
       <section className="fabrication-unified-workspace">
+        {catererPlan && (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '1rem',
+              padding: '.8rem 1rem',
+              border: '1px solid #bae6fd',
+              borderRadius: '14px',
+              background: '#f0f9ff',
+              color: '#0c4a6e',
+            }}
+          >
+            <span>
+              <strong>{catererPlan.event.reference}</strong> · {catererPlan.event.name}
+              <small style={{ display: 'block', marginTop: '.2rem', color: '#0369a1' }}>
+                {catererReadyForPlanning
+                  ? 'Toutes les fabrications sont validées et prêtes à être organisées.'
+                  : 'Affectez puis validez chaque fabrication avant le passage au planning.'}
+              </small>
+            </span>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={!catererReadyForPlanning}
+              onClick={openOperationalPlanning}
+            >
+              <CalendarDays size={15} /> Organiser dans le Planning opérationnel
+            </button>
+          </div>
+        )}
         <ProductionFabricationCalendar
           token={token}
           campaigns={campaigns}
@@ -1144,7 +1429,10 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
           sites={sites}
           departments={departments}
           loading={campaignsLoading}
-          onRefresh={loadCampaigns}
+          focusDate={catererFocusDate}
+          focusMode={catererFocusMode}
+          campaignIds={catererEventFilter?.orderIds}
+          onRefresh={refreshFabrication}
           onContextChange={setFabricationContext}
         >
           <FabricationView
@@ -1159,13 +1447,79 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
             onStatus={setCampaignStatus}
             onClearEvent={() => {
               sessionStorage.removeItem('toquehub.production.catererEventId');
+              sessionStorage.removeItem('toquehub.production.focusDate');
+              sessionStorage.removeItem('toquehub.production.focusMode');
+              setCatererPlan(undefined);
               setCatererEventFilter(undefined);
             }}
-            onRefresh={() => void loadCampaigns()}
+            onRefresh={() => void refreshFabrication()}
             embedded
-            periodLabel={fabricationContext.label}
           />
         </ProductionFabricationCalendar>
+        <AnimatePresence>
+          {logisticsSetupOpen && catererPlan && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              style={overlayStyle}
+              onMouseDown={(event) =>
+                event.target === event.currentTarget && !logisticsSaving && setLogisticsSetupOpen(false)
+              }
+            >
+              <motion.form
+                initial={{ opacity: 0, scale: 0.97, y: 12 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.97, y: 12 }}
+                onSubmit={saveLogisticsAndOpen}
+                style={{ ...modalStyle, width: 'min(520px, 100%)', padding: '1.4rem' }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem' }}>
+                  <div>
+                    <span style={{ color: '#047857', fontSize: '.76rem', fontWeight: 850 }}>
+                      {catererPlan.event.reference}
+                    </span>
+                    <h2 style={{ margin: '.25rem 0 .35rem', color: '#0f172a', fontSize: '1.2rem' }}>
+                      Service logistique
+                    </h2>
+                    <p style={{ margin: 0, color: '#64748b', fontSize: '.84rem' }}>
+                      Les tâches de conditionnement et de remise arriveront sans équipe dans la zone
+                      « À placer » du planning existant.
+                    </p>
+                  </div>
+                  <button type="button" style={iconButtonStyle} onClick={() => setLogisticsSetupOpen(false)}>
+                    <X size={18} />
+                  </button>
+                </div>
+                <label style={{ display: 'grid', gap: '.4rem', marginTop: '1.1rem', color: '#334155', fontWeight: 750 }}>
+                  Service responsable
+                  <select
+                    required
+                    value={logisticsDepartmentId}
+                    onChange={(event) => setLogisticsDepartmentId(event.target.value)}
+                    style={inputStyle}
+                  >
+                    <option value="">Choisir un service…</option>
+                    {departments.map((department) => (
+                      <option key={department.id} value={department.id}>
+                        {department.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '.7rem', marginTop: '1.2rem' }}>
+                  <button type="button" className="btn btn-secondary" onClick={() => setLogisticsSetupOpen(false)}>
+                    Annuler
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={logisticsSaving || !logisticsDepartmentId}>
+                    {logisticsSaving ? <Loader2 size={15} className="spin" /> : <CalendarDays size={15} />}
+                    Ouvrir le planning
+                  </button>
+                </div>
+              </motion.form>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </section>
     );
   }
@@ -1233,6 +1587,61 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
           </div>
         </div>
       </motion.section>
+
+      {catererPlan && (
+        <section
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '1rem',
+            flexWrap: 'wrap',
+            padding: '.9rem 1rem',
+            border: '1px solid #a7f3d0',
+            borderRadius: '16px',
+            background: 'linear-gradient(135deg, #ecfdf5 0%, #f0f9ff 100%)',
+            color: '#064e3b',
+          }}
+        >
+          <div>
+            <strong>
+              {catererPlan.event.reference} · {catererPlan.event.name}
+            </strong>
+            <span style={{ display: 'block', marginTop: '.2rem', color: '#475569', fontSize: '.8rem' }}>
+              Les tâches Traiteur sont signalées ; toutes les autres tâches de la journée restent
+              visibles.
+            </span>
+            <div style={{ display: 'flex', gap: '.35rem', flexWrap: 'wrap', marginTop: '.55rem' }}>
+              {catererProductionDays.map((day) => (
+                <button
+                  key={day}
+                  type="button"
+                  className={anchorDate === day ? 'btn btn-primary' : 'btn btn-secondary'}
+                  style={{ padding: '.3rem .6rem', minHeight: 0, fontSize: '.75rem' }}
+                  onClick={() => {
+                    sessionStorage.setItem('toquehub.production.focusDate', day);
+                    setAnchorDate(day);
+                    setView('day');
+                  }}
+                >
+                  {formatDay(day, { weekday: 'short', day: 'numeric', month: 'short' })}
+                </button>
+              ))}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              sessionStorage.setItem('toquehub.production.focusDate', anchorDate);
+              sessionStorage.setItem('toquehub.production.focusMode', 'day');
+              onNavigate?.('fabrication');
+            }}
+          >
+            <ChevronLeft size={16} /> Retour à Fabrication et validation de journée
+          </button>
+        </section>
+      )}
 
       {/* ─── Barre de contrôle & Métriques ─── */}
       <motion.section
@@ -1417,7 +1826,7 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
 
       <div
         className={`production-planning-workspace${
-          pendingProductionTasks.length > 0 ? ' has-queue' : ''
+          view === 'day' && pendingProductionTasks.length > 0 ? ' has-queue' : ''
         }`}
       >
         <div className="production-planning-calendar-region">
@@ -1512,6 +1921,9 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
                       onCreate={() => openCreate(day)}
                       onEdit={openEdit}
                       onMoveTask={scheduleProductionTask}
+                      onResizeTask={resizeProductionTask}
+                      busyId={busyId}
+                      highlightedTaskIds={catererTaskIds}
                     />
                   );
                 })}
@@ -1520,12 +1932,15 @@ export function ProductionApp({ token, session, tab }: ProductionAppProps) {
           )}
         </div>
 
-        {pendingProductionTasks.length > 0 && (
+        {view === 'day' && pendingProductionTasks.length > 0 && (
           <ProductionPlanningQueue
             tasks={pendingProductionTasks}
+            allTasks={queueEligibilityTasks}
             busyId={busyId}
             onEdit={openEdit}
             onSplit={splitRecipeTask}
+            onMerge={mergeRecipeTask}
+            highlightedTaskIds={catererTaskIds}
           />
         )}
       </div>
@@ -2651,7 +3066,6 @@ function FabricationView({
   onClearEvent,
   onRefresh,
   embedded = false,
-  periodLabel,
 }: {
   token: string;
   campaigns: ProductionCampaign[];
@@ -2665,7 +3079,6 @@ function FabricationView({
   onClearEvent: () => void;
   onRefresh: () => void;
   embedded?: boolean;
-  periodLabel?: string;
 }) {
   const [selected, setSelected] = useState<ProductionCampaign>();
   const [viewMode, setViewMode] = useState<'table' | 'grid' | 'kanban'>('table');
@@ -2762,30 +3175,6 @@ function FabricationView({
             </div>
           </div>
         </motion.section>
-      )}
-
-      {embedded && (
-        <div className="fabrication-details-heading">
-          <div>
-            <span>
-              <ListChecks size={15} /> Suivi de fabrication
-            </span>
-            <h3>Fabrications intégrées au calendrier</h3>
-            <p>
-              {periodLabel || 'Période sélectionnée'} · événements traiteur, menus et recettes
-              libres
-            </p>
-          </div>
-          <button
-            type="button"
-            className="production-btn-glass"
-            onClick={onRefresh}
-            disabled={loading}
-          >
-            <RefreshCw size={17} className={loading ? 'spin' : undefined} />
-            Actualiser
-          </button>
-        </div>
       )}
 
       {/* ─── ÉVÉNEMENT TRAITEUR ACTIF (Optionnel) ─── */}
@@ -4148,14 +4537,20 @@ function DetailCard({ label, value }: { label: string; value: string }) {
 
 function ProductionPlanningQueue({
   tasks,
+  allTasks,
   busyId,
   onEdit,
   onSplit,
+  onMerge,
+  highlightedTaskIds,
 }: {
   tasks: OperationalTask[];
+  allTasks: OperationalTask[];
   busyId: string;
   onEdit: (task: OperationalTask) => void;
   onSplit: (task: OperationalTask) => void;
+  onMerge: (task: OperationalTask) => void;
+  highlightedTaskIds?: Set<string>;
 }) {
   const recipeGroups = useMemo(() => {
     const groups = new Map<
@@ -4208,22 +4603,49 @@ function ProductionPlanningQueue({
             <ChefHat size={16} /> Fabrications à organiser
           </span>
           <h3>À placer sur le planning</h3>
-          <p>Glissez la recette entière ou une étape sur l’heure souhaitée.</p>
+          <p>Glissez une recette, une étape ou une tâche logistique sur l’heure souhaitée.</p>
         </div>
         <strong>
-          {recipeGroups.length} recette{recipeGroups.length > 1 ? 's' : ''}
+          {recipeGroups.length} élément{recipeGroups.length > 1 ? 's' : ''}
         </strong>
       </div>
       <div className="production-planning-recipe-list">
         {recipeGroups.map((group) => {
-          const recipeTask = group.tasks.find((task) => !task.technicalSheetStepId);
+          const recipeTask = group.tasks.find(
+            (task) => !task.technicalSheetStepId && !task.productionOperationId,
+          );
           const referenceTask = recipeTask ?? group.tasks[0];
+          const isLogistics = Boolean(
+            referenceTask.category === 'LOGISTICS' &&
+              referenceTask.sourceKey?.startsWith('CATERER:'),
+          );
           const stepCount = productionStepCount(referenceTask);
+          const activeRecipeSteps = referenceTask.productionBatchId
+            ? allTasks.filter(
+                (task) =>
+                  task.productionBatchId === referenceTask.productionBatchId &&
+                  Boolean(task.productionOperationId || task.technicalSheetStepId),
+              )
+            : [];
+          const isSplitRecipe =
+            !isLogistics &&
+            !recipeTask &&
+            activeRecipeSteps.length > 0;
+          const canMergeRecipe =
+            isSplitRecipe &&
+            activeRecipeSteps.every(
+              (task) => task.status === 'TODO' && task.isTimeScheduled === false,
+            );
           return (
-            <article key={group.id} className="production-planning-recipe">
+            <article
+              key={group.id}
+              className={`production-planning-recipe${
+                highlightedTaskIds?.has(referenceTask.id) ? ' is-caterer' : ''
+              }`}
+            >
               <div className="production-planning-recipe-heading">
                 <div>
-                  <span>Recette</span>
+                  <span>{isLogistics ? 'Logistique Traiteur' : 'Recette'}</span>
                   <h4>{group.name}</h4>
                   <p>
                     {referenceTask.quantity != null && (
@@ -4235,7 +4657,7 @@ function ProductionPlanningQueue({
                     {taskTeamLabel(referenceTask)}
                   </p>
                 </div>
-                {recipeTask && canSplitProductionRecipe(recipeTask) && (
+                {!isLogistics && recipeTask && canSplitProductionRecipe(recipeTask) && (
                   <button
                     type="button"
                     className="production-planning-split-button"
@@ -4250,6 +4672,26 @@ function ProductionPlanningQueue({
                     {stepCount} étapes
                   </button>
                 )}
+                {isSplitRecipe && (
+                  <button
+                    type="button"
+                    className="production-planning-split-button is-merge"
+                    disabled={!canMergeRecipe || busyId === referenceTask.id}
+                    title={
+                      canMergeRecipe
+                        ? 'Remplacer les étapes par la recette entière'
+                        : 'Une étape est déjà placée ou démarrée'
+                    }
+                    onClick={() => onMerge(referenceTask)}
+                  >
+                    {busyId === referenceTask.id ? (
+                      <Loader2 size={14} className="spin" />
+                    ) : (
+                      <RotateCcw size={14} />
+                    )}
+                    Recette entière
+                  </button>
+                )}
               </div>
 
               <div className="production-planning-recipe-tasks">
@@ -4262,7 +4704,9 @@ function ProductionPlanningQueue({
                     ? (task.technicalSheetStep?.title ??
                       task.productionOperation?.title ??
                       task.title.split(' · ')[0])
-                    : 'Recette entière';
+                    : isLogistics
+                      ? task.title
+                      : 'Recette entière';
                   const duration = Math.max(
                     5,
                     Math.round(
@@ -4274,10 +4718,11 @@ function ProductionPlanningQueue({
                     <div
                       key={task.id}
                       className={`production-planning-compact-task${
-                        isStep ? ' is-step' : ' is-recipe'
+                        isStep ? ' is-step' : isLogistics ? ' is-logistics' : ' is-recipe'
                       }`}
-                      draggable={Boolean(task.productionBatchId)}
+                      draggable={canPlaceOperationalTask(task)}
                       onDragStart={(event) => {
+                        if (!canPlaceOperationalTask(task)) return;
                         event.dataTransfer.setData(
                           'application/x-toquehub-production-task',
                           task.id,
@@ -4294,7 +4739,14 @@ function ProductionPlanningQueue({
                       <strong title={taskLabel}>{taskLabel}</strong>
                       <div className="production-planning-compact-task-footer">
                         <span>
-                          <Clock3 size={12} /> {duration} min
+                          <Clock3 size={12} />{' '}
+                          {formatDay(taskDay(task.startsAt), {
+                            weekday: 'short',
+                            day: 'numeric',
+                            month: 'short',
+                          })}
+                          {' · '}
+                          {duration} min
                         </span>
                         <button
                           type="button"
@@ -4329,6 +4781,9 @@ function DayColumn({
   onCreate,
   onEdit,
   onMoveTask,
+  onResizeTask,
+  busyId,
+  highlightedTaskIds,
 }: {
   day: string;
   tasks: OperationalTask[];
@@ -4337,6 +4792,9 @@ function DayColumn({
   onCreate: () => void;
   onEdit: (task: OperationalTask) => void;
   onMoveTask: (taskId: string, day: string, startMinute?: number) => void;
+  onResizeTask: (taskId: string, startsAt: Date, endsAt: Date) => void;
+  busyId: string;
+  highlightedTaskIds?: Set<string>;
 }) {
   function handleDragOver(event: DragEvent<HTMLDivElement>) {
     if (event.dataTransfer.types.includes('application/x-toquehub-production-task')) {
@@ -4404,7 +4862,12 @@ function DayColumn({
         tasks.length ? (
           <div style={{ display: 'grid', gap: '.65rem', flex: 1, alignContent: 'start' }}>
             {tasks.map((task) => (
-              <TaskCard key={task.id} task={task} onEdit={() => onEdit(task)} />
+              <TaskCard
+                key={task.id}
+                task={task}
+                highlighted={highlightedTaskIds?.has(task.id)}
+                onEdit={() => onEdit(task)}
+              />
             ))}
           </div>
         ) : (
@@ -4416,7 +4879,15 @@ function DayColumn({
           </div>
         )
       ) : (
-        <DayTimeline day={day} tasks={tasks} onEdit={onEdit} onMoveTask={onMoveTask} />
+        <DayTimeline
+          day={day}
+          tasks={tasks}
+          onEdit={onEdit}
+          onMoveTask={onMoveTask}
+          onResizeTask={onResizeTask}
+          busyId={busyId}
+          highlightedTaskIds={highlightedTaskIds}
+        />
       )}
     </div>
   );
@@ -4427,14 +4898,42 @@ function DayTimeline({
   tasks,
   onEdit,
   onMoveTask,
+  onResizeTask,
+  busyId,
+  highlightedTaskIds,
 }: {
   day: string;
   tasks: OperationalTask[];
   onEdit: (task: OperationalTask) => void;
   onMoveTask: (taskId: string, day: string, startMinute: number) => void;
+  onResizeTask: (taskId: string, startsAt: Date, endsAt: Date) => void;
+  busyId: string;
+  highlightedTaskIds?: Set<string>;
 }) {
   const [dragPreviewMinute, setDragPreviewMinute] = useState<number | null>(null);
-  const layout = buildTimelineLayout(tasks, day);
+  const [resizeState, setResizeState] = useState<{
+    taskId: string;
+    edge: 'start' | 'end';
+    startMinute: number;
+    endMinute: number;
+    originalStartMinute: number;
+    originalEndMinute: number;
+    pointerId: number;
+  } | null>(null);
+  const resizeStateRef = useRef(resizeState);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const previewTasks = resizeState
+    ? tasks.map((task) =>
+        task.id === resizeState.taskId
+          ? {
+              ...task,
+              startsAt: dateAtTimelineMinute(day, resizeState.startMinute).toISOString(),
+              endsAt: dateAtTimelineMinute(day, resizeState.endMinute).toISOString(),
+            }
+          : task,
+      )
+    : tasks;
+  const layout = buildTimelineLayout(previewTasks, day);
   const firstMinute = layout.length
     ? Math.min(
         TIMELINE_DEFAULT_START,
@@ -4460,12 +4959,96 @@ function DayTimeline({
     (_, index) => firstMinute + index * 15,
   );
 
-  function pointerMinute(event: DragEvent<HTMLDivElement>) {
+  function dragPointerMinute(event: DragEvent<HTMLDivElement>) {
     const bounds = event.currentTarget.getBoundingClientRect();
     const relativeY = Math.min(bounds.height, Math.max(0, event.clientY - bounds.top));
     const rawMinute =
       firstMinute + (relativeY / Math.max(1, bounds.height)) * (lastMinute - firstMinute);
     return Math.min(lastMinute - 15, Math.max(firstMinute, Math.round(rawMinute / 15) * 15));
+  }
+
+  function resizePointerMinute(clientY: number) {
+    const bounds = canvasRef.current?.getBoundingClientRect();
+    if (!bounds) return null;
+    const relativeY = Math.min(bounds.height, Math.max(0, clientY - bounds.top));
+    const rawMinute =
+      firstMinute + (relativeY / Math.max(1, bounds.height)) * (lastMinute - firstMinute);
+    return Math.min(lastMinute, Math.max(firstMinute, Math.round(rawMinute / 15) * 15));
+  }
+
+  function updateResizeState(next: typeof resizeState) {
+    resizeStateRef.current = next;
+    setResizeState(next);
+  }
+
+  function startResize(
+    event: ReactPointerEvent<HTMLButtonElement>,
+    entry: TimelineTaskLayout,
+    edge: 'start' | 'end',
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (busyId === entry.task.id) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    updateResizeState({
+      taskId: entry.task.id,
+      edge,
+      startMinute: entry.startMinute,
+      endMinute: entry.endMinute,
+      originalStartMinute: entry.startMinute,
+      originalEndMinute: entry.endMinute,
+      pointerId: event.pointerId,
+    });
+    setDragPreviewMinute(null);
+  }
+
+  function moveResize(event: ReactPointerEvent<HTMLButtonElement>) {
+    const current = resizeStateRef.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const minute = resizePointerMinute(event.clientY);
+    if (minute == null) return;
+    updateResizeState(
+      current.edge === 'start'
+        ? {
+            ...current,
+            startMinute: Math.min(current.endMinute - 15, minute),
+          }
+        : {
+            ...current,
+            endMinute: Math.max(current.startMinute + 15, minute),
+          },
+    );
+  }
+
+  function finishResize(event: ReactPointerEvent<HTMLButtonElement>) {
+    const current = resizeStateRef.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    updateResizeState(null);
+    if (
+      current.startMinute !== current.originalStartMinute ||
+      current.endMinute !== current.originalEndMinute
+    ) {
+      onResizeTask(
+        current.taskId,
+        dateAtTimelineMinute(day, current.startMinute),
+        dateAtTimelineMinute(day, current.endMinute),
+      );
+    }
+  }
+
+  function cancelResize(event: ReactPointerEvent<HTMLButtonElement>) {
+    const current = resizeStateRef.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    updateResizeState(null);
   }
 
   return (
@@ -4501,13 +5084,14 @@ function DayTimeline({
         )}
       </div>
       <div
-        className="production-timeline-canvas"
+        ref={canvasRef}
+        className={`production-timeline-canvas${resizeState ? ' is-resizing' : ''}`}
         style={{ height: `${timelineHeight}px` }}
         onDragOver={(event) => {
           if (event.dataTransfer.types.includes('application/x-toquehub-production-task')) {
             event.preventDefault();
             event.dataTransfer.dropEffect = 'move';
-            setDragPreviewMinute(pointerMinute(event));
+            setDragPreviewMinute(dragPointerMinute(event));
           }
         }}
         onDragLeave={(event) => {
@@ -4520,7 +5104,7 @@ function DayTimeline({
           if (!taskId) return;
           event.preventDefault();
           event.stopPropagation();
-          const startMinute = pointerMinute(event);
+          const startMinute = dragPointerMinute(event);
           setDragPreviewMinute(null);
           onMoveTask(taskId, day, startMinute);
         }}
@@ -4549,22 +5133,58 @@ function DayTimeline({
           const laneWidth = 100 / entry.laneCount;
           const top = ((entry.startMinute - firstMinute) / 60) * TIMELINE_HOUR_HEIGHT;
           const height = ((entry.visualEndMinute - entry.startMinute) / 60) * TIMELINE_HOUR_HEIGHT;
+          const isResizing = resizeState?.taskId === entry.task.id;
+          const isShort = entry.endMinute - entry.startMinute < 45;
           return (
             <div
               key={entry.task.id}
-              className="production-timeline-task"
+              className={`production-timeline-task${isResizing ? ' is-resizing' : ''}`}
               style={{
-                top: `${top + 5}px`,
-                height: `${Math.max(64, height - 8)}px`,
+                top: `${top + 2}px`,
+                height: `${Math.max(TIMELINE_HOUR_HEIGHT / 4, height - 4)}px`,
                 left: `calc(${entry.lane * laneWidth}% + 8px)`,
                 width: `calc(${laneWidth}% - 12px)`,
               }}
             >
+              <button
+                type="button"
+                className="production-timeline-resize-handle is-top"
+                aria-label={`Modifier l’heure de début de ${entry.task.title}`}
+                title="Tirer pour modifier l’heure de début"
+                disabled={busyId === entry.task.id}
+                draggable={false}
+                onPointerDown={(event) => startResize(event, entry, 'start')}
+                onPointerMove={moveResize}
+                onPointerUp={finishResize}
+                onPointerCancel={cancelResize}
+                onClick={(event) => event.stopPropagation()}
+              />
               <TimelineTaskCard
                 task={entry.task}
                 dense={entry.laneCount >= 4}
+                short={isShort}
+                resizing={isResizing}
+                highlighted={highlightedTaskIds?.has(entry.task.id)}
                 onEdit={() => onEdit(entry.task)}
               />
+              <button
+                type="button"
+                className="production-timeline-resize-handle is-bottom"
+                aria-label={`Modifier l’heure de fin de ${entry.task.title}`}
+                title="Tirer pour modifier l’heure de fin"
+                disabled={busyId === entry.task.id}
+                draggable={false}
+                onPointerDown={(event) => startResize(event, entry, 'end')}
+                onPointerMove={moveResize}
+                onPointerUp={finishResize}
+                onPointerCancel={cancelResize}
+                onClick={(event) => event.stopPropagation()}
+              />
+              {isResizing && (
+                <span className="production-timeline-resize-preview">
+                  {formatTimelineMinute(entry.startMinute)}–{formatTimelineMinute(entry.endMinute)}
+                </span>
+              )}
             </div>
           );
         })}
@@ -4583,20 +5203,30 @@ function DayTimeline({
 function TimelineTaskCard({
   task,
   dense,
+  short,
+  resizing,
+  highlighted,
   onEdit,
 }: {
   task: OperationalTask;
   dense: boolean;
+  short: boolean;
+  resizing: boolean;
+  highlighted?: boolean;
   onEdit: () => void;
 }) {
   return (
     <article
-      className={`production-timeline-task-card${dense ? ' is-dense' : ''}`}
+      className={`production-timeline-task-card${dense ? ' is-dense' : ''}${
+        short ? ' is-short' : ''
+      }${
+        highlighted ? ' is-caterer' : ''
+      }`}
       role="button"
       tabIndex={0}
       aria-label={`Modifier ${task.title}`}
       title={`${task.title} — cliquer pour modifier`}
-      draggable={Boolean(task.source === 'PRODUCTION' && task.productionBatchId)}
+      draggable={!resizing && canPlaceOperationalTask(task)}
       onClick={onEdit}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
@@ -4605,7 +5235,7 @@ function TimelineTaskCard({
         }
       }}
       onDragStart={(event) => {
-        if (!task.productionBatchId) return;
+        if (!canPlaceOperationalTask(task)) return;
         event.dataTransfer.setData('application/x-toquehub-production-task', task.id);
         event.dataTransfer.effectAllowed = 'move';
       }}
@@ -4619,6 +5249,7 @@ function TimelineTaskCard({
           <span className="production-timeline-task-time">
             <Clock3 size={13} /> {formatTime(task.startsAt)}–{formatTime(task.endsAt)}
           </span>
+          {highlighted && <span className="production-caterer-task-badge">Traiteur</span>}
         </div>
         <strong>{task.title}</strong>
         <span className="production-timeline-task-meta">
@@ -4631,15 +5262,648 @@ function TimelineTaskCard({
   );
 }
 
-function TaskCard({ task, onEdit }: { task: OperationalTask; onEdit: () => void }) {
+function CatererProductionPlanner({
+  token,
+  plan,
+  departments,
+  onClose,
+  onSaved,
+}: {
+  token: string;
+  plan: CatererProductionPlan;
+  departments: HrDepartment[];
+  onClose: () => void;
+  onSaved: (plan: CatererProductionPlan) => Promise<void> | void;
+}) {
+  const [serviceId, setServiceId] = useState('');
+  const [lines, setLines] = useState<
+    Record<string, { portions: string; productionDate: string; plannedTime: string }>
+  >({});
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const defaultKitchen =
+      departments.find((department) =>
+        /cuisine|pâtisserie|patisserie|production/i.test(department.name),
+      ) ?? departments[0];
+    setServiceId(plan.lines.find((line) => line.serviceId)?.serviceId ?? defaultKitchen?.id ?? '');
+    setLines(
+      Object.fromEntries(
+        plan.lines.map((line) => [
+          line.menuItemId,
+          {
+            portions: String(line.portions),
+            productionDate: dayKey(new Date(line.productionDate)),
+            plannedTime: line.plannedTime || '08:00',
+          },
+        ]),
+      ),
+    );
+  }, [departments, plan]);
+
+  const groupedLines = useMemo(() => {
+    const groups = new Map<string, typeof plan.lines>();
+    plan.lines.forEach((line) =>
+      groups.set(line.prestationName, [...(groups.get(line.prestationName) ?? []), line]),
+    );
+    return [...groups.entries()];
+  }, [plan.lines]);
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      const payload: CatererProductionPlanPayload = {
+        serviceId,
+        lines: plan.lines.map((line) => ({
+          menuItemId: line.menuItemId,
+          portions: Number(lines[line.menuItemId]?.portions),
+          productionDate: `${lines[line.menuItemId]?.productionDate}T00:00:00.000Z`,
+          plannedTime: lines[line.menuItemId]?.plannedTime,
+        })),
+        logistics: [],
+      };
+      const saved = await api.saveCatererEventProductionPlan(token, plan.event.id, payload);
+      await onSaved(saved);
+    } catch (saveError) {
+      setError(errorMessage(saveError));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const totalRecipesCount = plan.lines.length;
+
+  return createPortal(
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(15, 23, 42, 0.65)',
+        backdropFilter: 'blur(8px)',
+        zIndex: 9999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '1.5rem',
+      }}
+      role="presentation"
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
+      <motion.form
+        initial={{ opacity: 0, y: 20, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 20, scale: 0.97 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 280 }}
+        onSubmit={save}
+        style={{
+          width: 'min(980px, 95vw)',
+          height: 'min(820px, calc(100dvh - 2rem))',
+          maxHeight: 'calc(100dvh - 2rem)',
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
+          borderRadius: '24px',
+          background: '#ffffff',
+          boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.2)',
+          overflow: 'hidden',
+          border: '1px solid rgba(226, 232, 240, 0.8)',
+        }}
+      >
+        {/* Top Accent Line */}
+        <div
+          style={{
+            height: '4px',
+            background: 'linear-gradient(90deg, #10b981 0%, #06b6d4 50%, #3b82f6 100%)',
+            flexShrink: 0,
+          }}
+        />
+
+        {/* Modal Header */}
+        <header
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            gap: '1.25rem',
+            padding: '1.5rem 1.75rem',
+            borderBottom: '1px solid #f1f5f9',
+            background: '#ffffff',
+            flexShrink: 0,
+          }}
+        >
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+            <div
+              style={{
+                width: '48px',
+                height: '48px',
+                borderRadius: '14px',
+                background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(6, 182, 212, 0.12) 100%)',
+                color: '#059669',
+                display: 'grid',
+                placeItems: 'center',
+                flexShrink: 0,
+                border: '1px solid rgba(16, 185, 129, 0.2)',
+              }}
+            >
+              <Utensils size={24} />
+            </div>
+            <div>
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  padding: '0.2rem 0.6rem',
+                  borderRadius: '20px',
+                  background: '#ecfdf5',
+                  color: '#047857',
+                  fontWeight: 800,
+                  fontSize: '0.75rem',
+                  letterSpacing: '0.03em',
+                  marginBottom: '0.35rem',
+                }}
+              >
+                <Sparkles size={12} />
+                <span>{plan.event.reference} · MENU TRAITEUR</span>
+              </div>
+              <h2 style={{ margin: 0, color: '#0f172a', fontSize: '1.35rem', fontWeight: 800 }}>
+                Planifier dans Fabrication
+              </h2>
+              <p style={{ margin: '0.3rem 0 0', color: '#64748b', fontSize: '0.88rem', lineHeight: 1.45 }}>
+                Répartissez les recettes sur plusieurs jours. Après validation, elles suivent le
+                même Planning opérationnel et le même déstockage que Restaurant/Café.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fermer"
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '10px',
+              border: '1px solid #e2e8f0',
+              background: '#f8fafc',
+              color: '#64748b',
+              display: 'grid',
+              placeItems: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              flexShrink: 0,
+            }}
+          >
+            <X size={18} />
+          </button>
+        </header>
+
+        {/* Scrollable Content Container */}
+        <div
+          style={{
+            flex: '1 1 0%',
+            minHeight: 0,
+            overflowY: 'auto',
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehavior: 'contain',
+            touchAction: 'pan-y',
+            padding: '1.5rem 1.75rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1.35rem',
+            background: '#f8fafc',
+          }}
+        >
+          {error && (
+            <div
+              style={{
+                ...errorStyle,
+                borderRadius: '14px',
+                padding: '0.85rem 1.1rem',
+                boxShadow: '0 2px 8px rgba(239, 68, 68, 0.15)',
+              }}
+            >
+              <AlertCircle size={18} /> {error}
+            </div>
+          )}
+
+          {/* Service Selector Card */}
+          <div
+            style={{
+              background: '#ffffff',
+              border: '1px solid #e2e8f0',
+              borderRadius: '18px',
+              padding: '1.25rem',
+              boxShadow: '0 2px 10px rgba(0, 0, 0, 0.02)',
+              display: 'grid',
+              gap: '0.75rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <div
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '10px',
+                  background: '#f1f5f9',
+                  color: '#334155',
+                  display: 'grid',
+                  placeItems: 'center',
+                }}
+              >
+                <ChefHat size={18} />
+              </div>
+              <div>
+                <label
+                  htmlFor="caterer-service-select"
+                  style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.95rem', cursor: 'pointer' }}
+                >
+                  Service cuisine responsable <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem' }}>
+                  Équipe de fabrication affectée à ces préparatifs
+                </p>
+              </div>
+            </div>
+
+            <select
+              id="caterer-service-select"
+              required
+              value={serviceId}
+              onChange={(event) => setServiceId(event.target.value)}
+              style={{
+                width: '100%',
+                minHeight: '44px',
+                padding: '0.6rem 0.85rem',
+                border: '1px solid #cbd5e1',
+                borderRadius: '12px',
+                background: '#ffffff',
+                color: '#0f172a',
+                fontSize: '0.92rem',
+                fontWeight: 600,
+                outline: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              <option value="">-- Choisir un service de fabrication --</option>
+              {departments.map((department) => (
+                <option key={department.id} value={department.id}>
+                  {department.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Grouped Prestations & Recipes */}
+          {groupedLines.map(([prestationName, prestationLines]) => (
+            <section
+              key={prestationName}
+              style={{
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '18px',
+                overflow: 'hidden',
+                boxShadow: '0 4px 14px rgba(0, 0, 0, 0.03)',
+              }}
+            >
+              {/* Prestation Header */}
+              <div
+                style={{
+                  padding: '0.85rem 1.25rem',
+                  background: 'linear-gradient(90deg, #f0fdf4 0%, #f8fafc 100%)',
+                  borderBottom: '1px solid #e2e8f0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+                  <Package size={17} color="#059669" />
+                  <span style={{ fontWeight: 800, color: '#065f46', fontSize: '0.95rem' }}>
+                    {prestationName}
+                  </span>
+                </div>
+                <span
+                  style={{
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    padding: '0.2rem 0.65rem',
+                    borderRadius: '12px',
+                    background: '#dcfce7',
+                    color: '#15803d',
+                  }}
+                >
+                  {prestationLines.length} recette{prestationLines.length > 1 ? 's' : ''}
+                </span>
+              </div>
+
+              {/* Recipe Lines */}
+              <div style={{ display: 'grid' }}>
+                {prestationLines.map((line) => {
+                  const draftLine = lines[line.menuItemId];
+                  const readyDateFormatted = new Date(line.readyAt).toLocaleString('fr-FR', {
+                    dateStyle: 'short',
+                    timeStyle: 'short',
+                  });
+
+                  return (
+                    <div
+                      key={line.menuItemId}
+                      style={{
+                        padding: '1.1rem 1.25rem',
+                        borderBottom: '1px solid #f1f5f9',
+                        display: 'grid',
+                        gap: '1rem',
+                        background: '#ffffff',
+                      }}
+                    >
+                      {/* Recipe Title & Ready Meta */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'flex-start',
+                          gap: '1rem',
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <div
+                            style={{
+                              width: '8px',
+                              height: '8px',
+                              borderRadius: '50%',
+                              background: line.editable ? '#10b981' : '#94a3b8',
+                              flexShrink: 0,
+                            }}
+                          />
+                          <strong style={{ color: '#0f172a', fontSize: '1rem', fontWeight: 800 }}>
+                            {line.technicalSheetName}
+                          </strong>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.35rem',
+                              padding: '0.25rem 0.6rem',
+                              borderRadius: '8px',
+                              background: '#f1f5f9',
+                              color: '#475569',
+                              fontSize: '0.78rem',
+                              fontWeight: 650,
+                            }}
+                          >
+                            <CalendarDays size={13} /> Prêt le {readyDateFormatted}
+                          </span>
+                          {line.productionOrderStatus && (
+                            <span
+                              style={{
+                                padding: '0.25rem 0.6rem',
+                                borderRadius: '8px',
+                                background: '#eff6ff',
+                                color: '#1d4ed8',
+                                fontSize: '0.78rem',
+                                fontWeight: 700,
+                              }}
+                            >
+                              {line.productionOrderStatus}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Inputs Grid */}
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+                          gap: '0.85rem',
+                          background: '#f8fafc',
+                          padding: '0.85rem 1rem',
+                          borderRadius: '14px',
+                          border: '1px solid #e2e8f0',
+                        }}
+                      >
+                        <label style={{ display: 'grid', gap: '0.3rem' }}>
+                          <span style={{ fontSize: '0.76rem', fontWeight: 750, color: '#475569', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                            <Package size={13} color="#059669" /> Quantité (portions)
+                          </span>
+                          <input
+                            type="number"
+                            min="0.001"
+                            step="0.001"
+                            required
+                            disabled={!line.editable}
+                            value={draftLine?.portions ?? ''}
+                            onChange={(event) =>
+                              setLines((current) => ({
+                                ...current,
+                                [line.menuItemId]: {
+                                  ...current[line.menuItemId],
+                                  portions: event.target.value,
+                                },
+                              }))
+                            }
+                            style={{
+                              width: '100%',
+                              height: '40px',
+                              padding: '0.45rem 0.75rem',
+                              border: '1px solid #cbd5e1',
+                              borderRadius: '10px',
+                              background: line.editable ? '#ffffff' : '#f1f5f9',
+                              color: '#0f172a',
+                              fontWeight: 650,
+                              fontSize: '0.9rem',
+                            }}
+                          />
+                        </label>
+
+                        <label style={{ display: 'grid', gap: '0.3rem' }}>
+                          <span style={{ fontSize: '0.76rem', fontWeight: 750, color: '#475569', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                            <CalendarDays size={13} color="#0284c7" /> Jour de fabrication
+                          </span>
+                          <input
+                            type="date"
+                            required
+                            disabled={!line.editable}
+                            max={dayKey(new Date(line.readyAt))}
+                            value={draftLine?.productionDate ?? ''}
+                            onChange={(event) =>
+                              setLines((current) => ({
+                                ...current,
+                                [line.menuItemId]: {
+                                  ...current[line.menuItemId],
+                                  productionDate: event.target.value,
+                                },
+                              }))
+                            }
+                            style={{
+                              width: '100%',
+                              height: '40px',
+                              padding: '0.45rem 0.75rem',
+                              border: '1px solid #cbd5e1',
+                              borderRadius: '10px',
+                              background: line.editable ? '#ffffff' : '#f1f5f9',
+                              color: '#0f172a',
+                              fontWeight: 650,
+                              fontSize: '0.9rem',
+                            }}
+                          />
+                        </label>
+
+                        <label style={{ display: 'grid', gap: '0.3rem' }}>
+                          <span style={{ fontSize: '0.76rem', fontWeight: 750, color: '#475569', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                            <Clock3 size={13} color="#6366f1" /> Heure
+                          </span>
+                          <input
+                            type="time"
+                            required
+                            disabled={!line.editable}
+                            value={draftLine?.plannedTime ?? ''}
+                            onChange={(event) =>
+                              setLines((current) => ({
+                                ...current,
+                                [line.menuItemId]: {
+                                  ...current[line.menuItemId],
+                                  plannedTime: event.target.value,
+                                },
+                              }))
+                            }
+                            style={{
+                              width: '100%',
+                              height: '40px',
+                              padding: '0.45rem 0.75rem',
+                              border: '1px solid #cbd5e1',
+                              borderRadius: '10px',
+                              background: line.editable ? '#ffffff' : '#f1f5f9',
+                              color: '#0f172a',
+                              fontWeight: 650,
+                              fontSize: '0.9rem',
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <footer
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '1rem',
+            padding: '1.1rem 1.75rem',
+            borderTop: '1px solid #e2e8f0',
+            background: '#ffffff',
+            flexShrink: 0,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#64748b', fontSize: '0.88rem' }}>
+            <CheckCircle2 size={16} color="#10b981" />
+            <span>
+              <strong style={{ color: '#0f172a' }}>{totalRecipesCount}</strong> recette{totalRecipesCount > 1 ? 's' : ''} à planifier
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={onClose}
+              style={{
+                height: '44px',
+                padding: '0 1.25rem',
+                borderRadius: '12px',
+                fontWeight: 650,
+                fontSize: '0.9rem',
+              }}
+            >
+              Fermer
+            </button>
+
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={saving || !serviceId}
+              style={{
+                height: '44px',
+                padding: '0 1.5rem',
+                borderRadius: '12px',
+                fontWeight: 700,
+                fontSize: '0.9rem',
+                background: saving || !serviceId
+                  ? '#94a3b8'
+                  : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                boxShadow: saving || !serviceId
+                  ? 'none'
+                  : '0 4px 14px rgba(16, 185, 129, 0.35)',
+                border: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.55rem',
+                cursor: saving || !serviceId ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {saving ? <Loader2 size={18} className="spin" /> : <Check size={18} />}
+              Enregistrer et afficher dans Fabrication
+            </button>
+          </div>
+        </footer>
+      </motion.form>
+    </motion.div>,
+    document.body
+  );
+}
+
+const plannerLabelStyle: React.CSSProperties = {
+  display: 'grid',
+  gap: '.3rem',
+  color: '#475569',
+  fontSize: '.78rem',
+  fontWeight: 750,
+};
+
+const plannerInputStyle: React.CSSProperties = {
+  width: '100%',
+  minHeight: '40px',
+  padding: '.55rem .65rem',
+  border: '1px solid #cbd5e1',
+  borderRadius: '10px',
+  background: 'white',
+  color: '#0f172a',
+};
+
+function TaskCard({
+  task,
+  highlighted,
+  onEdit,
+}: {
+  task: OperationalTask;
+  highlighted?: boolean;
+  onEdit: () => void;
+}) {
   return (
     <article
-      className="production-task-card-v2"
+      className={`production-task-card-v2${highlighted ? ' is-caterer' : ''}`}
       role="button"
       tabIndex={0}
       aria-label={`Modifier ${task.title}`}
       title={`${task.title} — cliquer pour modifier`}
-      draggable={Boolean(task.source === 'PRODUCTION' && task.productionBatchId)}
+      draggable={canPlaceOperationalTask(task)}
       onClick={onEdit}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
@@ -4648,7 +5912,7 @@ function TaskCard({ task, onEdit }: { task: OperationalTask; onEdit: () => void 
         }
       }}
       onDragStart={(event) => {
-        if (!task.productionBatchId) return;
+        if (!canPlaceOperationalTask(task)) return;
         event.dataTransfer.setData('application/x-toquehub-production-task', task.id);
         event.dataTransfer.effectAllowed = 'move';
       }}
@@ -4668,10 +5932,11 @@ function TaskCard({ task, onEdit }: { task: OperationalTask; onEdit: () => void 
             fontWeight: 800,
           }}
         >
-          {task.source === 'PRODUCTION' && task.productionBatchId && (
+          {canPlaceOperationalTask(task) && (
             <GripVertical size={13} color="#94a3b8" />
           )}
           <Clock3 size={13} color="#94a3b8" /> {formatTime(task.startsAt)}–{formatTime(task.endsAt)}
+          {highlighted && <span className="production-caterer-task-badge">Traiteur</span>}
         </div>
         <h4
           style={{

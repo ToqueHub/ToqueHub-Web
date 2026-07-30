@@ -13,10 +13,11 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:migrate": "prisma migrate dev",
     "prisma:reset": "prisma migrate reset --skip-seed",
-    "prisma:seed": "node --env-file=../../.env --import tsx prisma/seed.ts",
-    "prisma:seed:hotel-demo": "node --env-file=../../.env --import tsx prisma/seed-hotel-demo.ts",
-    "prisma:seed:caterer-demo": "node --env-file=../../.env --import tsx prisma/seed-caterer-demo.ts",
-    "seed:legal-rights": "node --env-file=../../.env --import tsx scripts/seed-legal-rights.ts"
+    "seed:legal-rights": "node --env-file=../../.env --import tsx scripts/seed-legal-rights.ts",
+    "seed:caterer-demo": "node --env-file=../../.env --import tsx scripts/seed-caterer-production-demo.ts",
+    "seed:haccp-dashboard-demo": "node --env-file=../../.env --import tsx scripts/seed-haccp-dashboard-demo.ts",
+    "seed:mobile-reception-demo": "node --env-file=../../.env --import tsx scripts/seed-mobile-reception-demo.ts",
+    "seed:production-flow-day": "node --env-file=../../.env --import tsx scripts/seed-production-flow-day.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.2",

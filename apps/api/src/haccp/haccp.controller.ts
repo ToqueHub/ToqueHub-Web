@@ -30,13 +30,17 @@ import {
   UpdateTraceabilityDto,
 } from './dto/haccp.dto';
 import { HaccpService } from './haccp.service';
+import { ProductionIngredientTraceabilityService } from '../production/production-ingredient-traceability.service';
 
 @ApiTags('haccp')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller()
 export class HaccpController {
-  constructor(private readonly service: HaccpService) {}
+  constructor(
+    private readonly service: HaccpService,
+    private readonly productionTraceability: ProductionIngredientTraceabilityService,
+  ) {}
 
   private org(user: AuthenticatedUser) {
     if (!user.organizationId) throw new BadRequestException('Organization setup is required before using HACCP endpoints');
@@ -48,6 +52,10 @@ export class HaccpController {
   }
 
   @Get('haccp/dashboard') dashboard(@CurrentUser() user: AuthenticatedUser) { return this.service.dashboard(this.org(user)); }
+  @Get('haccp/receptions') unifiedReceptions(@CurrentUser() user: AuthenticatedUser) { return this.service.listUnifiedReceptions(this.org(user)); }
+  @Get('haccp/receptions/:id') unifiedReception(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.service.unifiedReceptionDetail(this.org(user), id); }
+  @Get('haccp/production-flow') productionFlow(@CurrentUser() user: AuthenticatedUser, @Query('date') date?: string) { return this.productionTraceability.flowDay(this.org(user), date); }
+  @Get('haccp/production-flow/:batchId') productionFlowDetail(@CurrentUser() user: AuthenticatedUser, @Param('batchId') batchId: string) { return this.productionTraceability.flowDetail(this.org(user), batchId); }
   @Post('haccp/sync') sync(@CurrentUser() user: AuthenticatedUser, @Body() dto: any) { return this.service.syncOperations(this.org(user), this.actor(user), dto); }
 
   @Get('temperature/equipment') listTemperatureEquipment(@CurrentUser() user: AuthenticatedUser) { return this.service.listTemperatureEquipment(this.org(user)); }

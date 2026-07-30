@@ -1,5 +1,6 @@
 import { HaccpService } from './haccp.service';
 import { readFileSync } from 'node:fs';
+import { PDFDocument } from 'pdf-lib';
 
 const actor = { id: '11111111-1111-1111-1111-111111111111', role: 'Administrateur' };
 const orgId = '22222222-2222-2222-2222-222222222222';
@@ -213,13 +214,14 @@ describe('HaccpService', () => {
       expect.objectContaining({ id: 'cleaning', completed: 0, expected: 0, statusLabel: 'Aucun prévu' }),
     ]));
     expect(response.data.fileSize).toBeGreaterThan(0);
-    const pdf = readFileSync(response.data.pdfPath, 'latin1');
-    expect(pdf).toContain('Temperatures: Releves : 1/1 - 100% - Conforme');
-    expect(pdf).toContain('Nettoyage: Releves : 0/0 - - - Aucun prevu');
+    const pdf = await PDFDocument.load(readFileSync(response.data.pdfPath));
+    expect(pdf.getPageCount()).toBeGreaterThanOrEqual(1);
+    expect(pdf.getTitle()).toContain('Rapport HACCP');
   });
 
-  it('skips PDF generation when no daily HACCP data exists', async () => {
+  it('generates a dated PDF even when no daily HACCP activity exists', async () => {
     const prisma = createPrismaMock();
+    let storedReport: any;
     prisma.haccpTemperatureEquipment.findMany.mockResolvedValue([{ id: 'frigo-1' }]);
     prisma.haccpTemperatureReading.findMany.mockResolvedValue([]);
     prisma.haccpCleaningZone.findMany.mockResolvedValue([]);
@@ -233,21 +235,28 @@ describe('HaccpService', () => {
       .mockResolvedValueOnce([]);
     prisma.haccpOilEquipment.findMany.mockResolvedValue([]);
     prisma.haccpOilSession.findMany.mockResolvedValue([]);
+    prisma.haccpDailyReport.upsert.mockImplementation(async ({ create, update }: any) => {
+      storedReport = { id: 'empty-report', ...(create ?? update), organizationId: orgId, createdAt: new Date(), updatedAt: new Date() };
+      return storedReport;
+    });
+    prisma.haccpDailyReport.update.mockImplementation(async ({ data }: any) => ({ ...storedReport, ...data, updatedAt: new Date() }));
     const service = new HaccpService(prisma);
 
     const response = await service.generateDailyReport(orgId, actor, new Date('2026-06-30T12:00:00.000Z'));
     const modules = Object.fromEntries(response.data.summary.modules.map((module: any) => [module.id, module]));
 
-    expect(response.data).toMatchObject({ skipped: true, pdfPath: null, fileSize: 0, status: 'skipped' });
+    expect(response.data).toMatchObject({ status: 'completed', summary: { totalActivities: 0 } });
+    expect(response.data.pdfPath).toContain('rapport-haccp-2026-06-30');
+    expect(response.data.fileSize).toBeGreaterThan(0);
     expect(modules.temperature).toMatchObject({ completed: 0, expected: 1, score: 0, statusLabel: 'Critique' });
     expect(modules.cleaning).toMatchObject({ completed: 0, expected: 0, statusLabel: 'Aucun prévu' });
     expect(response.data.summary.alerts).toEqual(expect.arrayContaining([expect.objectContaining({ module: 'temperature', severity: 'critical' })]));
-    expect(prisma.haccpDailyReport.upsert).not.toHaveBeenCalled();
-    expect(prisma.haccpDailyReport.update).not.toHaveBeenCalled();
+    expect(prisma.haccpDailyReport.upsert).toHaveBeenCalledTimes(1);
+    expect(prisma.haccpDailyReport.update).toHaveBeenCalledTimes(1);
   });
 
   it('automatically generates yesterday PDF at midnight and skips duplicate closure', async () => {
-    jest.useFakeTimers().setSystemTime(new Date(2026, 6, 1, 0, 3, 0, 0));
+    jest.useFakeTimers().setSystemTime(new Date('2026-06-30T22:03:00.000Z'));
     try {
       const prisma = createPrismaMock();
       let storedReport: any;
@@ -274,18 +283,43 @@ describe('HaccpService', () => {
       const service = new HaccpService(prisma);
 
       await (service as any).runAutomaticDailyClosure();
-      prisma.haccpDailyReport.findUnique.mockResolvedValue({ id: 'auto-report', organizationId: orgId, reportDate: new Date('2026-06-30T00:00:00.000Z'), generatedAt: new Date('2026-07-01T00:03:00.000Z') });
+      prisma.haccpDailyReport.findUnique.mockResolvedValue({ id: 'auto-report', organizationId: orgId, reportDate: new Date('2026-06-29T22:00:00.000Z'), generatedAt: new Date('2026-06-30T22:03:00.000Z') });
       await (service as any).runAutomaticDailyClosure();
 
       expect(prisma.haccpDailyReport.upsert).toHaveBeenCalledTimes(1);
       const upsertArg = prisma.haccpDailyReport.upsert.mock.calls[0][0];
       expect(upsertArg.where.organizationId_reportDate.organizationId).toBe(orgId);
-      expect(upsertArg.where.organizationId_reportDate.reportDate.getFullYear()).toBe(2026);
-      expect(upsertArg.where.organizationId_reportDate.reportDate.getMonth()).toBe(5);
-      expect(upsertArg.where.organizationId_reportDate.reportDate.getDate()).toBe(30);
+      expect(upsertArg.where.organizationId_reportDate.reportDate.toISOString()).toBe('2026-06-29T22:00:00.000Z');
       expect(prisma.haccpDailyReport.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'auto-report' }, data: expect.objectContaining({ pdfPath: expect.stringContaining('rapport-haccp-2026-06-30') }) }));
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it('omits the HACCP level from PDF content', () => {
+    const service = new HaccpService(createPrismaMock());
+    const modules = {
+      compliance: [],
+      temperature: { data: [] },
+      traceability: { data: [] },
+      reception: { data: [] },
+      production: { data: [] },
+      cooling: {
+        refroidissement: { data: [] },
+        congelation: { data: [] },
+        rechauffement: { data: [] },
+      },
+      oil: { data: [] },
+      cleaning: { data: [] },
+    };
+
+    const lines = (service as any).dailyReportPdfLines(
+      new Date('2026-06-30T10:00:00.000Z'),
+      modules,
+      { score: 88, grade: 'B', totalActivities: 0, modulesCovered: [], alerts: [] },
+    );
+
+    expect(lines.join('\n')).toContain('Score global: 88%');
+    expect(lines.join('\n')).not.toContain('Niveau');
   });
 });

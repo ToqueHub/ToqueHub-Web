@@ -49,7 +49,7 @@ Il fait des `upsert` sur les clés stables :
 - famille métier : `code` ;
 - mapping métier : `stableKey`.
 
-Relancer `npm run prisma:seed -w apps/api` met à jour les règles sans doublons.
+Relancer `npm run seed:legal-rights -w apps/api` met à jour les règles sans doublons.
 
 Pour charger uniquement la base légale France V1 dans une instance locale/demo :
 

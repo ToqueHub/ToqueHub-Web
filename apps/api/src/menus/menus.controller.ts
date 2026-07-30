@@ -1,11 +1,11 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CatererClientQueryDto, CatererEventQueryDto, GenerateCatererEventProductionsDto, GenerateProductionsDto, HistoryQueryDto, MenuAvailabilityQueryDto, MenuQueryDto, PlanCatalogProductionDayDto, PlanMenuShortagesDto, PrepareMenuExportDto, ReplicateCycleDto, UpdateCatererEventStatusDto, UpdateGuestForecastsDto, UpdateMenuDispatchStatusDto, UpdateMenuSettingsDto, UpdateMenuStatusDto, UpsertCatererClientDto, UpsertCatererEventDto, UpsertCycleDto, UpsertDietDto, UpsertGuestGroupDto, UpsertMenuCategoryDto, UpsertMenuDto, UpsertMenuVariantDto } from './dto/menus.dto';
+import { CatererClientQueryDto, CatererEventQueryDto, GenerateCatererEventProductionsDto, GenerateProductionsDto, HistoryQueryDto, MenuAvailabilityQueryDto, MenuQueryDto, PlanCatalogProductionDayDto, PlanMenuShortagesDto, PrepareMenuExportDto, ReplicateCycleDto, SaveCatererProductionPlanDto, UpdateCatererEventStatusDto, UpdateGuestForecastsDto, UpdateMenuDispatchStatusDto, UpdateMenuSettingsDto, UpdateMenuStatusDto, UpsertCatererClientDto, UpsertCatererEventDto, UpsertCycleDto, UpsertDietDto, UpsertGuestGroupDto, UpsertMenuCategoryDto, UpsertMenuDto, UpsertMenuVariantDto } from './dto/menus.dto';
 import { CatererMenusService } from './caterer-menus.service';
 import { MenuExportsService } from './menu-exports.service';
 import { MenusService } from './menus.service';
@@ -17,7 +17,9 @@ import { MenusService } from './menus.service';
 export class MenusController {
   constructor(private readonly service: MenusService, private readonly exportService: MenuExportsService, private readonly caterer: CatererMenusService) {}
   private org(user: AuthenticatedUser) { if (!user.organizationId) throw new BadRequestException('Organization setup is required'); return user.organizationId; }
-  private actor(user: AuthenticatedUser) { return { id: user.id, role: user.role }; }
+  private actor(user: AuthenticatedUser) {
+    return { id: user.id, role: user.role, permissions: user.permissions };
+  }
 
   @Post('install') install(@CurrentUser() user: AuthenticatedUser) { return this.service.install(this.org(user), this.actor(user)); }
   @Post('uninstall') uninstall(@CurrentUser() user: AuthenticatedUser) { return this.service.uninstall(this.org(user), this.actor(user)); }
@@ -66,6 +68,8 @@ export class MenusController {
   @Patch('caterer/events/:id') updateCatererEvent(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpsertCatererEventDto) { return this.caterer.upsertEvent(this.org(user), this.actor(user), dto, id); }
   @Patch('caterer/events/:id/status') updateCatererEventStatus(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UpdateCatererEventStatusDto) { return this.caterer.changeStatus(this.org(user), this.actor(user), id, dto.status); }
   @Get('caterer/events/:id/readiness') catererEventReadiness(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.caterer.readiness(this.org(user), id); }
+  @Get('caterer/events/:id/production-plan') catererProductionPlan(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) { return this.caterer.productionPlan(this.org(user), id); }
+  @Put('caterer/events/:id/production-plan') saveCatererProductionPlan(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: SaveCatererProductionPlanDto) { return this.caterer.saveProductionPlan(this.org(user), this.actor(user), id, dto); }
   @Post('caterer/events/:id/generate-productions') generateCatererEventProductions(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: GenerateCatererEventProductionsDto) { return this.caterer.generateProductions(this.org(user), this.actor(user), id, dto); }
   @Get('caterer/events/:id/documents/:kind') async catererEventDocument(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('kind') kind: string, @Res() response: Response) {
     const file = await this.caterer.document(this.org(user), this.actor(user), id, kind.toUpperCase());

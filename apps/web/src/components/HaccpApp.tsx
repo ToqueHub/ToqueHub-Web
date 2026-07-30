@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { io, Socket } from 'socket.io-client';
 import {
   Activity,
+  Archive,
   AlertCircle,
   AlertTriangle,
   ArrowLeft,
@@ -11,6 +12,8 @@ import {
   Battery,
   Bell,
   CheckCircle2,
+  CalendarDays,
+  ChevronRight,
   ChevronDown,
   ChevronUp,
   ClipboardList,
@@ -18,9 +21,12 @@ import {
   Cpu,
   Download,
   Droplets,
+  EyeOff,
   Factory,
   FileText,
   Flame,
+  Folder,
+  FolderOpen,
   Layers,
   LayoutGrid,
   List,
@@ -62,6 +68,55 @@ type HaccpDashboard = {
   activities: Array<{ id: string; module: string; label: string; detail: string; at: string }>;
   products: HaccpItem[];
   reports: HaccpItem[];
+};
+
+type ProductionFlowSummary = {
+  planned: number;
+  inProgress: number;
+  completed: number;
+  traceabilityCompleted: number;
+  traceabilityExpected: number;
+};
+type ProductionFlowListItem = {
+  batch: {
+    id: string;
+    reference: string;
+    status: string;
+    plannedQuantity: string;
+    unit?: { symbol?: string };
+    plannedStartAt?: string | null;
+    startedAt?: string | null;
+    completedAt?: string | null;
+    site?: { id: string; name: string } | null;
+  };
+  recipe: { id: string; name: string; version?: number | null };
+  tasks: Array<{
+    id: string;
+    title: string;
+    startsAt: string;
+    endsAt: string;
+    status: string;
+    assignedEmployee?: { id: string; name: string } | null;
+  }>;
+  summary: { expected: number; completed: number; missing: number; isComplete: boolean };
+};
+type ProductionFlow = {
+  date: string;
+  summary: ProductionFlowSummary;
+  items: ProductionFlowListItem[];
+};
+type ProductionFlowDetail = ProductionFlowListItem & {
+  ingredients: Array<{
+    key: string;
+    name: string;
+    quantity: string;
+    unit: string;
+    lotNumber?: string | null;
+    barcode?: string | null;
+    completed: boolean;
+    completedAt?: string | null;
+    photos: Array<{ documentId: string; path: string; originalName?: string }>;
+  }>;
 };
 
 type HaccpItem = Record<string, any> & { _id?: string; id?: string; name?: string };
@@ -313,6 +368,14 @@ const SECTIONS: Array<{ id: HaccpTab; label: string; icon: typeof Thermometer }>
   { id: 'reports', label: 'Rapports', icon: FileText },
 ];
 
+const HACCP_NAV_ITEMS: Array<{ id: HaccpTab; label: string; icon: typeof Thermometer }> = [
+  { id: 'dashboard', label: 'Tableau de bord', icon: LayoutGrid },
+  { id: 'sensors', label: 'Capteurs', icon: Smartphone },
+  { id: 'alerts', label: 'Alerte', icon: AlertTriangle },
+  { id: 'setup', label: 'Zones & matériels', icon: Settings2 },
+  { id: 'reports', label: 'Rapports', icon: FileText },
+];
+
 const HaccpTabIds = new Set<HaccpTab>([
   'dashboard',
   'setup',
@@ -383,11 +446,17 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
   const [selectedSensorId, setSelectedSensorId] = useState<string | null>(null);
   const [activeCleaningSession, setActiveCleaningSession] = useState<HaccpCleaningSession | null>(null);
   const [todayCleaningSurfaces, setTodayCleaningSurfaces] = useState<TodayCleaningSurface[]>([]);
+  const [productionFlow, setProductionFlow] = useState<ProductionFlow | null>(null);
 
   useEffect(() => setActiveTab(tab), [tab]);
   useEffect(() => { void refreshAll(); }, [token, processType]);
   useEffect(() => {
-    if (activeTab !== 'sensors' && activeTab !== 'alerts') return;
+    if (activeTab !== 'dashboard') return;
+    const interval = window.setInterval(() => void refreshLiveDashboard(), 30_000);
+    return () => window.clearInterval(interval);
+  }, [activeTab, token]);
+  useEffect(() => {
+    if (activeTab !== 'dashboard' && activeTab !== 'sensors' && activeTab !== 'alerts') return;
     let socket: Socket | undefined;
     let connectTimer: number | undefined;
     try {
@@ -396,6 +465,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
         setSensors((current) => upsertSensor(current, sensor));
         void refreshSensorSummary();
         if (activeTab === 'alerts') void refreshTemperatureAlerts();
+        if (activeTab === 'dashboard') void refreshLiveDashboard();
       };
       socket.on('sensor.discovered', (sensor: HaccpSensor) => {
         upsert(sensor);
@@ -467,6 +537,23 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
           return { data: [] };
         }
       };
+      const safeAllReports = async () => {
+        const firstPage = await safeList('/daily-reports?limit=200&page=1');
+        const pageCount = Number(firstPage.pagination?.pages ?? 1);
+        if (pageCount <= 1) return firstPage;
+        const remainingPages = await Promise.all(
+          Array.from({ length: pageCount - 1 }, (_, index) =>
+            safeList(`/daily-reports?limit=200&page=${index + 2}`),
+          ),
+        );
+        return {
+          ...firstPage,
+          data: [
+            ...(firstPage.data ?? []),
+            ...remainingPages.flatMap((page) => page.data ?? []),
+          ],
+        };
+      };
       const safeValue = async <T,>(label: string, loader: () => Promise<T>, fallback: T) => {
         try {
           return await loader();
@@ -477,6 +564,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
       };
       const [
         dashboardData,
+        productionFlowData,
         equipment,
         readings,
         zones,
@@ -484,6 +572,9 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
         receptions,
         processEquipments,
         processSessions,
+        coolingToday,
+        freezingToday,
+        reheatingToday,
         oils,
         oilSessions,
         productionSessions,
@@ -498,18 +589,22 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
         todayCleaningData,
       ] = await Promise.all([
         safeValue('dashboard', () => api.haccpDashboard(token), null),
+        safeValue('production flow', () => api.haccpProductionFlow(token), null),
         safeList('/temperature/equipment'),
         safeList('/temperature/readings'),
         safeList('/cleaning/zones'),
         safeList('/traceability'),
-        safeList('/receptions'),
+        safeList('/haccp/receptions'),
         safeList('/cooling-equipment'),
         safeList(`/cooling/${processType}/sessions`),
+        safeList('/cooling/refroidissement/sessions/today'),
+        safeList('/cooling/congelation/sessions/today'),
+        safeList('/cooling/rechauffement/sessions/today'),
         safeList('/oil-equipment'),
         safeList('/oil/sessions?limit=50'),
         safeList('/production/sessions?limit=200'),
         safeList('/haccp-products'),
-        safeList('/daily-reports?limit=50'),
+        safeAllReports(),
         safeValue('sensor gateway status', () => api.haccpSensorGatewayStatus(token), null),
         safeValue('sensors summary', () => api.haccpSensorsSummary(token), { total: 0, online: 0, offline: 0, unknown: 0, averageBattery: null, globalStatus: 'unknown' }),
         safeValue('sensors list', () => api.haccpSensors(token), []),
@@ -520,6 +615,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
       ]);
       const temperatureEquipmentList = equipment.data ?? [];
       if (dashboardData) setDashboard(dashboardData);
+      if (productionFlowData) setProductionFlow(productionFlowData);
       setSensorGatewayStatus(gatewayStatus);
       setSensorSummary(sensorSummaryData);
       setSensors(sensorList);
@@ -536,6 +632,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
         receptions: receptions.data ?? [],
         processEquipment: processEquipments.data ?? [],
         processSessions: processSessions.data ?? [],
+        processSessionsToday: [...(coolingToday.data ?? []), ...(freezingToday.data ?? []), ...(reheatingToday.data ?? [])],
         oilEquipment: oils.data ?? [],
         oilSessions: oilSessions.data ?? [],
         productionSessions: productionSessions.data ?? [],
@@ -555,6 +652,45 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
     } catch {
       // Keep the last summary; the full refresh surface will show errors.
     }
+  }
+
+  async function refreshLiveDashboard() {
+    await Promise.all([
+      api.haccpDashboard(token)
+        .then((data) => setDashboard(data))
+        .catch((err) => console.warn('[HACCP] Actualisation dashboard impossible', err)),
+      api.haccpProductionFlow(token)
+        .then((data) => setProductionFlow(data))
+        .catch((err) => console.warn('[HACCP] Actualisation production impossible', err)),
+      api.haccpList(token, '/temperature/readings')
+        .then((result) => setItems((current) => ({ ...current, temperatureReadings: result.data ?? [] })))
+        .catch((err) => console.warn('[HACCP] Actualisation températures impossible', err)),
+      api.haccpList(token, '/cleaning/zones')
+        .then((result) => setItems((current) => ({ ...current, cleaningZones: result.data ?? [] })))
+        .catch((err) => console.warn('[HACCP] Actualisation zones impossible', err)),
+      api.haccpList(token, '/cleaning/sessions/active')
+        .then((result) => setActiveCleaningSession(result.data ?? null))
+        .catch((err) => console.warn('[HACCP] Actualisation session de nettoyage impossible', err)),
+      api.haccpList(token, '/cleaning/today-surfaces')
+        .then((result) => setTodayCleaningSurfaces(result.data ?? []))
+        .catch((err) => console.warn('[HACCP] Actualisation plan de nettoyage impossible', err)),
+      api.haccpSensors(token)
+        .then((data) => setSensors(data))
+        .catch((err) => console.warn('[HACCP] Actualisation capteurs impossible', err)),
+      api.haccpTemperatureAlerts(token)
+        .then((data) => setTemperatureAlerts(data))
+        .catch((err) => console.warn('[HACCP] Actualisation alertes impossible', err)),
+      Promise.all([
+        api.haccpList(token, '/cooling/refroidissement/sessions/today'),
+        api.haccpList(token, '/cooling/congelation/sessions/today'),
+        api.haccpList(token, '/cooling/rechauffement/sessions/today'),
+      ])
+        .then((results) => setItems((current) => ({
+          ...current,
+          processSessionsToday: results.flatMap((result) => result.data ?? []),
+        })))
+        .catch((err) => console.warn('[HACCP] Actualisation process impossible', err)),
+    ]);
   }
 
   async function refreshSensorsOnly() {
@@ -791,6 +927,28 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
     await refreshAll();
   }
 
+  async function hideOilSession(item: HaccpItem) {
+    const id = haccpItemId(item);
+    if (!id) throw new Error('Contrôle huile introuvable.');
+    setSaving(true);
+    setError(null);
+    try {
+      await api.haccpDelete(token, `/oil/sessions/${id}`);
+      setItems((current) => ({
+        ...current,
+        oilSessions: (current.oilSessions ?? []).filter((session) => haccpItemId(session) !== id),
+      }));
+      const nextDashboard = await api.haccpDashboard(token);
+      setDashboard(nextDashboard);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Impossible de masquer ce contrôle huile.';
+      setError(message);
+      throw err;
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function removeConfig(kind: HaccpConfigKind, item: HaccpItem) {
     const id = item._id ?? item.id;
     if (!id) return;
@@ -882,16 +1040,6 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
       await refreshCleaningOnly();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Impossible de terminer la session de nettoyage.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function generateReport() {
-    setSaving(true);
-    try {
-      await api.haccpGenerateDailyReport(token);
-      await refreshAll();
     } finally {
       setSaving(false);
     }
@@ -1060,7 +1208,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
     },
     reports: {
       title: 'Rapports & Audits HACCP',
-      subtitle: 'Génération et archivage des rapports sanitaires et registres.',
+      subtitle: 'Archivage automatique des rapports sanitaires quotidiens.',
     },
   };
 
@@ -1068,6 +1216,24 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
     title: 'Module HACCP',
     subtitle: 'Gestion globale de la sécurité alimentaire.',
   };
+
+  const navigateToHaccpTab = (nextTab: HaccpTab) => {
+    setActiveTab(nextTab);
+    setSearchQuery('');
+    onNavigate?.(nextTab === 'dashboard' ? 'haccp-dashboard' : `haccp-${nextTab}`);
+  };
+  const dashboardNavMatches = new Set<HaccpTab>([
+    'dashboard',
+    'temperatures',
+    'cleaning',
+    'traceability',
+    'receptions',
+    'process',
+    'oil',
+    'production',
+  ]);
+  const isNavItemActive = (id: HaccpTab) =>
+    id === 'dashboard' ? dashboardNavMatches.has(activeTab) : activeTab === id;
 
   return (
     <>
@@ -1079,12 +1245,25 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
             <p className="muted">{activeHeader.subtitle}</p>
           </div>
           <div className="haccp-header-actions">
-            {activeTab === 'reports' ? (
-              <button className="btn secondary" onClick={generateReport} disabled={saving}><FileText size={16} /> Générer rapport</button>
-            ) : null}
             <button className="btn secondary" onClick={() => void refreshAll()} disabled={loading}><RefreshCw size={16} /> Actualiser</button>
           </div>
         </div>
+
+        <nav className="haccp-tabs haccp-module-nav" aria-label="Navigation du module HACCP">
+          {HACCP_NAV_ITEMS.map(({ id, label, icon: Icon }) => (
+            <button
+              type="button"
+              key={id}
+              className={isNavItemActive(id) ? 'active' : ''}
+              onClick={() => navigateToHaccpTab(id)}
+              aria-current={isNavItemActive(id) ? 'page' : undefined}
+              title={label}
+            >
+              <Icon size={16} />
+              <span>{label}</span>
+            </button>
+          ))}
+        </nav>
 
         {error && <div className="alert error"><AlertCircle size={16} /> {error}</div>}
 
@@ -1093,14 +1272,27 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
           dashboard={dashboard}
           readiness={readiness}
           loading={loading}
+          temperatureEquipment={temperatureEquipment}
+          temperatureReadings={items.temperatureReadings ?? []}
+          sensors={sensors}
+          temperatureAlerts={temperatureAlerts}
+          cleaningZones={cleaningZones}
+          todayCleaningSurfaces={todayCleaningSurfaces}
+          activeCleaningSession={activeCleaningSession}
+          processEquipment={processEquipment}
+          processSessionsToday={items.processSessionsToday ?? []}
+          productionFlow={productionFlow}
+          receptionRows={items.receptions ?? []}
+          oilRows={items.oilSessions ?? []}
+          oilSaving={saving}
+          token={token}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
-          onGenerateReport={generateReport}
           onStartOnboarding={() => setShowOnboarding(true)}
+          onHideOilSession={hideOilSession}
           onSelectTab={(nextTab) => {
             const target = nextTab === 'temperature' ? 'temperatures' : nextTab;
-            if (isHaccpTab(target)) setActiveTab(target);
-            onNavigate?.(target === 'dashboard' ? 'haccp-dashboard' : `haccp-${target}`);
+            if (isHaccpTab(target)) navigateToHaccpTab(target);
           }}
         />
       ) : null}
@@ -1170,7 +1362,20 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
             }}
           />
         ) : null}
-        {activeTab !== 'dashboard' && activeTab !== 'setup' && activeTab !== 'sensors' && activeTab !== 'alerts' && activeTab !== 'labels' && activeTab !== 'cleaning' ? (
+        {activeTab === 'reports' ? (
+          <ReportsArchiveView
+            rows={items.reports ?? []}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            onDownload={(item) => void downloadReport(item)}
+            onDelete={(item) => void remove('reports', item)}
+            onBack={() => {
+              setActiveTab('dashboard');
+              onNavigate?.('haccp-dashboard');
+            }}
+          />
+        ) : null}
+        {activeTab !== 'dashboard' && activeTab !== 'setup' && activeTab !== 'sensors' && activeTab !== 'alerts' && activeTab !== 'labels' && activeTab !== 'cleaning' && activeTab !== 'reports' ? (
           <SectionView
             section={activeTab}
             rows={visibleRows}
@@ -1182,9 +1387,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
             onCreate={() => openCreate(activeTab)}
             onDelete={(item) => void remove(activeTab, item)}
             onAnalyzeImage={analyzeImage}
-            onGenerateReport={generateReport}
             onDownloadReport={(item) => void downloadReport(item)}
-            saving={saving}
             onBack={() => {
               setActiveTab('dashboard');
               onNavigate?.('haccp-dashboard');
@@ -1363,6 +1566,1370 @@ function ModuleCard({ module, onClick }: { module: HaccpDashboard['modules'][num
   );
 }
 
+function HygieneOverviewCard({
+  temperature,
+  cleaning,
+  onClick,
+}: {
+  temperature?: HaccpDashboard['modules'][number];
+  cleaning?: HaccpDashboard['modules'][number];
+  onClick: () => void;
+}) {
+  const expected = (temperature?.expected ?? 0) + (cleaning?.expected ?? 0);
+  const completed = (temperature?.completed ?? 0) + (cleaning?.completed ?? 0);
+  const issues = (temperature?.issues ?? 0) + (cleaning?.issues ?? 0);
+  const score = expected
+    ? Math.round((((temperature?.score ?? 100) * (temperature?.expected ?? 0)) + ((cleaning?.score ?? 100) * (cleaning?.expected ?? 0))) / expected)
+    : 100;
+  const status = !expected ? 'À configurer' : issues > 0 ? score < 60 ? 'Action requise' : 'À surveiller' : 'À jour';
+  const tone = !expected ? 'neutral' : issues > 0 ? score < 60 ? 'danger' : 'warning' : 'ok';
+
+  return (
+    <button type="button" className={`haccp-hygiene-card status-${tone}`} onClick={onClick}>
+      <div className="haccp-hygiene-card-top">
+        <div>
+          <span className="haccp-live-kicker"><span className="haccp-live-dot" /> Supervision opérationnelle</span>
+          <h3>Températures & Nettoyage</h3>
+          <p>La vision unifiée des enceintes, zones et contrôles réalisés depuis l’application mobile.</p>
+        </div>
+        <span className="haccp-open-live">Voir le direct <ChevronRight size={16} /></span>
+      </div>
+
+      <div className="haccp-hygiene-card-metrics">
+        <div className="haccp-hygiene-metric temperature">
+          <span className="haccp-hygiene-icon"><Thermometer size={20} /></span>
+          <span>
+            <small>Températures</small>
+            <strong>{temperature?.expected ? temperature.completed : '—'}<em>{temperature?.expected ? `/ ${temperature.expected} enceintes` : 'Aucune enceinte active'}</em></strong>
+          </span>
+          <span className="haccp-metric-score">{temperature?.expected ? `${temperature.score}%` : '—'}</span>
+        </div>
+        <div className="haccp-hygiene-metric cleaning">
+          <span className="haccp-hygiene-icon"><Sparkles size={20} /></span>
+          <span>
+            <small>Nettoyage</small>
+            <strong>{cleaning?.expected ? cleaning.completed : '—'}<em>{cleaning?.expected ? `/ ${cleaning.expected} surfaces` : 'Rien de prévu aujourd’hui'}</em></strong>
+          </span>
+          <span className="haccp-metric-score">{cleaning?.expected ? `${cleaning.score}%` : '—'}</span>
+        </div>
+      </div>
+
+      <div className="haccp-hygiene-card-footer">
+        <span>{expected ? `${completed}/${expected} contrôles couverts` : 'Configurez vos premières zones et enceintes'}</span>
+        <span className={`haccp-status-pill ${tone}`}><span className="status-dot" /> {status}</span>
+      </div>
+    </button>
+  );
+}
+
+function ProcessOverviewCard({
+  module,
+  equipment,
+  sessions,
+  onClick,
+}: {
+  module?: HaccpDashboard['modules'][number];
+  equipment: HaccpItem[];
+  sessions: HaccpItem[];
+  onClick: () => void;
+}) {
+  const completed = sessions.filter((session) => session.status === 'termine').length;
+  const expected = module?.expected ?? sessions.length;
+  const issues = module?.issues ?? sessions.filter((session) => session.status !== 'termine').length;
+  const equipmentCount = equipment.length;
+  const score = module?.score ?? (expected ? Math.round((completed / expected) * 100) : 100);
+  const status = !expected && !equipmentCount ? 'À configurer' : issues > 0 ? score < 60 ? 'Action requise' : 'En cours' : expected ? 'À jour' : 'Prêt';
+  const tone = !expected && !equipmentCount ? 'neutral' : issues > 0 ? score < 60 ? 'danger' : 'warning' : 'ok';
+
+  return (
+    <button type="button" className={`haccp-hygiene-card process status-${tone}`} onClick={onClick}>
+      <div className="haccp-hygiene-card-top">
+        <div>
+          <span className="haccp-live-kicker"><span className="haccp-live-dot" /> Suivi de production</span>
+          <h3>Process froid & chaud</h3>
+          <p>Refroidissement, congélation et remise en température suivis depuis l’application mobile.</p>
+        </div>
+        <span className="haccp-open-live">Voir le suivi <ChevronRight size={16} /></span>
+      </div>
+
+      <div className="haccp-hygiene-card-metrics">
+        <div className="haccp-hygiene-metric process-cold">
+          <span className="haccp-hygiene-icon"><Snowflake size={20} /></span>
+          <span><small>Sessions du jour</small><strong>{expected ? completed : '—'}<em>{expected ? `/ ${expected} terminées` : 'Aucun process lancé'}</em></strong></span>
+          <span className="haccp-metric-score">{expected ? `${score}%` : '—'}</span>
+        </div>
+        <div className="haccp-hygiene-metric process-hot">
+          <span className="haccp-hygiene-icon"><Flame size={20} /></span>
+          <span><small>Matériel process</small><strong>{equipmentCount || '—'}<em>{equipmentCount ? 'équipement(s) actif(s)' : 'À configurer'}</em></strong></span>
+          <span className="haccp-metric-score">{issues ? `${issues} suivi(s)` : 'OK'}</span>
+        </div>
+      </div>
+
+      <div className="haccp-hygiene-card-footer">
+        <span>{expected ? `${completed}/${expected} cycles clôturés aujourd’hui` : 'Les saisies mobiles apparaîtront ici en direct'}</span>
+        <span className={`haccp-status-pill ${tone}`}><span className="status-dot" /> {status}</span>
+      </div>
+    </button>
+  );
+}
+
+function ProductionHaccpOverviewCard({
+  flow,
+  module,
+  onClick,
+}: {
+  flow: ProductionFlow | null;
+  module?: HaccpDashboard['modules'][number];
+  onClick: () => void;
+}) {
+  const summary = flow?.summary;
+  const expected = summary?.traceabilityExpected ?? 0;
+  const completed = summary?.traceabilityCompleted ?? 0;
+  const missing = Math.max(expected - completed, 0);
+  const coverage = expected ? Math.round((completed / expected) * 100) : 100;
+  const tone = missing > 0 && (summary?.inProgress ?? 0) > 0 ? 'warning' : 'ok';
+  const status = !summary?.planned ? 'Aucune production' : missing ? 'À compléter' : 'À jour';
+
+  return (
+    <button
+      type="button"
+      className={`haccp-hygiene-card production-haccp status-${tone}`}
+      onClick={onClick}
+    >
+      <div className="haccp-hygiene-card-top">
+        <div>
+          <span className="haccp-live-kicker production">
+            <span className="haccp-live-dot" /> Planning connecté
+          </span>
+          <h3>Production HACCP</h3>
+          <p>
+            Planning de fabrication, recettes guidées et preuves ingrédients remontées depuis
+            l’application mobile.
+          </p>
+        </div>
+        <span className="haccp-open-live">
+          Voir les productions <ChevronRight size={16} />
+        </span>
+      </div>
+      <div className="haccp-hygiene-card-metrics">
+        <div className="haccp-hygiene-metric production-plan">
+          <span className="haccp-hygiene-icon">
+            <Factory size={20} />
+          </span>
+          <span>
+            <small>Fabrications du jour</small>
+            <strong>
+              {summary?.planned ?? '—'}
+              <em>
+                {summary?.planned
+                  ? `${summary.inProgress} en cours · ${summary.completed} terminée(s)`
+                  : 'Planning vide'}
+              </em>
+            </strong>
+          </span>
+          <span className="haccp-metric-score">{module?.score ?? 100}%</span>
+        </div>
+        <div className="haccp-hygiene-metric production-trace">
+          <span className="haccp-hygiene-icon">
+            <ScanLine size={20} />
+          </span>
+          <span>
+            <small>Preuves ingrédients</small>
+            <strong>
+              {expected ? completed : '—'}
+              <em>{expected ? `/ ${expected} photos attendues` : 'Aucun ingrédient attendu'}</em>
+            </strong>
+          </span>
+          <span className="haccp-metric-score">{expected ? `${coverage}%` : '—'}</span>
+        </div>
+      </div>
+      <div className="haccp-hygiene-card-footer">
+        <span>
+          {missing
+            ? `${missing} ingrédient(s) restent à documenter`
+            : summary?.planned
+              ? 'Toutes les preuves disponibles sont à jour'
+              : 'Les fabrications planifiées apparaîtront ici'}
+        </span>
+        <span className={`haccp-status-pill ${tone}`}>
+          <span className="status-dot" /> {status}
+        </span>
+      </div>
+    </button>
+  );
+}
+
+function ProductionFlowModal({
+  token,
+  flow,
+  onClose,
+  enableDateNavigation = false,
+}: {
+  token: string;
+  flow: ProductionFlow | null;
+  onClose: () => void;
+  enableDateNavigation?: boolean;
+}) {
+  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<ProductionFlowDetail | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [detailError, setDetailError] = useState('');
+  const [historicalFlow, setHistoricalFlow] = useState<ProductionFlow | null>(flow);
+  const [loadingFlow, setLoadingFlow] = useState(false);
+  const [flowError, setFlowError] = useState('');
+  const [selectedDate, setSelectedDate] = useState(
+    flow?.date || new Date().toLocaleDateString('sv-SE'),
+  );
+
+  const visibleFlow = enableDateNavigation ? historicalFlow : flow;
+  const selectedMonth = selectedDate.slice(0, 7);
+  const [selectedYear, selectedMonthNumber] = selectedMonth.split('-').map(Number);
+  const daysInSelectedMonth = Number.isFinite(selectedYear) && Number.isFinite(selectedMonthNumber)
+    ? new Date(selectedYear, selectedMonthNumber, 0).getDate()
+    : 31;
+  const selectedDay = Number(selectedDate.slice(8, 10)) || 1;
+  const selectedDateLabel = new Date(`${selectedDate}T12:00:00`).toLocaleDateString('fr-FR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!enableDateNavigation) return;
+    let cancelled = false;
+    setLoadingFlow(true);
+    setFlowError('');
+    setSelectedBatchId(null);
+    setDetail(null);
+    api.haccpProductionFlow(token, selectedDate)
+      .then((nextFlow) => {
+        if (!cancelled) setHistoricalFlow(nextFlow);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setHistoricalFlow(null);
+          setFlowError(error instanceof Error ? error.message : 'Planning HACCP indisponible pour cette date.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingFlow(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [enableDateNavigation, selectedDate, token]);
+
+  const moveDate = (offset: number) => {
+    const date = new Date(`${selectedDate}T12:00:00`);
+    date.setDate(date.getDate() + offset);
+    setSelectedDate(date.toLocaleDateString('sv-SE'));
+  };
+
+  const selectMonth = (month: string) => {
+    if (!month) return;
+    const [year, monthNumber] = month.split('-').map(Number);
+    const maxDay = new Date(year, monthNumber, 0).getDate();
+    setSelectedDate(`${month}-${String(Math.min(selectedDay, maxDay)).padStart(2, '0')}`);
+  };
+
+  const openBatch = async (batchId: string) => {
+    setSelectedBatchId(batchId);
+    setLoadingDetail(true);
+    setDetailError('');
+    try {
+      setDetail(await api.haccpProductionFlowDetail(token, batchId));
+    } catch (error) {
+      setDetail(null);
+      setDetailError(
+        error instanceof Error ? error.message : 'Détail de production indisponible.',
+      );
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
+
+  const statusLabel = (status: string) =>
+    ({
+      TO_PREPARE: 'À préparer',
+      PREPARING: 'En préparation',
+      COOKING: 'Cuisson',
+      COOLING: 'Refroidissement',
+      FREEZING: 'Congélation',
+      COMPLETED: 'Terminée',
+      PARTIALLY_LOST: 'Terminée avec pertes',
+      CANCELLED: 'Annulée',
+      PENDING: 'En attente',
+      READY: 'Prête',
+      IN_PROGRESS: 'En cours',
+      SKIPPED: 'Passée',
+    })[status] ?? status;
+
+  const time = (value?: string | null) =>
+    value
+      ? new Date(value).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+      : '—';
+
+  return (
+    <div className="modal-overlay haccp-modal-overlay haccp-live-overlay" onClick={onClose}>
+      <div
+        className="haccp-live-modal production-flow-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="haccp-production-flow-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="haccp-live-header">
+          <div>
+            <span className="haccp-live-kicker production">
+              <span className="haccp-live-dot" /> {enableDateNavigation ? 'Historique consultable' : 'Lecture seule'}
+            </span>
+            <h2 id="haccp-production-flow-title">
+              {enableDateNavigation ? `Production HACCP · ${selectedDateLabel}` : 'Production HACCP du jour'}
+            </h2>
+            <p>Planning et preuves de traçabilité des ingrédients.</p>
+          </div>
+          <div className="haccp-live-header-actions">
+            <span className="haccp-last-sync">
+              <RefreshCw size={14} /> Synchronisé avec l’application mobile
+            </span>
+            <button
+              type="button"
+              className="modal-close-btn"
+              onClick={onClose}
+              aria-label="Fermer"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </header>
+
+        <div className="haccp-live-body">
+          {enableDateNavigation ? (
+            <div className="production-flow-calendar">
+              <div className="production-flow-calendar-main">
+                <div>
+                  <span>Explorer les preuves</span>
+                  <strong>Choisissez un jour ou parcourez un autre mois</strong>
+                </div>
+                <div className="production-flow-calendar-controls">
+                  <button type="button" onClick={() => moveDate(-1)} aria-label="Jour précédent"><ArrowLeft size={16} /></button>
+                  <button type="button" className="today" onClick={() => setSelectedDate(new Date().toLocaleDateString('sv-SE'))}>Aujourd’hui</button>
+                  <label><span>Mois</span><input type="month" value={selectedMonth} onChange={(event) => selectMonth(event.target.value)} /></label>
+                  <label><span>Date</span><input type="date" value={selectedDate} onChange={(event) => event.target.value && setSelectedDate(event.target.value)} /></label>
+                  <button type="button" onClick={() => moveDate(1)} aria-label="Jour suivant"><ArrowRight size={16} /></button>
+                </div>
+              </div>
+              <div className="production-flow-month-days" aria-label={`Jours de ${selectedMonth}`}>
+                {Array.from({ length: daysInSelectedMonth }, (_, index) => index + 1).map((day) => {
+                  const dateKey = `${selectedMonth}-${String(day).padStart(2, '0')}`;
+                  const date = new Date(`${dateKey}T12:00:00`);
+                  return (
+                    <button
+                      type="button"
+                      key={dateKey}
+                      className={selectedDate === dateKey ? 'active' : ''}
+                      onClick={() => setSelectedDate(dateKey)}
+                      title={date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                    >
+                      <small>{date.toLocaleDateString('fr-FR', { weekday: 'short' }).slice(0, 2)}</small>
+                      <strong>{day}</strong>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          {flowError ? <div className="alert error"><AlertCircle size={16} /> {flowError}</div> : null}
+          <div className="haccp-live-kpis">
+            <LiveKpi
+              icon={<ClipboardList size={19} />}
+              label="Planifiées"
+              value={visibleFlow?.summary.planned ?? 0}
+              detail={enableDateNavigation ? `Fabrications du ${new Date(`${selectedDate}T12:00:00`).toLocaleDateString('fr-FR')}` : 'Fabrications prévues aujourd’hui'}
+              tone="blue"
+            />
+            <LiveKpi
+              icon={<Activity size={19} />}
+              label="En cours"
+              value={visibleFlow?.summary.inProgress ?? 0}
+              detail="Lots démarrés sur mobile"
+              tone="violet"
+            />
+            <LiveKpi
+              icon={<CheckCircle2 size={19} />}
+              label="Terminées"
+              value={visibleFlow?.summary.completed ?? 0}
+              detail="Lots clôturés et stockés"
+              tone="green"
+            />
+            <LiveKpi
+              icon={<ScanLine size={19} />}
+              label="Preuves"
+              value={`${visibleFlow?.summary.traceabilityCompleted ?? 0}/${visibleFlow?.summary.traceabilityExpected ?? 0}`}
+              detail="Ingrédients photographiés"
+              tone={
+                (visibleFlow?.summary.traceabilityCompleted ?? 0) <
+                (visibleFlow?.summary.traceabilityExpected ?? 0)
+                  ? 'red'
+                  : 'green'
+              }
+            />
+          </div>
+
+          <div className="production-flow-workspace">
+            <section className="production-flow-list">
+              <div className="production-flow-section-title">
+                <div>
+                  <h3>Planning de fabrication</h3>
+                  <p>{visibleFlow?.items.length ?? 0} lot(s) pour la journée</p>
+                </div>
+              </div>
+              {loadingFlow ? (
+                <div className="production-flow-list-loading"><RefreshCw size={22} className="spin" /><span>Chargement du planning…</span></div>
+              ) : visibleFlow?.items.length ? (
+                visibleFlow.items.map((item) => {
+                  const selected = item.batch.id === selectedBatchId;
+                  const firstTask = item.tasks[0];
+                  return (
+                    <button
+                      type="button"
+                      key={item.batch.id}
+                      className={`production-flow-row ${selected ? 'selected' : ''}`}
+                      onClick={() => void openBatch(item.batch.id)}
+                    >
+                      <span className="production-flow-time">
+                        <strong>{time(firstTask?.startsAt ?? item.batch.plannedStartAt)}</strong>
+                        <small>{time(firstTask?.endsAt)}</small>
+                      </span>
+                      <span className="production-flow-row-copy">
+                        <strong>{item.recipe.name}</strong>
+                        <small>
+                          Lot {item.batch.reference} · {item.batch.plannedQuantity}{' '}
+                          {item.batch.unit?.symbol ?? ''}
+                        </small>
+                        <em>
+                          {item.summary.completed}/{item.summary.expected} preuves ·{' '}
+                          {statusLabel(item.batch.status)}
+                        </em>
+                      </span>
+                      <span
+                        className={`production-flow-compliance ${item.summary.isComplete ? 'complete' : 'missing'}`}
+                      >
+                        {item.summary.isComplete ? (
+                          <ShieldCheck size={18} />
+                        ) : (
+                          <AlertTriangle size={18} />
+                        )}
+                      </span>
+                    </button>
+                  );
+                })
+              ) : (
+                <LiveEmptyState
+                  icon={<Factory size={24} />}
+                  title="Aucune fabrication planifiée"
+                  detail="Le planning de production du jour apparaîtra automatiquement ici."
+                />
+              )}
+            </section>
+
+            <section className="production-flow-detail">
+              {loadingDetail ? (
+                <div className="production-flow-placeholder">
+                  <RefreshCw size={26} className="spin" />
+                  <strong>Chargement du dossier HACCP…</strong>
+                </div>
+              ) : detailError ? (
+                <div className="production-flow-placeholder error">
+                  <AlertCircle size={26} />
+                  <strong>{detailError}</strong>
+                </div>
+              ) : detail ? (
+                <>
+                  <div className="production-flow-detail-head">
+                    <div>
+                      <span>Lot {detail.batch.reference}</span>
+                      <h3>{detail.recipe.name}</h3>
+                      <p>
+                        Version {detail.recipe.version ?? '—'} · {detail.batch.site?.name ?? 'Site non renseigné'}
+                      </p>
+                    </div>
+                    <span className={`badge-pill ${detail.summary.isComplete ? 'badge-emerald' : 'badge-amber'}`}>
+                      {detail.summary.isComplete
+                        ? 'Traçabilité complète'
+                        : `${detail.summary.missing} preuve(s) manquante(s)`}
+                    </span>
+                  </div>
+                  <div className="production-evidence-list">
+                      {detail.ingredients.map((ingredient) => (
+                        <article
+                          className={`production-evidence-card ${ingredient.completed ? 'complete' : 'missing'}`}
+                          key={ingredient.key}
+                        >
+                          <div className="production-evidence-head">
+                            <div>
+                              <strong>{ingredient.name}</strong>
+                              <small>
+                                {Number(ingredient.quantity).toLocaleString('fr-FR', {
+                                  maximumFractionDigits: 3,
+                                })}{' '}
+                                {ingredient.unit}
+                              </small>
+                            </div>
+                            {ingredient.completed ? (
+                              <CheckCircle2 size={19} />
+                            ) : (
+                              <AlertTriangle size={19} />
+                            )}
+                          </div>
+                          <div className="production-evidence-meta">
+                            <span>
+                              <small>Lot fournisseur</small>
+                              <strong>{ingredient.lotNumber || 'Non renseigné'}</strong>
+                            </span>
+                            <span>
+                              <small>Code-barres</small>
+                              <strong>{ingredient.barcode || 'Non renseigné'}</strong>
+                            </span>
+                          </div>
+                          {ingredient.photos.length ? (
+                            <div className="production-evidence-photos">
+                              {ingredient.photos.map((photo) => (
+                                <a
+                                  key={photo.documentId}
+                                  href={api.haccpPhotoUrl(photo.path)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title={photo.originalName || 'Preuve photo'}
+                                >
+                                  <img
+                                    src={api.haccpPhotoUrl(photo.path)}
+                                    alt={`Preuve ${ingredient.name}`}
+                                  />
+                                </a>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="production-evidence-empty">
+                              <ScanLine size={18} /> Aucune photo enregistrée
+                            </div>
+                          )}
+                        </article>
+                      ))}
+                  </div>
+                </>
+              ) : (
+                <div className="production-flow-placeholder">
+                  <Factory size={32} />
+                  <strong>Sélectionnez une production</strong>
+                  <p>Son dossier de traçabilité HACCP s’affichera ici en lecture seule.</p>
+                </div>
+              )}
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TraceabilityHistoryModal({
+  rows,
+  onClose,
+  onOpenModule,
+}: {
+  rows: HaccpItem[];
+  onClose: () => void;
+  onOpenModule: () => void;
+}) {
+  const [selectedDate, setSelectedDate] = useState('all');
+  const [query, setQuery] = useState('');
+  const [selectedRow, setSelectedRow] = useState<HaccpItem | null>(null);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  const localDateKey = (value: unknown) => {
+    const date = new Date(String(value ?? ''));
+    if (!Number.isFinite(date.getTime())) return '';
+    return [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, '0'),
+      String(date.getDate()).padStart(2, '0'),
+    ].join('-');
+  };
+  const todayKey = localDateKey(new Date());
+  const availableDates = Array.from(new Set(rows.map((row) => localDateKey(row.date)).filter(Boolean))).sort().reverse();
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleRows = rows.filter((row) => {
+    if (selectedDate !== 'all' && localDateKey(row.date) !== selectedDate) return false;
+    if (!normalizedQuery) return true;
+    return `${row.productName ?? ''} ${row.lotNumber ?? ''} ${row.barcode ?? ''}`.toLowerCase().includes(normalizedQuery);
+  });
+  const completeRows = visibleRows.filter((row) => row.photo && row.productName && row.lotNumber);
+  const incompleteRows = visibleRows.length - completeRows.length;
+  const visibleDays = new Set(visibleRows.map((row) => localDateKey(row.date)).filter(Boolean)).size;
+  const selectedDateLabel = selectedDate === 'all'
+    ? 'Toutes les dates'
+    : new Date(`${selectedDate}T12:00:00`).toLocaleDateString('fr-FR', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
+
+  const selectDate = (value: string) => {
+    setSelectedDate(value);
+    setSelectedRow(null);
+  };
+
+  const tracePhotoUrl = (row: HaccpItem | null) => {
+    const photo = String(row?.photo ?? '');
+    if (!photo || photo === 'web-manual-entry') return '';
+    return photo.startsWith('data:') || /^https?:\/\//i.test(photo) ? photo : api.haccpPhotoUrl(photo);
+  };
+
+  return (
+    <div className="modal-overlay haccp-modal-overlay haccp-live-overlay" onClick={onClose}>
+      <div
+        className="haccp-live-modal haccp-traceability-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="haccp-traceability-history-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="haccp-live-header haccp-traceability-header">
+          <div>
+            <span className="haccp-live-kicker traceability">
+              <span className="haccp-live-dot" /> Historique consultable
+            </span>
+            <h2 id="haccp-traceability-history-title">Traçabilité par date</h2>
+            <p>Retrouvez les produits, lots et preuves photo d’une journée précise.</p>
+          </div>
+          <div className="haccp-live-header-actions">
+            <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Fermer">
+              <X size={18} />
+            </button>
+          </div>
+        </header>
+
+        <div className="haccp-live-body">
+          <div className="haccp-live-kpis">
+            <LiveKpi
+              icon={<ScanLine size={19} />}
+              label="Enregistrements"
+              value={visibleRows.length}
+              detail={selectedDateLabel}
+              tone="blue"
+            />
+            <LiveKpi
+              icon={<CalendarDays size={19} />}
+              label="Jours couverts"
+              value={visibleDays}
+              detail={`${availableDates.length} jour(s) dans l’historique`}
+              tone="violet"
+            />
+            <LiveKpi
+              icon={<CheckCircle2 size={19} />}
+              label="Dossiers complets"
+              value={completeRows.length}
+              detail="Produit, lot et preuve photo"
+              tone="green"
+            />
+            <LiveKpi
+              icon={<AlertTriangle size={19} />}
+              label="À compléter"
+              value={incompleteRows}
+              detail="Information ou preuve manquante"
+              tone={incompleteRows ? 'red' : 'green'}
+            />
+          </div>
+
+          <div className="haccp-trace-workspace">
+            <aside className="haccp-trace-calendar">
+              <div className="haccp-trace-calendar-title">
+                <span><CalendarDays size={18} /></span>
+                <div><strong>Choisir une journée</strong><small>Ou parcourez tout l’historique</small></div>
+              </div>
+              <div className="haccp-trace-date-actions">
+                <button type="button" className={selectedDate === 'all' ? 'active' : ''} onClick={() => selectDate('all')}>
+                  <LayoutGrid size={15} /> Toutes les dates
+                </button>
+                <button type="button" className={selectedDate === todayKey ? 'active' : ''} onClick={() => selectDate(todayKey)}>
+                  <Clock size={15} /> Aujourd’hui
+                </button>
+              </div>
+              <label className="haccp-trace-date-picker">
+                <span>Date précise</span>
+                <input
+                  type="date"
+                  value={selectedDate === 'all' ? '' : selectedDate}
+                  onChange={(event) => selectDate(event.target.value || 'all')}
+                />
+              </label>
+              <div className="haccp-trace-recent-days">
+                <span>Jours avec des preuves</span>
+                {availableDates.slice(0, 8).map((dateKey) => {
+                  const date = new Date(`${dateKey}T12:00:00`);
+                  const count = rows.filter((row) => localDateKey(row.date) === dateKey).length;
+                  return (
+                    <button
+                      type="button"
+                      key={dateKey}
+                      className={selectedDate === dateKey ? 'active' : ''}
+                      onClick={() => selectDate(dateKey)}
+                    >
+                      <span><strong>{date.toLocaleDateString('fr-FR', { day: '2-digit' })}</strong><small>{date.toLocaleDateString('fr-FR', { month: 'short' })}</small></span>
+                      <span>{date.toLocaleDateString('fr-FR', { weekday: 'long' })}</span>
+                      <em>{count}</em>
+                    </button>
+                  );
+                })}
+                {!availableDates.length ? <p>Aucune journée enregistrée.</p> : null}
+              </div>
+            </aside>
+
+            <section className="haccp-trace-results">
+              <div className="haccp-trace-results-head">
+                <div>
+                  <span>Période sélectionnée</span>
+                  <h3>{selectedDateLabel}</h3>
+                  <p>{visibleRows.length} preuve{visibleRows.length > 1 ? 's' : ''} trouvée{visibleRows.length > 1 ? 's' : ''}</p>
+                </div>
+                <div className="haccp-search">
+                  <Search size={15} />
+                  <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Produit, lot, code-barres…" />
+                  {query ? <button type="button" onClick={() => setQuery('')} aria-label="Effacer"><X size={14} /></button> : null}
+                </div>
+              </div>
+
+              {visibleRows.length ? (
+                <div className="haccp-trace-results-grid">
+                  <div className="haccp-trace-list">
+                    {visibleRows.map((row, index) => {
+                      const complete = Boolean(row.photo && row.productName && row.lotNumber);
+                      const selected = haccpItemId(selectedRow) === haccpItemId(row)
+                        && haccpItemId(row) !== '';
+                      const date = new Date(String(row.date ?? ''));
+                      return (
+                        <button
+                          type="button"
+                          key={haccpItemId(row) || `${row.date}-${index}`}
+                          className={selected ? 'selected' : ''}
+                          onClick={() => setSelectedRow(row)}
+                        >
+                          <span className={`haccp-trace-row-icon ${complete ? 'complete' : 'warning'}`}>
+                            {complete ? <ShieldCheck size={18} /> : <AlertTriangle size={18} />}
+                          </span>
+                          <span className="haccp-trace-row-copy">
+                            <strong>{String(row.productName || 'Produit non renseigné')}</strong>
+                            <small>Lot {String(row.lotNumber || 'non renseigné')}</small>
+                            <em>
+                              {Number.isFinite(date.getTime())
+                                ? date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
+                                : 'Date inconnue'}
+                              {' · '}
+                              {Number.isFinite(date.getTime()) ? date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                            </em>
+                          </span>
+                          <ChevronRight size={16} />
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="haccp-trace-detail">
+                    {selectedRow ? (
+                      <>
+                        <div className="haccp-trace-detail-head">
+                          <div><span>Dossier de preuve</span><h3>{String(selectedRow.productName || 'Produit non renseigné')}</h3></div>
+                          <span className={selectedRow.photo && selectedRow.lotNumber ? 'complete' : 'warning'}>
+                            {selectedRow.photo && selectedRow.lotNumber ? 'Complet' : 'À compléter'}
+                          </span>
+                        </div>
+                        <div className="haccp-trace-detail-meta">
+                          <span><small>Lot fournisseur</small><strong>{String(selectedRow.lotNumber || 'Non renseigné')}</strong></span>
+                          <span><small>Code-barres</small><strong>{String(selectedRow.barcode || 'Non renseigné')}</strong></span>
+                          <span><small>Date</small><strong>{new Date(String(selectedRow.date)).toLocaleDateString('fr-FR')}</strong></span>
+                          <span><small>Heure</small><strong>{new Date(String(selectedRow.date)).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</strong></span>
+                        </div>
+                        {tracePhotoUrl(selectedRow) ? (
+                          <a className="haccp-trace-photo" href={tracePhotoUrl(selectedRow)} target="_blank" rel="noreferrer">
+                            <img src={tracePhotoUrl(selectedRow)} alt={`Preuve ${String(selectedRow.productName || '')}`} />
+                            <span><ScanLine size={16} /> Ouvrir la preuve photo</span>
+                          </a>
+                        ) : (
+                          <div className="haccp-trace-photo-empty"><ScanLine size={24} /><strong>Aucune preuve photo</strong><small>Cette traçabilité doit être complétée.</small></div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="production-flow-placeholder">
+                        <ScanLine size={32} />
+                        <strong>Sélectionnez une traçabilité</strong>
+                        <p>Le lot, le code-barres et la preuve photo s’afficheront ici.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="haccp-trace-empty">
+                  <CalendarDays size={34} />
+                  <strong>Aucune traçabilité pour cette sélection</strong>
+                  <p>Choisissez une autre journée ou revenez à toutes les dates.</p>
+                  <button type="button" onClick={() => selectDate('all')}>Voir tout l’historique</button>
+                </div>
+              )}
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function haccpItemId(item: HaccpItem | null | undefined) {
+  return String(item?._id ?? item?.id ?? '');
+}
+
+function ReceptionHistoryModal({
+  rows,
+  onClose,
+  onOpenModule,
+}: {
+  rows: HaccpItem[];
+  onClose: () => void;
+  onOpenModule: () => void;
+}) {
+  const [selectedDate, setSelectedDate] = useState('all');
+  const [query, setQuery] = useState('');
+  const [selectedRow, setSelectedRow] = useState<HaccpItem | null>(null);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => event.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  const dateKey = (value: unknown) => {
+    const date = new Date(String(value ?? ''));
+    return Number.isFinite(date.getTime()) ? date.toLocaleDateString('sv-SE') : '';
+  };
+  const receptionDate = (row: HaccpItem) => row.deliveryDate ?? row.documentDate ?? row.createdAt;
+  const dates = Array.from(new Set(rows.map((row) => dateKey(receptionDate(row))).filter(Boolean))).sort().reverse();
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleRows = rows.filter((row) => {
+    if (selectedDate !== 'all' && dateKey(receptionDate(row)) !== selectedDate) return false;
+    return !normalizedQuery || JSON.stringify(row).toLowerCase().includes(normalizedQuery);
+  });
+  const todayKey = dateKey(new Date());
+  const selectedDateLabel = selectedDate === 'all' ? 'Toutes les dates' : new Date(`${selectedDate}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const statusLabel = (value: unknown) => ({ CONFORMING: 'Conforme', PARTIAL: 'Partielle', REJECTED: 'Refusée', UNCONTROLLED: 'Contrôle non renseigné' })[String(value)] ?? 'Contrôle non renseigné';
+  const statusTone = (value: unknown) => value === 'CONFORMING' ? 'complete' : value === 'REJECTED' || value === 'PARTIAL' ? 'warning' : 'warning';
+  const allLines = (row: HaccpItem) => Array.isArray(row.lines) ? row.lines : [];
+  const acceptedCount = visibleRows.filter((row) => row.controlStatus === 'CONFORMING').length;
+  const issueCount = visibleRows.filter((row) => row.controlStatus === 'PARTIAL' || row.controlStatus === 'REJECTED').length;
+
+  return (
+    <div className="modal-overlay haccp-modal-overlay haccp-live-overlay" onClick={onClose}>
+      <div className="haccp-live-modal haccp-traceability-modal" role="dialog" aria-modal="true" aria-labelledby="haccp-reception-history-title" onClick={(event) => event.stopPropagation()}>
+        <header className="haccp-live-header haccp-traceability-header">
+          <div>
+            <span className="haccp-live-kicker traceability"><span className="haccp-live-dot" /> Registre HACCP unifié</span>
+            <h2 id="haccp-reception-history-title">Réceptions par date</h2>
+            <p>Consultez les contrôles fournisseurs, températures, quantités et lots d’une journée.</p>
+          </div>
+          <div className="haccp-live-header-actions">
+            <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Fermer"><X size={18} /></button>
+          </div>
+        </header>
+        <div className="haccp-live-body">
+          <div className="haccp-live-kpis">
+            <LiveKpi icon={<Truck size={19} />} label="Réceptions" value={visibleRows.length} detail={selectedDateLabel} tone="violet" />
+            <LiveKpi icon={<CalendarDays size={19} />} label="Jours couverts" value={dates.length} detail="Historique des livraisons" tone="blue" />
+            <LiveKpi icon={<CheckCircle2 size={19} />} label="Conformes" value={acceptedCount} detail="Contrôle et quantités acceptés" tone="green" />
+            <LiveKpi icon={<AlertTriangle size={19} />} label="Écarts / refus" value={issueCount} detail="Toujours conservés dans le registre" tone={issueCount ? 'red' : 'green'} />
+          </div>
+          <div className="haccp-trace-workspace">
+            <aside className="haccp-trace-calendar">
+              <div className="haccp-trace-calendar-title"><span><CalendarDays size={18} /></span><div><strong>Choisir une journée</strong><small>Filtrez le registre par date</small></div></div>
+              <div className="haccp-trace-date-actions">
+                <button type="button" className={selectedDate === 'all' ? 'active' : ''} onClick={() => { setSelectedDate('all'); setSelectedRow(null); }}><LayoutGrid size={15} /> Toutes les dates</button>
+                <button type="button" className={selectedDate === todayKey ? 'active' : ''} onClick={() => { setSelectedDate(todayKey); setSelectedRow(null); }}><Clock size={15} /> Aujourd’hui</button>
+              </div>
+              <label className="haccp-trace-date-picker"><span>Date précise</span><input type="date" value={selectedDate === 'all' ? '' : selectedDate} onChange={(event) => { setSelectedDate(event.target.value || 'all'); setSelectedRow(null); }} /></label>
+              <div className="haccp-trace-recent-days"><span>Jours avec réceptions</span>{dates.slice(0, 8).map((key) => {
+                const date = new Date(`${key}T12:00:00`); const count = rows.filter((row) => dateKey(receptionDate(row)) === key).length;
+                return <button type="button" key={key} className={selectedDate === key ? 'active' : ''} onClick={() => { setSelectedDate(key); setSelectedRow(null); }}><span><strong>{date.toLocaleDateString('fr-FR', { day: '2-digit' })}</strong><small>{date.toLocaleDateString('fr-FR', { month: 'short' })}</small></span><span>{date.toLocaleDateString('fr-FR', { weekday: 'long' })}</span><em>{count}</em></button>;
+              })}{!dates.length ? <p>Aucune réception enregistrée.</p> : null}</div>
+            </aside>
+            <section className="haccp-trace-results">
+              <div className="haccp-trace-results-head"><div><span>Période sélectionnée</span><h3>{selectedDateLabel}</h3><p>{visibleRows.length} réception{visibleRows.length > 1 ? 's' : ''} trouvée{visibleRows.length > 1 ? 's' : ''}</p></div><div className="haccp-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Fournisseur, BL, produit…" />{query ? <button type="button" onClick={() => setQuery('')} aria-label="Effacer"><X size={14} /></button> : null}</div></div>
+              {visibleRows.length ? <div className="haccp-trace-results-grid"><div className="haccp-trace-list">{visibleRows.map((row, index) => {
+                const selected = haccpItemId(selectedRow) === haccpItemId(row) && Boolean(haccpItemId(row)); const date = new Date(String(receptionDate(row)));
+                return <button type="button" key={haccpItemId(row) || `${receptionDate(row)}-${index}`} className={selected ? 'selected' : ''} onClick={() => setSelectedRow(row)}><span className={`haccp-trace-row-icon ${statusTone(row.controlStatus)}`}>{row.controlStatus === 'CONFORMING' ? <ShieldCheck size={18} /> : <AlertTriangle size={18} />}</span><span className="haccp-trace-row-copy"><strong>{String(row.supplier || 'Fournisseur non renseigné')}</strong><small>{String(row.deliveryNoteNumber || 'BL non renseigné')} · {statusLabel(row.controlStatus)}</small><em>{Number.isFinite(date.getTime()) ? date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Date inconnue'} · {allLines(row).length} ligne{allLines(row).length > 1 ? 's' : ''}</em></span><ChevronRight size={16} /></button>;
+              })}</div><div className="haccp-trace-detail">{selectedRow ? <><div className="haccp-trace-detail-head"><div><span>Contrôle de réception</span><h3>{String(selectedRow.supplier || 'Fournisseur non renseigné')}</h3></div><span className={statusTone(selectedRow.controlStatus)}>{statusLabel(selectedRow.controlStatus)}</span></div><div className="haccp-trace-detail-meta"><span><small>Bon de livraison</small><strong>{String(selectedRow.deliveryNoteNumber || 'Non renseigné')}</strong></span><span><small>Température</small><strong>{selectedRow.deliveryTemperature == null ? 'Non renseignée' : `${selectedRow.deliveryTemperature} °C`}</strong></span><span><small>Commande</small><strong>{String(selectedRow.purchaseOrderNumber || 'Réception libre')}</strong></span><span><small>Emplacement</small><strong>{String(selectedRow.location?.name || selectedRow.site?.name || 'Non renseigné')}</strong></span></div><div className="haccp-trace-detail-meta">{allLines(selectedRow).map((line: HaccpItem, index: number) => <span key={`${line.id ?? index}`}><small>{String(line.product?.name || line.label || line.ocrLabel || 'Produit')}</small><strong>Livré {String(line.deliveredQuantity ?? line.quantity ?? '—')} · Accepté {String(line.acceptedQuantity ?? line.quantity ?? '—')}</strong></span>)}</div>{selectedRow.controlNotes ? <p className="muted">{String(selectedRow.controlNotes)}</p> : null}</> : <div className="production-flow-placeholder"><Truck size={32} /><strong>Sélectionnez une réception</strong><p>Le contrôle, le BL et les quantités apparaîtront ici.</p></div>}</div></div> : <div className="haccp-trace-empty"><CalendarDays size={34} /><strong>Aucune réception pour cette sélection</strong><p>Choisissez une autre journée ou revenez à toutes les dates.</p><button type="button" onClick={() => setSelectedDate('all')}>Voir tout l’historique</button></div>}
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function haccpDateValue(value: unknown) {
+  if (!value) return 0;
+  const time = new Date(String(value)).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function isHaccpToday(value: unknown) {
+  const time = haccpDateValue(value);
+  if (!time) return false;
+  const date = new Date(time);
+  const today = new Date();
+  return date.getFullYear() === today.getFullYear()
+    && date.getMonth() === today.getMonth()
+    && date.getDate() === today.getDate();
+}
+
+function haccpFreshness(value: unknown) {
+  const time = haccpDateValue(value);
+  if (!time) return 'Jamais relevé';
+  const minutes = Math.max(0, Math.round((Date.now() - time) / 60_000));
+  if (minutes < 1) return 'À l’instant';
+  if (minutes < 60) return `Il y a ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Il y a ${hours} h`;
+  return new Date(time).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+}
+
+function HaccpLiveOperationsModal({
+  temperatureEquipment,
+  temperatureReadings,
+  sensors,
+  temperatureAlerts,
+  cleaningZones,
+  todayCleaningSurfaces,
+  activeCleaningSession,
+  temperatureModule,
+  cleaningModule,
+  onClose,
+  onOpenTemperatures,
+  onOpenCleaning,
+}: {
+  temperatureEquipment: HaccpItem[];
+  temperatureReadings: HaccpItem[];
+  sensors: HaccpSensor[];
+  temperatureAlerts: HaccpTemperatureAlertData | null;
+  cleaningZones: HaccpItem[];
+  todayCleaningSurfaces: TodayCleaningSurface[];
+  activeCleaningSession: HaccpCleaningSession | null;
+  temperatureModule?: HaccpDashboard['modules'][number];
+  cleaningModule?: HaccpDashboard['modules'][number];
+  onClose: () => void;
+  onOpenTemperatures: () => void;
+  onOpenCleaning: () => void;
+}) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  const sortedReadings = [...temperatureReadings].sort((a, b) => haccpDateValue(b.date) - haccpDateValue(a.date));
+  const temperatureWidgets = temperatureEquipment.map((equipment) => {
+    const equipmentId = haccpItemId(equipment);
+    const latestManual = sortedReadings.find((reading) => String(reading.equipmentId ?? '') === equipmentId);
+    const sensor = sensors.find((item) => String(item.assignedEquipment?.id ?? '') === equipmentId);
+    const sensorValue = Number(sensor?.currentTemperature);
+    const hasSensorValue = sensor?.currentTemperature != null && Number.isFinite(sensorValue);
+    const sensorAt = haccpDateValue(sensor?.lastSeenAt);
+    const manualAt = haccpDateValue(latestManual?.date);
+    const useSensor = hasSensorValue && (!latestManual || sensorAt >= manualAt);
+    const value = useSensor ? sensorValue : Number(latestManual?.temperature);
+    const hasValue = Number.isFinite(value);
+    const measuredAt = useSensor ? sensor?.lastSeenAt : latestManual?.date;
+    const range = sensor?.temperatureThreshold ?? equipment.temperatureRange ?? null;
+    const min = range?.min == null ? null : Number(range.min);
+    const max = range?.max == null ? null : Number(range.max);
+    const outsideRange = hasValue && ((Number.isFinite(min) && value < Number(min)) || (Number.isFinite(max) && value > Number(max)));
+    const isStale = haccpDateValue(measuredAt) > 0 && Date.now() - haccpDateValue(measuredAt) > 12 * 60 * 60 * 1000;
+    const alertSensor = temperatureAlerts?.sensors?.find((item) => item.id === sensor?.id);
+    const state = outsideRange || alertSensor?.alertOpen ? 'danger' : sensor?.status === 'OFFLINE' || isStale ? 'warning' : hasValue ? 'ok' : 'neutral';
+    return { equipment, sensor, value, hasValue, measuredAt, useSensor, min, max, state };
+  });
+
+  const activeCleaned = activeCleaningSession?.cleanedSurfaces ?? [];
+  const cleanedIds = new Set<string>([
+    ...activeCleaned.map((surface) => surface.surfaceId),
+    ...todayCleaningSurfaces.filter((surface) => isHaccpToday(surface.lastCleaned)).map((surface) => surface.surfaceId),
+  ]);
+  const cleaningWidgets = cleaningZones.map((zone) => {
+    const zoneId = haccpItemId(zone);
+    const configured = (Array.isArray(zone.surfaces) ? zone.surfaces : []).filter((surface) => surface?.isActive !== false);
+    const due = todayCleaningSurfaces.filter((surface) => surface.zoneId === zoneId);
+    const cleaned = due.filter((surface) => cleanedIds.has(surface.surfaceId));
+    const activeTimestamps = activeCleaned.filter((surface) => surface.zoneId === zoneId).map((surface) => surface.cleanedAt);
+    const configuredTimestamps = configured.map((surface) => surface.lastCleaned);
+    const latestCleanedAt = [...activeTimestamps, ...configuredTimestamps]
+      .sort((a, b) => haccpDateValue(b) - haccpDateValue(a))[0] ?? null;
+    const progress = due.length ? Math.round((cleaned.length / due.length) * 100) : 100;
+    const state = !due.length ? 'neutral' : cleaned.length === due.length ? 'ok' : cleaned.length ? 'warning' : 'pending';
+    return { zone, configured, due, cleaned, latestCleanedAt, progress, state };
+  });
+
+  const cleanedZoneCount = cleaningWidgets.filter((zone) => zone.due.length > 0 && zone.cleaned.length === zone.due.length).length;
+  const dueZoneCount = cleaningWidgets.filter((zone) => zone.due.length > 0).length;
+  const currentTemperatureCount = temperatureWidgets.filter((widget) => widget.hasValue).length;
+  const anomalousTemperatureCount = Math.max(
+    temperatureWidgets.filter((widget) => widget.state === 'danger').length,
+    (temperatureAlerts?.summary?.critical ?? 0) + (temperatureAlerts?.summary?.warning ?? 0),
+  );
+  const completedSurfaces = cleaningWidgets.reduce((sum, zone) => sum + zone.cleaned.length, 0);
+  const dueSurfaces = cleaningWidgets.reduce((sum, zone) => sum + zone.due.length, 0);
+  const expectedControls = (temperatureModule?.expected ?? 0) + (cleaningModule?.expected ?? 0);
+  const hygieneCoverage = expectedControls
+    ? Math.round((((temperatureModule?.score ?? 100) * (temperatureModule?.expected ?? 0)) + ((cleaningModule?.score ?? 100) * (cleaningModule?.expected ?? 0))) / expectedControls)
+    : null;
+  const latestSync = Math.max(
+    ...temperatureWidgets.map((widget) => haccpDateValue(widget.measuredAt)),
+    ...cleaningWidgets.map((widget) => haccpDateValue(widget.latestCleanedAt)),
+    0,
+  );
+
+  return (
+    <div className="modal-overlay haccp-modal-overlay haccp-live-overlay" onClick={onClose}>
+      <div className="haccp-live-modal" role="dialog" aria-modal="true" aria-labelledby="haccp-live-title" onClick={(event) => event.stopPropagation()}>
+        <header className="haccp-live-header">
+          <div>
+            <span className="haccp-live-kicker"><span className="haccp-live-dot" /> Données synchronisées</span>
+            <h2 id="haccp-live-title">Cockpit hygiène en direct</h2>
+            <p>Températures et exécution du plan de nettoyage, zone par zone.</p>
+          </div>
+          <div className="haccp-live-header-actions">
+            <span className="haccp-last-sync"><RefreshCw size={14} /> {latestSync ? `Dernière activité ${haccpFreshness(latestSync)}` : 'Actualisation toutes les 30 s'}</span>
+            <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Fermer"><X size={18} /></button>
+          </div>
+        </header>
+
+        <div className="haccp-live-body">
+          <div className="haccp-live-kpis">
+            <LiveKpi icon={<Thermometer size={19} />} label="Enceintes renseignées" value={temperatureEquipment.length ? `${currentTemperatureCount}/${temperatureEquipment.length}` : '—'} detail={temperatureEquipment.length ? `${temperatureModule?.completed ?? 0} relevé(s) aujourd’hui` : 'Aucune enceinte configurée'} tone="blue" />
+            <LiveKpi icon={<AlertTriangle size={19} />} label="Écarts température" value={anomalousTemperatureCount} detail={anomalousTemperatureCount ? 'À traiter maintenant' : 'Aucun écart détecté'} tone={anomalousTemperatureCount ? 'red' : 'green'} />
+            <LiveKpi icon={<MapPin size={19} />} label="Zones nettoyées" value={dueZoneCount ? `${cleanedZoneCount}/${dueZoneCount}` : '—'} detail={dueZoneCount ? `${completedSurfaces}/${dueSurfaces} surfaces prévues` : 'Rien de prévu aujourd’hui'} tone="violet" />
+            <LiveKpi icon={<ShieldCheck size={19} />} label="Couverture hygiène" value={hygieneCoverage == null ? '—' : `${hygieneCoverage}%`} detail={expectedControls ? activeCleaningSession ? 'Session mobile en cours' : 'Vue consolidée du jour' : 'Configuration à compléter'} tone="green" />
+          </div>
+
+          <section className="haccp-live-section">
+            <div className="haccp-live-section-heading">
+              <div>
+                <span className="haccp-section-icon temperature"><Thermometer size={18} /></span>
+                <div><h3>Températures</h3><p>Dernière valeur connue par enceinte, toutes sources confondues.</p></div>
+              </div>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={onOpenTemperatures}>Voir les relevés <ChevronRight size={15} /></button>
+            </div>
+            {temperatureWidgets.length ? (
+              <div className="haccp-live-widget-grid">
+                {temperatureWidgets.map((widget) => (
+                  <TemperatureLiveWidget key={haccpItemId(widget.equipment)} {...widget} />
+                ))}
+              </div>
+            ) : (
+              <LiveEmptyState icon={<Thermometer size={24} />} title="Aucune enceinte configurée" detail="Ajoutez vos équipements dans Zones & matériels pour commencer le suivi." />
+            )}
+          </section>
+
+          <section className="haccp-live-section">
+            <div className="haccp-live-section-heading">
+              <div>
+                <span className="haccp-section-icon cleaning"><Sparkles size={18} /></span>
+                <div><h3>Zones de nettoyage</h3><p>Avancement du plan du jour remonté par l’application mobile.</p></div>
+              </div>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={onOpenCleaning}>Ouvrir le plan <ChevronRight size={15} /></button>
+            </div>
+            {cleaningWidgets.length ? (
+              <div className="haccp-live-widget-grid cleaning">
+                {cleaningWidgets.map((widget) => (
+                  <CleaningLiveWidget key={haccpItemId(widget.zone)} {...widget} />
+                ))}
+              </div>
+            ) : (
+              <LiveEmptyState icon={<Sparkles size={24} />} title="Aucune zone configurée" detail="Créez vos zones et surfaces pour suivre l’exécution du plan de nettoyage." />
+            )}
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HaccpProcessOperationsModal({
+  equipment,
+  sessions,
+  module,
+  onClose,
+  onOpenProcess,
+}: {
+  equipment: HaccpItem[];
+  sessions: HaccpItem[];
+  module?: HaccpDashboard['modules'][number];
+  onClose: () => void;
+  onOpenProcess: () => void;
+}) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  const sortedSessions = [...sessions].sort((a, b) => haccpDateValue(b.startTime ?? b.sessionDate) - haccpDateValue(a.startTime ?? a.sessionDate));
+  const widgets = equipment.map((item) => {
+    const equipmentId = haccpItemId(item);
+    const session = sortedSessions.find((entry) => String(entry.equipmentId ?? haccpItemId(entry.equipment)) === equipmentId);
+    const type = String(item.type ?? session?.type ?? '');
+    const fallbackRange = type === 'congelation' ? { min: -25, max: -18 } : type === 'rechauffement' ? { min: 63, max: 85 } : { min: 0, max: 4 };
+    const range = item.temperatureRange ?? fallbackRange;
+    const min = range?.min == null ? null : Number(range.min);
+    const max = range?.max == null ? null : Number(range.max);
+    const completed = session?.status === 'termine' || Boolean(session?.endTime && session?.endTemperature != null);
+    const endTemperature = session?.endTemperature == null ? null : Number(session.endTemperature);
+    const outsideRange = completed && endTemperature != null
+      && ((Number.isFinite(min) && endTemperature < Number(min)) || (Number.isFinite(max) && endTemperature > Number(max)));
+    const state = !session ? 'neutral' : outsideRange ? 'danger' : completed ? 'ok' : 'warning';
+    return { equipment: item, session, type, min, max, completed, state };
+  });
+  const completedCount = sessions.filter((session) => session.status === 'termine' || Boolean(session.endTime && session.endTemperature != null)).length;
+  const activeCount = sessions.length - completedCount;
+  const issueCount = widgets.filter((widget) => widget.state === 'danger').length;
+  const completedDurations = sessions.map((session) => Number(session.duration)).filter((value) => Number.isFinite(value) && value > 0);
+  const averageDuration = completedDurations.length ? Math.round(completedDurations.reduce((sum, value) => sum + value, 0) / completedDurations.length) : null;
+  const latestActivity = Math.max(...sessions.map((session) => haccpDateValue(session.endTime ?? session.startTime ?? session.sessionDate)), 0);
+  const score = module?.expected ? module.score : sessions.length ? Math.round((completedCount / sessions.length) * 100) : null;
+
+  return (
+    <div className="modal-overlay haccp-modal-overlay haccp-live-overlay" onClick={onClose}>
+      <div className="haccp-live-modal process" role="dialog" aria-modal="true" aria-labelledby="haccp-process-live-title" onClick={(event) => event.stopPropagation()}>
+        <header className="haccp-live-header">
+          <div>
+            <span className="haccp-live-kicker process"><span className="haccp-live-dot" /> Suivi des cycles</span>
+            <h2 id="haccp-process-live-title">Process froid & chaud</h2>
+            <p>Équipements, produits et courbes de température saisis sur le terrain.</p>
+          </div>
+          <div className="haccp-live-header-actions">
+            <span className="haccp-last-sync"><RefreshCw size={14} /> {latestActivity ? `Dernière activité ${haccpFreshness(latestActivity)}` : 'Aucun cycle aujourd’hui'}</span>
+            <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Fermer"><X size={18} /></button>
+          </div>
+        </header>
+
+        <div className="haccp-live-body">
+          <div className="haccp-live-kpis">
+            <LiveKpi icon={<Cpu size={19} />} label="Matériel actif" value={equipment.length || '—'} detail="Froid, congélation et chaud" tone="blue" />
+            <LiveKpi icon={<CheckCircle2 size={19} />} label="Cycles terminés" value={`${completedCount}/${sessions.length}`} detail={activeCount ? `${activeCount} encore en cours` : 'Tous les cycles sont clôturés'} tone="green" />
+            <LiveKpi icon={<AlertTriangle size={19} />} label="Non-conformités" value={issueCount} detail={issueCount ? 'Température finale hors cible' : 'Aucun écart final'} tone={issueCount ? 'red' : 'green'} />
+            <LiveKpi icon={<Clock size={19} />} label="Durée moyenne" value={averageDuration == null ? '—' : `${averageDuration} min`} detail={score == null ? 'Aucun suivi aujourd’hui' : `${score}% de couverture`} tone="violet" />
+          </div>
+
+          <section className="haccp-live-section">
+            <div className="haccp-live-section-heading">
+              <div>
+                <span className="haccp-section-icon process"><Activity size={18} /></span>
+                <div><h3>Équipements & cycles du jour</h3><p>Le dernier suivi mobile associé à chaque matériel process.</p></div>
+              </div>
+            </div>
+            {widgets.length ? (
+              <div className="haccp-live-widget-grid process">
+                {widgets.map((widget) => <ProcessLiveWidget key={haccpItemId(widget.equipment)} {...widget} />)}
+              </div>
+            ) : (
+              <LiveEmptyState icon={<Activity size={24} />} title="Aucun matériel process" detail="Configurez une cellule, un congélateur ou un équipement chaud pour suivre les cycles." />
+            )}
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProcessLiveWidget({
+  equipment,
+  session,
+  type,
+  min,
+  max,
+  completed,
+  state,
+}: {
+  equipment: HaccpItem;
+  session?: HaccpItem;
+  type: string;
+  min: number | null;
+  max: number | null;
+  completed: boolean;
+  state: string;
+}) {
+  const TypeIcon = type === 'rechauffement' ? Flame : Snowflake;
+  const stateLabel = !session ? 'Disponible' : state === 'danger' ? 'Hors cible' : completed ? 'Cycle terminé' : 'En cours';
+  const startTemperature = session?.startTemperature == null ? null : Number(session.startTemperature);
+  const endTemperature = session?.endTemperature == null ? null : Number(session.endTemperature);
+  const duration = Number(session?.duration);
+  const durationLabel = Number.isFinite(duration) && duration > 0 ? `${Math.round(duration)} min` : session?.startTime ? haccpFreshness(session.startTime) : '—';
+  const rangeLabel = `${min != null ? `${min}°` : '—'} à ${max != null ? `${max}°` : '—'}`;
+
+  return (
+    <article className={`haccp-live-widget process ${state}`}>
+      <div className="haccp-widget-topline">
+        <span className={`haccp-widget-state ${state === 'neutral' ? 'neutral' : state}`}><span /> {stateLabel}</span>
+        <span className={`haccp-process-type ${type}`}><TypeIcon size={12} /> {processLabel(type)}</span>
+      </div>
+      <div className="haccp-widget-title">
+        <span className="haccp-widget-icon"><TypeIcon size={18} /></span>
+        <div><h4>{equipment.name || 'Équipement process'}</h4><p>{session?.product?.name || 'Aucun produit affecté'}</p></div>
+      </div>
+      {session ? (
+        <>
+          <div className="haccp-process-temperature-flow">
+            <span><small>Départ</small><strong>{startTemperature == null ? '—' : `${startTemperature.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}°C`}</strong></span>
+            <span className="haccp-process-flow-line"><ArrowRight size={15} /></span>
+            <span><small>{completed ? 'Fin' : 'En attente'}</small><strong>{endTemperature == null ? '—' : `${endTemperature.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}°C`}</strong></span>
+          </div>
+          <div className="haccp-widget-meta">
+            <span><small>Cible finale</small><strong>{rangeLabel}</strong></span>
+            <span><small>Durée</small><strong><Clock size={12} /> {durationLabel}</strong></span>
+          </div>
+          <div className="haccp-process-lot"><Package size={12} /> {session.lotNumber || 'Lot non renseigné'}<span>{haccpFreshness(session.endTime ?? session.startTime ?? session.sessionDate)}</span></div>
+        </>
+      ) : (
+        <div className="haccp-process-empty-cycle"><Clock size={18} /><span><strong>Aucun cycle aujourd’hui</strong><small>Le prochain suivi mobile apparaîtra ici.</small></span></div>
+      )}
+    </article>
+  );
+}
+
+function LiveKpi({ icon, label, value, detail, tone }: { icon: ReactNode; label: string; value: string | number; detail: string; tone: 'blue' | 'red' | 'green' | 'violet' }) {
+  return (
+    <div className={`haccp-live-kpi ${tone}`}>
+      <span className="haccp-live-kpi-icon">{icon}</span>
+      <span><small>{label}</small><strong>{value}</strong><em>{detail}</em></span>
+    </div>
+  );
+}
+
+function TemperatureLiveWidget({
+  equipment,
+  sensor,
+  value,
+  hasValue,
+  measuredAt,
+  useSensor,
+  min,
+  max,
+  state,
+}: {
+  equipment: HaccpItem;
+  sensor?: HaccpSensor;
+  value: number;
+  hasValue: boolean;
+  measuredAt: unknown;
+  useSensor: boolean;
+  min: number | null;
+  max: number | null;
+  state: string;
+}) {
+  const rangeLabel = min != null || max != null
+    ? `${min != null ? `${min}°` : '—'} à ${max != null ? `${max}°` : '—'}`
+    : 'Seuil non défini';
+  const stateLabel = state === 'danger' ? 'Hors seuil' : state === 'warning' ? 'À vérifier' : state === 'ok' ? 'Conforme' : 'Sans relevé';
+
+  return (
+    <article className={`haccp-live-widget temperature ${state}`}>
+      <div className="haccp-widget-topline">
+        <span className={`haccp-widget-state ${state}`}><span /> {stateLabel}</span>
+        {sensor ? <span className={`haccp-sensor-link ${sensor.status === 'ONLINE' ? 'online' : 'offline'}`}><Wifi size={12} /> {sensor.status === 'ONLINE' ? 'En ligne' : 'Hors ligne'}</span> : null}
+      </div>
+      <div className="haccp-widget-title">
+        <span className="haccp-widget-icon"><Snowflake size={18} /></span>
+        <div><h4>{equipment.name || 'Enceinte'}</h4><p>{formatTemperatureTypeLabel(String(equipment.type ?? ''))}</p></div>
+      </div>
+      <div className="haccp-temperature-reading">
+        <strong>{hasValue ? value.toLocaleString('fr-FR', { maximumFractionDigits: 1 }) : '—'}<small>{hasValue ? '°C' : ''}</small></strong>
+        <span><em>{useSensor ? 'Capteur IoT' : hasValue ? 'Relevé terrain' : 'Aucune donnée'}</em><b>{haccpFreshness(measuredAt)}</b></span>
+      </div>
+      <div className="haccp-widget-meta">
+        <span><small>Plage attendue</small><strong>{rangeLabel}</strong></span>
+        {sensor?.battery != null ? <span><small>Batterie</small><strong><Battery size={13} /> {sensor.battery}%</strong></span> : null}
+      </div>
+    </article>
+  );
+}
+
+function CleaningLiveWidget({
+  zone,
+  configured,
+  due,
+  cleaned,
+  latestCleanedAt,
+  progress,
+  state,
+}: {
+  zone: HaccpItem;
+  configured: HaccpItem[];
+  due: TodayCleaningSurface[];
+  cleaned: TodayCleaningSurface[];
+  latestCleanedAt: unknown;
+  progress: number;
+  state: string;
+}) {
+  const stateLabel = !due.length ? 'Rien de prévu' : progress === 100 ? 'Zone terminée' : progress > 0 ? 'En cours' : 'À faire';
+  return (
+    <article className={`haccp-live-widget cleaning ${state}`}>
+      <div className="haccp-widget-topline">
+        <span className={`haccp-widget-state ${state === 'pending' ? 'neutral' : state}`}><span /> {stateLabel}</span>
+        <span className="haccp-zone-count"><Layers size={12} /> {configured.length} surface(s)</span>
+      </div>
+      <div className="haccp-widget-title">
+        <span className="haccp-widget-icon"><MapPin size={18} /></span>
+        <div><h4>{zone.name || 'Zone'}</h4><p>{zone.description || 'Zone du plan de nettoyage'}</p></div>
+      </div>
+      <div className="haccp-cleaning-progress-copy">
+        <strong>{cleaned.length}<small> / {due.length}</small></strong>
+        <span>surfaces prévues nettoyées</span>
+      </div>
+      <div className="haccp-cleaning-progress"><span style={{ width: `${progress}%` }} /></div>
+      <div className="haccp-widget-meta">
+        <span><small>Avancement</small><strong>{due.length ? `${progress}%` : 'Plan à jour'}</strong></span>
+        <span><small>Dernier passage</small><strong>{haccpFreshness(latestCleanedAt)}</strong></span>
+      </div>
+    </article>
+  );
+}
+
+function LiveEmptyState({ icon, title, detail }: { icon: ReactNode; title: string; detail: string }) {
+  return (
+    <div className="haccp-live-empty">
+      <span>{icon}</span>
+      <div><strong>{title}</strong><p>{detail}</p></div>
+    </div>
+  );
+}
+
 function moduleStatusCopy(module: HaccpDashboard['modules'][number]) {
   const missing = Math.max(module.expected - module.completed, 0);
   const pending = Math.max(missing, module.issues);
@@ -1476,7 +3043,6 @@ function ModuleStatusModal({ module, alerts, onClose, onOpenModule }: { module: 
         </div>
         <div className="modal-footer">
           <button type="button" className="btn btn-secondary" onClick={onClose}>Fermer</button>
-          <button type="button" className="btn btn-primary" onClick={onOpenModule}>Ouvrir le module</button>
         </div>
       </div>
     </div>
@@ -1492,106 +3058,270 @@ function MetricMini({ label, value, tone = '#0f172a' }: { label: string; value: 
   );
 }
 
-function DashboardView({ dashboard, readiness, loading, searchQuery, setSearchQuery, onGenerateReport, onStartOnboarding, onSelectTab }: { dashboard: HaccpDashboard | null; readiness: HaccpReadiness; loading: boolean; searchQuery: string; setSearchQuery: (value: string) => void; onGenerateReport: () => void; onStartOnboarding: () => void; onSelectTab?: (tabName: string) => void }) {
+function DashboardView({
+  dashboard,
+  readiness,
+  loading,
+  temperatureEquipment,
+  temperatureReadings,
+  sensors,
+  temperatureAlerts,
+  cleaningZones,
+  todayCleaningSurfaces,
+  activeCleaningSession,
+  processEquipment,
+  processSessionsToday,
+  productionFlow,
+  receptionRows,
+  oilRows,
+  oilSaving,
+  token,
+  searchQuery,
+  setSearchQuery,
+  onStartOnboarding,
+  onHideOilSession,
+  onSelectTab,
+}: {
+  dashboard: HaccpDashboard | null;
+  readiness: HaccpReadiness;
+  loading: boolean;
+  temperatureEquipment: HaccpItem[];
+  temperatureReadings: HaccpItem[];
+  sensors: HaccpSensor[];
+  temperatureAlerts: HaccpTemperatureAlertData | null;
+  cleaningZones: HaccpItem[];
+  todayCleaningSurfaces: TodayCleaningSurface[];
+  activeCleaningSession: HaccpCleaningSession | null;
+  processEquipment: HaccpItem[];
+  processSessionsToday: HaccpItem[];
+  productionFlow: ProductionFlow | null;
+  receptionRows: HaccpItem[];
+  oilRows: HaccpItem[];
+  oilSaving: boolean;
+  token: string;
+  searchQuery: string;
+  setSearchQuery: (value: string) => void;
+  onStartOnboarding: () => void;
+  onHideOilSession: (item: HaccpItem) => Promise<void>;
+  onSelectTab?: (tabName: string) => void;
+}) {
   const [selectedModule, setSelectedModule] = useState<HaccpDashboard['modules'][number] | null>(null);
+  const [showLiveOperations, setShowLiveOperations] = useState(false);
+  const [showProcessOperations, setShowProcessOperations] = useState(false);
+  const [showProductionOperations, setShowProductionOperations] = useState(false);
+  const [showTraceabilityHistory, setShowTraceabilityHistory] = useState(false);
+  const [showReceptionHistory, setShowReceptionHistory] = useState(false);
+  const [showOilOperations, setShowOilOperations] = useState(false);
   if (loading && !dashboard) return <div className="empty-state">Chargement HACCP...</div>;
   if (!dashboard) return <div className="empty-state">Aucune donnée HACCP disponible.</div>;
-  const filteredModules = dashboard.modules.filter((module) => {
-    if (module.id === 'reports') return false;
-    const query = searchQuery.trim().toLowerCase();
-    return !query || `${module.label} ${module.description} ${module.score}`.toLowerCase().includes(query);
-  });
+  const query = searchQuery.trim().toLowerCase();
+  const temperatureModule = dashboard.modules.find((module) => module.id === 'temperature');
+  const cleaningModule = dashboard.modules.find((module) => module.id === 'cleaning');
+  const processModule = dashboard.modules.find((module) => module.id === 'process');
+  const productionModule = dashboard.modules.find((module) => module.id === 'production');
+  const traceabilityModule = dashboard.modules.find((module) => module.id === 'traceability');
+  const receptionsModule = dashboard.modules.find((module) => module.id === 'receptions');
+  const oilModule = dashboard.modules.find((module) => module.id === 'oil');
+  const productionTraceabilityExpected = productionFlow?.summary.traceabilityExpected ?? 0;
+  const productionTraceabilityCompleted = productionFlow?.summary.traceabilityCompleted ?? 0;
+  const productionTraceabilityMissing = Math.max(productionTraceabilityExpected - productionTraceabilityCompleted, 0);
+  const productionTraceabilityModule = traceabilityModule ? {
+    ...traceabilityModule,
+    completed: productionTraceabilityCompleted,
+    expected: productionTraceabilityExpected,
+    issues: productionTraceabilityMissing,
+    score: productionTraceabilityExpected
+      ? Math.round((productionTraceabilityCompleted / productionTraceabilityExpected) * 100)
+      : 100,
+  } : undefined;
+  const showHygieneCard = !query || 'températures nettoyage hygiène enceintes zones surfaces relevés'.includes(query)
+    || `${temperatureModule?.label ?? ''} ${temperatureModule?.description ?? ''} ${cleaningModule?.label ?? ''} ${cleaningModule?.description ?? ''}`.toLowerCase().includes(query);
+  const showProcessCard = !query || 'process froid chaud refroidissement congélation réchauffement équipements cycles'.includes(query)
+    || `${processModule?.label ?? ''} ${processModule?.description ?? ''}`.toLowerCase().includes(query);
+  const showProductionCard = !query || 'production fabrication recette planning traçabilité ingrédients lots photos'.includes(query)
+    || `${productionModule?.label ?? ''} ${productionModule?.description ?? ''}`.toLowerCase().includes(query);
+  const showTraceabilityCard = !query || 'traçabilité lots produits photos étiquettes historique calendrier'.includes(query)
+    || `${traceabilityModule?.label ?? ''} ${traceabilityModule?.description ?? ''}`.toLowerCase().includes(query);
+  const showReceptionsCard = !query || 'réceptions fournisseurs marchandises livraisons température'.includes(query)
+    || `${receptionsModule?.label ?? ''} ${receptionsModule?.description ?? ''}`.toLowerCase().includes(query);
+  const showOilCard = !query || 'huiles friteuses bains polarité friture'.includes(query)
+    || `${oilModule?.label ?? ''} ${oilModule?.description ?? ''}`.toLowerCase().includes(query);
   const coveredModules = dashboard.modules.filter((module) => module.completed > 0).length;
   const criticalCount = dashboard.alerts.filter((alert) => alert.severity === 'critical').length;
   const warningCount = dashboard.alerts.filter((alert) => alert.severity === 'warning').length;
+  const missingControls = dashboard.modules.reduce(
+    (total, module) => total + Math.max(module.expected - module.completed, module.issues, 0),
+    0,
+  );
   const selectedAlerts = selectedModule ? dashboard.alerts.filter((alert) => alert.module === selectedModule.id) : [];
-
-  const formatActivityTime = (atStr: string) => {
-    if (!atStr) return '';
-    try {
-      const d = new Date(atStr);
-      if (isNaN(d.getTime())) return atStr;
-      return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-    } catch {
-      return atStr;
-    }
-  };
+  const scoreTone = dashboard.score >= 90 ? 'excellent' : dashboard.score >= 75 ? 'warning' : 'danger';
+  const latestReception = receptionRows[0];
+  const latestOil = oilRows[0];
+  const visibleCardCount = [
+    showHygieneCard,
+    showProcessCard,
+    showProductionCard,
+    showTraceabilityCard,
+    showReceptionsCard,
+    showOilCard,
+  ].filter(Boolean).length;
 
   return (
     <div className="haccp-dashboard">
       {readiness.progress < 100 ? (
         <HaccpSetupCard readiness={readiness} onStart={onStartOnboarding} />
       ) : null}
-      <div className="haccp-summary-row" style={{ display: 'flex', gap: '2.5rem', marginBottom: '2rem', padding: '0.5rem 0', flexWrap: 'wrap' }}>
-        {/* Contrôles manquants */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-          <div style={{
-            background: criticalCount ? 'rgba(239, 68, 68, 0.1)' : warningCount ? 'rgba(245, 158, 11, 0.1)' : 'rgba(16, 185, 129, 0.1)',
-            padding: '0.75rem',
-            borderRadius: '12px',
-            display: 'flex',
-            color: criticalCount ? '#ef4444' : warningCount ? '#f59e0b' : '#10b981'
-          }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
-          </div>
-          <div>
-            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Contrôles manquants</div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
-              <span style={{ fontSize: '1.75rem', fontWeight: 900, color: 'var(--text-main)', lineHeight: 1 }}>{criticalCount + warningCount}</span>
-              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 550 }}>({criticalCount} critiques, {warningCount} à surveiller)</span>
-            </div>
+      <section className={`haccp-command-center ${scoreTone}`}>
+        <div className="haccp-command-copy">
+          <span className="haccp-command-kicker"><ShieldCheck size={15} /> Pilotage du jour</span>
+          <h2>Votre maîtrise sanitaire, en un coup d’œil.</h2>
+          <p>
+            {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+            {' · '}
+            {coveredModules}/{dashboard.modules.length} domaines couverts aujourd’hui.
+          </p>
+          <div className="haccp-command-status" aria-label="Archivage HACCP">
+            <span><Archive size={15} /> Rapport quotidien archivé automatiquement à minuit</span>
+            <span><ShieldCheck size={15} /> Données du jour consolidées</span>
           </div>
         </div>
 
-        {/* Vertical divider */}
-        <div style={{ width: '1px', background: '#e2e8f0', alignSelf: 'stretch' }} className="haccp-summary-divider" />
-
-        {/* Score HACCP */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-          <div style={{
-            background: 'rgba(16, 185, 129, 0.1)',
-            padding: '0.75rem',
-            borderRadius: '12px',
-            display: 'flex',
-            color: '#10b981'
-          }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M20 13c0 5-3.5 7.5-7.66 9.7a1 1 0 0 1-.68 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 .76-.97l8-2a1 1 0 0 1 .48 0l8 2A1 1 0 0 1 20 6Z" />
-              <path d="m9 12 2 2 4-4" />
-            </svg>
-          </div>
-          <div>
-            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Score HACCP</div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
-              <span style={{ fontSize: '1.75rem', fontWeight: 900, color: 'var(--text-main)', lineHeight: 1 }}>{dashboard.score}%</span>
-              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 550 }}>de conformité aujourd'hui</span>
+        <div className="haccp-command-metrics">
+          <article className="haccp-score-panel">
+            <div
+              className="haccp-score-ring"
+              style={{ background: `conic-gradient(#34d399 ${dashboard.score}%, rgba(255,255,255,0.11) 0)` }}
+            >
+              <span><strong>{dashboard.score}</strong><small>/100</small></span>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ marginTop: '1.5rem' }}>
-        <div className="haccp-list-panel" style={{ padding: 0 }}>
-          <div className="haccp-list-header">
             <div>
-              <h2>Liste des contrôles HACCP</h2>
-              <p className="muted">Modules, scores, anomalies et dernière couverture.</p>
+              <span>Score HACCP</span>
+              <small>{dashboard.score >= 90 ? 'Conformité excellente' : dashboard.score >= 75 ? 'Quelques actions à terminer' : 'Priorités à traiter'}</small>
             </div>
-            <div className="haccp-search">
-              <Search size={15} />
-              <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Rechercher" />
+          </article>
+          <article className="haccp-missing-panel" aria-label={`${missingControls} contrôles manquants`}>
+            <div className="haccp-missing-heading">
+              <span className="haccp-missing-icon"><Clock size={21} /></span>
+              <span className="haccp-missing-copy">
+                <small>Contrôles manquants</small>
+                <strong>{missingControls}</strong>
+              </span>
             </div>
-          </div>
-          <div className="haccp-dashboard-grid">
-            {filteredModules.map((module) => (
-              <ModuleCard key={module.id} module={module} onClick={() => setSelectedModule(module)} />
-            ))}
-          </div>
+            <div className="haccp-missing-breakdown">
+              <span className="critical">{criticalCount} critique{criticalCount > 1 ? 's' : ''}</span>
+              <span className="warning">{warningCount} à surveiller</span>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <div className="haccp-dashboard-section-heading">
+        <div>
+          <span>Opérations essentielles</span>
+          <h2>Les trois piliers HACCP</h2>
+          <p>Suivi en direct des contrôles, process et productions du jour.</p>
+        </div>
+        <div className="haccp-search haccp-dashboard-search">
+          <Search size={15} />
+          <input
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Rechercher un contrôle…"
+          />
+          {searchQuery ? <button type="button" onClick={() => setSearchQuery('')} aria-label="Effacer la recherche"><X size={14} /></button> : null}
         </div>
       </div>
+
+      <div className="haccp-primary-grid">
+        {showProductionCard ? (
+          <ProductionHaccpOverviewCard
+            flow={productionFlow}
+            module={productionModule}
+            onClick={() => setShowProductionOperations(true)}
+          />
+        ) : null}
+        {showProcessCard ? (
+          <ProcessOverviewCard
+            module={processModule}
+            equipment={processEquipment}
+            sessions={processSessionsToday}
+            onClick={() => setShowProcessOperations(true)}
+          />
+        ) : null}
+        {showHygieneCard ? (
+          <HygieneOverviewCard
+            temperature={temperatureModule}
+            cleaning={cleaningModule}
+            onClick={() => setShowLiveOperations(true)}
+          />
+        ) : null}
+      </div>
+
+      <div className="haccp-dashboard-section-heading haccp-register-heading">
+        <div>
+          <span>Registres & contrôles</span>
+          <h2>Retrouvez chaque preuve sans perdre le fil</h2>
+          <p>Historique des lots, réceptions marchandises et contrôles des bains d’huile.</p>
+        </div>
+      </div>
+
+      <div className="haccp-register-grid">
+        {showTraceabilityCard ? (
+          <RegistryOverviewCard
+            module={productionTraceabilityModule}
+            icon={<ScanLine size={22} />}
+            accent="blue"
+            eyebrow="Registre des lots"
+            title="Traçabilité"
+            description="Parcourez le planning et les preuves ingrédients par jour, puis changez de mois."
+            activity={productionTraceabilityExpected
+              ? `${productionTraceabilityCompleted}/${productionTraceabilityExpected} preuves ingrédients aujourd’hui`
+              : 'Aucune production planifiée aujourd’hui'}
+            action="Ouvrir le calendrier"
+            actionIcon={<CalendarDays size={16} />}
+            onClick={() => setShowTraceabilityHistory(true)}
+          />
+        ) : null}
+        {showReceptionsCard ? (
+          <RegistryOverviewCard
+            module={receptionsModule}
+            icon={<Truck size={22} />}
+            accent="violet"
+            eyebrow="Entrées marchandises"
+            title="Réceptions"
+            description="Contrôlez fournisseurs, températures et lots dès l’arrivée des produits."
+            activity={latestReception
+              ? `${String(latestReception.supplier || 'Fournisseur')} · ${String(latestReception.productName || 'Produit')}`
+              : 'Aucune réception enregistrée'}
+            action="Voir les contrôles"
+            actionIcon={<CalendarDays size={16} />}
+            onClick={() => setShowReceptionHistory(true)}
+          />
+        ) : null}
+        {showOilCard ? (
+          <RegistryOverviewCard
+            module={oilModule}
+            icon={<Droplets size={22} />}
+            accent="amber"
+            eyebrow="Friture & polarité"
+            title="Huiles"
+            description="Gardez un suivi lisible des tests, actions correctives et renouvellements."
+            activity={latestOil
+              ? `${String(latestOil.equipment?.name || latestOil.name || 'Friteuse')} · ${String(latestOil.action || 'contrôle')}`
+              : 'Aucun contrôle d’huile enregistré'}
+            action="Voir les contrôles"
+            onClick={() => setShowOilOperations(true)}
+          />
+        ) : null}
+      </div>
+
+      {!visibleCardCount ? (
+        <div className="haccp-dashboard-empty">
+          <Search size={26} />
+          <strong>Aucun contrôle ne correspond à “{searchQuery}”</strong>
+          <button type="button" onClick={() => setSearchQuery('')}>Afficher tous les contrôles</button>
+        </div>
+      ) : null}
 
       {selectedModule ? (
         <ModuleStatusModal
@@ -1605,6 +3335,358 @@ function DashboardView({ dashboard, readiness, loading, searchQuery, setSearchQu
           }}
         />
       ) : null}
+      {showLiveOperations ? (
+        <HaccpLiveOperationsModal
+          temperatureEquipment={temperatureEquipment}
+          temperatureReadings={temperatureReadings}
+          sensors={sensors}
+          temperatureAlerts={temperatureAlerts}
+          cleaningZones={cleaningZones}
+          todayCleaningSurfaces={todayCleaningSurfaces}
+          activeCleaningSession={activeCleaningSession}
+          temperatureModule={temperatureModule}
+          cleaningModule={cleaningModule}
+          onClose={() => setShowLiveOperations(false)}
+          onOpenTemperatures={() => {
+            setShowLiveOperations(false);
+            onSelectTab?.('temperatures');
+          }}
+          onOpenCleaning={() => {
+            setShowLiveOperations(false);
+            onSelectTab?.('cleaning');
+          }}
+        />
+      ) : null}
+      {showProcessOperations ? (
+        <HaccpProcessOperationsModal
+          equipment={processEquipment}
+          sessions={processSessionsToday}
+          module={processModule}
+          onClose={() => setShowProcessOperations(false)}
+          onOpenProcess={() => {
+            setShowProcessOperations(false);
+            onSelectTab?.('process');
+          }}
+        />
+      ) : null}
+      {showProductionOperations ? (
+        <ProductionFlowModal
+          token={token}
+          flow={productionFlow}
+          onClose={() => setShowProductionOperations(false)}
+        />
+      ) : null}
+      {showTraceabilityHistory ? (
+        <ProductionFlowModal
+          token={token}
+          flow={productionFlow}
+          onClose={() => setShowTraceabilityHistory(false)}
+          enableDateNavigation
+        />
+      ) : null}
+      {showReceptionHistory ? (
+        <ReceptionHistoryModal
+          rows={receptionRows}
+          onClose={() => setShowReceptionHistory(false)}
+          onOpenModule={() => {
+            setShowReceptionHistory(false);
+            onSelectTab?.('receptions');
+          }}
+        />
+      ) : null}
+      {showOilOperations ? (
+        <OilOperationsModal
+          token={token}
+          rows={oilRows}
+          module={oilModule}
+          saving={oilSaving}
+          onHide={onHideOilSession}
+          onClose={() => setShowOilOperations(false)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function RegistryOverviewCard({
+  module,
+  icon,
+  accent,
+  eyebrow,
+  title,
+  description,
+  activity,
+  action,
+  actionIcon,
+  onClick,
+}: {
+  module?: HaccpDashboard['modules'][number];
+  icon: ReactNode;
+  accent: 'blue' | 'violet' | 'amber';
+  eyebrow: string;
+  title: string;
+  description: string;
+  activity: string;
+  action: string;
+  actionIcon?: ReactNode;
+  onClick: () => void;
+}) {
+  const expected = module?.expected ?? 0;
+  const completed = module?.completed ?? 0;
+  const score = module?.score ?? 100;
+  const issues = module?.issues ?? 0;
+  const status = !expected ? 'Aucun contrôle prévu' : issues ? 'À vérifier' : 'Conforme';
+
+  return (
+    <button type="button" className={`haccp-register-card ${accent}`} onClick={onClick}>
+      <span className="haccp-register-glow" />
+      <span className="haccp-register-top">
+        <span className="haccp-register-icon">{icon}</span>
+        <span className={`haccp-register-status ${issues ? 'warning' : 'ok'}`}>
+          <span /> {status}
+        </span>
+      </span>
+      <span className="haccp-register-copy">
+        <small>{eyebrow}</small>
+        <strong>{title}</strong>
+        <em>{description}</em>
+      </span>
+      <span className="haccp-register-progress">
+        <span>
+          <small>Couverture du jour</small>
+          <strong>{expected ? `${completed}/${expected}` : '—'} <em>{expected ? `${score}%` : ''}</em></strong>
+        </span>
+        <span className="haccp-register-progress-track">
+          <span style={{ width: `${expected ? score : 0}%` }} />
+        </span>
+      </span>
+      <span className="haccp-register-latest">
+        <span><small>Dernière activité</small><strong>{activity}</strong></span>
+        <span className="haccp-register-action">{actionIcon}{action}<ChevronRight size={15} /></span>
+      </span>
+    </button>
+  );
+}
+
+function OilOperationsModal({
+  rows,
+  module,
+  saving,
+  onHide,
+  onClose,
+}: {
+  token: string;
+  rows: HaccpItem[];
+  module?: HaccpDashboard['modules'][number];
+  saving: boolean;
+  onHide: (item: HaccpItem) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [selected, setSelected] = useState<HaccpItem | null>(rows[0] ?? null);
+  const [query, setQuery] = useState('');
+  const [actionFilter, setActionFilter] = useState('all');
+  const [confirmingHide, setConfirmingHide] = useState(false);
+  const [hideError, setHideError] = useState('');
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (confirmingHide) setConfirmingHide(false);
+        else onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [confirmingHide, onClose]);
+
+  useEffect(() => {
+    if (selected && !rows.some((row) => haccpItemId(row) === haccpItemId(selected))) {
+      setSelected(rows[0] ?? null);
+      setConfirmingHide(false);
+    }
+  }, [rows, selected]);
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleRows = rows.filter((row) => {
+    if (actionFilter !== 'all' && row.action !== actionFilter) return false;
+    if (!normalizedQuery) return true;
+    return `${row.equipment?.name ?? ''} ${row.action ?? ''} ${row.testMethod ?? ''} ${row.notes ?? ''}`
+      .toLowerCase()
+      .includes(normalizedQuery);
+  });
+  const today = new Date().toLocaleDateString('sv-SE');
+  const todayCount = rows.filter((row) => String(row.sessionDate ?? '').slice(0, 10) === today).length;
+  const changedCount = rows.filter((row) => row.action === 'change').length;
+  const reusedCount = rows.filter((row) => row.action === 'reutilise' || row.action === 'filtre_reutilise').length;
+
+  const actionLabel = (action: unknown) => ({
+    reutilise: 'Réutilisée',
+    filtre_reutilise: 'Filtrée & réutilisée',
+    change: 'Vidangée & changée',
+    controle_ok: 'Contrôle conforme',
+  })[String(action)] ?? String(action || 'Contrôle');
+  const methodLabel = (method: unknown) => ({
+    aucune: 'Contrôle visuel',
+    testeur_huiles: 'Testeur d’huiles',
+    bandelettes: 'Bandelettes',
+  })[String(method)] ?? String(method || 'Non renseignée');
+  const sessionDate = (row: HaccpItem) => new Date(String(row.sessionDate ?? row.createdAt ?? ''));
+  const photoUrl = (row: HaccpItem | null) => {
+    const photo = String(row?.photo ?? '');
+    if (!photo) return '';
+    return photo.startsWith('data:') || /^https?:\/\//i.test(photo) ? photo : api.haccpPhotoUrl(photo);
+  };
+
+  const confirmHide = async () => {
+    if (!selected) return;
+    setHideError('');
+    try {
+      await onHide(selected);
+      setConfirmingHide(false);
+    } catch (error) {
+      setHideError(error instanceof Error ? error.message : 'Masquage impossible.');
+    }
+  };
+
+  return (
+    <div className="modal-overlay haccp-modal-overlay haccp-live-overlay" onClick={onClose}>
+      <div
+        className="haccp-live-modal haccp-oil-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="haccp-oil-modal-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="haccp-live-header haccp-oil-header">
+          <div>
+            <span className="haccp-live-kicker oil"><span className="haccp-live-dot" /> Synchronisé avec l’application mobile</span>
+            <h2 id="haccp-oil-modal-title">Contrôles des huiles</h2>
+            <p>Tests, décisions et preuves photo enregistrés par l’équipe depuis le téléphone.</p>
+          </div>
+          <div className="haccp-live-header-actions">
+            <span className="haccp-last-sync"><RefreshCw size={14} /> Données serveur à jour</span>
+            <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Fermer"><X size={18} /></button>
+          </div>
+        </header>
+
+        <div className="haccp-live-body">
+          <div className="haccp-live-kpis">
+            <LiveKpi icon={<Droplets size={19} />} label="Contrôles visibles" value={rows.length} detail="Historique remonté du mobile" tone="blue" />
+            <LiveKpi icon={<Clock size={19} />} label="Aujourd’hui" value={todayCount} detail="Contrôles de la journée" tone="violet" />
+            <LiveKpi icon={<RefreshCw size={19} />} label="Huiles conservées" value={reusedCount} detail="Réutilisées ou filtrées" tone="green" />
+            <LiveKpi icon={<CheckCircle2 size={19} />} label="Renouvellements" value={changedCount} detail={`${module?.score ?? 100}% de conformité`} tone={module?.issues ? 'red' : 'green'} />
+          </div>
+
+          <div className="haccp-oil-toolbar">
+            <div className="haccp-search">
+              <Search size={15} />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Friteuse, méthode ou note…" />
+              {query ? <button type="button" onClick={() => setQuery('')} aria-label="Effacer"><X size={14} /></button> : null}
+            </div>
+            <div className="haccp-oil-filters">
+              {[
+                ['all', 'Tous'],
+                ['reutilise', 'Réutilisées'],
+                ['filtre_reutilise', 'Filtrées'],
+                ['change', 'Changé'],
+              ].map(([value, label]) => (
+                <button type="button" key={value} className={actionFilter === value ? 'active' : ''} onClick={() => setActionFilter(value)}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="haccp-oil-workspace">
+            <section className="haccp-oil-list">
+              <div className="haccp-oil-list-heading">
+                <div><h3>Historique mobile</h3><p>{visibleRows.length} contrôle(s) affiché(s)</p></div>
+                <Smartphone size={18} />
+              </div>
+              {visibleRows.length ? visibleRows.map((row, index) => {
+                const date = sessionDate(row);
+                const isSelected = haccpItemId(selected) === haccpItemId(row) && haccpItemId(row) !== '';
+                return (
+                  <button
+                    type="button"
+                    key={haccpItemId(row) || `${row.sessionDate}-${index}`}
+                    className={isSelected ? 'selected' : ''}
+                    onClick={() => {
+                      setSelected(row);
+                      setConfirmingHide(false);
+                      setHideError('');
+                    }}
+                  >
+                    <span className={`haccp-oil-row-icon ${String(row.action || '')}`}><Droplets size={18} /></span>
+                    <span className="haccp-oil-row-copy">
+                      <strong>{String(row.equipment?.name || 'Équipement huile')}</strong>
+                      <small>{actionLabel(row.action)} · {methodLabel(row.testMethod)}</small>
+                      <em>
+                        {Number.isFinite(date.getTime()) ? date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Date inconnue'}
+                        {' · '}
+                        {Number.isFinite(date.getTime()) ? date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                      </em>
+                    </span>
+                    <ChevronRight size={16} />
+                  </button>
+                );
+              }) : (
+                <div className="haccp-oil-empty"><Droplets size={28} /><strong>Aucun contrôle visible</strong><p>Les nouvelles saisies du téléphone apparaîtront ici.</p></div>
+              )}
+            </section>
+
+            <section className="haccp-oil-detail">
+              {selected ? (
+                <>
+                  <div className="haccp-oil-detail-head">
+                    <div><span>Contrôle mobile</span><h3>{String(selected.equipment?.name || 'Équipement huile')}</h3><p>{sessionDate(selected).toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short' })}</p></div>
+                    <span className={`haccp-oil-action-badge ${String(selected.action || '')}`}>{actionLabel(selected.action)}</span>
+                  </div>
+
+                  <div className="haccp-oil-detail-grid">
+                    <span><small>Méthode</small><strong>{methodLabel(selected.testMethod)}</strong></span>
+                    <span><small>Décision</small><strong>{actionLabel(selected.action)}</strong></span>
+                    <span><small>Emplacement</small><strong>{String(selected.equipment?.location || 'Non renseigné')}</strong></span>
+                    <span><small>Capacité</small><strong>{String(selected.equipment?.capacity || 'Non renseignée')}</strong></span>
+                  </div>
+
+                  {photoUrl(selected) ? (
+                    <a className="haccp-oil-photo" href={photoUrl(selected)} target="_blank" rel="noreferrer">
+                      <img src={photoUrl(selected)} alt={`Contrôle huile ${String(selected.equipment?.name || '')}`} />
+                      <span>Voir la preuve photo <ChevronRight size={14} /></span>
+                    </a>
+                  ) : (
+                    <div className="haccp-oil-photo-empty"><Droplets size={24} /><strong>Aucune photo jointe</strong></div>
+                  )}
+
+                  <div className="haccp-oil-notes">
+                    <span>Note de l’équipe</span>
+                    <p>{String(selected.notes || 'Aucune note ajoutée depuis le téléphone.')}</p>
+                  </div>
+
+                  {confirmingHide ? (
+                    <div className="haccp-oil-hide-confirm">
+                      <span><EyeOff size={18} /></span>
+                      <div><strong>Masquer ce contrôle partout ?</strong><p>Il disparaîtra du web et de l’historique de l’application mobile après synchronisation.</p></div>
+                      <div>
+                        <button type="button" onClick={() => setConfirmingHide(false)} disabled={saving}>Annuler</button>
+                        <button type="button" className="danger" onClick={() => void confirmHide()} disabled={saving}>{saving ? 'Masquage…' : 'Confirmer'}</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button type="button" className="haccp-oil-hide-button" onClick={() => setConfirmingHide(true)}>
+                      <EyeOff size={16} /> Masquer sur le web et l’app mobile
+                    </button>
+                  )}
+                  {hideError ? <div className="alert error"><AlertCircle size={15} /> {hideError}</div> : null}
+                </>
+              ) : (
+                <div className="production-flow-placeholder"><Droplets size={32} /><strong>Sélectionnez un contrôle</strong><p>La décision, la note et la preuve photo apparaîtront ici.</p></div>
+              )}
+            </section>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2465,7 +4547,283 @@ function ConfigRowCard({ kind, item, onDelete }: { kind: HaccpConfigKind; item: 
   );
 }
 
-function SectionView({ section, rows, products, searchQuery, setSearchQuery, processType, onProcessType, onCreate, onDelete, onAnalyzeImage, onGenerateReport, onDownloadReport, saving, onBack }: {
+function ReportsArchiveView({
+  rows,
+  searchQuery,
+  setSearchQuery,
+  onDownload,
+  onDelete,
+  onBack,
+}: {
+  rows: HaccpItem[];
+  searchQuery: string;
+  setSearchQuery: (value: string) => void;
+  onDownload: (item: HaccpItem) => void;
+  onDelete: (item: HaccpItem) => void;
+  onBack: () => void;
+}) {
+  const query = searchQuery.trim().toLocaleLowerCase('fr-FR');
+  const filteredRows = useMemo(
+    () => rows.filter((row) => {
+      if (!query) return true;
+      const date = reportDateMeta(row.reportDate);
+      return [
+        date.dayLabel,
+        date.monthLabel,
+        date.year,
+        row.status === 'completed' ? 'terminé pdf' : String(row.status ?? ''),
+        String(row.summary?.totalActivities ?? ''),
+      ].join(' ').toLocaleLowerCase('fr-FR').includes(query);
+    }),
+    [query, rows],
+  );
+  const yearGroups = useMemo(() => {
+    const years = new Map<string, Map<string, { label: string; rows: HaccpItem[] }>>();
+    filteredRows.forEach((row) => {
+      const date = reportDateMeta(row.reportDate);
+      if (!years.has(date.year)) years.set(date.year, new Map());
+      const months = years.get(date.year)!;
+      if (!months.has(date.monthKey)) months.set(date.monthKey, { label: date.monthLabel, rows: [] });
+      months.get(date.monthKey)!.rows.push(row);
+    });
+    return Array.from(years.entries())
+      .sort(([left], [right]) => Number(right) - Number(left))
+      .map(([year, months]) => ({
+        year,
+        count: Array.from(months.values()).reduce((total, month) => total + month.rows.length, 0),
+        months: Array.from(months.entries())
+          .sort(([left], [right]) => right.localeCompare(left))
+          .map(([key, month]) => ({ key, ...month })),
+      }));
+  }, [filteredRows]);
+  const [openYears, setOpenYears] = useState<Set<string>>(new Set());
+  const [openMonths, setOpenMonths] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const firstYear = yearGroups[0];
+    const firstMonth = firstYear?.months[0];
+    if (!firstYear || !firstMonth) return;
+    setOpenYears((current) => current.size ? current : new Set([firstYear.year]));
+    setOpenMonths((current) => current.size ? current : new Set([firstMonth.key]));
+  }, [yearGroups]);
+
+  const toggleSetValue = (
+    setter: React.Dispatch<React.SetStateAction<Set<string>>>,
+    value: string,
+  ) => {
+    setter((current) => {
+      const next = new Set(current);
+      if (next.has(value)) next.delete(value);
+      else next.add(value);
+      return next;
+    });
+  };
+  const completedReports = rows.filter((row) => row.status === 'completed' && row.pdfPath).length;
+  const latestReport = rows[0];
+
+  return (
+    <div className="haccp-report-archive">
+      <section className="haccp-report-hero">
+        <div className="haccp-report-hero-icon"><Archive size={25} /></div>
+        <div className="haccp-report-hero-copy">
+          <span>Registre sanitaire</span>
+          <h2>Vos rapports, classés automatiquement.</h2>
+          <p>Chaque journée HACCP est consolidée en PDF à minuit, puis rangée par année et par mois.</p>
+        </div>
+        <div className="haccp-report-automation">
+          <span className="haccp-report-live-dot" />
+          Automatique · 00:00
+        </div>
+      </section>
+
+      <div className="haccp-report-toolbar">
+        <button type="button" className="btn btn-secondary btn-sm" onClick={onBack}>
+          <ArrowLeft size={14} /> Retour
+        </button>
+        <div className="haccp-report-stats" aria-label="Résumé des archives">
+          <span><strong>{completedReports}</strong> PDF archivés</span>
+          <span><strong>{yearGroups.length}</strong> année{yearGroups.length > 1 ? 's' : ''}</span>
+          <span>
+            Dernier rapport <strong>{latestReport ? reportDateMeta(latestReport.reportDate).shortLabel : '—'}</strong>
+          </span>
+        </div>
+        <div className="haccp-search haccp-report-search">
+          <Search size={15} />
+          <input
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Rechercher une date ou un mois…"
+          />
+          {searchQuery ? (
+            <button type="button" onClick={() => setSearchQuery('')} aria-label="Effacer la recherche">
+              <X size={14} />
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {yearGroups.length ? (
+        <div className="haccp-report-years">
+          {yearGroups.map((year) => {
+            const yearOpen = Boolean(query) || openYears.has(year.year);
+            return (
+              <section className="haccp-report-year" key={year.year}>
+                <button
+                  type="button"
+                  className="haccp-report-year-toggle"
+                  onClick={() => toggleSetValue(setOpenYears, year.year)}
+                  aria-expanded={yearOpen}
+                >
+                  <span className="haccp-report-folder-icon">
+                    {yearOpen ? <FolderOpen size={23} /> : <Folder size={23} />}
+                  </span>
+                  <span>
+                    <strong>{year.year}</strong>
+                    <small>{year.count} rapport{year.count > 1 ? 's' : ''}</small>
+                  </span>
+                  {yearOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                </button>
+
+                {yearOpen ? (
+                  <div className="haccp-report-months">
+                    {year.months.map((month) => {
+                      const monthOpen = Boolean(query) || openMonths.has(month.key);
+                      return (
+                        <article className={`haccp-report-month ${monthOpen ? 'open' : ''}`} key={month.key}>
+                          <button
+                            type="button"
+                            className="haccp-report-month-toggle"
+                            onClick={() => toggleSetValue(setOpenMonths, month.key)}
+                            aria-expanded={monthOpen}
+                          >
+                            <span className="haccp-report-folder-icon compact">
+                              {monthOpen ? <FolderOpen size={20} /> : <Folder size={20} />}
+                            </span>
+                            <span>
+                              <strong>{month.label}</strong>
+                              <small>{month.rows.length} PDF</small>
+                            </span>
+                            {monthOpen ? <ChevronUp size={17} /> : <ChevronDown size={17} />}
+                          </button>
+
+                          {monthOpen ? (
+                            <div className="haccp-report-files">
+                              {month.rows.map((row, index) => {
+                                const date = reportDateMeta(row.reportDate);
+                                const id = row._id ?? row.id ?? `${month.key}-${index}`;
+                                return (
+                                  <div className="haccp-report-file" key={id}>
+                                    <div className="haccp-report-date">
+                                      <strong>{date.dayNumber}</strong>
+                                      <span>{date.weekday}</span>
+                                    </div>
+                                    <div className="haccp-report-file-copy">
+                                      <strong>Rapport HACCP du {date.dayLabel}</strong>
+                                      <span>
+                                        {row.summary?.totalActivities ?? 0} activité(s)
+                                        {' · '}
+                                        PDF {formatFileSize(row.fileSize)}
+                                        {' · '}
+                                        archivé {formatReportGeneration(row.generatedAt)}
+                                      </span>
+                                    </div>
+                                    <span className={`haccp-report-status ${row.pdfPath ? 'ready' : 'pending'}`}>
+                                      {row.pdfPath ? <CheckCircle2 size={14} /> : <Clock size={14} />}
+                                      {row.pdfPath ? 'Disponible' : 'En attente'}
+                                    </span>
+                                    <div className="haccp-report-file-actions">
+                                      {row.pdfPath ? (
+                                        <button type="button" className="haccp-report-download" onClick={() => onDownload(row)}>
+                                          <Download size={15} /> Télécharger
+                                        </button>
+                                      ) : null}
+                                      <button
+                                        type="button"
+                                        className="haccp-report-delete"
+                                        title="Supprimer le rapport"
+                                        aria-label={`Supprimer le rapport du ${date.dayLabel}`}
+                                        onClick={() => onDelete(row)}
+                                      >
+                                        <Trash2 size={15} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </section>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="haccp-empty-state">
+          <Archive size={40} />
+          <p>{query ? 'Aucun rapport ne correspond à cette recherche.' : 'Le premier rapport sera archivé automatiquement à minuit.'}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function reportDateMeta(value: unknown) {
+  const date = new Date(String(value ?? ''));
+  if (Number.isNaN(date.getTime())) {
+    return {
+      year: '—',
+      monthKey: 'invalid',
+      monthLabel: 'Date inconnue',
+      dayLabel: 'date inconnue',
+      shortLabel: '—',
+      dayNumber: '—',
+      weekday: '',
+    };
+  }
+  const timeZone = 'Europe/Paris';
+  const parts = new Intl.DateTimeFormat('fr-FR', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? '';
+  const year = part('year');
+  const month = part('month');
+  return {
+    year,
+    monthKey: `${year}-${month}`,
+    monthLabel: new Intl.DateTimeFormat('fr-FR', { timeZone, month: 'long' }).format(date),
+    dayLabel: new Intl.DateTimeFormat('fr-FR', { timeZone, day: 'numeric', month: 'long', year: 'numeric' }).format(date),
+    shortLabel: new Intl.DateTimeFormat('fr-FR', { timeZone, day: '2-digit', month: '2-digit', year: 'numeric' }).format(date),
+    dayNumber: part('day'),
+    weekday: new Intl.DateTimeFormat('fr-FR', { timeZone, weekday: 'short' }).format(date).replace('.', ''),
+  };
+}
+
+function formatReportGeneration(value: unknown) {
+  if (!value) return 'automatiquement';
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return 'automatiquement';
+  return `à ${new Intl.DateTimeFormat('fr-FR', {
+    timeZone: 'Europe/Paris',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)}`;
+}
+
+function formatFileSize(value: unknown) {
+  const bytes = Number(value ?? 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) return '—';
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} Ko`;
+  return `${(bytes / (1024 * 1024)).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} Mo`;
+}
+
+function SectionView({ section, rows, products, searchQuery, setSearchQuery, processType, onProcessType, onCreate, onDelete, onAnalyzeImage, onDownloadReport, onBack }: {
   section: SectionId;
   rows: HaccpItem[];
   products: HaccpItem[];
@@ -2476,9 +4834,7 @@ function SectionView({ section, rows, products, searchQuery, setSearchQuery, pro
   onCreate: () => void;
   onDelete: (item: HaccpItem) => void;
   onAnalyzeImage: (event: ChangeEvent<HTMLInputElement>) => void;
-  onGenerateReport: () => void;
   onDownloadReport?: (item: HaccpItem) => void;
-  saving: boolean;
   onBack: () => void;
 }) {
   return (
@@ -2531,15 +4887,6 @@ function SectionView({ section, rows, products, searchQuery, setSearchQuery, pro
               OCR
               <input type="file" accept="image/*" onChange={onAnalyzeImage} hidden />
             </label>
-          ) : null}
-          {section === 'reports' ? (
-            <button type="button" className="btn btn-secondary" onClick={onGenerateReport} disabled={saving}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
-                <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-                <polyline points="14 2 14 8 20 8" />
-              </svg>
-              Générer le rapport
-            </button>
           ) : null}
           <button type="button" className="btn btn-primary" onClick={onCreate}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>

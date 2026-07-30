@@ -1,5 +1,5 @@
 import { Type, Transform } from 'class-transformer';
-import { IsArray, IsBoolean, IsEnum, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsDateString, IsEnum, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import { CatererEventStatus, CatererFulfillmentMode, MenuActivity, MenuCatalogType, MenuDispatchStatus, MenuExportAudience, MenuExportFormat, MenuGuestGroupType, MenuHistoryAction, MenuKind, MenuProductionGenerationMode, MenuSectionType, MenuServiceType, MenuStatus, MenuUsageProfile, MenuVariantMode } from '@prisma/client';
 
 export class MenuQueryDto {
@@ -17,6 +17,7 @@ export class MenuQueryDto {
 }
 
 export class MenuItemDto {
+  @IsOptional() @IsUUID() id?: string;
   @IsEnum(MenuSectionType) section!: MenuSectionType;
   @IsOptional() @IsUUID() menuCategoryId?: string;
   @IsOptional() @IsUUID() technicalSheetId?: string;
@@ -220,11 +221,41 @@ export class UpdateCatererEventStatusDto {
 export class GenerateCatererEventProductionsDto {
   @IsOptional() @IsEnum(MenuProductionGenerationMode) mode?: MenuProductionGenerationMode;
   @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() force?: boolean;
+  @IsOptional() @IsUUID() serviceId?: string;
+}
+
+export class CatererProductionPlanLineDto {
+  @IsUUID() menuItemId!: string;
+  @Type(() => Number) @IsNumber({ maxDecimalPlaces: 3 }) @Min(0.001) portions!: number;
+  @IsDateString() productionDate!: string;
+  @IsString() @MaxLength(8) plannedTime!: string;
+}
+
+export class CatererLogisticsPlanLineDto {
+  @IsString() @MaxLength(180) key!: string;
+  @Transform(({ value }) => value === true || value === 'true') @IsBoolean() enabled!: boolean;
+  @IsDateString() startsAt!: string;
+  @IsDateString() endsAt!: string;
+}
+
+export class SaveCatererProductionPlanDto {
+  @IsUUID() serviceId!: string;
+  @IsOptional() @IsUUID() logisticsDepartmentId?: string;
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CatererProductionPlanLineDto)
+  lines!: CatererProductionPlanLineDto[];
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CatererLogisticsPlanLineDto)
+  logistics?: CatererLogisticsPlanLineDto[];
 }
 
 export class GenerateMenuProductionLineDto {
   @IsUUID() menuItemId!: string;
   @Type(() => Number) @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) portions!: number;
+  @IsOptional() @IsDateString() productionDate?: string;
   @IsOptional() @IsString() @MaxLength(8) plannedTime?: string;
   @IsOptional() @Type(() => Number) @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) targetPortions?: number;
   @IsOptional() @Type(() => Number) @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) openingCarryOverPortions?: number;
@@ -255,6 +286,7 @@ export class GenerateProductionsDto {
   @IsEnum(MenuProductionGenerationMode) mode!: MenuProductionGenerationMode;
   @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() force?: boolean;
   @IsOptional() @IsString() @MaxLength(8) plannedTime?: string;
+  @IsOptional() @IsDateString() neededAt?: string;
   @IsOptional() @IsUUID() serviceId?: string;
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => GenerateMenuProductionLineDto) lines?: GenerateMenuProductionLineDto[];
 }

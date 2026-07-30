@@ -8,8 +8,8 @@ interface LoginPageProps {
 }
 
 export function LoginPage({ onLogin, error, onBack }: LoginPageProps) {
-  const [email, setEmail] = useState('admin@toquehub.local');
-  const [password, setPassword] = useState('toquehub');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isSubmitting, setSubmitting] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -48,7 +48,6 @@ export function LoginPage({ onLogin, error, onBack }: LoginPageProps) {
             {isSubmitting ? 'Connexion…' : 'Se connecter'}
           </button>
         </form>
-        <p className="hint">Démo seed : admin@toquehub.local / toquehub</p>
         {onBack ? (
           <button className="secondary" type="button" onClick={onBack}>
             Retour à l’accueil

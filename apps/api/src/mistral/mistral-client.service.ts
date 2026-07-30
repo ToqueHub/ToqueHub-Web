@@ -58,93 +58,25 @@ export class MistralClientService {
     }
   }
 
-  async chatJson<T>(
-    organizationId: string,
-    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
-    schemaName: string,
-    schema: Record<string, unknown>,
-    options: {
-      temperature?: number;
-      fallbackToJsonObject?: boolean;
-      timeoutMs?: number;
-    } = {},
-  ): Promise<T> {
+  async chatJson<T>(organizationId: string, messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>, schemaName: string, schema: Record<string, unknown>, options: { temperature?: number } = {}): Promise<T> {
     const apiKey = await this.apiKey(organizationId);
     if (!apiKey) throw new BadRequestException('Clé API Mistral absente');
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), Number(process.env.MISTRAL_CHAT_TIMEOUT_MS ?? 60_000));
     try {
-      const request = async (
-        requestMessages: typeof messages,
-        responseFormat: Record<string, unknown>,
-      ) => {
-        const controller = new AbortController();
-        const timeout = setTimeout(
-          () => controller.abort(),
-          options.timeoutMs ?? Number(process.env.MISTRAL_CHAT_TIMEOUT_MS ?? 60_000),
-        );
-        try {
-          return await fetch('https://api.mistral.ai/v1/chat/completions', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-            signal: controller.signal,
-            body: JSON.stringify({
-              model:
-                process.env.STOCK_ASSISTANT_MISTRAL_MODEL ||
-                process.env.OCR_MISTRAL_AI_MODEL ||
-                'mistral-large-latest',
-              temperature: options.temperature ?? 0,
-              messages: requestMessages,
-              response_format: responseFormat,
-            }),
-          });
-        } finally {
-          clearTimeout(timeout);
-        }
-      };
-      let response = await request(messages, {
-        type: 'json_schema',
-        json_schema: { name: schemaName, strict: true, schema },
+      const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
+        method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, signal: controller.signal,
+        body: JSON.stringify({ model: process.env.STOCK_ASSISTANT_MISTRAL_MODEL || process.env.OCR_MISTRAL_AI_MODEL || 'mistral-large-latest', temperature: options.temperature ?? 0, messages, response_format: { type: 'json_schema', json_schema: { name: schemaName, strict: true, schema } } }),
       });
-      let json: any = await response.json().catch(() => ({}));
-      if (
-        !response.ok &&
-        options.fallbackToJsonObject &&
-        (response.status === 400 || response.status === 422)
-      ) {
-        response = await request(
-          [
-            {
-              role: 'system',
-              content: `Retourne uniquement un objet JSON valide conforme à ce schéma, sans commentaire ni bloc Markdown : ${JSON.stringify(schema)}`,
-            },
-            ...messages,
-          ],
-          { type: 'json_object' },
-        );
-        json = await response.json().catch(() => ({}));
-      }
-      if (!response.ok) {
-        const providerMessage = this.providerErrorMessage(json);
-        throw new BadRequestException(
-          `Mistral a refusé la demande (${response.status})${providerMessage ? ` : ${providerMessage}` : ''}`,
-        );
-      }
+      const json: any = await response.json().catch(() => ({}));
+      if (!response.ok) throw new BadRequestException(`Mistral a refusé la demande (${response.status})`);
       const content = json?.choices?.[0]?.message?.content;
       if (!content) throw new BadRequestException('Réponse Mistral vide');
       return typeof content === 'string' ? JSON.parse(content) : content;
     } catch (error: any) {
       if (error instanceof BadRequestException) throw error;
       throw new BadRequestException(`Mistral indisponible: ${error?.message || 'erreur réseau'}`);
-    }
-  }
-
-  private providerErrorMessage(json: any) {
-    const detail = Array.isArray(json?.detail)
-      ? json.detail.map((item: any) => item?.msg || item?.message).filter(Boolean).join(' · ')
-      : json?.detail;
-    const message = String(json?.message || detail || json?.error?.message || '')
-      .replace(/\s+/g, ' ')
-      .trim();
-    return message.slice(0, 400);
+    } finally { clearTimeout(timeout); }
   }
 
   private ocrRequestBody(model: string, isPdf: boolean, dataUrl: string, input: MistralOcrInput) {

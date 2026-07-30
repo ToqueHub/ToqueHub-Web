@@ -1084,6 +1084,7 @@ export class MenusService {
         return {
           ...line,
           portions: requested ? Number(requested.portions) : line.portions,
+          productionDate: requested?.productionDate,
           plannedTime: requested?.plannedTime || dto.plannedTime || '08:00',
         };
       })
@@ -1101,9 +1102,10 @@ export class MenusService {
       dto.mode === MenuProductionGenerationMode.DETAILED
         ? effective.map((line) => ({ key: line.menuItemId, lines: [line] }))
         : [...effective.reduce((map, line) => {
-            const current = map.get(line.technicalSheetId) ?? [];
+            const groupKey = `${line.technicalSheetId}:${line.productionDate ?? menu.date.toISOString()}:${line.plannedTime}`;
+            const current = map.get(groupKey) ?? [];
             current.push(line);
-            map.set(line.technicalSheetId, current);
+            map.set(groupKey, current);
             return map;
           }, new Map()).entries()].map(([key, lines]) => ({ key, lines }));
 
@@ -1160,7 +1162,7 @@ export class MenusService {
             sourceReferenceType: 'MenuProductionGroup',
             sourceReferenceId: reference,
             quantity: new Prisma.Decimal(portions).toFixed(3),
-            neededAt: menu.date.toISOString(),
+            neededAt: dto.neededAt ?? menu.date.toISOString(),
             status: 'CONFIRMED',
             notes: `Besoin généré depuis le menu ${menu.name}`,
           },
@@ -1169,7 +1171,8 @@ export class MenusService {
       const campaignPayload = {
         profileId: profile.id,
         grossRequirement: new Prisma.Decimal(portions).toFixed(3),
-        neededAt: menu.date.toISOString(),
+        neededAt: dto.neededAt ?? menu.date.toISOString(),
+        productionDate: group.lines[0].productionDate,
         plannedTime: group.lines[0].plannedTime || dto.plannedTime || '08:00',
         serviceId: dto.serviceId,
         name:
@@ -1227,6 +1230,7 @@ export class MenusService {
               openingCarryOverPortions:
                 requestedLines.get(line.menuItemId)?.openingCarryOverPortions ?? 0,
               plannedTime: line.plannedTime,
+              productionDate: line.productionDate ?? menu.date.toISOString(),
             })),
           },
         },

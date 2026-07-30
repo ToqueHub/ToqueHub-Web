@@ -9,7 +9,7 @@ All endpoints except `POST /auth/login` require a JWT bearer token.
 ## Auth
 
 - `POST /auth/login`
-  - Body: `{ "email": "admin@toquehub.local", "password": "toquehub" }`
+  - Body: `{ "email": "admin@mon-etablissement.fr", "password": "Votre-mot-de-passe" }`
   - Returns: `{ accessToken, user }`
 - `GET /auth/me`
 

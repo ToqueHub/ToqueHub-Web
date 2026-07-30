@@ -260,12 +260,11 @@ export function CatererMenusApp({
         position: prestation.position,
         notes: prestation.notes ?? '',
         items: (prestation.menu.items ?? []).map((item) => ({
+          id: item.id,
           section: item.section,
           technicalSheetId: item.technicalSheetId ?? undefined,
           productId: item.productId ?? undefined,
           servingQuantity: Number(item.servingQuantity ?? 1),
-          portionsOverride:
-            item.portionsOverride == null ? undefined : Number(item.portionsOverride),
           notes: '',
         })),
       })),
@@ -324,22 +323,10 @@ export function CatererMenusApp({
   }
 
   async function generate(event: CatererEvent) {
-    if (
-      event.productionState === 'PLANNED' ||
-      event.productionState === 'IN_PROGRESS' ||
-      event.productionState === 'COMPLETED'
-    ) {
-      onOpenProduction?.(event.id);
-      return;
-    }
     await run(async () => {
-      const result = await api.generateCatererEventProductions(token, event.id, {
-        mode: 'GROUPED',
-      });
-      await refresh();
-      setSuccess(`${result.created} campagne(s) de production créée(s).`);
+      await api.generateCatererEventProductions(token, event.id, { mode: 'DETAILED' });
       onOpenProduction?.(event.id);
-    }, 'Productions générées.');
+    }, 'Fabrications Traiteur préparées.');
   }
 
   async function download(kind: 'KITCHEN' | 'HANDOFF' | 'CLIENT') {
@@ -454,7 +441,6 @@ export function CatererMenusApp({
           [
             ['dashboard', 'Tableau de bord', <CalendarDays key="dash" size={16} />],
             ['events', 'Événements', <Truck key="evt" size={16} />],
-            ['calendar', 'Calendrier', <Clock key="cal" size={16} />],
             ['clients', 'Clients', <UserRound key="cli" size={16} />],
             ['documents', 'Documents', <FileText key="doc" size={16} />],
             ['history', 'Historique', <History key="hist" size={16} />],
@@ -529,7 +515,7 @@ export function CatererMenusApp({
           <div className="caterer-card">
             <div className="caterer-card-header">
               <span className="caterer-card-title">
-                <CalendarDays size={20} color="#10b981" /> Prochains événements
+                <CalendarDays size={20} color="#10b981" /> Calendrier des événements
               </span>
               <button
                 className="btn btn-primary btn-sm"
@@ -539,16 +525,18 @@ export function CatererMenusApp({
                 <Plus size={14} /> Créer un événement
               </button>
             </div>
-            <EventTable
-              events={dashboard?.upcoming ?? []}
-              saving={saving}
-              onSelect={(item) => {
-                setSelectedEventId(item.id);
-                navigate('events');
+            <CatererCalendarView
+              events={events}
+              embedded
+              onSelectEvent={(eventId) => {
+                const item = events.find((event) => event.id === eventId);
+                if (item) {
+                  setSelectedEventId(item.id);
+                  setDetailModalEvent(item);
+                }
               }}
-              onEdit={startEdit}
-              onStatus={changeStatus}
-              onGenerate={generate}
+              onCreateEvent={(dateISO) => startCreate(dateISO)}
+              onEditEvent={startEdit}
             />
           </div>
         </div>
@@ -1397,7 +1385,7 @@ function CompositionEditor({
             key={index}
             style={{
               display: 'grid',
-              gridTemplateColumns: '1fr 130px 150px auto',
+              gridTemplateColumns: 'minmax(220px, 1fr) minmax(160px, 220px) auto',
               alignItems: 'center',
               gap: '0.75rem',
               border: '1px solid var(--light-border)',
@@ -1416,7 +1404,7 @@ function CompositionEditor({
               </span>
             </div>
             <label style={{ fontSize: '0.78rem', color: '#64748b' }}>
-              Qté / convive
+              Quantité par convive
               <input
                 type="number"
                 min=".001"
@@ -1424,23 +1412,6 @@ function CompositionEditor({
                 value={item.servingQuantity ?? 1}
                 onChange={(event) =>
                   onUpdate(index, { servingQuantity: Number(event.target.value) })
-                }
-                style={{ padding: '0.35rem 0.5rem', marginTop: '0.2rem' }}
-              />
-            </label>
-            <label style={{ fontSize: '0.78rem', color: '#64748b' }}>
-              Total dérogatoire
-              <input
-                type="number"
-                min="0"
-                step="any"
-                value={item.portionsOverride ?? ''}
-                placeholder={String(prestation.expectedGuests * Number(item.servingQuantity ?? 1))}
-                onChange={(event) =>
-                  onUpdate(index, {
-                    portionsOverride:
-                      event.target.value === '' ? undefined : Number(event.target.value),
-                  })
                 }
                 style={{ padding: '0.35rem 0.5rem', marginTop: '0.2rem' }}
               />
@@ -1585,7 +1556,7 @@ function EventTable({
                         <ChefHat size={13} />{' '}
                         {event.productionState === 'NOT_GENERATED' ||
                         event.productionState === 'DIRTY'
-                          ? 'Générer'
+                          ? 'Planifier'
                           : 'Voir les productions'}
                       </button>
                       <button
@@ -1676,7 +1647,7 @@ function EventDetail({
               onClick={() => onGenerateProduction(event)}
             >
               <ChefHat size={16} />
-              {event.productionState === 'NOT_GENERATED' || event.productionState === 'DIRTY' ? 'Générer les fabrications' : 'Voir la production'}
+              {event.productionState === 'NOT_GENERATED' || event.productionState === 'DIRTY' ? 'Planifier dans Fabrication' : 'Voir la production'}
             </button>
           )}
           <button
@@ -1730,6 +1701,208 @@ function EventDetail({
   );
 }
 
+function CatererDashboardCalendar({
+  events,
+  onSelect,
+  onCreate,
+}: {
+  events: CatererEvent[];
+  onSelect: (event: CatererEvent) => void;
+  onCreate: (dateISO: string) => void;
+}) {
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    const nextEvent = events
+      .filter((event) => event.startsAt && event.status !== 'CANCELLED')
+      .sort((left, right) => String(left.startsAt).localeCompare(String(right.startsAt)))[0];
+    const date = nextEvent?.startsAt ? new Date(nextEvent.startsAt) : new Date();
+    return new Date(date.getFullYear(), date.getMonth(), 1);
+  });
+  const year = currentMonth.getFullYear();
+  const month = currentMonth.getMonth();
+  const monthLabel = new Intl.DateTimeFormat('fr-FR', {
+    month: 'long',
+    year: 'numeric',
+  })
+    .format(currentMonth)
+    .replace(/^./, (letter) => letter.toUpperCase());
+  const firstDay = new Date(year, month, 1);
+  const gridStart = new Date(firstDay);
+  gridStart.setDate(firstDay.getDate() - ((firstDay.getDay() + 6) % 7));
+  const days = Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(gridStart);
+    date.setDate(gridStart.getDate() + index);
+    return date;
+  });
+  const todayKey = dashboardCalendarDateKey(new Date());
+  const activeEvents = events.filter((event) => event.status !== 'CANCELLED' && event.startsAt);
+
+  return (
+    <div style={{ display: 'grid', gap: '.8rem' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '.75rem',
+          flexWrap: 'wrap',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '.4rem' }}>
+          <button
+            type="button"
+            style={calendarIconButtonStyle}
+            onClick={() => setCurrentMonth(new Date(year, month - 1, 1))}
+            aria-label="Mois précédent"
+          >
+            <ChevronLeft size={17} />
+          </button>
+          <button
+            type="button"
+            style={calendarSecondaryButtonStyle}
+            onClick={() => {
+              const today = new Date();
+              setCurrentMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+            }}
+          >
+            Aujourd’hui
+          </button>
+          <button
+            type="button"
+            style={calendarIconButtonStyle}
+            onClick={() => setCurrentMonth(new Date(year, month + 1, 1))}
+            aria-label="Mois suivant"
+          >
+            <ChevronRight size={17} />
+          </button>
+        </div>
+        <strong style={{ color: '#0f172a', textTransform: 'capitalize' }}>{monthLabel}</strong>
+      </div>
+
+      <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: 14 }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(7, minmax(100px, 1fr))',
+            minWidth: 700,
+            background: '#e2e8f0',
+            gap: 1,
+          }}
+        >
+          {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map((label) => (
+            <div
+              key={label}
+              style={{
+                padding: '.5rem',
+                textAlign: 'center',
+                background: '#f8fafc',
+                color: '#64748b',
+                fontSize: '.76rem',
+                fontWeight: 800,
+              }}
+            >
+              {label}
+            </div>
+          ))}
+          {days.map((date) => {
+            const dateKey = dashboardCalendarDateKey(date);
+            const dayEvents = activeEvents.filter(
+              (event) => dashboardCalendarDateKey(new Date(event.startsAt!)) === dateKey,
+            );
+            const inMonth = date.getMonth() === month;
+            return (
+              <div
+                key={dateKey}
+                style={{
+                  minHeight: 92,
+                  padding: '.45rem',
+                  background: inMonth ? '#ffffff' : '#f8fafc',
+                  opacity: inMonth ? 1 : 0.58,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '.3rem',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <span
+                    style={{
+                      display: 'grid',
+                      placeItems: 'center',
+                      width: 25,
+                      height: 25,
+                      borderRadius: 999,
+                      background: dateKey === todayKey ? '#10b981' : 'transparent',
+                      color: dateKey === todayKey ? '#ffffff' : '#334155',
+                      fontWeight: 800,
+                      fontSize: '.78rem',
+                    }}
+                  >
+                    {date.getDate()}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onCreate(dateKey)}
+                    aria-label={`Créer un événement le ${dateKey}`}
+                    style={{
+                      border: 0,
+                      background: 'transparent',
+                      color: '#94a3b8',
+                      cursor: 'pointer',
+                      padding: 2,
+                    }}
+                  >
+                    <Plus size={13} />
+                  </button>
+                </div>
+                {dayEvents.slice(0, 2).map((event) => (
+                  <button
+                    key={event.id}
+                    type="button"
+                    onClick={() => onSelect(event)}
+                    title={`${event.reference} · ${event.name}`}
+                    style={{
+                      border: '1px solid #a7f3d0',
+                      borderRadius: 7,
+                      background: '#ecfdf5',
+                      color: '#065f46',
+                      padding: '.25rem .35rem',
+                      fontSize: '.69rem',
+                      fontWeight: 750,
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {event.name}
+                  </button>
+                ))}
+                {dayEvents.length > 2 && (
+                  <span style={{ color: '#64748b', fontSize: '.68rem', fontWeight: 700 }}>
+                    + {dayEvents.length - 2} autre(s)
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function dashboardCalendarDateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+    date.getDate(),
+  ).padStart(2, '0')}`;
+}
+
 function CatererEventsView({
   events,
   allEvents,
@@ -1772,13 +1945,13 @@ function CatererEventsView({
   const prodToGenerate = activeEvents.filter((ev) => ev.productionState === 'NOT_GENERATED' || ev.productionState === 'DIRTY').length;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '.8rem', minWidth: 0 }}>
       {/* ─── BANNIÈRE HERO ─── */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         className="production-hero-card"
-        style={{ padding: '1.5rem 1.8rem' }}
+        style={{ padding: '.9rem 1.15rem' }}
       >
         <div className="production-hero-glow" />
         <div style={{ position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1.2rem' }}>
@@ -1786,9 +1959,11 @@ function CatererEventsView({
             <div className="production-hero-badge">
               <Truck size={13} /> GESTION DES PRESTATIONS & RECEPTIONS
             </div>
-            <h2 className="production-hero-title">Dossiers événementiels</h2>
-            <p className="production-hero-desc">
-              Organisez vos réceptions, suivez vos devis et générez vos ordres de fabrication en un clic.
+            <h2 className="production-hero-title" style={{ fontSize: '1.45rem' }}>
+              Dossiers événementiels
+            </h2>
+            <p className="production-hero-desc" style={{ fontSize: '.84rem' }}>
+              Organisez vos réceptions, puis planifiez leurs recettes dans le module Fabrication.
             </p>
           </div>
           <button
@@ -1802,8 +1977,8 @@ function CatererEventsView({
       </motion.div>
 
       {/* ─── BARRE DE MÉTRIQUES ─── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '.8rem' }}>
-        <div className="production-metric-card" style={{ cursor: 'pointer', border: !statusFilter ? '2px solid #10b981' : undefined }} onClick={() => onStatusFilter('')}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '.55rem' }}>
+        <div className="production-metric-card" style={{ cursor: 'pointer', padding: '.65rem .75rem', border: !statusFilter ? '2px solid #10b981' : undefined }} onClick={() => onStatusFilter('')}>
           <div className="production-metric-icon-wrap" style={{ background: '#f1f5f9', color: '#0f172a' }}>
             <Truck size={18} />
           </div>
@@ -1813,7 +1988,7 @@ function CatererEventsView({
           </div>
         </div>
 
-        <div className="production-metric-card" style={{ cursor: 'pointer', border: statusFilter === 'CONFIRMED' ? '2px solid #10b981' : undefined }} onClick={() => onStatusFilter(statusFilter === 'CONFIRMED' ? '' : 'CONFIRMED')}>
+        <div className="production-metric-card" style={{ cursor: 'pointer', padding: '.65rem .75rem', border: statusFilter === 'CONFIRMED' ? '2px solid #10b981' : undefined }} onClick={() => onStatusFilter(statusFilter === 'CONFIRMED' ? '' : 'CONFIRMED')}>
           <div className="production-metric-icon-wrap" style={{ background: '#ecfdf5', color: '#10b981' }}>
             <CheckCircle2 size={18} />
           </div>
@@ -1823,7 +1998,7 @@ function CatererEventsView({
           </div>
         </div>
 
-        <div className="production-metric-card" style={{ cursor: 'pointer', border: statusFilter === 'DRAFT' ? '2px solid #f59e0b' : undefined }} onClick={() => onStatusFilter(statusFilter === 'DRAFT' ? '' : 'DRAFT')}>
+        <div className="production-metric-card" style={{ cursor: 'pointer', padding: '.65rem .75rem', border: statusFilter === 'DRAFT' ? '2px solid #f59e0b' : undefined }} onClick={() => onStatusFilter(statusFilter === 'DRAFT' ? '' : 'DRAFT')}>
           <div className="production-metric-icon-wrap" style={{ background: '#fffbeb', color: '#f59e0b' }}>
             <Clock size={18} />
           </div>
@@ -1833,7 +2008,7 @@ function CatererEventsView({
           </div>
         </div>
 
-        <div className="production-metric-card">
+        <div className="production-metric-card" style={{ padding: '.65rem .75rem' }}>
           <div className="production-metric-icon-wrap" style={{ background: '#ede9fe', color: '#7c3aed' }}>
             <UsersRound size={18} />
           </div>
@@ -1843,7 +2018,7 @@ function CatererEventsView({
           </div>
         </div>
 
-        <div className="production-metric-card">
+        <div className="production-metric-card" style={{ padding: '.65rem .75rem' }}>
           <div className="production-metric-icon-wrap" style={{ background: '#ffedd5', color: '#c2410c' }}>
             <ChefHat size={18} />
           </div>
@@ -2027,7 +2202,7 @@ function CatererEventsView({
                               onClick={(e) => { e.stopPropagation(); onGenerateProduction(event); }}
                             >
                               <ChefHat size={14} />
-                              {event.productionState === 'NOT_GENERATED' || event.productionState === 'DIRTY' ? 'Générer' : 'Voir prod'}
+                              {event.productionState === 'NOT_GENERATED' || event.productionState === 'DIRTY' ? 'Planifier' : 'Voir prod'}
                             </button>
                           )}
 
@@ -2174,10 +2349,6 @@ function CatererEventsView({
         )}
       </div>
 
-      {/* ─── PANNEAU DÉTAIL DU DOSSIER SÉLECTIONNÉ ─── */}
-      {selectedEvent && (
-        <EventDetail event={selectedEvent} onEdit={onEditEvent} onGenerateProduction={onGenerateProduction} />
-      )}
     </div>
   );
 }
@@ -2438,17 +2609,20 @@ function CatererCalendarView({
   onSelectEvent,
   onCreateEvent,
   onEditEvent,
+  embedded = false,
 }: {
   events: CatererEvent[];
   onSelectEvent: (eventId: string) => void;
   onCreateEvent: (dateISO?: string) => void;
   onEditEvent: (event: CatererEvent) => void;
+  embedded?: boolean;
 }) {
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'agenda'>('month');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [fulfillmentFilter, setFulfillmentFilter] = useState<string>('');
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -2555,13 +2729,13 @@ function CatererCalendarView({
   }, [currentDate, todayStr]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: embedded ? '.8rem' : '1.25rem' }}>
       {/* ─── BANNIÈRE HERO CALENDRIER ─── */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         className="production-hero-card"
-        style={{ padding: '1.5rem 1.8rem' }}
+        style={{ padding: '1.5rem 1.8rem', display: embedded ? 'none' : undefined }}
       >
         <div className="production-hero-glow" />
         <div style={{ position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1.2rem' }}>
@@ -2585,7 +2759,7 @@ function CatererCalendarView({
       </motion.div>
 
       {/* ─── BARRE DE MÉTRIQUES DU CALENDRIER ─── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '.8rem' }}>
+      <div style={{ display: embedded ? 'none' : 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '.8rem' }}>
         <div className="production-metric-card">
           <div className="production-metric-icon-wrap" style={{ background: '#ecfdf5', color: '#10b981' }}>
             <CalendarDays size={18} />
@@ -2751,6 +2925,8 @@ function CatererCalendarView({
               <div
                 key={index}
                 className={`caterer-calendar-day-cell${cell.isCurrentMonth ? '' : ' is-other-month'}${cell.isToday ? ' is-today' : ''}`}
+                onClick={() => cell.dateStr && setSelectedDay(cell.dateStr)}
+                style={{ cursor: cell.dateStr ? 'pointer' : 'default' }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '.35rem' }}>
                   <span className={`caterer-calendar-date-number${cell.isToday ? ' today-pill' : ''}`}>
@@ -2760,7 +2936,10 @@ function CatererCalendarView({
                     <button
                       type="button"
                       className="caterer-calendar-add-btn"
-                      onClick={() => onCreateEvent(cell.dateStr)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onCreateEvent(cell.dateStr);
+                      }}
                       title={`Créer un événement le ${cell.dayNum}`}
                     >
                       <Plus size={13} />
@@ -2778,7 +2957,10 @@ function CatererCalendarView({
                         key={ev.id}
                         className="caterer-calendar-event-chip"
                         style={{ borderLeft: `3.5px solid ${statusColor}`, background: statusBg }}
-                        onClick={() => onSelectEvent(ev.id)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (cell.dateStr) setSelectedDay(cell.dateStr);
+                        }}
                       >
                         <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '.78rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {ev.name}
@@ -2806,6 +2988,7 @@ function CatererCalendarView({
             return (
               <div
                 key={wd.dateStr}
+                onClick={() => setSelectedDay(wd.dateStr)}
                 style={{
                   background: wd.isToday ? '#f0fdf4' : '#f8fafc',
                   border: `1px solid ${wd.isToday ? '#6ee7b7' : '#e2e8f0'}`,
@@ -2815,6 +2998,7 @@ function CatererCalendarView({
                   flexDirection: 'column',
                   gap: '.65rem',
                   minHeight: '400px',
+                  cursor: 'pointer',
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '.5rem', borderBottom: '1px solid #e2e8f0' }}>
@@ -2824,7 +3008,10 @@ function CatererCalendarView({
                   <button
                     type="button"
                     style={calendarIconButtonStyle}
-                    onClick={() => onCreateEvent(wd.dateStr)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onCreateEvent(wd.dateStr);
+                    }}
                     title="Ajouter à cette date"
                   >
                     <Plus size={14} />
@@ -2842,7 +3029,10 @@ function CatererCalendarView({
                         key={ev.id}
                         className="fabrication-campaign-card"
                         style={{ padding: '.8rem', cursor: 'pointer' }}
-                        onClick={() => onSelectEvent(ev.id)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setSelectedDay(wd.dateStr);
+                        }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '.3rem' }}>
                           <span style={{ fontSize: '.7rem', fontWeight: 850, color: '#10b981' }}>{ev.reference}</span>
@@ -2925,6 +3115,291 @@ function CatererCalendarView({
           )}
         </div>
       )}
+
+      <AnimatePresence>
+        {selectedDay && (
+          <CatererDaySummaryModal
+            date={selectedDay}
+            events={filteredEvents.filter(
+              (event) =>
+                event.startsAt &&
+                dashboardCalendarDateKey(new Date(event.startsAt)) === selectedDay,
+            )}
+            onClose={() => setSelectedDay(null)}
+            onCreate={() => {
+              const date = selectedDay;
+              setSelectedDay(null);
+              onCreateEvent(date);
+            }}
+            onSelect={(event) => {
+              setSelectedDay(null);
+              onSelectEvent(event.id);
+            }}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function CatererDaySummaryModal({
+  date,
+  events,
+  onClose,
+  onCreate,
+  onSelect,
+}: {
+  date: string;
+  events: CatererEvent[];
+  onClose: () => void;
+  onCreate: () => void;
+  onSelect: (event: CatererEvent) => void;
+}) {
+  const selectedDate = new Date(`${date}T12:00:00`);
+  const fullDateLabel = new Intl.DateTimeFormat('fr-FR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(selectedDate);
+  const sortedEvents = [...events].sort(
+    (left, right) =>
+      new Date(left.startsAt ?? 0).getTime() - new Date(right.startsAt ?? 0).getTime(),
+  );
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 1040,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '1rem',
+        background: 'rgba(15, 23, 42, 0.55)',
+        backdropFilter: 'blur(7px)',
+      }}
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 18 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 18 }}
+        transition={{ duration: 0.18 }}
+        style={{
+          width: '100%',
+          maxWidth: '700px',
+          maxHeight: 'calc(100dvh - 2rem)',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          border: '1px solid rgba(255, 255, 255, 0.7)',
+          borderRadius: '26px',
+          background: '#f8fafc',
+          boxShadow: '0 30px 80px -25px rgba(15, 23, 42, 0.55)',
+        }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div
+          style={{
+            padding: '1.25rem 1.35rem',
+            background: 'linear-gradient(135deg, #ecfdf5 0%, #eff6ff 65%, #ffffff 100%)',
+            borderBottom: '1px solid #dbeafe',
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            gap: '1rem',
+          }}
+        >
+          <div style={{ display: 'flex', gap: '.9rem', alignItems: 'center', minWidth: 0 }}>
+            <div
+              style={{
+                width: '48px',
+                height: '48px',
+                flexShrink: 0,
+                borderRadius: '15px',
+                display: 'grid',
+                placeItems: 'center',
+                color: '#047857',
+                background: 'rgba(255, 255, 255, 0.9)',
+                border: '1px solid #a7f3d0',
+                boxShadow: '0 8px 20px -12px rgba(5, 150, 105, 0.55)',
+              }}
+            >
+              <CalendarDays size={23} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: '#047857', fontSize: '.74rem', fontWeight: 850, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                Récapitulatif de la journée
+              </div>
+              <h3 style={{ margin: '.2rem 0 0', color: '#0f172a', fontSize: '1.16rem', fontWeight: 850, textTransform: 'capitalize' }}>
+                {fullDateLabel}
+              </h3>
+              <div style={{ marginTop: '.25rem', color: '#64748b', fontSize: '.82rem' }}>
+                {sortedEvents.length
+                  ? `${sortedEvents.length} événement${sortedEvents.length > 1 ? 's' : ''} planifié${sortedEvents.length > 1 ? 's' : ''}`
+                  : 'Aucun événement planifié'}
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fermer le récapitulatif"
+            style={{
+              width: '36px',
+              height: '36px',
+              flexShrink: 0,
+              display: 'grid',
+              placeItems: 'center',
+              border: '1px solid #e2e8f0',
+              borderRadius: '50%',
+              color: '#475569',
+              background: 'rgba(255, 255, 255, 0.9)',
+              cursor: 'pointer',
+            }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+            overscrollBehavior: 'contain',
+            WebkitOverflowScrolling: 'touch',
+            padding: '1rem',
+          }}
+        >
+          {!sortedEvents.length ? (
+            <div
+              style={{
+                padding: '2.4rem 1rem',
+                textAlign: 'center',
+                border: '1px dashed #cbd5e1',
+                borderRadius: '18px',
+                background: '#ffffff',
+              }}
+            >
+              <div
+                style={{
+                  width: '52px',
+                  height: '52px',
+                  margin: '0 auto .8rem',
+                  display: 'grid',
+                  placeItems: 'center',
+                  borderRadius: '17px',
+                  color: '#64748b',
+                  background: '#f1f5f9',
+                }}
+              >
+                <CalendarDays size={24} />
+              </div>
+              <strong style={{ display: 'block', color: '#0f172a' }}>Journée disponible</strong>
+              <span style={{ display: 'block', marginTop: '.3rem', color: '#64748b', fontSize: '.84rem' }}>
+                Vous pouvez créer un événement directement à cette date.
+              </span>
+              <button type="button" className="production-btn-primary" onClick={onCreate} style={{ marginTop: '1rem' }}>
+                <Plus size={16} /> Nouvel événement
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '.7rem' }}>
+              {sortedEvents.map((event) => {
+                const startTime = event.startsAt
+                  ? new Date(event.startsAt).toLocaleTimeString('fr-FR', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })
+                  : '—';
+
+                return (
+                  <button
+                    key={event.id}
+                    type="button"
+                    onClick={() => onSelect(event)}
+                    style={{
+                      width: '100%',
+                      padding: '.9rem',
+                      display: 'grid',
+                      gridTemplateColumns: '58px minmax(0, 1fr) auto',
+                      gap: '.9rem',
+                      alignItems: 'center',
+                      textAlign: 'left',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '18px',
+                      background: '#ffffff',
+                      boxShadow: '0 8px 24px -20px rgba(15, 23, 42, 0.55)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <div
+                      style={{
+                        padding: '.62rem .35rem',
+                        textAlign: 'center',
+                        borderRadius: '14px',
+                        color: '#047857',
+                        background: '#ecfdf5',
+                        border: '1px solid #a7f3d0',
+                        fontSize: '.82rem',
+                        fontWeight: 850,
+                      }}
+                    >
+                      {startTime}
+                    </div>
+
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '.4rem', flexWrap: 'wrap', marginBottom: '.25rem' }}>
+                        <span style={{ color: '#059669', fontSize: '.72rem', fontWeight: 850 }}>{event.reference}</span>
+                        <StatusBadge status={event.status} />
+                        <ProductionBadge state={event.productionState} />
+                        <FulfillmentBadge mode={event.fulfillmentMode} />
+                      </div>
+                      <strong style={{ display: 'block', color: '#0f172a', fontSize: '.96rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {event.name}
+                      </strong>
+                      <div style={{ display: 'flex', gap: '.7rem', flexWrap: 'wrap', marginTop: '.32rem', color: '#64748b', fontSize: '.76rem' }}>
+                        <span><UserRound size={12} style={{ display: 'inline', marginRight: 3 }} />{event.clientSnapshot?.name ?? event.client?.name ?? 'Client'}</span>
+                        <span><UsersRound size={12} style={{ display: 'inline', marginRight: 3 }} />{event.totalGuests} convives</span>
+                        <span><Layers size={12} style={{ display: 'inline', marginRight: 3 }} />{event.prestations.length} prestation(s)</span>
+                        {event.venueName && <span><MapPin size={12} style={{ display: 'inline', marginRight: 3 }} />{event.venueName}</span>}
+                      </div>
+                    </div>
+
+                    <ChevronRight size={20} color="#10b981" />
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {!!sortedEvents.length && (
+          <div
+            style={{
+              padding: '.85rem 1rem',
+              borderTop: '1px solid #e2e8f0',
+              background: '#ffffff',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '.7rem',
+              flexWrap: 'wrap',
+            }}
+          >
+            <button type="button" className="production-btn-primary" onClick={onCreate}>
+              <Plus size={16} /> Nouvel événement ce jour
+            </button>
+            <button type="button" style={calendarSecondaryButtonStyle} onClick={onClose}>
+              Fermer
+            </button>
+          </div>
+        )}
+      </motion.div>
     </div>
   );
 }
@@ -2987,14 +3462,15 @@ function CatererEventDetailModal({
         transition={{ duration: 0.2 }}
         style={{
           background: '#ffffff',
-          borderRadius: '24px',
+          borderRadius: '28px',
           width: '100%',
-          maxWidth: '850px',
-          maxHeight: '90vh',
+          maxWidth: '920px',
+          maxHeight: 'calc(100dvh - 2rem)',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
-          boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.3)',
+          border: '1px solid rgba(255, 255, 255, 0.75)',
+          boxShadow: '0 30px 80px -25px rgba(15, 23, 42, 0.55)',
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -3002,15 +3478,16 @@ function CatererEventDetailModal({
         <div
           style={{
             padding: '1.4rem 1.6rem 0',
-            background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-            color: '#ffffff',
+            background: 'linear-gradient(135deg, #ecfdf5 0%, #eff6ff 58%, #ffffff 100%)',
+            color: '#0f172a',
             position: 'relative',
+            borderTop: '4px solid #10b981',
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem', marginBottom: '.4rem' }}>
-                <span style={{ fontSize: '.78rem', fontWeight: 850, color: '#34d399', background: 'rgba(52, 211, 153, 0.15)', padding: '.2rem .6rem', borderRadius: '8px' }}>
+                <span style={{ fontSize: '.78rem', fontWeight: 850, color: '#047857', background: 'rgba(255, 255, 255, 0.9)', border: '1px solid #a7f3d0', padding: '.2rem .6rem', borderRadius: '8px' }}>
                   {event.reference}
                 </span>
                 <StatusBadge status={event.status} />
@@ -3018,11 +3495,12 @@ function CatererEventDetailModal({
                 <FulfillmentBadge mode={event.fulfillmentMode} />
               </div>
 
-              <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#ffffff' }}>
+              <h2 style={{ margin: 0, fontSize: '1.45rem', fontWeight: 850, color: '#0f172a' }}>
                 {event.name}
               </h2>
 
-              <div style={{ color: '#94a3b8', fontSize: '.84rem', marginTop: '.35rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <div style={{ color: '#475569', fontSize: '.84rem', marginTop: '.4rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <span><CalendarDays size={14} style={{ display: 'inline', marginRight: 4 }} /> {dateLabel(event.startsAt)}</span>
                 <span><UserRound size={14} style={{ display: 'inline', marginRight: 4 }} /> {event.clientSnapshot?.name ?? event.client?.name ?? 'Client non renseigné'}</span>
                 <span><UsersRound size={14} style={{ display: 'inline', marginRight: 4 }} /> {event.totalGuests} convives</span>
               </div>
@@ -3032,9 +3510,9 @@ function CatererEventDetailModal({
               type="button"
               onClick={onClose}
               style={{
-                border: 0,
-                background: 'rgba(255, 255, 255, 0.1)',
-                color: '#94a3b8',
+                border: '1px solid #e2e8f0',
+                background: 'rgba(255, 255, 255, 0.9)',
+                color: '#475569',
                 width: '34px',
                 height: '34px',
                 borderRadius: '50%',
@@ -3048,7 +3526,7 @@ function CatererEventDetailModal({
           </div>
 
           {/* ONGLET NATIVE */}
-          <div style={{ display: 'flex', gap: '0.4rem', marginTop: '1.2rem', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
+          <div style={{ display: 'flex', gap: '0.4rem', marginTop: '1.2rem', borderBottom: '1px solid #dbeafe', overflowX: 'auto', flexWrap: 'nowrap' }}>
             {[
               { key: 'overview', label: 'Aperçu Général', icon: Eye },
               { key: 'prestations', label: `Prestations (${event.prestations.length})`, icon: Layers },
@@ -3070,10 +3548,11 @@ function CatererEventDetailModal({
                     border: 0,
                     borderBottom: isActive ? '3px solid #10b981' : '3px solid transparent',
                     background: 'transparent',
-                    color: isActive ? '#34d399' : '#94a3b8',
+                    color: isActive ? '#047857' : '#64748b',
                     fontWeight: isActive ? 850 : 650,
                     fontSize: '.84rem',
                     cursor: 'pointer',
+                    whiteSpace: 'nowrap',
                   }}
                 >
                   <Icon size={15} /> {t.label}
@@ -3084,7 +3563,20 @@ function CatererEventDetailModal({
         </div>
 
         {/* CORPS DU MODAL */}
-        <div style={{ padding: '1.5rem', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+        <div
+          style={{
+            padding: '1.5rem',
+            overflowY: 'auto',
+            overscrollBehavior: 'contain',
+            WebkitOverflowScrolling: 'touch',
+            minHeight: 0,
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1.2rem',
+            background: '#f8fafc',
+          }}
+        >
           {activeTab === 'overview' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '.85rem' }}>
@@ -3110,7 +3602,7 @@ function CatererEventDetailModal({
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
                 <div style={{ padding: '1.1rem', background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
                   <strong style={{ fontSize: '.92rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '.4rem', marginBottom: '.65rem' }}>
                     <UserRound size={16} color="#10b981" /> Informations Client
@@ -3195,38 +3687,40 @@ function CatererEventDetailModal({
               <div style={{ fontSize: '.85rem', color: '#64748b' }}>
                 Liste consolidée de tous les articles et fiches techniques nécessaires pour cet événement traiteur :
               </div>
-              <table className="table-modern" style={{ width: '100%' }}>
-                <thead>
-                  <tr>
-                    <th>Article / Fiche Technique</th>
-                    <th>Total Portions Nécessaires</th>
-                    <th>Prestations Concernées</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {aggregatedRecipes.map((recipe) => (
-                    <tr key={recipe.id}>
-                      <td>
-                        <strong style={{ color: '#0f172a', fontSize: '.9rem' }}>{recipe.name}</strong>
-                      </td>
-                      <td>
-                        <span style={{ fontSize: '.95rem', fontWeight: 850, color: '#10b981', background: '#ecfdf5', padding: '.2rem .6rem', borderRadius: '8px' }}>
-                          {recipe.portions} portions
-                        </span>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: '.3rem', flexWrap: 'wrap' }}>
-                          {recipe.prestations.map((p) => (
-                            <span key={p} style={{ fontSize: '.75rem', background: '#f1f5f9', color: '#475569', padding: '.15rem .45rem', borderRadius: '6px' }}>
-                              {p}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
+              <div style={{ overflowX: 'auto', borderRadius: '14px' }}>
+                <table className="table-modern" style={{ width: '100%', minWidth: '650px' }}>
+                  <thead>
+                    <tr>
+                      <th>Article / Fiche Technique</th>
+                      <th>Total Portions Nécessaires</th>
+                      <th>Prestations Concernées</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {aggregatedRecipes.map((recipe) => (
+                      <tr key={recipe.id}>
+                        <td>
+                          <strong style={{ color: '#0f172a', fontSize: '.9rem' }}>{recipe.name}</strong>
+                        </td>
+                        <td>
+                          <span style={{ fontSize: '.95rem', fontWeight: 850, color: '#10b981', background: '#ecfdf5', padding: '.2rem .6rem', borderRadius: '8px' }}>
+                            {recipe.portions} portions
+                          </span>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '.3rem', flexWrap: 'wrap' }}>
+                            {recipe.prestations.map((p) => (
+                              <span key={p} style={{ fontSize: '.75rem', background: '#f1f5f9', color: '#475569', padding: '.15rem .45rem', borderRadius: '6px' }}>
+                                {p}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
@@ -3250,7 +3744,7 @@ function CatererEventDetailModal({
         </div>
 
         {/* FOOTER DES ACTIONS RAPIDES */}
-        <div style={{ padding: '1.1rem 1.6rem', borderTop: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+        <div style={{ padding: '1.1rem 1.6rem', borderTop: '1px solid #e2e8f0', background: '#ffffff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', flexShrink: 0 }}>
           <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap' }}>
             {event.status === 'CONFIRMED' && (
               <button
@@ -3262,7 +3756,7 @@ function CatererEventDetailModal({
                 }}
               >
                 <ChefHat size={16} />
-                {event.productionState === 'NOT_GENERATED' || event.productionState === 'DIRTY' ? 'Générer les fabrications' : 'Voir les productions'}
+                {event.productionState === 'NOT_GENERATED' || event.productionState === 'DIRTY' ? 'Planifier dans Fabrication' : 'Voir les productions'}
               </button>
             )}
 
