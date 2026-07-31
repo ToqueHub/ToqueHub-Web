@@ -108,5 +108,5 @@ curl -fsS http://localhost/api/system/status
 Default URL:
 
 ```text
-http://toquehub.local
+http://toquehub-pi.local
 ```

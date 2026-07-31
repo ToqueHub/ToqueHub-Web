@@ -173,7 +173,7 @@ configure_local_hostname() {
   set +a
 
   local local_hostname set_hostname
-  local_hostname="${TOQUEHUB_LOCAL_HOSTNAME:-toquehub}"
+  local_hostname="${TOQUEHUB_LOCAL_HOSTNAME:-toquehub-pi}"
   set_hostname="${TOQUEHUB_SET_LOCAL_HOSTNAME:-true}"
 
   ensure_mdns_nsswitch
@@ -209,7 +209,7 @@ configure_web_url() {
     set_env TOQUEHUB_HTTP_PORT "$http_port"
   fi
 
-  local_hostname="${TOQUEHUB_LOCAL_HOSTNAME:-toquehub}"
+  local_hostname="${TOQUEHUB_LOCAL_HOSTNAME:-toquehub-pi}"
   local_origin="$(origin_for_host "$local_hostname.local" "$http_port")"
   ip="$(server_ip || true)"
   origins="$local_origin,$(origin_for_host localhost "$http_port"),$(origin_for_host 127.0.0.1 "$http_port")"

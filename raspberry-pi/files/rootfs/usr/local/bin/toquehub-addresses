@@ -32,7 +32,7 @@ server_ip() {
 }
 
 http_port="$(get_env TOQUEHUB_HTTP_PORT 8080)"
-local_hostname="$(get_env TOQUEHUB_LOCAL_HOSTNAME toquehub)"
+local_hostname="$(get_env TOQUEHUB_LOCAL_HOSTNAME toquehub-pi)"
 local_url="$(origin_for_host "$local_hostname.local" "$http_port")"
 ip="$(server_ip || true)"
 ip_url=""

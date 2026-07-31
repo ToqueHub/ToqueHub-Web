@@ -175,7 +175,7 @@ export class DiscoveryService implements OnApplicationBootstrap, OnApplicationSh
     const configured = this.config.get<string>('TOQUEHUB_WEB_URL')?.trim();
     if (configured) return configured;
 
-    const localHostname = this.config.get<string>('TOQUEHUB_LOCAL_HOSTNAME')?.trim() || 'toquehub';
+    const localHostname = this.config.get<string>('TOQUEHUB_LOCAL_HOSTNAME')?.trim() || 'toquehub-pi';
     const port = this.resolvePort();
     return `http://${localHostname}.local${port === 80 ? '' : `:${port}`}`;
   }
