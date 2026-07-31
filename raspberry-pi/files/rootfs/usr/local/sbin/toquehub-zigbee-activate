@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG_DIR="/etc/toquehub"
+DATA_DIR="/var/lib/toquehub"
+ENV_FILE="$CONFIG_DIR/toquehub.env"
+ZIGBEE_CONFIG="$DATA_DIR/zigbee2mqtt/configuration.yaml"
+
+set_env() {
+  local key="$1" value="$2" tmp
+  tmp="$(mktemp)"
+  if grep -q "^${key}=" "$ENV_FILE"; then
+    awk -v key="$key" -v value="$value" '$0 ~ "^" key "=" { print key "=" value; next } { print }' "$ENV_FILE" > "$tmp"
+  else
+    cp "$ENV_FILE" "$tmp"
+    printf '%s=%s\n' "$key" "$value" >> "$tmp"
+  fi
+  mv "$tmp" "$ENV_FILE"
+  chmod 0600 "$ENV_FILE"
+}
+
+detect_adapter() {
+  shopt -s nullglob
+  local candidates=(/dev/serial/by-id/* /dev/ttyUSB* /dev/ttyACM*)
+  shopt -u nullglob
+  [[ ${#candidates[@]} -gt 0 ]] && printf '%s\n' "${candidates[0]}"
+}
+
+detect_adapter_type() {
+  local properties
+  properties="$(udevadm info -q property -n "$1" 2>/dev/null || true)"
+  if grep -Eq '^ID_MODEL=.*(Dongle_Lite_MG21|ZBDongle-E)' <<<"$properties"; then
+    printf '%s\n' ember
+  else
+    printf '%s\n' zstack
+  fi
+}
+
+[[ -f "$ENV_FILE" ]] || exit 0
+adapter="$(detect_adapter || true)"
+[[ -n "$adapter" ]] || exit 0
+adapter_type="$(detect_adapter_type "$adapter")"
+
+set_env ZIGBEE_ADAPTER_PATH "$adapter"
+set_env ZIGBEE_ADAPTER_TYPE "$adapter_type"
+install -d -m 0755 "$(dirname "$ZIGBEE_CONFIG")"
+
+if [[ ! -f "$ZIGBEE_CONFIG" ]]; then
+  cat > "$ZIGBEE_CONFIG" <<YAML
+homeassistant: false
+permit_join: false
+mqtt:
+  base_topic: zigbee2mqtt
+  server: mqtt://mosquitto:1883
+serial:
+  port: $adapter
+  adapter: $adapter_type
+frontend:
+  enabled: true
+  port: 8080
+advanced:
+  log_level: info
+YAML
+else
+  tmp="$(mktemp)"
+  awk -v port="$adapter" -v type="$adapter_type" '
+    $0 == "serial:" {
+      print "serial:"
+      print "  port: " port
+      print "  adapter: " type
+      in_serial = 1
+      next
+    }
+    in_serial && /^[^[:space:]]/ { in_serial = 0 }
+    !in_serial { print }
+  ' "$ZIGBEE_CONFIG" > "$tmp"
+  install -m 0644 "$tmp" "$ZIGBEE_CONFIG"
+  rm -f "$tmp"
+fi
+
+systemctl enable --now toquehub-zigbee.service

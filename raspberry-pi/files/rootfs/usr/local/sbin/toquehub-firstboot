@@ -6,6 +6,7 @@ DATA_DIR="/var/lib/toquehub"
 ENV_FILE="$CONFIG_DIR/toquehub.env"
 COMPOSE_FILE="/opt/toquehub/docker-compose.pi.yml"
 ZIGBEE_CONFIG="$DATA_DIR/zigbee2mqtt/configuration.yaml"
+IMAGE_BUNDLE_DIR="/opt/toquehub/images"
 
 secret() {
   openssl rand -hex 32
@@ -21,6 +22,20 @@ detect_zigbee_adapter() {
   shopt -u nullglob
   if [[ ${#candidates[@]} -gt 0 ]]; then
     printf '%s\n' "${candidates[0]}"
+  fi
+}
+
+detect_zigbee_adapter_type() {
+  local adapter="$1"
+  local properties
+  properties="$(udevadm info -q property -n "$adapter" 2>/dev/null || true)"
+
+  # Sonoff Dongle Lite MG21 and Sonoff ZBDongle-E use Silicon Labs EmberZNet.
+  # The older Sonoff ZBDongle-P and most TI coordinators use Z-Stack.
+  if grep -Eq '^ID_MODEL=.*(Dongle_Lite_MG21|ZBDongle-E)' <<<"$properties"; then
+    printf '%s\n' ember
+  else
+    printf '%s\n' zstack
   fi
 }
 
@@ -213,10 +228,44 @@ configure_web_url() {
   fi
 
   set_env TOQUEHUB_DISCOVERY_PORT "$http_port"
+  set_env ZIGBEE2MQTT_FRONTEND_URL "$(origin_for_host "$local_hostname.local" "${ZIGBEE2MQTT_HTTP_PORT:-8081}")"
   set_env CORS_ORIGIN "$origins"
 }
 
-mkdir -p "$CONFIG_DIR" "$DATA_DIR"/{api,postgres,mosquitto/data,mosquitto/log,zigbee2mqtt}
+load_embedded_images() {
+  local checksum_file="$IMAGE_BUNDLE_DIR/SHA256SUMS"
+  local archive
+
+  if [[ ! -f "$checksum_file" ]]; then
+    echo "Embedded ToqueHub image checksum manifest is missing." >&2
+    exit 1
+  fi
+
+  (
+    cd "$IMAGE_BUNDLE_DIR"
+    sha256sum -c SHA256SUMS
+  )
+
+  shopt -s nullglob
+  local archives=("$IMAGE_BUNDLE_DIR"/*.tar)
+  shopt -u nullglob
+  if [[ ${#archives[@]} -ne 4 ]]; then
+    echo "Expected four embedded ToqueHub images, found ${#archives[@]}." >&2
+    exit 1
+  fi
+
+  for archive in "${archives[@]}"; do
+    docker load --input "$archive"
+  done
+
+  find "$IMAGE_BUNDLE_DIR" -maxdepth 1 -type f -name '*.tar' -delete
+}
+
+mkdir -p "$CONFIG_DIR" "$DATA_DIR"/{postgres,mosquitto/data,mosquitto/log,zigbee2mqtt}
+install -d -o 1000 -g 1000 -m 0750 \
+  "$DATA_DIR/api" \
+  "$DATA_DIR/api/backups" \
+  "$DATA_DIR/api/uploads"
 chmod 0750 "$CONFIG_DIR" "$DATA_DIR"
 
 if [[ ! -f "$ENV_FILE" ]]; then
@@ -236,44 +285,20 @@ fi
 configure_local_hostname
 configure_tailscale
 configure_web_url
+load_embedded_images
 systemctl restart toquehub-remote-agent.service >/dev/null 2>&1 || true
 
 if [[ ! -f "$CONFIG_DIR/mosquitto.conf" ]]; then
   cp /opt/toquehub/mosquitto.conf "$CONFIG_DIR/mosquitto.conf"
 fi
 
-adapter="$(detect_zigbee_adapter || true)"
-if [[ -n "$adapter" ]]; then
-  adapter_type="$(grep -E '^ZIGBEE_ADAPTER_TYPE=' "$ENV_FILE" | tail -1 | cut -d= -f2- || true)"
-  adapter_type="${adapter_type:-zstack}"
-  set_env ZIGBEE_ADAPTER_PATH "$adapter"
-  set_env ZIGBEE_ADAPTER_TYPE "$adapter_type"
-  mkdir -p "$(dirname "$ZIGBEE_CONFIG")"
-  if [[ ! -f "$ZIGBEE_CONFIG" ]]; then
-    cat > "$ZIGBEE_CONFIG" <<YAML
-homeassistant: false
-permit_join: false
-mqtt:
-  base_topic: zigbee2mqtt
-  server: mqtt://mosquitto:1883
-serial:
-  port: $adapter
-  adapter: $adapter_type
-frontend:
-  enabled: true
-  port: 8080
-advanced:
-  log_level: info
-YAML
-  fi
-  systemctl enable toquehub.service >/dev/null
-  systemctl enable toquehub-zigbee.service >/dev/null
-  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
-  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile zigbee up -d zigbee2mqtt
-else
-  systemctl enable toquehub.service >/dev/null
-  systemctl disable toquehub-zigbee.service >/dev/null 2>&1 || true
-  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
-fi
+systemctl enable toquehub.service >/dev/null
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
+
+# Prepare Zigbee2MQTT even when no dongle is attached yet. The udev-triggered
+# activation service configures and starts it automatically when a coordinator
+# is connected later.
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile zigbee pull zigbee2mqtt
+/usr/local/sbin/toquehub-zigbee-activate || true
 
 touch "$CONFIG_DIR/.firstboot-complete"

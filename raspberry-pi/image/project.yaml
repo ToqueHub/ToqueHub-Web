@@ -3,7 +3,9 @@ include:
 
 device:
   hostname: toquehub
-  layer: rpi5
+  layer: rpi4
+  user1: toquehub
+  user1sudo: nopasswd
 
 image:
   name: toquehub-pi64
@@ -17,4 +19,8 @@ locale:
 
 layer:
   docker: docker-debian-bookworm
+  ssh: openssh-server
   app: toquehub-appliance
+
+ssh:
+  pubkey_only: y

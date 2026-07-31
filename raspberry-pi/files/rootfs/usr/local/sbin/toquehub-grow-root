@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MARKER="/var/lib/toquehub/.root-expanded"
+ROOT_SOURCE="$(findmnt -n -o SOURCE /)"
+ROOT_PARTITION="$(readlink -f "$ROOT_SOURCE")"
+ROOT_BLOCK_NAME="$(basename "$ROOT_PARTITION")"
+PARTITION_NUMBER="$(cat "/sys/class/block/$ROOT_BLOCK_NAME/partition")"
+PARENT_NAME="$(basename "$(readlink -f "/sys/class/block/$ROOT_BLOCK_NAME/..")")"
+
+if [[ -z "$PARTITION_NUMBER" || -z "$PARENT_NAME" ]]; then
+  echo "Unable to determine the root partition from $ROOT_SOURCE." >&2
+  exit 1
+fi
+
+GROW_OUTPUT=""
+if ! GROW_OUTPUT="$(growpart "/dev/$PARENT_NAME" "$PARTITION_NUMBER" 2>&1)"; then
+  if [[ "$GROW_OUTPUT" != *NOCHANGE* ]]; then
+    printf '%s\n' "$GROW_OUTPUT" >&2
+    exit 1
+  fi
+fi
+
+resize2fs "$ROOT_PARTITION"
+mkdir -p "$(dirname "$MARKER")"
+touch "$MARKER"

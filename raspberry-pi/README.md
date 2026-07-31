@@ -1,6 +1,6 @@
 # ToqueHub Raspberry Pi image
 
-This directory contains the appliance image assets for Raspberry Pi 4/5 64-bit.
+This directory contains the appliance image assets for Raspberry Pi 4 64-bit.
 
 The target image is Raspberry Pi OS Lite 64-bit with Docker installed, ToqueHub
 Compose files under `/opt/toquehub`, configuration under `/etc/toquehub`, and
@@ -8,19 +8,25 @@ persistent data under `/var/lib/toquehub`.
 
 ## Build strategy
 
-ToqueHub is not compiled on the Raspberry Pi at first boot. Publish the Docker
-images first:
+ToqueHub is not compiled on the Raspberry Pi at first boot. Build four ARM64
+Docker archives first, then provide their directory and an SSH public key:
 
 ```bash
-npm run docker:publish
-```
-
-Then build the SD image on an Ubuntu/Debian/Raspberry Pi OS 64-bit builder with
-enough free disk space:
-
-```bash
+TOQUEHUB_RPI_RELEASE_TAG=1.1.45 \
+TOQUEHUB_RPI_SSH_PUBLIC_KEY_FILE=/secure/path/to/toquehub_pi_test_ed25519.pub \
+TOQUEHUB_RPI_CONTAINER_BUNDLE_DIR=/secure/path/to/arm64-images \
 npm run pi:image
 ```
+
+The required archive names are:
+
+- `toquehub-api-1.1.45-arm64.tar`
+- `toquehub-web-1.1.45-arm64.tar`
+- `toquehub-mdns-1.1.45-arm64.tar`
+- `toquehub-updater-1.1.45-arm64.tar`
+
+They are verified and loaded into Docker on first boot, then removed to reclaim
+space. Public third-party images are downloaded normally.
 
 The image build uses `rpi-image-gen` v2.7.0 by default. The wrapper copies the
 ToqueHub appliance layer into the image project and leaves the exact image
@@ -72,7 +78,9 @@ Tailscale IP as a fallback. Run `toquehub address` after connecting Tailscale
 to display and verify both addresses.
 - Docker Compose pulls the published ToqueHub images
 - ToqueHub starts automatically
-- Zigbee2MQTT is enabled only when a Zigbee USB adapter is detected
+- Zigbee2MQTT is enabled only when a Zigbee USB adapter is detected. The Sonoff
+  Dongle Lite MG21 and ZBDongle-E are configured automatically with the `ember`
+  adapter; TI-based coordinators use `zstack`.
 
 Useful commands on the Pi:
 
@@ -94,11 +102,11 @@ systemctl status toquehub.service --no-pager
 systemctl status toquehub-remote-agent.service --no-pager
 command -v tailscale && tailscale status
 docker compose --env-file /etc/toquehub/toquehub.env -f /opt/toquehub/docker-compose.pi.yml ps
-curl -fsS http://localhost:8080/api/system/status
+curl -fsS http://localhost/api/system/status
 ```
 
 Default URL:
 
 ```text
-http://toquehub.local:8080
+http://toquehub.local
 ```

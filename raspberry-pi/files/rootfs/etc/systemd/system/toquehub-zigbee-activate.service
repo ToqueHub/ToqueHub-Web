@@ -1,0 +1,9 @@
+[Unit]
+Description=Configure a newly connected ToqueHub Zigbee coordinator
+Requires=docker.service toquehub.service
+After=network-online.target docker.service toquehub.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/toquehub-zigbee-activate
