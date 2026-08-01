@@ -1,5 +1,7 @@
 import { BadRequestException, GoneException } from '@nestjs/common';
 import { HrEmployeeStatus, PlanningAssignmentOrigin, PlanningAssignmentStatus } from '@prisma/client';
+import { PDFDocument as ReadablePdfDocument } from 'pdf-lib';
+import PDFKitDocument from 'pdfkit';
 import { PlanningService } from './planning.service';
 
 function mockPrisma(overrides?: any): any {
@@ -689,5 +691,87 @@ describe('PlanningService RH ownership boundaries', () => {
 
     expect(() => service.createSkill('org-1', actor, { name: 'Bar' })).toThrow(GoneException);
     expect(prisma.hrSkill.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('PlanningService PDF exports', () => {
+  const augustPeriod = {
+    start: new Date(2026, 7, 1),
+    end: new Date(2026, 7, 31, 23, 59, 59, 999),
+    month: 8,
+    year: 2026,
+    days: [],
+  };
+
+  it('excludes the empty dates outside the requested month from boundary weeks', () => {
+    const service = new PlanningService(mockPrisma());
+
+    const weeks = (service as any).exportWeeks(augustPeriod);
+
+    expect(weeks[0].days).toEqual(['2026-08-01', '2026-08-02']);
+    expect(weeks.at(-1)?.days).toEqual(['2026-08-31']);
+  });
+
+  it('balances an overflowing employee list instead of leaving an orphan page', () => {
+    const service = new PlanningService(mockPrisma());
+    const document = new PDFKitDocument({ size: 'A4', layout: 'landscape', margin: 18 });
+    const days = ['2026-07-27', '2026-07-28', '2026-07-29', '2026-07-30', '2026-07-31', '2026-08-01', '2026-08-02'];
+    const rows = Array.from({ length: 17 }, (_, index) => ({
+      employeeName: `Collaborateur ${index + 1}`,
+      departmentName: 'Café / Barista',
+      assignmentsByDate: new Map(),
+    }));
+
+    const pages = (service as any).paginatePlanningPdfRows(document, rows, days);
+    document.end();
+
+    expect(pages).toHaveLength(2);
+    expect(pages.map((page: any) => page.rows.length)).toEqual([9, 8]);
+  });
+
+  it('keeps a normal 16-person week on one readable landscape page', async () => {
+    const service = new PlanningService(mockPrisma());
+    const assignments = Array.from({ length: 16 }, (_, index) => ({
+      id: `assignment-${index + 1}`,
+      employeeId: `employee-${index + 1}`,
+      date: new Date(2026, 6, 27),
+      startTime: '08:00',
+      endTime: '16:00',
+      breakMinutes: 30,
+      employee: { id: `employee-${index + 1}`, firstName: `Prénom ${index + 1}`, lastName: `Nom ${index + 1}` },
+      department: { name: 'Café / Barista' },
+      position: { name: 'Barista' },
+    }));
+
+    const buffer = await (service as any).buildPlanningPdf({
+      title: 'Planning hebdomadaire',
+      organizationName: 'The French Café',
+      mode: 'week',
+      period: {
+        start: new Date(2026, 6, 27),
+        end: new Date(2026, 7, 2, 23, 59, 59, 999),
+        month: 7,
+        year: 2026,
+        days: [],
+      },
+      assignments,
+    });
+    const pdf = await ReadablePdfDocument.load(buffer);
+
+    expect(pdf.getPageCount()).toBe(1);
+  });
+
+  it('preserves long position names instead of truncating them in the generated content', () => {
+    const service = new PlanningService(mockPrisma());
+    const positionName = 'Directrice générale adjointe des opérations';
+
+    const details = (service as any).assignmentPdfDetails({
+      startTime: '09:00',
+      endTime: '17:30',
+      breakMinutes: 45,
+      position: { name: positionName },
+    });
+
+    expect(details).toEqual({ range: '09:00–17:30', breakLabel: 'P 45 min', label: positionName });
   });
 });

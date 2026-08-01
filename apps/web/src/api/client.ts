@@ -362,11 +362,13 @@ function normalizeOcrCorrectionPayload(payload: StocksOcrExtraction['data']) {
   return {
     supplierName: payload.supplierName || payload.supplier?.name || undefined,
     supplierId: payload.supplierId || undefined,
+    supplierIdentifiers: payload.supplierIdentifiers ?? undefined,
     invoiceNumber: payload.invoiceNumber || payload.document?.invoiceNumber || undefined,
     deliveryNoteNumber:
       payload.deliveryNoteNumber || payload.document?.deliveryNoteNumber || undefined,
     purchaseOrderNumber:
       payload.purchaseOrderNumber || payload.document?.purchaseOrderNumber || undefined,
+    receiptNumber: payload.receiptNumber || payload.document?.receiptNumber || undefined,
     documentDate: payload.documentDate || payload.document?.documentDate || undefined,
     deliveryDate: payload.deliveryDate || payload.document?.deliveryDate || undefined,
     totalExcludingTax: payload.totalExcludingTax ?? payload.totals?.totalExcludingTax ?? undefined,

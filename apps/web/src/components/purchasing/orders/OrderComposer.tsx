@@ -72,12 +72,13 @@ export function OrderComposer({
 }) {
   const initialSupplier =
     order?.supplier ?? bootstrap.suppliers.find((item) => item.id === order?.supplierId);
+  const orderableBootstrapSuppliers = bootstrap.suppliers.filter(isOrderableSupplier);
   const [step, setStep] = useState<ComposerStep>(order ? 'catalog' : 'supplier');
   const [supplierId, setSupplierId] = useState(order?.supplierId ?? '');
   const [supplierOptions, setSupplierOptions] = useState<Supplier[]>(() =>
-    initialSupplier && !bootstrap.suppliers.some((item) => item.id === initialSupplier.id)
-      ? [initialSupplier, ...bootstrap.suppliers]
-      : bootstrap.suppliers,
+    initialSupplier && !orderableBootstrapSuppliers.some((item) => item.id === initialSupplier.id)
+      ? [initialSupplier, ...orderableBootstrapSuppliers]
+      : orderableBootstrapSuppliers,
   );
   const [supplierSearch, setSupplierSearch] = useState('');
   const [suppliersLoading, setSuppliersLoading] = useState(false);
@@ -182,9 +183,10 @@ export function OrderComposer({
         if (!active) return;
         setSupplierOptions((current) => {
           const selected = current.find((item) => item.id === supplierId);
-          return selected && !response.items.some((item) => item.id === selected.id)
-            ? [selected, ...response.items]
-            : response.items;
+          const orderableItems = response.items.filter(isOrderableSupplier);
+          return selected && !orderableItems.some((item) => item.id === selected.id)
+            ? [selected, ...orderableItems]
+            : orderableItems;
         });
       })
       .catch((error) => active && flash('error', messageOf(error)))
@@ -586,5 +588,12 @@ export function OrderComposer({
         </form>
       ) : null}
     </Modal>
+  );
+}
+
+function isOrderableSupplier(supplier: Supplier) {
+  return (
+    supplier.purchasingProfile?.deliveryMode !== 'NO_DELIVERY' &&
+    supplier.purchasingProfile?.orderingEnabled !== false
   );
 }

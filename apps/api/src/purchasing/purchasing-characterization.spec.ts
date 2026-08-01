@@ -74,6 +74,21 @@ describe('Purchasing delivery and permission rules', () => {
     expect(dates).toEqual(['2026-07-15', '2026-07-17', '2026-07-22', '2026-07-24']);
   });
 
+  it('returns no delivery date and rejects orders for an in-store supplier', () => {
+    const delivery = new PurchasingDeliveryService();
+    const profile = {
+      deliveryMode: PurchasingDeliveryMode.NO_DELIVERY,
+      deliveryWeekdays: [],
+      cutoffTime: null,
+      timezone: 'Europe/Helsinki',
+      leadTimeDays: 0,
+      orderingEnabled: false,
+    };
+
+    expect(delivery.options(profile, new Date('2026-08-01T12:00:00.000Z'))).toEqual([]);
+    expect(() => delivery.assertOrderable(profile)).toThrow('achats sur place');
+  });
+
   it('keeps another user draft outside a standard user query', () => {
     const visibility = new PurchaseOrderPolicy().orderVisibility({
       id: 'user-1',
@@ -198,6 +213,55 @@ describe('Purchasing installation safeguards', () => {
 });
 
 describe('Purchasing Stocks source of truth', () => {
+  it('refuses to create an order for a supplier configured for in-store purchases', async () => {
+    const prisma = {
+      organization: {
+        findUnique: jest.fn().mockResolvedValue({
+          stocksInstalledAt: new Date(),
+          purchasingInstalledAt: new Date(),
+        }),
+      },
+      supplier: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'supplier-store',
+          name: 'Supermarché',
+          purchasingProfile: {
+            deliveryMode: PurchasingDeliveryMode.NO_DELIVERY,
+            deliveryWeekdays: [],
+            cutoffTime: null,
+            timezone: 'Europe/Helsinki',
+            leadTimeDays: 0,
+            orderingEnabled: false,
+          },
+        }),
+      },
+      site: { findFirst: jest.fn().mockResolvedValue({ id: 'site-1' }) },
+      purchasingSettings: {
+        upsert: jest.fn().mockResolvedValue({ defaultCurrency: 'EUR' }),
+      },
+      product: { findMany: jest.fn() },
+    };
+
+    await expect(
+      commandService(prisma).create(
+        'org-1',
+        {
+          id: 'admin-1',
+          email: 'admin@example.com',
+          organizationId: 'org-1',
+          role: 'ADMIN',
+          permissions: [],
+        },
+        {
+          supplierId: 'supplier-store',
+          siteId: 'site-1',
+          lines: [{ productId: 'product-1', quantity: 1 }],
+        },
+      ),
+    ).rejects.toThrow('achats sur place');
+    expect(prisma.product.findMany).not.toHaveBeenCalled();
+  });
+
   it('builds an order line from a Stocks product without a Purchasing offer', async () => {
     const prisma = {
       product: {

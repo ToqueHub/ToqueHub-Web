@@ -1,4 +1,4 @@
-import { Prisma, ProductKind, StockMovementType } from '@prisma/client';
+import { Prisma, ProductKind, PurchasingDeliveryMode, StockMovementType } from '@prisma/client';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { AdjustProductStockDto } from './dto/adjust-product-stock.dto';
@@ -69,6 +69,34 @@ describe('StocksService articles pagination', () => {
         },
       }),
     }));
+  });
+});
+
+describe('StocksService supplier purchasing modes', () => {
+  it('turns an in-store supplier into a non-orderable profile', () => {
+    const service = new StocksService({} as any);
+
+    const profile = (service as any).normalizeSupplierPurchasing({
+      orderEmail: 'orders@example.com',
+      deliveryMode: PurchasingDeliveryMode.NO_DELIVERY,
+      deliveryWeekdays: [1, 2],
+      minimumOrder: 100,
+      deliveryFee: 15,
+      timezone: 'Europe/Helsinki',
+      leadTimeDays: 3,
+    });
+
+    expect(profile).toEqual(
+      expect.objectContaining({
+        orderEmail: null,
+        deliveryMode: PurchasingDeliveryMode.NO_DELIVERY,
+        deliveryWeekdays: [],
+        leadTimeDays: 0,
+        orderingEnabled: false,
+      }),
+    );
+    expect(Number(profile.minimumOrder)).toBe(0);
+    expect(Number(profile.deliveryFee)).toBe(0);
   });
 });
 

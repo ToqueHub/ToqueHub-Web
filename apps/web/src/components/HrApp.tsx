@@ -1273,6 +1273,11 @@ function PositionCatalogSelector({ departments, initialSelection = {}, onSelecti
 function OnboardingCollaboratorStep({ departments, positions, collaborators, employeesUnlocked, onBack, onCreate, onUnlockEmployees, onFinished }: { departments: HrDepartment[]; positions: HrPosition[]; collaborators: HrCollaborator[]; employeesUnlocked: boolean; onBack: () => void; onCreate: () => void; onUnlockEmployees?: () => Promise<void>; onFinished: () => void }) {
   const activeDepartments = departments.filter((d) => !isArchived(d));
   const activePositions = positions.filter((p) => !isArchived(p));
+  const previewLimit = 4;
+  const departmentPreview = activeDepartments.slice(0, previewLimit);
+  const positionPreview = activePositions.slice(0, previewLimit);
+  const hiddenDepartmentCount = Math.max(0, activeDepartments.length - departmentPreview.length);
+  const hiddenPositionCount = Math.max(0, activePositions.length - positionPreview.length);
   const [unlocking, setUnlocking] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const canCreate = employeesUnlocked || !onUnlockEmployees;
@@ -1288,19 +1293,9 @@ function OnboardingCollaboratorStep({ departments, positions, collaborators, emp
     onCreate();
   }
   return (
-    <div className="hr-catalog" style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between' }}>
-      <div>
+    <div className="hr-catalog hr-onboarding-review-step">
+      <div className="hr-onboarding-review-scroll">
         <p className="muted" style={{ marginBottom: 16, fontSize: '0.9rem' }}>Validez la structure choisie, puis ajoutez un ou plusieurs collaborateurs avec leur service et leur poste.</p>
-        <div className="hr-review-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
-          <div className="card-modern" style={{ padding: '1.25rem', borderRadius: '16px', background: '#f8fafc', border: '1px solid #cbd5e1' }}>
-            <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-main)' }}><Building2 size={16} color="#10b981" /> Services retenus ({activeDepartments.length})</span>
-            <div className="hr-position-tags" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.75rem' }}>{activeDepartments.map((d) => <span key={d.id} className="badge badge-reception" style={{ padding: '0.35rem 0.6rem' }}>{d.name}</span>)}</div>
-          </div>
-          <div className="card-modern" style={{ padding: '1.25rem', borderRadius: '16px', background: '#f8fafc', border: '1px solid #cbd5e1' }}>
-            <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-main)' }}><BriefcaseBusiness size={16} color="#3b82f6" /> Postes créés ({activePositions.length})</span>
-            <div className="hr-position-tags" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.75rem' }}>{activePositions.map((p) => <span key={p.id} className="badge" style={{ padding: '0.35rem 0.6rem' }}>{p.name}</span>)}</div>
-          </div>
-        </div>
         <button
           type="button"
           className="hr-wizard-hero-card hr-wizard-hero-card-action"
@@ -1340,8 +1335,29 @@ function OnboardingCollaboratorStep({ departments, positions, collaborators, emp
             <p style={{ margin: '0.2rem 0 0', color: 'var(--text-main)', fontSize: '0.9rem', lineHeight: 1.45 }}>{collaborators.length ? `${collaborators.length} collaborateur${collaborators.length > 1 ? 's' : ''} déjà créé${collaborators.length > 1 ? 's' : ''}. Vous pouvez en ajouter un autre ou terminer l'initialisation.` : 'Créez le premier collaborateur pour finaliser la base RH initiale.'}</p>
           </div>
         </button>
+        <div className="hr-onboarding-structure-heading">
+          <strong>Structure configurée</strong>
+          <span>Ces listes restent consultables sans masquer l’action principale.</span>
+        </div>
+        <div className="hr-review-grid hr-onboarding-review-grid">
+          <div className="card-modern hr-onboarding-summary-card" style={{ padding: '1.25rem', borderRadius: '16px', background: '#f8fafc', border: '1px solid #cbd5e1' }}>
+            <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-main)' }}><Building2 size={16} color="#10b981" /> Services retenus ({activeDepartments.length})</span>
+            <div className="hr-position-tags hr-onboarding-summary-tags" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.75rem' }}>
+              {departmentPreview.map((d) => <span key={d.id} className="badge badge-reception" style={{ padding: '0.35rem 0.6rem' }}>{d.name}</span>)}
+              {hiddenDepartmentCount ? <span className="badge hr-onboarding-more-badge">+ {hiddenDepartmentCount} autre{hiddenDepartmentCount > 1 ? 's' : ''}</span> : null}
+            </div>
+          </div>
+          <div className="card-modern hr-onboarding-summary-card" style={{ padding: '1.25rem', borderRadius: '16px', background: '#f8fafc', border: '1px solid #cbd5e1' }}>
+            <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-main)' }}><BriefcaseBusiness size={16} color="#3b82f6" /> Postes créés ({activePositions.length})</span>
+            <div className="hr-position-tags hr-onboarding-summary-tags" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.75rem' }}>
+              {positionPreview.map((p) => <span key={p.id} className="badge" style={{ padding: '0.35rem 0.6rem' }}>{p.name}</span>)}
+              {hiddenPositionCount ? <span className="badge hr-onboarding-more-badge">+ {hiddenPositionCount} autre{hiddenPositionCount > 1 ? 's' : ''}</span> : null}
+            </div>
+          </div>
+        </div>
+        <p className="hr-onboarding-structure-note">La liste complète restera disponible dans les onglets Services et Postes après l’initialisation.</p>
       </div>
-      <div className="hr-catalog-actions sticky" style={{ borderTop: '1px solid #eef2f7', background: 'rgba(255,255,255,0.9)', padding: '1rem 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+      <div className="hr-catalog-actions hr-onboarding-review-actions" style={{ borderTop: '1px solid #eef2f7', background: 'rgba(255,255,255,0.9)', padding: '1rem 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
         <span style={{ fontSize: '0.88rem', color: '#64748b', fontWeight: 500 }}>{collaborators.length} collaborateur{collaborators.length > 1 ? 's' : ''} actif{collaborators.length > 1 ? 's' : ''}</span>
         <div className="row-actions" style={{ display: 'flex', gap: '0.75rem' }}>
           <button type="button" className="btn btn-secondary" disabled={unlocking || finishing} onClick={onBack} style={{ borderRadius: '10px', padding: '0.5rem 1.25rem' }}>Retour</button>

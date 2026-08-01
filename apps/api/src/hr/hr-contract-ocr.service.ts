@@ -340,12 +340,16 @@ export class HrContractOcrService {
   private classifyDocument(originalName: string, markdown: string, suggestedType: string): HrSourceDocumentType {
     const filename = this.normalize(originalName);
     const text = this.normalize(markdown.slice(0, 12_000));
+    const suggested = String(suggestedType).toUpperCase();
     const cvFilename = /(^|[^a-z])cv([^a-z]|$)|curriculum/.test(filename);
+    const contractFilename = /(^|[^a-z])(contrat|contract|tyosopimus|arbeitsvertrag)([^a-z]|$)/.test(filename);
     const cvContent = /curriculum vitae|ansioluettelo|resume|work experience|tyokokemus|professional experience/.test(text);
-    const contractContent = /tyosopimus|employment contract|contract of employment|contrat de travail|arbeitsvertrag/.test(text);
-    if (cvFilename || (cvContent && !contractContent)) return 'CV';
-    if (contractContent) return 'CONTRACT';
-    if (String(suggestedType).toUpperCase() === 'CV') return 'CV';
+    const contractContent = /tyosopimus|employment contract|contract of employment|contrat de travail|contrat d'apprentissage|contrat a duree (determinee|indeterminee)|arbeitsvertrag|\b(cdi|cdd)\b.{0,60}\b(temps|cadre|remplacement|saisonnier|emploi|travail)\b/.test(text);
+    if (cvFilename) return 'CV';
+    if (contractFilename || contractContent) return 'CONTRACT';
+    if (cvContent) return 'CV';
+    if (suggested === 'CONTRACT') return 'CONTRACT';
+    if (suggested === 'CV') return 'CV';
     return 'OTHER';
   }
 

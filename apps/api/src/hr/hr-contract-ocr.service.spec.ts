@@ -147,6 +147,20 @@ describe('HrContractOcrService', () => {
     expect(result.documents[0]).toMatchObject({ documentType: 'CV', category: 'ADMINISTRATIVE' });
   });
 
+  it('recognizes a French CDI test document from its filename and title', async () => {
+    const { instance } = service({ markdown: '# CDI À TEMPS PLEIN\nEntre les soussignés...' });
+
+    const result = await instance.analyze('org-1', { ...jpeg, originalname: 'contrat_01_elodie_bernard.pdf', mimetype: 'application/pdf' });
+
+    expect(result.hasContractSource).toBe(true);
+    expect(result.draft).toMatchObject({
+      hireDate: '2026-04-04',
+      contractType: 'CDD',
+      contractWeeklyMinutes: 2250,
+    });
+    expect(result.documents[0]).toMatchObject({ documentType: 'CONTRACT', category: 'CONTRACT' });
+  });
+
   it('combines a CV with a contract while reserving contract data to the contract', async () => {
     const { instance, mistral } = service();
     mistral.ocrMarkdown

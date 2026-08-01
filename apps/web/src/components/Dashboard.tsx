@@ -5493,7 +5493,11 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                                   )}
                                 </td>
                                 <td>
-                                  {s.purchasingProfile?.orderEmail ? (
+                                  {s.purchasingProfile?.deliveryMode === 'NO_DELIVERY' ? (
+                                    <span style={{ color: 'var(--text-muted)' }}>
+                                      Non applicable — achat sur place
+                                    </span>
+                                  ) : s.purchasingProfile?.orderEmail ? (
                                     <a
                                       href={`mailto:${s.purchasingProfile.orderEmail}`}
                                       style={{ textDecoration: 'underline' }}
@@ -5508,9 +5512,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                                   )}
                                 </td>
                                 <td>
-                                  {s.purchasingProfile?.deliveryMode === 'SCHEDULED_DAYS'
-                                    ? `${s.purchasingProfile.deliveryWeekdays.length} jour(s) défini(s)`
-                                    : 'Dès que la commande est prête'}
+                                  {supplierDeliveryModeLabel(s.purchasingProfile?.deliveryMode)}
                                 </td>
                               </tr>
                             ))
@@ -5732,7 +5734,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       <Modal
         isOpen={showOcrImportModal}
         onClose={() => setShowOcrImportModal(false)}
-        title="Analyser bon de commande / facture / BL"
+        title="Analyser ticket / bon de commande / facture / BL"
         size="lg"
       >
         <DocumentOcrAnalysisPanel
@@ -8503,8 +8505,8 @@ function MyDocumentsPage({
           </span>
           <h1 className="welcome-title">Mes Documents</h1>
           <p className="welcome-desc">
-            Bibliothèque des factures et bons de livraison importés dans ToqueHub, classés par
-            fournisseur et par date.
+            Bibliothèque des factures, bons de livraison et tickets de caisse importés dans
+            ToqueHub, classés par fournisseur et par date.
           </p>
         </div>
         <div className="welcome-hero-backdrop" />
@@ -8572,6 +8574,7 @@ function MyDocumentsPage({
               <option value="all">Tous les types</option>
               <option value="invoice">Factures</option>
               <option value="delivery_note">Bons de livraison</option>
+              <option value="receipt">Tickets de caisse</option>
               <option value="supplier_order">Commandes fournisseur</option>
               <option value="order_confirmation">Confirmations de commande</option>
               <option value="unknown">Non classés</option>
@@ -8669,11 +8672,15 @@ function MyDocumentsPage({
                           </span>
                         </div>
 
-                        {document.invoiceNumber || document.deliveryNoteNumber ? (
+                        {document.invoiceNumber ||
+                        document.deliveryNoteNumber ||
+                        document.receiptNumber ? (
                           <div className="doc-number-box">
                             <span className="number-label">Réf :</span>
                             <span className="number-value">
-                              {document.invoiceNumber || document.deliveryNoteNumber}
+                              {document.invoiceNumber ||
+                                document.deliveryNoteNumber ||
+                                document.receiptNumber}
                             </span>
                           </div>
                         ) : (
@@ -8770,6 +8777,7 @@ function MyDocumentsPage({
                                   <small>
                                     {document.invoiceNumber ||
                                       document.deliveryNoteNumber ||
+                                      document.receiptNumber ||
                                       formatBytes(document.sizeBytes)}
                                   </small>
                                 </div>
@@ -9439,7 +9447,7 @@ function StocksOnboardingWelcome({ onNext, onClose }: { onNext: () => void; onCl
         },
         {
           icon: <FileText size={16} />,
-          text: 'Analyser un bon de commande, une facture ou un BL',
+          text: 'Analyser un ticket de caisse, un bon de commande, une facture ou un BL',
           tone: 'warning',
         },
       ]}
@@ -12109,63 +12117,89 @@ function ArticlesPage({
   };
   return (
     <div className="stocks-dashboard-grid articles-page">
-      <div className="section-header-modern" style={{ marginBottom: 0 }}>
-        <div className="section-info">
-          <span className="card-title" style={{ fontSize: '1.55rem' }}>
-            Produits
-          </span>
+      <header className="stocks-products-header">
+        <div className="stocks-products-heading">
+          <span className="card-title">Produits</span>
           <span className="section-tagline">
             Catalogue et stock physique réunis dans une seule vue.
           </span>
         </div>
-        <div className="row-actions">
+        <div className="stocks-products-toolbar">
           {activeSites.length > 1 ? (
             <label className="stocks-site-selector">
-              <span>Site</span>
-              <select
-                value={siteId}
-                onChange={(event) => {
-                  setSiteId(event.target.value);
-                  setSelected(null);
-                  resetPage();
-                }}
-              >
-                {activeSites.map((site) => (
-                  <option key={site.id} value={site.id}>
-                    {site.name}
-                  </option>
-                ))}
-              </select>
+              <span className="stocks-site-selector-icon" aria-hidden="true">
+                <MapPin size={18} />
+              </span>
+              <span className="stocks-site-selector-field">
+                <span>Site actif</span>
+                <select
+                  aria-label="Site actif"
+                  value={siteId}
+                  onChange={(event) => {
+                    setSiteId(event.target.value);
+                    setSelected(null);
+                    resetPage();
+                  }}
+                >
+                  {activeSites.map((site) => (
+                    <option key={site.id} value={site.id}>
+                      {site.name}
+                    </option>
+                  ))}
+                </select>
+              </span>
             </label>
+          ) : activeSites[0] ? (
+            <div className="stocks-site-selector stocks-site-selector-static">
+              <span className="stocks-site-selector-icon" aria-hidden="true">
+                <MapPin size={18} />
+              </span>
+              <span className="stocks-site-selector-field">
+                <span>Site actif</span>
+                <strong>{activeSites[0].name}</strong>
+              </span>
+            </div>
           ) : null}
-          <button className="btn btn-secondary" onClick={onInventory}>
-            <ClipboardList size={15} /> Inventaire
-          </button>
-          <button className="btn btn-secondary" onClick={() => onMovement()}>
-            <ArrowRight size={15} /> Mouvement
-          </button>
-          <button className="btn btn-primary" onClick={onAdd}>
-            <Plus size={15} /> Ajouter / importer
-          </button>
+          <div className="stocks-products-actions">
+            <button className="btn btn-secondary" onClick={onInventory}>
+              <ClipboardList size={15} /> Inventaire
+            </button>
+            <button className="btn btn-secondary" onClick={() => onMovement()}>
+              <ArrowRight size={15} /> Mouvement
+            </button>
+            <button className="btn btn-primary" onClick={onAdd}>
+              <Plus size={15} /> Ajouter / importer
+            </button>
+          </div>
         </div>
-      </div>
+      </header>
 
       {result.summary.unassignedCount ? (
-        <div className="alert-modern" style={{ alignItems: 'flex-start' }}>
-          <Info size={17} />
-          <div style={{ display: 'grid', gap: '0.65rem', flex: 1 }}>
+        <aside className="stocks-site-assignment-banner" aria-live="polite">
+          <span className="stocks-site-assignment-icon" aria-hidden="true">
+            <AlertTriangle size={20} />
+          </span>
+          <div className="stocks-site-assignment-content">
+            <span className="stocks-site-assignment-kicker">Catalogue multi-sites</span>
             <strong>
-              {result.summary.unassignedCount} produit
-              {result.summary.unassignedCount > 1 ? 's ne sont' : ' n’est'} attribué
-              {result.summary.unassignedCount > 1 ? 's' : ''} à aucun site.
+              {result.summary.unassignedCount > 1
+                ? `${result.summary.unassignedCount} produits à répartir entre vos sites`
+                : '1 produit à attribuer à vos sites'}
             </strong>
-            <span>
-              Sélectionnez les établissements où ce catalogue doit être disponible. Aucun faux
-              stock à zéro ne sera créé.
-            </span>
-            <div style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap' }}>
+            <p>
+              Choisissez les établissements où ces produits doivent être disponibles. Cette
+              opération ne crée aucun stock artificiel.
+            </p>
+            <div
+              className="stocks-site-assignment-choices"
+              role="group"
+              aria-label="Établissements de destination"
+            >
               {activeSites.map((site) => (
-                <label key={site.id} style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                <label
+                  key={site.id}
+                  className={assignmentSiteIds.includes(site.id) ? 'selected' : undefined}
+                >
                   <input
                     type="checkbox"
                     checked={assignmentSiteIds.includes(site.id)}
@@ -12177,20 +12211,21 @@ function ArticlesPage({
                       )
                     }
                   />
-                  {site.name}
+                  <span>{site.name}</span>
                 </label>
               ))}
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={!assignmentSiteIds.length || assigningSites}
-                onClick={assignUnassignedProducts}
-              >
-                {assigningSites ? 'Attribution…' : 'Attribuer les produits'}
-              </button>
             </div>
           </div>
-        </div>
+          <button
+            type="button"
+            className="btn btn-primary stocks-site-assignment-action"
+            disabled={!assignmentSiteIds.length || assigningSites}
+            onClick={assignUnassignedProducts}
+          >
+            {assigningSites ? 'Attribution…' : 'Attribuer les produits'}
+            {!assigningSites ? <ArrowRight size={15} /> : null}
+          </button>
+        </aside>
       ) : null}
 
       <div className="stocks-metrics-strip">
@@ -22467,7 +22502,9 @@ function SupplierDetailModal({
                     <div>
                       <dt>E-mail de commande</dt>
                       <dd>
-                        {supplier.purchasingProfile?.orderEmail ? (
+                        {supplier.purchasingProfile?.deliveryMode === 'NO_DELIVERY' ? (
+                          'Non applicable — achat sur place'
+                        ) : supplier.purchasingProfile?.orderEmail ? (
                           <a href={`mailto:${supplier.purchasingProfile.orderEmail}`}>
                             {supplier.purchasingProfile.orderEmail}
                           </a>
@@ -22480,16 +22517,14 @@ function SupplierDetailModal({
                     </div>
                     <div>
                       <dt>Mode de livraison</dt>
-                      <dd>
-                        {supplier.purchasingProfile?.deliveryMode === 'SCHEDULED_DAYS'
-                          ? 'Jours de livraison définis'
-                          : 'Dès que la commande est prête'}
-                      </dd>
+                      <dd>{supplierDeliveryModeLabel(supplier.purchasingProfile?.deliveryMode)}</dd>
                     </div>
                     <div>
                       <dt>Jours autorisés</dt>
                       <dd>
-                        {supplier.purchasingProfile?.deliveryMode === 'SCHEDULED_DAYS'
+                        {supplier.purchasingProfile?.deliveryMode === 'NO_DELIVERY'
+                          ? 'Non applicable'
+                          : supplier.purchasingProfile?.deliveryMode === 'SCHEDULED_DAYS'
                           ? SUPPLIER_WEEKDAYS.filter((day) =>
                               supplier.purchasingProfile?.deliveryWeekdays.includes(day.value),
                             )
@@ -22500,11 +22535,19 @@ function SupplierDetailModal({
                     </div>
                     <div>
                       <dt>Commande minimum HT</dt>
-                      <dd>{Number(supplier.purchasingProfile?.minimumOrder ?? 0).toFixed(2)} €</dd>
+                      <dd>
+                        {supplier.purchasingProfile?.deliveryMode === 'NO_DELIVERY'
+                          ? 'Non applicable'
+                          : `${Number(supplier.purchasingProfile?.minimumOrder ?? 0).toFixed(2)} €`}
+                      </dd>
                     </div>
                     <div>
                       <dt>Coût de livraison HT</dt>
-                      <dd>{Number(supplier.purchasingProfile?.deliveryFee ?? 0).toFixed(2)} €</dd>
+                      <dd>
+                        {supplier.purchasingProfile?.deliveryMode === 'NO_DELIVERY'
+                          ? 'Non applicable'
+                          : `${Number(supplier.purchasingProfile?.deliveryFee ?? 0).toFixed(2)} €`}
+                      </dd>
                     </div>
                   </dl>
                 </>
@@ -22527,6 +22570,12 @@ const SUPPLIER_WEEKDAYS = [
   { value: 6, label: 'Sam' },
   { value: 7, label: 'Dim' },
 ];
+
+function supplierDeliveryModeLabel(mode?: PurchasingDeliveryMode) {
+  if (mode === 'SCHEDULED_DAYS') return 'Certains jours uniquement';
+  if (mode === 'NO_DELIVERY') return 'Pas de livraison — achat sur place';
+  return 'Dès que la commande est prête';
+}
 
 interface SupplierFormProps {
   initialName?: string;
@@ -22610,13 +22659,13 @@ function SupplierForm({
         address: address.trim() || undefined,
         notes: notes.trim() || undefined,
         purchasing: {
-          orderEmail: orderEmail.trim() || undefined,
+          orderEmail: deliveryMode === 'NO_DELIVERY' ? undefined : orderEmail.trim() || undefined,
           deliveryMode,
           deliveryWeekdays: deliveryMode === 'SCHEDULED_DAYS' ? deliveryWeekdays : [],
-          deliveryFee: Math.max(0, deliveryFee || 0),
-          minimumOrder: Math.max(0, minimumOrder || 0),
+          deliveryFee: deliveryMode === 'NO_DELIVERY' ? 0 : Math.max(0, deliveryFee || 0),
+          minimumOrder: deliveryMode === 'NO_DELIVERY' ? 0 : Math.max(0, minimumOrder || 0),
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-          leadTimeDays: 1,
+          leadTimeDays: deliveryMode === 'NO_DELIVERY' ? 0 : 1,
         },
       });
     } catch (err) {
@@ -22748,8 +22797,13 @@ function SupplierForm({
                     type="email"
                     value={orderEmail}
                     onChange={(e) => setOrderEmail(e.target.value)}
+                    disabled={deliveryMode === 'NO_DELIVERY'}
                   />
-                  <small>Nécessaire pour envoyer les commandes depuis ToqueHub.</small>
+                  <small>
+                    {deliveryMode === 'NO_DELIVERY'
+                      ? 'Non nécessaire : les achats sont effectués directement sur place.'
+                      : 'Nécessaire pour envoyer les commandes depuis ToqueHub.'}
+                  </small>
                 </label>
                 <label>
                   Mode de livraison
@@ -22759,6 +22813,7 @@ function SupplierForm({
                   >
                     <option value="ON_DEMAND">Dès que la commande est prête</option>
                     <option value="SCHEDULED_DAYS">Certains jours uniquement</option>
+                    <option value="NO_DELIVERY">Pas de livraison — achat sur place</option>
                   </select>
                 </label>
                 {deliveryMode === 'SCHEDULED_DAYS' && (
@@ -22787,36 +22842,42 @@ function SupplierForm({
                     </div>
                   </fieldset>
                 )}
-                <label>
-                  Coût de livraison HT
-                  <div className="supplier-money-input">
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={deliveryFee}
-                      onChange={(e) => setDeliveryFee(Number(e.target.value))}
-                    />
-                    <span>€</span>
-                  </div>
-                </label>
-                <label>
-                  Commande minimum HT
-                  <div className="supplier-money-input">
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={minimumOrder}
-                      onChange={(e) => setMinimumOrder(Number(e.target.value))}
-                    />
-                    <span>€</span>
-                  </div>
-                </label>
+                {deliveryMode !== 'NO_DELIVERY' && (
+                  <>
+                    <label>
+                      Coût de livraison HT
+                      <div className="supplier-money-input">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={deliveryFee}
+                          onChange={(e) => setDeliveryFee(Number(e.target.value))}
+                        />
+                        <span>€</span>
+                      </div>
+                    </label>
+                    <label>
+                      Commande minimum HT
+                      <div className="supplier-money-input">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={minimumOrder}
+                          onChange={(e) => setMinimumOrder(Number(e.target.value))}
+                        />
+                        <span>€</span>
+                      </div>
+                    </label>
+                  </>
+                )}
                 <div className="supplier-purchasing-note product-sheet-wide">
                   <Info size={16} />
                   <span>
-                    Vous pourrez modifier ces paramètres plus tard depuis la fiche fournisseur.
+                    {deliveryMode === 'NO_DELIVERY'
+                      ? 'Ce fournisseur sera conservé dans Stocks pour les tickets et les achats sur place, mais il ne sera pas proposé dans Achats > Nouvelle commande.'
+                      : 'Vous pourrez modifier ces paramètres plus tard depuis la fiche fournisseur.'}
                   </span>
                 </div>
               </div>
@@ -23866,6 +23927,14 @@ function StocksOcrReviewPanel({
 
           <div className="form-row">
             <label style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-main)' }}>
+              N° Ticket de caisse
+              <input
+                value={draft.receiptNumber || ''}
+                onChange={(e) => setDraft({ ...draft, receiptNumber: e.target.value })}
+                placeholder="Ex: KO01 M078134/1243"
+              />
+            </label>
+            <label style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-main)' }}>
               N° Facture
               <input
                 value={draft.invoiceNumber || ''}
@@ -24635,15 +24704,18 @@ function normalizeOcrReceptionData(
     inferOcrPurchaseOrderNumber(data) ??
     null;
   const normalized: StocksOcrExtraction['data'] = {
+    documentType: data.documentType,
     supplier: data.supplier ?? null,
     supplierId: data.supplierId ?? data.supplier?.supplierId ?? null,
     supplierName: data.supplierName ?? data.supplier?.supplierName ?? data.supplier?.name ?? null,
     supplierMatchingStatus: data.supplierMatchingStatus ?? data.supplier?.matchingStatus,
     supplierMatchingScore: data.supplierMatchingScore ?? data.supplier?.matchingScore ?? null,
     supplierCandidates: data.supplierCandidates ?? data.supplier?.candidates ?? [],
+    supplierIdentifiers: data.supplierIdentifiers ?? data.supplier?.identifiers ?? [],
     invoiceNumber: data.invoiceNumber ?? data.document?.invoiceNumber ?? null,
     deliveryNoteNumber: data.deliveryNoteNumber ?? data.document?.deliveryNoteNumber ?? null,
     purchaseOrderNumber,
+    receiptNumber: data.receiptNumber ?? data.document?.receiptNumber ?? null,
     documentDate: data.documentDate ?? data.document?.documentDate ?? null,
     deliveryDate: data.deliveryDate ?? data.document?.deliveryDate ?? null,
     totalExcludingTax: data.totalExcludingTax ?? data.totals?.totalExcludingTax ?? null,
@@ -24973,6 +25045,7 @@ function formatDocumentDate(value?: string | null) {
 function documentTypeLabel(type?: string | null) {
   if (type === 'invoice') return 'Facture';
   if (type === 'delivery_note') return 'BL';
+  if (type === 'receipt') return 'Ticket de caisse';
   if (type === 'supplier_order') return 'Commande';
   if (type === 'order_confirmation') return 'Confirmation';
   return 'Non classé';
@@ -24981,6 +25054,7 @@ function documentTypeLabel(type?: string | null) {
 function documentTypeBadge(type?: string | null) {
   if (type === 'invoice') return 'badge-stock';
   if (type === 'delivery_note') return 'badge-reception';
+  if (type === 'receipt') return 'badge-reception';
   if (type === 'supplier_order') return 'badge-production';
   if (type === 'order_confirmation') return 'badge-correction';
   return 'badge-correction';

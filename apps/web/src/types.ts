@@ -635,6 +635,7 @@ export interface MyDocument {
   supplierName?: string | null;
   invoiceNumber?: string | null;
   deliveryNoteNumber?: string | null;
+  receiptNumber?: string | null;
   documentDate?: string | null;
   uploadedAt: string;
   createdAt: string;
@@ -2205,7 +2206,7 @@ export interface Supplier {
   purchasingProfile?: SupplierPurchasingProfile | null;
 }
 
-export type PurchasingDeliveryMode = 'SCHEDULED_DAYS' | 'ON_DEMAND';
+export type PurchasingDeliveryMode = 'SCHEDULED_DAYS' | 'ON_DEMAND' | 'NO_DELIVERY';
 
 export interface SupplierPurchasingProfile {
   id?: string;
@@ -3280,6 +3281,14 @@ export interface StocksOcrLine {
 }
 
 export interface StocksOcrReceptionData {
+  documentType?:
+    | 'invoice'
+    | 'delivery_note'
+    | 'receipt'
+    | 'supplier_order'
+    | 'order_confirmation'
+    | 'unknown'
+    | string;
   supplierName?: string | null;
   supplier?: {
     name?: string | null;
@@ -3288,14 +3297,17 @@ export interface StocksOcrReceptionData {
     matchingStatus?: OcrMatchingStatus | string;
     matchingScore?: number | string | null;
     candidates?: Array<{ id: string; name: string; score: number | string }>;
+    identifiers?: Array<{ kind: string; value: string }>;
   } | null;
   supplierId?: string | null;
   supplierMatchingStatus?: OcrMatchingStatus | string;
   supplierMatchingScore?: number | string | null;
   supplierCandidates?: Array<{ id: string; name: string; score: number | string }>;
+  supplierIdentifiers?: Array<{ kind: string; value: string }>;
   invoiceNumber?: string | null;
   deliveryNoteNumber?: string | null;
   purchaseOrderNumber?: string | null;
+  receiptNumber?: string | null;
   documentDate?: string | null;
   deliveryDate?: string | null;
   totalExcludingTax?: number | string | null;
@@ -3324,6 +3336,7 @@ export interface StocksOcrReceptionData {
     invoiceNumber?: string | null;
     deliveryNoteNumber?: string | null;
     purchaseOrderNumber?: string | null;
+    receiptNumber?: string | null;
     documentDate?: string | null;
     deliveryDate?: string | null;
   };

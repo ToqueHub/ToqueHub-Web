@@ -151,6 +151,16 @@ export class CorrectedReceptionLineDto {
   packageDescription?: string;
 }
 
+export class OcrSupplierIdentifierDto {
+  @IsString()
+  @MaxLength(40)
+  kind!: string;
+
+  @IsString()
+  @MaxLength(120)
+  value!: string;
+}
+
 export class SaveOcrCorrectionDto {
   @IsOptional()
   @IsString()
@@ -160,6 +170,12 @@ export class SaveOcrCorrectionDto {
   @IsOptional()
   @IsUUID()
   supplierId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OcrSupplierIdentifierDto)
+  supplierIdentifiers?: OcrSupplierIdentifierDto[];
 
   @IsOptional()
   @IsString()
@@ -175,6 +191,11 @@ export class SaveOcrCorrectionDto {
   @IsString()
   @MaxLength(120)
   purchaseOrderNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  receiptNumber?: string;
 
   @IsOptional()
   @IsDateString()

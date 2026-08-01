@@ -38,6 +38,7 @@ export class PurchaseOrderCommandService {
       this.context.ensureSite(organizationId, dto.siteId),
       this.context.ensureSettings(organizationId),
     ]);
+    this.delivery.assertOrderable(supplier.purchasingProfile);
     const built = await this.buildOrderLines(organizationId, supplier.id, dto.lines);
     if (dto.expectedDeliveryDate)
       this.delivery.assertAllowed(supplier.purchasingProfile, dto.expectedDeliveryDate);

@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, PurchaseOrderStatus } from '@prisma/client';
+import { Prisma, PurchaseOrderStatus, PurchasingDeliveryMode } from '@prisma/client';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { PrismaService } from '../prisma/prisma.service';
 import { PurchasingListQueryDto, PurchasingReferenceQueryDto } from './dto/purchasing.dto';
@@ -79,19 +79,36 @@ export class PurchaseOrderQueryService {
     const where: Prisma.SupplierWhereInput = {
       organizationId,
       isArchived: false,
-      ...(query.search
-        ? {
-            OR: [
-              { name: { contains: query.search, mode: 'insensitive' as const } },
-              { email: { contains: query.search, mode: 'insensitive' as const } },
-              {
-                purchasingProfile: {
-                  orderEmail: { contains: query.search, mode: 'insensitive' as const },
+      AND: [
+        {
+          OR: [
+            { purchasingProfile: { is: null } },
+            {
+              purchasingProfile: {
+                is: {
+                  orderingEnabled: true,
+                  deliveryMode: { not: PurchasingDeliveryMode.NO_DELIVERY },
                 },
               },
-            ],
-          }
-        : {}),
+            },
+          ],
+        },
+        ...(query.search
+          ? [
+              {
+                OR: [
+                  { name: { contains: query.search, mode: 'insensitive' as const } },
+                  { email: { contains: query.search, mode: 'insensitive' as const } },
+                  {
+                    purchasingProfile: {
+                      orderEmail: { contains: query.search, mode: 'insensitive' as const },
+                    },
+                  },
+                ],
+              },
+            ]
+          : []),
+      ],
     };
     const [items, total] = await Promise.all([
       this.prisma.supplier.findMany({

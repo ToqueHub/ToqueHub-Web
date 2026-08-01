@@ -17,8 +17,10 @@ function mockPrisma(): any {
         { id: 'supplier-tingstad', name: 'AB Tingstad papper' },
         { id: 'supplier-kespro', name: 'Kespro' },
         { id: 'supplier-passionfroid', name: 'PassionFroid' },
+        { id: 'supplier-kmarket', name: 'K-Market Kuusamo' },
       ]),
     },
+    supplierOcrIdentifier: { findMany: jest.fn().mockResolvedValue([]) },
     product: { findMany: jest.fn().mockResolvedValue([]) },
     category: { findMany: jest.fn().mockResolvedValue([]) },
     unit: { findMany: jest.fn().mockResolvedValue([]) },
@@ -605,6 +607,145 @@ function expectItems(actualLines: any[], expectedItems: ExpectedItem[]) {
 }
 
 describe('StocksOcrService Finnish supplier extraction', () => {
+  it('extracts the first K-Market cash receipt with weighted quantity, unit price and paid total', async () => {
+    const extraction = await extract(`
+K-Market Kuusamo
+Kitkantie 1
+93600 Kuusamo
+0401779874 myymälä
+0401779875 posti
+
+KO01 M078134/1243 13.24 1.8.2026
+Pirkka appelsiini Navel Powell/ 7,53
+3,151 KG 2,39 €/KG
+
+YHTEENSÄ 7,53
+ASIAKASRYHMÄALENNUS 0,38-
+YHTEENSÄ 7,15
+LASKUTUSMYYNTI 7,15
+ASIAKAS 135
+
+ALV VEROTON VERO VEROLLINEN
+2 13,50% 6,30 0,85 7,15
+YHTEENSÄ 6,30 0,85 7,15
+Y-tunnus 3207393-3
+`);
+
+    expect(extraction.documentType).toBe('receipt');
+    expect(extraction.supplier.name).toBe('K-Market Kuusamo');
+    expect(extraction.supplierId).toBe('supplier-kmarket');
+    expect(extraction.document.receiptNumber).toBe('KO01 M078134/1243');
+    expect(extraction.document.documentDate).toBe('2026-08-01');
+    expect(extraction.totals).toEqual({
+      totalExcludingTax: 6.3,
+      totalTax: 0.85,
+      totalIncludingTax: 7.15,
+    });
+    expect(extraction.supplierIdentifiers).toEqual(
+      expect.arrayContaining([
+        { kind: 'store_number', value: '0401779874' },
+        { kind: 'business_id', value: '3207393-3' },
+      ]),
+    );
+    expectItems(extraction.lines, [
+      {
+        name: 'Pirkka appelsiini Navel Powell',
+        quantity: 3.151,
+        unit: 'KG',
+        unitPrice: 2.39,
+        total: 7.53,
+      },
+    ]);
+    expect(extraction.aiAnalysis.totalsCheck.status).toBe('receipt_discount_applied');
+  });
+
+  it('extracts piece and weighted products from the second K-Market cash receipt', async () => {
+    const extraction = await extract(`
+K-Market Kuusamo
+Kitkantie 1
+93600 Kuusamo
+0401779874 myymälä
+0401779875 posti
+
+KO01 M043115/0337 12.36 31.7.2026
+Pirkka basilika ruukku Suomi 3,36
+2 KPL 1,68 €/KPL
+Pirkka appelsiini Navel Powell/ 5,25
+2,197 KG 2,39 €/KG
+Pirkka banaani luomu Reilu Kau 3,16
+1,175 KG 2,69 €/KG
+
+YHTEENSÄ 11,77
+ASIAKASRYHMÄALENNUS 0,59-
+YHTEENSÄ 11,18
+LASKUTUSMYYNTI 11,18
+ALV VEROTON VERO VEROLLINEN
+2 13,50% 9,85 1,33 11,18
+YHTEENSÄ 9,85 1,33 11,18
+Y-tunnus 3207393-3
+`);
+
+    expect(extraction.documentType).toBe('receipt');
+    expect(extraction.document.receiptNumber).toBe('KO01 M043115/0337');
+    expect(extraction.totals.totalIncludingTax).toBeCloseTo(11.18, 2);
+    expectItems(extraction.lines, [
+      {
+        name: 'Pirkka basilika ruukku Suomi',
+        quantity: 2,
+        unit: 'KPL',
+        unitPrice: 1.68,
+        total: 3.36,
+      },
+      {
+        name: 'Pirkka appelsiini Navel Powell',
+        quantity: 2.197,
+        unit: 'KG',
+        unitPrice: 2.39,
+        total: 5.25,
+      },
+      {
+        name: 'Pirkka banaani luomu Reilu Kau',
+        quantity: 1.175,
+        unit: 'KG',
+        unitPrice: 2.69,
+        total: 3.16,
+      },
+    ]);
+    expect(extraction.lines.every((line: any) => line.categoryName === 'Fruits et légumes')).toBe(
+      true,
+    );
+  });
+
+  it('recognizes an existing supplier by a previously learned receipt identifier', async () => {
+    const prisma = mockPrisma();
+    prisma.supplier.findMany.mockResolvedValue([
+      { id: 'supplier-local', name: 'Commerce Kuusamo' },
+    ]);
+    prisma.supplierOcrIdentifier.findMany.mockResolvedValue([
+      { supplierId: 'supplier-local', kind: 'business_id', normalizedValue: '32073933' },
+    ]);
+    const service = new StocksOcrService(
+      prisma,
+      mockMarginsService(),
+      mockMistralClient(),
+      mockStocksService(),
+    );
+
+    const match = await (service as any).matchSupplier(
+      'org-1',
+      'Nom OCR illisible',
+      [],
+      [{ kind: 'business_id', value: '3207393-3' }],
+    );
+
+    expect(match).toMatchObject({
+      supplierId: 'supplier-local',
+      supplierName: 'Commerce Kuusamo',
+      matchingStatus: 'RECOGNIZED',
+      matchingScore: 1,
+    });
+  });
+
   it.each(tingstadCases)('extracts Tingstad invoice %s without losing product lines', async (testCase) => {
     const extraction = await extract(testCase.text);
 
@@ -781,7 +922,6 @@ Total TTC: 9,90
     expect(extraction.lines.length).toBeGreaterThanOrEqual(1);
   });
 });
-
 describe('StocksOcrService reception safeguards', () => {
   it('preserves the deferred product-creation choice in a corrected OCR line', () => {
     const service = new StocksOcrService(mockPrisma(), mockMarginsService(), mockMistralClient(), mockStocksService());

@@ -11,6 +11,48 @@ const actor = {
 };
 
 describe('PurchaseOrderQueryService', () => {
+  it('excludes in-store suppliers from the new-order supplier reference list', async () => {
+    const prisma = {
+      organization: { findFirst: jest.fn().mockResolvedValue({ id: 'org-1' }) },
+      supplier: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+      },
+    };
+    const queries = new PurchaseOrderQueryService(
+      prisma as unknown as PrismaService,
+      new PurchaseOrderPolicy(),
+    );
+
+    await queries.suppliers('org-1', actor, { page: 1, pageSize: 30 });
+
+    expect(prisma.supplier.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          organizationId: 'org-1',
+          AND: expect.arrayContaining([
+            {
+              OR: [
+                { purchasingProfile: { is: null } },
+                {
+                  purchasingProfile: {
+                    is: {
+                      orderingEnabled: true,
+                      deliveryMode: { not: 'NO_DELIVERY' },
+                    },
+                  },
+                },
+              ],
+            },
+          ]),
+        }),
+      }),
+    );
+    expect(prisma.supplier.count).toHaveBeenCalledWith({
+      where: prisma.supplier.findMany.mock.calls[0][0].where,
+    });
+  });
+
   it('scopes paginated order reads and counts to the organization and owner visibility', async () => {
     const prisma = {
       organization: { findFirst: jest.fn().mockResolvedValue({ id: 'org-1' }) },

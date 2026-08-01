@@ -452,15 +452,25 @@ export class StocksService {
         'Sélectionnez au moins un jour de livraison pour ce fournisseur.',
       );
     return {
-      orderEmail: settings.orderEmail?.trim().toLowerCase() || null,
+      orderEmail:
+        settings.deliveryMode === PurchasingDeliveryMode.NO_DELIVERY
+          ? null
+          : settings.orderEmail?.trim().toLowerCase() || null,
       deliveryMode: settings.deliveryMode,
       deliveryWeekdays:
         settings.deliveryMode === PurchasingDeliveryMode.SCHEDULED_DAYS ? deliveryWeekdays : [],
-      minimumOrder: new Prisma.Decimal(settings.minimumOrder),
-      deliveryFee: new Prisma.Decimal(settings.deliveryFee),
+      minimumOrder: new Prisma.Decimal(
+        settings.deliveryMode === PurchasingDeliveryMode.NO_DELIVERY ? 0 : settings.minimumOrder,
+      ),
+      deliveryFee: new Prisma.Decimal(
+        settings.deliveryMode === PurchasingDeliveryMode.NO_DELIVERY ? 0 : settings.deliveryFee,
+      ),
       timezone: settings.timezone?.trim() || 'UTC',
-      leadTimeDays: settings.leadTimeDays ?? 1,
-      orderingEnabled: true,
+      leadTimeDays:
+        settings.deliveryMode === PurchasingDeliveryMode.NO_DELIVERY
+          ? 0
+          : settings.leadTimeDays ?? 1,
+      orderingEnabled: settings.deliveryMode !== PurchasingDeliveryMode.NO_DELIVERY,
       emailSubjectTemplate: settings.emailSubjectTemplate?.trim() || null,
       emailBodyTemplate: settings.emailBodyTemplate?.trim() || null,
       emailSignature: settings.emailSignature?.trim() || null,

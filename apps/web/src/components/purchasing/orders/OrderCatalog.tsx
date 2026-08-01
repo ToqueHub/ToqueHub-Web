@@ -38,6 +38,11 @@ export function SupplierSelection({
   onSearch: (value: string) => void;
   onSelect: (supplier: Supplier) => void;
 }) {
+  const visibleSuppliers = suppliers.filter(
+    (supplier) =>
+      supplier.purchasingProfile?.deliveryMode !== 'NO_DELIVERY' &&
+      supplier.purchasingProfile?.orderingEnabled !== false,
+  );
   return (
     <section className="purchasing-choice-step">
       <div className="purchasing-step-heading">
@@ -57,7 +62,7 @@ export function SupplierSelection({
         />
       </div>
       <div className="purchasing-supplier-grid">
-        {suppliers.map((supplier, idx) => {
+        {visibleSuppliers.map((supplier, idx) => {
           const scheduled = supplier.purchasingProfile?.deliveryMode === 'SCHEDULED_DAYS';
           return (
             <motion.button
@@ -94,7 +99,7 @@ export function SupplierSelection({
           );
         })}
       </div>
-      {!suppliers.length && !loading ? (
+      {!visibleSuppliers.length && !loading ? (
         <div className="purchasing-catalog-empty">
           <Truck size={28} />
           <strong>Aucun fournisseur trouvé</strong>

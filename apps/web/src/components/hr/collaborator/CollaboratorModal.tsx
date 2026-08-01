@@ -5,7 +5,7 @@ import type { CoreUser, HrCollaborator, HrCollaboratorPayload, HrContractAnalysi
 import { HR_CATALOG } from '../../../hr-catalog';
 
 type TabId = 'profile' | 'professional' | 'contracts' | 'documents' | 'trainings' | 'organization' | 'history';
-type RequiredFieldId = 'firstName' | 'lastName' | 'departmentId' | 'positionId';
+type RequiredFieldId = 'firstName' | 'lastName' | 'hireDate' | 'departmentId' | 'positionId';
 type RequiredFieldErrors = Partial<Record<RequiredFieldId, string>>;
 export type PendingHrDocumentUpload = { file: File; category: string; notes?: string; expiresAt?: string };
 
@@ -155,6 +155,22 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
     }
     setForm((prev) => ({ ...prev, [key]: value }));
   };
+
+  useEffect(() => {
+    setErrors((previous) => {
+      const next = { ...previous };
+      let changed = false;
+      if (next.profile && form.firstName.trim() && form.lastName.trim()) {
+        delete next.profile;
+        changed = true;
+      }
+      if (next.professional && form.hireDate && form.departmentId && form.positionId) {
+        delete next.professional;
+        changed = true;
+      }
+      return changed ? next : previous;
+    });
+  }, [form.firstName, form.lastName, form.hireDate, form.departmentId, form.positionId]);
 
   useEffect(() => {
     if (!form.departmentId || !form.positionId) return;
@@ -307,7 +323,7 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
         ) : null}
         <div className="hr-collaborator-body">
           {activeTab === 'profile' ? <ProfileTab form={form} set={set} requiredErrors={requiredErrors} regulatoryCountryCode={regulatoryCountryCode} /> : null}
-          {activeTab === 'professional' ? <ProfessionalTab form={form} set={set} requiredErrors={requiredErrors} departments={activeDepartments} positions={primaryPositions} allPositions={activePositions} selectedDepartment={selectedDepartment} sites={sites} managers={availableManagers} users={availableUsers} positionResetMessage={positionResetMessage} clearPositionResetMessage={() => setPositionResetMessage('')} /> : null}
+          {activeTab === 'professional' ? <ProfessionalTab form={form} set={set} requiredErrors={requiredErrors} validationError={errors.professional} departments={activeDepartments} positions={primaryPositions} allPositions={activePositions} selectedDepartment={selectedDepartment} sites={sites} managers={availableManagers} users={availableUsers} positionResetMessage={positionResetMessage} clearPositionResetMessage={() => setPositionResetMessage('')} /> : null}
           {activeTab === 'contracts' ? <ContractsTab form={form} set={set} collaborator={collaborator} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /> : null}
           {activeTab === 'documents' ? <DocumentsTab collaborator={collaborator} pendingDocuments={pendingDocuments} onDocumentsChange={(documents) => { setPendingDocuments(documents); setDirty(true); }} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /> : null}
           {activeTab === 'trainings' ? <TrainingsTab regulatoryCountryCode={regulatoryCountryCode} selectedTrainings={selectedTrainings} onSelectedTrainings={(trainings) => { setSelectedTrainings(trainings); setDirty(true); }} customTraining={customTraining} onCustomTraining={setCustomTraining} /> : null}
@@ -516,11 +532,12 @@ function ProfileTab({ form, set, requiredErrors, regulatoryCountryCode }: TabPro
   </TabPanel>;
 }
 
-function ProfessionalTab({ form, set, requiredErrors, departments, positions, allPositions, selectedDepartment, sites, managers, users, positionResetMessage, clearPositionResetMessage }: TabProps & { requiredErrors: RequiredFieldErrors; departments: HrDepartment[]; positions: HrPosition[]; allPositions: HrPosition[]; selectedDepartment?: HrDepartment; sites: Site[]; managers: HrCollaborator[]; users: CoreUser[]; positionResetMessage: string; clearPositionResetMessage: () => void }) {
+function ProfessionalTab({ form, set, requiredErrors, validationError, departments, positions, allPositions, selectedDepartment, sites, managers, users, positionResetMessage, clearPositionResetMessage }: TabProps & { requiredErrors: RequiredFieldErrors; validationError?: string; departments: HrDepartment[]; positions: HrPosition[]; allPositions: HrPosition[]; selectedDepartment?: HrDepartment; sites: Site[]; managers: HrCollaborator[]; users: CoreUser[]; positionResetMessage: string; clearPositionResetMessage: () => void }) {
   return <TabPanel icon={<BriefcaseBusiness size={18} />} title="Professionnel">
+    {validationError ? <div className="hr-tab-validation-error" role="alert"><AlertCircle size={18} /><div><strong>Informations professionnelles incomplètes</strong><span>{validationError}</span></div></div> : null}
     <div className="hr-form-grid">
-      <FormField label="Date d'embauche *" icon={<CalendarDays size={16} />}>
-        <input type="date" value={form.hireDate} onChange={(e) => set('hireDate', e.target.value)} required />
+      <FormField label="Date d'embauche *" icon={<CalendarDays size={16} />} error={requiredErrors.hireDate}>
+        <input className={requiredErrors.hireDate ? 'hr-field-missing' : undefined} type="date" value={form.hireDate} onChange={(e) => set('hireDate', e.target.value)} required aria-invalid={Boolean(requiredErrors.hireDate)} />
       </FormField>
       <FormField label="Établissement principal" icon={<UsersRound size={16} />} isSelect={true}>
         <select value={form.siteId ?? ''} onChange={(e) => { set('siteId', e.target.value); set('secondarySiteIds', (form.secondarySiteIds ?? []).filter((id) => id !== e.target.value)); }} disabled={!sites.length}>
@@ -843,13 +860,26 @@ function validateRequiredFields(form: HrCollaboratorPayload) {
   const errors: RequiredFieldErrors = {};
   if (!form.firstName.trim()) errors.firstName = 'Prénom obligatoire';
   if (!form.lastName.trim()) errors.lastName = 'Nom obligatoire';
+  if (!form.hireDate) errors.hireDate = "Date d'embauche obligatoire";
   if (!form.departmentId) errors.departmentId = 'Service principal obligatoire';
   if (!form.positionId) errors.positionId = 'Poste principal obligatoire';
   return errors;
 }
 
-function validate(form: HrCollaboratorPayload) { const errors: Partial<Record<TabId, string>> = {}; if (!form.firstName.trim() || !form.lastName.trim()) errors.profile = 'Prénom et nom obligatoires'; if (!form.hireDate || !form.departmentId || !form.positionId) errors.professional = 'Champs professionnels obligatoires'; return errors; }
-function isRequiredField(key: keyof HrCollaboratorPayload): key is RequiredFieldId { return key === 'firstName' || key === 'lastName' || key === 'departmentId' || key === 'positionId'; }
+function validate(form: HrCollaboratorPayload) {
+  const errors: Partial<Record<TabId, string>> = {};
+  if (!form.firstName.trim() || !form.lastName.trim()) errors.profile = 'Prénom et nom obligatoires';
+  const missingProfessionalFields = [
+    !form.hireDate ? "la date d'embauche" : '',
+    !form.departmentId ? 'le service principal' : '',
+    !form.positionId ? 'le poste principal' : '',
+  ].filter(Boolean);
+  if (missingProfessionalFields.length) {
+    errors.professional = `Complétez ${missingProfessionalFields.join(', ')} avant l'enregistrement.`;
+  }
+  return errors;
+}
+function isRequiredField(key: keyof HrCollaboratorPayload): key is RequiredFieldId { return key === 'firstName' || key === 'lastName' || key === 'hireDate' || key === 'departmentId' || key === 'positionId'; }
 function cleanPayload(form: HrCollaboratorPayload): HrCollaboratorPayload {
   return {
     ...form,

@@ -18,6 +18,9 @@ type OperationalNeedMetadata = { season: string; timeSlot: string; note?: string
 type PlanningTemplateKind = 'DAY_PRESET' | 'WEEKLY_ROTATION';
 type PlanningPeriodStatus = 'DRAFT' | 'CONTROLLED' | 'PUBLISHED' | 'MODIFIED_AFTER_PUBLICATION' | 'LOCKED';
 type PlanningPeriodEventType = 'CONTROLLED' | 'PUBLISHED' | 'MODIFIED_AFTER_PUBLICATION' | 'LOCKED';
+type PlanningPdfInput = { title: string; organizationName: string; mode: 'week' | 'month'; period: Period; assignments: AnyAssignment[] };
+type PlanningPdfRow = { employeeName: string; departmentName: string; assignmentsByDate: Map<string, AnyAssignment[]> };
+type PlanningPdfPage = { days: string[]; rows: PlanningPdfRow[]; rowHeights: number[] };
 
 const WRITE_ROLES = ['SUPER_ADMIN', 'Administrateur', 'ADMIN', 'Manager', 'MANAGER', 'Chef', 'Responsable'];
 const NEED_SEASONS: Record<string, string> = { basse: 'Basse', normale: 'Normale', haute: 'Haute', 'evenement-brunch': 'Événement / brunch' };
@@ -853,9 +856,21 @@ export class PlanningService {
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) days.push(this.iso(d));
     return { start, end, month: start.getMonth() + 1, year: start.getFullYear(), days };
   }
-  private async buildPlanningPdf(input: { title: string; organizationName: string; mode: 'week' | 'month'; period: Period; assignments: AnyAssignment[] }) {
+  private async buildPlanningPdf(input: PlanningPdfInput) {
     return new Promise<Buffer>((resolve, reject) => {
-      const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 22, bufferPages: false, info: { Title: input.title, Author: 'ToqueHub' } });
+      const doc = new PDFDocument({
+        size: 'A4',
+        layout: 'landscape',
+        margin: 18,
+        bufferPages: false,
+        info: {
+          Title: input.title,
+          Author: 'ToqueHub',
+          Creator: 'ToqueHub',
+          Subject: `${input.title} - ${input.organizationName}`,
+          Keywords: 'planning, horaires, collaborateurs',
+        },
+      });
       const chunks: Buffer[] = [];
       doc.on('data', chunk => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -864,76 +879,155 @@ export class PlanningService {
       doc.end();
     });
   }
-  private drawPlanningPdf(doc: PDFKit.PDFDocument, input: { title: string; organizationName: string; mode: 'week' | 'month'; period: Period; assignments: AnyAssignment[] }) {
+  private drawPlanningPdf(doc: PDFKit.PDFDocument, input: PlanningPdfInput) {
     const weeks = this.exportWeeks(input.period);
-    let firstPage = true;
-    let pageNumber = 0;
+    const pages: PlanningPdfPage[] = [];
     for (const week of weeks) {
       const rows = this.exportRows(input.assignments, week.days);
-      const printableRows = rows.length ? rows : [{ employeeName: 'Aucun shift planifié', departmentName: '', assignmentsByDate: new Map<string, AnyAssignment[]>() }];
-      let y = 0;
-      for (const row of printableRows) {
-        const rowHeight = this.exportRowHeight(row, week.days);
-        if (!y || y + rowHeight > doc.page.height - doc.page.margins.bottom - 18) {
-          if (!firstPage) doc.addPage({ size: 'A4', layout: 'landscape', margin: 22 });
-          firstPage = false;
-          pageNumber += 1;
-          y = this.drawPlanningPdfHeader(doc, input, week.days, pageNumber);
-        }
-        this.drawPlanningPdfRow(doc, row, week.days, y, rowHeight);
-        y += rowHeight;
+      const printableRows = rows.length ? rows : [{ employeeName: 'Aucun créneau planifié', departmentName: '', assignmentsByDate: new Map<string, AnyAssignment[]>() }];
+      pages.push(...this.paginatePlanningPdfRows(doc, printableRows, week.days));
+    }
+
+    const generatedAt = new Date();
+    pages.forEach((page, pageIndex) => {
+      if (pageIndex > 0) doc.addPage({ size: 'A4', layout: 'landscape', margin: 18 });
+      let y = this.drawPlanningPdfHeader(doc, input, page.days, pageIndex + 1, pages.length);
+      page.rows.forEach((row, rowIndex) => {
+        const startsDepartment = rowIndex === 0 || row.departmentName !== page.rows[rowIndex - 1]?.departmentName;
+        this.drawPlanningPdfRow(doc, row, page.days, y, page.rowHeights[rowIndex], rowIndex, startsDepartment);
+        y += page.rowHeights[rowIndex];
+      });
+      this.drawPlanningPdfFooter(doc, generatedAt);
+    });
+  }
+  private paginatePlanningPdfRows(doc: PDFKit.PDFDocument, rows: PlanningPdfRow[], days: string[]): PlanningPdfPage[] {
+    const dimensions = this.planningPdfDimensions(doc, days.length);
+    const availableHeight = dimensions.bodyBottom - dimensions.bodyTop;
+    const measured = rows.map(row => ({ row, height: this.exportRowHeight(doc, row, days, dimensions.dayWidth) }));
+    const chunks: Array<Array<{ row: PlanningPdfRow; height: number }>> = [];
+    let current: Array<{ row: PlanningPdfRow; height: number }> = [];
+    let currentHeight = 0;
+    for (const item of measured) {
+      if (current.length && currentHeight + item.height > availableHeight) {
+        chunks.push(current);
+        current = [];
+        currentHeight = 0;
+      }
+      current.push(item);
+      currentHeight += item.height;
+    }
+    if (current.length) chunks.push(current);
+
+    if (chunks.length > 1) {
+      const previous = chunks[chunks.length - 2];
+      const last = chunks[chunks.length - 1];
+      const targetLastSize = Math.floor((previous.length + last.length) / 2);
+      let lastHeight = last.reduce((sum, item) => sum + item.height, 0);
+      while (last.length < targetLastSize && previous.length > targetLastSize) {
+        const candidate = previous[previous.length - 1];
+        if (lastHeight + candidate.height > availableHeight) break;
+        previous.pop();
+        last.unshift(candidate);
+        lastHeight += candidate.height;
       }
     }
+    return chunks.map(chunk => ({ days, rows: chunk.map(item => item.row), rowHeights: chunk.map(item => item.height) }));
   }
-  private drawPlanningPdfHeader(doc: PDFKit.PDFDocument, input: { title: string; organizationName: string; mode: 'week' | 'month'; period: Period; assignments: AnyAssignment[] }, days: string[], pageNumber: number) {
-    const left = doc.page.margins.left;
-    const right = doc.page.width - doc.page.margins.right;
-    const tableWidth = right - left;
-    const nameWidth = 116;
-    const dayWidth = (tableWidth - nameWidth) / 7;
+  private drawPlanningPdfHeader(doc: PDFKit.PDFDocument, input: PlanningPdfInput, days: string[], pageNumber: number, totalPages: number) {
+    const { left, right, tableWidth, nameWidth, dayWidth, tableY, headerHeight, bodyTop } = this.planningPdfDimensions(doc, days.length);
     const y = doc.page.margins.top;
     const periodLabel = `${this.formatPdfDate(input.period.start)} - ${this.formatPdfDate(input.period.end)}`;
     const totalMinutes = input.assignments.reduce((sum, assignment) => sum + plannedMinutes(assignment), 0);
 
     doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(15).text(input.title, left, y, { width: tableWidth * 0.5 });
-    doc.font('Helvetica').fontSize(8).fillColor('#64748b').text(`${input.organizationName} · ${periodLabel} · ${input.assignments.length} shift(s) · ${this.formatPdfMinutes(totalMinutes)}`, left, y + 18, { width: tableWidth * 0.72 });
-    doc.fontSize(7).fillColor('#94a3b8').text(`Page ${pageNumber}`, right - 80, y + 2, { width: 80, align: 'right' });
+    doc.font('Helvetica').fontSize(8).fillColor('#64748b').text(`${input.organizationName} · ${periodLabel} · ${input.assignments.length} créneau${input.assignments.length > 1 ? 'x' : ''} · ${this.formatPdfMinutes(totalMinutes)}`, left, y + 18, { width: tableWidth * 0.74 });
+    doc.font('Helvetica-Bold').fontSize(7.2).fillColor('#0f766e').text(this.formatPdfDisplayedPeriod(days), right - 210, y + 1, { width: 210, align: 'right' });
+    doc.font('Helvetica').fontSize(6.8).fillColor('#94a3b8').text(`Page ${pageNumber} / ${totalPages}`, right - 100, y + 17, { width: 100, align: 'right' });
 
-    const tableY = y + 42;
-    doc.lineWidth(0.6).strokeColor('#cbd5e1').fillColor('#eefdf6').rect(left, tableY, tableWidth, 24).fillAndStroke('#eefdf6', '#cbd5e1');
-    doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(7.5).text('Collaborateur', left + 5, tableY + 8, { width: nameWidth - 10 });
+    doc.lineWidth(0.6).strokeColor('#b8d9cd').fillColor('#ecfdf5').rect(left, tableY, tableWidth, headerHeight).fillAndStroke('#ecfdf5', '#b8d9cd');
+    doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(7.5).text('Collaborateur', left + 6, tableY + 5, { width: nameWidth - 12 });
+    doc.fillColor('#64748b').font('Helvetica').fontSize(5.8).text('Service · total affiché', left + 6, tableY + 15, { width: nameWidth - 12 });
     days.forEach((day, index) => {
       const x = left + nameWidth + index * dayWidth;
-      doc.strokeColor('#cbd5e1').rect(x, tableY, dayWidth, 24).stroke();
-      doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(7).text(this.formatPdfDayHeader(day), x + 3, tableY + 5, { width: dayWidth - 6, align: 'center' });
+      const dayAssignments = input.assignments.filter(assignment => this.assignmentDateIso(assignment) === day);
+      const employeeCount = new Set(dayAssignments.map(assignment => assignment.employeeId ?? assignment.employee?.id ?? assignment.collaborator?.id).filter(Boolean)).size;
+      const dayMinutes = dayAssignments.reduce((sum, assignment) => sum + plannedMinutes(assignment), 0);
+      const isWeekend = [0, 6].includes(this.parseDate(day).getDay());
+      if (isWeekend) doc.fillColor('#fff7ed').rect(x, tableY, dayWidth, headerHeight).fill();
+      doc.strokeColor('#b8d9cd').rect(x, tableY, dayWidth, headerHeight).stroke();
+      doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(7).text(this.formatPdfDayHeader(day), x + 3, tableY + 4, { width: dayWidth - 6, align: 'center' });
+      doc.fillColor('#64748b').font('Helvetica').fontSize(5.8).text(`${employeeCount} pers. · ${this.formatPdfMinutes(dayMinutes)}`, x + 3, tableY + 15, { width: dayWidth - 6, align: 'center' });
     });
-    return tableY + 24;
+    return bodyTop;
   }
-  private drawPlanningPdfRow(doc: PDFKit.PDFDocument, row: { employeeName: string; departmentName: string; assignmentsByDate: Map<string, AnyAssignment[]> }, days: string[], y: number, height: number) {
-    const left = doc.page.margins.left;
-    const right = doc.page.width - doc.page.margins.right;
-    const tableWidth = right - left;
-    const nameWidth = 116;
-    const dayWidth = (tableWidth - nameWidth) / 7;
-
-    doc.lineWidth(0.45).strokeColor('#dbe4ee').rect(left, y, tableWidth, height).stroke();
-    doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(7.2).text(row.employeeName, left + 5, y + 6, { width: nameWidth - 10, lineGap: 1 });
-    if (row.departmentName) doc.fillColor('#64748b').font('Helvetica').fontSize(6.4).text(row.departmentName, left + 5, y + 18, { width: nameWidth - 10 });
+  private drawPlanningPdfRow(doc: PDFKit.PDFDocument, row: PlanningPdfRow, days: string[], y: number, height: number, rowIndex: number, startsDepartment: boolean) {
+    const { left, tableWidth, nameWidth, dayWidth } = this.planningPdfDimensions(doc, days.length);
+    const rowBackground = rowIndex % 2 === 0 ? '#ffffff' : '#f8fafc';
+    doc.fillColor(rowBackground).rect(left, y, tableWidth, height).fill();
+    doc.fillColor('#f0fdf4').rect(left, y, nameWidth, height).fill();
+    if (startsDepartment && row.departmentName) doc.fillColor('#10b981').rect(left, y, 2.2, height).fill();
+    doc.lineWidth(startsDepartment ? 0.8 : 0.45).strokeColor(startsDepartment ? '#b8d9cd' : '#dbe4ee').rect(left, y, tableWidth, height).stroke();
+    doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(7.4).text(row.employeeName, left + 6, y + 5, { width: nameWidth - 12, height: 10, ellipsis: true });
+    const employeeMinutes = days.flatMap(day => row.assignmentsByDate.get(day) ?? []).reduce((sum, assignment) => sum + plannedMinutes(assignment), 0);
+    const employeeMeta = row.departmentName ? `${row.departmentName} · ${this.formatPdfMinutes(employeeMinutes)}` : '';
+    if (employeeMeta) doc.fillColor('#64748b').font('Helvetica').fontSize(6).text(employeeMeta, left + 6, y + 17, { width: nameWidth - 12, height: 8, ellipsis: true });
     days.forEach((day, index) => {
       const x = left + nameWidth + index * dayWidth;
+      const isWeekend = [0, 6].includes(this.parseDate(day).getDay());
+      if (isWeekend) doc.fillColor(rowIndex % 2 === 0 ? '#fffaf3' : '#fff7ed').rect(x, y, dayWidth, height).fill();
       doc.strokeColor('#dbe4ee').rect(x, y, dayWidth, height).stroke();
       const assignments = row.assignmentsByDate.get(day) ?? [];
       if (!assignments.length) return;
-      const lines = assignments.map(assignment => this.assignmentPdfLine(assignment));
-      doc.fillColor('#0f766e').font('Helvetica').fontSize(6.2).text(lines.join('\n'), x + 3, y + 5, { width: dayWidth - 6, lineGap: 1 });
+      let blockY = y + 4;
+      assignments.forEach((assignment, assignmentIndex) => {
+        if (assignmentIndex > 0) {
+          doc.strokeColor('#ccfbf1').moveTo(x + 3, blockY).lineTo(x + dayWidth - 3, blockY).stroke();
+          blockY += 2;
+        }
+        const details = this.assignmentPdfDetails(assignment);
+        doc.fillColor('#0f766e').font('Helvetica-Bold').fontSize(6.3).text(details.range, x + 3, blockY, { width: dayWidth * 0.62 - 3, height: 8, ellipsis: true });
+        if (details.breakLabel) doc.fillColor('#64748b').font('Helvetica').fontSize(5.3).text(details.breakLabel, x + dayWidth * 0.58, blockY + 0.6, { width: dayWidth * 0.38 - 3, align: 'right', height: 7, ellipsis: true });
+        doc.fillColor('#334155').font('Helvetica').fontSize(5.7).text(details.label, x + 3, blockY + 9, { width: dayWidth - 6, lineGap: 0.3 });
+        blockY += this.assignmentPdfBlockHeight(doc, assignment, dayWidth - 6);
+      });
     });
+  }
+  private drawPlanningPdfFooter(doc: PDFKit.PDFDocument, generatedAt: Date) {
+    const left = doc.page.margins.left;
+    const right = doc.page.width - doc.page.margins.right;
+    const y = doc.page.height - doc.page.margins.bottom - 8;
+    doc.strokeColor('#e2e8f0').lineWidth(0.4).moveTo(left, y - 3).lineTo(right, y - 3).stroke();
+    doc.fillColor('#64748b').font('Helvetica').fontSize(5.7).text('P = pause déduite · Les totaux correspondent aux heures planifiées nettes.', left, y, { width: (right - left) * 0.62 });
+    doc.text(`Généré le ${generatedAt.toLocaleDateString('fr-FR')} à ${generatedAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, right - 180, y, { width: 180, align: 'right' });
+  }
+  private planningPdfDimensions(doc: PDFKit.PDFDocument, dayCount: number) {
+    const left = doc.page.margins.left;
+    const right = doc.page.width - doc.page.margins.right;
+    const tableWidth = right - left;
+    const nameWidth = 126;
+    const tableY = doc.page.margins.top + 38;
+    const headerHeight = 26;
+    return {
+      left,
+      right,
+      tableWidth,
+      nameWidth,
+      dayWidth: (tableWidth - nameWidth) / Math.max(1, dayCount),
+      tableY,
+      headerHeight,
+      bodyTop: tableY + headerHeight,
+      bodyBottom: doc.page.height - doc.page.margins.bottom - 13,
+    };
   }
   private exportWeeks(period: Period) {
     const weeks: Array<{ days: string[] }> = [];
     let cursor = this.weekStart(period.start);
     while (cursor <= period.end) {
       const days: string[] = [];
-      for (let index = 0; index < 7; index += 1) days.push(this.iso(this.addDays(cursor, index)));
+      for (let index = 0; index < 7; index += 1) {
+        const date = this.addDays(cursor, index);
+        if (date >= period.start && date <= period.end) days.push(this.iso(date));
+      }
       weeks.push({ days });
       cursor = this.addDays(cursor, 7);
     }
@@ -956,17 +1050,25 @@ export class PlanningService {
       row.assignmentsByDate.set(date, dayAssignments);
       rows.set(key, row);
     }
-    return [...rows.values()].sort((a, b) => a.employeeName.localeCompare(b.employeeName, 'fr'));
+    return [...rows.values()].sort((a, b) => a.departmentName.localeCompare(b.departmentName, 'fr') || a.employeeName.localeCompare(b.employeeName, 'fr'));
   }
-  private exportRowHeight(row: { assignmentsByDate: Map<string, AnyAssignment[]> }, days: string[]) {
-    const maxLines = Math.max(1, ...days.map(day => row.assignmentsByDate.get(day)?.length ?? 0));
-    return Math.max(30, 14 + maxLines * 9);
+  private exportRowHeight(doc: PDFKit.PDFDocument, row: PlanningPdfRow, days: string[], dayWidth: number) {
+    const maxCellHeight = Math.max(0, ...days.map(day => {
+      const assignments = row.assignmentsByDate.get(day) ?? [];
+      return assignments.reduce((sum, assignment, index) => sum + this.assignmentPdfBlockHeight(doc, assignment, dayWidth - 6) + (index > 0 ? 2 : 0), 0);
+    }));
+    return Math.max(30, Math.ceil(maxCellHeight + 8));
   }
-  private assignmentPdfLine(assignment: AnyAssignment) {
-    const range = `${this.timeLabel(assignment.startTime)}-${this.timeLabel(assignment.endTime)}`;
-    const breakLabel = Number(assignment.breakMinutes ?? 0) ? ` · P${assignment.breakMinutes}` : '';
-    const label = assignment.position?.name ?? assignment.department?.name ?? assignment.site?.name ?? assignment.status ?? 'Shift';
-    return this.truncatePdfText(`${range} ${label}${breakLabel}`, 34);
+  private assignmentPdfDetails(assignment: AnyAssignment) {
+    const range = `${this.timeLabel(assignment.startTime)}–${this.timeLabel(assignment.endTime)}`;
+    const breakLabel = Number(assignment.breakMinutes ?? 0) ? `P ${assignment.breakMinutes} min` : '';
+    const label = assignment.position?.name ?? assignment.department?.name ?? assignment.site?.name ?? assignment.status ?? 'Créneau';
+    return { range, breakLabel, label };
+  }
+  private assignmentPdfBlockHeight(doc: PDFKit.PDFDocument, assignment: AnyAssignment, width: number) {
+    const { label } = this.assignmentPdfDetails(assignment);
+    const labelHeight = doc.font('Helvetica').fontSize(5.7).heightOfString(label, { width, lineGap: 0.3 });
+    return Math.ceil(9 + labelHeight);
   }
   private employeePdfName(employee: AnyEmployee) {
     return `${employee.lastName ?? ''} ${employee.firstName ?? ''}`.trim() || `${employee.firstName ?? ''} ${employee.lastName ?? ''}`.trim() || 'Collaborateur';
@@ -986,17 +1088,21 @@ export class PlanningService {
   }
   private formatPdfDayHeader(day: string) {
     const date = this.parseDate(day);
-    return `${date.toLocaleDateString('fr-FR', { weekday: 'short' })}\n${date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}`;
+    return `${date.toLocaleDateString('fr-FR', { weekday: 'short' }).replace('.', '').toUpperCase()} ${date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}`;
+  }
+  private formatPdfDisplayedPeriod(days: string[]) {
+    const start = this.parseDate(days[0]);
+    const end = this.parseDate(days[days.length - 1]);
+    if (days.length === 1) return start.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    return `Du ${start.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} au ${end.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}`;
   }
   private formatPdfDate(date: Date) {
     return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
   }
   private formatPdfMinutes(value: number) {
     const minutes = Math.max(0, Math.round(value));
-    return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, '0')}`;
-  }
-  private truncatePdfText(value: string, max: number) {
-    return value.length <= max ? value : `${value.slice(0, Math.max(0, max - 1))}…`;
+    const hours = String(Math.floor(minutes / 60)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    return minutes % 60 ? `${hours} h ${String(minutes % 60).padStart(2, '0')}` : `${hours} h`;
   }
   private hasPeriodFilter(q: PlanningQueryDto) { return Boolean(q.date || q.startDate || q.endDate || q.month || q.year); }
   private assignmentWhere(organizationId: string, q: PlanningQueryDto, period: Period, forcePeriod = false): Prisma.PlanningAssignmentWhereInput {

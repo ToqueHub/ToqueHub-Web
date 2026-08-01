@@ -171,12 +171,14 @@ const STOCKS_OCR_CATEGORY_HINTS = [
 type BusinessDocumentType =
   | 'invoice'
   | 'delivery_note'
+  | 'receipt'
   | 'supplier_order'
   | 'order_confirmation'
   | 'unknown';
 const BUSINESS_DOCUMENT_TYPES: BusinessDocumentType[] = [
   'invoice',
   'delivery_note',
+  'receipt',
   'supplier_order',
   'order_confirmation',
   'unknown',
@@ -388,16 +390,19 @@ interface BusinessExtraction {
     matchingStatus?: StockReceptionLineMatchingStatus;
     matchingScore?: number;
     candidates?: Array<{ id: string; name: string; score: number }>;
+    identifiers?: Array<{ kind: string; value: string }>;
   };
   supplierId?: string | null;
   supplierName?: string | null;
   supplierMatchingStatus?: StockReceptionLineMatchingStatus;
   supplierMatchingScore?: number;
   supplierCandidates?: Array<{ id: string; name: string; score: number }>;
+  supplierIdentifiers?: Array<{ kind: string; value: string }>;
   document: {
     invoiceNumber: string | null;
     deliveryNoteNumber: string | null;
     purchaseOrderNumber: string | null;
+    receiptNumber: string | null;
     documentDate: string | null;
     deliveryDate: string | null;
   };
@@ -1443,6 +1448,7 @@ export class StocksOcrService {
           invoiceNumber: corrected.invoiceNumber,
           deliveryNoteNumber: corrected.deliveryNoteNumber,
           purchaseOrderNumber: corrected.purchaseOrderNumber,
+          receiptNumber: corrected.receiptNumber,
           documentDate: corrected.documentDate ? new Date(corrected.documentDate) : null,
           deliveryDate: corrected.deliveryDate ? new Date(corrected.deliveryDate) : null,
           totalExcludingTax: this.decimalOrNull(corrected.totalExcludingTax),
@@ -1459,6 +1465,12 @@ export class StocksOcrService {
           controlNotes: corrected.controlNotes ?? null,
         },
       });
+      await this.rememberSupplierIdentifiersTx(
+        tx,
+        organizationId,
+        corrected.supplierId,
+        corrected.supplierIdentifiers,
+      );
       for (const line of lines) {
         const product = line.productId
           ? await tx.product.findFirst({
@@ -1566,7 +1578,7 @@ export class StocksOcrService {
               ? new Prisma.Decimal(1)
               : this.decimalOrNull(line.matchingScore),
           userCorrection: line as Prisma.InputJsonValue,
-          movementReason: `Réception OCR ${corrected.invoiceNumber || corrected.deliveryNoteNumber || extraction.ocrDocument.document.originalName}`,
+          movementReason: `Réception OCR ${corrected.invoiceNumber || corrected.deliveryNoteNumber || corrected.receiptNumber || extraction.ocrDocument.document.originalName}`,
           movementDate: corrected.deliveryDate ? new Date(corrected.deliveryDate) : new Date(),
           actorId: actor.id,
           priceMode: 'replace',
@@ -1631,6 +1643,7 @@ export class StocksOcrService {
           supplierName: corrected.supplierName,
           invoiceNumber: corrected.invoiceNumber,
           deliveryNoteNumber: corrected.deliveryNoteNumber,
+          receiptNumber: corrected.receiptNumber,
           deliveryDate: corrected.deliveryDate ? new Date(corrected.deliveryDate) : new Date(),
           status:
             acceptedTotal > 0 ? StockReceptionStatus.VALIDATED : StockReceptionStatus.CANCELLED,
@@ -1643,6 +1656,12 @@ export class StocksOcrService {
           controlNotes: corrected.controlNotes ?? null,
         },
       });
+      await this.rememberSupplierIdentifiersTx(
+        tx,
+        organizationId,
+        corrected.supplierId,
+        corrected.supplierIdentifiers,
+      );
       for (const line of lines) {
         if (!line.productId || !line.unitId || line.quantity == null)
           throw new BadRequestException(
@@ -1708,7 +1727,8 @@ export class StocksOcrService {
           lotNumber: line.lotNumber,
           bestBeforeDate: line.bestBeforeDate ? new Date(line.bestBeforeDate) : null,
           userCorrection: line as Prisma.InputJsonValue,
-          movementReason: `Réception libre ${corrected.deliveryNoteNumber || ''}`.trim(),
+          movementReason:
+            `Réception libre ${corrected.deliveryNoteNumber || corrected.receiptNumber || ''}`.trim(),
           movementDate: corrected.deliveryDate ? new Date(corrected.deliveryDate) : new Date(),
           actorId: actor.id,
           priceMode: 'replace',
@@ -1949,7 +1969,12 @@ export class StocksOcrService {
     const specialized = this.extractKnownSupplierBusinessData(text, lines);
     const supplierName =
       specialized?.supplier.name || specialized?.supplierName || this.extractSupplier(lines);
-    const supplierMatch = await this.matchSupplier(organizationId, supplierName, lines);
+    const supplierMatch = await this.matchSupplier(
+      organizationId,
+      supplierName,
+      lines,
+      specialized?.supplierIdentifiers,
+    );
     const totals = this.extractTotals(text);
     const extraction: BusinessExtraction = specialized ?? {
       documentType: this.detectDocumentType(text),
@@ -1958,6 +1983,7 @@ export class StocksOcrService {
         invoiceNumber: this.extractInvoiceNumber(text),
         deliveryNoteNumber: this.extractDeliveryNoteNumber(text),
         purchaseOrderNumber: this.extractPurchaseOrderNumber(text),
+        receiptNumber: this.extractReceiptNumber(text),
         documentDate: this.extractDocumentDate(text),
         deliveryDate: this.extractDeliveryDate(text),
       },
@@ -2082,10 +2108,14 @@ export class StocksOcrService {
 
   private invoiceUnderstandingInstructions() {
     return [
-      'Tu analyses un bon de livraison ou une facture fournisseur pour un module de stock restauration.',
+      'Tu analyses un bon de livraison, une facture fournisseur, une commande ou un ticket de caisse pour un module de stock restauration.',
       'Retourne uniquement le JSON conforme au schema.',
-      'Objectifs: extraire le fournisseur, les numéros documentaires, dates, totaux et les lignes utiles pour réception fournisseur.',
-      'Types possibles: invoice, delivery_note, supplier_order, order_confirmation, unknown.',
+      'Objectifs: extraire le fournisseur, ses identifiants stables, les numéros documentaires, dates, totaux et les lignes utiles pour réception fournisseur.',
+      'Types possibles: invoice, delivery_note, receipt, supplier_order, order_confirmation, unknown.',
+      'Un ticket de caisse (receipt) contient souvent une enseigne ou un magasin, une adresse, une date et heure, un total payé, un bloc TVA et des produits suivis de leur quantité et prix au KG/KPL/L. En finnois, YHTEENSÄ=total, ALV=TVA, VEROTON=hors taxe, VERO=taxe, VEROLLINEN=TTC, KPL=pièce, KG=kilogramme et Y-tunnus=identifiant entreprise.',
+      'Pour un produit vendu au poids ou à la pièce sur un ticket, extrais la quantité et l’unité depuis la ligne de détail, le prix après €/KG, €/KPL ou €/L comme unitPrice, et le montant à droite de la ligne produit comme total.',
+      'Les remises (alennus) ne sont pas des produits stockables. Ignore-les comme lignes tout en conservant le total réellement payé dans totalIncludingTax.',
+      'Dans supplier.identifiers, conserve seulement les identifiants stables du commerce (Y-tunnus/business_id, numéro de magasin/store_number, téléphone), jamais le numéro de caisse, de transaction, de client ou d’employé.',
       'Tu dois reconnaître les factures finlandaises: Lasku=facture, Lasku päiväys=date facture, Eräpäivä=échéance, Asiakasnumero=numero client, Toimitusasiakas=adresse de livraison, Nimike=code article, Nimi=nom, Määrä=quantité, Yksikkö=unité, á hinta=prix unitaire, Yhteensä=total ligne, Alkuperämaa=pays origine, Nettopaino=poids net, Loppusumma=total final.',
       'Tu dois reconnaître les historiques/confirmations de commande Kespro: Order information, Order date, Selected delivery date, Order number, Delivery address, Confirmed quantity / ME.',
       'Pour Kespro, Order number est toujours le numéro de commande fournisseur et doit être renseigné dans document.purchaseOrderNumber.',
@@ -2140,11 +2170,20 @@ export class StocksOcrService {
         supplier: {
           type: 'object',
           additionalProperties: false,
-          required: ['name', 'supplierId', 'confidence'],
+          required: ['name', 'supplierId', 'confidence', 'identifiers'],
           properties: {
             name: nullableString,
             supplierId: nullableString,
             confidence: nullableNumber,
+            identifiers: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['kind', 'value'],
+                properties: { kind: { type: 'string' }, value: { type: 'string' } },
+              },
+            },
           },
         },
         document: {
@@ -2154,6 +2193,7 @@ export class StocksOcrService {
             'invoiceNumber',
             'deliveryNoteNumber',
             'purchaseOrderNumber',
+            'receiptNumber',
             'documentDate',
             'deliveryDate',
           ],
@@ -2161,6 +2201,7 @@ export class StocksOcrService {
             invoiceNumber: nullableString,
             deliveryNoteNumber: nullableString,
             purchaseOrderNumber: nullableString,
+            receiptNumber: nullableString,
             documentDate: nullableString,
             deliveryDate: nullableString,
           },
@@ -2331,9 +2372,19 @@ export class StocksOcrService {
       documentType: BUSINESS_DOCUMENT_TYPES.includes(ai?.documentType)
         ? ai.documentType
         : fallback.documentType,
-      supplier: { name: this.cleanString(ai?.supplier?.name) || fallback.supplier.name },
+      supplier: {
+        name: this.cleanString(ai?.supplier?.name) || fallback.supplier.name,
+        identifiers: this.cleanSupplierIdentifiers(
+          ai?.supplier?.identifiers,
+          fallback.supplierIdentifiers,
+        ),
+      },
       supplierId: this.uuidOrNull(ai?.supplier?.supplierId) || fallback.supplierId,
       supplierName: this.cleanString(ai?.supplier?.name) || fallback.supplierName,
+      supplierIdentifiers: this.cleanSupplierIdentifiers(
+        ai?.supplier?.identifiers,
+        fallback.supplierIdentifiers,
+      ),
       document: {
         invoiceNumber:
           this.cleanString(ai?.document?.invoiceNumber) || fallback.document.invoiceNumber,
@@ -2343,6 +2394,8 @@ export class StocksOcrService {
         purchaseOrderNumber:
           this.cleanString(ai?.document?.purchaseOrderNumber) ||
           fallback.document.purchaseOrderNumber,
+        receiptNumber:
+          this.cleanString(ai?.document?.receiptNumber) || fallback.document.receiptNumber,
         documentDate: this.cleanDate(ai?.document?.documentDate) || fallback.document.documentDate,
         deliveryDate: this.cleanDate(ai?.document?.deliveryDate) || fallback.document.deliveryDate,
       },
@@ -2386,6 +2439,7 @@ export class StocksOcrService {
       supplier: { ...fallback.supplier, ...ai.supplier, name: supplierName ?? null },
       supplierId: ai.supplierId ?? fallback.supplierId,
       supplierName: supplierName ?? null,
+      supplierIdentifiers: ai.supplierIdentifiers ?? fallback.supplierIdentifiers ?? [],
       document: { ...fallback.document, ...(ai.document || {}) },
       totals: { ...fallback.totals, ...(ai.totals || {}) },
       lines: ai.lines?.length ? ai.lines : fallback.lines,
@@ -2453,6 +2507,7 @@ export class StocksOcrService {
   private compactExtractionForAi(extraction: BusinessExtraction) {
     return {
       supplierName: extraction.supplierName,
+      supplierIdentifiers: extraction.supplierIdentifiers,
       document: extraction.document,
       totals: extraction.totals,
       lines: extraction.lines.slice(0, 100),
@@ -2462,6 +2517,28 @@ export class StocksOcrService {
   private cleanString(value: any) {
     const str = value == null ? '' : String(value).replace(/\s+/g, ' ').trim();
     return str || null;
+  }
+
+  private cleanSupplierIdentifiers(
+    value: any,
+    fallback: Array<{ kind: string; value: string }> = [],
+  ) {
+    const items = Array.isArray(value) ? value : fallback;
+    const seen = new Set<string>();
+    return items
+      .map((item: any) => ({
+        kind: this.cleanString(item?.kind)?.toLowerCase() || '',
+        value: this.cleanString(item?.value) || '',
+      }))
+      .filter((item) => {
+        if (!item.kind || !item.value) return false;
+        const normalized = this.normalizeSupplierIdentifier(item.value);
+        const key = `${item.kind}:${normalized}`;
+        if (!normalized || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 12);
   }
 
   private cleanOcrMessages(value: any, limit: number) {
@@ -2515,6 +2592,7 @@ export class StocksOcrService {
     if (this.isTingstadFinnishInvoice(text)) return 'invoice';
     if (this.isKesproOrder(text))
       return /confirmed quantity/i.test(text) ? 'order_confirmation' : 'supplier_order';
+    if (this.isFinnishRetailReceipt(text)) return 'receipt';
     if (/\bfacture\b|\binvoice\b/i.test(text)) return 'invoice';
     if (/\b(bon de livraison|bl\b|livraison|delivery note)\b/i.test(text)) return 'delivery_note';
     return 'unknown';
@@ -2526,6 +2604,7 @@ export class StocksOcrService {
   ): BusinessExtraction | null {
     if (this.isTingstadFinnishInvoice(text)) return this.extractTingstadFinnishInvoice(text, lines);
     if (this.isKesproOrder(text)) return this.extractKesproOrder(text, lines);
+    if (this.isFinnishRetailReceipt(text)) return this.extractFinnishRetailReceipt(text, lines);
     return null;
   }
 
@@ -2546,6 +2625,242 @@ export class StocksOcrService {
         text,
       )
     );
+  }
+
+  private isFinnishRetailReceipt(text: string) {
+    const hasRetailHeader =
+      /\b(?:K-?Market|S-?Market|Prisma|Alepa|Sale|Lidl)\b/i.test(text) ||
+      /\bmyym[aä]l[aä]\b/i.test(text);
+    const hasReceiptTotals = /(?:^|\s)YHTEENS[ÄA](?:\s|$)/i.test(text) && /\bALV\b/i.test(text);
+    const hasReceiptLine =
+      /€\s*\/\s*(?:KG|KPL|L|G|ML)\b/i.test(text) || /\bLASKUTUSMYYNTI\b/i.test(text);
+    return hasRetailHeader && hasReceiptTotals && hasReceiptLine;
+  }
+
+  private extractFinnishRetailReceipt(text: string, lines: string[]): BusinessExtraction {
+    const supplierName =
+      lines
+        .slice(0, 12)
+        .map((line) =>
+          line
+            .replace(/^[#*\s]+/, '')
+            .replace(/\s+/g, ' ')
+            .trim(),
+        )
+        .find((line) => /\b(?:K-?Market|S-?Market|Prisma|Alepa|Sale|Lidl)\b/i.test(line)) ||
+      this.extractSupplier(lines) ||
+      'Commerce de détail';
+    const supplierIdentifiers = this.extractFinnishReceiptSupplierIdentifiers(text);
+    const items = this.extractFinnishReceiptLines(lines);
+    const vatTotals = this.extractFinnishReceiptVatTotals(lines);
+    const paidTotal = this.extractFinnishReceiptPaidTotal(lines);
+    const grossTotal = this.roundMoney(items.reduce((sum, item) => sum + (item.total ?? 0), 0));
+    const discount = this.extractMoney(
+      text,
+      /(?:ASIAKASRYHM[AÄ]ALENNUS|ALENNUS|DISCOUNT)\s*([0-9]+(?:[.,][0-9]+)?)\s*-?/i,
+    );
+    const documentTotal = paidTotal ?? vatTotals.totalIncludingTax ?? grossTotal;
+    const delta = this.roundMoney(grossTotal - documentTotal);
+    const discountApplied =
+      discount != null && Math.abs(delta - discount) <= Math.max(0.02, discount * 0.02);
+    const receiptNumber = this.extractReceiptNumber(text);
+    const documentDate = this.extractFinnishReceiptDate(lines, text);
+    const warnings =
+      !discountApplied && Math.abs(delta) > 0.05
+        ? [
+            `La somme des articles (${grossTotal.toFixed(2)} EUR) diffère du total payé (${documentTotal.toFixed(2)} EUR). Vérifiez les remises du ticket.`,
+          ]
+        : [];
+    const suggestedActions = discountApplied
+      ? [
+          `Remise de ${discount!.toFixed(2)} EUR détectée : les quantités et prix unitaires du ticket sont conservés, le total payé reste ${documentTotal.toFixed(2)} EUR.`,
+        ]
+      : [];
+
+    return {
+      documentType: 'receipt',
+      supplier: { name: supplierName, identifiers: supplierIdentifiers },
+      supplierName,
+      supplierIdentifiers,
+      document: {
+        invoiceNumber: null,
+        deliveryNoteNumber: null,
+        purchaseOrderNumber: null,
+        receiptNumber,
+        documentDate,
+        deliveryDate: documentDate,
+      },
+      totals: {
+        totalExcludingTax: vatTotals.totalExcludingTax,
+        totalTax: vatTotals.totalTax,
+        totalIncludingTax: documentTotal,
+      },
+      lines: items,
+      items,
+      confidence: {
+        documentType: 0.99,
+        header: supplierName && documentDate ? 0.98 : 0.75,
+        items: items.length ? 0.98 : 0.2,
+        totals: documentTotal != null ? 0.98 : 0.4,
+      },
+      aiAnalysis: {
+        provider: 'internal',
+        model: 'finnish-retail-receipt-parser',
+        status: 'applied',
+        confidence: items.length ? 0.98 : 0.55,
+        warnings,
+        suggestedActions,
+        totalsCheck: {
+          computedTotal: grossTotal,
+          documentTotal,
+          delta,
+          status: discountApplied
+            ? 'receipt_discount_applied'
+            : Math.abs(delta) <= 0.05
+              ? 'ok'
+              : 'mismatch',
+        },
+      },
+      warnings,
+      suggestedActions,
+      documentConfidence: items.length ? 0.98 : 0.55,
+    };
+  }
+
+  private extractFinnishReceiptSupplierIdentifiers(text: string) {
+    const identifiers: Array<{ kind: string; value: string }> = [];
+    const add = (kind: string, value?: string | null) => {
+      if (value?.trim()) identifiers.push({ kind, value: value.replace(/\s+/g, ' ').trim() });
+    };
+    add('store_number', text.match(/\b([+0-9][0-9\s-]{6,})\s+myym[aä]l[aä](?:\s|$)/i)?.[1]);
+    add('phone', text.match(/\b([+0-9][0-9\s-]{6,})\s+posti\b/i)?.[1]);
+    add('business_id', text.match(/\bY-?tunnus\s*[:#-]?\s*([0-9]{6,7}-[0-9])\b/i)?.[1]);
+    return this.cleanSupplierIdentifiers(identifiers);
+  }
+
+  private extractFinnishReceiptLines(lines: string[]) {
+    const items: ExtractedLine[] = [];
+    const productLineRe = /^(.+?[A-Za-zÀ-ÿÄÖÅäöå][^|]*?)\s+([0-9]+[,.][0-9]{2})\s*€?\s*$/;
+    const detailRe =
+      /^([0-9]+(?:[,.][0-9]+)?)\s*(KG|KPL|L|G|ML|CL|DL|PKT|PSS|PRK|TLK|RS|PAK)\s+([0-9]+(?:[,.][0-9]+)?)\s*€?\s*\/\s*(KG|KPL|L|G|ML|CL|DL|PKT|PSS|PRK|TLK|RS|PAK)\b/i;
+    const start = lines.findIndex(
+      (line) =>
+        /\b\d{1,2}[.:]\d{2}\b/.test(line) && /\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b/.test(line),
+    );
+    for (let i = Math.max(0, start + 1); i < lines.length; i += 1) {
+      const line = this.cleanFinnishReceiptLine(lines[i]);
+      if (/^YHTEENS[ÄA](?:\s|$)/i.test(line)) break;
+      if (!line || /\b(?:ALENNUS|PANTTI|KUPONKI)\b/i.test(line)) continue;
+      const product = line.match(productLineRe);
+      if (!product) continue;
+      const nameOriginal = product[1].replace(/[\s/]+$/g, '').trim();
+      if (!nameOriginal || /^(ALV|VEROTON|VERO|VEROLLINEN)$/i.test(nameOriginal)) continue;
+      const detailSource = this.cleanFinnishReceiptLine(lines[i + 1] || '');
+      const detail = detailSource.match(detailRe);
+      const quantity = detail ? this.parseFrenchNumber(detail[1]) : 1;
+      const unit = detail?.[2]?.toUpperCase() || 'KPL';
+      const unitPrice = detail
+        ? this.parseFrenchNumber(detail[3])
+        : this.parseFrenchNumber(product[2]);
+      const total = this.parseFrenchNumber(product[2]);
+      const warnings =
+        detail && detail[2].toUpperCase() !== detail[4].toUpperCase()
+          ? [`L’unité achetée (${detail[2]}) diffère de l’unité de prix (${detail[4]}).`]
+          : [];
+      const categoryName = this.finnishReceiptCategory(nameOriginal);
+      items.push({
+        ignored: false,
+        label: nameOriginal,
+        reference: null,
+        supplierProductCode: null,
+        nameOriginal,
+        nameNormalized: this.normalizeProductText(nameOriginal),
+        descriptionOriginal: null,
+        quantity,
+        unit,
+        unitPrice,
+        total,
+        vatRate: this.extractFinnishReceiptVatRate(lines),
+        lotNumber: null,
+        bestBeforeDate: null,
+        isFreight: false,
+        isStockItem: true,
+        categoryName,
+        lineConfidence: detail ? 0.99 : 0.86,
+        warnings,
+        sourceText: detail ? `${lines[i]}\n${lines[i + 1]}` : lines[i],
+      });
+      if (detail) i += 1;
+    }
+    return items.slice(0, 120);
+  }
+
+  private cleanFinnishReceiptLine(value: string) {
+    return value
+      .replace(/[|#*_`]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private finnishReceiptCategory(value: string) {
+    const normalized = this.normalize(value);
+    if (
+      /\b(appelsiini|banaani|omena|sitruuna|lime|tomaatti|basilika|salaatti|kurkku|peruna|sipuli|vihannes|marja|hedelma)\b/.test(
+        normalized,
+      )
+    )
+      return 'Fruits et légumes';
+    if (/\b(maito|voi|juusto|kerma|jogurtti|kananmuna)\b/.test(normalized))
+      return 'Produits laitiers';
+    if (/\b(liha|kana|nauta|sika|makkara|kinkku)\b/.test(normalized)) return 'Viandes';
+    if (/\b(kala|lohi|tonnikala|katkarapu)\b/.test(normalized)) return 'Poissons';
+    if (/\b(leipa|sampyla|pull|croissant)\b/.test(normalized)) return 'Boulangerie';
+    if (/\b(vesi|mehu|limonadi|kahvi|tee|olut|viini)\b/.test(normalized)) return 'Boissons';
+    return 'Épicerie';
+  }
+
+  private extractFinnishReceiptPaidTotal(lines: string[]) {
+    const values = lines
+      .map((line) => line.replace(/[|\s]+/g, ' ').trim())
+      .map((line) => line.match(/^YHTEENS[ÄA]\s+([0-9]+[,.][0-9]{2})\s*€?$/i)?.[1])
+      .filter((value): value is string => Boolean(value))
+      .map((value) => this.parseFrenchNumber(value))
+      .filter((value): value is number => value != null);
+    return values.at(-1) ?? null;
+  }
+
+  private extractFinnishReceiptVatTotals(lines: string[]) {
+    const start = lines.findIndex(
+      (line) => /\bALV\b/i.test(line) && /\bVEROTON\b/i.test(line) && /\bVERO\b/i.test(line),
+    );
+    if (start < 0) return { totalExcludingTax: null, totalTax: null, totalIncludingTax: null };
+    for (const line of lines.slice(start + 1, start + 6).reverse()) {
+      const numbers = [...line.matchAll(/[0-9]+[,.][0-9]{2}/g)]
+        .map((match) => this.parseFrenchNumber(match[0]))
+        .filter((value): value is number => value != null);
+      if (numbers.length >= 3) {
+        const [totalExcludingTax, totalTax, totalIncludingTax] = numbers.slice(-3);
+        return { totalExcludingTax, totalTax, totalIncludingTax };
+      }
+    }
+    return { totalExcludingTax: null, totalTax: null, totalIncludingTax: null };
+  }
+
+  private extractFinnishReceiptVatRate(lines: string[]) {
+    for (const line of lines) {
+      const match = line.match(/\b([0-9]+[,.][0-9]{1,2})\s*%/);
+      if (match) return this.parseFrenchNumber(match[1]);
+    }
+    return null;
+  }
+
+  private extractFinnishReceiptDate(lines: string[], text: string) {
+    const header = lines.find(
+      (line) =>
+        /\b\d{1,2}[.:]\d{2}\b/.test(line) && /\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b/.test(line),
+    );
+    const value = header?.match(/\b(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\b/)?.[1];
+    return value ? this.normalizeDate(value) : this.extractDocumentDate(text);
   }
 
   private extractTingstadFinnishInvoice(text: string, lines: string[]): BusinessExtraction {
@@ -2590,6 +2905,7 @@ export class StocksOcrService {
         invoiceNumber,
         deliveryNoteNumber: null,
         purchaseOrderNumber: orderRequester?.[2]?.trim() || null,
+        receiptNumber: null,
         documentDate: invoiceDate,
         deliveryDate: null,
       },
@@ -2833,6 +3149,7 @@ export class StocksOcrService {
         invoiceNumber: null,
         deliveryNoteNumber: null,
         purchaseOrderNumber: orderNumber,
+        receiptNumber: null,
         documentDate: orderDate,
         deliveryDate,
       },
@@ -3442,17 +3759,38 @@ export class StocksOcrService {
     organizationId: string,
     extractedName: string | null,
     lines: string[],
+    identifiers: Array<{ kind: string; value: string }> = [],
   ) {
-    const suppliers = await this.prisma.supplier.findMany({
-      where: { organizationId, isArchived: false },
-    });
+    const cleanIdentifiers = this.cleanSupplierIdentifiers(identifiers);
+    const [suppliers, knownIdentifiers] = await Promise.all([
+      this.prisma.supplier.findMany({
+        where: { organizationId, isArchived: false },
+      }),
+      cleanIdentifiers.length
+        ? this.prisma.supplierOcrIdentifier.findMany({
+            where: {
+              organizationId,
+              supplier: { isArchived: false },
+              OR: cleanIdentifiers.map((identifier) => ({
+                kind: identifier.kind,
+                normalizedValue: this.normalizeSupplierIdentifier(identifier.value),
+              })),
+            },
+          })
+        : Promise.resolve([]),
+    ]);
+    const identifierSupplierIds = new Set(
+      knownIdentifiers.map((identifier) => identifier.supplierId),
+    );
     const supplierCandidates = this.supplierCandidates(extractedName, lines);
     const ranked = suppliers
       .map((supplier) => {
-        const score = Math.max(
-          ...supplierCandidates.map((candidate) => this.matchScore(candidate, supplier.name)),
-          0,
-        );
+        const score = identifierSupplierIds.has(supplier.id)
+          ? 1
+          : Math.max(
+              ...supplierCandidates.map((candidate) => this.matchScore(candidate, supplier.name)),
+              0,
+            );
         return { supplier, score };
       })
       .sort((a, b) => b.score - a.score);
@@ -3506,6 +3844,18 @@ export class StocksOcrService {
 
   private normalizeProductText(value: string) {
     return this.normalize(value)
+      .replace(/\bappelsiini\b/g, 'orange')
+      .replace(/\bbanaani\b/g, 'banane')
+      .replace(/\bbasilika\b/g, 'basilic')
+      .replace(/\btomaatti\b/g, 'tomate')
+      .replace(/\bkurkku\b/g, 'concombre')
+      .replace(/\bperuna\b/g, 'pomme de terre')
+      .replace(/\bsipuli\b/g, 'oignon')
+      .replace(/\bomena\b/g, 'pomme')
+      .replace(/\bsitruuna\b/g, 'citron')
+      .replace(/\bmaito\b/g, 'lait')
+      .replace(/\bvoi\b/g, 'beurre')
+      .replace(/\bjuusto\b/g, 'fromage')
       .replace(
         /\b(?:lot|dlc|ddm|prix|total|montant|tva|ht|ttc|net|brut|colis|carton|cartons|pieces|piece|unite|unites|kg|kgs|g|gr|l|litre|litres|ml|cl|x|ltk|kpl|pkt|pak|pss|rs|tlk|prk|plo|yksikko|maara|hinta|yhteensa)\b/g,
         ' ',
@@ -3555,6 +3905,31 @@ export class StocksOcrService {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, ' ')
       .trim();
+  }
+
+  private normalizeSupplierIdentifier(value: string) {
+    return value.toLowerCase().replace(/[^a-z0-9]+/g, '');
+  }
+
+  private async rememberSupplierIdentifiersTx(
+    tx: Tx,
+    organizationId: string,
+    supplierId: string | null,
+    identifiers: Array<{ kind: string; value: string }>,
+  ) {
+    if (!supplierId) return;
+    const cleanIdentifiers = this.cleanSupplierIdentifiers(identifiers);
+    if (!cleanIdentifiers.length) return;
+    await tx.supplierOcrIdentifier.createMany({
+      data: cleanIdentifiers.map((identifier) => ({
+        organizationId,
+        supplierId,
+        kind: identifier.kind,
+        value: identifier.value,
+        normalizedValue: this.normalizeSupplierIdentifier(identifier.value),
+      })),
+      skipDuplicates: true,
+    });
   }
 
   private levenshtein(a: string, b: string) {
@@ -3944,6 +4319,21 @@ export class StocksOcrService {
     );
   }
 
+  private extractReceiptNumber(text: string) {
+    return (
+      this.extractAfter(
+        text,
+        /\b([A-Z]{1,3}[O0][0-9]{1,4}\s+M[0-9]{3,}(?:\/[0-9]+)?)\s+\d{1,2}[.:]\d{2}\s+\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b/i,
+        1,
+      ) ||
+      this.extractAfter(
+        text,
+        /(?:receipt|kuitti|ticket)\s*(?:number|numero|n[°.])?\s*[:#-]?\s*([A-Z0-9][A-Z0-9-_/]{3,})/i,
+        1,
+      )
+    );
+  }
+
   private extractDeliveryNoteNumber(text: string) {
     return (
       this.extractAfter(
@@ -4107,9 +4497,11 @@ export class StocksOcrService {
     return {
       supplierId: dto.supplierId || null,
       supplierName: dto.supplierName || null,
+      supplierIdentifiers: this.cleanSupplierIdentifiers(dto.supplierIdentifiers),
       invoiceNumber: dto.invoiceNumber || null,
       deliveryNoteNumber: dto.deliveryNoteNumber || null,
       purchaseOrderNumber: dto.purchaseOrderNumber || null,
+      receiptNumber: dto.receiptNumber || null,
       documentDate: dto.documentDate || null,
       deliveryDate: dto.deliveryDate || null,
       totalExcludingTax: dto.totalExcludingTax ?? null,

@@ -7,11 +7,17 @@ export type PurchasingDeliveryProfile = {
   cutoffTime: string | null;
   timezone: string;
   leadTimeDays: number;
+  orderingEnabled?: boolean;
 };
 
 @Injectable()
 export class PurchasingDeliveryService {
   options(profile: PurchasingDeliveryProfile, from: Date, count = 24) {
+    if (
+      profile.deliveryMode === PurchasingDeliveryMode.NO_DELIVERY ||
+      profile.orderingEnabled === false
+    )
+      return [];
     const local = this.zonedParts(from, profile.timezone || 'UTC');
     const localTime = `${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`;
     const cutoffPassed = Boolean(profile.cutoffTime && localTime > profile.cutoffTime);
@@ -44,6 +50,16 @@ export class PurchasingDeliveryService {
     if (!allowed.includes(new Date(value).toISOString().slice(0, 10)))
       throw new BadRequestException(
         'La date de livraison ne respecte plus les jours, le délai ou l’heure limite du fournisseur.',
+      );
+  }
+
+  assertOrderable(profile: PurchasingDeliveryProfile | null | undefined) {
+    if (
+      profile?.deliveryMode === PurchasingDeliveryMode.NO_DELIVERY ||
+      profile?.orderingEnabled === false
+    )
+      throw new BadRequestException(
+        'Ce fournisseur est configuré pour des achats sur place : aucune commande ne doit être créée dans Achats.',
       );
   }
 

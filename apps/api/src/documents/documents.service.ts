@@ -95,14 +95,17 @@ export class DocumentsService {
     const supplierId = reception?.supplierId || this.string(data.supplierId) || this.string(supplierData.supplierId);
     const invoiceNumber = reception?.invoiceNumber || this.string(data.invoiceNumber) || this.string(documentData.invoiceNumber);
     const deliveryNoteNumber = reception?.deliveryNoteNumber || this.string(data.deliveryNoteNumber) || this.string(documentData.deliveryNoteNumber);
+    const receiptNumber = reception?.receiptNumber || this.string(data.receiptNumber) || this.string(documentData.receiptNumber);
     const documentDate = this.dateString(reception?.documentDate) || this.string(data.documentDate) || this.string(documentData.documentDate) || this.dateString(document.createdAt);
     const extractedType = this.string(data.documentType);
     const type: string = invoiceNumber
       ? 'invoice'
       : deliveryNoteNumber
         ? 'delivery_note'
-        : ['invoice', 'delivery_note', 'supplier_order', 'order_confirmation'].includes(extractedType || '')
-          ? extractedType || 'unknown'
+        : receiptNumber
+          ? 'receipt'
+          : ['invoice', 'delivery_note', 'receipt', 'supplier_order', 'order_confirmation'].includes(extractedType || '')
+            ? extractedType || 'unknown'
           : extraction?.type === 'INVOICE'
             ? 'invoice'
             : extraction?.type === 'DELIVERY_NOTE'
@@ -130,6 +133,7 @@ export class DocumentsService {
       supplierName: supplierName || null,
       invoiceNumber: invoiceNumber || null,
       deliveryNoteNumber: deliveryNoteNumber || null,
+      receiptNumber: receiptNumber || null,
       documentDate,
       uploadedAt: document.createdAt.toISOString(),
       createdAt: document.createdAt.toISOString(),
@@ -141,7 +145,7 @@ export class DocumentsService {
     };
   }
 
-  private applyFilters<T extends { supplierId: string | null; supplierName: string | null; type: string; documentDate: string | null; createdAt: string; originalName: string; invoiceNumber: string | null; deliveryNoteNumber: string | null }>(items: T[], query: Query): T[] {
+  private applyFilters<T extends { supplierId: string | null; supplierName: string | null; type: string; documentDate: string | null; createdAt: string; originalName: string; invoiceNumber: string | null; deliveryNoteNumber: string | null; receiptNumber: string | null }>(items: T[], query: Query): T[] {
     const search = query.search?.trim().toLowerCase();
     const supplier = query.supplier?.trim().toLowerCase();
     const type = query.type?.trim();
@@ -150,7 +154,7 @@ export class DocumentsService {
     if (dateTo) dateTo.setHours(23, 59, 59, 999);
 
     return items.filter((item) => {
-      const haystack = `${item.originalName} ${item.supplierName ?? ''} ${item.invoiceNumber ?? ''} ${item.deliveryNoteNumber ?? ''}`.toLowerCase();
+      const haystack = `${item.originalName} ${item.supplierName ?? ''} ${item.invoiceNumber ?? ''} ${item.deliveryNoteNumber ?? ''} ${item.receiptNumber ?? ''}`.toLowerCase();
       if (search && !haystack.includes(search)) return false;
       if (supplier && item.supplierId !== supplier && (item.supplierName ?? '').toLowerCase() !== supplier) return false;
       if (type && type !== 'all' && item.type !== type) return false;
