@@ -164,15 +164,23 @@ Prérequis:
 - npm `10+`
 - PostgreSQL `14+`
 
-```bash
-cp .env.example .env
-npm install
-npm run db:setup:local
-npm run prisma:generate
-npm run prisma:migrate
+Sous Windows, préparer entièrement une copie fraîche du dépôt:
+
+```powershell
+npm run welcome
 ```
 
-Lancer l'API:
+Sous Linux ou macOS:
+
+```bash
+npm run bienvenue
+```
+
+Ces commandes installent les dépendances, préparent PostgreSQL, appliquent toutes
+les migrations, génèrent Prisma Client et vérifient que les tables attendues
+existent.
+
+Lancer ensuite l'API:
 
 ```bash
 npm run api:dev

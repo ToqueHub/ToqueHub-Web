@@ -18,7 +18,10 @@ describe('StocksService articles pagination', () => {
       stocks: [],
     }));
     const prisma = {
-      product: { findMany: jest.fn().mockResolvedValue(products) },
+      product: {
+        findMany: jest.fn().mockResolvedValue(products),
+        count: jest.fn().mockResolvedValue(0),
+      },
       stockMovement: { findMany: jest.fn().mockResolvedValue([]) },
     };
     const service = new StocksService(prisma as any);
@@ -32,7 +35,10 @@ describe('StocksService articles pagination', () => {
 
   it('passes category and supplier filters to the product query before pagination', async () => {
     const prisma = {
-      product: { findMany: jest.fn().mockResolvedValue([]) },
+      product: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+      },
       stockMovement: { findMany: jest.fn() },
     };
     const service = new StocksService(prisma as any);
@@ -111,6 +117,7 @@ describe('StocksService manual product stock adjustment', () => {
         create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'movement-1', ...data })),
       },
       auditLog: { create: jest.fn().mockResolvedValue({}) },
+      productSite: { upsert: jest.fn().mockResolvedValue({}) },
     };
     const prisma = {
       product: {
@@ -119,6 +126,7 @@ describe('StocksService manual product stock adjustment', () => {
           unitId: 'unit-g',
           unit: { id: 'unit-g', symbol: 'g' },
           name: 'Rose noire',
+          minimumStock: new Prisma.Decimal(0),
         }),
       },
       organization: {
@@ -126,7 +134,10 @@ describe('StocksService manual product stock adjustment', () => {
       },
       stock: { findFirst: jest.fn().mockResolvedValue(stock) },
       location: { findFirst: jest.fn() },
-      site: { findFirst: jest.fn().mockResolvedValue({ id: siteId }) },
+      site: {
+        findFirst: jest.fn().mockResolvedValue({ id: siteId }),
+        findMany: jest.fn().mockResolvedValue([{ id: siteId, name: 'Cuisine' }]),
+      },
       $transaction: jest.fn().mockImplementation((callback) => callback(tx)),
     };
     const service = new StocksService(prisma as any);
@@ -164,6 +175,7 @@ describe('StocksService manual product stock adjustment', () => {
           unitId: 'unit-g',
           unit: { id: 'unit-g', symbol: 'g' },
           name: 'Rose noire',
+          minimumStock: new Prisma.Decimal(0),
         }),
       },
       organization: {
@@ -179,7 +191,10 @@ describe('StocksService manual product stock adjustment', () => {
         }),
       },
       location: { findFirst: jest.fn() },
-      site: { findFirst: jest.fn().mockResolvedValue({ id: siteId }) },
+      site: {
+        findFirst: jest.fn().mockResolvedValue({ id: siteId }),
+        findMany: jest.fn().mockResolvedValue([{ id: siteId, name: 'Cuisine' }]),
+      },
       $transaction: jest.fn(),
     };
     const service = new StocksService(prisma as any);

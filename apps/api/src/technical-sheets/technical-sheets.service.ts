@@ -68,13 +68,20 @@ type PreparedImportedIngredient = {
 const DEFAULT_CATEGORIES = [
   'Entrées',
   'Plats',
-  'Desserts',
-  'Sauces',
   'Accompagnements',
+  'Sauces',
+  'Bases',
+  'Crèmes',
+  'Mousses',
+  'Desserts',
   'Petit-déjeuner',
   'Pâtisserie',
   'Boulangerie',
   'Boissons',
+  'Cocktails',
+  'Cocktails sans alcool',
+  'Cafés et boissons chaudes',
+  'Sirops et infusions',
 ];
 const STOCK_INPUT_PRODUCT_KINDS = [
   ProductKind.UNSPECIFIED,
@@ -1601,20 +1608,12 @@ export class TechnicalSheetsService {
       await tx.productionProfile.deleteMany({ where: { organizationId, technicalSheetId } });
       return;
     }
-    const organization = await tx.organization.findUnique({
-      where: { id: organizationId },
-      select: { primarySiteId: true },
+    const sites = await tx.site.findMany({
+      where: { organizationId, isArchived: false },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
     });
-    const siteId =
-      organization?.primarySiteId ??
-      (
-        await tx.site.findFirst({
-          where: { organizationId, isArchived: false },
-          orderBy: { createdAt: 'asc' },
-          select: { id: true },
-        })
-      )?.id;
-    if (!siteId) return;
+    if (!sites.length) return;
     const sheet = await tx.technicalSheet.findUnique({
       where: { id: technicalSheetId },
       select: {
@@ -1624,28 +1623,30 @@ export class TechnicalSheetsService {
       },
     });
     if (!sheet) throw new NotFoundException('Fiche technique introuvable.');
-    const profile = await tx.productionProfile.findFirst({
-      where: { organizationId, siteId, technicalSheetId, outputVariantId: null },
-      orderBy: { createdAt: 'asc' },
-    });
     const data = {
       outputProductId: output.outputProductId,
       yieldUnitId: output.yieldUnitId,
       referenceYield: this.referenceYield(sheet),
     };
-    if (profile) {
-      await tx.productionProfile.update({ where: { id: profile.id }, data });
-      return;
+    for (const site of sites) {
+      const profile = await tx.productionProfile.findFirst({
+        where: { organizationId, siteId: site.id, technicalSheetId, outputVariantId: null },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (profile) {
+        await tx.productionProfile.update({ where: { id: profile.id }, data });
+      } else {
+        await tx.productionProfile.create({
+          data: {
+            organizationId,
+            siteId: site.id,
+            technicalSheetId,
+            ...data,
+            mode: ProductionProfileMode.FIXED,
+          },
+        });
+      }
     }
-    await tx.productionProfile.create({
-      data: {
-        organizationId,
-        siteId,
-        technicalSheetId,
-        ...data,
-        mode: ProductionProfileMode.FIXED,
-      },
-    });
   }
 
   private async replaceChildren(

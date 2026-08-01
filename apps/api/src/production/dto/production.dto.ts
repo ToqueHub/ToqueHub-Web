@@ -18,6 +18,7 @@ export class ProductionQueryDto {
 
 export class CreateProductionOrderDto {
   @IsUUID() technicalSheetId!: string;
+  @IsOptional() @IsUUID() siteId?: string;
   @IsOptional() @IsString() @MaxLength(160) name?: string;
   @IsString() productionDate!: string;
   @IsString() @MaxLength(8) plannedTime!: string;

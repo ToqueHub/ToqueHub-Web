@@ -1035,6 +1035,7 @@ model Organization {
   categories                            Category[]
   units                                 Unit[]
   products                              Product[]
+  productSites                          ProductSite[]
   productVariants                       ProductVariant[]
   packagingCompositionItems             PackagingCompositionItem[]
   suppliers                             Supplier[]
@@ -1648,6 +1649,7 @@ model Product {
   unit                                  Unit                                    @relation(fields: [unitId], references: [id], onDelete: Restrict)
   primarySupplier                       Supplier?                               @relation("ProductPrimarySupplier", fields: [primarySupplierId], references: [id], onDelete: SetNull)
   stocks                                Stock[]
+  siteAssignments                       ProductSite[]
   movements                             StockMovement[]
   stockReceptionLines                   StockReceptionLine[]
   lots                                  Lot[]
@@ -1681,6 +1683,26 @@ model Product {
   @@index([primarySupplierId])
   @@index([isArchived])
   @@map("products")
+}
+
+model ProductSite {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  productId      String   @db.Uuid
+  siteId         String   @db.Uuid
+  minimumStock   Decimal  @default(0) @db.Decimal(12, 3)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  site         Site         @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, productId, siteId])
+  @@index([organizationId, siteId, isActive])
+  @@index([productId])
+  @@map("product_sites")
 }
 
 model ProductVariant {
@@ -1791,6 +1813,7 @@ model Site {
   organization                 Organization                  @relation("OrganizationSites", fields: [organizationId], references: [id], onDelete: Cascade)
   primaryForOrganizations      Organization[]                @relation("OrganizationPrimarySite")
   locations                    Location[]
+  productSites                 ProductSite[]
   stocks                       Stock[]
   lots                         Lot[]
   stockReceptions              StockReception[]

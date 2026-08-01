@@ -134,6 +134,8 @@ import type {
   Inventory,
   Location,
   Product,
+  ProductLabelOcrBatchStatus,
+  ProductLabelOcrResult,
   Article,
   ArticlesResponse,
   ProductImportCommitResult,
@@ -535,6 +537,12 @@ type AppNotification = {
   createdAt: Date;
   read: boolean;
 };
+type ProductOcrReviewRequest = {
+  batchId: string;
+  productId: string;
+  result: ProductLabelOcrResult;
+  evidence: ProductOcrEvidence;
+};
 type StocksOnboardingStep = 'welcome' | 'reception' | 'review';
 type StocksReadiness = {
   foundationReady: boolean;
@@ -641,7 +649,14 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [showInventoryModal, setShowInventoryModal] = useState(false);
   const [showOcrImportModal, setShowOcrImportModal] = useState(false);
   const [showOcrReviewModal, setShowOcrReviewModal] = useState(false);
+  const [showProductOcrTracking, setShowProductOcrTracking] = useState(false);
   const [ocrStatuses, setOcrStatuses] = useState<StocksOcrStatus[]>([]);
+  const [productLabelOcrStatuses, setProductLabelOcrStatuses] = useState<
+    ProductLabelOcrBatchStatus[]
+  >([]);
+  const productLabelReadyNotifiedRef = useRef(new Set<string>());
+  const [productOcrReviewRequest, setProductOcrReviewRequest] =
+    useState<ProductOcrReviewRequest | null>(null);
   const [selectedOcrExtraction, setSelectedOcrExtraction] = useState<StocksOcrExtraction | null>(
     null,
   );
@@ -653,6 +668,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [documentsDateFrom, setDocumentsDateFrom] = useState('');
   const [documentsDateTo, setDocumentsDateTo] = useState('');
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [selectedProductSiteId, setSelectedProductSiteId] = useState<string | null>(null);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [selectedInventoryId, setSelectedInventoryId] = useState<string | null>(null);
@@ -1080,6 +1096,33 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     }
   }
 
+  async function refreshProductLabelOcrStatuses() {
+    try {
+      const result = await api.productLabelImportStatuses(token);
+      const nextStatuses = result.statuses ?? [];
+      const newlyReady = nextStatuses.filter(
+        (status) =>
+          status.state === 'vérifier' && !productLabelReadyNotifiedRef.current.has(status.batchId),
+      );
+      if (newlyReady.length) {
+        newlyReady.forEach((status) => productLabelReadyNotifiedRef.current.add(status.batchId));
+        const newlyReadyProducts = [
+          ...new Map(newlyReady.map((status) => [status.product.id, status.product])).values(),
+        ];
+        addAppNotification(
+          'success',
+          newlyReadyProducts.length === 1
+            ? `1 produit prêt à vérifier : ${newlyReadyProducts[0].name}.`
+            : `${newlyReadyProducts.length} produits prêts à vérifier.`,
+        );
+      }
+      setProductLabelOcrStatuses(nextStatuses);
+      return nextStatuses;
+    } catch {
+      return productLabelOcrStatuses;
+    }
+  }
+
   async function refreshMyDocuments() {
     setDocumentsLoading(true);
     try {
@@ -1102,9 +1145,11 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     if (!installedApps.includes('stocks')) {
       setOcrStatuses([]);
       setOcrPollingActive(false);
+      setProductLabelOcrStatuses([]);
       return;
     }
     void refreshOcrStatusesFromServer();
+    void refreshProductLabelOcrStatuses();
   }, [token, installedApps.join('|')]);
 
   useEffect(() => {
@@ -1114,6 +1159,25 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     }, 2500);
     return () => window.clearInterval(timer);
   }, [ocrPollingActive, ocrStatuses, token]);
+
+  useEffect(() => {
+    if (
+      !productLabelOcrStatuses.some(
+        (status) => status.state === 'analyse' || status.state === 'en attente',
+      )
+    ) {
+      return undefined;
+    }
+    const timer = window.setInterval(() => {
+      void refreshProductLabelOcrStatuses();
+    }, 2500);
+    return () => window.clearInterval(timer);
+  }, [
+    token,
+    productLabelOcrStatuses.some(
+      (status) => status.state === 'analyse' || status.state === 'en attente',
+    ),
+  ]);
 
   useEffect(() => {
     if (activeTab !== 'organization-documents') return;
@@ -2573,6 +2637,73 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     await submit(() => api.updateProduct(token, productId, payload), 'Fiche produit mise à jour.');
   }
 
+  async function handleUploadProductLabelOcr(productId: string, files: File[]) {
+    setError(undefined);
+    const response = await api.uploadProductLabelImports(token, productId, files);
+    productLabelReadyNotifiedRef.current.delete(response.batchId);
+    await refreshProductLabelOcrStatuses();
+    setSuccess(
+      `${files.length} capture${files.length > 1 ? 's' : ''} envoyée${files.length > 1 ? 's' : ''} en analyse pour ${response.product.name}. Le traitement continue pendant votre navigation.`,
+    );
+    return response;
+  }
+
+  async function handleOpenProductLabelOcrReview(status: ProductLabelOcrBatchStatus) {
+    if (!status.results.length) {
+      setError('Cette analyse ne contient encore aucun résultat à vérifier.');
+      return;
+    }
+    setError(undefined);
+    try {
+      const evidenceDocuments = (
+        await Promise.all(
+          status.documents.map(async ({ document }) => {
+            try {
+              const previewUrl = await api.viewStocksDocument(token, document.id);
+              return {
+                documentId: document.id,
+                previewUrl,
+                filename: document.originalName,
+                mimeType: document.mimeType,
+              };
+            } catch {
+              return null;
+            }
+          }),
+        )
+      ).filter((item): item is NonNullable<typeof item> => Boolean(item));
+      const result = mergeProductLabelOcrResults(status.product.id, status.results);
+      const firstEvidence = evidenceDocuments[0];
+      setProductOcrReviewRequest({
+        batchId: status.batchId,
+        productId: status.product.id,
+        result,
+        evidence: {
+          previewUrl: firstEvidence?.previewUrl ?? '',
+          filename:
+            evidenceDocuments.length > 1
+              ? `${evidenceDocuments.length} captures`
+              : (firstEvidence?.filename ?? result.filename),
+          mimeType: firstEvidence?.mimeType ?? result.mimeType,
+          pageCount: result.pageCount,
+          confidence: result.confidence,
+          warnings: result.warnings,
+          documents: evidenceDocuments,
+        },
+      });
+      setSelectedProductId(status.product.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Impossible d’ouvrir le résultat OCR produit.');
+    }
+  }
+
+  async function handleProductLabelOcrReviewed(productId: string, batchId: string) {
+    await api.reviewProductLabelImport(token, productId, batchId);
+    productLabelReadyNotifiedRef.current.delete(batchId);
+    setProductLabelOcrStatuses((current) => current.filter((status) => status.batchId !== batchId));
+    setProductOcrReviewRequest(null);
+  }
+
   async function handleAdjustProductStock(
     productId: string,
     payload: {
@@ -2596,13 +2727,29 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   async function handleCommitProductImport(payload: {
     rows: Array<{ rowNumber: number; fields: ProductImportPreviewFields; selected?: boolean }>;
     mapping?: Record<string, ProductImportField>;
-    options?: { createMissingCategories?: boolean; createMissingSuppliers?: boolean };
+    options?: {
+      createMissingCategories?: boolean;
+      createMissingSuppliers?: boolean;
+      defaultSupplierId?: string;
+      defaultSupplierName?: string;
+      siteIds?: string[];
+    };
   }) {
     setError(undefined);
     setSuccess(undefined);
     const result = await api.commitProductImport(token, payload);
+    const assigned = result.assignedExisting ?? 0;
     setSuccess(
-      `${result.created} produit${result.created > 1 ? 's' : ''} importé${result.created > 1 ? 's' : ''}.`,
+      [
+        result.created
+          ? `${result.created} produit${result.created > 1 ? 's créés' : ' créé'}`
+          : '',
+        assigned
+          ? `${assigned} produit${assigned > 1 ? 's existants attribués' : ' existant attribué'} au site`
+          : '',
+      ]
+        .filter(Boolean)
+        .join(' · ') || 'Import terminé.',
     );
     await refresh();
     return result;
@@ -2617,9 +2764,24 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     notes?: string;
     purchasing?: SupplierPurchasingPayload;
   }) {
-    await submit(() => api.createSupplier(token, payload), 'Fournisseur créé avec succès.');
-    setSupplierPrefillName('');
-    setShowSupplierModal(false);
+    setError(undefined);
+    setSuccess(undefined);
+    try {
+      const created = await api.createSupplier(token, payload);
+      setSuppliers((current) =>
+        [...current.filter((supplier) => supplier.id !== created.id), created].sort((a, b) =>
+          a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }),
+        ),
+      );
+      setSuccess('Fournisseur créé avec succès.');
+      setSupplierPrefillName('');
+      setShowSupplierModal(false);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Une erreur est survenue lors de l'enregistrement.",
+      );
+      throw err;
+    }
   }
 
   async function handleUpdateSupplier(
@@ -2634,10 +2796,23 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       purchasing?: SupplierPurchasingPayload;
     },
   ) {
-    await submit(
-      () => api.updateSupplier(token, supplierId, payload),
-      'Fournisseur modifié avec succès.',
-    );
+    setError(undefined);
+    setSuccess(undefined);
+    try {
+      const updated = await api.updateSupplier(token, supplierId, payload);
+      setSuppliers((current) =>
+        current
+          .map((supplier) => (supplier.id === supplierId ? updated : supplier))
+          .sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' })),
+      );
+      setSelectedSupplier((current) => (current?.id === supplierId ? updated : current));
+      setSuccess('Fournisseur modifié avec succès.');
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Une erreur est survenue lors de l'enregistrement.",
+      );
+      throw err;
+    }
   }
 
   async function handleDeleteSupplier(supplierId: string) {
@@ -3361,9 +3536,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           <button
             type="button"
             className="sidebar-collapse-btn"
-            onClick={() =>
-              autoHideSidebar ? closeAutoSidebar(true) : setSidebarCollapsed(true)
-            }
+            onClick={() => (autoHideSidebar ? closeAutoSidebar(true) : setSidebarCollapsed(true))}
             aria-label="Masquer le menu latéral"
             title="Masquer le menu"
           >
@@ -4622,16 +4795,25 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                           articlesWithoutStock: 0,
                           stockValue: 0,
                           lowStockCount: 0,
+                          unassignedCount: 0,
                         },
                       }
                     }
                     categories={categories}
                     suppliers={suppliers}
+                    sites={sites}
+                    primarySiteId={session.user.primarySiteId ?? undefined}
                     onAdd={() => setShowAddImportModal(true)}
                     onMovement={openMovementModal}
                     onInventory={() => setShowInventoryModal(true)}
-                    onEdit={(article) => setSelectedProductId(article.product.id)}
+                    onEdit={(article, siteId) => {
+                      setSelectedProductSiteId(siteId ?? null);
+                      setSelectedProductId(article.product.id);
+                    }}
                     onQuery={(params) => api.articles(token, params)}
+                    onAssignUnassigned={(siteIds) =>
+                      api.assignProductSites(token, { siteIds, onlyUnassigned: true })
+                    }
                     onRefresh={refresh}
                   />
                 </>
@@ -4720,10 +4902,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                           Quantités réellement disponibles par produit, lot et site.
                         </span>
                       </div>
-                      <button
-                        className="btn btn-primary"
-                        onClick={() => openMovementModal()}
-                      >
+                      <button className="btn btn-primary" onClick={() => openMovementModal()}>
                         <Plus size={16} /> Enregistrer un mouvement
                       </button>
                     </div>
@@ -4878,10 +5057,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                           Traçabilité des flux d'entrées, sorties, pertes et corrections.
                         </span>
                       </div>
-                      <button
-                        className="btn btn-primary"
-                        onClick={() => openMovementModal()}
-                      >
+                      <button className="btn btn-primary" onClick={() => openMovementModal()}>
                         <Plus size={16} /> Enregistrer un mouvement
                       </button>
                     </div>
@@ -5004,6 +5180,11 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               {activeTab === 'products' && (
                 <>
                   {renderStocksModuleNav()}
+                  <ProductLabelOcrStatusBar
+                    statuses={productLabelOcrStatuses}
+                    onOpenResult={handleOpenProductLabelOcrReview}
+                    onOpenTracking={() => setShowProductOcrTracking(true)}
+                  />
                   <div className="card-modern">
                     <div className="section-header-modern">
                       <div className="section-info">
@@ -5417,6 +5598,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       {showProductImportModal ? (
         <ProductImportWizard
           suppliers={suppliers}
+          sites={sites}
           onClose={closeProductImportModal}
           onDownloadTemplate={() => api.downloadProductImportTemplate(token)}
           onAnalyze={(file) => api.analyzeProductImport(token, file)}
@@ -5432,6 +5614,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           units={units}
           categories={categories}
           suppliers={suppliers}
+          sites={sites}
           onClose={() => setShowProductCreatorModal(false)}
           onPreview={(rows) => api.previewProductCreator(token, rows)}
           onAnalyze={(files) => api.analyzeProductCreatorOcr(token, files)}
@@ -5459,16 +5642,42 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         />
       </Modal>
 
+      <Modal
+        isOpen={showProductOcrTracking}
+        onClose={() => setShowProductOcrTracking(false)}
+        title="Suivi des analyses OCR produits"
+        size="lg"
+      >
+        <ProductLabelOcrTrackingPanel
+          statuses={productLabelOcrStatuses}
+          onOpenResult={async (status) => {
+            setShowProductOcrTracking(false);
+            await handleOpenProductLabelOcrReview(status);
+          }}
+        />
+      </Modal>
+
       <ProductDetailModal
         product={selectedProduct}
+        siteId={selectedProductSiteId ?? undefined}
         stocks={stocks}
         movements={movements}
         categories={categories}
         units={units}
         suppliers={suppliers}
         sites={sites}
-        onClose={() => setSelectedProductId(null)}
+        onClose={() => {
+          setSelectedProductId(null);
+          setSelectedProductSiteId(null);
+          setProductOcrReviewRequest(null);
+        }}
         onUpdate={handleUpdateProduct}
+        onUploadOcr={handleUploadProductLabelOcr}
+        ocrStatuses={productLabelOcrStatuses}
+        onOpenOcrResult={handleOpenProductLabelOcrReview}
+        initialOcrReview={productOcrReviewRequest}
+        onOcrReviewSaved={handleProductLabelOcrReviewed}
+        onCancelOcrReview={() => setProductOcrReviewRequest(null)}
         onAdjustStock={handleAdjustProductStock}
         onDelete={handleDeleteProduct}
       />
@@ -9978,6 +10187,7 @@ function ProductCsvCreator({
   units,
   categories,
   suppliers,
+  sites,
   onClose,
   onPreview,
   onAnalyze,
@@ -9987,6 +10197,7 @@ function ProductCsvCreator({
   units: Unit[];
   categories: Category[];
   suppliers: Supplier[];
+  sites: Site[];
   onClose: () => void;
   onPreview: (
     rows: Array<{ rowNumber: number; fields: ProductImportPreviewFields; selected?: boolean }>,
@@ -9997,7 +10208,13 @@ function ProductCsvCreator({
   ) => Promise<void>;
   onCommit: (payload: {
     rows: Array<{ rowNumber: number; fields: ProductImportPreviewFields; selected?: boolean }>;
-    options?: { createMissingCategories?: boolean; createMissingSuppliers?: boolean };
+    options?: {
+      createMissingCategories?: boolean;
+      createMissingSuppliers?: boolean;
+      defaultSupplierId?: string;
+      defaultSupplierName?: string;
+      siteIds?: string[];
+    };
   }) => Promise<ProductImportCommitResult>;
 }) {
   const empty = (): ProductImportPreviewRow => ({
@@ -10015,6 +10232,10 @@ function ProductCsvCreator({
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string>();
   const [message, setMessage] = useState<string>();
+  const activeSites = sites.filter((site) => !site.isArchived);
+  const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>(() =>
+    activeSites.length === 1 ? [activeSites[0].id] : [],
+  );
 
   useEffect(() => {
     if (busy === null) {
@@ -10103,12 +10324,20 @@ function ProductCsvCreator({
   };
 
   const commit = async () => {
+    if (!selectedSiteIds.length) {
+      setError('Sélectionnez au moins un site de destination.');
+      return;
+    }
     setBusy('import');
     setError(undefined);
     try {
       const result = await onCommit({
         rows: payload(),
-        options: { createMissingCategories: true, createMissingSuppliers: true },
+        options: {
+          createMissingCategories: true,
+          createMissingSuppliers: true,
+          siteIds: selectedSiteIds,
+        },
       });
       setProgress(100);
       await new Promise((r) => setTimeout(r, 220));
@@ -10235,6 +10464,29 @@ function ProductCsvCreator({
           >
             <Plus size={15} /> Ajouter une ligne
           </button>
+        </div>
+
+        <div className="product-import-site-selection" style={{ margin: '0 1.25rem 1rem' }}>
+          <strong>Site{activeSites.length > 1 ? 's' : ''} de destination</strong>
+          <div style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap' }}>
+            {activeSites.map((site) => (
+              <label key={site.id} style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                <input
+                  type="checkbox"
+                  checked={selectedSiteIds.includes(site.id)}
+                  disabled={activeSites.length === 1}
+                  onChange={(event) =>
+                    setSelectedSiteIds((current) =>
+                      event.target.checked
+                        ? [...new Set([...current, site.id])]
+                        : current.filter((id) => id !== site.id),
+                    )
+                  }
+                />
+                {site.name}
+              </label>
+            ))}
+          </div>
         </div>
 
         <div className="product-csv-table-wrapper">
@@ -10703,6 +10955,7 @@ function AddImportChooser({
 
 function ProductImportWizard({
   suppliers,
+  sites,
   onClose,
   onDownloadTemplate,
   onAnalyze,
@@ -10710,13 +10963,20 @@ function ProductImportWizard({
   onCreateFromDocuments,
 }: {
   suppliers: Supplier[];
+  sites: Site[];
   onClose: () => void;
   onDownloadTemplate: () => Promise<void>;
   onAnalyze: (file: File) => Promise<ProductImportPreview>;
   onCommit: (payload: {
     rows: Array<{ rowNumber: number; fields: ProductImportPreviewFields; selected?: boolean }>;
     mapping?: Record<string, ProductImportField>;
-    options?: { createMissingCategories?: boolean; createMissingSuppliers?: boolean };
+    options?: {
+      createMissingCategories?: boolean;
+      createMissingSuppliers?: boolean;
+      defaultSupplierId?: string;
+      defaultSupplierName?: string;
+      siteIds?: string[];
+    };
   }) => Promise<ProductImportCommitResult>;
   onCreateFromDocuments: () => void;
 }) {
@@ -10727,6 +10987,11 @@ function ProductImportWizard({
     createMissingSuppliers: true,
   });
   const [defaultSupplierId, setDefaultSupplierId] = useState('');
+  const [defaultSupplierName, setDefaultSupplierName] = useState('');
+  const activeImportSites = sites.filter((site) => !site.isArchived);
+  const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>(() =>
+    activeImportSites.length === 1 ? [activeImportSites[0].id] : [],
+  );
   const [result, setResult] = useState<ProductImportCommitResult | null>(null);
   const [busy, setBusy] = useState<'download' | 'analyze' | 'commit' | null>(null);
   const [error, setError] = useState<string>();
@@ -10737,6 +11002,13 @@ function ProductImportWizard({
     preview?.rows.filter(
       (row) => row.selected && (row.status === 'ready' || row.status === 'needs_review'),
     ) ?? [];
+  const selectedRowsWithoutSupplier = selectedRows.filter(
+    (row) =>
+      !row.fields.existingProductId &&
+      !row.fields.primarySupplierId &&
+      (!String(row.fields.supplierName ?? row.fields.supplier ?? '').trim() ||
+        !options.createMissingSuppliers),
+  );
 
   async function downloadTemplate() {
     setBusy('download');
@@ -10757,6 +11029,8 @@ function ProductImportWizard({
       const next = await onAnalyze(file);
       setPreview(next);
       setOptions(next.options ?? { createMissingCategories: true, createMissingSuppliers: true });
+      setDefaultSupplierId('');
+      setDefaultSupplierName('');
       setStep('mapping');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Analyse du fichier produit impossible.');
@@ -10767,25 +11041,33 @@ function ProductImportWizard({
 
   async function commitImport() {
     if (!preview || !selectedRows.length) return;
-    const defaultSupplier = suppliers.find((supplier) => supplier.id === defaultSupplierId);
+    if (!selectedSiteIds.length) {
+      setError('Sélectionnez au moins un site de destination pour les produits.');
+      return;
+    }
+    const supplierName = defaultSupplierName.trim();
+    if (selectedRowsWithoutSupplier.length && !defaultSupplierId && !supplierName) {
+      setError(
+        `Fournisseur requis : ${selectedRowsWithoutSupplier.length} produit(s) n’en ont aucun. Choisissez un fournisseur existant ou saisissez le nom du fournisseur à créer.`,
+      );
+      return;
+    }
     setBusy('commit');
     setError(undefined);
     try {
       const commitResult = await onCommit({
         rows: preview.rows.map(({ rowNumber, fields, selected }) => ({
           rowNumber,
-          fields:
-            defaultSupplier && !fields.primarySupplierId && !fields.supplier
-              ? {
-                  ...fields,
-                  primarySupplierId: defaultSupplier.id,
-                  supplierName: defaultSupplier.name,
-                }
-              : fields,
+          fields,
           selected,
         })),
         mapping: preview.mapping,
-        options,
+        options: {
+          ...options,
+          defaultSupplierId: defaultSupplierId || undefined,
+          defaultSupplierName: defaultSupplierId ? undefined : supplierName || undefined,
+          siteIds: selectedSiteIds,
+        },
       });
       setResult(commitResult);
       setStep('done');
@@ -10896,7 +11178,11 @@ function ProductImportWizard({
                       preview={preview}
                       summary={summary}
                       suppliers={suppliers}
+                      sites={activeImportSites}
+                      selectedSiteIds={selectedSiteIds}
                       defaultSupplierId={defaultSupplierId}
+                      defaultSupplierName={defaultSupplierName}
+                      missingSupplierRows={selectedRowsWithoutSupplier.length}
                       options={options}
                       selectedRows={selectedRows.length}
                       busy={busy === 'commit'}
@@ -10904,6 +11190,8 @@ function ProductImportWizard({
                       onPatchRow={patchRow}
                       onOptionsChange={setOptions}
                       onDefaultSupplierChange={setDefaultSupplierId}
+                      onDefaultSupplierNameChange={setDefaultSupplierName}
+                      onSelectedSiteIdsChange={setSelectedSiteIds}
                       onCommit={commitImport}
                     />
                   ) : null}
@@ -10915,6 +11203,7 @@ function ProductImportWizard({
                         setPreview(null);
                         setResult(null);
                         setDefaultSupplierId('');
+                        setDefaultSupplierName('');
                         setStep('structure');
                       }}
                     />
@@ -11254,7 +11543,11 @@ function ProductImportReviewStep({
   preview,
   summary,
   suppliers,
+  sites,
+  selectedSiteIds,
   defaultSupplierId,
+  defaultSupplierName,
+  missingSupplierRows,
   options,
   selectedRows,
   busy,
@@ -11262,12 +11555,18 @@ function ProductImportReviewStep({
   onPatchRow,
   onOptionsChange,
   onDefaultSupplierChange,
+  onDefaultSupplierNameChange,
+  onSelectedSiteIdsChange,
   onCommit,
 }: {
   preview: ProductImportPreview | null;
   summary: ReturnType<typeof summarizeProductImportRows> | null;
   suppliers: Supplier[];
+  sites: Site[];
+  selectedSiteIds: string[];
   defaultSupplierId: string;
+  defaultSupplierName: string;
+  missingSupplierRows: number;
   options: { createMissingCategories: boolean; createMissingSuppliers: boolean };
   selectedRows: number;
   busy: boolean;
@@ -11278,6 +11577,8 @@ function ProductImportReviewStep({
     createMissingSuppliers: boolean;
   }) => void;
   onDefaultSupplierChange: (supplierId: string) => void;
+  onDefaultSupplierNameChange: (supplierName: string) => void;
+  onSelectedSiteIdsChange: (siteIds: string[]) => void;
   onCommit: () => void;
 }) {
   if (!preview || !summary) {
@@ -11325,13 +11626,66 @@ function ProductImportReviewStep({
         </div>
       </div>
       <div className="product-import-options">
+        <div className="product-import-site-selection">
+          <strong>Site{sites.length > 1 ? 's' : ''} de destination</strong>
+          <small>
+            Les produits seront disponibles dans le catalogue des sites sélectionnés. Les stocks
+            physiques resteront séparés par site.
+          </small>
+          {sites.length ? (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+              {sites.map((site) => (
+                <label
+                  key={site.id}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedSiteIds.includes(site.id)}
+                    disabled={sites.length === 1}
+                    onChange={(event) =>
+                      onSelectedSiteIdsChange(
+                        event.target.checked
+                          ? [...selectedSiteIds, site.id]
+                          : selectedSiteIds.filter((id) => id !== site.id),
+                      )
+                    }
+                  />
+                  {site.name}
+                </label>
+              ))}
+            </div>
+          ) : (
+            <div className="alert-modern error">
+              <AlertCircle size={16} /> Aucun site actif n’est configuré.
+            </div>
+          )}
+        </div>
+        {missingSupplierRows ? (
+          <div className="alert-modern error product-import-supplier-required">
+            <AlertCircle size={16} />
+            <span>
+              <strong>Fournisseur requis.</strong> {missingSupplierRows} produit
+              {missingSupplierRows > 1 ? 's sélectionnés n’ont' : ' sélectionné n’a'} aucun
+              fournisseur. Choisissez-en un ou créez le fournisseur commun ci-dessous ; il sera
+              attribué automatiquement à toutes ces lignes.
+            </span>
+          </div>
+        ) : null}
         <label style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
           Fournisseur principal du fichier
           <select
             value={defaultSupplierId}
-            onChange={(event) => onDefaultSupplierChange(event.target.value)}
+            onChange={(event) => {
+              onDefaultSupplierChange(event.target.value);
+              if (event.target.value) onDefaultSupplierNameChange('');
+            }}
           >
-            <option value="">Ne pas renseigner</option>
+            <option value="">
+              {missingSupplierRows
+                ? 'Choisir un fournisseur existant…'
+                : 'Aucun fournisseur commun'}
+            </option>
             {suppliers
               .filter((supplier) => !supplier.isArchived)
               .map((supplier) => (
@@ -11340,6 +11694,23 @@ function ProductImportReviewStep({
                 </option>
               ))}
           </select>
+        </label>
+        <label className="product-import-new-supplier">
+          Ou créer un fournisseur commun
+          <input
+            type="text"
+            value={defaultSupplierName}
+            maxLength={160}
+            placeholder="Ex. Metro, Transgourmet…"
+            onChange={(event) => {
+              onDefaultSupplierNameChange(event.target.value);
+              if (event.target.value) onDefaultSupplierChange('');
+            }}
+          />
+          <small>
+            Si ce nom existe déjà, le fournisseur existant sera réutilisé. Sinon, il sera créé au
+            moment de l’import.
+          </small>
         </label>
         <label>
           <input
@@ -11408,7 +11779,10 @@ function ProductImportReviewStep({
                   </td>
                   <td>
                     {productImportCell(
-                      row.fields.supplierName ?? row.fields.supplier ?? defaultSupplier?.name,
+                      row.fields.supplierName ??
+                        row.fields.supplier ??
+                        defaultSupplier?.name ??
+                        defaultSupplierName,
                     )}
                   </td>
                   <td>{productImportCell(row.fields.categoryName ?? row.fields.category)}</td>
@@ -11432,10 +11806,15 @@ function ProductImportReviewStep({
         <button
           type="button"
           className="btn btn-primary"
-          disabled={!selectedRows || busy}
+          disabled={
+            !selectedRows ||
+            busy ||
+            !selectedSiteIds.length ||
+            (missingSupplierRows > 0 && !defaultSupplierId && !defaultSupplierName.trim())
+          }
           onClick={onCommit}
         >
-          {busy ? 'Création…' : `Créer ${selectedRows} produit${selectedRows > 1 ? 's' : ''}`}
+          {busy ? 'Création…' : `Importer ${selectedRows} produit${selectedRows > 1 ? 's' : ''}`}
         </button>
       </div>
     </div>
@@ -11460,7 +11839,16 @@ function ProductImportDoneStep({
         <h2>Import terminé</h2>
         <p>
           {result
-            ? `${result.created} produit${result.created > 1 ? 's ont' : ' a'} été ajouté${result.created > 1 ? 's' : ''} au catalogue.`
+            ? [
+                result.created
+                  ? `${result.created} produit${result.created > 1 ? 's ont' : ' a'} été créé${result.created > 1 ? 's' : ''}`
+                  : '',
+                result.assignedExisting
+                  ? `${result.assignedExisting} produit${result.assignedExisting > 1 ? 's existants ont' : ' existant a'} été attribué${result.assignedExisting > 1 ? 's' : ''} au site`
+                  : '',
+              ]
+                .filter(Boolean)
+                .join(' · ')
             : 'Les produits validés ont été ajoutés au catalogue.'}
         </p>
       </div>
@@ -11577,34 +11965,53 @@ function ArticlesPage({
   data,
   categories,
   suppliers,
+  sites,
+  primarySiteId,
   onAdd,
   onMovement,
   onInventory,
   onEdit,
   onQuery,
+  onAssignUnassigned,
   onRefresh,
 }: {
   data: ArticlesResponse;
   categories: Category[];
   suppliers: Supplier[];
+  sites: Site[];
+  primarySiteId?: string;
   onAdd: () => void;
   onMovement: (productId?: string) => void;
   onInventory: () => void;
-  onEdit: (article: Article) => void;
+  onEdit: (article: Article, siteId?: string) => void;
   onQuery: (params: {
     search?: string;
     categoryId?: string;
     supplierId?: string;
+    siteId?: string;
     status?: string;
     page: number;
     pageSize: number;
   }) => Promise<ArticlesResponse>;
+  onAssignUnassigned: (siteIds: string[]) => Promise<{
+    products: number;
+    siteIds: string[];
+    assignmentsCreated: number;
+  }>;
   onRefresh: () => Promise<void>;
 }) {
+  const activeSites = sites.filter((site) => !site.isArchived);
+  const defaultSiteId =
+    activeSites.find((site) => site.id === primarySiteId)?.id ?? activeSites[0]?.id ?? '';
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
   const [supplier, setSupplier] = useState('');
   const [status, setStatus] = useState('');
+  const [siteId, setSiteId] = useState(defaultSiteId);
+  const [assignmentSiteIds, setAssignmentSiteIds] = useState<string[]>(
+    defaultSiteId ? [defaultSiteId] : [],
+  );
+  const [assigningSites, setAssigningSites] = useState(false);
   const [page, setPage] = useState(data.pagination?.page ?? 1);
   const [result, setResult] = useState(data);
   const [loading, setLoading] = useState(false);
@@ -11619,6 +12026,36 @@ function ArticlesPage({
   const totalFiltered = result.pagination?.total ?? items.length;
 
   useEffect(() => {
+    if (!siteId && defaultSiteId) setSiteId(defaultSiteId);
+    if (!assignmentSiteIds.length && defaultSiteId) setAssignmentSiteIds([defaultSiteId]);
+  }, [assignmentSiteIds.length, defaultSiteId, siteId]);
+
+  async function assignUnassignedProducts() {
+    if (!assignmentSiteIds.length) return;
+    setAssigningSites(true);
+    setQueryError(undefined);
+    try {
+      await onAssignUnassigned(assignmentSiteIds);
+      await onRefresh();
+      const response = await onQueryRef.current({
+        search: search.trim() || undefined,
+        categoryId: category || undefined,
+        supplierId: supplier || undefined,
+        siteId: siteId || undefined,
+        status: status || undefined,
+        page: 1,
+        pageSize: 25,
+      });
+      setPage(1);
+      setResult(response);
+    } catch (err) {
+      setQueryError(err instanceof Error ? err.message : 'Attribution des produits impossible.');
+    } finally {
+      setAssigningSites(false);
+    }
+  }
+
+  useEffect(() => {
     let active = true;
     const timer = window.setTimeout(
       async () => {
@@ -11629,6 +12066,7 @@ function ArticlesPage({
             search: search.trim() || undefined,
             categoryId: category || undefined,
             supplierId: supplier || undefined,
+            siteId: siteId || undefined,
             status: status || undefined,
             page,
             pageSize: 25,
@@ -11652,7 +12090,7 @@ function ArticlesPage({
       active = false;
       window.clearTimeout(timer);
     };
-  }, [category, page, search, status, supplier]);
+  }, [category, page, search, siteId, status, supplier]);
 
   const resetPage = () => setPage(1);
   const statusLabels: Record<string, string> = {
@@ -11681,6 +12119,25 @@ function ArticlesPage({
           </span>
         </div>
         <div className="row-actions">
+          {activeSites.length > 1 ? (
+            <label className="stocks-site-selector">
+              <span>Site</span>
+              <select
+                value={siteId}
+                onChange={(event) => {
+                  setSiteId(event.target.value);
+                  setSelected(null);
+                  resetPage();
+                }}
+              >
+                {activeSites.map((site) => (
+                  <option key={site.id} value={site.id}>
+                    {site.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <button className="btn btn-secondary" onClick={onInventory}>
             <ClipboardList size={15} /> Inventaire
           </button>
@@ -11692,6 +12149,49 @@ function ArticlesPage({
           </button>
         </div>
       </div>
+
+      {result.summary.unassignedCount ? (
+        <div className="alert-modern" style={{ alignItems: 'flex-start' }}>
+          <Info size={17} />
+          <div style={{ display: 'grid', gap: '0.65rem', flex: 1 }}>
+            <strong>
+              {result.summary.unassignedCount} produit
+              {result.summary.unassignedCount > 1 ? 's ne sont' : ' n’est'} attribué
+              {result.summary.unassignedCount > 1 ? 's' : ''} à aucun site.
+            </strong>
+            <span>
+              Sélectionnez les établissements où ce catalogue doit être disponible. Aucun faux
+              stock à zéro ne sera créé.
+            </span>
+            <div style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap' }}>
+              {activeSites.map((site) => (
+                <label key={site.id} style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={assignmentSiteIds.includes(site.id)}
+                    onChange={(event) =>
+                      setAssignmentSiteIds((current) =>
+                        event.target.checked
+                          ? [...new Set([...current, site.id])]
+                          : current.filter((id) => id !== site.id),
+                      )
+                    }
+                  />
+                  {site.name}
+                </label>
+              ))}
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={!assignmentSiteIds.length || assigningSites}
+                onClick={assignUnassignedProducts}
+              >
+                {assigningSites ? 'Attribution…' : 'Attribuer les produits'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="stocks-metrics-strip">
         <div
@@ -11982,7 +12482,11 @@ function ArticlesPage({
           <ArticleDrawer
             article={selected}
             onClose={() => setSelected(null)}
-            onEdit={() => onEdit(selected)}
+            onEdit={() => {
+              const articleToEdit = selected;
+              setSelected(null);
+              onEdit(articleToEdit, siteId || undefined);
+            }}
             onMovement={() => {
               const productId = selected.product.id;
               setSelected(null);
@@ -11994,6 +12498,7 @@ function ArticlesPage({
                 search: search.trim() || undefined,
                 categoryId: category || undefined,
                 supplierId: supplier || undefined,
+                siteId: siteId || undefined,
                 status: status || undefined,
                 page,
                 pageSize: 25,
@@ -12498,6 +13003,165 @@ function StocksOcrDashboardStatusBar({
         </button>
       </div>
     </motion.section>
+  );
+}
+
+function ProductLabelOcrStatusBar({
+  statuses,
+  onOpenResult,
+  onOpenTracking,
+}: {
+  statuses: ProductLabelOcrBatchStatus[];
+  onOpenResult: (status: ProductLabelOcrBatchStatus) => Promise<void>;
+  onOpenTracking: () => void;
+}) {
+  if (!statuses.length) return null;
+  const readyStatuses = statuses.filter((status) => status.state === 'vérifier');
+  const workingStatuses = statuses.filter(
+    (status) => status.state === 'analyse' || status.state === 'en attente',
+  );
+  const errorStatuses = statuses.filter((status) => status.state === 'erreur');
+  const readyProducts = [
+    ...new Map(readyStatuses.map((status) => [status.product.id, status.product])).values(),
+  ];
+  const workingProducts = [
+    ...new Map(workingStatuses.map((status) => [status.product.id, status.product])).values(),
+  ];
+  const errorProducts = [
+    ...new Map(errorStatuses.map((status) => [status.product.id, status.product])).values(),
+  ];
+  const featured = readyStatuses[0] ?? workingStatuses[0] ?? statuses[0];
+  const readyCount = readyProducts.length;
+  const tone = readyCount
+    ? 'ready'
+    : errorProducts.length && !workingProducts.length
+      ? 'error'
+      : 'working';
+  const label = readyCount
+    ? readyCount === 1
+      ? `1 produit prêt à vérifier : ${readyProducts[0].name}`
+      : `${readyCount} produits prêts à vérifier`
+    : errorProducts.length && !workingProducts.length
+      ? `${errorProducts.length} produit${errorProducts.length > 1 ? 's' : ''} en erreur`
+      : `${workingProducts.length} produit${workingProducts.length > 1 ? 's' : ''} en cours d’analyse`;
+  const fileCount = statuses.reduce((sum, status) => sum + status.documents.length, 0);
+  const progressClass =
+    featured.state === 'vérifier'
+      ? 'success'
+      : featured.state === 'erreur'
+        ? 'error'
+        : featured.state === 'analyse'
+          ? 'analyzing'
+          : 'pending';
+  return (
+    <motion.section
+      className={`stocks-ocr-dashboard-status ${tone}`}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+    >
+      <div className="stocks-ocr-dashboard-status-main">
+        <div className="stocks-ocr-dashboard-status-icon">
+          {readyCount ? (
+            <CheckCircle2 size={18} />
+          ) : errorProducts.length && !workingProducts.length ? (
+            <AlertCircle size={18} />
+          ) : (
+            <Clock size={18} />
+          )}
+        </div>
+        <div className="stocks-ocr-dashboard-status-copy">
+          <span>{label}</span>
+          <small>
+            {readyCount
+              ? `${fileCount} document${fileCount > 1 ? 's' : ''} analysé${fileCount > 1 ? 's' : ''} · les résultats restent disponibles jusqu’à leur validation`
+              : `${fileCount} document${fileCount > 1 ? 's' : ''} suivi${fileCount > 1 ? 's' : ''} · le traitement continue pendant la navigation`}
+          </small>
+          <div className="ocr-status-progress-bar">
+            <div
+              className={`ocr-status-progress-fill ${progressClass}`}
+              style={{ width: `${featured.progress}%` }}
+            />
+          </div>
+        </div>
+      </div>
+      <div className="stocks-ocr-dashboard-status-actions">
+        {readyStatuses[0] ? (
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={() => void onOpenResult(readyStatuses[0])}
+          >
+            Vérifier <ArrowRight size={13} />
+          </button>
+        ) : null}
+        <button className="btn btn-secondary btn-sm" onClick={onOpenTracking}>
+          Suivi des imports
+        </button>
+      </div>
+    </motion.section>
+  );
+}
+
+function ProductLabelOcrTrackingPanel({
+  statuses,
+  onOpenResult,
+}: {
+  statuses: ProductLabelOcrBatchStatus[];
+  onOpenResult: (status: ProductLabelOcrBatchStatus) => Promise<void>;
+}) {
+  if (!statuses.length) {
+    return (
+      <div className="empty-state">
+        <CheckCircle2 size={28} />
+        <span className="empty-state-title">Aucune analyse en attente</span>
+        <span className="empty-state-desc">
+          Les prochains imports OCR de fiches produits apparaîtront ici.
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="ocr-statuses-list product-ocr-tracking-list">
+      {statuses.map((status) => (
+        <div className="ocr-status-card" key={status.batchId}>
+          <div className="ocr-status-card-main">
+            <div>
+              <strong>{status.product.name}</strong>
+              <span>
+                {status.documents.length} capture{status.documents.length > 1 ? 's' : ''} ·{' '}
+                {status.state === 'vérifier'
+                  ? 'Produit prêt à vérifier'
+                  : status.state === 'erreur'
+                    ? 'Analyse en erreur'
+                    : 'Analyse en arrière-plan'}
+              </span>
+            </div>
+            <span className={`badge ${ocrStateClass(status.state)}`}>{status.state}</span>
+          </div>
+          <div className="ocr-status-progress-bar">
+            <div
+              className={`ocr-status-progress-fill ${
+                status.state === 'vérifier'
+                  ? 'success'
+                  : status.state === 'erreur'
+                    ? 'error'
+                    : 'analyzing'
+              }`}
+              style={{ width: `${status.progress}%` }}
+            />
+          </div>
+          {status.documents.some((item) => item.errorMessage) ? (
+            <small className="text-danger">
+              {status.documents.find((item) => item.errorMessage)?.errorMessage}
+            </small>
+          ) : null}
+          {status.state === 'vérifier' ? (
+            <button className="btn btn-primary btn-sm" onClick={() => void onOpenResult(status)}>
+              Vérifier les informations <ArrowRight size={13} />
+            </button>
+          ) : null}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -19705,12 +20369,29 @@ type ProductFormPayload = {
   preparationInstructions?: string | null;
 };
 
+type ProductOcrEvidence = {
+  previewUrl: string;
+  filename: string;
+  mimeType: string;
+  pageCount?: number | null;
+  confidence?: number | null;
+  warnings: string[];
+  documents?: Array<{
+    documentId: string;
+    previewUrl: string;
+    filename: string;
+    mimeType: string;
+  }>;
+};
+
 interface ProductFormProps {
   categories: Category[];
   units: Unit[];
   suppliers: Supplier[];
   initialName?: string;
   initialProduct?: Product | null;
+  initialTab?: ProductSheetTab;
+  ocrEvidence?: ProductOcrEvidence | null;
   currentQuantity?: number | null;
   submitLabel?: string;
   onSubmit: (payload: ProductFormPayload) => Promise<void>;
@@ -19756,28 +20437,32 @@ function productUnitCanonicalFactor(unit?: Unit | null) {
   const symbol = normalizedProductUnitSymbol(unit?.symbol);
   const type = String(unit?.type ?? unit?.unitType ?? '').toUpperCase();
   if (type === 'MASS') {
-    return {
-      t: 1_000_000,
-      tonne: 1_000_000,
-      tonnes: 1_000_000,
-      kg: 1_000,
-      kilo: 1_000,
-      kilogramme: 1_000,
-      g: 1,
-      gr: 1,
-      gramme: 1,
-      mg: 0.001,
-    }[symbol] ?? null;
+    return (
+      {
+        t: 1_000_000,
+        tonne: 1_000_000,
+        tonnes: 1_000_000,
+        kg: 1_000,
+        kilo: 1_000,
+        kilogramme: 1_000,
+        g: 1,
+        gr: 1,
+        gramme: 1,
+        mg: 0.001,
+      }[symbol] ?? null
+    );
   }
   if (type === 'VOLUME') {
-    return {
-      l: 1_000,
-      litre: 1_000,
-      dl: 100,
-      cl: 10,
-      ml: 1,
-      millilitre: 1,
-    }[symbol] ?? null;
+    return (
+      {
+        l: 1_000,
+        litre: 1_000,
+        dl: 100,
+        cl: 10,
+        ml: 1,
+        millilitre: 1,
+      }[symbol] ?? null
+    );
   }
   return null;
 }
@@ -19809,9 +20494,7 @@ function productPriceReferences(unit?: Unit | null): ProductPriceReference[] {
       value: candidate.value,
       label: candidate.label,
       stockUnitFactor:
-        stockFactor != null && stockFactor > 0
-          ? candidate.canonicalFactor / stockFactor
-          : 1,
+        stockFactor != null && stockFactor > 0 ? candidate.canonicalFactor / stockFactor : 1,
     }));
 }
 
@@ -19819,8 +20502,7 @@ function productPreferredPriceUnit(unit?: Unit | null, requested?: string | null
   const references = productPriceReferences(unit);
   const requestedReference = references.find(
     (reference) =>
-      normalizedProductUnitSymbol(reference.value) ===
-      normalizedProductUnitSymbol(requested),
+      normalizedProductUnitSymbol(reference.value) === normalizedProductUnitSymbol(requested),
   );
   return requestedReference?.value ?? references[0]?.value ?? unit?.symbol ?? '';
 }
@@ -19829,8 +20511,7 @@ function productPriceReference(unit: Unit | null | undefined, referenceUnit: str
   return (
     productPriceReferences(unit).find(
       (reference) =>
-        normalizedProductUnitSymbol(reference.value) ===
-        normalizedProductUnitSymbol(referenceUnit),
+        normalizedProductUnitSymbol(reference.value) === normalizedProductUnitSymbol(referenceUnit),
     ) ?? productPriceReferences(unit)[0]
   );
 }
@@ -19878,12 +20559,14 @@ function ProductForm({
   suppliers,
   initialName = '',
   initialProduct = null,
+  initialTab = 'identity',
+  ocrEvidence = null,
   currentQuantity = null,
   submitLabel,
   onSubmit,
   onClose,
 }: ProductFormProps) {
-  const [activeFormTab, setActiveFormTab] = useState<ProductSheetTab>('identity');
+  const [activeFormTab, setActiveFormTab] = useState<ProductSheetTab>(initialTab);
   const [name, setName] = useState(initialProduct?.name ?? initialName);
   const [sku, setSku] = useState(initialProduct?.sku ?? initialProduct?.reference ?? '');
   const [description, setDescription] = useState(initialProduct?.description ?? '');
@@ -19976,13 +20659,10 @@ function ProductForm({
     storedInitialPrice >= 1 &&
     storedInitialPrice < 1_000 &&
     (selectedPriceReference?.stockUnitFactor ?? 1) >= 100 &&
-    stockUnitPriceToReferencePrice(
-      storedInitialPrice,
-      selectedUnit,
-      priceDisplayUnit,
-    ) >= 5_000;
+    stockUnitPriceToReferencePrice(storedInitialPrice, selectedUnit, priceDisplayUnit) >= 5_000;
 
   useEffect(() => {
+    setActiveFormTab(initialTab);
     setActiveFormTab('identity');
     setName(initialProduct?.name ?? initialName);
     setSku(initialProduct?.sku ?? initialProduct?.reference ?? '');
@@ -20038,7 +20718,7 @@ function ProductForm({
     setShelfLifeAfterOpening(initialProduct?.shelfLifeAfterOpening ?? '');
     setStorageInstructions(initialProduct?.storageInstructions ?? '');
     setPreparationInstructions(initialProduct?.preparationInstructions ?? '');
-  }, [initialName, initialProduct, units]);
+  }, [initialName, initialProduct, initialTab, units]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -20095,6 +20775,20 @@ function ProductForm({
       ? (productOptionalNumber(unitsPerPackage) ?? 0) *
         (productOptionalNumber(unitWeightGrams) ?? 0)
       : null;
+  const showingOcrEvidence =
+    Boolean(ocrEvidence) && (activeFormTab === 'allergens' || activeFormTab === 'nutrition');
+  const ocrEvidenceDocuments = ocrEvidence?.documents?.length
+    ? ocrEvidence.documents
+    : ocrEvidence?.previewUrl
+      ? [
+          {
+            documentId: 'single-preview',
+            previewUrl: ocrEvidence.previewUrl,
+            filename: ocrEvidence.filename,
+            mimeType: ocrEvidence.mimeType,
+          },
+        ]
+      : [];
 
   return (
     <form onSubmit={handleSubmit} className="product-sheet-form">
@@ -20104,7 +20798,9 @@ function ProductForm({
           <span>{error}</span>
         </div>
       )}
-      <div className="product-sheet-form-body">
+      <div
+        className={`product-sheet-form-body${showingOcrEvidence ? ' product-sheet-form-body-ocr' : ''}`}
+      >
         <div className="product-sheet-tabs" role="tablist" aria-label="Sections fiche produit">
           {PRODUCT_SHEET_TABS.map((tab) => (
             <button
@@ -20282,7 +20978,8 @@ function ProductForm({
                   </select>
                 </span>
                 <small>
-                  Le coût est automatiquement converti en {selectedUnit?.symbol ?? 'unité de stock'}.
+                  Le coût est automatiquement converti en {selectedUnit?.symbol ?? 'unité de stock'}
+                  .
                 </small>
               </label>
               {legacyPriceLikely ? (
@@ -20515,6 +21212,59 @@ function ProductForm({
             </div>
           ) : null}
         </div>
+        {showingOcrEvidence && ocrEvidence ? (
+          <aside className="product-ocr-evidence" aria-label="Document importé pour vérification">
+            <div className="product-ocr-evidence-header">
+              <div>
+                <span>
+                  {ocrEvidenceDocuments.length > 1 ? 'Documents importés' : 'Document importé'}
+                </span>
+                <strong>{ocrEvidence.filename}</strong>
+              </div>
+              {ocrEvidence.confidence != null ? (
+                <span className="badge badge-reception">
+                  OCR {Math.round(ocrEvidence.confidence * 100)} %
+                </span>
+              ) : null}
+            </div>
+            <div className="product-ocr-preview-grid">
+              {ocrEvidenceDocuments.map((document) => (
+                <div className="product-ocr-preview-card" key={document.documentId}>
+                  <strong title={document.filename}>{document.filename}</strong>
+                  <div className="product-ocr-preview">
+                    {document.mimeType === 'application/pdf' ? (
+                      <object
+                        data={document.previewUrl}
+                        type="application/pdf"
+                        aria-label={`Aperçu de ${document.filename}`}
+                      >
+                        <a href={document.previewUrl} target="_blank" rel="noreferrer">
+                          Ouvrir le document
+                        </a>
+                      </object>
+                    ) : (
+                      <img src={document.previewUrl} alt={`Étiquette ${document.filename}`} />
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {ocrEvidence.warnings.length ? (
+              <div className="product-ocr-warnings">
+                <strong>Points à vérifier</strong>
+                <ul>
+                  {ocrEvidence.warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="product-ocr-success">
+                Les données détectées sont préremplies. Vérifiez-les avant d’enregistrer.
+              </p>
+            )}
+          </aside>
+        ) : null}
       </div>
 
       <div className="modal-footer product-sheet-footer">
@@ -20631,8 +21381,87 @@ function ProductTagBadges({
   );
 }
 
+function mergeProductLabelOcr(product: Product, result: ProductLabelOcrResult): Product {
+  const merged: Product = { ...product };
+  if (result.ingredients?.trim()) merged.ingredients = result.ingredients.trim();
+  PRODUCT_NUTRITION_FIELDS.forEach((field) => {
+    const value = result.nutrition[field.key];
+    if (value !== null && Number.isFinite(value)) {
+      Object.assign(merged, { [field.key]: value });
+    }
+  });
+  const allergensPresent = [
+    ...new Set([...(product.allergensPresent ?? []), ...result.allergensPresent]),
+  ];
+  const presentSet = new Set(allergensPresent);
+  const possibleTraces = [
+    ...new Set([...(product.possibleTraces ?? []), ...result.possibleTraces]),
+  ].filter((allergen) => !presentSet.has(allergen));
+  return { ...merged, allergensPresent, possibleTraces };
+}
+
+function mergeProductLabelOcrResults(
+  productId: string,
+  results: ProductLabelOcrResult[],
+): ProductLabelOcrResult {
+  const nutrition = PRODUCT_NUTRITION_FIELDS.reduce(
+    (values, field) => ({ ...values, [field.key]: null }),
+    {} as ProductLabelOcrResult['nutrition'],
+  );
+  const ingredientCandidates = [
+    ...new Set(results.map((result) => result.ingredients?.trim()).filter(Boolean)),
+  ] as string[];
+  const ingredients =
+    ingredientCandidates
+      .filter(
+        (candidate) =>
+          !ingredientCandidates.some(
+            (other) =>
+              other !== candidate && other.length > candidate.length && other.includes(candidate),
+          ),
+      )
+      .join(' ')
+      .trim() || null;
+  const allergensPresent = new Set<string>();
+  const possibleTraces = new Set<string>();
+  const warnings = new Set<string>();
+  const confidenceValues: number[] = [];
+  let pageCount = 0;
+  results.forEach((result) => {
+    PRODUCT_NUTRITION_FIELDS.forEach((field) => {
+      const value = result.nutrition[field.key];
+      if (nutrition[field.key] === null && value !== null && Number.isFinite(value)) {
+        nutrition[field.key] = value;
+      }
+    });
+    result.allergensPresent.forEach((allergen) => allergensPresent.add(allergen));
+    result.possibleTraces.forEach((allergen) => possibleTraces.add(allergen));
+    result.warnings.forEach((warning) => warnings.add(warning));
+    if (typeof result.confidence === 'number' && Number.isFinite(result.confidence)) {
+      confidenceValues.push(result.confidence);
+    }
+    pageCount += Number(result.pageCount ?? 0);
+  });
+  allergensPresent.forEach((allergen) => possibleTraces.delete(allergen));
+  return {
+    productId,
+    filename: results.length > 1 ? `${results.length} captures` : results[0].filename,
+    mimeType: results[0].mimeType,
+    pageCount: pageCount || null,
+    ingredients,
+    nutrition,
+    allergensPresent: [...allergensPresent],
+    possibleTraces: [...possibleTraces],
+    confidence: confidenceValues.length
+      ? confidenceValues.reduce((sum, value) => sum + value, 0) / confidenceValues.length
+      : null,
+    warnings: [...warnings],
+  };
+}
+
 function ProductDetailModal({
   product,
+  siteId,
   stocks,
   movements,
   categories,
@@ -20641,10 +21470,17 @@ function ProductDetailModal({
   sites,
   onClose,
   onUpdate,
+  onUploadOcr,
+  ocrStatuses,
+  onOpenOcrResult,
+  initialOcrReview,
+  onOcrReviewSaved,
+  onCancelOcrReview,
   onAdjustStock,
   onDelete,
 }: {
   product: Product | null;
+  siteId?: string;
   stocks: Stock[];
   movements: StockMovement[];
   categories: Category[];
@@ -20653,6 +21489,18 @@ function ProductDetailModal({
   sites: Site[];
   onClose: () => void;
   onUpdate: (productId: string, payload: ProductFormPayload) => Promise<void>;
+  onUploadOcr: (
+    productId: string,
+    files: File[],
+  ) => Promise<{
+    batchId: string;
+    product: { id: string; name: string };
+  }>;
+  ocrStatuses: ProductLabelOcrBatchStatus[];
+  onOpenOcrResult: (status: ProductLabelOcrBatchStatus) => Promise<void>;
+  initialOcrReview?: ProductOcrReviewRequest | null;
+  onOcrReviewSaved: (productId: string, batchId: string) => Promise<void>;
+  onCancelOcrReview: () => void;
   onAdjustStock: (
     productId: string,
     payload: {
@@ -20673,8 +21521,53 @@ function ProductDetailModal({
   const [adjustmentReason, setAdjustmentReason] = useState('');
   const [adjustmentSubmitting, setAdjustmentSubmitting] = useState(false);
   const [adjustmentError, setAdjustmentError] = useState<string>();
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrError, setOcrError] = useState<string>();
+  const [pendingOcrBatchId, setPendingOcrBatchId] = useState<string>();
+  const [ocrReview, setOcrReview] = useState<{
+    result: ProductLabelOcrResult;
+    evidence: ProductOcrEvidence;
+    batchId?: string;
+  } | null>(null);
+  const ocrFileInputRef = useRef<HTMLInputElement>(null);
+  const ocrPreviewUrlsRef = useRef<string[]>([]);
+  const ocrRequestIdRef = useRef(0);
+  const editableProduct = useMemo(
+    () => (product && ocrReview ? mergeProductLabelOcr(product, ocrReview.result) : product),
+    [product, ocrReview],
+  );
+  const pendingOcrStatus = useMemo(
+    () => ocrStatuses.find((status) => status.batchId === pendingOcrBatchId),
+    [ocrStatuses, pendingOcrBatchId],
+  );
+  const readyOcrStatus = useMemo(
+    () =>
+      product
+        ? ocrStatuses.find(
+            (status) =>
+              status.product.id === product.id &&
+              status.state === 'vérifier' &&
+              status.results.length > 0,
+          )
+        : undefined,
+    [ocrStatuses, product?.id],
+  );
+
+  function releaseOcrPreview() {
+    ocrPreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    ocrPreviewUrlsRef.current = [];
+  }
+
+  function clearOcrReview() {
+    ocrRequestIdRef.current += 1;
+    releaseOcrPreview();
+    setOcrReview(null);
+    setOcrError(undefined);
+  }
 
   useEffect(() => {
+    ocrRequestIdRef.current += 1;
+    releaseOcrPreview();
     setEditing(false);
     setDetailTab('identity');
     setAdjustingStockId(null);
@@ -20682,14 +21575,65 @@ function ProductDetailModal({
     setAdjustedQuantity('');
     setAdjustmentReason('');
     setAdjustmentError(undefined);
+    setOcrLoading(false);
+    if (initialOcrReview && product && initialOcrReview.productId === product.id) {
+      ocrPreviewUrlsRef.current =
+        initialOcrReview.evidence.documents?.map((document) => document.previewUrl) ??
+        (initialOcrReview.evidence.previewUrl ? [initialOcrReview.evidence.previewUrl] : []);
+      setOcrReview({
+        result: initialOcrReview.result,
+        evidence: initialOcrReview.evidence,
+        batchId: initialOcrReview.batchId,
+      });
+      setEditing(true);
+    } else {
+      setOcrReview(null);
+    }
+    setOcrError(undefined);
+  }, [product?.id, initialOcrReview?.batchId]);
+
+  useEffect(() => {
+    setPendingOcrBatchId(undefined);
   }, [product?.id]);
+
+  useEffect(() => {
+    if (!pendingOcrBatchId || !pendingOcrStatus || ocrReview) return;
+    if (pendingOcrStatus.state === 'erreur') {
+      setPendingOcrBatchId(undefined);
+      setOcrError(
+        pendingOcrStatus.documents.find((item) => item.errorMessage)?.errorMessage ??
+          'L’analyse OCR du produit a échoué.',
+      );
+      return;
+    }
+    if (pendingOcrStatus.state === 'vérifier' && pendingOcrStatus.results.length) {
+      setPendingOcrBatchId(undefined);
+      setOcrLoading(false);
+    }
+  }, [ocrReview, pendingOcrBatchId, pendingOcrStatus]);
+
+  useEffect(
+    () => () => {
+      releaseOcrPreview();
+    },
+    [],
+  );
 
   if (!product) return null;
   const activeProduct = product;
 
-  const productStocks = stocks.filter((stock) => stock.product?.id === activeProduct.id);
+  const productStocks = stocks.filter(
+    (stock) =>
+      stock.product?.id === activeProduct.id && (!siteId || stock.siteId === siteId),
+  );
   const productMovements = movements
-    .filter((movement) => movement.product?.id === product.id)
+    .filter(
+      (movement) =>
+        movement.product?.id === product.id &&
+        (!siteId ||
+          movement.sourceSite?.id === siteId ||
+          movement.destinationSite?.id === siteId),
+    )
     .slice(0, 6);
   const totalQuantity = productStocks.reduce(
     (sum, stock) => sum + numeric(stock.currentQuantity ?? stock.quantity),
@@ -20698,10 +21642,7 @@ function ProductDetailModal({
   const averagePrice = numeric(
     product.averagePrice ?? product.averagePurchasePrice ?? product.weightedAveragePrice,
   );
-  const priceReferenceUnit = productPreferredPriceUnit(
-    product.unit,
-    product.priceDisplayUnit,
-  );
+  const priceReferenceUnit = productPreferredPriceUnit(product.unit, product.priceDisplayUnit);
   const displayedAveragePrice = stockUnitPriceToReferencePrice(
     averagePrice,
     product.unit,
@@ -20722,9 +21663,10 @@ function ProductDetailModal({
   const completion = computeProductCompletion(product);
   const netWeight = productCalculatedNetWeight(product);
   const activeSites = sites.filter((site) => !site.isArchived && !site.archivedAt);
+  const selectedSite = activeSites.find((site) => site.id === siteId);
   const stockBeingAdjusted =
     adjustingStockId && adjustingStockId !== 'new'
-      ? productStocks.find((stock) => stock.id === adjustingStockId) ?? null
+      ? (productStocks.find((stock) => stock.id === adjustingStockId) ?? null)
       : null;
   const currentAdjustedQuantity = stockBeingAdjusted
     ? numeric(stockBeingAdjusted.currentQuantity ?? stockBeingAdjusted.quantity)
@@ -20738,11 +21680,7 @@ function ProductDetailModal({
         activeSites[0]?.id ??
         '',
     );
-    setAdjustedQuantity(
-      stock
-        ? String(numeric(stock.currentQuantity ?? stock.quantity))
-        : '0',
-    );
+    setAdjustedQuantity(stock ? String(numeric(stock.currentQuantity ?? stock.quantity)) : '0');
     setAdjustmentReason(
       stock ? 'Correction manuelle après comptage' : 'Stock initial à l’ouverture du compte',
     );
@@ -20788,21 +21726,67 @@ function ProductDetailModal({
     }
   }
 
+  async function handleOcrFiles(files: File[]) {
+    if (!files.length) return;
+    const requestId = ocrRequestIdRef.current + 1;
+    ocrRequestIdRef.current = requestId;
+    setOcrLoading(true);
+    setOcrError(undefined);
+    try {
+      const upload = await onUploadOcr(activeProduct.id, files);
+      if (ocrRequestIdRef.current !== requestId) return;
+      setPendingOcrBatchId(upload.batchId);
+    } catch (error) {
+      if (ocrRequestIdRef.current !== requestId) return;
+      setOcrError(
+        error instanceof Error
+          ? error.message
+          : 'L’étiquette n’a pas pu être analysée. Vérifiez la photo et réessayez.',
+      );
+    } finally {
+      if (ocrRequestIdRef.current === requestId) setOcrLoading(false);
+      if (ocrFileInputRef.current) ocrFileInputRef.current.value = '';
+    }
+  }
+
+  function closeEditForm() {
+    clearOcrReview();
+    onCancelOcrReview();
+    setEditing(false);
+  }
+
+  function closeProductModal() {
+    clearOcrReview();
+    onCancelOcrReview();
+    onClose();
+  }
+
   return (
-    <Modal isOpen={Boolean(product)} onClose={onClose} title={product.name} size="xl">
+    <Modal
+      isOpen={Boolean(product)}
+      onClose={closeProductModal}
+      title={product.name}
+      size={ocrReview ? 'full' : 'xl'}
+    >
       {editing ? (
         <ProductForm
           categories={categories}
           units={units}
           suppliers={suppliers}
-          initialProduct={product}
+          initialProduct={editableProduct}
+          initialTab={ocrReview ? 'allergens' : 'identity'}
+          ocrEvidence={ocrReview?.evidence}
           currentQuantity={totalQuantity}
           submitLabel="Enregistrer les modifications"
           onSubmit={async (payload) => {
             await onUpdate(product.id, payload);
+            if (ocrReview?.batchId) {
+              await onOcrReviewSaved(product.id, ocrReview.batchId);
+            }
+            clearOcrReview();
             setEditing(false);
           }}
-          onClose={() => setEditing(false)}
+          onClose={closeEditForm}
         />
       ) : (
         <div className="product-detail">
@@ -20812,6 +21796,9 @@ function ProductDetailModal({
               <h3>{product.name}</h3>
               <div className="product-detail-badges">
                 <span className="badge badge-inventory">{product.sku || 'Sans référence'}</span>
+                {selectedSite ? (
+                  <span className="badge badge-reception">Stock · {selectedSite.name}</span>
+                ) : null}
                 <span className="badge badge-production">
                   {product.category?.name ?? 'Sans catégorie'}
                 </span>
@@ -20824,6 +21811,36 @@ function ProductDetailModal({
               </div>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <input
+                ref={ocrFileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/avif,image/heic,image/heif,application/pdf"
+                multiple
+                hidden
+                onChange={(event) =>
+                  void handleOcrFiles(Array.from(event.target.files ?? []).slice(0, 8))
+                }
+              />
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => ocrFileInputRef.current?.click()}
+                disabled={ocrLoading || Boolean(pendingOcrBatchId)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  padding: '0.5rem 0.85rem',
+                  fontSize: '0.85rem',
+                }}
+              >
+                {ocrLoading || pendingOcrBatchId ? (
+                  <RefreshCw size={14} className="spin" />
+                ) : (
+                  <Sparkles size={14} />
+                )}
+                {ocrLoading || pendingOcrBatchId ? 'Analyse OCR en cours...' : 'Compléter avec OCR'}
+              </button>
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -20863,6 +21880,43 @@ function ProductDetailModal({
               </button>
             </div>
           </div>
+          {pendingOcrBatchId ? (
+            <div className="product-ocr-live-status">
+              <div>
+                <RefreshCw size={16} className="spin" />
+                <span>
+                  Analyse de l’étiquette en cours
+                  <small>
+                    Jusqu’à 8 documents sont regroupés. Vous pourrez vérifier le résultat plus tard.
+                  </small>
+                </span>
+              </div>
+              <strong>{pendingOcrStatus?.progress ?? 12}%</strong>
+            </div>
+          ) : readyOcrStatus && !ocrReview ? (
+            <div className="product-ocr-live-status ready">
+              <div>
+                <CheckCircle2 size={16} />
+                <span>
+                  Informations OCR prêtes à vérifier
+                  <small>Ingrédients, allergènes et nutrition sont disponibles.</small>
+                </span>
+              </div>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => void onOpenOcrResult(readyOcrStatus)}
+              >
+                Voir le résultat <ArrowRight size={13} />
+              </button>
+            </div>
+          ) : null}
+          {ocrError ? (
+            <div className="alert-modern error product-ocr-error">
+              <AlertCircle size={16} />
+              <span>{ocrError}</span>
+            </div>
+          ) : null}
 
           <div className="product-detail-metrics">
             <Metric
@@ -21054,9 +22108,7 @@ function ProductDetailModal({
                               ? 'Définir le stock initial'
                               : 'Corriger la quantité constatée'}
                           </strong>
-                          <span>
-                            Cette action reste tracée comme mouvement d’inventaire.
-                          </span>
+                          <span>Cette action reste tracée comme mouvement d’inventaire.</span>
                         </div>
                         <button
                           type="button"
@@ -21113,9 +22165,7 @@ function ProductDetailModal({
                         className="btn btn-primary"
                         disabled={adjustmentSubmitting}
                       >
-                        {adjustmentSubmitting
-                          ? 'Enregistrement...'
-                          : 'Vérifier et enregistrer'}
+                        {adjustmentSubmitting ? 'Enregistrement...' : 'Vérifier et enregistrer'}
                       </button>
                     </form>
                   ) : null}
@@ -21282,15 +22332,17 @@ function SupplierDetailModal({
   onDelete: (supplierId: string) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
+  const [detailTab, setDetailTab] = useState<'identity' | 'purchasing'>('identity');
 
   useEffect(() => {
     setEditing(false);
+    setDetailTab('identity');
   }, [supplier?.id]);
 
   if (!supplier) return null;
 
   return (
-    <Modal isOpen={Boolean(supplier)} onClose={onClose} title={supplier.name} size="md">
+    <Modal isOpen={Boolean(supplier)} onClose={onClose} title={supplier.name} size="product">
       {editing ? (
         <SupplierForm
           initialSupplier={supplier}
@@ -21302,37 +22354,33 @@ function SupplierDetailModal({
           onClose={() => setEditing(false)}
         />
       ) : (
-        <div className="product-detail" style={{ gap: '1rem' }}>
-          <div className="product-detail-hero" style={{ padding: '0.5rem 0' }}>
+        <div className="product-detail supplier-detail">
+          <div className="product-detail-hero">
             <div>
-              <span className="product-detail-kicker">Fiche Fournisseur</span>
-              <h3 style={{ fontSize: '1.25rem' }}>{supplier.name}</h3>
+              <span className="product-detail-kicker">Fiche fournisseur</span>
+              <h3>{supplier.name}</h3>
+              <div className="product-detail-badges">
+                <span className="badge badge-inventory">
+                  {supplier.contactName || 'Contact non renseigné'}
+                </span>
+                <span
+                  className={`badge ${
+                    supplier.purchasingProfile?.orderEmail ? 'badge-production' : 'badge-correction'
+                  }`}
+                >
+                  {supplier.purchasingProfile?.orderEmail
+                    ? 'Commandes configurées'
+                    : 'E-mail de commande requis'}
+                </span>
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: '0.4rem' }}>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => setEditing(true)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.35rem',
-                  padding: '0.35rem 0.65rem',
-                  borderRadius: '6px',
-                }}
-              >
-                <Edit3 size={13} /> Modifier
+            <div className="row-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setEditing(true)}>
+                <Edit3 size={14} /> Modifier
               </button>
               <button
                 type="button"
-                className="btn btn-danger btn-sm"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.35rem',
-                  padding: '0.35rem 0.65rem',
-                  borderRadius: '6px',
-                }}
+                className="btn btn-danger"
                 onClick={async () => {
                   if (
                     window.confirm(
@@ -21344,175 +22392,123 @@ function SupplierDetailModal({
                   }
                 }}
               >
-                <Trash2 size={13} /> Supprimer
+                <Trash2 size={14} /> Supprimer
               </button>
             </div>
           </div>
 
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.85rem',
-              marginTop: '0.5rem',
-            }}
-          >
-            <div
-              className="product-detail-info-row"
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '120px 1fr',
-                fontSize: '0.85rem',
-                paddingBottom: '0.5rem',
-                borderBottom: '1px solid #f1f5f9',
-              }}
-            >
-              <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Contact :</span>
-              <span style={{ color: 'var(--text-main)' }}>{supplier.contactName || '—'}</span>
+          <div className="supplier-detail-body">
+            <div className="product-sheet-tabs supplier-detail-tabs">
+              <button
+                type="button"
+                className={detailTab === 'identity' ? 'active' : ''}
+                onClick={() => setDetailTab('identity')}
+              >
+                Identité & contact
+              </button>
+              <button
+                type="button"
+                className={detailTab === 'purchasing' ? 'active' : ''}
+                onClick={() => setDetailTab('purchasing')}
+              >
+                Commandes & livraison
+              </button>
             </div>
-            <div
-              className="product-detail-info-row"
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '120px 1fr',
-                fontSize: '0.85rem',
-                paddingBottom: '0.5rem',
-                borderBottom: '1px solid #f1f5f9',
-              }}
-            >
-              <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Email :</span>
-              <span>
-                {supplier.email ? (
-                  <a
-                    href={`mailto:${supplier.email}`}
-                    style={{
-                      textDecoration: 'underline',
-                      color: 'var(--primary)',
-                      fontWeight: 600,
-                    }}
-                  >
-                    {supplier.email}
-                  </a>
-                ) : (
-                  <span style={{ color: 'var(--text-muted)' }}>—</span>
-                )}
-              </span>
-            </div>
-            <div
-              className="product-detail-info-row"
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '120px 1fr',
-                fontSize: '0.85rem',
-                paddingBottom: '0.5rem',
-                borderBottom: '1px solid #f1f5f9',
-              }}
-            >
-              <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Commandes :</span>
-              <span>
-                {supplier.purchasingProfile?.orderEmail ? (
-                  <a
-                    href={`mailto:${supplier.purchasingProfile.orderEmail}`}
-                    style={{
-                      textDecoration: 'underline',
-                      color: 'var(--primary)',
-                      fontWeight: 600,
-                    }}
-                  >
-                    {supplier.purchasingProfile.orderEmail}
-                  </a>
-                ) : (
-                  <span className="supplier-order-email-missing">E-mail de commande requis</span>
-                )}
-              </span>
-            </div>
-            <div
-              className="product-detail-info-row"
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '120px 1fr',
-                fontSize: '0.85rem',
-                paddingBottom: '0.5rem',
-                borderBottom: '1px solid #f1f5f9',
-              }}
-            >
-              <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Livraison :</span>
-              <span style={{ color: 'var(--text-main)' }}>
-                {supplier.purchasingProfile?.deliveryMode === 'SCHEDULED_DAYS'
-                  ? SUPPLIER_WEEKDAYS.filter((day) =>
-                      supplier.purchasingProfile?.deliveryWeekdays.includes(day.value),
-                    )
-                      .map((day) => day.label)
-                      .join(', ') || 'Jours non renseignés'
-                  : 'Dès que la commande est prête'}
-              </span>
-            </div>
-            <div
-              className="product-detail-info-row"
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '120px 1fr',
-                fontSize: '0.85rem',
-                paddingBottom: '0.5rem',
-                borderBottom: '1px solid #f1f5f9',
-              }}
-            >
-              <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Conditions :</span>
-              <span style={{ color: 'var(--text-main)' }}>
-                Minimum {Number(supplier.purchasingProfile?.minimumOrder ?? 0).toFixed(2)} € HT ·
-                Livraison {Number(supplier.purchasingProfile?.deliveryFee ?? 0).toFixed(2)} € HT
-              </span>
-            </div>
-            <div
-              className="product-detail-info-row"
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '120px 1fr',
-                fontSize: '0.85rem',
-                paddingBottom: '0.5rem',
-                borderBottom: '1px solid #f1f5f9',
-              }}
-            >
-              <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Téléphone :</span>
-              <span>
-                {supplier.phone ? (
-                  <a
-                    href={`tel:${supplier.phone}`}
-                    style={{ textDecoration: 'underline', color: 'var(--text-main)' }}
-                  >
-                    {supplier.phone}
-                  </a>
-                ) : (
-                  <span style={{ color: 'var(--text-muted)' }}>—</span>
-                )}
-              </span>
-            </div>
-            <div
-              className="product-detail-info-row"
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '120px 1fr',
-                fontSize: '0.85rem',
-                paddingBottom: '0.5rem',
-                borderBottom: '1px solid #f1f5f9',
-              }}
-            >
-              <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Adresse :</span>
-              <span style={{ color: 'var(--text-main)' }}>{supplier.address || '—'}</span>
-            </div>
-            <div
-              className="product-detail-info-row"
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '120px 1fr',
-                fontSize: '0.85rem',
-                paddingBottom: '0.5rem',
-              }}
-            >
-              <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Notes :</span>
-              <span style={{ color: 'var(--text-main)', whiteSpace: 'pre-wrap' }}>
-                {supplier.notes || '—'}
-              </span>
+
+            <div className="product-sheet-read-panel supplier-detail-panel">
+              {detailTab === 'identity' ? (
+                <>
+                  <span className="product-detail-section-title">Coordonnées du fournisseur</span>
+                  <dl className="product-detail-list">
+                    <div>
+                      <dt>Nom</dt>
+                      <dd>{supplier.name}</dd>
+                    </div>
+                    <div>
+                      <dt>Contact</dt>
+                      <dd>{supplier.contactName || 'Non renseigné'}</dd>
+                    </div>
+                    <div>
+                      <dt>E-mail</dt>
+                      <dd>
+                        {supplier.email ? (
+                          <a href={`mailto:${supplier.email}`}>{supplier.email}</a>
+                        ) : (
+                          'Non renseigné'
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Téléphone</dt>
+                      <dd>
+                        {supplier.phone ? (
+                          <a href={`tel:${supplier.phone}`}>{supplier.phone}</a>
+                        ) : (
+                          'Non renseigné'
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Adresse</dt>
+                      <dd>{supplier.address || 'Non renseignée'}</dd>
+                    </div>
+                  </dl>
+                  <div className="product-storage-copy supplier-notes-copy">
+                    <div>
+                      <span className="product-detail-section-title">Notes</span>
+                      <p>{supplier.notes || 'Aucune note renseignée.'}</p>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span className="product-detail-section-title">Paramètres de commande</span>
+                  <dl className="product-detail-list">
+                    <div>
+                      <dt>E-mail de commande</dt>
+                      <dd>
+                        {supplier.purchasingProfile?.orderEmail ? (
+                          <a href={`mailto:${supplier.purchasingProfile.orderEmail}`}>
+                            {supplier.purchasingProfile.orderEmail}
+                          </a>
+                        ) : (
+                          <span className="supplier-order-email-missing">
+                            E-mail de commande requis
+                          </span>
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Mode de livraison</dt>
+                      <dd>
+                        {supplier.purchasingProfile?.deliveryMode === 'SCHEDULED_DAYS'
+                          ? 'Jours de livraison définis'
+                          : 'Dès que la commande est prête'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Jours autorisés</dt>
+                      <dd>
+                        {supplier.purchasingProfile?.deliveryMode === 'SCHEDULED_DAYS'
+                          ? SUPPLIER_WEEKDAYS.filter((day) =>
+                              supplier.purchasingProfile?.deliveryWeekdays.includes(day.value),
+                            )
+                              .map((day) => day.label)
+                              .join(', ') || 'Non renseignés'
+                          : 'Tous les jours'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Commande minimum HT</dt>
+                      <dd>{Number(supplier.purchasingProfile?.minimumOrder ?? 0).toFixed(2)} €</dd>
+                    </div>
+                    <div>
+                      <dt>Coût de livraison HT</dt>
+                      <dd>{Number(supplier.purchasingProfile?.deliveryFee ?? 0).toFixed(2)} €</dd>
+                    </div>
+                  </dl>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -21555,6 +22551,7 @@ function SupplierForm({
   onSubmit,
   onClose,
 }: SupplierFormProps) {
+  const [activeTab, setActiveTab] = useState<'identity' | 'purchasing'>('identity');
   const [name, setName] = useState(initialSupplier?.name ?? initialName);
   const [contactName, setContactName] = useState(initialSupplier?.contactName ?? '');
   const [email, setEmail] = useState(initialSupplier?.email ?? '');
@@ -21580,6 +22577,7 @@ function SupplierForm({
   const [error, setError] = useState<string>();
 
   useEffect(() => {
+    setActiveTab('identity');
     setName(initialSupplier?.name ?? initialName);
     setContactName(initialSupplier?.contactName ?? '');
     setEmail(initialSupplier?.email ?? '');
@@ -21597,6 +22595,7 @@ function SupplierForm({
     e.preventDefault();
     if (!name.trim()) return;
     if (deliveryMode === 'SCHEDULED_DAYS' && !deliveryWeekdays.length) {
+      setActiveTab('purchasing');
       setError('Sélectionnez au moins un jour de livraison.');
       return;
     }
@@ -21635,140 +22634,194 @@ function SupplierForm({
           <span>{error}</span>
         </div>
       )}
-      <div className="product-sheet-form-body product-sheet-form-body-single">
+      <div className="product-sheet-form-body">
+        <div className="product-sheet-tabs supplier-form-tabs">
+          <button
+            type="button"
+            className={activeTab === 'identity' ? 'active' : ''}
+            onClick={() => setActiveTab('identity')}
+          >
+            <Building2 size={17} />
+            <span>
+              <strong>Identité & contact</strong>
+              <small>Coordonnées générales</small>
+            </span>
+          </button>
+          <button
+            type="button"
+            className={activeTab === 'purchasing' ? 'active' : ''}
+            onClick={() => setActiveTab('purchasing')}
+          >
+            <ShoppingCart size={17} />
+            <span>
+              <strong>Commandes & livraison</strong>
+              <small>Paramètres du module Achats</small>
+            </span>
+          </button>
+        </div>
+
         <div className="product-sheet-form-panel">
-          <div className="product-sheet-form-grid">
-            <label>
-              Nom du fournisseur *
-              <input
-                placeholder="ex: Metro, Transgourmet..."
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                autoFocus
-              />
-            </label>
-            <label>
-              Contact
-              <input
-                placeholder="ex: Marie Dupont"
-                value={contactName}
-                onChange={(e) => setContactName(e.target.value)}
-              />
-            </label>
-            <label>
-              Email de contact
-              <input
-                placeholder="ex: commercial@metro.fr..."
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </label>
-            <label>
-              Téléphone
-              <input
-                placeholder="01 23 45 67 89"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-              />
-            </label>
-            <div className="supplier-purchasing-heading product-sheet-wide">
-              <div>
-                <strong>Paramètres de commande</strong>
-                <span>Utilisés automatiquement par le module Achats.</span>
-              </div>
-            </div>
-            <label>
-              E-mail de commande
-              <input
-                placeholder="ex: commandes@fournisseur.fr"
-                type="email"
-                value={orderEmail}
-                onChange={(e) => setOrderEmail(e.target.value)}
-              />
-              <small>Obligatoire uniquement pour envoyer une commande depuis Achats.</small>
-            </label>
-            <label>
-              Mode de livraison
-              <select
-                value={deliveryMode}
-                onChange={(e) => setDeliveryMode(e.target.value as PurchasingDeliveryMode)}
-              >
-                <option value="ON_DEMAND">Envoyée dès que la commande est prête</option>
-                <option value="SCHEDULED_DAYS">Livraison certains jours uniquement</option>
-              </select>
-            </label>
-            {deliveryMode === 'SCHEDULED_DAYS' && (
-              <fieldset className="supplier-weekdays product-sheet-wide">
-                <legend>Jours de livraison autorisés *</legend>
-                <div>
-                  {SUPPLIER_WEEKDAYS.map((day) => (
-                    <label
-                      key={day.value}
-                      className={deliveryWeekdays.includes(day.value) ? 'active' : ''}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={deliveryWeekdays.includes(day.value)}
-                        onChange={() =>
-                          setDeliveryWeekdays((current) =>
-                            current.includes(day.value)
-                              ? current.filter((value) => value !== day.value)
-                              : [...current, day.value].sort((a, b) => a - b),
-                          )
-                        }
-                      />
-                      {day.label}
-                    </label>
-                  ))}
+          {activeTab === 'identity' ? (
+            <>
+              <div className="supplier-form-section-intro">
+                <div className="supplier-form-section-icon">
+                  <Building2 size={20} />
                 </div>
-              </fieldset>
-            )}
-            <label>
-              Coût de livraison HT
-              <div className="supplier-money-input">
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={deliveryFee}
-                  onChange={(e) => setDeliveryFee(Number(e.target.value))}
-                />
-                <span>€</span>
+                <div>
+                  <strong>Informations du fournisseur</strong>
+                  <span>
+                    Renseignez les coordonnées utilisées dans les stocks et les documents.
+                  </span>
+                </div>
               </div>
-            </label>
-            <label>
-              Commande minimum HT
-              <div className="supplier-money-input">
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={minimumOrder}
-                  onChange={(e) => setMinimumOrder(Number(e.target.value))}
-                />
-                <span>€</span>
+              <div className="product-sheet-form-grid">
+                <label>
+                  Nom du fournisseur *
+                  <input
+                    placeholder="ex: Metro, Transgourmet..."
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                    autoFocus
+                  />
+                </label>
+                <label>
+                  Contact principal
+                  <input
+                    placeholder="ex: Marie Dupont"
+                    value={contactName}
+                    onChange={(e) => setContactName(e.target.value)}
+                  />
+                </label>
+                <label>
+                  E-mail de contact
+                  <input
+                    placeholder="ex: commercial@fournisseur.fr"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </label>
+                <label>
+                  Téléphone
+                  <input
+                    placeholder="01 23 45 67 89"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                  />
+                </label>
+                <label className="product-sheet-wide">
+                  Adresse
+                  <input
+                    placeholder="Adresse complète du fournisseur"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                  />
+                </label>
+                <label className="product-sheet-wide">
+                  Notes
+                  <textarea
+                    rows={5}
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Informations internes, conditions particulières…"
+                  />
+                </label>
               </div>
-            </label>
-            <label className="product-sheet-wide">
-              Adresse
-              <input
-                placeholder="Adresse fournisseur"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-              />
-            </label>
-            <label className="product-sheet-wide">
-              Notes
-              <textarea
-                rows={4}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Conditions, jours de livraison…"
-              />
-            </label>
-          </div>
+            </>
+          ) : (
+            <>
+              <div className="supplier-form-section-intro">
+                <div className="supplier-form-section-icon">
+                  <ShoppingCart size={20} />
+                </div>
+                <div>
+                  <strong>Commandes et livraisons</strong>
+                  <span>Ces paramètres seront utilisés automatiquement par le module Achats.</span>
+                </div>
+              </div>
+              <div className="product-sheet-form-grid">
+                <label>
+                  E-mail de commande
+                  <input
+                    placeholder="ex: commandes@fournisseur.fr"
+                    type="email"
+                    value={orderEmail}
+                    onChange={(e) => setOrderEmail(e.target.value)}
+                  />
+                  <small>Nécessaire pour envoyer les commandes depuis ToqueHub.</small>
+                </label>
+                <label>
+                  Mode de livraison
+                  <select
+                    value={deliveryMode}
+                    onChange={(e) => setDeliveryMode(e.target.value as PurchasingDeliveryMode)}
+                  >
+                    <option value="ON_DEMAND">Dès que la commande est prête</option>
+                    <option value="SCHEDULED_DAYS">Certains jours uniquement</option>
+                  </select>
+                </label>
+                {deliveryMode === 'SCHEDULED_DAYS' && (
+                  <fieldset className="supplier-weekdays product-sheet-wide">
+                    <legend>Jours de livraison autorisés *</legend>
+                    <div>
+                      {SUPPLIER_WEEKDAYS.map((day) => (
+                        <label
+                          key={day.value}
+                          className={deliveryWeekdays.includes(day.value) ? 'active' : ''}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={deliveryWeekdays.includes(day.value)}
+                            onChange={() =>
+                              setDeliveryWeekdays((current) =>
+                                current.includes(day.value)
+                                  ? current.filter((value) => value !== day.value)
+                                  : [...current, day.value].sort((a, b) => a - b),
+                              )
+                            }
+                          />
+                          {day.label}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                )}
+                <label>
+                  Coût de livraison HT
+                  <div className="supplier-money-input">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={deliveryFee}
+                      onChange={(e) => setDeliveryFee(Number(e.target.value))}
+                    />
+                    <span>€</span>
+                  </div>
+                </label>
+                <label>
+                  Commande minimum HT
+                  <div className="supplier-money-input">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={minimumOrder}
+                      onChange={(e) => setMinimumOrder(Number(e.target.value))}
+                    />
+                    <span>€</span>
+                  </div>
+                </label>
+                <div className="supplier-purchasing-note product-sheet-wide">
+                  <Info size={16} />
+                  <span>
+                    Vous pourrez modifier ces paramètres plus tard depuis la fiche fournisseur.
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -22028,10 +23081,11 @@ function InventoryForm({
   }) => Promise<void>;
   onClose: () => void;
 }) {
+  const activeSites = sites.filter((site) => !site.isArchived);
   const [name, setName] = useState(`Inventaire ${new Date().toLocaleDateString('fr-FR')}`);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [comment, setComment] = useState('');
-  const [siteId, setSiteId] = useState('');
+  const [siteId, setSiteId] = useState(activeSites.length === 1 ? activeSites[0].id : '');
   const [submitting, setSubmitting] = useState(false);
   async function submitForm(e: FormEvent) {
     e.preventDefault();
@@ -22060,17 +23114,25 @@ function InventoryForm({
               Date
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </label>
-            <label>
-              Site
-              <select value={siteId} onChange={(e) => setSiteId(e.target.value)}>
-                <option value="">Tous</option>
-                {sites.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {activeSites.length > 1 ? (
+              <label>
+                Site *
+                <select value={siteId} onChange={(e) => setSiteId(e.target.value)} required>
+                  <option value="">Sélectionner un site…</option>
+                  {activeSites.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : activeSites.length === 1 ? (
+              <div className="product-sheet-note">
+                Site de l’inventaire : <strong>{activeSites[0].name}</strong>
+              </div>
+            ) : (
+              <div className="alert-modern error">Aucun site actif n’est configuré.</div>
+            )}
             <label className="product-sheet-wide">
               Commentaire
               <textarea
@@ -22091,7 +23153,7 @@ function InventoryForm({
         <button type="button" className="btn btn-secondary" onClick={onClose}>
           Annuler
         </button>
-        <button className="btn btn-primary" disabled={!name.trim() || submitting}>
+        <button className="btn btn-primary" disabled={!name.trim() || !siteId || submitting}>
           {submitting ? 'Création…' : 'Créer l’inventaire'}
         </button>
       </div>
@@ -24024,12 +25086,8 @@ function MovementForm({
     if (!productId || !quantity) return;
     const requiresSourceSite =
       type === 'OUT' || type === 'EXIT' || type === 'LOSS' || type === 'TRANSFER';
-    const requiresDestinationSite =
-      type === 'IN' || type === 'ENTRY' || type === 'TRANSFER';
-    if (
-      (requiresSourceSite && !sourceSiteId) ||
-      (requiresDestinationSite && !destinationSiteId)
-    ) {
+    const requiresDestinationSite = type === 'IN' || type === 'ENTRY' || type === 'TRANSFER';
+    if ((requiresSourceSite && !sourceSiteId) || (requiresDestinationSite && !destinationSiteId)) {
       setError('Un site est obligatoire pour enregistrer un mouvement de stock.');
       return;
     }

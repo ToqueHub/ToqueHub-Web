@@ -27,7 +27,7 @@ import { OrderComposerButton } from '../orders/OrderComposer';
 const ONBOARDING_STEPS = [
   { id: 'welcome', label: 'Bienvenue', icon: Sparkles },
   { id: 'email', label: 'Messagerie fournisseur', icon: Mail },
-  { id: 'draft', label: 'Première commande', icon: ShoppingCart },
+  { id: 'draft', label: 'Première commande (facultatif)', icon: ShoppingCart },
 ] as const;
 
 export function PurchasingOnboarding({
@@ -62,8 +62,14 @@ export function PurchasingOnboarding({
   const [working, setWorking] = useState(false);
   const [resendError, setResendError] = useState<string>();
   const existingProvider = bootstrap.settings.activeEmailProvider;
-  const [resendPath, setResendPath] = useState<'choice' | 'existing' | 'guide' | 'smtp' | 'google' | 'microsoft'>(
-    existingProvider === 'GOOGLE' ? 'google' : existingProvider === 'MICROSOFT' ? 'microsoft' : 'choice',
+  const [resendPath, setResendPath] = useState<
+    'choice' | 'existing' | 'guide' | 'smtp' | 'google' | 'microsoft'
+  >(
+    existingProvider === 'GOOGLE'
+      ? 'google'
+      : existingProvider === 'MICROSOFT'
+        ? 'microsoft'
+        : 'choice',
   );
   const oauthPollRef = useRef<number | null>(null);
   const oauthCompletedRef = useRef(false);
@@ -73,10 +79,24 @@ export function PurchasingOnboarding({
     fromName: bootstrap.settings.fromName ?? 'ToqueHub Achats',
     replyTo: bootstrap.settings.replyTo ?? '',
   });
-  const [smtp, setSmtp] = useState({ senderEmail: '', senderName: bootstrap.settings.fromName ?? '', host: '', port: 465, secure: true, username: '', password: '' });
-  const [connectedMailbox, setConnectedMailbox] = useState<{ senderEmail?: string | null; senderName?: string | null } | null>(null);
+  const [smtp, setSmtp] = useState({
+    senderEmail: '',
+    senderName: bootstrap.settings.fromName ?? '',
+    host: '',
+    port: 465,
+    secure: true,
+    username: '',
+    password: '',
+  });
+  const [connectedMailbox, setConnectedMailbox] = useState<{
+    senderEmail?: string | null;
+    senderName?: string | null;
+  } | null>(null);
   const [emailConnections, setEmailConnections] = useState<PurchasingEmailConnection[]>([]);
-  const [connectionSuccess, setConnectionSuccess] = useState<{ provider: string; email: string } | null>(null);
+  const [connectionSuccess, setConnectionSuccess] = useState<{
+    provider: string;
+    email: string;
+  } | null>(null);
   const current = ONBOARDING_STEPS[step];
   const stepIndex = step + 1;
   const persist = async (
@@ -149,7 +169,16 @@ export function PurchasingOnboarding({
     setWorking(true);
     setResendError(undefined);
     try {
-      await api.configurePurchasingEmailConnection(token, { provider: 'SMTP', senderEmail: smtp.senderEmail, senderName: smtp.senderName, smtpHost: smtp.host, smtpPort: smtp.port, smtpSecure: smtp.secure, smtpUsername: smtp.username, smtpPassword: smtp.password });
+      await api.configurePurchasingEmailConnection(token, {
+        provider: 'SMTP',
+        senderEmail: smtp.senderEmail,
+        senderName: smtp.senderName,
+        smtpHost: smtp.host,
+        smtpPort: smtp.port,
+        smtpSecure: smtp.secure,
+        smtpUsername: smtp.username,
+        smtpPassword: smtp.password,
+      });
       await api.testPurchasingEmailConnection(token, 'SMTP');
       await api.activatePurchasingEmailConnection(token, 'SMTP');
       flash('success', 'Messagerie SMTP connectée et prête à envoyer les commandes.');
@@ -176,7 +205,11 @@ export function PurchasingOnboarding({
     flash('success', 'Messagerie connectée et activée.');
     try {
       const connections = await api.purchasingEmailConnections(token);
-      const conn = connections.find((c) => c.provider === (resendPath === 'google' ? 'GOOGLE' : 'MICROSOFT') && c.status === 'CONNECTED');
+      const conn = connections.find(
+        (c) =>
+          c.provider === (resendPath === 'google' ? 'GOOGLE' : 'MICROSOFT') &&
+          c.status === 'CONNECTED',
+      );
       setConnectionSuccess({
         provider: resendPath === 'google' ? 'Google Workspace' : 'Microsoft 365',
         email: conn?.senderEmail || conn?.senderName || 'Adresse connectée',
@@ -198,7 +231,11 @@ export function PurchasingOnboarding({
       attempts += 1;
       try {
         const connections = await api.purchasingEmailConnections(token);
-        if (connections.some((connection) => connection.provider === provider && connection.status === 'CONNECTED')) {
+        if (
+          connections.some(
+            (connection) => connection.provider === provider && connection.status === 'CONNECTED',
+          )
+        ) {
           await completeOAuth();
           return;
         }
@@ -231,43 +268,65 @@ export function PurchasingOnboarding({
   };
   useEffect(() => {
     const handler = (event: MessageEvent) => {
-      if ((event.data as { type?: string } | undefined)?.type !== 'toquehub:purchasing-email') return;
+      if ((event.data as { type?: string } | undefined)?.type !== 'toquehub:purchasing-email')
+        return;
       if ((event.data as { ok?: boolean }).ok) {
         void completeOAuth();
       } else flash('error', 'La connexion à la messagerie a été interrompue.');
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
-  // persist is intentionally captured with current onboarding state.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // persist is intentionally captured with current onboarding state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flash]);
   useEffect(() => () => stopOAuthPolling(), []);
   useEffect(() => {
     let active = true;
-    void api.purchasingEmailConnections(token).then((connections) => {
-      if (!active) return;
-      setEmailConnections(connections);
-      const connection = connections.find((item) => item.provider === existingProvider && item.status === 'CONNECTED');
-      setConnectedMailbox(connection ?? null);
-    }).catch(() => {
-      if (active) {
-        setEmailConnections([]);
-        setConnectedMailbox(null);
-      }
-    });
-    return () => { active = false; };
+    void api
+      .purchasingEmailConnections(token)
+      .then((connections) => {
+        if (!active) return;
+        setEmailConnections(connections);
+        const connection = connections.find(
+          (item) => item.provider === existingProvider && item.status === 'CONNECTED',
+        );
+        setConnectedMailbox(connection ?? null);
+      })
+      .catch(() => {
+        if (active) {
+          setEmailConnections([]);
+          setConnectedMailbox(null);
+        }
+      });
+    return () => {
+      active = false;
+    };
   }, [existingProvider, token]);
   const isConnected = (provider: PurchasingEmailConnection['provider']) =>
-    emailConnections.some((connection) => connection.provider === provider && connection.status === 'CONNECTED');
+    emailConnections.some(
+      (connection) => connection.provider === provider && connection.status === 'CONNECTED',
+    );
   const progress = Math.round((stepIndex / ONBOARDING_STEPS.length) * 100);
 
   // SVG Logos variables for premium quality rendering
   const googleLogo = (
     <svg viewBox="0 0 24 24" width="22" height="22" xmlns="http://www.w3.org/2000/svg">
-      <path fill="#EA4335" d="M12 5.04c1.67 0 3.17.58 4.35 1.71l3.25-3.25C17.63 1.63 14.98 1 12 1 7.35 1 3.39 3.65 1.5 7.5l3.8 2.95C6.2 7.57 8.87 5.04 12 5.04z" />
-      <path fill="#4285F4" d="M23.49 12.27c0-.81-.07-1.59-.2-2.35H12v4.51h6.44c-.28 1.48-1.12 2.73-2.38 3.58l3.7 2.87c2.16-1.99 3.43-4.92 3.43-8.61z" />
-      <path fill="#FBBC05" d="M5.3 14.5c-.24-.71-.38-1.47-.38-2.25s.14-1.54.38-2.25L1.5 7.05C.54 8.97 0 11.12 0 13.5s.54 4.53 1.5 6.45l3.8-2.95z" />
-      <path fill="#34A853" d="M12 23c3.24 0 5.97-1.07 7.96-2.92l-3.7-2.87c-1.03.69-2.34 1.1-4.26 1.1-3.13 0-5.8-2.53-6.75-5.41L1.45 15.8C3.34 19.65 7.3 23 12 23z" />
+      <path
+        fill="#EA4335"
+        d="M12 5.04c1.67 0 3.17.58 4.35 1.71l3.25-3.25C17.63 1.63 14.98 1 12 1 7.35 1 3.39 3.65 1.5 7.5l3.8 2.95C6.2 7.57 8.87 5.04 12 5.04z"
+      />
+      <path
+        fill="#4285F4"
+        d="M23.49 12.27c0-.81-.07-1.59-.2-2.35H12v4.51h6.44c-.28 1.48-1.12 2.73-2.38 3.58l3.7 2.87c2.16-1.99 3.43-4.92 3.43-8.61z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.3 14.5c-.24-.71-.38-1.47-.38-2.25s.14-1.54.38-2.25L1.5 7.05C.54 8.97 0 11.12 0 13.5s.54 4.53 1.5 6.45l3.8-2.95z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 23c3.24 0 5.97-1.07 7.96-2.92l-3.7-2.87c-1.03.69-2.34 1.1-4.26 1.1-3.13 0-5.8-2.53-6.75-5.41L1.45 15.8C3.34 19.65 7.3 23 12 23z"
+      />
     </svg>
   );
 
@@ -283,12 +342,23 @@ export function PurchasingOnboarding({
   const resendLogo = (
     <svg viewBox="0 0 32 32" width="22" height="22" fill="none" xmlns="http://www.w3.org/2000/svg">
       <rect width="32" height="32" rx="7" fill="black" />
-      <path d="M9 22V10H15.5C18.1 10 20.2 11.9 20.2 14.3C20.2 16.1 19 17.6 17.4 18.2L21 22H17.2L13.9 18.2H11.5V22H9ZM11.5 15.7H15.2C16.1 15.7 16.8 15.1 16.8 14.3C16.8 13.5 16.1 13 15.2 13H11.5V15.7Z" fill="white" />
+      <path
+        d="M9 22V10H15.5C18.1 10 20.2 11.9 20.2 14.3C20.2 16.1 19 17.6 17.4 18.2L21 22H17.2L13.9 18.2H11.5V22H9ZM11.5 15.7H15.2C16.1 15.7 16.8 15.1 16.8 14.3C16.8 13.5 16.1 13 15.2 13H11.5V15.7Z"
+        fill="white"
+      />
     </svg>
   );
 
   const smtpLogo = (
-    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" strokeWidth="2">
+    <svg
+      viewBox="0 0 24 24"
+      width="22"
+      height="22"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
       <rect x="2" y="2" width="20" height="8" rx="2" fill="#F1F5F9" stroke="#475569" />
       <rect x="2" y="14" width="20" height="8" rx="2" fill="#F1F5F9" stroke="#475569" />
       <circle cx="6" cy="6" r="1.2" fill="#10B981" />
@@ -351,7 +421,9 @@ export function PurchasingOnboarding({
           {ONBOARDING_STEPS.map((item, index) => {
             const done =
               item.id === 'email'
-                ? Boolean(bootstrap.settings.activeEmailProvider || bootstrap.settings.resendVerifiedAt)
+                ? Boolean(
+                    bootstrap.settings.activeEmailProvider || bootstrap.settings.resendVerifiedAt,
+                  )
                 : bootstrap.onboarding.completedSteps.includes(item.id) || index < step;
             const isCurrent = index === step;
             return (
@@ -410,7 +482,6 @@ export function PurchasingOnboarding({
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-
         <div
           style={{
             padding: '1.25rem',
@@ -488,61 +559,107 @@ export function PurchasingOnboarding({
           }}
         >
           {connectionSuccess ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', flex: 1, justifyContent: 'center', alignItems: 'center', textAlign: 'center', padding: '2rem' }}>
-              <div style={{
-                width: '72px',
-                height: '72px',
-                borderRadius: '50%',
-                background: 'var(--success-bg)',
-                color: '#10b981',
-                display: 'grid',
-                placeItems: 'center',
-                boxShadow: '0 8px 24px rgba(16, 185, 129, 0.15)',
-                marginBottom: '0.5rem',
-                border: '2px solid rgba(16, 185, 129, 0.2)'
-              }}>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '1.5rem',
+                flex: 1,
+                justifyContent: 'center',
+                alignItems: 'center',
+                textAlign: 'center',
+                padding: '2rem',
+              }}
+            >
+              <div
+                style={{
+                  width: '72px',
+                  height: '72px',
+                  borderRadius: '50%',
+                  background: 'var(--success-bg)',
+                  color: '#10b981',
+                  display: 'grid',
+                  placeItems: 'center',
+                  boxShadow: '0 8px 24px rgba(16, 185, 129, 0.15)',
+                  marginBottom: '0.5rem',
+                  border: '2px solid rgba(16, 185, 129, 0.2)',
+                }}
+              >
                 <CheckCircle2 size={40} />
               </div>
 
               <div>
-                <span style={{ fontSize: '0.78rem', textTransform: 'uppercase', fontWeight: 800, color: '#10b981', letterSpacing: '0.05em' }}>Liaison validée</span>
-                <h2 style={{ fontSize: '1.75rem', fontWeight: 850, color: 'var(--text-main)', margin: '0.25rem 0 0.5rem' }}>
+                <span
+                  style={{
+                    fontSize: '0.78rem',
+                    textTransform: 'uppercase',
+                    fontWeight: 800,
+                    color: '#10b981',
+                    letterSpacing: '0.05em',
+                  }}
+                >
+                  Liaison validée
+                </span>
+                <h2
+                  style={{
+                    fontSize: '1.75rem',
+                    fontWeight: 850,
+                    color: 'var(--text-main)',
+                    margin: '0.25rem 0 0.5rem',
+                  }}
+                >
                   Compte connecté avec succès !
                 </h2>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', maxWidth: '480px', margin: '0 auto', lineHeight: 1.5 }}>
-                  Votre compte <strong style={{ color: 'var(--text-main)' }}>{connectionSuccess.provider}</strong> est maintenant lié à ToqueHub pour l'envoi de vos commandes.
+                <p
+                  style={{
+                    color: 'var(--text-muted)',
+                    fontSize: '0.92rem',
+                    maxWidth: '480px',
+                    margin: '0 auto',
+                    lineHeight: 1.5,
+                  }}
+                >
+                  Votre compte{' '}
+                  <strong style={{ color: 'var(--text-main)' }}>
+                    {connectionSuccess.provider}
+                  </strong>{' '}
+                  est maintenant lié à ToqueHub pour l'envoi de vos commandes.
                 </p>
               </div>
 
-              <div style={{
-                background: '#f0fdf4',
-                border: '1px solid #bcf0da',
-                borderRadius: '16px',
-                padding: '1rem 2rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.75rem',
-                margin: '0.5rem 0'
-              }}>
+              <div
+                style={{
+                  background: '#f0fdf4',
+                  border: '1px solid #bcf0da',
+                  borderRadius: '16px',
+                  padding: '1rem 2rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  margin: '0.5rem 0',
+                }}
+              >
                 <Mail size={18} style={{ color: '#10b981' }} />
                 <span style={{ color: '#14532d', fontWeight: 750, fontSize: '0.92rem' }}>
                   {connectionSuccess.email}
                 </span>
               </div>
 
-              <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.5rem',
-                maxWidth: '420px',
-                background: '#f8fafc',
-                padding: '1rem',
-                borderRadius: '12px',
-                border: '1px solid #e2e8f0',
-                fontSize: '0.8rem',
-                color: 'var(--text-muted)',
-                textAlign: 'left'
-              }}>
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem',
+                  maxWidth: '420px',
+                  background: '#f8fafc',
+                  padding: '1rem',
+                  borderRadius: '12px',
+                  border: '1px solid #e2e8f0',
+                  fontSize: '0.8rem',
+                  color: 'var(--text-muted)',
+                  textAlign: 'left',
+                }}
+              >
                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                   <CheckCircle2 size={12} style={{ color: '#10b981' }} />
                   <span>Délivrabilité optimale configurée</span>
@@ -564,7 +681,7 @@ export function PurchasingOnboarding({
                   alignItems: 'center',
                   flexShrink: 0,
                   margin: '1.5rem 0 0',
-                  width: '100%'
+                  width: '100%',
                 }}
               >
                 <button
@@ -590,18 +707,55 @@ export function PurchasingOnboarding({
             </div>
           ) : (
             <>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', overflowY: 'auto', flex: 1, paddingRight: '0.25rem' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '1.25rem',
+                  overflowY: 'auto',
+                  flex: 1,
+                  paddingRight: '0.25rem',
+                }}
+              >
                 <div>
-                  <span className="purchasing-stock-step-icon" style={{ display: 'grid', placeItems: 'center', width: '46px', height: '46px', borderRadius: '14px', background: 'var(--success-bg)', color: 'var(--primary)', marginBottom: '0.7rem' }}>
+                  <span
+                    className="purchasing-stock-step-icon"
+                    style={{
+                      display: 'grid',
+                      placeItems: 'center',
+                      width: '46px',
+                      height: '46px',
+                      borderRadius: '14px',
+                      background: 'var(--success-bg)',
+                      color: 'var(--primary)',
+                      marginBottom: '0.7rem',
+                    }}
+                  >
                     <KeyRound size={22} />
                   </span>
-                  <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
-                    {resendPath === 'choice' ? "Canal d'expédition" : "Configuration de la messagerie"}
+                  <h2
+                    style={{
+                      fontSize: '1.5rem',
+                      fontWeight: 800,
+                      color: 'var(--text-main)',
+                      margin: 0,
+                    }}
+                  >
+                    {resendPath === 'choice'
+                      ? "Canal d'expédition"
+                      : 'Configuration de la messagerie'}
                   </h2>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginTop: '0.35rem', lineHeight: 1.5 }}>
+                  <p
+                    style={{
+                      color: 'var(--text-muted)',
+                      fontSize: '0.92rem',
+                      marginTop: '0.35rem',
+                      lineHeight: 1.5,
+                    }}
+                  >
                     {resendPath === 'choice'
                       ? "Sélectionnez le canal d'envoi de vos bons de commande à vos fournisseurs."
-                      : "Associez votre service de messagerie professionnelle pour envoyer vos bons de commande en toute sécurité."}
+                      : 'Associez votre service de messagerie professionnelle pour envoyer vos bons de commande en toute sécurité.'}
                   </p>
                 </div>
 
@@ -612,7 +766,12 @@ export function PurchasingOnboarding({
                       tabIndex={0}
                       className={`onboarding-option-card blue ${isConnected('GOOGLE') ? 'configured' : ''}`}
                       onClick={() => setResendPath('google')}
-                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setResendPath('google'); } }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setResendPath('google');
+                        }
+                      }}
                       style={{ cursor: 'pointer' }}
                     >
                       <div className="onboarding-option-icon" style={{ background: '#f0f6ff' }}>
@@ -621,9 +780,14 @@ export function PurchasingOnboarding({
                       <div className="onboarding-option-content">
                         <span className="onboarding-option-title">Google Workspace / Gmail</span>
                         <span className="onboarding-option-desc">
-                          Liaison officielle via OAuth 2.0. Idéal pour envoyer depuis votre adresse professionnelle Google.
+                          Liaison officielle via OAuth 2.0. Idéal pour envoyer depuis votre adresse
+                          professionnelle Google.
                         </span>
-                        {isConnected('GOOGLE') && <span className="onboarding-option-configured">✓ Déjà configuré · Cliquer pour reconfigurer</span>}
+                        {isConnected('GOOGLE') && (
+                          <span className="onboarding-option-configured">
+                            ✓ Déjà configuré · Cliquer pour reconfigurer
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -632,7 +796,12 @@ export function PurchasingOnboarding({
                       tabIndex={0}
                       className={`onboarding-option-card orange ${isConnected('MICROSOFT') ? 'configured' : ''}`}
                       onClick={() => setResendPath('microsoft')}
-                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setResendPath('microsoft'); } }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setResendPath('microsoft');
+                        }
+                      }}
                       style={{ cursor: 'pointer' }}
                     >
                       <div className="onboarding-option-icon" style={{ background: '#fff4f0' }}>
@@ -641,9 +810,14 @@ export function PurchasingOnboarding({
                       <div className="onboarding-option-content">
                         <span className="onboarding-option-title">Microsoft 365 / Outlook</span>
                         <span className="onboarding-option-desc">
-                          Connexion instantanée via Microsoft Identity. Recommandé pour les adresses Outlook et Office 365.
+                          Connexion instantanée via Microsoft Identity. Recommandé pour les adresses
+                          Outlook et Office 365.
                         </span>
-                        {isConnected('MICROSOFT') && <span className="onboarding-option-configured">✓ Déjà configuré · Cliquer pour reconfigurer</span>}
+                        {isConnected('MICROSOFT') && (
+                          <span className="onboarding-option-configured">
+                            ✓ Déjà configuré · Cliquer pour reconfigurer
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -652,7 +826,12 @@ export function PurchasingOnboarding({
                       tabIndex={0}
                       className={`onboarding-option-card emerald ${isConnected('SMTP') ? 'configured' : ''}`}
                       onClick={() => setResendPath('smtp')}
-                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setResendPath('smtp'); } }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setResendPath('smtp');
+                        }
+                      }}
                       style={{ cursor: 'pointer' }}
                     >
                       <div className="onboarding-option-icon" style={{ background: '#ecfdf5' }}>
@@ -661,9 +840,14 @@ export function PurchasingOnboarding({
                       <div className="onboarding-option-content">
                         <span className="onboarding-option-title">Autre messagerie (SMTP)</span>
                         <span className="onboarding-option-desc">
-                          Configuration universelle pour OVH, Infomaniak, Zoho Mail ou vos serveurs d'entreprise.
+                          Configuration universelle pour OVH, Infomaniak, Zoho Mail ou vos serveurs
+                          d'entreprise.
                         </span>
-                        {isConnected('SMTP') && <span className="onboarding-option-configured">✓ Déjà configuré · Cliquer pour reconfigurer</span>}
+                        {isConnected('SMTP') && (
+                          <span className="onboarding-option-configured">
+                            ✓ Déjà configuré · Cliquer pour reconfigurer
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -672,7 +856,12 @@ export function PurchasingOnboarding({
                       tabIndex={0}
                       className={`onboarding-option-card ${bootstrap.settings.resendVerifiedAt ? 'configured' : ''}`}
                       onClick={() => setResendPath('guide')}
-                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setResendPath('guide'); } }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setResendPath('guide');
+                        }
+                      }}
                       style={{ cursor: 'pointer' }}
                     >
                       <div className="onboarding-option-icon" style={{ background: '#f8fafc' }}>
@@ -681,24 +870,58 @@ export function PurchasingOnboarding({
                       <div className="onboarding-option-content">
                         <span className="onboarding-option-title">Service Resend (API)</span>
                         <span className="onboarding-option-desc">
-                          Délivrabilité maximale pour les développeurs. Utilisez votre domaine d'envoi et clés d'API existants.
+                          Délivrabilité maximale pour les développeurs. Utilisez votre domaine
+                          d'envoi et clés d'API existants.
                         </span>
-                        {bootstrap.settings.resendVerifiedAt && <span className="onboarding-option-configured">✓ Déjà configuré · Cliquer pour reconfigurer</span>}
+                        {bootstrap.settings.resendVerifiedAt && (
+                          <span className="onboarding-option-configured">
+                            ✓ Déjà configuré · Cliquer pour reconfigurer
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
                 )}
 
                 {(resendPath === 'google' || resendPath === 'microsoft') && (
-                  <div className="purchasing-oauth-flow" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%', maxWidth: '620px', margin: '0.5rem auto 0' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div
+                    className="purchasing-oauth-flow"
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '1.25rem',
+                      width: '100%',
+                      maxWidth: '620px',
+                      margin: '0.5rem auto 0',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                    >
                       <div>
-                        <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
+                        <h3
+                          style={{
+                            fontSize: '1.1rem',
+                            fontWeight: 800,
+                            color: 'var(--text-main)',
+                            margin: 0,
+                          }}
+                        >
                           {isConnected(resendPath === 'google' ? 'GOOGLE' : 'MICROSOFT')
                             ? `${resendPath === 'google' ? 'Google Workspace / Gmail' : 'Microsoft 365 / Outlook'} connecté`
                             : `Connexion ${resendPath === 'google' ? 'Google Workspace' : 'Microsoft 365'}`}
                         </h3>
-                        <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', margin: '0.2rem 0 0' }}>
+                        <p
+                          style={{
+                            color: 'var(--text-muted)',
+                            fontSize: '0.82rem',
+                            margin: '0.2rem 0 0',
+                          }}
+                        >
                           {isConnected(resendPath === 'google' ? 'GOOGLE' : 'MICROSOFT')
                             ? 'Cette boîte est prête à envoyer vos bons de commande.'
                             : 'Authentification sécurisée OAuth 2.0 en cours d’autorisation.'}
@@ -706,65 +929,118 @@ export function PurchasingOnboarding({
                       </div>
                     </div>
 
-                    <div className="purchasing-oauth-card" style={{
-                      background: '#f8fafc',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '16px',
-                      padding: '2rem',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      gap: '1.5rem',
-                      textAlign: 'center'
-                    }}>
-                      <div style={{
-                        width: '60px',
-                        height: '60px',
-                        borderRadius: '14px',
-                        background: 'white',
+                    <div
+                      className="purchasing-oauth-card"
+                      style={{
+                        background: '#f8fafc',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '16px',
+                        padding: '2rem',
                         display: 'flex',
+                        flexDirection: 'column',
                         alignItems: 'center',
-                        justifyContent: 'center',
-                        boxShadow: 'var(--shadow-premium)',
-                        border: '1px solid #e2e8f0'
-                      }}>
+                        gap: '1.5rem',
+                        textAlign: 'center',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: '60px',
+                          height: '60px',
+                          borderRadius: '14px',
+                          background: 'white',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          boxShadow: 'var(--shadow-premium)',
+                          border: '1px solid #e2e8f0',
+                        }}
+                      >
                         {resendPath === 'google' ? googleLogo : microsoftLogo}
                       </div>
 
                       <div>
                         <h4 style={{ margin: 0, fontWeight: 750, fontSize: '1rem' }}>
-                          {isConnected(resendPath === 'google' ? 'GOOGLE' : 'MICROSOFT') ? 'Messagerie déjà configurée' : 'Garantie de Sécurité & Confidentialité'}
-                        </h4>
-                        <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: '0.35rem', maxWidth: '420px', lineHeight: 1.45 }}>
                           {isConnected(resendPath === 'google' ? 'GOOGLE' : 'MICROSOFT')
-                            ? <>Cette messagerie est déjà prête. Vous pouvez la reconfigurer à tout moment ; les bons de commande partiront depuis{' '}
-                              <strong>{connectedMailbox?.senderName || connectedMailbox?.senderEmail || 'cette boîte'}</strong>
-                              {connectedMailbox?.senderName && connectedMailbox.senderEmail ? ` (${connectedMailbox.senderEmail})` : ''}.</>
-                            : `Vous allez être redirigé vers l'interface sécurisée de Microsoft ou Google pour autoriser l'envoi de vos commandes.`}
+                            ? 'Messagerie déjà configurée'
+                            : 'Garantie de Sécurité & Confidentialité'}
+                        </h4>
+                        <p
+                          style={{
+                            color: 'var(--text-muted)',
+                            fontSize: '0.82rem',
+                            marginTop: '0.35rem',
+                            maxWidth: '420px',
+                            lineHeight: 1.45,
+                          }}
+                        >
+                          {isConnected(resendPath === 'google' ? 'GOOGLE' : 'MICROSOFT') ? (
+                            <>
+                              Cette messagerie est déjà prête. Vous pouvez la reconfigurer à tout
+                              moment ; les bons de commande partiront depuis{' '}
+                              <strong>
+                                {connectedMailbox?.senderName ||
+                                  connectedMailbox?.senderEmail ||
+                                  'cette boîte'}
+                              </strong>
+                              {connectedMailbox?.senderName && connectedMailbox.senderEmail
+                                ? ` (${connectedMailbox.senderEmail})`
+                                : ''}
+                              .
+                            </>
+                          ) : (
+                            `Vous allez être redirigé vers l'interface sécurisée de Microsoft ou Google pour autoriser l'envoi de vos commandes.`
+                          )}
                         </p>
                       </div>
 
-                      <div style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '0.6rem',
-                        width: '100%',
-                        maxWidth: '360px',
-                        background: 'white',
-                        padding: '1rem',
-                        borderRadius: '12px',
-                        border: '1px solid #e2e8f0',
-                        textAlign: 'left'
-                      }}>
-                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.6rem',
+                          width: '100%',
+                          maxWidth: '360px',
+                          background: 'white',
+                          padding: '1rem',
+                          borderRadius: '12px',
+                          border: '1px solid #e2e8f0',
+                          textAlign: 'left',
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            gap: '0.5rem',
+                            alignItems: 'center',
+                            fontSize: '0.78rem',
+                            color: 'var(--text-muted)',
+                          }}
+                        >
                           <CheckCircle2 size={14} style={{ color: '#10b981' }} />
                           <span>Adresse d'expédition personnalisable</span>
                         </div>
-                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            gap: '0.5rem',
+                            alignItems: 'center',
+                            fontSize: '0.78rem',
+                            color: 'var(--text-muted)',
+                          }}
+                        >
                           <CheckCircle2 size={14} style={{ color: '#10b981' }} />
                           <span>Aucun mot de passe n'est stocké par ToqueHub</span>
                         </div>
-                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            gap: '0.5rem',
+                            alignItems: 'center',
+                            fontSize: '0.78rem',
+                            color: 'var(--text-muted)',
+                          }}
+                        >
                           <CheckCircle2 size={14} style={{ color: '#10b981' }} />
                           <span>Jeton de connexion chiffré dans votre base</span>
                         </div>
@@ -781,75 +1057,140 @@ export function PurchasingOnboarding({
                 )}
 
                 {resendPath === 'guide' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%', maxWidth: '680px', margin: '0.5rem auto 0' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '1.25rem',
+                      width: '100%',
+                      maxWidth: '680px',
+                      margin: '0.5rem auto 0',
+                    }}
+                  >
                     <div>
-                      <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
+                      <h3
+                        style={{
+                          fontSize: '1.1rem',
+                          fontWeight: 800,
+                          color: 'var(--text-main)',
+                          margin: 0,
+                        }}
+                      >
                         Activer Resend en 3 étapes
                       </h3>
-                      <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', margin: '0.2rem 0 0' }}>
+                      <p
+                        style={{
+                          color: 'var(--text-muted)',
+                          fontSize: '0.82rem',
+                          margin: '0.2rem 0 0',
+                        }}
+                      >
                         Suivez ce guide rapide pour configurer votre nom de domaine d'envoi.
                       </p>
                     </div>
 
-                    <ol style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', listStyle: 'none', padding: 0, margin: 0 }}>
+                    <ol
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.85rem',
+                        listStyle: 'none',
+                        padding: 0,
+                        margin: 0,
+                      }}
+                    >
                       {[
                         {
                           step: 1,
-                          title: "Création du compte Resend",
-                          desc: "Inscrivez-vous gratuitement sur resend.com et validez votre adresse e-mail.",
-                          link: "https://resend.com/signup",
-                          text: "S'inscrire sur Resend"
+                          title: 'Création du compte Resend',
+                          desc: 'Inscrivez-vous gratuitement sur resend.com et validez votre adresse e-mail.',
+                          link: 'https://resend.com/signup',
+                          text: "S'inscrire sur Resend",
                         },
                         {
                           step: 2,
-                          title: "Vérification de votre domaine",
+                          title: 'Vérification de votre domaine',
                           desc: "Dans l'onglet 'Domains', ajoutez votre domaine de messagerie (ex: restaurant.fr) et configurez les clés DNS SPF/DKIM.",
-                          link: "https://resend.com/domains",
-                          text: "Configurer mon domaine d'envoi"
+                          link: 'https://resend.com/domains',
+                          text: "Configurer mon domaine d'envoi",
                         },
                         {
                           step: 3,
-                          title: "Génération de la clé API",
+                          title: 'Génération de la clé API',
                           desc: "Générez une clé API avec les droits d'envoi ('Sending Access') et copiez-la.",
-                          link: "https://resend.com/api-keys",
-                          text: "Obtenir une clé API"
-                        }
+                          link: 'https://resend.com/api-keys',
+                          text: 'Obtenir une clé API',
+                        },
                       ].map((item) => (
-                        <li key={item.step} style={{
-                          display: 'flex',
-                          gap: '1rem',
-                          padding: '1rem',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: '12px',
-                          background: 'white'
-                        }}>
-                          <span style={{
-                            display: 'grid',
-                            placeItems: 'center',
-                            width: '28px',
-                            height: '28px',
-                            borderRadius: '50%',
-                            background: 'var(--primary)',
-                            color: 'white',
-                            fontWeight: 800,
-                            fontSize: '0.8rem',
-                            flexShrink: 0
-                          }}>
+                        <li
+                          key={item.step}
+                          style={{
+                            display: 'flex',
+                            gap: '1rem',
+                            padding: '1rem',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '12px',
+                            background: 'white',
+                          }}
+                        >
+                          <span
+                            style={{
+                              display: 'grid',
+                              placeItems: 'center',
+                              width: '28px',
+                              height: '28px',
+                              borderRadius: '50%',
+                              background: 'var(--primary)',
+                              color: 'white',
+                              fontWeight: 800,
+                              fontSize: '0.8rem',
+                              flexShrink: 0,
+                            }}
+                          >
                             {item.step}
                           </span>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: 1 }}>
-                            <strong style={{ fontSize: '0.88rem', fontWeight: 750, color: 'var(--text-main)' }}>{item.title}</strong>
-                            <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', margin: 0, lineHeight: 1.45 }}>{item.desc}</p>
-                            <a href={item.link} target="_blank" rel="noreferrer" style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
                               gap: '0.25rem',
-                              color: 'var(--primary-dark)',
-                              fontSize: '0.78rem',
-                              fontWeight: 700,
-                              textDecoration: 'none',
-                              marginTop: '0.25rem'
-                            }}>
+                              flex: 1,
+                            }}
+                          >
+                            <strong
+                              style={{
+                                fontSize: '0.88rem',
+                                fontWeight: 750,
+                                color: 'var(--text-main)',
+                              }}
+                            >
+                              {item.title}
+                            </strong>
+                            <p
+                              style={{
+                                color: 'var(--text-muted)',
+                                fontSize: '0.8rem',
+                                margin: 0,
+                                lineHeight: 1.45,
+                              }}
+                            >
+                              {item.desc}
+                            </p>
+                            <a
+                              href={item.link}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                                color: 'var(--primary-dark)',
+                                fontSize: '0.78rem',
+                                fontWeight: 700,
+                                textDecoration: 'none',
+                                marginTop: '0.25rem',
+                              }}
+                            >
                               {item.text} <ExternalLink size={12} />
                             </a>
                           </div>
@@ -857,50 +1198,88 @@ export function PurchasingOnboarding({
                       ))}
                     </ol>
 
-                    <div className="purchasing-resend-callout" style={{ margin: 0, padding: '1rem', borderRadius: '12px' }}>
+                    <div
+                      className="purchasing-resend-callout"
+                      style={{ margin: 0, padding: '1rem', borderRadius: '12px' }}
+                    >
                       <ShieldCheck size={20} />
                       <div>
                         <strong>💡 Quelle adresse d'expédition utiliser ?</strong>
-                        <span>Une fois votre domaine vérifié (ex: restaurant.fr), vous pourrez utiliser n'importe quelle adresse comme <code>achats@restaurant.fr</code>.</span>
+                        <span>
+                          Une fois votre domaine vérifié (ex: restaurant.fr), vous pourrez utiliser
+                          n'importe quelle adresse comme <code>achats@restaurant.fr</code>.
+                        </span>
                       </div>
                     </div>
                   </div>
                 )}
 
                 {resendPath === 'existing' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%', maxWidth: '680px', margin: '0.5rem auto 0' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '1.25rem',
+                      width: '100%',
+                      maxWidth: '680px',
+                      margin: '0.5rem auto 0',
+                    }}
+                  >
                     <div>
-                      <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
+                      <h3
+                        style={{
+                          fontSize: '1.1rem',
+                          fontWeight: 800,
+                          color: 'var(--text-main)',
+                          margin: 0,
+                        }}
+                      >
                         Paramètres de connexion Resend
                       </h3>
-                      <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', margin: '0.2rem 0 0' }}>
+                      <p
+                        style={{
+                          color: 'var(--text-muted)',
+                          fontSize: '0.82rem',
+                          margin: '0.2rem 0 0',
+                        }}
+                      >
                         Saisissez votre clé d'API et l'adresse de messagerie d'expédition validée.
                       </p>
                     </div>
 
-                    <div className="purchasing-resend-callout" style={{ margin: 0, padding: '1rem', borderRadius: '12px' }}>
+                    <div
+                      className="purchasing-resend-callout"
+                      style={{ margin: 0, padding: '1rem', borderRadius: '12px' }}
+                    >
                       <ShieldCheck size={20} />
                       <div>
                         <strong>Sécurisé par défaut</strong>
-                        <span>Le test d'envoi envoie un e-mail de validation via l'adresse de test standard.</span>
+                        <span>
+                          Le test d'envoi envoie un e-mail de validation via l'adresse de test
+                          standard.
+                        </span>
                       </div>
                     </div>
 
-                    <div style={{
-                      background: '#f8fafc',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '16px',
-                      padding: '1.5rem',
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 1fr',
-                      gap: '1rem'
-                    }}>
+                    <div
+                      style={{
+                        background: '#f8fafc',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '16px',
+                        padding: '1.5rem',
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: '1rem',
+                      }}
+                    >
                       <div style={{ gridColumn: 'span 2' }}>
                         <Field label="Clé API Resend">
                           <input
                             type="password"
                             value={resend.apiKey}
-                            onInput={(event) => setResend({ ...resend, apiKey: event.currentTarget.value })}
+                            onInput={(event) =>
+                              setResend({ ...resend, apiKey: event.currentTarget.value })
+                            }
                             autoComplete="off"
                             placeholder={
                               bootstrap.settings.resendApiKeyConfigured
@@ -916,7 +1295,9 @@ export function PurchasingOnboarding({
                           <input
                             type="email"
                             value={resend.fromEmail}
-                            onChange={(event) => setResend({ ...resend, fromEmail: event.target.value })}
+                            onChange={(event) =>
+                              setResend({ ...resend, fromEmail: event.target.value })
+                            }
                             placeholder="commandes@restaurant.fr"
                             style={{ width: '100%', borderRadius: '10px', height: '40px' }}
                           />
@@ -926,7 +1307,9 @@ export function PurchasingOnboarding({
                         <Field label="Nom d’envoi">
                           <input
                             value={resend.fromName}
-                            onChange={(event) => setResend({ ...resend, fromName: event.target.value })}
+                            onChange={(event) =>
+                              setResend({ ...resend, fromName: event.target.value })
+                            }
                             placeholder="Restaurant — Commandes"
                             style={{ width: '100%', borderRadius: '10px', height: '40px' }}
                           />
@@ -937,7 +1320,9 @@ export function PurchasingOnboarding({
                           <input
                             type="email"
                             value={resend.replyTo}
-                            onChange={(event) => setResend({ ...resend, replyTo: event.target.value })}
+                            onChange={(event) =>
+                              setResend({ ...resend, replyTo: event.target.value })
+                            }
                             placeholder="contact@restaurant.fr"
                             style={{ width: '100%', borderRadius: '10px', height: '40px' }}
                           />
@@ -947,7 +1332,15 @@ export function PurchasingOnboarding({
 
                     <p className="purchasing-stock-help" style={{ margin: 0 }}>
                       Le domaine de l’adresse d’envoi doit être validé sur Resend.{' '}
-                      <button type="button" onClick={() => setResendPath('guide')} style={{ textDecoration: 'underline', color: 'var(--primary-dark)', fontWeight: 700 }}>
+                      <button
+                        type="button"
+                        onClick={() => setResendPath('guide')}
+                        style={{
+                          textDecoration: 'underline',
+                          color: 'var(--primary-dark)',
+                          fontWeight: 700,
+                        }}
+                      >
                         Voir le guide d'installation
                       </button>
                     </p>
@@ -956,7 +1349,11 @@ export function PurchasingOnboarding({
                       <div className="alert-modern error dismissible" style={{ margin: 0 }}>
                         <AlertTriangle size={18} />
                         <span>{resendError}</span>
-                        <button className="icon-btn" onClick={() => setResendError(undefined)} aria-label="Fermer">
+                        <button
+                          className="icon-btn"
+                          onClick={() => setResendError(undefined)}
+                          aria-label="Fermer"
+                        >
                           <X size={16} />
                         </button>
                       </div>
@@ -965,39 +1362,72 @@ export function PurchasingOnboarding({
                 )}
 
                 {resendPath === 'smtp' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%', maxWidth: '680px', margin: '0.5rem auto 0' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '1.25rem',
+                      width: '100%',
+                      maxWidth: '680px',
+                      margin: '0.5rem auto 0',
+                    }}
+                  >
                     <div>
-                      <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
+                      <h3
+                        style={{
+                          fontSize: '1.1rem',
+                          fontWeight: 800,
+                          color: 'var(--text-main)',
+                          margin: 0,
+                        }}
+                      >
                         Configuration de la liaison SMTP
                       </h3>
-                      <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', margin: '0.2rem 0 0' }}>
-                        Connectez votre propre serveur SMTP professionnel pour envoyer vos e-mails de commande.
+                      <p
+                        style={{
+                          color: 'var(--text-muted)',
+                          fontSize: '0.82rem',
+                          margin: '0.2rem 0 0',
+                        }}
+                      >
+                        Connectez votre propre serveur SMTP professionnel pour envoyer vos e-mails
+                        de commande.
                       </p>
                     </div>
 
-                    <div className="purchasing-resend-callout" style={{ margin: 0, padding: '1rem', borderRadius: '12px' }}>
+                    <div
+                      className="purchasing-resend-callout"
+                      style={{ margin: 0, padding: '1rem', borderRadius: '12px' }}
+                    >
                       <ShieldCheck size={20} />
                       <div>
                         <strong>Configuration recommandée</strong>
-                        <span>Utilisez de préférence un mot de passe d'application dédié pour préserver la sécurité de votre boîte.</span>
+                        <span>
+                          Utilisez de préférence un mot de passe d'application dédié pour préserver
+                          la sécurité de votre boîte.
+                        </span>
                       </div>
                     </div>
 
-                    <div style={{
-                      background: '#f8fafc',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '16px',
-                      padding: '1.5rem',
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 1fr',
-                      gap: '1rem'
-                    }}>
+                    <div
+                      style={{
+                        background: '#f8fafc',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '16px',
+                        padding: '1.5rem',
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: '1rem',
+                      }}
+                    >
                       <div>
                         <Field label="Adresse d’envoi">
                           <input
                             type="email"
                             value={smtp.senderEmail}
-                            onChange={(event) => setSmtp({ ...smtp, senderEmail: event.target.value })}
+                            onChange={(event) =>
+                              setSmtp({ ...smtp, senderEmail: event.target.value })
+                            }
                             placeholder="commandes@restaurant.fr"
                             style={{ width: '100%', borderRadius: '10px', height: '40px' }}
                           />
@@ -1007,14 +1437,18 @@ export function PurchasingOnboarding({
                         <Field label="Nom affiché">
                           <input
                             value={smtp.senderName}
-                            onChange={(event) => setSmtp({ ...smtp, senderName: event.target.value })}
+                            onChange={(event) =>
+                              setSmtp({ ...smtp, senderName: event.target.value })
+                            }
                             placeholder="Restaurant — Achats"
                             style={{ width: '100%', borderRadius: '10px', height: '40px' }}
                           />
                         </Field>
                       </div>
                       <div style={{ gridColumn: 'span 2' }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem' }}>
+                        <div
+                          style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem' }}
+                        >
                           <Field label="Serveur SMTP">
                             <input
                               value={smtp.host}
@@ -1027,7 +1461,9 @@ export function PurchasingOnboarding({
                             <input
                               type="number"
                               value={smtp.port}
-                              onChange={(event) => setSmtp({ ...smtp, port: Number(event.target.value) })}
+                              onChange={(event) =>
+                                setSmtp({ ...smtp, port: Number(event.target.value) })
+                              }
                               placeholder="465"
                               style={{ width: '100%', borderRadius: '10px', height: '40px' }}
                             />
@@ -1057,7 +1493,17 @@ export function PurchasingOnboarding({
                         </Field>
                       </div>
                       <div style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center' }}>
-                        <label className="purchasing-stock-help" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>
+                        <label
+                          className="purchasing-stock-help"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            fontSize: '0.8rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
                           <input
                             type="checkbox"
                             checked={smtp.secure}
@@ -1141,7 +1587,14 @@ export function PurchasingOnboarding({
                   <button
                     type="button"
                     className="btn btn-primary"
-                    disabled={working || !canManage || !smtp.senderEmail || !smtp.host || !smtp.username || !smtp.password}
+                    disabled={
+                      working ||
+                      !canManage ||
+                      !smtp.senderEmail ||
+                      !smtp.host ||
+                      !smtp.username ||
+                      !smtp.password
+                    }
                     onClick={() => void saveSmtp()}
                     style={{ borderRadius: '10px', padding: '0.5rem 1.5rem' }}
                   >
@@ -1160,7 +1613,10 @@ export function PurchasingOnboarding({
                     }}
                     style={{ borderRadius: '10px', padding: '0.5rem 1.5rem' }}
                   >
-                    {isConnected(resendPath === 'google' ? 'GOOGLE' : 'MICROSOFT') ? `Reconfigurer ${resendPath === 'google' ? 'Google' : 'Microsoft'}` : `Connecter ${resendPath === 'google' ? 'Google' : 'Microsoft'}`} <ArrowRight size={16} />
+                    {isConnected(resendPath === 'google' ? 'GOOGLE' : 'MICROSOFT')
+                      ? `Reconfigurer ${resendPath === 'google' ? 'Google' : 'Microsoft'}`
+                      : `Connecter ${resendPath === 'google' ? 'Google' : 'Microsoft'}`}{' '}
+                    <ArrowRight size={16} />
                   </button>
                 )}
 
@@ -1192,15 +1648,56 @@ export function PurchasingOnboarding({
             justifyContent: 'space-between',
           }}
         >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', overflowY: 'auto', flex: 1, paddingRight: '0.25rem' }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1.25rem',
+              overflowY: 'auto',
+              flex: 1,
+              paddingRight: '0.25rem',
+            }}
+          >
             <div>
-              <span className="purchasing-stock-step-icon" style={{ display: 'grid', placeItems: 'center', width: '46px', height: '46px', borderRadius: '14px', background: 'var(--success-bg)', color: 'var(--primary)', marginBottom: '0.7rem' }}>
+              <span
+                className="purchasing-stock-step-icon"
+                style={{
+                  display: 'grid',
+                  placeItems: 'center',
+                  width: '46px',
+                  height: '46px',
+                  borderRadius: '14px',
+                  background: 'var(--success-bg)',
+                  color: 'var(--primary)',
+                  marginBottom: '0.7rem',
+                }}
+              >
                 <ShoppingCart size={22} />
               </span>
-              <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>Créer la première commande</h2>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginTop: '0.35rem', lineHeight: 1.5 }}>
-                Préparez une commande réelle. Elle reste privée et modifiable tant qu’un utilisateur
-                autorisé ne l’a pas envoyée.
+              <div className="purchasing-optional-step-heading">
+                <h2
+                  style={{
+                    fontSize: '1.5rem',
+                    fontWeight: 800,
+                    color: 'var(--text-main)',
+                    margin: 0,
+                  }}
+                >
+                  Préparer une première commande
+                </h2>
+                <span>Facultatif</span>
+              </div>
+              <p
+                style={{
+                  color: 'var(--text-muted)',
+                  fontSize: '0.92rem',
+                  marginTop: '0.35rem',
+                  lineHeight: 1.5,
+                }}
+              >
+                Vous pouvez préparer une commande réelle maintenant, ou terminer l’installation et
+                la créer plus tard depuis Achats. Un brouillon reste privé et modifiable tant qu’un
+                utilisateur autorisé ne l’a pas envoyé.
               </p>
             </div>
             <div
@@ -1215,9 +1712,27 @@ export function PurchasingOnboarding({
               }}
             >
               {[
-                { label: 'Préparer', desc: 'Saisie de la commande', color: '#3b82f6', bg: '#eff6ff', icon: FileText },
-                { label: 'Envoyer', desc: 'Mail automatique', color: '#10b981', bg: '#ecfdf5', icon: Send },
-                { label: 'Réceptionner', desc: 'Entrée en stock', color: '#f59e0b', bg: '#fffbeb', icon: CheckCircle2 },
+                {
+                  label: 'Préparer',
+                  desc: 'Saisie de la commande',
+                  color: '#3b82f6',
+                  bg: '#eff6ff',
+                  icon: FileText,
+                },
+                {
+                  label: 'Envoyer',
+                  desc: 'Mail automatique',
+                  color: '#10b981',
+                  bg: '#ecfdf5',
+                  icon: Send,
+                },
+                {
+                  label: 'Réceptionner',
+                  desc: 'Entrée en stock',
+                  color: '#f59e0b',
+                  bg: '#fffbeb',
+                  icon: CheckCircle2,
+                },
               ].reduce<React.ReactNode[]>((acc, item, idx) => {
                 const Icon = item.icon;
                 acc.push(
@@ -1226,7 +1741,12 @@ export function PurchasingOnboarding({
                     initial={{ opacity: 0, scale: 0.8, y: 15 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     transition={{ duration: 0.3, delay: idx * 0.1, type: 'spring', stiffness: 120 }}
-                    whileHover={{ scale: 1.05, y: -4, borderColor: item.color, boxShadow: '0 12px 24px rgba(0, 0, 0, 0.06)' }}
+                    whileHover={{
+                      scale: 1.05,
+                      y: -4,
+                      borderColor: item.color,
+                      boxShadow: '0 12px 24px rgba(0, 0, 0, 0.06)',
+                    }}
                     style={{
                       display: 'flex',
                       flexDirection: 'column',
@@ -1260,13 +1780,23 @@ export function PurchasingOnboarding({
                     >
                       <Icon size={20} />
                     </div>
-                    <span style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--text-main)' }}>
+                    <span
+                      style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--text-main)' }}
+                    >
                       {item.label}
                     </span>
-                    <span style={{ fontSize: '0.66rem', color: 'var(--text-muted)', marginTop: '0.2rem', fontWeight: 500, lineHeight: 1.25 }}>
+                    <span
+                      style={{
+                        fontSize: '0.66rem',
+                        color: 'var(--text-muted)',
+                        marginTop: '0.2rem',
+                        fontWeight: 500,
+                        lineHeight: 1.25,
+                      }}
+                    >
                       {item.desc}
                     </span>
-                  </motion.div>
+                  </motion.div>,
                 );
 
                 if (idx < 2) {
@@ -1276,16 +1806,25 @@ export function PurchasingOnboarding({
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: idx * 0.1 + 0.15 }}
-                      style={{ color: '#cbd5e1', display: 'flex', alignItems: 'center', flexShrink: 0, margin: '0 0.5rem' }}
+                      style={{
+                        color: '#cbd5e1',
+                        display: 'flex',
+                        alignItems: 'center',
+                        flexShrink: 0,
+                        margin: '0 0.5rem',
+                      }}
                     >
                       <ArrowRight size={18} style={{ strokeWidth: 2.5 }} />
-                    </motion.span>
+                    </motion.span>,
                   );
                 }
                 return acc;
               }, [])}
             </div>
-            <div className="purchasing-onboarding-inline-action" style={{ display: 'flex', alignItems: 'center', minHeight: '46px' }}>
+            <div
+              className="purchasing-onboarding-inline-action"
+              style={{ display: 'flex', alignItems: 'center', minHeight: '46px' }}
+            >
               {hasOrder ? (
                 <span className="purchasing-inline-note">
                   <CheckCircle2 size={17} /> Première commande prête.
@@ -1327,7 +1866,7 @@ export function PurchasingOnboarding({
             <button
               type="button"
               className="btn btn-primary"
-              disabled={working || !canManage || !hasOrder}
+              disabled={working || !canManage}
               onClick={() => void persist(step, { complete: true })}
               style={{ borderRadius: '10px', padding: '0.5rem 1.5rem' }}
             >

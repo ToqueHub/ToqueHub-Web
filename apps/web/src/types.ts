@@ -1778,6 +1778,55 @@ export interface Product {
   primarySupplier?: Supplier | null;
 }
 
+export interface ProductLabelOcrResult {
+  productId: string;
+  filename: string;
+  mimeType: string;
+  pageCount?: number | null;
+  ingredients?: string | null;
+  nutrition: {
+    energyKj: number | null;
+    energyKcal: number | null;
+    fatGrams: number | null;
+    saturatedFatGrams: number | null;
+    carbohydratesGrams: number | null;
+    sugarsGrams: number | null;
+    fiberGrams: number | null;
+    proteinGrams: number | null;
+    saltGrams: number | null;
+  };
+  allergensPresent: string[];
+  possibleTraces: string[];
+  confidence?: number | null;
+  warnings: string[];
+}
+
+export interface ProductLabelOcrDocumentStatus {
+  document: {
+    id: string;
+    originalName: string;
+    mimeType: string;
+    sizeBytes: number;
+    status: string;
+    createdAt: string;
+    updatedAt: string;
+  };
+  state: 'en attente' | 'analyse' | 'vérifier' | 'erreur';
+  progress: number;
+  result?: ProductLabelOcrResult | null;
+  errorMessage?: string | null;
+}
+
+export interface ProductLabelOcrBatchStatus {
+  batchId: string;
+  product: { id: string; name: string };
+  state: 'en attente' | 'analyse' | 'vérifier' | 'erreur';
+  progress: number;
+  documents: ProductLabelOcrDocumentStatus[];
+  results: ProductLabelOcrResult[];
+  errors: number;
+}
+
 export type ProductImportStatus = 'ready' | 'needs_review' | 'duplicate' | 'ignored' | 'error';
 
 export type ProductImportField =
@@ -1816,6 +1865,7 @@ export type ProductImportField =
 export interface ProductImportPreviewFields extends Partial<
   Record<ProductImportField, string | number | string[] | null>
 > {
+  existingProductId?: string | null;
   unitId?: string | null;
   unitLabel?: string | null;
   categoryId?: string | null;
@@ -1853,7 +1903,13 @@ export interface ProductImportPreview {
   templateColumns: string[];
   rows: ProductImportPreviewRow[];
   summary: Record<ProductImportStatus | 'total' | 'selected', number>;
-  options: { createMissingCategories: boolean; createMissingSuppliers: boolean };
+  options: {
+    createMissingCategories: boolean;
+    createMissingSuppliers: boolean;
+    defaultSupplierId?: string;
+    defaultSupplierName?: string;
+    siteIds?: string[];
+  };
   ai?: {
     status: string;
     provider?: string | null;
@@ -1865,6 +1921,9 @@ export interface ProductImportPreview {
 
 export interface ProductImportCommitResult {
   created: number;
+  assignedExisting?: number;
+  assignmentsCreated?: number;
+  siteIds?: string[];
   skipped: number;
   skippedRows?: Array<{ rowNumber: number; reason: string }>;
   products: Product[];
@@ -3117,7 +3176,12 @@ export interface StockMovement {
 export type ArticleStockStatus = 'NORMAL' | 'LOW' | 'OUT' | 'NEGATIVE' | 'NO_STOCK';
 export interface Article {
   product: Product;
-  stock: { quantity: string | number; value: string | number; status: ArticleStockStatus };
+  stock: {
+    quantity: string | number;
+    value: string | number;
+    minimumStock?: string | number;
+    status: ArticleStockStatus;
+  };
   stockBySite: Array<{
     siteId?: string | null;
     siteName?: string | null;
@@ -3140,7 +3204,9 @@ export interface ArticlesResponse {
     articlesWithoutStock: number;
     stockValue: number;
     lowStockCount: number;
+    unassignedCount?: number;
   };
+  selectedSiteId?: string | null;
   pagination?: { page: number; pageSize: number; total: number; pages?: number };
 }
 
@@ -3580,6 +3646,7 @@ export interface ProductionQuery {
 
 export interface ProductionOrderPayload {
   technicalSheetId: string;
+  siteId?: string;
   name?: string;
   productionDate: string;
   plannedTime: string;

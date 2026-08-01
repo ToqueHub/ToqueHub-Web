@@ -145,6 +145,7 @@ const statusLabel: Record<string, string> = {
 };
 
 const PLANNING_INITIAL_SETUP_PREFIX = 'toquehub.planning.initialSetup.completed';
+const PLANNING_INITIAL_SETUP_DISMISSED_PREFIX = 'toquehub.planning.initialSetup.dismissed';
 const PLANNING_DASHBOARD_CONFIG_KEY = 'toquehub.planning.dashboard.config';
 const defaultPlanningDashboardConfig: PlanningDashboardConfig = {
   pinnedBlockIds: ['periodStatus', 'planning'],
@@ -203,15 +204,16 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
   const [showDashboardCustomizer, setShowDashboardCustomizer] = useState(false);
   const [planningSiteInitialized, setPlanningSiteInitialized] = useState(false);
   const planningSetupStorageKey = `${PLANNING_INITIAL_SETUP_PREFIX}.${session.user.organizationId ?? session.user.id}`;
+  const planningSetupDismissedStorageKey = `${PLANNING_INITIAL_SETUP_DISMISSED_PREFIX}.${session.user.organizationId ?? session.user.id}`;
   const [initialSetupCompleted, setInitialSetupCompleted] = useState(() => localStorage.getItem(planningSetupStorageKey) === 'true');
-  const [showInitialSetup, setShowInitialSetup] = useState(() => localStorage.getItem(planningSetupStorageKey) !== 'true');
+  const [showInitialSetup, setShowInitialSetup] = useState(() => localStorage.getItem(planningSetupStorageKey) !== 'true' && localStorage.getItem(planningSetupDismissedStorageKey) !== 'true');
   const [initialSetupStep, setInitialSetupStep] = useState<InitialPlanningStep>('services');
 
   useEffect(() => {
     const completed = localStorage.getItem(planningSetupStorageKey) === 'true';
     setInitialSetupCompleted(completed);
-    setShowInitialSetup(!completed);
-  }, [planningSetupStorageKey]);
+    setShowInitialSetup(!completed && localStorage.getItem(planningSetupDismissedStorageKey) !== 'true');
+  }, [planningSetupStorageKey, planningSetupDismissedStorageKey]);
 
   useEffect(() => {
     void loadContext({ showLoading: !data });
@@ -277,10 +279,13 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
     return () => { mounted = false; };
   }
 
-  const effectiveCollaborators = data?.collaborators?.length ? data.collaborators : collaborators;
-  const effectiveDepartments = data?.departments?.length ? data.departments : departments;
-  const effectivePositions = data?.positions?.length ? data.positions : positions;
-  const effectiveSites = data?.sites?.length ? data.sites : sites;
+  // Une liste vide est un résultat valide lorsqu'un filtre de site ne trouve personne.
+  // Ne jamais la remplacer par le référentiel global : cela affichait des collaborateurs
+  // d'un autre site et produisait ensuite une prévisualisation de roulement vide.
+  const effectiveCollaborators = data ? data.collaborators ?? [] : collaborators;
+  const effectiveDepartments = data ? data.departments ?? [] : departments;
+  const effectivePositions = data ? data.positions ?? [] : positions;
+  const effectiveSites = data ? data.sites ?? [] : sites;
   const primaryPlanningSiteId = session.user.primarySiteId || effectiveSites.find((site) => site.isPrimary || site.isMain)?.id || effectiveSites[0]?.id || '';
   const templates = data?.templates ?? [];
   const planningDayPresets = planningSettingsArray<PlanningTemplate>(data?.settings, 'dayPresets').length ? planningSettingsArray<PlanningTemplate>(data?.settings, 'dayPresets') : dayPresetTemplates(templates);
@@ -330,12 +335,19 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
   }
 
   function openInitialSetup(step: InitialPlanningStep = 'welcome') {
+    localStorage.removeItem(planningSetupDismissedStorageKey);
     setInitialSetupStep(step);
     setShowInitialSetup(true);
   }
 
+  function dismissInitialSetup() {
+    localStorage.setItem(planningSetupDismissedStorageKey, 'true');
+    setShowInitialSetup(false);
+  }
+
   function completeInitialSetup() {
     localStorage.setItem(planningSetupStorageKey, 'true');
+    localStorage.removeItem(planningSetupDismissedStorageKey);
     setInitialSetupCompleted(true);
     setShowInitialSetup(false);
     onNavigate('planning');
@@ -512,6 +524,8 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
   }
 
   async function applyRotation(rotation: PlanningRotationOption, dateOverride?: string) {
+    setError(undefined);
+    setNotice(undefined);
     if (!selectedEmployee) {
       setNotice('Sélectionnez d’abord un collaborateur pour appliquer un roulement.');
       return;
@@ -529,6 +543,11 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
         endDate: weekEnd(targetDate),
       };
       const preview = await api.previewPlanningRotation(token, rotation.id, payload);
+      if (!preview.assignments?.length) {
+        const reason = preview.diagnostics?.reason;
+        setError(reason || "Ce roulement ne contient aucune journée de travail applicable pour ce collaborateur sur la semaine choisie. Vérifiez son statut actif, son service, son poste et les jours du roulement.");
+        return;
+      }
       if (preview.crossSiteReplacements?.length) {
         setSiteReplacementConfirmation({ rotation, targetDate, employeeId: selectedEmployee.id, siteId: siteFilter, replacements: preview.crossSiteReplacements });
         return;
@@ -547,8 +566,16 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
       endDate: weekEnd(targetDate),
       replaceExisting: true,
     });
-    setNotice(`${result.appliedAssignments?.length ?? 0} affectation(s) appliquée(s) sur la semaine du ${formatShort(weekStart(targetDate))}.`);
+    const appliedCount = result.appliedAssignments?.length ?? 0;
+    const skippedCount = result.skipped?.length ?? 0;
     await loadContext({ showLoading: false });
+    if (!appliedCount) {
+      setNotice(undefined);
+      setError(`Aucune affectation n'a été enregistrée.${result.skipped?.[0]?.message ? ` ${result.skipped[0].message}` : ''}`);
+      return;
+    }
+    setNotice(`${appliedCount} affectation(s) appliquée(s) sur la semaine du ${formatShort(weekStart(targetDate))}.`);
+    if (skippedCount) setError(`${skippedCount} journée(s) n'ont pas pu être enregistrées. ${result.skipped?.[0]?.message ?? ''}`.trim());
   }
 
   async function confirmSiteReplacement() {
@@ -654,6 +681,8 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
           dashboardSiteFilter={dashboardSiteFilter}
           setDashboardSiteFilter={setDashboardSiteFilter}
           dashboardPeriodData={dashboardPeriodData}
+          onboardingCompleted={initialSetupCompleted}
+          onResumeOnboarding={() => openInitialSetup('services')}
           onOpenPlanning={(view) => { setPlanningView(view); onNavigate('planning'); }}
         />
       ) : null}
@@ -754,7 +783,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
           onDeleteDayPreset={deleteDayPreset}
           onSaveWeeklyRotation={saveWeeklyRotation}
           onDeleteWeeklyRotation={deleteWeeklyRotation}
-          onClose={() => setShowInitialSetup(false)}
+          onClose={dismissInitialSetup}
           onComplete={completeInitialSetup}
         />
       ) : null}
@@ -1064,6 +1093,7 @@ function InitialServicesStep({ departments, collaborators }: { departments: HrDe
 }
 
 function InitialPresetsStep(props: { dayPresets: PlanningTemplate[]; weeklyRotations: PlanningTemplate[]; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; canWrite: boolean; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void> }) {
+  const [preference, setPreference] = useState<'preset' | 'rotation' | null>(null);
   const [editingId, setEditingId] = useState<string>();
   const [form, setForm] = useState<PlanningDayPresetPayload>(() => defaultDayPresetForm(props.departments[0]?.id));
   const [editingRotationId, setEditingRotationId] = useState<string>();
@@ -1121,6 +1151,24 @@ function InitialPresetsStep(props: { dayPresets: PlanningTemplate[]; weeklyRotat
       </div>
 
       <div>
+        <div style={{ fontSize: '.8rem', fontWeight: 800, color: '#64748b', marginBottom: '.55rem', textTransform: 'uppercase', letterSpacing: '.06em' }}>Comment préférez-vous commencer ?</div>
+        <div className="planning-choice-grid">
+          <button type="button" className={`planning-choice-card${preference === 'preset' ? ' selected' : ''}`} onClick={() => setPreference('preset')}>
+            <Clock size={22} color="#2563eb" />
+            <strong>Presets journaliers</strong>
+            <span>Idéal si vous utilisez plusieurs horaires dans une même journée : ouverture, midi, fermeture ou repos.</span>
+          </button>
+          <button type="button" className={`planning-choice-card${preference === 'rotation' ? ' selected' : ''}`} onClick={() => setPreference('rotation')}>
+            <Repeat2 size={22} color="#10b981" />
+            <strong>Roulements hebdomadaires</strong>
+            <span>Idéal si les horaires d'une équipe changent peu et se répètent d'une semaine à l'autre.</span>
+          </button>
+        </div>
+        <p className="muted" style={{ margin: '.65rem 0 0' }}>Ce choix organise seulement cette configuration guidée. Presets et roulements resteront tous les deux accessibles dans Paramétrage.</p>
+      </div>
+
+      {preference === 'preset' ? <>
+      <div>
         <div style={{ fontSize: '.8rem', fontWeight: 800, color: '#64748b', marginBottom: '.4rem', textTransform: 'uppercase', letterSpacing: '.06em' }}>Raccourcis d’horaires types</div>
         <div className="planning-preset-quick-grid">
           {quickPresets.map((preset) => (
@@ -1155,7 +1203,9 @@ function InitialPresetsStep(props: { dayPresets: PlanningTemplate[]; weeklyRotat
       </form>
 
       <PresetRuleList presets={props.dayPresets} onEdit={editPreset} onDelete={props.onDeleteDayPreset} canWrite={props.canWrite} />
+      </> : null}
 
+      {preference === 'rotation' ? <>
       <form className="planning-initial-form" onSubmit={(event) => void submitRotation(event)}>
         <strong style={{ fontSize: '1.02rem', color: '#0f172a' }}>Roulements hebdomadaires</strong>
         <div className="planning-form-row">
@@ -1182,6 +1232,7 @@ function InitialPresetsStep(props: { dayPresets: PlanningTemplate[]; weeklyRotat
         </div>
       </form>
       <RotationRuleList rotations={props.weeklyRotations} onEdit={editRotation} onDelete={props.onDeleteWeeklyRotation} canWrite={props.canWrite} />
+      </> : null}
     </div>
   );
 }
@@ -1230,7 +1281,7 @@ function RotationRuleList({ rotations, onEdit, onDelete, canWrite }: { rotations
   );
 }
 
-function PlanningDashboard({ dashboard, alerts, setup, period, setPeriod, config, onConfigChange, hoursByDepartment, actions, history, assignments, sites, selectedDate, dashboardSiteFilter, setDashboardSiteFilter, dashboardPeriodData, onOpenPlanning }: { dashboard: ReturnType<typeof buildDashboard>; alerts: PlanningAlert[]; setup: ReturnType<typeof buildPlanningSetup>; period: DashboardPeriod; setPeriod: (value: DashboardPeriod) => void; config: PlanningDashboardConfig; onConfigChange: (value: PlanningDashboardConfig) => void; hoursByDepartment?: Array<Record<string, any>>; actions?: Array<Record<string, any>>; history?: Array<Record<string, any>>; assignments: PlanningAssignment[]; sites: Site[]; selectedDate: string; dashboardSiteFilter: string; setDashboardSiteFilter: (value: string) => void; dashboardPeriodData: DashboardPeriodData | null; onOpenPlanning: (view: PlanningView) => void }) {
+function PlanningDashboard({ dashboard, alerts, setup, period, setPeriod, config, onConfigChange, hoursByDepartment, actions, history, assignments, sites, selectedDate, dashboardSiteFilter, setDashboardSiteFilter, dashboardPeriodData, onboardingCompleted, onResumeOnboarding, onOpenPlanning }: { dashboard: ReturnType<typeof buildDashboard>; alerts: PlanningAlert[]; setup: ReturnType<typeof buildPlanningSetup>; period: DashboardPeriod; setPeriod: (value: DashboardPeriod) => void; config: PlanningDashboardConfig; onConfigChange: (value: PlanningDashboardConfig) => void; hoursByDepartment?: Array<Record<string, any>>; actions?: Array<Record<string, any>>; history?: Array<Record<string, any>>; assignments: PlanningAssignment[]; sites: Site[]; selectedDate: string; dashboardSiteFilter: string; setDashboardSiteFilter: (value: string) => void; dashboardPeriodData: DashboardPeriodData | null; onboardingCompleted: boolean; onResumeOnboarding: () => void; onOpenPlanning: (view: PlanningView) => void }) {
   const periodRange = getDashboardPeriodRange(period, selectedDate);
   const scheduleRange = getPlanningScheduleRange(config.planningBlockMode, selectedDate);
   const remoteMatches = dashboardPeriodData?.range.startDate === periodRange.startDate && dashboardPeriodData.range.endDate === periodRange.endDate && dashboardPeriodData.siteId === dashboardSiteFilter;
@@ -1254,7 +1305,7 @@ function PlanningDashboard({ dashboard, alerts, setup, period, setPeriod, config
   }
   return (
     <>
-      {!setup.complete && config.blocks.planningSetup ? <PlanningSetupCompact setup={setup} /> : null}
+      {!onboardingCompleted && config.blocks.planningSetup ? <PlanningSetupCompact setup={setup} onResume={onResumeOnboarding} /> : null}
       <div className="planning-toolbar">
         <div>
           <span className="section-tagline">Période dashboard</span>
@@ -2304,7 +2355,7 @@ function EmployerCostsSettings() {
   );
 }
 
-function PlanningSetupCompact({ setup }: { setup: ReturnType<typeof buildPlanningSetup> }) {
+function PlanningSetupCompact({ setup, onResume }: { setup: ReturnType<typeof buildPlanningSetup>; onResume: () => void }) {
   const missing = setup.steps.filter((step) => step.status !== 'done').slice(0, 4);
   return (
     <div
@@ -2364,6 +2415,14 @@ function PlanningSetupCompact({ setup }: { setup: ReturnType<typeof buildPlannin
             {step.title}
           </button>
         ))}
+        <button
+          type="button"
+          onClick={onResume}
+          className="production-btn-primary"
+          style={{ minHeight: '34px', padding: '.4rem .9rem', borderRadius: '10px', fontSize: '.78rem' }}
+        >
+          Reprendre l'onboarding <ArrowRight size={15} />
+        </button>
       </div>
     </div>
   );

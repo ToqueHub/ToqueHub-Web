@@ -15,8 +15,8 @@ Prepares a freshly pulled branch for local development on Windows:
   1. Creates .env from .env.example if missing
   2. Installs npm dependencies
   3. Prepares a local PostgreSQL database
-  4. Generates Prisma Client
-  5. Applies pending Prisma migrations without deleting data
+  4. Applies pending Prisma migrations without deleting data
+  5. Generates Prisma Client and verifies the database
 
 Options:
   --no-db-setup   Skip local PostgreSQL setup
@@ -267,19 +267,16 @@ if ($RunDbSetup) {
   Write-Step 'Skipping local PostgreSQL setup'
 }
 
-Write-Step 'Generating Prisma Client'
-Invoke-Checked 'npm' @('run', 'prisma:generate')
-
 if ($ResetDb) {
   Write-Step 'Resetting local database and replaying Prisma migrations'
   Invoke-Checked 'npm' @('run', 'prisma:reset', '--', '--force')
-} else {
-  Write-Step 'Applying Prisma migrations'
-  & npm run prisma:deploy
-  if ($LASTEXITCODE -ne 0) {
-    @'
+}
 
-Prisma migration failed.
+Write-Step 'Applying migrations, generating Prisma Client, and verifying the database'
+& npm run prisma:prepare
+if ($LASTEXITCODE -ne 0) {
+  @'
+Prisma preparation failed.
 
 If Prisma reported drift, a failed migration, or a migration that exists in your
 local database but not in this branch, your local dev database is out of sync
@@ -288,9 +285,11 @@ When you are okay with losing local data, rerun:
   npm run welcome -- --reset-db
 
 To keep local data, recover the missing migration/code instead of resetting.
+
+If Prisma reported EPERM while generating on Windows, stop every running
+"npm run api:dev" process, then rerun "npm run welcome".
 '@ | Write-Error
-    exit 1
-  }
+  exit 1
 }
 
 @'

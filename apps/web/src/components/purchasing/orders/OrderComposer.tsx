@@ -199,8 +199,8 @@ export function OrderComposer({
     try {
       const [delivery, categoryItems, highlights] = await Promise.all([
         api.purchasingDeliveryOptions(token, supplier.id),
-        api.purchasingCategories(token, supplier.id),
-        api.purchasingProductHighlights(token, supplier.id),
+        api.purchasingCategories(token, supplier.id, siteId),
+        api.purchasingProductHighlights(token, supplier.id, siteId),
       ]);
       setDeliveryMode(delivery.mode);
       setDeliveryOptions(delivery.dates);
@@ -233,6 +233,7 @@ export function OrderComposer({
     void api
       .purchasingProducts(token, {
         supplierId,
+        siteId,
         categoryId: categoryId || undefined,
         search: debouncedProductSearch.trim() || undefined,
         page: 1,
@@ -252,7 +253,7 @@ export function OrderComposer({
     return () => {
       active = false;
     };
-  }, [categoryId, debouncedProductSearch, flash, step, supplierId, token]);
+  }, [categoryId, debouncedProductSearch, flash, siteId, step, supplierId, token]);
 
   useEffect(() => {
     if (!order || step !== 'catalog' || formSignature === lastSavedSignature.current) return;
@@ -299,6 +300,7 @@ export function OrderComposer({
     try {
       const response = await api.purchasingProducts(token, {
         supplierId,
+        siteId,
         categoryId: categoryId || undefined,
         search: productSearch.trim() || undefined,
         page: nextPage,
@@ -342,7 +344,7 @@ export function OrderComposer({
   const addSuggestions = async () => {
     setSuggesting(true);
     try {
-      const result = await api.purchasingSuggestions(token, supplierId);
+      const result = await api.purchasingSuggestions(token, supplierId, siteId);
       setLines((current) => {
         const byId = new Map(current.map((line) => [line.product.id, line]));
         result.items.forEach((item) =>
@@ -414,6 +416,7 @@ export function OrderComposer({
       title={order ? `Modifier ${order.number}` : 'Nouvelle commande'}
       onClose={onClose}
       bodyClassName="purchasing-composer purchasing-catalog-modal"
+      overlayClassName="purchasing-composer-overlay"
     >
       {order ? (
         <div className={`purchasing-save-state ${saveState}`}>
@@ -450,7 +453,7 @@ export function OrderComposer({
             const isCompleted =
               (step === 'delivery' && s.id === 'supplier') ||
               (step === 'catalog' && (s.id === 'supplier' || s.id === 'delivery'));
-            
+
             return (
               <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
                 <div
@@ -511,7 +514,12 @@ export function OrderComposer({
                   </span>
                 </div>
                 {idx < arr.length - 1 && (
-                  <span style={{ color: '#cbd5e1', fontSize: '0.8rem', fontWeight: 300 }} aria-hidden="true">→</span>
+                  <span
+                    style={{ color: '#cbd5e1', fontSize: '0.8rem', fontWeight: 300 }}
+                    aria-hidden="true"
+                  >
+                    →
+                  </span>
                 )}
               </div>
             );

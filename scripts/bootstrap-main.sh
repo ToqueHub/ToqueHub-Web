@@ -15,8 +15,8 @@ Prepares a freshly pulled main branch for local development:
   1. Creates .env from .env.example if missing
   2. Installs npm dependencies
   3. Prepares the local PostgreSQL role/database
-  4. Generates Prisma Client
-  5. Applies pending Prisma migrations without deleting data
+  4. Applies pending Prisma migrations without deleting data
+  5. Generates Prisma Client and verifies the database
 
 Options:
   --no-db-setup   Skip local PostgreSQL setup
@@ -70,18 +70,15 @@ else
   log "Skipping local PostgreSQL setup"
 fi
 
-log "Generating Prisma Client"
-npm run prisma:generate
-
 if [[ "$RESET_DB" == "1" ]]; then
   log "Resetting local database and replaying Prisma migrations"
   npm run prisma:reset -- --force
-else
-  log "Applying Prisma migrations"
-  if ! npm run prisma:deploy; then
-    cat >&2 <<'MSG'
+fi
 
-Prisma migration failed.
+log "Applying migrations, generating Prisma Client, and verifying the database"
+if ! npm run prisma:prepare; then
+  cat >&2 <<'MSG'
+Prisma preparation failed.
 
 If Prisma reported drift, a failed migration, or a migration that exists in your
 local database but not in this main branch, your local dev database is out of
@@ -91,8 +88,7 @@ When you are okay with losing local data, rerun:
 
 To keep local data, recover the missing migration/code instead of resetting.
 MSG
-    exit 1
-  fi
+  exit 1
 fi
 
 cat <<'MSG'

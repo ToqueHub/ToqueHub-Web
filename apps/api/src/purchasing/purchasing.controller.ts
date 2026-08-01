@@ -192,8 +192,9 @@ export class PurchasingController {
   @Get('orders/suggestions') suggestions(
     @CurrentUser() user: AuthenticatedUser,
     @Query('supplierId') supplierId?: string,
+    @Query('siteId') siteId?: string,
   ) {
-    return this.suggestionService.list(this.org(user), user, supplierId);
+    return this.suggestionService.list(this.org(user), user, supplierId, siteId);
   }
   @Post('orders') createOrder(
     @CurrentUser() user: AuthenticatedUser,

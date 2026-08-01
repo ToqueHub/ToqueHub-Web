@@ -73,6 +73,18 @@ const teamSizes: Array<{ label: string; value: TeamSize }> = [
 ];
 const creationSteps = ['Création de l’organisation', 'Création du site principal', 'Configuration de l’administrateur', 'Préparation OCR IA', 'Finalisation'];
 const volunteerAppointmentUrl = '';
+const usernamePattern = /^[a-zA-Z0-9._-]+$/;
+
+function getUsernameError(username: string) {
+  const value = username.trim();
+  if (!value) return 'Le nom d’utilisateur est requis.';
+  if (value.length < 3) return 'Le nom d’utilisateur doit contenir au moins 3 caractères.';
+  if (value.length > 40) return 'Le nom d’utilisateur ne peut pas dépasser 40 caractères.';
+  if (!usernamePattern.test(value)) {
+    return 'Utilisez uniquement des lettres sans accent, des chiffres, un point (.), un tiret (-) ou un tiret bas (_). Les espaces, accents, apostrophes et @ ne sont pas autorisés.';
+  }
+  return undefined;
+}
 
 function passwordScore(password: string) {
   let score = 0;
@@ -124,6 +136,7 @@ export function FirstStartLanding({
   const [showPassword, setShowPassword] = useState(false);
   const [mistralApiKey, setMistralApiKey] = useState('');
   const [formError, setFormError] = useState<string>();
+  const [usernameError, setUsernameError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
   const [completedCreationSteps, setCompletedCreationSteps] = useState(0);
   const [showOnboardingPreview, setShowOnboardingPreview] = useState(false);
@@ -194,6 +207,12 @@ export function FirstStartLanding({
   }
 
   function validateAdmin() {
+    const currentUsernameError = getUsernameError(admin.username);
+    setUsernameError(currentUsernameError);
+    if (currentUsernameError) {
+      setFormError(undefined);
+      return false;
+    }
     if (Object.values(admin).some((value) => !value.trim())) {
       setFormError('Tous les champs administrateur sont requis.');
       return false;
@@ -210,7 +229,13 @@ export function FirstStartLanding({
   }
 
   function updateAdmin(field: keyof AdminForm) {
-    return (event: ChangeEvent<HTMLInputElement>) => setAdmin((prev) => ({ ...prev, [field]: event.target.value }));
+    return (event: ChangeEvent<HTMLInputElement>) => {
+      const value = event.target.value;
+      setAdmin((prev) => ({ ...prev, [field]: value }));
+      if (field === 'username' && usernameError) {
+        setUsernameError(getUsernameError(value));
+      }
+    };
   }
 
   document.title = "Bienvenue sur ToqueHub";
@@ -298,8 +323,20 @@ export function FirstStartLanding({
       onBootstrapComplete(finalSession);
     } catch (err) {
       setSubmitting(false);
-      setFormError('Nous n’avons pas pu créer l’environnement. Vérifiez les informations puis réessayez.');
-      if (err instanceof Error && err.message) setFormError(err.message);
+      const message = err instanceof Error ? err.message : '';
+      if (message.toLowerCase().includes('username')) {
+        const isAlreadyUsed = message.toLowerCase().includes('already exists');
+        setUsernameError(
+          isAlreadyUsed
+            ? 'Ce nom d’utilisateur est déjà utilisé. Choisissez-en un autre.'
+            : getUsernameError(admin.username) ??
+              'Ce nom d’utilisateur n’est pas accepté. Utilisez uniquement des lettres sans accent, des chiffres, un point, un tiret ou un tiret bas.',
+        );
+        setFormError(undefined);
+        changeStep(1);
+        return;
+      }
+      setFormError(message || 'Nous n’avons pas pu créer l’environnement. Vérifiez les informations puis réessayez.');
       changeStep(5);
     }
   }
@@ -505,6 +542,8 @@ export function FirstStartLanding({
                         showPassword={showPassword}
                         setShowPassword={setShowPassword}
                         score={score}
+                        usernameError={usernameError}
+                        onUsernameBlur={() => setUsernameError(getUsernameError(admin.username))}
                       />
                     )}
                     {step === 2 && (
@@ -1064,9 +1103,11 @@ interface AdminStepProps {
   showPassword: boolean;
   setShowPassword: (val: boolean) => void;
   score: number;
+  usernameError?: string;
+  onUsernameBlur: () => void;
 }
 
-function AdminStep({ admin, updateAdmin, showPassword, setShowPassword, score }: AdminStepProps) {
+function AdminStep({ admin, updateAdmin, showPassword, setShowPassword, score, usernameError, onUsernameBlur }: AdminStepProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       <div>
@@ -1081,7 +1122,28 @@ function AdminStep({ admin, updateAdmin, showPassword, setShowPassword, score }:
 
       <label>
         Nom d'utilisateur *
-        <input placeholder="ex: chef_mario" value={admin.username} onChange={updateAdmin('username')} required autoFocus />
+        <input
+          className={usernameError ? 'onboarding-field-invalid' : undefined}
+          placeholder="ex: chef_mario"
+          value={admin.username}
+          onChange={updateAdmin('username')}
+          onBlur={onUsernameBlur}
+          required
+          autoFocus
+          minLength={3}
+          maxLength={40}
+          pattern="[a-zA-Z0-9._-]+"
+          aria-invalid={Boolean(usernameError)}
+          aria-describedby={usernameError ? 'onboarding-username-error' : undefined}
+        />
+        {usernameError ? (
+          <span id="onboarding-username-error" className="onboarding-field-error" role="alert">
+            <AlertCircle size={15} />
+            {usernameError}
+          </span>
+        ) : (
+          <small className="onboarding-field-help">3 à 40 caractères, sans espace ni accent.</small>
+        )}
       </label>
 
       <div className="form-row">

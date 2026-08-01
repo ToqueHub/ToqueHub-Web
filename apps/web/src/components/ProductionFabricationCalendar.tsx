@@ -46,6 +46,7 @@ type Props = {
   campaigns: ProductionCampaign[];
   profiles: ProductionProfile[];
   sites: Site[];
+  defaultSiteId?: string;
   departments: HrDepartment[];
   loading: boolean;
   focusDate?: string;
@@ -160,14 +161,17 @@ function collaboratorName(employee: {
 }
 
 function campaignDurationMinutes(campaign: ProductionCampaign) {
-  const operationMinutes = (campaign.batches ?? []).reduce(
-    (total, batch) =>
-      total +
+  // Les lots d'une même campagne reprennent les mêmes opérations et peuvent être
+  // réalisés en parallèle. Les additionner multiplierait artificiellement la durée de
+  // la recette par le nombre de lots (50 lots de 31 min devenaient une tâche de 25 h 50).
+  const operationMinutes = Math.max(
+    0,
+    ...(campaign.batches ?? []).map((batch) =>
       (batch.operations ?? []).reduce(
         (batchTotal, operation) => batchTotal + Math.max(Number(operation.activeMinutes ?? 0), 0),
         0,
       ),
-    0,
+    ),
   );
   return Math.max(operationMinutes, 60);
 }
@@ -269,6 +273,7 @@ export function ProductionFabricationCalendar({
   campaigns,
   profiles,
   sites,
+  defaultSiteId,
   departments,
   loading,
   focusDate,
@@ -281,6 +286,7 @@ export function ProductionFabricationCalendar({
   const [mode, setMode] = useState<CalendarMode>('week');
   const [anchor, setAnchor] = useState(dayKey(new Date()));
   const [siteId, setSiteId] = useState('');
+  const [siteInitialized, setSiteInitialized] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [createRecipePickerOpen, setCreateRecipePickerOpen] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
@@ -353,8 +359,15 @@ export function ProductionFabricationCalendar({
   });
 
   useEffect(() => {
-    if (!siteId && sites.length === 1) setSiteId(sites[0].id);
-  }, [siteId, sites]);
+    if (siteInitialized || !sites.length) return;
+    const initialSiteId =
+      sites.find((site) => site.id === defaultSiteId)?.id ??
+      sites.find((site) => site.isPrimary || site.isMain)?.id ??
+      sites[0]?.id ??
+      '';
+    setSiteId(initialSiteId);
+    setSiteInitialized(true);
+  }, [defaultSiteId, siteInitialized, sites]);
 
   useEffect(() => {
     if (focusDate) setAnchor(dayKey(focusDate));
@@ -371,6 +384,15 @@ export function ProductionFabricationCalendar({
       ),
     [campaignIds, campaigns, siteId],
   );
+  const allSitesReadOnly = !siteId;
+
+  function requireSelectedSite(action: string) {
+    if (siteId) return true;
+    setError(
+      `Sélectionnez un site précis pour ${action}. « Tous les sites » est une vue de consultation.`,
+    );
+    return false;
+  }
 
   const calendarDays = useMemo(() => {
     if (mode === 'day') return [anchor];
@@ -618,7 +640,8 @@ export function ProductionFabricationCalendar({
   }
 
   function openCreate(date: string) {
-    const selectedSiteId = siteId || sites[0]?.id || '';
+    if (!requireSelectedSite('ajouter une recette')) return;
+    const selectedSiteId = siteId;
     const kitchen =
       departments.find((department) =>
         /cuisine|pâtisserie|patisserie|production/i.test(department.name),
@@ -668,7 +691,8 @@ export function ProductionFabricationCalendar({
   }
 
   function openCatalogPlanner(date: string) {
-    const selectedSiteId = siteId || sites[0]?.id || '';
+    if (!requireSelectedSite('planifier depuis la carte')) return;
+    const selectedSiteId = siteId;
     const catalog =
       catalogs.find(
         (candidate) =>
@@ -712,6 +736,7 @@ export function ProductionFabricationCalendar({
 
   async function planCatalogProducts(event: FormEvent) {
     event.preventDefault();
+    if (!requireSelectedSite('planifier cette journée depuis la carte')) return;
     if (!catalogPlannerDate || !catalogDraft.catalogId) {
       setError('Choisissez la carte à utiliser pour cette journée.');
       return;
@@ -757,6 +782,11 @@ export function ProductionFabricationCalendar({
   }
 
   function openMenuPlanner(menu: MenuPlan) {
+    if (!requireSelectedSite('planifier ce menu')) return;
+    if (!menu.siteId || menu.siteId !== siteId) {
+      setError('Ce menu ne correspond pas au site sélectionné.');
+      return;
+    }
     const linked = linkedMenuItemIds(menu);
     const lines = Object.fromEntries(
       (menu.items ?? [])
@@ -802,6 +832,7 @@ export function ProductionFabricationCalendar({
   async function planMenuProducts(event: FormEvent) {
     event.preventDefault();
     if (!menuPlanner) return;
+    if (!requireSelectedSite('planifier ce menu') || menuPlanner.siteId !== siteId) return;
     const lines = Object.entries(menuDraft.lines)
       .filter(([, line]) => line.selected)
       .map(([menuItemId, line]) => ({
@@ -843,6 +874,7 @@ export function ProductionFabricationCalendar({
 
   async function createCampaign(event: FormEvent) {
     event.preventDefault();
+    if (!requireSelectedSite('créer cette fabrication')) return;
     const quantityPlan = productionQuantityPlan(
       selectedDraftProfile,
       draft.quantityMode,
@@ -931,6 +963,11 @@ export function ProductionFabricationCalendar({
   async function saveCampaignChanges(event: FormEvent) {
     event.preventDefault();
     if (!editingCampaign || !campaignIsEditable(editingCampaign)) return;
+    if (!requireSelectedSite('modifier cette fabrication')) return;
+    if (editingCampaign.siteId !== siteId) {
+      setEditError('Cette fabrication ne correspond pas au site sélectionné.');
+      return;
+    }
     const targetPortions = Number(editDraft.targetPortions);
     const targetQuantity =
       editDraft.quantityMode === 'MASS' ? targetPortions * 1000 : targetPortions;
@@ -981,6 +1018,11 @@ export function ProductionFabricationCalendar({
   }
 
   async function validateCampaign(campaign: ProductionCampaign, allowShortage = false) {
+    if (!requireSelectedSite('valider cette fabrication')) return;
+    if (campaign.siteId !== siteId) {
+      setError('Cette fabrication ne correspond pas au site sélectionné.');
+      return;
+    }
     setValidateBusy(campaign.id);
     setError('');
     setValidationError('');
@@ -1010,6 +1052,11 @@ export function ProductionFabricationCalendar({
   }
 
   async function openAssignment(campaign: ProductionCampaign) {
+    if (!requireSelectedSite('affecter des collaborateurs')) return;
+    if (campaign.siteId !== siteId) {
+      setError('Cette fabrication ne correspond pas au site sélectionné.');
+      return;
+    }
     if (!campaign.serviceId) {
       setError('Choisissez d’abord le service responsable de cette fabrication.');
       return;
@@ -1069,6 +1116,11 @@ export function ProductionFabricationCalendar({
   async function saveAssignments(event: FormEvent) {
     event.preventDefault();
     if (!assignmentCampaign) return;
+    if (!requireSelectedSite('enregistrer cette affectation')) return;
+    if (assignmentCampaign.siteId !== siteId) {
+      setAssignmentError('Cette fabrication ne correspond pas au site sélectionné.');
+      return;
+    }
     if (!assignmentEmployeeIds.length) {
       setAssignmentError('Sélectionnez au moins un collaborateur.');
       return;
@@ -1112,7 +1164,7 @@ export function ProductionFabricationCalendar({
   }
 
   async function openClosure(date = anchor) {
-    const selectedSiteId = siteId || (sites.length === 1 ? sites[0].id : '');
+    const selectedSiteId = siteId;
     if (!selectedSiteId) {
       setError('Choisissez un site avant de clôturer la journée.');
       return;
@@ -1167,6 +1219,7 @@ export function ProductionFabricationCalendar({
 
   async function closeDay() {
     if (!closure) return;
+    if (!requireSelectedSite('clôturer cette journée') || closure.siteId !== siteId) return;
     setClosureSaving(true);
     setError('');
     try {
@@ -1192,7 +1245,7 @@ export function ProductionFabricationCalendar({
   }
 
   async function openDayValidation(date = anchor) {
-    const selectedSiteId = siteId || (sites.length === 1 ? sites[0].id : '');
+    const selectedSiteId = siteId;
     if (!selectedSiteId) {
       setError('Choisissez un site avant de valider la journée de production.');
       return;
@@ -1214,6 +1267,11 @@ export function ProductionFabricationCalendar({
 
   async function confirmProductionDay() {
     if (!dayValidation) return;
+    if (
+      !requireSelectedSite('valider cette journée de production') ||
+      dayValidation.site.id !== siteId
+    )
+      return;
     setDayValidationSaving(true);
     setError('');
     try {
@@ -1256,11 +1314,21 @@ export function ProductionFabricationCalendar({
             </p>
           </div>
           <div className="fabrication-calendar-actions">
-            <select value={siteId} onChange={(event) => setSiteId(event.target.value)}>
+            <select
+              value={siteId}
+              onChange={(event) => {
+                setSiteId(event.target.value);
+                setError('');
+              }}
+              aria-label="Site de fabrication"
+            >
               <option value="">Tous les sites</option>
               {sites.map((site) => (
                 <option key={site.id} value={site.id}>
                   {site.name}
+                  {site.id === defaultSiteId || site.isPrimary || site.isMain
+                    ? ' (site principal)'
+                    : ''}
                 </option>
               ))}
             </select>
@@ -1268,6 +1336,8 @@ export function ProductionFabricationCalendar({
               type="button"
               className="production-btn-glass"
               onClick={() => openCreate(anchor)}
+              disabled={allSitesReadOnly}
+              title={allSitesReadOnly ? 'Sélectionnez un site pour ajouter une recette' : undefined}
             >
               <Plus size={17} /> Ajouter une recette
             </button>
@@ -1277,7 +1347,7 @@ export function ProductionFabricationCalendar({
                   type="button"
                   className="production-btn-glass"
                   onClick={() => void openClosure(anchor)}
-                  disabled={closureLoading}
+                  disabled={allSitesReadOnly || closureLoading}
                 >
                   {closureLoading ? (
                     <Loader2 size={17} className="spin" />
@@ -1290,7 +1360,7 @@ export function ProductionFabricationCalendar({
                   type="button"
                   className="production-btn-primary"
                   onClick={() => void openDayValidation(anchor)}
-                  disabled={dayValidationLoading}
+                  disabled={allSitesReadOnly || dayValidationLoading}
                 >
                   {dayValidationLoading ? (
                     <Loader2 size={17} className="spin" />
@@ -1331,6 +1401,19 @@ export function ProductionFabricationCalendar({
           </div>
         </div>
 
+        {allSitesReadOnly && (
+          <div className="fabrication-calendar-readonly">
+            <Building2 size={17} />
+            <div>
+              <strong>Vue globale en lecture seule</strong>
+              <span>
+                Vous pouvez consulter toutes les fabrications. Sélectionnez un site pour
+                planifier, modifier, affecter ou valider une fabrication.
+              </span>
+            </div>
+          </div>
+        )}
+
         {error && (
           <div className="fabrication-calendar-error">
             <AlertCircle size={17} /> {error}
@@ -1362,6 +1445,8 @@ export function ProductionFabricationCalendar({
                     type="button"
                     aria-label="Planifier depuis la carte"
                     onClick={() => openCatalogPlanner(day)}
+                    disabled={allSitesReadOnly}
+                    title={allSitesReadOnly ? 'Sélectionnez un site pour planifier' : undefined}
                   >
                     <Plus size={15} />
                   </button>
@@ -1431,7 +1516,7 @@ export function ProductionFabricationCalendar({
                         <button
                           type="button"
                           className="fabrication-menu-plan-button"
-                          disabled={!canPlan}
+                          disabled={!canPlan || allSitesReadOnly}
                           onClick={() => openMenuPlanner(menu)}
                         >
                           {remaining.length === 0 && technicalItems.length ? (
@@ -1468,6 +1553,7 @@ export function ProductionFabricationCalendar({
                         ? Number(campaign.technicalSheet?.totalMassGrams ?? 0)
                         : Number(campaign.technicalSheet?.referencePortions ?? 0);
                     const recipeMultiplier = referenceTarget > 0 ? targetBase / referenceTarget : 0;
+                    const canEdit = !allSitesReadOnly && campaignIsEditable(campaign);
                     return (
                       <div
                         key={campaign.id}
@@ -1477,8 +1563,8 @@ export function ProductionFabricationCalendar({
                           type="button"
                           className="fabrication-calendar-event-open"
                           onClick={() => openCampaignEditor(campaign)}
-                          aria-label={`${campaignIsEditable(campaign) ? 'Modifier' : 'Consulter'} la fabrication ${campaign.name}`}
-                          title={`${campaignIsEditable(campaign) ? 'Modifier' : 'Consulter'} la fabrication`}
+                          aria-label={`${canEdit ? 'Modifier' : 'Consulter'} la fabrication ${campaign.name}`}
+                          title={`${canEdit ? 'Modifier' : 'Consulter'} la fabrication`}
                         />
                         <div className="fabrication-calendar-event-content">
                           <strong>{campaign.name}</strong>
@@ -1500,6 +1586,12 @@ export function ProductionFabricationCalendar({
                             type="button"
                             className={`fabrication-assignment-button${unassigned ? ' unassigned' : ''}`}
                             onClick={() => void openAssignment(campaign)}
+                            disabled={allSitesReadOnly}
+                            title={
+                              allSitesReadOnly
+                                ? 'Sélectionnez un site pour affecter des collaborateurs'
+                                : undefined
+                            }
                           >
                             <UserPlus size={13} />
                             {unassigned
@@ -1513,7 +1605,7 @@ export function ProductionFabricationCalendar({
                             <button
                               type="button"
                               onClick={() => void validateCampaign(campaign)}
-                              disabled={validateBusy === campaign.id}
+                              disabled={allSitesReadOnly || validateBusy === campaign.id}
                             >
                               {validateBusy === campaign.id ? (
                                 <Loader2 size={13} className="spin" />
@@ -1537,6 +1629,7 @@ export function ProductionFabricationCalendar({
                           type="button"
                           className="fabrication-calendar-empty"
                           onClick={() => openCatalogPlanner(day)}
+                          disabled={allSitesReadOnly}
                         >
                           <BookOpen size={17} />
                           <span>
@@ -1548,6 +1641,7 @@ export function ProductionFabricationCalendar({
                           type="button"
                           className="fabrication-calendar-empty-secondary"
                           onClick={() => openCreate(day)}
+                          disabled={allSitesReadOnly}
                         >
                           <Sparkles size={13} /> Ajouter une recette
                         </button>
@@ -1910,7 +2004,7 @@ export function ProductionFabricationCalendar({
                   </span>
                   <select
                     value={editDraft.serviceId}
-                    disabled={!campaignIsEditable(editingCampaign) || editSaving}
+                    disabled={allSitesReadOnly || !campaignIsEditable(editingCampaign) || editSaving}
                     onChange={(event) =>
                       setEditDraft((current) => ({
                         ...current,
@@ -1933,7 +2027,7 @@ export function ProductionFabricationCalendar({
                   <input
                     type="date"
                     value={editDraft.productionDate}
-                    disabled={!campaignIsEditable(editingCampaign) || editSaving}
+                    disabled={allSitesReadOnly || !campaignIsEditable(editingCampaign) || editSaving}
                     onChange={(event) =>
                       setEditDraft((current) => ({
                         ...current,
@@ -1949,7 +2043,7 @@ export function ProductionFabricationCalendar({
                   <input
                     type="time"
                     value={editDraft.plannedTime}
-                    disabled={!campaignIsEditable(editingCampaign) || editSaving}
+                    disabled={allSitesReadOnly || !campaignIsEditable(editingCampaign) || editSaving}
                     onChange={(event) =>
                       setEditDraft((current) => ({
                         ...current,
@@ -1964,7 +2058,7 @@ export function ProductionFabricationCalendar({
                   </span>
                   <select
                     value={editDraft.quantityMode}
-                    disabled={!campaignIsEditable(editingCampaign) || editSaving}
+                    disabled={allSitesReadOnly || !campaignIsEditable(editingCampaign) || editSaving}
                     onChange={(event) =>
                       setEditDraft((current) => ({
                         ...current,
@@ -2004,7 +2098,7 @@ export function ProductionFabricationCalendar({
                     min={editDraft.quantityMode === 'MASS' ? '0.001' : '1'}
                     step={editDraft.quantityMode === 'MASS' ? '0.001' : '1'}
                     value={editDraft.targetPortions}
-                    disabled={!campaignIsEditable(editingCampaign) || editSaving}
+                    disabled={allSitesReadOnly || !campaignIsEditable(editingCampaign) || editSaving}
                     onChange={(event) => {
                       setEditError('');
                       setEditDraft((current) => ({
@@ -2046,11 +2140,12 @@ export function ProductionFabricationCalendar({
                 </div>
               </div>
 
-              {!campaignIsEditable(editingCampaign) && (
+              {(allSitesReadOnly || !campaignIsEditable(editingCampaign)) && (
                 <div className="fabrication-edit-locked">
                   <AlertCircle size={18} />
-                  Cette fabrication a déjà démarré ou a été validée. Ses informations restent
-                  consultables, mais ne peuvent plus être modifiées.
+                  {allSitesReadOnly
+                    ? 'La vue « Tous les sites » est en lecture seule. Sélectionnez le site de cette fabrication pour la modifier.'
+                    : 'Cette fabrication a déjà démarré ou a été validée. Ses informations restent consultables, mais ne peuvent plus être modifiées.'}
                 </div>
               )}
 
@@ -2066,9 +2161,9 @@ export function ProductionFabricationCalendar({
                   onClick={() => setEditingCampaign(null)}
                   disabled={editSaving}
                 >
-                  {campaignIsEditable(editingCampaign) ? 'Annuler' : 'Fermer'}
+                  {!allSitesReadOnly && campaignIsEditable(editingCampaign) ? 'Annuler' : 'Fermer'}
                 </button>
-                {campaignIsEditable(editingCampaign) && (
+                {!allSitesReadOnly && campaignIsEditable(editingCampaign) && (
                   <button type="submit" className="production-btn-primary" disabled={editSaving}>
                     {editSaving ? <Loader2 size={17} className="spin" /> : <Check size={17} />}
                     Enregistrer les modifications

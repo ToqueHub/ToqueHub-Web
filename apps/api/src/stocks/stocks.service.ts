@@ -504,10 +504,14 @@ export class StocksService {
   }
 
   async listArticles(organizationId: string, q: ListArticlesQueryDto = {}) {
+    if (q.siteId) await this.ensureSite(organizationId, q.siteId);
     const where: Prisma.ProductWhereInput = {
       organizationId,
       kind: { in: STOCK_CATALOG_PRODUCT_KINDS },
       ...(q.includeArchived ? {} : { isArchived: false }),
+      ...(q.siteId
+        ? { siteAssignments: { some: { siteId: q.siteId, isActive: true } } }
+        : {}),
       categoryId: q.categoryId,
       primarySupplierId: q.supplierId,
       OR: q.search
@@ -526,11 +530,20 @@ export class StocksService {
         category: true,
         unit: true,
         primarySupplier: true,
-        stocks: { include: { site: true, location: true, lot: true } },
+        siteAssignments: {
+          where: q.siteId ? { siteId: q.siteId, isActive: true } : { isActive: true },
+          include: { site: true },
+        },
+        stocks: {
+          where: q.siteId ? { siteId: q.siteId } : undefined,
+          include: { site: true, location: true, lot: true },
+        },
       },
       orderBy: { name: 'asc' },
     });
     const allItems = products.map((product) => {
+      const minimumStock =
+        (q.siteId ? product.siteAssignments[0]?.minimumStock : null) ?? product.minimumStock;
       const quantity = product.stocks.reduce(
         (sum, stock) => sum.add(stock.quantity),
         new Prisma.Decimal(0),
@@ -555,8 +568,9 @@ export class StocksService {
         stock: {
           quantity,
           value: quantity.mul(product.averagePrice),
+          minimumStock,
           status: product.stocks.length
-            ? this.stockStatus(quantity, product.minimumStock)
+            ? this.stockStatus(quantity, minimumStock)
             : 'NO_STOCK',
         },
         stockBySite,
@@ -581,7 +595,18 @@ export class StocksService {
     const productIds = pageItems.map((item) => item.product.id);
     const movements = productIds.length
       ? await this.prisma.stockMovement.findMany({
-          where: { organizationId, productId: { in: productIds } },
+          where: {
+            organizationId,
+            productId: { in: productIds },
+            ...(q.siteId
+              ? {
+                  OR: [
+                    { sourceSiteId: q.siteId },
+                    { destinationSiteId: q.siteId },
+                  ],
+                }
+              : {}),
+          },
           include: {
             product: { include: { unit: true } },
             supplier: true,
@@ -603,6 +628,14 @@ export class StocksService {
     }));
     const articlesWithStock = allItems.filter((item) => item.stock.status !== 'NO_STOCK').length;
     const lowStockCount = allItems.filter((item) => item.stock.status === 'LOW').length;
+    const unassignedCount = await this.prisma.product.count({
+      where: {
+        organizationId,
+        kind: { in: STOCK_CATALOG_PRODUCT_KINDS },
+        isArchived: false,
+        siteAssignments: { none: { isActive: true } },
+      },
+    });
     return {
       items,
       summary: {
@@ -611,7 +644,9 @@ export class StocksService {
         articlesWithoutStock: allItems.length - articlesWithStock,
         stockValue: allItems.reduce((sum, item) => sum + Number(item.stock.value), 0),
         lowStockCount,
+        unassignedCount,
       },
+      selectedSiteId: q.siteId ?? null,
       pagination: { page, pageSize, total: filteredItems.length, pages: pageCount },
     };
   }
@@ -672,11 +707,7 @@ export class StocksService {
   ) {
     this.assertWrite(actor);
     const product = await this.ensureProduct(organizationId, productId, true);
-    const [organization, requestedStock, requestedLocation] = await Promise.all([
-      this.prisma.organization.findUnique({
-        where: { id: organizationId },
-        select: { primarySiteId: true },
-      }),
+    const [requestedStock, requestedLocation] = await Promise.all([
       dto.stockId
         ? this.prisma.stock.findFirst({
             where: { id: dto.stockId, organizationId, productId },
@@ -694,25 +725,19 @@ export class StocksService {
     if (dto.locationId && !requestedLocation)
       throw new NotFoundException('Emplacement de stock introuvable');
 
-    const siteId =
-      requestedStock?.siteId ??
-      requestedLocation?.siteId ??
-      dto.siteId ??
-      organization?.primarySiteId ??
-      null;
+    if (dto.siteId && requestedStock?.siteId && dto.siteId !== requestedStock.siteId)
+      throw new BadRequestException('Le stock ne correspond pas au site sélectionné');
     if (
       dto.siteId &&
       requestedLocation?.siteId &&
       dto.siteId !== requestedLocation.siteId
     )
       throw new BadRequestException("L'emplacement ne correspond pas au site sélectionné");
-    if (siteId) {
-      const site = await this.prisma.site.findFirst({
-        where: { id: siteId, organizationId, isArchived: false },
-        select: { id: true },
-      });
-      if (!site) throw new NotFoundException('Site de stock introuvable');
-    }
+    const site = await this.resolveOperationalSite(
+      organizationId,
+      requestedStock?.siteId ?? requestedLocation?.siteId ?? dto.siteId,
+    );
+    const siteId = site.id;
 
     const stock =
       requestedStock ??
@@ -733,6 +758,11 @@ export class StocksService {
       throw new BadRequestException('La quantité saisie est identique au stock actuel');
 
     return this.prisma.$transaction(async (tx) => {
+      await tx.productSite.upsert({
+        where: { organizationId_productId_siteId: { organizationId, productId, siteId } },
+        update: { isActive: true },
+        create: { organizationId, productId, siteId, minimumStock: product.minimumStock },
+      });
       const adjustedStock = stock
         ? await tx.stock.update({
             where: { id: stock.id },
@@ -1000,11 +1030,7 @@ export class StocksService {
     this.assertWrite(actor);
     const product = await this.ensureProduct(organizationId, dto.productId, true);
     const inputUnit = dto.unitId ? await this.ensureUnit(organizationId, dto.unitId) : product.unit;
-    const [organization, sourceLocation, destinationLocation] = await Promise.all([
-      this.prisma.organization.findUnique({
-        where: { id: organizationId },
-        select: { primarySiteId: true },
-      }),
+    const [sourceLocation, destinationLocation] = await Promise.all([
       dto.sourceLocationId
         ? this.prisma.location.findFirst({
             where: { id: dto.sourceLocationId, organizationId, isArchived: false },
@@ -1022,18 +1048,33 @@ export class StocksService {
       throw new NotFoundException('Emplacement source introuvable');
     if (dto.destinationLocationId && !destinationLocation)
       throw new NotFoundException('Emplacement destination introuvable');
-    const sourceSiteId =
-      dto.sourceSiteId ??
-      sourceLocation?.siteId ??
-      (dto.type === StockMovementType.TRANSFER || NEGATIVE_TYPES.has(dto.type)
-        ? organization?.primarySiteId ?? undefined
-        : undefined);
-    const destinationSiteId =
-      dto.destinationSiteId ??
-      destinationLocation?.siteId ??
-      (dto.type === StockMovementType.TRANSFER || NEGATIVE_TYPES.has(dto.type)
-        ? undefined
-        : organization?.primarySiteId ?? undefined);
+    if (dto.sourceSiteId && sourceLocation?.siteId && dto.sourceSiteId !== sourceLocation.siteId)
+      throw new BadRequestException('L’emplacement source ne correspond pas au site source.');
+    if (
+      dto.destinationSiteId &&
+      destinationLocation?.siteId &&
+      dto.destinationSiteId !== destinationLocation.siteId
+    )
+      throw new BadRequestException(
+        'L’emplacement de destination ne correspond pas au site de destination.',
+      );
+    let sourceSiteId = dto.sourceSiteId ?? sourceLocation?.siteId;
+    let destinationSiteId = dto.destinationSiteId ?? destinationLocation?.siteId;
+    if (dto.type === StockMovementType.TRANSFER) {
+      sourceSiteId = (await this.resolveOperationalSite(organizationId, sourceSiteId)).id;
+      destinationSiteId = (
+        await this.resolveOperationalSite(organizationId, destinationSiteId)
+      ).id;
+    } else if (NEGATIVE_TYPES.has(dto.type)) {
+      sourceSiteId = (await this.resolveOperationalSite(organizationId, sourceSiteId)).id;
+    } else {
+      destinationSiteId = (
+        await this.resolveOperationalSite(
+          organizationId,
+          destinationSiteId ?? sourceSiteId,
+        )
+      ).id;
+    }
     const quantity = await this.convertToProductUnit(
       organizationId,
       inputUnit.id,
@@ -1042,6 +1083,20 @@ export class StocksService {
     );
     const date = dto.movementDate ? new Date(dto.movementDate) : new Date();
     return this.prisma.$transaction(async (tx) => {
+      const affectedSiteIds = [...new Set([sourceSiteId, destinationSiteId].filter(Boolean))] as string[];
+      await tx.productSite.createMany({
+        data: affectedSiteIds.map((siteId) => ({
+          organizationId,
+          productId: product.id,
+          siteId,
+          minimumStock: product.minimumStock,
+        })),
+        skipDuplicates: true,
+      });
+      await tx.productSite.updateMany({
+        where: { organizationId, productId: product.id, siteId: { in: affectedSiteIds } },
+        data: { isActive: true },
+      });
       if (dto.type === StockMovementType.TRANSFER) {
         if (!sourceSiteId && !dto.sourceLocationId)
           throw new BadRequestException('Transfer source is required');
@@ -1235,22 +1290,41 @@ export class StocksService {
 
   async createInventory(organizationId: string, actor: Actor, dto: CreateInventoryDto) {
     this.assertWrite(actor);
+    const site = await this.resolveOperationalSite(organizationId, dto.siteId);
+    if (dto.locationId) {
+      const location = await this.prisma.location.findFirst({
+        where: {
+          id: dto.locationId,
+          organizationId,
+          siteId: site.id,
+          isArchived: false,
+        },
+        select: { id: true },
+      });
+      if (!location)
+        throw new BadRequestException('L’emplacement ne correspond pas au site sélectionné.');
+    }
     return this.prisma.$transaction(async (tx) => {
       const inv = await tx.inventory.create({
         data: {
           organizationId,
           name: dto.name,
           comment: dto.comment,
-          siteId: dto.siteId,
+          siteId: site.id,
           locationId: dto.locationId,
           inventoryDate: dto.inventoryDate ? new Date(dto.inventoryDate) : new Date(),
           createdById: actor.id,
         },
     });
       const products = await tx.product.findMany({
-        where: { organizationId, isArchived: false, kind: { in: STOCK_CATALOG_PRODUCT_KINDS } },
+        where: {
+          organizationId,
+          isArchived: false,
+          kind: { in: STOCK_CATALOG_PRODUCT_KINDS },
+          siteAssignments: { some: { siteId: site.id, isActive: true } },
+        },
         include: {
-          stocks: { where: { organizationId, siteId: dto.siteId, locationId: dto.locationId } },
+          stocks: { where: { organizationId, siteId: site.id, locationId: dto.locationId } },
         },
       });
       await tx.inventoryLine.createMany({
@@ -1369,8 +1443,10 @@ export class StocksService {
               quantity: variance,
               inputQuantity: variance.abs(),
               reason: 'Correction inventaire',
-              sourceSiteId: inv.siteId,
-              sourceLocationId: inv.locationId,
+              sourceSiteId: variance.isNegative() ? inv.siteId : null,
+              sourceLocationId: variance.isNegative() ? inv.locationId : null,
+              destinationSiteId: variance.isPositive() ? inv.siteId : null,
+              destinationLocationId: variance.isPositive() ? inv.locationId : null,
               movementDate: inv.inventoryDate,
               createdById: actor.id,
               inventoryId: inv.id,
@@ -1663,8 +1739,30 @@ export class StocksService {
     if (!item) throw new NotFoundException('Supplier not found');
     return item;
   }
+  private async resolveOperationalSite(
+    organizationId: string,
+    requestedSiteId?: string | null,
+  ) {
+    const sites = await this.prisma.site.findMany({
+      where: { organizationId, isArchived: false },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+    if (!sites.length) throw new BadRequestException('Aucun site actif n’est configuré.');
+    if (requestedSiteId) {
+      const selected = sites.find((site) => site.id === requestedSiteId);
+      if (!selected) throw new BadRequestException('Le site sélectionné est invalide ou archivé.');
+      return selected;
+    }
+    if (sites.length === 1) return sites[0];
+    throw new BadRequestException(
+      'Plusieurs sites sont actifs. Sélectionnez le site concerné avant de continuer.',
+    );
+  }
   private async ensureSite(organizationId: string, id: string) {
-    const item = await this.prisma.site.findFirst({ where: { id, organizationId } });
+    const item = await this.prisma.site.findFirst({
+      where: { id, organizationId, isArchived: false },
+    });
     if (!item) throw new NotFoundException('Site not found');
     return item;
   }

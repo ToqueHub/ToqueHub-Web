@@ -128,6 +128,9 @@ export class PurchaseOrderQueryService {
       primarySupplierId: supplier.id,
       categoryId: query.categoryId,
       isArchived: false,
+      ...(query.siteId
+        ? { siteAssignments: { some: { siteId: query.siteId, isActive: true } } }
+        : {}),
       ...(query.search
         ? {
             OR: [
@@ -151,7 +154,11 @@ export class PurchaseOrderQueryService {
     const stockTotals = items.length
       ? await this.prisma.stock.groupBy({
           by: ['productId'],
-          where: { organizationId, productId: { in: items.map(({ id }) => id) } },
+          where: {
+            organizationId,
+            productId: { in: items.map(({ id }) => id) },
+            ...(query.siteId ? { siteId: query.siteId } : {}),
+          },
           _sum: { quantity: true },
         })
       : [];
@@ -181,7 +188,14 @@ export class PurchaseOrderQueryService {
         organizationId,
         isArchived: false,
         products: {
-          some: { organizationId, primarySupplierId: supplier.id, isArchived: false },
+          some: {
+            organizationId,
+            primarySupplierId: supplier.id,
+            isArchived: false,
+            ...(query.siteId
+              ? { siteAssignments: { some: { siteId: query.siteId, isActive: true } } }
+              : {}),
+          },
         },
       },
       select: { id: true, name: true, description: true },
@@ -201,7 +215,11 @@ export class PurchaseOrderQueryService {
       where: {
         organizationId,
         product: { organizationId, primarySupplierId: supplier.id, isArchived: false },
-        order: { organizationId, status: { in: ORDERED_PRODUCT_STATUSES } },
+        order: {
+          organizationId,
+          status: { in: ORDERED_PRODUCT_STATUSES },
+          ...(query.siteId ? { siteId: query.siteId } : {}),
+        },
       },
       _count: { _all: true },
       _max: { createdAt: true },
@@ -226,12 +244,19 @@ export class PurchaseOrderQueryService {
           organizationId,
           primarySupplierId: supplier.id,
           isArchived: false,
+          ...(query.siteId
+            ? { siteAssignments: { some: { siteId: query.siteId, isActive: true } } }
+            : {}),
         },
         include: { category: true, unit: true, primarySupplier: true },
       }),
       this.prisma.stock.groupBy({
         by: ['productId'],
-        where: { organizationId, productId: { in: productIds } },
+        where: {
+          organizationId,
+          productId: { in: productIds },
+          ...(query.siteId ? { siteId: query.siteId } : {}),
+        },
         _sum: { quantity: true },
       }),
     ]);

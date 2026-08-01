@@ -151,6 +151,22 @@ export class PurchaseReceiptValidationService {
             line.unitPrice ?? line.orderLine?.unitPrice ?? product.averagePrice,
           );
           const baseUnitPrice = effectiveOrderUnitPrice.div(line.unitsPerOrderUnit);
+          await tx.productSite.upsert({
+            where: {
+              organizationId_productId_siteId: {
+                organizationId,
+                productId: product.id,
+                siteId: lockedReceipt.siteId,
+              },
+            },
+            update: { isActive: true },
+            create: {
+              organizationId,
+              productId: product.id,
+              siteId: lockedReceipt.siteId,
+              minimumStock: product.minimumStock,
+            },
+          });
           await this.receptionInventory.applyValidatedLineTx(tx, {
             organizationId,
             receptionId: stockReception.id,
