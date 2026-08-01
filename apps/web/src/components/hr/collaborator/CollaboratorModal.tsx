@@ -310,7 +310,7 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
           {activeTab === 'professional' ? <ProfessionalTab form={form} set={set} requiredErrors={requiredErrors} departments={activeDepartments} positions={primaryPositions} allPositions={activePositions} selectedDepartment={selectedDepartment} sites={sites} managers={availableManagers} users={availableUsers} positionResetMessage={positionResetMessage} clearPositionResetMessage={() => setPositionResetMessage('')} /> : null}
           {activeTab === 'contracts' ? <ContractsTab form={form} set={set} collaborator={collaborator} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /> : null}
           {activeTab === 'documents' ? <DocumentsTab collaborator={collaborator} pendingDocuments={pendingDocuments} onDocumentsChange={(documents) => { setPendingDocuments(documents); setDirty(true); }} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /> : null}
-          {activeTab === 'trainings' ? <TrainingsTab selectedTrainings={selectedTrainings} onSelectedTrainings={(trainings) => { setSelectedTrainings(trainings); setDirty(true); }} customTraining={customTraining} onCustomTraining={setCustomTraining} /> : null}
+          {activeTab === 'trainings' ? <TrainingsTab regulatoryCountryCode={regulatoryCountryCode} selectedTrainings={selectedTrainings} onSelectedTrainings={(trainings) => { setSelectedTrainings(trainings); setDirty(true); }} customTraining={customTraining} onCustomTraining={setCustomTraining} /> : null}
           {activeTab === 'organization' ? <OrganizationTab collaborator={collaborator} /> : null}
           {activeTab === 'history' ? <HistoryTab history={collaborator?.history ?? []} /> : null}
         </div>
@@ -700,9 +700,15 @@ function DocumentActions({ employeeId, document, onViewDocument, onDownloadDocum
   </div>;
 }
 
-const suggestedTrainings = ['HACCP', 'Sécurité incendie', 'Gestes et postures', 'Accueil client', 'Hygiène alimentaire'];
+const frenchSuggestedTrainings = ['HACCP', 'Sécurité incendie', 'Gestes et postures', 'Accueil client', 'Hygiène alimentaire'];
+const finnishSuggestedTrainings = [
+  'Hygieniapassi',
+  'Anniskelupassi',
+  'Paloturvallisuuskoulutus',
+];
 
-function TrainingsTab({ selectedTrainings, onSelectedTrainings, customTraining, onCustomTraining }: { selectedTrainings: string[]; onSelectedTrainings: (trainings: string[]) => void; customTraining: string; onCustomTraining: (value: string) => void }) {
+function TrainingsTab({ regulatoryCountryCode, selectedTrainings, onSelectedTrainings, customTraining, onCustomTraining }: { regulatoryCountryCode?: RegulatoryCountryCode | null; selectedTrainings: string[]; onSelectedTrainings: (trainings: string[]) => void; customTraining: string; onCustomTraining: (value: string) => void }) {
+  const suggestedTrainings = regulatoryCountryCode === 'FI' ? finnishSuggestedTrainings : frenchSuggestedTrainings;
   const toggle = (training: string) => onSelectedTrainings(selectedTrainings.includes(training) ? selectedTrainings.filter((item) => item !== training) : [...selectedTrainings, training]);
   const addCustom = () => {
     const name = customTraining.trim();
@@ -711,6 +717,7 @@ function TrainingsTab({ selectedTrainings, onSelectedTrainings, customTraining, 
     onCustomTraining('');
   };
   return <TabPanel icon={<GraduationCap size={18} />} title="Formations">
+    {regulatoryCountryCode === 'FI' ? <p className="muted">Passeports et formation proposés selon la réglementation finlandaise.</p> : null}
     <div className="hr-checkbox-group compact">
       {suggestedTrainings.map((training) => <label key={training} className="hr-checkbox-label"><input type="checkbox" checked={selectedTrainings.includes(training)} onChange={() => toggle(training)} />{training}</label>)}
     </div>

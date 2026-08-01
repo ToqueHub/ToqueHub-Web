@@ -13,6 +13,8 @@ import type {
   Location,
   Lot,
   Product,
+  ProductLabelOcrBatchStatus,
+  ProductLabelOcrResult,
   ProductImportCommitResult,
   ProductImportField,
   ProductImportPreview,
@@ -778,6 +780,7 @@ export const api = {
     token: string,
     query: {
       supplierId: string;
+      siteId?: string;
       categoryId?: string;
       search?: string;
       page?: number;
@@ -795,16 +798,20 @@ export const api = {
       token,
     );
   },
-  purchasingCategories(token: string, supplierId: string) {
+  purchasingCategories(token: string, supplierId: string, siteId?: string) {
+    const params = new URLSearchParams({ supplierId });
+    if (siteId) params.set('siteId', siteId);
     return request<Category[]>(
-      `/purchasing/references/categories?supplierId=${encodeURIComponent(supplierId)}`,
+      `/purchasing/references/categories?${params}`,
       {},
       token,
     );
   },
-  purchasingProductHighlights(token: string, supplierId: string) {
+  purchasingProductHighlights(token: string, supplierId: string, siteId?: string) {
+    const params = new URLSearchParams({ supplierId });
+    if (siteId) params.set('siteId', siteId);
     return request<{ recent: Product[]; frequent: Product[] }>(
-      `/purchasing/references/products/highlights?supplierId=${encodeURIComponent(supplierId)}`,
+      `/purchasing/references/products/highlights?${params}`,
       {},
       token,
     );
@@ -834,7 +841,10 @@ export const api = {
   purchasingOrder(token: string, id: string) {
     return request<PurchaseOrder>(`/purchasing/orders/${id}`, {}, token);
   },
-  purchasingSuggestions(token: string, supplierId?: string) {
+  purchasingSuggestions(token: string, supplierId?: string, siteId?: string) {
+    const params = new URLSearchParams();
+    if (supplierId) params.set('supplierId', supplierId);
+    if (siteId) params.set('siteId', siteId);
     return request<{
       windowDays: number;
       coverageDays: number;
@@ -848,7 +858,7 @@ export const api = {
         estimatedAmount: number;
       }>;
     }>(
-      `/purchasing/orders/suggestions${supplierId ? `?supplierId=${encodeURIComponent(supplierId)}` : ''}`,
+      `/purchasing/orders/suggestions${params.toString() ? `?${params}` : ''}`,
       {},
       token,
     );
@@ -1035,11 +1045,7 @@ export const api = {
     return request<any>(`/haccp/production-flow${query}`, {}, token);
   },
   haccpProductionFlowDetail(token: string, batchId: string) {
-    return request<any>(
-      `/haccp/production-flow/${encodeURIComponent(batchId)}`,
-      {},
-      token,
-    );
+    return request<any>(`/haccp/production-flow/${encodeURIComponent(batchId)}`, {}, token);
   },
   haccpPhotoUrl(path: string) {
     if (!path || /^https?:\/\//i.test(path)) return path;
@@ -1449,17 +1455,9 @@ export const api = {
     }>(`/menus/caterer/events/${id}/readiness`, {}, token);
   },
   catererEventProductionPlan(token: string, id: string) {
-    return request<CatererProductionPlan>(
-      `/menus/caterer/events/${id}/production-plan`,
-      {},
-      token,
-    );
+    return request<CatererProductionPlan>(`/menus/caterer/events/${id}/production-plan`, {}, token);
   },
-  saveCatererEventProductionPlan(
-    token: string,
-    id: string,
-    payload: CatererProductionPlanPayload,
-  ) {
+  saveCatererEventProductionPlan(token: string, id: string, payload: CatererProductionPlanPayload) {
     return request<CatererProductionPlan>(
       `/menus/caterer/events/${id}/production-plan`,
       { method: 'PUT', body: JSON.stringify(payload) },
@@ -2950,6 +2948,12 @@ export const api = {
     return request<{
       assignments?: PlanningAssignment[];
       crossSiteReplacements?: PlanningCrossSiteReplacement[];
+      diagnostics?: {
+        reason?: string;
+        requestedEmployeeCount?: number;
+        eligibleEmployeeCount?: number;
+        configuredWorkDayCount?: number;
+      };
       applied?: boolean;
       temporarySource?: string;
     }>(
@@ -2971,7 +2975,7 @@ export const api = {
   ) {
     return request<{
       appliedAssignments?: PlanningAssignment[];
-      skipped?: unknown[];
+      skipped?: Array<{ message?: string; item?: PlanningAssignment }>;
       crossSiteReplacements?: PlanningCrossSiteReplacement[];
       applied?: boolean;
       temporarySource?: string;
@@ -3228,6 +3232,7 @@ export const api = {
       search?: string;
       categoryId?: string;
       supplierId?: string;
+      siteId?: string;
       status?: string;
       page?: number;
       pageSize?: number;
@@ -3237,6 +3242,7 @@ export const api = {
     if (params?.search) query.set('search', params.search);
     if (params?.categoryId) query.set('categoryId', params.categoryId);
     if (params?.supplierId) query.set('supplierId', params.supplierId);
+    if (params?.siteId) query.set('siteId', params.siteId);
     if (params?.status) query.set('status', params.status);
     if (params?.page) query.set('page', String(params.page));
     if (params?.pageSize) query.set('pageSize', String(params.pageSize));
@@ -3296,6 +3302,55 @@ export const api = {
   archiveProduct(token: string, id: string) {
     return request<Product>(`/products/${id}/archive`, { method: 'POST' }, token);
   },
+  async analyzeProductLabel(token: string, productId: string, file: File) {
+    const body = new FormData();
+    body.append('file', file);
+    const response = await fetch(`${API_URL}/api/products/${productId}/ocr-label`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    });
+    if (!response.ok) {
+      throw new ApiError(await readApiErrorMessage(response), response.status);
+    }
+    return response.json() as Promise<ProductLabelOcrResult>;
+  },
+  async uploadProductLabelImports(token: string, productId: string, files: File[]) {
+    const body = new FormData();
+    files.forEach((file) => body.append('files', file));
+    const response = await fetch(`${API_URL}/api/products/${productId}/ocr-label/imports`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    });
+    if (!response.ok) {
+      throw new ApiError(await readApiErrorMessage(response), response.status);
+    }
+    return response.json() as Promise<{
+      batchId: string;
+      product: { id: string; name: string };
+      documents: Array<{
+        id: string;
+        originalName: string;
+        mimeType: string;
+        status: string;
+      }>;
+    }>;
+  },
+  productLabelImportStatuses(token: string) {
+    return request<{ statuses: ProductLabelOcrBatchStatus[] }>(
+      '/products/ocr-label/imports/statuses',
+      {},
+      token,
+    );
+  },
+  reviewProductLabelImport(token: string, productId: string, batchId: string) {
+    return request<{ reviewed: boolean }>(
+      `/products/${productId}/ocr-label/imports/${batchId}/reviewed`,
+      { method: 'POST' },
+      token,
+    );
+  },
   async downloadProductImportTemplate(token: string) {
     const response = await fetch(`${API_URL}/api/products/import/template.csv`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -3325,11 +3380,31 @@ export const api = {
     payload: {
       rows: Array<{ rowNumber: number; fields: ProductImportPreviewFields; selected?: boolean }>;
       mapping?: Record<string, ProductImportField>;
-      options?: { createMissingCategories?: boolean; createMissingSuppliers?: boolean };
+      options?: {
+        createMissingCategories?: boolean;
+        createMissingSuppliers?: boolean;
+        defaultSupplierId?: string;
+        defaultSupplierName?: string;
+        siteIds?: string[];
+      };
     },
   ) {
     return request<ProductImportCommitResult>(
       '/products/import/commit',
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
+  },
+  assignProductSites(
+    token: string,
+    payload: { siteIds: string[]; productIds?: string[]; onlyUnassigned?: boolean },
+  ) {
+    return request<{
+      products: number;
+      siteIds: string[];
+      assignmentsCreated: number;
+    }>(
+      '/products/sites/assign',
       { method: 'POST', body: JSON.stringify(payload) },
       token,
     );

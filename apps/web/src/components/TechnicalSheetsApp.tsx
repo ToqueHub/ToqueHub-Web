@@ -1614,11 +1614,23 @@ const TECHNICAL_SHEET_CATEGORY_DESCRIPTIONS: Record<string, string> = {
   Plats: 'Recettes principales et plats complets.',
   Desserts: 'Desserts à l’assiette et préparations sucrées.',
   Sauces: 'Sauces, jus, coulis et bases d’accompagnement.',
+  Bases: 'Fonds, appareils et préparations intermédiaires réutilisables.',
+  Crèmes: 'Crèmes salées ou sucrées et garnitures.',
+  Mousses: 'Mousses salées, sucrées et textures aérées.',
   Accompagnements: 'Garnitures et préparations complémentaires.',
   'Petit-déjeuner': 'Préparations pour le service du matin.',
   Pâtisserie: 'Gâteaux, entremets et préparations pâtissières.',
   Boulangerie: 'Pains, viennoiseries et pâtes levées.',
   Boissons: 'Boissons préparées et recettes liquides.',
+  Cocktails: 'Cocktails alcoolisés et assemblages de bar.',
+  'Cocktails sans alcool': 'Mocktails, jus composés et boissons sans alcool.',
+  'Cafés et boissons chaudes': 'Cafés, chocolats, thés et boissons chaudes.',
+  'Sirops et infusions': 'Sirops maison, infusions et bases de boissons.',
+};
+
+const TECHNICAL_SHEET_CATEGORY_PRESETS = {
+  cuisine: ['Entrées', 'Plats', 'Accompagnements', 'Sauces', 'Bases', 'Crèmes', 'Mousses', 'Desserts', 'Pâtisserie', 'Boulangerie', 'Petit-déjeuner'],
+  bar: ['Boissons', 'Cocktails', 'Cocktails sans alcool', 'Cafés et boissons chaudes', 'Sirops et infusions'],
 };
 
 function TechnicalSheetsIllustration() {
@@ -2112,6 +2124,10 @@ function TechnicalSheetsOnboardingWizard({
     });
   }
 
+  function selectCategoryPreset(names: string[]) {
+    setSelected((current) => new Set([...current, ...names.filter((name) => suggestions.includes(name))]));
+  }
+
   function addCustom() {
     const name = customName.trim();
     if (!name) return;
@@ -2402,6 +2418,15 @@ function TechnicalSheetsOnboardingWizard({
                             Cochez uniquement les familles utiles. Elles resteront modifiables
                             depuis l’onglet Catégories recettes.
                           </p>
+                          <div className="row-actions" style={{ display: 'flex', flexWrap: 'wrap', gap: '.6rem', marginBottom: '1rem' }}>
+                            <button type="button" className="btn btn-secondary" onClick={() => selectCategoryPreset(TECHNICAL_SHEET_CATEGORY_PRESETS.cuisine)}>
+                              Sélection cuisine
+                            </button>
+                            <button type="button" className="btn btn-secondary" onClick={() => selectCategoryPreset(TECHNICAL_SHEET_CATEGORY_PRESETS.bar)}>
+                              Sélection bar
+                            </button>
+                            <span className="muted" style={{ alignSelf: 'center', fontSize: '.82rem' }}>Un point de départ : vous pouvez ensuite retirer chaque catégorie inutile.</span>
+                          </div>
                           {localError ? (
                             <div className="alert-modern error" style={{ marginBottom: '1rem' }}>
                               <AlertCircle size={16} /> {localError}

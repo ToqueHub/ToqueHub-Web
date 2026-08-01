@@ -38,6 +38,7 @@ export class PurchasingReferenceQueryDto {
   @IsOptional() @IsString() @MaxLength(160) search?: string;
   @IsOptional() @IsUUID() supplierId?: string;
   @IsOptional() @IsUUID() categoryId?: string;
+  @IsOptional() @IsUUID() siteId?: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) pageSize?: number;
 }

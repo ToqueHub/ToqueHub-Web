@@ -45,16 +45,17 @@ export function SupplierSelection({
         <h2>Quel fournisseur souhaitez-vous sélectionner&nbsp;?</h2>
         <p>Seuls les produits associés à ce fournisseur dans Stocks seront proposés.</p>
       </div>
-      <label className="search-input-wrapper purchasing-supplier-search">
-        <Search size={18} />
+      <div className="purchasing-supplier-search" role="search">
+        <Search className="purchasing-supplier-search-icon" size={18} aria-hidden="true" />
         <input
-          className="search-input"
+          className="search-input purchasing-supplier-search-input"
           value={search}
           onChange={(event) => onSearch(event.target.value)}
           placeholder="Rechercher un fournisseur Stocks"
+          aria-label="Rechercher un fournisseur Stocks"
           autoFocus
         />
-      </label>
+      </div>
       <div className="purchasing-supplier-grid">
         {suppliers.map((supplier, idx) => {
           const scheduled = supplier.purchasingProfile?.deliveryMode === 'SCHEDULED_DAYS';
@@ -67,7 +68,12 @@ export function SupplierSelection({
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.05, duration: 0.2 }}
-              whileHover={{ scale: 1.02, y: -2, borderColor: '#10b981', boxShadow: '0 8px 16px rgba(16,185,129,0.06)' }}
+              whileHover={{
+                scale: 1.02,
+                y: -2,
+                borderColor: '#10b981',
+                boxShadow: '0 8px 16px rgba(16,185,129,0.06)',
+              }}
               style={{
                 transition: 'border-color 0.2s, box-shadow 0.2s',
               }}

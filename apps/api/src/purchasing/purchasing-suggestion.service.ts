@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PurchaseOrderStatus, StockMovementType } from '@prisma/client';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { PrismaService } from '../prisma/prisma.service';
@@ -19,10 +19,26 @@ export class PurchasingSuggestionService {
     private readonly policy: PurchaseOrderPolicy,
   ) {}
 
-  async list(organizationId: string, actor: AuthenticatedUser, supplierId?: string) {
+  async list(
+    organizationId: string,
+    actor: AuthenticatedUser,
+    supplierId?: string,
+    requestedSiteId?: string,
+  ) {
     await this.context.assertInstalled(organizationId);
     this.policy.assertPermission(actor, 'purchasing.draft');
     const settings = await this.context.ensureSettings(organizationId);
+    const activeSites = await this.prisma.site.findMany({
+      where: { organizationId, isArchived: false },
+      select: { id: true },
+    });
+    const siteId = requestedSiteId ?? (activeSites.length === 1 ? activeSites[0].id : undefined);
+    if (!siteId)
+      throw new BadRequestException(
+        'Sélectionnez le site concerné pour calculer les suggestions de commande.',
+      );
+    if (!activeSites.some((site) => site.id === siteId))
+      throw new BadRequestException('Le site sélectionné est invalide ou archivé.');
     const since = new Date();
     since.setDate(since.getDate() - settings.consumptionWindowDays);
     const products = await this.prisma.product.findMany({
@@ -31,8 +47,15 @@ export class PurchasingSuggestionService {
         isArchived: false,
         primarySupplierId: supplierId,
         primarySupplier: { isArchived: false },
+        siteAssignments: { some: { siteId, isActive: true } },
       },
-      include: { category: true, unit: true, primarySupplier: true, stocks: true },
+      include: {
+        category: true,
+        unit: true,
+        primarySupplier: true,
+        stocks: { where: { siteId } },
+        siteAssignments: { where: { siteId, isActive: true } },
+      },
     });
     const productIds = products.map((product) => product.id);
     const [movements, openLines] = await Promise.all([
@@ -44,6 +67,7 @@ export class PurchasingSuggestionService {
             in: [StockMovementType.OUT, StockMovementType.PRODUCTION, StockMovementType.LOSS],
           },
           movementDate: { gte: since },
+          OR: [{ sourceSiteId: siteId }, { destinationSiteId: siteId }],
         },
         select: { productId: true, quantity: true },
       }),
@@ -51,7 +75,7 @@ export class PurchasingSuggestionService {
         where: {
           organizationId,
           productId: { in: productIds },
-          order: { status: { in: OPEN_ORDER_STATUSES } },
+          order: { siteId, status: { in: OPEN_ORDER_STATUSES } },
         },
       }),
     ]);
@@ -75,14 +99,17 @@ export class PurchasingSuggestionService {
       .map((product) => {
         const stock = product.stocks.reduce((sum, item) => sum + Number(item.quantity), 0);
         const daily = (consumed.get(product.id) ?? 0) / settings.consumptionWindowDays;
-        const target = Math.max(Number(product.minimumStock), daily * settings.replenishmentDays);
+        const minimumStock = Number(
+          product.siteAssignments[0]?.minimumStock ?? product.minimumStock,
+        );
+        const target = Math.max(minimumStock, daily * settings.replenishmentDays);
         const needBase = Math.max(0, target - stock - (ordered.get(product.id) ?? 0));
         const rounded = needBase > 0 ? Math.ceil(needBase) : 0;
         return {
           product: {
             ...product,
             averagePrice: Number(product.averagePrice),
-            minimumStock: Number(product.minimumStock),
+            minimumStock,
             unitsPerPackage: product.unitsPerPackage ? Number(product.unitsPerPackage) : null,
             stockQuantity: stock,
           },
@@ -99,6 +126,7 @@ export class PurchasingSuggestionService {
     return {
       windowDays: settings.consumptionWindowDays,
       coverageDays: settings.replenishmentDays,
+      siteId,
       items,
     };
   }

@@ -79,6 +79,7 @@ export function ReceiptReview({
     void api
       .purchasingProducts(token, {
         supplierId,
+        siteId: receipt.siteId,
         search: debouncedProductSearch.trim() || undefined,
         page: 1,
         pageSize: 30,
@@ -90,7 +91,7 @@ export function ReceiptReview({
         ]),
       )
       .catch((err) => flash('error', messageOf(err)));
-  }, [debouncedProductSearch, receipt.order?.supplierId, token]);
+  }, [debouncedProductSearch, receipt.order?.supplierId, receipt.siteId, token]);
 
   const updateLine = (index: number, patch: Partial<ReceiptReviewDraftLine>) =>
     setLines((current) =>

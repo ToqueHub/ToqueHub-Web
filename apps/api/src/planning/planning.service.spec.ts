@@ -279,6 +279,57 @@ describe('PlanningService operational needs', () => {
 });
 
 describe('PlanningService weekly rotations', () => {
+  it('allows an employee without any HR site to be assigned to an explicit Planning site', () => {
+    const service = new PlanningService(mockPrisma());
+
+    expect((service as any).employeeCanWorkSite({ mainSiteId: null, secondarySites: [] }, 'site-1')).toBe(true);
+    expect((service as any).employeeCanWorkSite({ mainSiteId: 'site-2', secondarySites: [] }, 'site-1')).toBe(false);
+  });
+
+  it('normalizes unordered legacy days by dayOfWeek and never turns leave into work', async () => {
+    const prisma = mockPrisma();
+    prisma.planningTemplate.findFirst.mockResolvedValue({
+      id: 'template-rotation-legacy',
+      organizationId: 'org-1',
+      name: 'Semaine legacy',
+      periodType: 'WEEKLY_ROTATION',
+      departmentId: 'dept-1',
+      siteId: null,
+      content: {
+        type: 'WEEKLY_ROTATION',
+        employeeIds: ['emp-1'],
+        days: [
+          { dayOfWeek: 3, mode: 'LEAVE', startTime: '08:00', endTime: '18:00' },
+          { dayOfWeek: 1, mode: 'WORK', startTime: '07:00', endTime: '15:00' },
+          { dayOfWeek: 2, mode: 'CLOSED', startTime: '09:00', endTime: '17:00' },
+        ],
+      },
+    });
+    prisma.hrEmployee.findMany.mockResolvedValue([{ id: 'emp-1', departmentId: 'dept-1', positionId: 'pos-1', mainSiteId: null, secondarySites: [] }]);
+    const service = new PlanningService(prisma);
+
+    const result = await service.applyWeeklyRotationPreview('org-1', 'template-rotation-legacy', {
+      employeeId: 'emp-1',
+      siteId: 'site-1',
+      startDate: '2026-06-22',
+      endDate: '2026-06-28',
+    });
+
+    expect(result.assignments).toHaveLength(1);
+    expect(result.assignments[0]).toEqual(expect.objectContaining({ date: '2026-06-22', startTime: '07:00', endTime: '15:00' }));
+  });
+
+  it('rejects a weekly rotation without any configured work day', async () => {
+    const prisma = mockPrisma();
+    const service = new PlanningService(prisma);
+
+    await expect(service.createWeeklyRotationTemplate('org-1', actor, {
+      name: 'Repos uniquement',
+      days: [{ dayOfWeek: 1, mode: 'REST' }],
+    })).rejects.toThrow('Ajoutez au moins une journée Travail');
+    expect(prisma.planningTemplate.create).not.toHaveBeenCalled();
+  });
+
   it('previews a Planning weekly rotation template without using the RH rotation table', async () => {
     const prisma = mockPrisma();
     prisma.planningTemplate.findFirst.mockResolvedValue({
@@ -361,6 +412,15 @@ describe('PlanningService weekly rotations', () => {
       endDate: '2026-06-28',
     });
 
+    const employeeQuery = prisma.hrEmployee.findMany.mock.calls[0][0];
+    expect(employeeQuery.where).toEqual(expect.objectContaining({
+      organizationId: 'org-1',
+      id: { in: ['emp-1'] },
+      isArchived: false,
+      status: HrEmployeeStatus.ACTIVE,
+    }));
+    expect(employeeQuery.where.OR).toBeUndefined();
+
     expect(result.crossSiteReplacements).toEqual([expect.objectContaining({
       assignmentId: 'assignment-site-1',
       existingSiteName: 'Site A',
@@ -394,6 +454,28 @@ describe('PlanningService weekly rotations', () => {
       origin: PlanningAssignmentOrigin.AUTO_GENERATION,
       allowCriticalOverride: true,
     }));
+  });
+
+  it('returns an error instead of a false success when every proposed day is skipped', async () => {
+    const prisma = mockPrisma();
+    prisma.planningAssignment.findFirst.mockResolvedValue(null);
+    const service = new PlanningService(prisma);
+    jest.spyOn(service, 'applyWeeklyRotationPreview').mockResolvedValue({
+      rotation: { id: 'rotation-1' },
+      assignments: [{ ...assignmentPayload }],
+      temporarySource: 'planning_templates',
+      applied: false,
+    } as any);
+    jest.spyOn(service as any, 'saveAssignmentAllowingConflicts').mockRejectedValue(new BadRequestException('Collaborateur non affecté au site'));
+    jest.spyOn(service as any, 'recalculateBaseAlerts').mockResolvedValue(undefined);
+
+    await expect(service.applyWeeklyRotation('org-1', actor, 'rotation-1', {
+      employeeId: 'emp-1',
+      siteId: 'site-1',
+      startDate: '2026-06-22',
+      endDate: '2026-06-28',
+      replaceExisting: true,
+    })).rejects.toThrow('Aucune affectation n’a été enregistrée');
   });
 
   it('requires explicit confirmation before replacing assignments from another site', async () => {

@@ -337,6 +337,7 @@ export class PlanningService {
     this.assertWrite(actor);
     await this.validateTemplateRefs(organizationId, dto.departmentId, dto.siteId);
     const content = this.weeklyRotationContent(dto);
+    this.assertWeeklyRotationHasWorkDay(content.days);
     const template = await this.prisma.planningTemplate.create({ data: { organizationId, name: dto.name, description: dto.description, periodType: 'WEEKLY_ROTATION', departmentId: dto.departmentId, siteId: dto.siteId, content: content as Prisma.InputJsonValue, createdById: actor.id }, include: { department: true, site: true } });
     return this.normalizePlanningTemplate(template);
   }
@@ -346,7 +347,9 @@ export class PlanningService {
     if (this.templateKind(existing) !== 'WEEKLY_ROTATION') throw new BadRequestException('Ce modèle Planning n’est pas un roulement semaine');
     await this.validateTemplateRefs(organizationId, dto.departmentId, dto.siteId);
     const previous = this.contentObject(existing.content);
-    const template = await this.prisma.planningTemplate.update({ where: { id, organizationId }, data: { name: dto.name, description: dto.description, periodType: 'WEEKLY_ROTATION', departmentId: dto.departmentId ?? null, siteId: dto.siteId ?? null, content: { ...this.weeklyRotationContent(dto), employeeIds: this.stringArray(previous.employeeIds), defaultEmployeeIds: this.stringArray(previous.defaultEmployeeIds) } as Prisma.InputJsonValue }, include: { department: true, site: true } });
+    const nextContent = this.weeklyRotationContent(dto);
+    this.assertWeeklyRotationHasWorkDay(nextContent.days);
+    const template = await this.prisma.planningTemplate.update({ where: { id, organizationId }, data: { name: dto.name, description: dto.description, periodType: 'WEEKLY_ROTATION', departmentId: dto.departmentId ?? null, siteId: dto.siteId ?? null, content: { ...nextContent, employeeIds: this.stringArray(previous.employeeIds), defaultEmployeeIds: this.stringArray(previous.defaultEmployeeIds) } as Prisma.InputJsonValue }, include: { department: true, site: true } });
     await this.prisma.planningHistory.create({ data: { organizationId, actorUserId: actor.id, action: PlanningHistoryAction.TEMPLATE_APPLIED, entityType: 'PlanningTemplate', entityId: id, label: 'Roulement Planning modifié', oldValue: existing as Prisma.InputJsonValue, newValue: template as Prisma.InputJsonValue } });
     return this.normalizePlanningTemplate(template);
   }
@@ -409,11 +412,36 @@ export class PlanningService {
     const employeeIds = dto.employeeId ? [dto.employeeId] : this.stringArray(template.employeeIds);
     const rotationSiteId = dto.siteId ?? template.siteId ?? undefined;
     const employees = employeeIds.length
-      ? await this.prisma.hrEmployee.findMany({ where: { organizationId, id: { in: employeeIds }, isArchived: false, status: HrEmployeeStatus.ACTIVE, ...this.siteEligibilityWhere(rotationSiteId) }, include: { department: true, position: true, mainSite: true, secondarySites: true } })
+      ? await this.prisma.hrEmployee.findMany({
+          where: {
+            organizationId,
+            id: { in: employeeIds },
+            isArchived: false,
+            status: HrEmployeeStatus.ACTIVE,
+            // Une application explicite depuis le Planning choisit déjà le collaborateur et
+            // le site cible. Ne pas l'écarter ici : ce filtre transformait silencieusement un
+            // roulement valide en prévisualisation vide ("0 affectation appliquée").
+            ...(dto.employeeId ? {} : this.siteEligibilityWhere(rotationSiteId)),
+          },
+          include: { department: true, position: true, mainSite: true, secondarySites: true },
+        })
       : [];
     const assignments = this.planningRotationAssignmentsPreview(template, employees, start, end, dto.siteId);
     const crossSiteReplacements = await this.crossSiteRotationReplacements(organizationId, assignments as UpsertPlanningAssignmentDto[]);
-    return { rotation: template, assignments, crossSiteReplacements, temporarySource: 'planning_templates', applied: false };
+    const configuredWorkDayCount = (template.days ?? []).filter((day: any) => String(day.mode).toUpperCase() === 'WORK' && day.startTime && day.endTime).length;
+    const diagnostics = assignments.length ? undefined : {
+      requestedEmployeeCount: employeeIds.length,
+      eligibleEmployeeCount: employees.length,
+      configuredWorkDayCount,
+      reason: !employeeIds.length
+        ? 'Aucun collaborateur n’est associé à ce roulement.'
+        : !employees.length
+          ? 'Le collaborateur est introuvable, archivé ou inactif.'
+          : !configuredWorkDayCount
+            ? 'Le roulement ne contient aucune journée Travail avec une heure de début et de fin.'
+            : 'Le collaborateur ne possède pas le service ou le poste requis pour générer les affectations.',
+    };
+    return { rotation: template, assignments, crossSiteReplacements, diagnostics, temporarySource: 'planning_templates', applied: false };
   }
 
   async applyWeeklyRotation(organizationId: string, actor: Actor, rotationId: string, dto: ApplyPlanningRotationDto) {
@@ -458,6 +486,13 @@ export class PlanningService {
 
     await this.prisma.planningHistory.create({ data: { organizationId, actorUserId: actor.id, action: PlanningHistoryAction.GENERATION_APPLIED, entityType: 'PlanningTemplate', entityId: rotationId, label: 'Roulement semaine appliqué', newValue: { startDate: dto.startDate, endDate: dto.endDate, employeeId: dto.employeeId, source: preview.temporarySource, applied: applied.length, skipped: skipped.length } as Prisma.InputJsonValue } });
     await this.recalculateBaseAlerts(organizationId, start, end);
+    if (proposed.length > 0 && applied.length === 0) {
+      throw new BadRequestException({
+        message: `Aucune affectation n’a été enregistrée. ${skipped[0]?.message ?? 'Vérifiez le collaborateur, son site et le roulement.'}`,
+        code: 'PLANNING_ROTATION_NOT_APPLIED',
+        skipped,
+      });
+    }
     return { rotation: preview.rotation, appliedAssignments: applied, skipped, crossSiteReplacements, applied: true, temporarySource: preview.temporarySource };
   }
 
@@ -736,16 +771,28 @@ export class PlanningService {
     const source = this.contentObject(days);
     const arraySource = Array.isArray(days) ? days : null;
     return WEEK_DAYS.map((key, index) => {
-      const raw = arraySource ? arraySource[index] : source[key] ?? source[String(index + 1)] ?? {};
+      const raw = arraySource
+        ? arraySource.find((candidate) => {
+            const item = this.contentObject(candidate);
+            return Number(item.dayOfWeek) === index + 1 || String(item.key ?? '').toLowerCase() === key;
+          }) ?? arraySource[index]
+        : source[key] ?? source[String(index + 1)] ?? {};
       const day = this.contentObject(raw);
-      const mode = String(day.mode ?? day.status ?? day.type ?? (day.startTime || day.start ? 'WORK' : 'REST')).toUpperCase();
-      const isRest = mode === 'REST' || mode === 'OFF' || mode === 'REPOS' || day.isRest === true;
+      const rawMode = String(day.mode ?? day.status ?? day.type ?? (day.startTime || day.start ? 'WORK' : 'REST')).toUpperCase();
+      const mode = day.isRest === true || ['REST', 'OFF', 'REPOS'].includes(rawMode)
+        ? 'REST'
+        : ['LEAVE', 'CONGE', 'CONGÉ'].includes(rawMode)
+          ? 'LEAVE'
+          : ['CLOSED', 'FERME', 'FERMÉ'].includes(rawMode)
+            ? 'CLOSED'
+            : 'WORK';
+      const isWork = mode === 'WORK';
       return {
         key,
         dayOfWeek: index + 1,
-        mode: isRest ? 'REST' : 'WORK',
-        startTime: isRest ? null : this.cleanTime(String(day.startTime ?? day.start ?? '09:00')),
-        endTime: isRest ? null : this.cleanTime(String(day.endTime ?? day.end ?? '17:00')),
+        mode,
+        startTime: isWork ? this.cleanTime(String(day.startTime ?? day.start ?? '09:00')) : null,
+        endTime: isWork ? this.cleanTime(String(day.endTime ?? day.end ?? '17:00')) : null,
         breakMinutes: Number(day.breakMinutes ?? 0) || 0,
         departmentId: typeof day.departmentId === 'string' ? day.departmentId : null,
         positionId: typeof day.positionId === 'string' ? day.positionId : null,
@@ -957,10 +1004,16 @@ export class PlanningService {
     return { organizationId, employeeId: q.employeeId, departmentId: q.departmentId, positionId: q.positionId, siteId: q.siteId, status: q.status, date };
   }
   private siteEligibilityWhere(siteId?: string): Prisma.HrEmployeeWhereInput {
-    return siteId ? { OR: [{ mainSiteId: siteId }, { secondarySites: { some: { siteId } } }] } : {};
+    return siteId ? { OR: [
+      { mainSiteId: siteId },
+      { secondarySites: { some: { siteId } } },
+      // Un collaborateur sans site RH doit rester affectable depuis un site explicite du Planning.
+      { mainSiteId: null, secondarySites: { none: {} } },
+    ] } : {};
   }
   private employeeCanWorkSite(employee: { mainSiteId?: string | null; secondarySites?: Array<{ siteId: string }> }, siteId?: string | null) {
     if (!siteId) return true;
+    if (!employee.mainSiteId && !employee.secondarySites?.length) return true;
     return employee.mainSiteId === siteId || Boolean(employee.secondarySites?.some((item) => item.siteId === siteId));
   }
   private needWhere(organizationId: string, q: PlanningQueryDto, period: Period, forcePeriod = false): Prisma.PlanningOperationalNeedWhereInput {
@@ -1062,7 +1115,13 @@ export class PlanningService {
   }
   private rotationDayIsRest(day: any) {
     const value = String(day.mode ?? day.type ?? day.status ?? '').toUpperCase();
-    return value === 'REST' || value === 'OFF' || value === 'REPOS' || day.isRest === true;
+    return value !== 'WORK' || day.isRest === true;
+  }
+  private assertWeeklyRotationHasWorkDay(days: unknown) {
+    const normalized = this.normalizeWeeklyRotationDays(days);
+    if (!normalized.some((day) => day.mode === 'WORK' && day.startTime && day.endTime)) {
+      throw new BadRequestException('Ajoutez au moins une journée Travail avec une heure de début et de fin.');
+    }
   }
   private async recalculateBaseAlerts(organizationId: string, start: Date, end: Date) {
     const managedCodes = ['UNDERSTAFFED_NEED', 'UNCOVERED_NEED', 'CLOSING_UNCOVERED', 'REQUIRED_POSITION_MISSING', 'WEEKLY_QUOTA_EXCEEDED'];

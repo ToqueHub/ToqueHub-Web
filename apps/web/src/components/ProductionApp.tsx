@@ -387,6 +387,7 @@ export function ProductionApp({ token, session, tab, onNavigate }: ProductionApp
   const [view, setView] = useState<ViewMode>('day');
   const [anchorDate, setAnchorDate] = useState(today());
   const [siteFilter, setSiteFilter] = useState('');
+  const [planningSiteInitialized, setPlanningSiteInitialized] = useState(false);
   const [departmentFilter, setDepartmentFilter] = useState('');
   const [sites, setSites] = useState<Site[]>([]);
   const [departments, setDepartments] = useState<HrDepartment[]>([]);
@@ -464,6 +465,18 @@ export function ProductionApp({ token, session, tab, onNavigate }: ProductionApp
       Array.from({ length: view === 'week' ? 7 : 1 }, (_, index) => addDays(period.start, index)),
     [period.start, view],
   );
+
+  const primaryProductionSiteId =
+    sites.find((site) => site.id === session.user.primarySiteId)?.id ??
+    sites.find((site) => site.isPrimary || site.isMain)?.id ??
+    sites[0]?.id ??
+    '';
+
+  useEffect(() => {
+    if (planningSiteInitialized || !primaryProductionSiteId) return;
+    setSiteFilter((current) => current || primaryProductionSiteId);
+    setPlanningSiteInitialized(true);
+  }, [planningSiteInitialized, primaryProductionSiteId]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1427,6 +1440,7 @@ export function ProductionApp({ token, session, tab, onNavigate }: ProductionApp
           campaigns={campaigns}
           profiles={productionProfiles}
           sites={sites}
+          defaultSiteId={primaryProductionSiteId}
           departments={departments}
           loading={campaignsLoading}
           focusDate={catererFocusDate}
@@ -1453,6 +1467,7 @@ export function ProductionApp({ token, session, tab, onNavigate }: ProductionApp
               setCatererEventFilter(undefined);
             }}
             onRefresh={() => void refreshFabrication()}
+            readOnly={!fabricationContext.siteId}
             embedded
           />
         </ProductionFabricationCalendar>
@@ -3065,6 +3080,7 @@ function FabricationView({
   onStatus,
   onClearEvent,
   onRefresh,
+  readOnly = false,
   embedded = false,
 }: {
   token: string;
@@ -3078,6 +3094,7 @@ function FabricationView({
   onStatus: (value: string) => void;
   onClearEvent: () => void;
   onRefresh: () => void;
+  readOnly?: boolean;
   embedded?: boolean;
 }) {
   const [selected, setSelected] = useState<ProductionCampaign>();
@@ -3116,6 +3133,12 @@ function FabricationView({
   ).length;
 
   const handleValidateCampaign = async (campaign: ProductionCampaign) => {
+    if (readOnly) {
+      setActionError(
+        'Sélectionnez un site précis pour valider cette campagne. « Tous les sites » est une vue de consultation.',
+      );
+      return;
+    }
     setValidatingId(campaign.id);
     setActionError('');
     try {
@@ -4494,7 +4517,12 @@ function FabricationView({
                     <button
                       type="button"
                       style={primaryButtonStyle}
-                      disabled={validatingId === selected.id}
+                      disabled={readOnly || validatingId === selected.id}
+                      title={
+                        readOnly
+                          ? 'Sélectionnez un site pour valider cette campagne'
+                          : undefined
+                      }
                       onClick={() => void handleValidateCampaign(selected)}
                     >
                       {validatingId === selected.id ? (

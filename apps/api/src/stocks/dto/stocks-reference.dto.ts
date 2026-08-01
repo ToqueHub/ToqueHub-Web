@@ -46,6 +46,11 @@ export class ListQueryDto {
 }
 
 export class ListArticlesQueryDto extends ListQueryDto {
+  @ApiPropertyOptional({ description: 'Site dont le stock et le catalogue doivent être affichés.' })
+  @IsOptional()
+  @IsUUID()
+  siteId?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
