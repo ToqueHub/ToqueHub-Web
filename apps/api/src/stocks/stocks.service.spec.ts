@@ -1,4 +1,11 @@
-import { Prisma, ProductKind, PurchasingDeliveryMode, StockMovementType } from '@prisma/client';
+import {
+  EquipmentAcquisitionMode,
+  EquipmentCondition,
+  Prisma,
+  ProductKind,
+  PurchasingDeliveryMode,
+  StockMovementType,
+} from '@prisma/client';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { AdjustProductStockDto } from './dto/adjust-product-stock.dto';
@@ -26,11 +33,17 @@ describe('StocksService articles pagination', () => {
     };
     const service = new StocksService(prisma as any);
 
-    const result = await service.listArticles('org-1', { page: 2, pageSize: 25, status: 'NO_STOCK' });
+    const result = await service.listArticles('org-1', {
+      page: 2,
+      pageSize: 25,
+      status: 'NO_STOCK',
+    });
 
     expect(result.items).toHaveLength(5);
     expect(result.pagination).toEqual({ page: 2, pageSize: 25, total: 30, pages: 2 });
-    expect(result.summary).toEqual(expect.objectContaining({ articleCount: 30, articlesWithoutStock: 30 }));
+    expect(result.summary).toEqual(
+      expect.objectContaining({ articleCount: 30, articlesWithoutStock: 30 }),
+    );
   });
 
   it('passes category and supplier filters to the product query before pagination', async () => {
@@ -43,17 +56,22 @@ describe('StocksService articles pagination', () => {
     };
     const service = new StocksService(prisma as any);
 
-    await service.listArticles('org-1', { categoryId: '11111111-1111-4111-8111-111111111111', supplierId: '22222222-2222-4222-8222-222222222222' });
+    await service.listArticles('org-1', {
+      categoryId: '11111111-1111-4111-8111-111111111111',
+      supplierId: '22222222-2222-4222-8222-222222222222',
+    });
 
-    expect(prisma.product.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        categoryId: '11111111-1111-4111-8111-111111111111',
-        primarySupplierId: '22222222-2222-4222-8222-222222222222',
-        kind: {
-          in: [ProductKind.UNSPECIFIED, ProductKind.RAW_MATERIAL, ProductKind.PACKAGED],
-        },
+    expect(prisma.product.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          categoryId: '11111111-1111-4111-8111-111111111111',
+          primarySupplierId: '22222222-2222-4222-8222-222222222222',
+          kind: {
+            in: [ProductKind.UNSPECIFIED, ProductKind.RAW_MATERIAL, ProductKind.PACKAGED],
+          },
+        }),
       }),
-    }));
+    );
   });
 
   it('never exposes recipe outputs in the Stocks product catalogue', async () => {
@@ -62,13 +80,102 @@ describe('StocksService articles pagination', () => {
 
     await service.listProducts('org-1');
 
-    expect(prisma.product.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        kind: {
-          in: [ProductKind.UNSPECIFIED, ProductKind.RAW_MATERIAL, ProductKind.PACKAGED],
-        },
+    expect(prisma.product.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          kind: {
+            in: [ProductKind.UNSPECIFIED, ProductKind.RAW_MATERIAL, ProductKind.PACKAGED],
+          },
+        }),
       }),
-    }));
+    );
+  });
+
+  it('uses the same articles projection for equipment without mixing it into food products', async () => {
+    const prisma = {
+      product: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+      },
+      stockMovement: { findMany: jest.fn() },
+    };
+    const service = new StocksService(prisma as any);
+
+    await service.listArticles('org-1', { kind: ProductKind.EQUIPMENT });
+
+    expect(prisma.product.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ kind: { in: [ProductKind.EQUIPMENT] } }),
+        include: expect.objectContaining({ equipmentProfile: true, stocks: expect.any(Object) }),
+      }),
+    );
+  });
+});
+
+describe('StocksService category scopes', () => {
+  it('keeps equipment categories out of the product catalogue by default', async () => {
+    const prisma = { category: { findMany: jest.fn().mockResolvedValue([]) } };
+    const service = new StocksService(prisma as any);
+
+    await service.listCategories('org-1');
+
+    expect(prisma.category.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ kind: { not: ProductKind.EQUIPMENT } }),
+      }),
+    );
+  });
+
+  it('returns only equipment categories for the material catalogue', async () => {
+    const prisma = { category: { findMany: jest.fn().mockResolvedValue([]) } };
+    const service = new StocksService(prisma as any);
+
+    await service.listCategories('org-1', { kind: ProductKind.EQUIPMENT });
+
+    expect(prisma.category.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ kind: ProductKind.EQUIPMENT }),
+      }),
+    );
+  });
+});
+
+describe('StocksService equipment profile', () => {
+  it('normalizes the simple acquisition and financing fields', () => {
+    const service = new StocksService({} as any);
+
+    const profile = (service as any).equipmentProfileData({
+      brand: 'Rational',
+      model: 'iCombi Pro',
+      condition: EquipmentCondition.IN_SERVICE,
+      acquisitionMode: EquipmentAcquisitionMode.LEASING,
+      financingStart: '2026-08-01',
+      financingEnd: '2030-08-01',
+      monthlyPayment: 650,
+      targetQuantity: 1,
+    });
+
+    expect(profile).toEqual(
+      expect.objectContaining({
+        brand: 'Rational',
+        acquisitionMode: EquipmentAcquisitionMode.LEASING,
+        monthlyPayment: 650,
+        targetQuantity: 1,
+      }),
+    );
+    expect(profile.financingStart).toEqual(new Date('2026-08-01'));
+    expect(profile.financingEnd).toEqual(new Date('2030-08-01'));
+  });
+
+  it('rejects a financing ending before it starts', () => {
+    const service = new StocksService({} as any);
+
+    expect(() =>
+      (service as any).equipmentProfileData({
+        financingStart: '2030-08-01',
+        financingEnd: '2026-08-01',
+      }),
+    ).toThrow('La fin du financement doit être postérieure');
   });
 });
 
@@ -106,12 +213,22 @@ describe('CreateStockMovementDto manual movement types', () => {
     quantity: 1,
   };
 
-  it.each([StockMovementType.IN, StockMovementType.OUT, StockMovementType.LOSS, StockMovementType.TRANSFER])('accepts %s', async (type) => {
+  it.each([
+    StockMovementType.IN,
+    StockMovementType.OUT,
+    StockMovementType.LOSS,
+    StockMovementType.TRANSFER,
+  ])('accepts %s', async (type) => {
     const errors = await validate(plainToInstance(CreateStockMovementDto, { ...payload, type }));
     expect(errors).toHaveLength(0);
   });
 
-  it.each([StockMovementType.RECEPTION, StockMovementType.PRODUCTION, StockMovementType.CORRECTION, StockMovementType.INVENTORY])('rejects manual %s', async (type) => {
+  it.each([
+    StockMovementType.RECEPTION,
+    StockMovementType.PRODUCTION,
+    StockMovementType.CORRECTION,
+    StockMovementType.INVENTORY,
+  ])('rejects manual %s', async (type) => {
     const errors = await validate(plainToInstance(CreateStockMovementDto, { ...payload, type }));
     expect(errors.some((error) => Boolean(error.constraints?.isIn))).toBe(true);
   });
@@ -142,7 +259,9 @@ describe('StocksService manual product stock adjustment', () => {
         create: jest.fn(),
       },
       stockMovement: {
-        create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'movement-1', ...data })),
+        create: jest
+          .fn()
+          .mockImplementation(({ data }) => Promise.resolve({ id: 'movement-1', ...data })),
       },
       auditLog: { create: jest.fn().mockResolvedValue({}) },
       productSite: { upsert: jest.fn().mockResolvedValue({}) },
@@ -239,9 +358,7 @@ describe('StocksService manual product stock adjustment', () => {
 
 describe('AdjustProductStockDto', () => {
   it('rejects a negative counted quantity', async () => {
-    const errors = await validate(
-      plainToInstance(AdjustProductStockDto, { quantity: -1 }),
-    );
+    const errors = await validate(plainToInstance(AdjustProductStockDto, { quantity: -1 }));
     expect(errors.some((error) => Boolean(error.constraints?.min))).toBe(true);
   });
 });

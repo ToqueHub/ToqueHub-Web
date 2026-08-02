@@ -243,6 +243,24 @@ type ProductMutationPayload = {
   shelfLifeAfterOpening?: string | null;
   storageInstructions?: string | null;
   preparationInstructions?: string | null;
+  kind?: 'UNSPECIFIED' | 'RAW_MATERIAL' | 'INTERMEDIATE' | 'FINISHED' | 'PACKAGED' | 'EQUIPMENT';
+  equipment?: {
+    brand?: string | null;
+    model?: string | null;
+    purchaseUrl?: string | null;
+    purchasedAt?: string | null;
+    warrantyEndsAt?: string | null;
+    condition?: 'IN_SERVICE' | 'TO_MONITOR' | 'OUT_OF_SERVICE';
+    targetQuantity?: number | null;
+    acquisitionMode?: 'CASH' | 'CREDIT' | 'LEASING' | 'RENTAL';
+    financingProvider?: string | null;
+    financingStart?: string | null;
+    financingEnd?: string | null;
+    monthlyPayment?: number | null;
+    financedAmount?: number | null;
+    buyoutValue?: number | null;
+    notes?: string | null;
+  } | null;
 };
 
 export class ApiError extends Error {
@@ -803,11 +821,7 @@ export const api = {
   purchasingCategories(token: string, supplierId: string, siteId?: string) {
     const params = new URLSearchParams({ supplierId });
     if (siteId) params.set('siteId', siteId);
-    return request<Category[]>(
-      `/purchasing/references/categories?${params}`,
-      {},
-      token,
-    );
+    return request<Category[]>(`/purchasing/references/categories?${params}`, {}, token);
   },
   purchasingProductHighlights(token: string, supplierId: string, siteId?: string) {
     const params = new URLSearchParams({ supplierId });
@@ -859,11 +873,7 @@ export const api = {
         recommendedQuantity: number;
         estimatedAmount: number;
       }>;
-    }>(
-      `/purchasing/orders/suggestions${params.toString() ? `?${params}` : ''}`,
-      {},
-      token,
-    );
+    }>(`/purchasing/orders/suggestions${params.toString() ? `?${params}` : ''}`, {}, token);
   },
   createPurchaseOrder(token: string, payload: PurchaseOrderPayload) {
     return request<PurchaseOrder>(
@@ -3163,9 +3173,22 @@ export const api = {
   categories(token: string) {
     return request<Category[]>('/categories', {}, token);
   },
-  createCategory(token: string, payload: { name: string; description?: string }) {
+  equipmentCategories(token: string) {
+    return request<Category[]>('/equipment/categories', {}, token);
+  },
+  createCategory(
+    token: string,
+    payload: { name: string; description?: string; kind?: 'EQUIPMENT' },
+  ) {
     return request<Category>(
       '/categories',
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
+  },
+  createEquipmentCategory(token: string, payload: { name: string; description?: string }) {
+    return request<Category>(
+      '/equipment/categories',
       { method: 'POST', body: JSON.stringify(payload) },
       token,
     );
@@ -3204,6 +3227,7 @@ export const api = {
     params: {
       search?: string;
       includeArchived?: boolean;
+      kind?: string;
       page?: number;
       pageSize?: number;
     } = {},
@@ -3212,17 +3236,19 @@ export const api = {
     if (params.search) query.set('search', params.search);
     if (params.includeArchived !== undefined)
       query.set('includeArchived', String(params.includeArchived));
+    if (params.kind) query.set('kind', params.kind);
     if (params.page) query.set('page', String(params.page));
     if (params.pageSize) query.set('pageSize', String(params.pageSize));
     return request<Product[]>(`/products${query.toString() ? `?${query}` : ''}`, {}, token);
   },
-  async allProducts(token: string, params: { includeArchived?: boolean } = {}) {
+  async allProducts(token: string, params: { includeArchived?: boolean; kind?: string } = {}) {
     const pageSize = 200;
     const items: Product[] = [];
     for (let page = 1; ; page += 1) {
       const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
       if (params.includeArchived !== undefined)
         query.set('includeArchived', String(params.includeArchived));
+      if (params.kind) query.set('kind', params.kind);
       const batch = await request<Product[]>(`/products?${query}`, {}, token);
       items.push(...batch);
       if (batch.length < pageSize) return items;
@@ -3236,6 +3262,7 @@ export const api = {
       supplierId?: string;
       siteId?: string;
       status?: string;
+      kind?: string;
       page?: number;
       pageSize?: number;
     },
@@ -3246,6 +3273,7 @@ export const api = {
     if (params?.supplierId) query.set('supplierId', params.supplierId);
     if (params?.siteId) query.set('siteId', params.siteId);
     if (params?.status) query.set('status', params.status);
+    if (params?.kind) query.set('kind', params.kind);
     if (params?.page) query.set('page', String(params.page));
     if (params?.pageSize) query.set('pageSize', String(params.pageSize));
     return request<ArticlesResponse>(`/articles${query.toString() ? `?${query}` : ''}`, {}, token);
@@ -3405,11 +3433,7 @@ export const api = {
       products: number;
       siteIds: string[];
       assignmentsCreated: number;
-    }>(
-      '/products/sites/assign',
-      { method: 'POST', body: JSON.stringify(payload) },
-      token,
-    );
+    }>('/products/sites/assign', { method: 'POST', body: JSON.stringify(payload) }, token);
   },
   previewProductCreator(
     token: string,
@@ -3520,11 +3544,13 @@ export const api = {
   lots(token: string) {
     return request<Lot[]>('/lots', {}, token);
   },
-  stocks(token: string) {
-    return request<Stock[]>('/stocks', {}, token);
+  stocks(token: string, kind?: string) {
+    const query = kind ? `?kind=${encodeURIComponent(kind)}` : '';
+    return request<Stock[]>(`/stocks${query}`, {}, token);
   },
-  movements(token: string) {
-    return request<StockMovement[]>('/stock-movements', {}, token);
+  movements(token: string, kind?: string) {
+    const query = kind ? `?kind=${encodeURIComponent(kind)}` : '';
+    return request<StockMovement[]>(`/stock-movements${query}`, {}, token);
   },
   stocksDashboard(token: string) {
     return request<StocksDashboard>('/stocks/dashboard', {}, token);

@@ -10,10 +10,13 @@ import { mkdir, readFile, writeFile } from 'fs/promises';
 import { extname, join, resolve } from 'path';
 import {
   DocumentStatus,
+  EquipmentAcquisitionMode,
+  EquipmentCondition,
   OcrBusinessExtractionStatus,
   OcrExtractionType,
   OcrProcessingStatus,
   Prisma,
+  ProductKind,
   StockReceptionLineMatchingStatus,
   StockReceptionStatus,
   HaccpReceptionControlStatus,
@@ -169,12 +172,7 @@ const STOCKS_OCR_CATEGORY_HINTS = [
 ];
 
 type BusinessDocumentType =
-  | 'invoice'
-  | 'delivery_note'
-  | 'receipt'
-  | 'supplier_order'
-  | 'order_confirmation'
-  | 'unknown';
+  'invoice' | 'delivery_note' | 'receipt' | 'supplier_order' | 'order_confirmation' | 'unknown';
 const BUSINESS_DOCUMENT_TYPES: BusinessDocumentType[] = [
   'invoice',
   'delivery_note',
@@ -1763,18 +1761,28 @@ export class StocksOcrService {
       where: { id: line.unitId, organizationId, isArchived: false },
     });
     if (!unit) throw new BadRequestException(`Unité introuvable pour le produit « ${name} ».`);
+    const productKind = line.productKind ?? ProductKind.UNSPECIFIED;
     if (line.categoryId) {
       const category = await tx.category.findFirst({
         where: { id: line.categoryId, organizationId, isArchived: false },
       });
       if (!category)
         throw new BadRequestException(`Catégorie introuvable pour le produit « ${name} ».`);
+      if (
+        (category.kind === ProductKind.EQUIPMENT) !== (productKind === ProductKind.EQUIPMENT)
+      ) {
+        throw new BadRequestException(`La catégorie sélectionnée ne correspond pas à « ${name} ».`);
+      }
     }
     const sku = line.reference?.trim() || null;
     const existing = await tx.product.findFirst({
       where: {
         organizationId,
         isArchived: false,
+        kind:
+          productKind === ProductKind.EQUIPMENT
+            ? ProductKind.EQUIPMENT
+            : { not: ProductKind.EQUIPMENT },
         OR: [{ name: { equals: name, mode: 'insensitive' } }, ...(sku ? [{ sku }] : [])],
       },
       include: { unit: true },
@@ -1784,6 +1792,17 @@ export class StocksOcrService {
       data: {
         organizationId,
         name,
+        kind: productKind,
+        equipmentProfile:
+          productKind === ProductKind.EQUIPMENT
+            ? {
+                create: {
+                  organizationId,
+                  acquisitionMode: EquipmentAcquisitionMode.CASH,
+                  condition: EquipmentCondition.IN_SERVICE,
+                },
+              }
+            : undefined,
         sku,
         description: line.descriptionOriginal || null,
         unitId: unit.id,

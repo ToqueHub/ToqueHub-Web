@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -8,6 +8,7 @@ import { CreateCategoryDto } from './dto/create-category.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { CreateUnitDto } from './dto/create-unit.dto';
+import { ListQueryDto } from '../stocks/dto/stocks-reference.dto';
 
 @ApiTags('catalog')
 @ApiBearerAuth()
@@ -18,15 +19,17 @@ export class CatalogController {
 
   private requireOrganization(user: AuthenticatedUser) {
     if (!user.organizationId) {
-      throw new BadRequestException('Organization setup is required before using catalog endpoints');
+      throw new BadRequestException(
+        'Organization setup is required before using catalog endpoints',
+      );
     }
     return user.organizationId;
   }
 
   @Get('categories')
   @ApiOkResponse({ description: 'List product categories for the current organization.' })
-  listCategories(@CurrentUser() user: AuthenticatedUser) {
-    return this.catalogService.listCategories(this.requireOrganization(user));
+  listCategories(@CurrentUser() user: AuthenticatedUser, @Query() query: ListQueryDto) {
+    return this.catalogService.listCategories(this.requireOrganization(user), query);
   }
 
   @Post('categories')

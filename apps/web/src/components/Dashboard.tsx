@@ -116,6 +116,7 @@ import { GuidedWizard } from './ui/GuidedWizard';
 import { DocumentOcrAnalysisPanel } from './ui/DocumentOcrAnalysisPanel';
 import { GuidedWelcome } from './ui/GuidedWelcome';
 import { WorkspaceOnboarding } from './WorkspaceOnboarding';
+import { EquipmentForm, EquipmentPage, type EquipmentFormPayload } from './stocks/EquipmentPage';
 
 const PurchasingApp = lazy(() =>
   import('./PurchasingApp').then((module) => ({ default: module.PurchasingApp })),
@@ -425,6 +426,7 @@ type ActiveTab =
   | 'stocks-dashboard'
   | 'stocks-margins'
   | 'articles'
+  | 'equipment'
   | 'inventory'
   | 'movements'
   | 'products'
@@ -501,6 +503,7 @@ type StocksSettingsTab = 'categories' | 'units' | 'movements' | 'locations' | 'a
 const STOCKS_ALL_TABS: ActiveTab[] = [
   'stocks-dashboard',
   'articles',
+  'equipment',
   'stocks-margins',
   'categories',
   'units',
@@ -515,6 +518,7 @@ const isStocksSettingsRoute = (tab: ActiveTab): tab is StocksSettingsTab =>
 const STOCKS_NAV_TABS: Array<{ tab: ActiveTab; label: string }> = [
   { tab: 'stocks-dashboard', label: 'Tableau de bord' },
   { tab: 'articles', label: 'Produits' },
+  { tab: 'equipment', label: 'Matériel' },
   { tab: 'suppliers', label: 'Fournisseur' },
   { tab: 'inventories', label: 'Inventaire' },
   { tab: 'categories', label: 'Réglage' },
@@ -563,12 +567,16 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
   // Data State
   const [categories, setCategories] = useState<Category[]>([]);
+  const [equipmentCategories, setEquipmentCategories] = useState<Category[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [articles, setArticles] = useState<ArticlesResponse | null>(null);
+  const [equipmentArticles, setEquipmentArticles] = useState<ArticlesResponse | null>(null);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [stocks, setStocks] = useState<Stock[]>([]);
+  const [equipmentStocks, setEquipmentStocks] = useState<Stock[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
+  const [equipmentMovements, setEquipmentMovements] = useState<StockMovement[]>([]);
   const [sites, setSites] = useState<Site[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [inventories, setInventories] = useState<Inventory[]>([]);
@@ -634,8 +642,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
   // Modal Visibility State
   const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [showEquipmentCategoryModal, setShowEquipmentCategoryModal] = useState(false);
   const [showUnitModal, setShowUnitModal] = useState(false);
   const [showProductModal, setShowProductModal] = useState(false);
+  const [showEquipmentModal, setShowEquipmentModal] = useState(false);
   const [showAddImportModal, setShowAddImportModal] = useState(false);
   const [showProductImportModal, setShowProductImportModal] = useState(false);
   const [showProductCreatorModal, setShowProductCreatorModal] = useState(false);
@@ -644,11 +654,13 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const [showMovementModal, setShowMovementModal] = useState(false);
   const [movementProductId, setMovementProductId] = useState<string>();
+  const [movementScope, setMovementScope] = useState<'PRODUCT' | 'EQUIPMENT'>('PRODUCT');
   const [showSiteModal, setShowSiteModal] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [showInventoryModal, setShowInventoryModal] = useState(false);
   const [showOcrImportModal, setShowOcrImportModal] = useState(false);
   const [showOcrReviewModal, setShowOcrReviewModal] = useState(false);
+  const [ocrImportKind, setOcrImportKind] = useState<'UNSPECIFIED' | 'EQUIPMENT'>('UNSPECIFIED');
   const [showProductOcrTracking, setShowProductOcrTracking] = useState(false);
   const [ocrStatuses, setOcrStatuses] = useState<StocksOcrStatus[]>([]);
   const [productLabelOcrStatuses, setProductLabelOcrStatuses] = useState<
@@ -668,6 +680,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [documentsDateFrom, setDocumentsDateFrom] = useState('');
   const [documentsDateTo, setDocumentsDateTo] = useState('');
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [selectedEquipment, setSelectedEquipment] = useState<Article | null>(null);
   const [selectedProductSiteId, setSelectedProductSiteId] = useState<string | null>(null);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
@@ -779,12 +792,16 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         summaryResult,
         modularDashboardResult,
         nextCategories,
+        nextEquipmentCategories,
         nextUnits,
         nextProducts,
         nextArticles,
+        nextEquipmentArticles,
         nextSuppliers,
         nextStocks,
+        nextEquipmentStocks,
         nextMovements,
+        nextEquipmentMovements,
         nextSites,
         nextLocations,
         nextInventories,
@@ -798,6 +815,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         api.dashboardSummary(token).catch(() => undefined),
         api.modularDashboard(token).catch(() => undefined),
         api.categories(token),
+        api.equipmentCategories(token),
         api.units(token),
         api.allProducts(token),
         api.articles(token, { page: 1, pageSize: 25 }).catch(() => ({
@@ -810,9 +828,21 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             lowStockCount: 0,
           },
         })),
+        api.articles(token, { kind: 'EQUIPMENT', page: 1, pageSize: 100 }).catch(() => ({
+          items: [],
+          summary: {
+            articleCount: 0,
+            articlesWithStock: 0,
+            articlesWithoutStock: 0,
+            stockValue: 0,
+            lowStockCount: 0,
+          },
+        })),
         api.suppliers(token),
         api.stocks(token),
+        api.stocks(token, 'EQUIPMENT').catch(() => []),
         api.movements(token),
+        api.movements(token, 'EQUIPMENT').catch(() => []),
         api.sites(token).catch(() => []),
         api.locations(token).catch(() => []),
         api.inventories(token).catch(() => []),
@@ -836,13 +866,19 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         setLayoutMode(modularDashboardResult.preferences.layoutMode ?? 'split');
         setAutoHideSidebar(Boolean(modularDashboardResult.preferences.autoHideSidebar));
       }
-      setCategories(nextCategories);
+      setCategories(nextCategories.filter((category) => category.kind !== 'EQUIPMENT'));
+      setEquipmentCategories(
+        nextEquipmentCategories.filter((category) => category.kind === 'EQUIPMENT'),
+      );
       setUnits(nextUnits);
       setProducts(nextProducts);
       setArticles(nextArticles);
+      setEquipmentArticles(nextEquipmentArticles);
       setSuppliers(nextSuppliers);
       setStocks(nextStocks);
+      setEquipmentStocks(nextEquipmentStocks);
       setMovements(nextMovements);
+      setEquipmentMovements(nextEquipmentMovements);
       setSites(nextSites);
       setLocations(nextLocations);
       setInventories(nextInventories);
@@ -1495,6 +1531,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         submenu: [
           { tab: 'stocks-dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
           { tab: 'articles', label: 'Produits', icon: Package },
+          { tab: 'equipment', label: 'Matériel', icon: Boxes },
           { tab: 'suppliers', label: 'Fournisseur', icon: UsersRound },
           { tab: 'inventories', label: 'Inventaire', icon: ClipboardList },
           {
@@ -2598,6 +2635,17 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     setShowCategoryModal(false);
   }
 
+  async function handleCreateEquipmentCategory(payload: {
+    name: string;
+    description?: string;
+  }) {
+    await submit(
+      () => api.createEquipmentCategory(token, payload),
+      'Catégorie de matériel créée avec succès.',
+    );
+    setShowEquipmentCategoryModal(false);
+  }
+
   async function handleUpdateCategory(
     categoryId: string,
     payload: { name: string; description?: string },
@@ -2635,6 +2683,40 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
   async function handleUpdateProduct(productId: string, payload: ProductFormPayload) {
     await submit(() => api.updateProduct(token, productId, payload), 'Fiche produit mise à jour.');
+  }
+
+  async function handleSaveEquipment(payload: EquipmentFormPayload) {
+    const editing = selectedEquipment;
+    await submit(
+      async () => {
+        const product = editing
+          ? await api.updateProduct(token, editing.product.id, payload.product)
+          : await api.createProduct(token, payload.product);
+        const currentQuantity = editing
+          ? numeric(
+              editing.stockBySite.find((site) => site.siteId === payload.siteId)?.quantity ??
+                (payload.siteId ? 0 : editing.stock.quantity),
+            )
+          : 0;
+        const nextQuantity = numeric(payload.quantity);
+        if (payload.siteId && nextQuantity !== currentQuantity) {
+          await api.adjustProductStock(token, product.id, {
+            siteId: payload.siteId,
+            quantity: nextQuantity,
+            reason: editing ? 'Mise à jour de la fiche matériel' : 'Stock initial du matériel',
+          });
+        }
+        return product;
+      },
+      editing ? 'Matériel mis à jour.' : 'Matériel ajouté au parc.',
+    );
+    setShowEquipmentModal(false);
+    setSelectedEquipment(null);
+  }
+
+  function openEquipmentOcr() {
+    setOcrImportKind('EQUIPMENT');
+    setShowOcrImportModal(true);
   }
 
   async function handleUploadProductLabelOcr(productId: string, files: File[]) {
@@ -2837,14 +2919,16 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     closeMovementModal();
   }
 
-  function openMovementModal(productId?: string) {
+  function openMovementModal(productId?: string, scope: 'PRODUCT' | 'EQUIPMENT' = 'PRODUCT') {
     setMovementProductId(productId);
+    setMovementScope(scope);
     setShowMovementModal(true);
   }
 
   function closeMovementModal() {
     setShowMovementModal(false);
     setMovementProductId(undefined);
+    setMovementScope('PRODUCT');
   }
 
   async function handleUploadStocksOcr(files: File[]) {
@@ -2890,7 +2974,49 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
   async function handleOpenOcrExtraction(extractionId: string) {
     const extraction = await api.stocksOcrExtraction(token, extractionId);
-    setSelectedOcrExtraction(extraction);
+    const equipmentProductIds = new Set(
+      equipmentArticles?.items.map((item) => item.product.id) ?? [],
+    );
+    const equipmentCategoryIds = new Set(equipmentCategories.map((category) => category.id));
+    setSelectedOcrExtraction(
+      ocrImportKind === 'EQUIPMENT'
+        ? {
+            ...extraction,
+            data: {
+              ...extraction.data,
+              lines: extraction.data.lines.map((line) => {
+                const productId =
+                  line.productId && equipmentProductIds.has(line.productId)
+                    ? line.productId
+                    : null;
+                const categoryId =
+                  line.categoryId && equipmentCategoryIds.has(line.categoryId)
+                    ? line.categoryId
+                    : null;
+                const suggestedCategoryId =
+                  line.suggestedCategoryId && equipmentCategoryIds.has(line.suggestedCategoryId)
+                    ? line.suggestedCategoryId
+                    : null;
+                return {
+                  ...line,
+                  productId,
+                  categoryId,
+                  categoryName: categoryId ? line.categoryName : null,
+                  suggestedCategoryId,
+                  suggestedCategoryName: suggestedCategoryId
+                    ? line.suggestedCategoryName
+                    : null,
+                  productCandidates: (line.productCandidates ?? []).filter((candidate) =>
+                    equipmentProductIds.has(candidate.id),
+                  ),
+                  createProduct: line.createProduct || !productId,
+                  productKind: 'EQUIPMENT',
+                };
+              }),
+            },
+          }
+        : extraction,
+    );
     setShowOcrReviewModal(true);
   }
 
@@ -2933,6 +3059,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     setShowOcrReviewModal(false);
     setShowOcrImportModal(false);
     setSelectedOcrExtraction(null);
+    setOcrImportKind('UNSPECIFIED');
   }
 
   async function handleCreateOcrProductFromLine(line: StocksOcrLine, supplierId?: string | null) {
@@ -2950,15 +3077,22 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     const unitPrice = roundOcrPrice(
       lineTotal > 0 && quantity > 0 ? lineTotal / quantity : numeric(line.unitPrice),
     );
+    const availableProducts =
+      ocrImportKind === 'EQUIPMENT'
+        ? (equipmentArticles?.items.map((item) => item.product) ?? [])
+        : products;
+    const availableCategories =
+      ocrImportKind === 'EQUIPMENT' ? equipmentCategories : categories;
     const categoryId = await resolveOcrCategoryIdForCreate(
       token,
       line,
-      categories,
-      products,
+      availableCategories,
+      availableProducts,
       supplierId,
+      ocrImportKind === 'EQUIPMENT' ? 'EQUIPMENT' : undefined,
     );
     const description = ocrProductDescription(line);
-    const existing = products.find(
+    const existing = availableProducts.find(
       (product) =>
         (reference && product.sku === reference) ||
         normalizeLookup(product.name) === normalizeLookup(name),
@@ -3008,6 +3142,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                       existing.averagePurchasePrice ??
                       existing.weightedAveragePrice,
                   ),
+              kind: ocrImportKind === 'EQUIPMENT' ? 'EQUIPMENT' : undefined,
             }),
           shouldUpdateSupplier
             ? 'Fournisseur produit lié depuis l’OCR.'
@@ -3028,6 +3163,11 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           categoryId,
           primarySupplierId: supplierId || undefined,
           averagePrice: unitPrice,
+          kind: ocrImportKind === 'EQUIPMENT' ? 'EQUIPMENT' : undefined,
+          equipment:
+            ocrImportKind === 'EQUIPMENT'
+              ? { acquisitionMode: 'CASH', condition: 'IN_SERVICE' }
+              : undefined,
         }),
       'Produit créé depuis l’OCR.',
     )) as Product;
@@ -3271,6 +3411,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     architecture: 'Architecture',
     'stocks-dashboard': 'Stocks',
     articles: 'Produits',
+    equipment: 'Matériel',
     'stocks-margins': 'Marges',
     inventory: 'Stocks',
     movements: 'Mouvements',
@@ -4769,12 +4910,14 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   locations={locations}
                   stocks={stocks}
                   movements={movements}
+                  equipment={equipmentArticles}
                   ocrStatuses={ocrStatuses}
                   readiness={stocksReadiness}
                   onCreateMovement={() => openMovementModal()}
                   onImportOcr={() => setShowAddImportModal(true)}
                   onOpenExtraction={handleOpenOcrExtraction}
                   onOpenStocks={() => setActiveTab('articles')}
+                  onOpenEquipment={() => setActiveTab('equipment')}
                   onNavigate={goToTab}
                   onStartOnboarding={() => setShowStocksOnboarding(true)}
                   onCreateProduct={() => setShowAddImportModal(true)}
@@ -4815,6 +4958,41 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                       api.assignProductSites(token, { siteIds, onlyUnassigned: true })
                     }
                     onRefresh={refresh}
+                  />
+                </>
+              )}
+
+              {activeTab === 'equipment' && (
+                <>
+                  {renderStocksModuleNav()}
+                  <EquipmentPage
+                    data={
+                      equipmentArticles ?? {
+                        items: [],
+                        summary: {
+                          articleCount: 0,
+                          articlesWithStock: 0,
+                          articlesWithoutStock: 0,
+                          stockValue: 0,
+                          lowStockCount: 0,
+                        },
+                      }
+                    }
+                    categories={equipmentCategories}
+                    suppliers={suppliers}
+                    sites={sites}
+                    primarySiteId={session.user.primarySiteId ?? undefined}
+                    onAdd={() => {
+                      setSelectedEquipment(null);
+                      setShowEquipmentModal(true);
+                    }}
+                    onImportOcr={openEquipmentOcr}
+                    onMovement={(productId) => openMovementModal(productId, 'EQUIPMENT')}
+                    onCreateCategory={() => setShowEquipmentCategoryModal(true)}
+                    onEdit={(article) => {
+                      setSelectedEquipment(article);
+                      setShowEquipmentModal(true);
+                    }}
                   />
                 </>
               )}
@@ -5537,6 +5715,19 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         <CategoryForm onSubmit={handleCreateCategory} onClose={() => setShowCategoryModal(false)} />
       </Modal>
 
+      <Modal
+        isOpen={showEquipmentCategoryModal}
+        onClose={() => setShowEquipmentCategoryModal(false)}
+        title="Créer une catégorie de matériel"
+      >
+        <CategoryForm
+          onSubmit={handleCreateEquipmentCategory}
+          onClose={() => setShowEquipmentCategoryModal(false)}
+          namePlaceholder="ex : Cuisson, Froid, Petit matériel…"
+          descriptionPlaceholder="Description de cette famille de matériel…"
+        />
+      </Modal>
+
       <CategoryDetailModal
         category={selectedCategory}
         products={products}
@@ -5589,6 +5780,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                 }}
                 onOcr={() => {
                   setShowAddImportModal(false);
+                  setOcrImportKind('UNSPECIFIED');
                   setShowOcrImportModal(true);
                 }}
               />
@@ -5640,6 +5832,31 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           onClose={() => {
             setProductPrefillName('');
             setShowProductModal(false);
+          }}
+        />
+      </Modal>
+
+      <Modal
+        isOpen={showEquipmentModal}
+        onClose={() => {
+          setShowEquipmentModal(false);
+          setSelectedEquipment(null);
+        }}
+        title={
+          selectedEquipment ? `Modifier ${selectedEquipment.product.name}` : 'Ajouter du matériel'
+        }
+        size="product"
+      >
+        <EquipmentForm
+          article={selectedEquipment}
+          categories={equipmentCategories}
+          units={units}
+          suppliers={suppliers}
+          sites={sites.filter((site) => !isArchived(site))}
+          onSubmit={handleSaveEquipment}
+          onClose={() => {
+            setShowEquipmentModal(false);
+            setSelectedEquipment(null);
           }}
         />
       </Modal>
@@ -5715,11 +5932,19 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       <Modal
         isOpen={showMovementModal}
         onClose={closeMovementModal}
-        title="Enregistrer un mouvement de stock"
+        title={
+          movementScope === 'EQUIPMENT'
+            ? 'Enregistrer un mouvement de matériel'
+            : 'Enregistrer un mouvement de stock'
+        }
         size="product"
       >
         <MovementForm
-          products={products}
+          products={
+            movementScope === 'EQUIPMENT'
+              ? (equipmentArticles?.items.map((item) => item.product) ?? [])
+              : products
+          }
           suppliers={suppliers}
           units={units}
           sites={sites}
@@ -5733,8 +5958,15 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
       <Modal
         isOpen={showOcrImportModal}
-        onClose={() => setShowOcrImportModal(false)}
-        title="Analyser ticket / bon de commande / facture / BL"
+        onClose={() => {
+          setShowOcrImportModal(false);
+          setOcrImportKind('UNSPECIFIED');
+        }}
+        title={
+          ocrImportKind === 'EQUIPMENT'
+            ? 'Analyser une facture ou un contrat de matériel'
+            : 'Analyser ticket / bon de commande / facture / BL'
+        }
         size="lg"
       >
         <DocumentOcrAnalysisPanel
@@ -5753,14 +5985,20 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       <Modal
         isOpen={showOcrReviewModal}
         onClose={() => setShowOcrReviewModal(false)}
-        title="Valider la réception OCR"
+        title={
+          ocrImportKind === 'EQUIPMENT' ? 'Valider le matériel détecté' : 'Valider la réception OCR'
+        }
         size="full"
       >
         {selectedOcrExtraction && (
           <StocksOcrReviewPanel
             extraction={selectedOcrExtraction}
-            products={products}
-            categories={categories}
+            products={
+              ocrImportKind === 'EQUIPMENT'
+                ? (equipmentArticles?.items.map((item) => item.product) ?? [])
+                : products
+            }
+            categories={ocrImportKind === 'EQUIPMENT' ? equipmentCategories : categories}
             suppliers={suppliers}
             units={units}
             sites={sites}
@@ -5920,6 +6158,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           }}
           onImportOcr={() => {
             setShowStocksOnboarding(false);
+            setOcrImportKind('UNSPECIFIED');
             setShowOcrImportModal(true);
           }}
           onCreateMovement={() => {
@@ -5941,6 +6180,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           }}
           onOpenOcr={() => {
             setShowStocksOnboarding(false);
+            setOcrImportKind('UNSPECIFIED');
             setShowOcrImportModal(true);
           }}
           onClose={closeStocksOnboardingToDashboard}
@@ -7254,7 +7494,12 @@ function inferOcrCategoryId(line: StocksOcrLine, categories: Category[], product
 
   const candidateWithCategory = (line.productCandidates || [])
     .map((candidate) => ({ candidate, score: numeric(candidate.score) }))
-    .filter(({ candidate, score }) => candidate.categoryId && score >= 0.58)
+    .filter(
+      ({ candidate, score }) =>
+        candidate.categoryId &&
+        activeCategories.some((category) => category.id === candidate.categoryId) &&
+        score >= 0.58,
+    )
     .sort((a, b) => b.score - a.score)[0]?.candidate;
   if (candidateWithCategory?.categoryId) return candidateWithCategory.categoryId;
 
@@ -7313,6 +7558,7 @@ async function resolveOcrCategoryIdForCreate(
   categories: Category[],
   products: Product[],
   supplierId?: string | null,
+  categoryKind?: 'EQUIPMENT',
 ) {
   const inferred =
     inferOcrCategoryId(line, categories, products) ||
@@ -7323,17 +7569,23 @@ async function resolveOcrCategoryIdForCreate(
     line.categoryName ?? line.suggestedCategoryName ?? keywordRule?.name ?? '',
   ).trim();
   if (suggestedCategoryName && !isGenericOcrCategoryName(suggestedCategoryName)) {
-    const cacheKey = `${token}:suggested:${normalizeLookup(suggestedCategoryName)}`;
+    const cacheKey = `${token}:${categoryKind ?? 'PRODUCT'}:suggested:${normalizeLookup(suggestedCategoryName)}`;
     if (!ocrFallbackCategoryCache.has(cacheKey)) {
       ocrFallbackCategoryCache.set(
         cacheKey,
-        api
-          .createCategory(token, {
-            name: suggestedCategoryName,
-            description: 'Catégorie proposée automatiquement par l’analyse IA OCR.',
-          })
+        (categoryKind
+          ? api.createEquipmentCategory(token, {
+              name: suggestedCategoryName,
+              description: 'Catégorie de matériel proposée automatiquement par l’analyse OCR.',
+            })
+          : api.createCategory(token, {
+              name: suggestedCategoryName,
+              description: 'Catégorie proposée automatiquement par l’analyse IA OCR.',
+            }))
           .catch(async () => {
-            const refreshed = await api.categories(token);
+            const refreshed = categoryKind
+              ? await api.equipmentCategories(token)
+              : await api.categories(token);
             const existing = refreshed.find(
               (category) =>
                 normalizeLookup(category.name) === normalizeLookup(suggestedCategoryName),
@@ -7359,18 +7611,25 @@ async function resolveOcrCategoryIdForCreate(
     return !isArchived(category) && ['diversproduits', 'autres', 'divers'].includes(key);
   });
   if (fallback) return fallback.id;
-  const cacheKey = `${token}:${OCR_FALLBACK_CATEGORY_NAME}`;
+  const cacheKey = `${token}:${categoryKind ?? 'PRODUCT'}:${OCR_FALLBACK_CATEGORY_NAME}`;
   if (!ocrFallbackCategoryCache.has(cacheKey)) {
     ocrFallbackCategoryCache.set(
       cacheKey,
-      api
-        .createCategory(token, {
-          name: OCR_FALLBACK_CATEGORY_NAME,
-          description:
-            'Catégorie créée automatiquement pour les produits OCR quand aucune catégorie métier fiable n’existe encore.',
-        })
+      (categoryKind
+        ? api.createEquipmentCategory(token, {
+            name: OCR_FALLBACK_CATEGORY_NAME,
+            description:
+              'Catégorie créée automatiquement pour le matériel OCR non encore classé.',
+          })
+        : api.createCategory(token, {
+            name: OCR_FALLBACK_CATEGORY_NAME,
+            description:
+              'Catégorie créée automatiquement pour les produits OCR quand aucune catégorie métier fiable n’existe encore.',
+          }))
         .catch(async () => {
-          const refreshed = await api.categories(token);
+          const refreshed = categoryKind
+            ? await api.equipmentCategories(token)
+            : await api.categories(token);
           const existing = refreshed.find(
             (category) =>
               normalizeLookup(category.name) === normalizeLookup(OCR_FALLBACK_CATEGORY_NAME),
@@ -8917,8 +9176,7 @@ function computeStocksReadiness(
   const catalogReady = Boolean(activeProducts.length);
   const hasValidatedOcr = ocrStatuses.some((status) => {
     const document = status.document as unknown as
-      | { receptionId?: string | null; receptionStatus?: string | null }
-      | undefined;
+      { receptionId?: string | null; receptionStatus?: string | null } | undefined;
     return Boolean(
       document?.receptionId ||
       document?.receptionStatus === 'VALIDATED' ||
@@ -12705,6 +12963,7 @@ function StocksDashboardPage({
   locations,
   stocks,
   movements,
+  equipment,
   ocrStatuses,
   readiness,
   onCreateMovement,
@@ -12712,6 +12971,7 @@ function StocksDashboardPage({
   onOpenAssistant,
   onOpenExtraction,
   onOpenStocks,
+  onOpenEquipment,
   onNavigate,
   onStartOnboarding,
   onCreateProduct,
@@ -12723,6 +12983,7 @@ function StocksDashboardPage({
   locations: Location[];
   stocks: Stock[];
   movements: StockMovement[];
+  equipment: ArticlesResponse | null;
   ocrStatuses: StocksOcrStatus[];
   readiness: StocksReadiness;
   onCreateMovement: () => void;
@@ -12730,6 +12991,7 @@ function StocksDashboardPage({
   onOpenAssistant: () => void;
   onOpenExtraction: (extractionId: string) => Promise<void>;
   onOpenStocks: () => void;
+  onOpenEquipment: () => void;
   onNavigate: (tab: ActiveTab) => void;
   onStartOnboarding: () => void;
   onCreateProduct: () => void;
@@ -12770,6 +13032,24 @@ function StocksDashboardPage({
   monthStart.setHours(0, 0, 0, 0);
   const recentMovements = sortMovementsByRecency(movements).slice(0, 6);
   const movementsThisMonth = movements.filter((m) => movementEffectiveDate(m) >= monthStart).length;
+  const equipmentItems = equipment?.items ?? [];
+  const equipmentQuantity = equipmentItems.reduce(
+    (sum, item) => sum + numeric(item.stock.quantity),
+    0,
+  );
+  const equipmentValue = equipmentItems.reduce((sum, item) => sum + numeric(item.stock.value), 0);
+  const equipmentToRestock = equipmentItems.filter((item) => {
+    const quantity = numeric(item.stock.quantity);
+    const minimum = numeric(item.stock.minimumStock);
+    const target = numeric(item.product.equipmentProfile?.targetQuantity);
+    return quantity <= minimum || (target > 0 && quantity < target);
+  }).length;
+  const equipmentMonthlyPayments = equipmentItems.reduce((sum, item) => {
+    const profile = item.product.equipmentProfile;
+    if (!profile || profile.acquisitionMode === 'CASH') return sum;
+    if (profile.financingEnd && new Date(profile.financingEnd).getTime() < Date.now()) return sum;
+    return sum + numeric(profile.monthlyPayment);
+  }, 0);
   const topConsumed = Object.values(
     movements
       .filter((m) =>
@@ -12875,6 +13155,48 @@ function StocksDashboardPage({
           delay={4}
         />
       </div>
+
+      <section className="stocks-equipment-section">
+        <div className="stocks-equipment-section-heading">
+          <div>
+            <h2>Matériel</h2>
+            <p>Valeur, réassort et engagements du parc matériel.</p>
+          </div>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onOpenEquipment}>
+            Gérer le matériel <ArrowRight size={14} />
+          </button>
+        </div>
+        <div className="metrics-grid">
+          <Metric
+            icon={<Boxes size={20} />}
+            value={equipmentQuantity.toLocaleString('fr-FR')}
+            label="Matériels en parc"
+            tone="blue"
+            delay={1}
+          />
+          <Metric
+            icon={<TrendingUp size={20} />}
+            value={`${equipmentValue.toFixed(2)} €`}
+            label="Valeur matériel"
+            tone="emerald"
+            delay={2}
+          />
+          <Metric
+            icon={<AlertTriangle size={20} />}
+            value={equipmentToRestock}
+            label="À racheter"
+            tone="orange"
+            delay={3}
+          />
+          <Metric
+            icon={<CalendarCheck size={20} />}
+            value={`${equipmentMonthlyPayments.toFixed(2)} €`}
+            label="Mensualités actives"
+            tone="purple"
+            delay={4}
+          />
+        </div>
+      </section>
 
       <div className="double-panel">
         <motion.div
@@ -16963,12 +17285,7 @@ type SettingsSubTab =
   | 'api-keys'
   | 'core';
 type OrganizationSettingModal =
-  | 'name'
-  | 'establishmentType'
-  | 'regulatoryCountry'
-  | 'secondarySites'
-  | 'siteForm'
-  | null;
+  'name' | 'establishmentType' | 'regulatoryCountry' | 'secondarySites' | 'siteForm' | null;
 type SiteDraft = {
   name: string;
   description: string;
@@ -19946,9 +20263,16 @@ function ConfirmationModal({
 interface CategoryFormProps {
   onSubmit: (payload: { name: string; description?: string }) => Promise<void>;
   onClose: () => void;
+  namePlaceholder?: string;
+  descriptionPlaceholder?: string;
 }
 
-function CategoryForm({ onSubmit, onClose }: CategoryFormProps) {
+function CategoryForm({
+  onSubmit,
+  onClose,
+  namePlaceholder = 'ex: Épicerie, Produits laitiers...',
+  descriptionPlaceholder = 'Description de la catégorie...',
+}: CategoryFormProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -19982,7 +20306,7 @@ function CategoryForm({ onSubmit, onClose }: CategoryFormProps) {
       <label>
         Nom de la catégorie *
         <input
-          placeholder="ex: Épicerie, Produits laitiers..."
+          placeholder={namePlaceholder}
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
@@ -19992,7 +20316,7 @@ function CategoryForm({ onSubmit, onClose }: CategoryFormProps) {
       <label>
         Description
         <textarea
-          placeholder="Description de la catégorie..."
+          placeholder={descriptionPlaceholder}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           rows={3}
@@ -20283,13 +20607,7 @@ function UnitForm({ onSubmit, onClose }: UnitFormProps) {
 
 // Product Form
 type ProductSheetTab =
-  | 'identity'
-  | 'supplier'
-  | 'stock'
-  | 'packaging'
-  | 'allergens'
-  | 'nutrition'
-  | 'storage';
+  'identity' | 'supplier' | 'stock' | 'packaging' | 'allergens' | 'nutrition' | 'storage';
 
 const PRODUCT_SHEET_TABS: Array<{ id: ProductSheetTab; label: string }> = [
   { id: 'identity', label: 'Identité' },
@@ -21658,16 +21976,13 @@ function ProductDetailModal({
   const activeProduct = product;
 
   const productStocks = stocks.filter(
-    (stock) =>
-      stock.product?.id === activeProduct.id && (!siteId || stock.siteId === siteId),
+    (stock) => stock.product?.id === activeProduct.id && (!siteId || stock.siteId === siteId),
   );
   const productMovements = movements
     .filter(
       (movement) =>
         movement.product?.id === product.id &&
-        (!siteId ||
-          movement.sourceSite?.id === siteId ||
-          movement.destinationSite?.id === siteId),
+        (!siteId || movement.sourceSite?.id === siteId || movement.destinationSite?.id === siteId),
     )
     .slice(0, 6);
   const totalQuantity = productStocks.reduce(
@@ -22525,12 +22840,12 @@ function SupplierDetailModal({
                         {supplier.purchasingProfile?.deliveryMode === 'NO_DELIVERY'
                           ? 'Non applicable'
                           : supplier.purchasingProfile?.deliveryMode === 'SCHEDULED_DAYS'
-                          ? SUPPLIER_WEEKDAYS.filter((day) =>
-                              supplier.purchasingProfile?.deliveryWeekdays.includes(day.value),
-                            )
-                              .map((day) => day.label)
-                              .join(', ') || 'Non renseignés'
-                          : 'Tous les jours'}
+                            ? SUPPLIER_WEEKDAYS.filter((day) =>
+                                supplier.purchasingProfile?.deliveryWeekdays.includes(day.value),
+                              )
+                                .map((day) => day.label)
+                                .join(', ') || 'Non renseignés'
+                            : 'Tous les jours'}
                       </dd>
                     </div>
                     <div>

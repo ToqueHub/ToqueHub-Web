@@ -3,6 +3,7 @@ import { Transform, Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
+  IsDateString,
   IsEmail,
   IsEnum,
   IsIn,
@@ -16,7 +17,13 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { PurchasingDeliveryMode, UnitType } from '@prisma/client';
+import {
+  EquipmentAcquisitionMode,
+  EquipmentCondition,
+  ProductKind,
+  PurchasingDeliveryMode,
+  UnitType,
+} from '@prisma/client';
 
 export class ListQueryDto {
   @ApiPropertyOptional()
@@ -43,6 +50,11 @@ export class ListQueryDto {
   @IsNumber()
   @Min(1)
   pageSize?: number;
+
+  @ApiPropertyOptional({ enum: ProductKind })
+  @IsOptional()
+  @IsEnum(ProductKind)
+  kind?: ProductKind;
 }
 
 export class ListArticlesQueryDto extends ListQueryDto {
@@ -76,6 +88,11 @@ export class UpsertCategoryDto {
   @IsString()
   @MaxLength(500)
   description?: string;
+
+  @ApiPropertyOptional({ enum: ProductKind, default: ProductKind.UNSPECIFIED })
+  @IsOptional()
+  @IsEnum(ProductKind)
+  kind?: ProductKind;
 
   @IsOptional()
   @IsString()
@@ -193,6 +210,49 @@ export class UpsertSupplierDto {
   @ValidateNested()
   @Type(() => SupplierPurchasingSettingsDto)
   purchasing?: SupplierPurchasingSettingsDto;
+}
+
+export class UpsertEquipmentProfileDto {
+  @IsOptional() @IsString() @MaxLength(120) brand?: string | null;
+  @IsOptional() @IsString() @MaxLength(120) model?: string | null;
+  @IsOptional() @IsString() @MaxLength(2000) purchaseUrl?: string | null;
+  @IsOptional() @IsDateString() purchasedAt?: string | null;
+  @IsOptional() @IsDateString() warrantyEndsAt?: string | null;
+  @IsOptional() @IsEnum(EquipmentCondition) condition?: EquipmentCondition;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  targetQuantity?: number | null;
+
+  @IsOptional()
+  @IsEnum(EquipmentAcquisitionMode)
+  acquisitionMode?: EquipmentAcquisitionMode;
+
+  @IsOptional() @IsString() @MaxLength(180) financingProvider?: string | null;
+  @IsOptional() @IsDateString() financingStart?: string | null;
+  @IsOptional() @IsDateString() financingEnd?: string | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  monthlyPayment?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  financedAmount?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  buyoutValue?: number | null;
+
+  @IsOptional() @IsString() @MaxLength(5000) notes?: string | null;
 }
 
 export class UpsertProductDto {
@@ -367,6 +427,15 @@ export class UpsertProductDto {
   @IsString()
   @MaxLength(5000)
   preparationInstructions?: string | null;
+
+  @IsOptional()
+  @IsEnum(ProductKind)
+  kind?: ProductKind;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UpsertEquipmentProfileDto)
+  equipment?: UpsertEquipmentProfileDto | null;
 }
 
 export class UpsertSiteDto {

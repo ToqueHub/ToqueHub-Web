@@ -1,13 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { StocksService } from '../stocks/stocks.service';
-import { UpsertCategoryDto, UpsertUnitDto, UpsertProductDto, UpsertSupplierDto } from '../stocks/dto/stocks-reference.dto';
+import {
+  ListQueryDto,
+  UpsertCategoryDto,
+  UpsertUnitDto,
+  UpsertProductDto,
+  UpsertSupplierDto,
+} from '../stocks/dto/stocks-reference.dto';
 
 @Injectable()
 export class CatalogService {
   constructor(private readonly stocksService: StocksService) {}
 
-  listCategories(organizationId: string) {
-    return this.stocksService.listCategories(organizationId, {});
+  listCategories(organizationId: string, query: ListQueryDto = {}) {
+    return this.stocksService.listCategories(organizationId, query);
   }
 
   createCategory(organizationId: string, dto: UpsertCategoryDto) {

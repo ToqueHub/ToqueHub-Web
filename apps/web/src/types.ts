@@ -1,11 +1,5 @@
 export type EstablishmentType =
-  | 'Restaurant'
-  | 'EHPAD'
-  | 'Collectivité'
-  | 'Hôtel'
-  | 'Traiteur'
-  | 'Cuisine centrale'
-  | 'Autre';
+  'Restaurant' | 'EHPAD' | 'Collectivité' | 'Hôtel' | 'Traiteur' | 'Cuisine centrale' | 'Autre';
 export type TeamSize = '1-5' | '6-10' | '11-20' | '20+';
 export type HrCountryCode = 'FR' | 'FI';
 export type RegulatoryCountryCode = 'FR' | 'FI';
@@ -394,11 +388,7 @@ export interface DevSwitchConfig {
 export type WorkspaceOnboardingStatus = 'PENDING' | 'IN_PROGRESS' | 'DEFERRED' | 'COMPLETED';
 
 export type WorkspaceOnboardingStep =
-  | 'WELCOME'
-  | 'ECOSYSTEM'
-  | 'STARTER_BUNDLE'
-  | 'INSTALLATION'
-  | 'MINI_TOUR';
+  'WELCOME' | 'ECOSYSTEM' | 'STARTER_BUNDLE' | 'INSTALLATION' | 'MINI_TOUR';
 
 export interface WorkspaceOnboardingState {
   eligible: boolean;
@@ -999,12 +989,7 @@ export interface HrOnboardingProgress {
 }
 
 export type PlanningAlertLevel =
-  | 'critique'
-  | 'attention'
-  | 'information'
-  | 'critical'
-  | 'warning'
-  | 'info';
+  'critique' | 'attention' | 'information' | 'critical' | 'warning' | 'info';
 
 export interface PlanningAlert {
   id?: string;
@@ -1178,11 +1163,7 @@ export interface PlanningEmployeeTemplateAssignment {
 }
 
 export type PlanningPeriodStatusCode =
-  | 'DRAFT'
-  | 'CONTROLLED'
-  | 'PUBLISHED'
-  | 'MODIFIED_AFTER_PUBLICATION'
-  | 'LOCKED';
+  'DRAFT' | 'CONTROLLED' | 'PUBLISHED' | 'MODIFIED_AFTER_PUBLICATION' | 'LOCKED';
 
 export interface PlanningPeriodStatus {
   status: PlanningPeriodStatusCode | string;
@@ -1713,6 +1694,7 @@ export interface Category {
   id: string;
   name: string;
   description?: string | null;
+  kind?: 'UNSPECIFIED' | 'EQUIPMENT' | string;
   archivedAt?: string | null;
   isArchived?: boolean;
 }
@@ -1726,6 +1708,28 @@ export interface Unit {
   baseFactor?: string | number | null;
   archivedAt?: string | null;
   isArchived?: boolean;
+}
+
+export type EquipmentAcquisitionMode = 'CASH' | 'CREDIT' | 'LEASING' | 'RENTAL';
+export type EquipmentCondition = 'IN_SERVICE' | 'TO_MONITOR' | 'OUT_OF_SERVICE';
+
+export interface EquipmentProfile {
+  id?: string;
+  brand?: string | null;
+  model?: string | null;
+  purchaseUrl?: string | null;
+  purchasedAt?: string | null;
+  warrantyEndsAt?: string | null;
+  condition?: EquipmentCondition;
+  targetQuantity?: string | number | null;
+  acquisitionMode?: EquipmentAcquisitionMode;
+  financingProvider?: string | null;
+  financingStart?: string | null;
+  financingEnd?: string | null;
+  monthlyPayment?: string | number | null;
+  financedAmount?: string | number | null;
+  buyoutValue?: string | number | null;
+  notes?: string | null;
 }
 
 export interface Product {
@@ -1777,6 +1781,7 @@ export interface Product {
   unit?: Unit;
   supplier?: Supplier | null;
   primarySupplier?: Supplier | null;
+  equipmentProfile?: EquipmentProfile | null;
 }
 
 export interface ProductLabelOcrResult {
@@ -2239,22 +2244,11 @@ export interface SupplierPurchasingPayload {
 }
 
 export type PurchaseOrderStatus =
-  | 'DRAFT'
-  | 'SENT'
-  | 'ACKNOWLEDGED'
-  | 'PARTIALLY_RECEIVED'
-  | 'RECEIVED'
-  | 'CLOSED'
-  | 'CANCELLED';
+  'DRAFT' | 'SENT' | 'ACKNOWLEDGED' | 'PARTIALLY_RECEIVED' | 'RECEIVED' | 'CLOSED' | 'CANCELLED';
 
 export type PurchaseReceiptStatus = 'DRAFT' | 'REVIEW_NEEDED' | 'VALIDATED' | 'CANCELLED';
 export type PurchaseReceiptLineStatus =
-  | 'MATCHED'
-  | 'SHORT'
-  | 'OVER'
-  | 'UNEXPECTED'
-  | 'SUBSTITUTED'
-  | 'NEEDS_REVIEW';
+  'MATCHED' | 'SHORT' | 'OVER' | 'UNEXPECTED' | 'SUBSTITUTED' | 'NEEDS_REVIEW';
 
 export interface PurchaseOrderLine {
   id: string;
@@ -2854,11 +2848,7 @@ export interface CatererClient {
 export type CatererEventStatus = 'DRAFT' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
 export type CatererFulfillmentMode = 'DELIVERY' | 'PICKUP' | 'ON_SITE';
 export type CatererProductionState =
-  | 'NOT_GENERATED'
-  | 'DIRTY'
-  | 'PLANNED'
-  | 'IN_PROGRESS'
-  | 'COMPLETED';
+  'NOT_GENERATED' | 'DIRTY' | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED';
 
 export interface CatererPrestation {
   id: string;
@@ -3251,6 +3241,7 @@ export interface StocksOcrLine {
   productId?: string | null;
   /** Create this catalog product only when the OCR reception is validated. */
   createProduct?: boolean;
+  productKind?: Product['kind'];
   productName?: string | null;
   matchedUnitSymbol?: string | null;
   unitPrice?: number | string | null;
@@ -3638,9 +3629,7 @@ export type ProductionHistoryAction =
   | 'REALIZED_PORTIONS_UPDATED';
 export type ProductionExportFormat = 'PDF' | 'EXCEL' | 'PRINT';
 export type ProductionExportType =
-  | 'PRODUCTION_SHEET'
-  | 'MATERIAL_REQUIREMENTS'
-  | 'TEAM_ASSIGNMENTS';
+  'PRODUCTION_SHEET' | 'MATERIAL_REQUIREMENTS' | 'TEAM_ASSIGNMENTS';
 export type ProductionDestockingStatus = 'PROPOSED' | 'CONFIRMED' | 'CANCELLED';
 
 export interface ProductionQuery {
@@ -4158,11 +4147,7 @@ export type ProductionNeedSource =
   | 'SUB_RECIPE'
   | 'TRANSFER_REQUEST';
 export type ProductionNeedStatus =
-  | 'DRAFT'
-  | 'CONFIRMED'
-  | 'PARTIALLY_COVERED'
-  | 'COVERED'
-  | 'CANCELLED';
+  'DRAFT' | 'CONFIRMED' | 'PARTIALLY_COVERED' | 'COVERED' | 'CANCELLED';
 export type ProductionProfileMode = 'FIXED' | 'MULTIPLES' | 'FLEXIBLE' | 'FORMATS' | 'EQUIPMENT';
 export type ProductionBatchStatus =
   | 'TO_PREPARE'
@@ -4174,13 +4159,7 @@ export type ProductionBatchStatus =
   | 'PARTIALLY_LOST'
   | 'CANCELLED';
 export type ProductionOperationStatus =
-  | 'PENDING'
-  | 'READY'
-  | 'IN_PROGRESS'
-  | 'COMPLETED'
-  | 'BLOCKED'
-  | 'SKIPPED'
-  | 'CANCELLED';
+  'PENDING' | 'READY' | 'IN_PROGRESS' | 'COMPLETED' | 'BLOCKED' | 'SKIPPED' | 'CANCELLED';
 export type ConservationState =
   | 'AMBIENT'
   | 'CHILLED'

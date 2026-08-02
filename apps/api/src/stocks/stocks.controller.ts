@@ -16,6 +16,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { ProductKind } from '@prisma/client';
 import type { Response } from 'express';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -187,6 +188,28 @@ export class StocksController {
   @Post('stocks/receptions/validate')
   createManualReception(@CurrentUser() user: AuthenticatedUser, @Body() dto: SaveOcrCorrectionDto) {
     return this.stocksOcrService.createManualReception(this.org(user), this.actor(user), dto);
+  }
+
+  @Get('equipment/categories')
+  listEquipmentCategories(
+    @CurrentUser() u: AuthenticatedUser,
+    @Query() q: ListQueryDto,
+  ) {
+    return this.stocksService.listCategories(this.org(u), {
+      ...q,
+      kind: ProductKind.EQUIPMENT,
+    });
+  }
+
+  @Post('equipment/categories')
+  createEquipmentCategory(
+    @CurrentUser() u: AuthenticatedUser,
+    @Body() d: UpsertCategoryDto,
+  ) {
+    return this.stocksService.createCategory(this.org(u), this.actor(u), {
+      ...d,
+      kind: ProductKind.EQUIPMENT,
+    });
   }
 
   @Get('categories') listCategories(@CurrentUser() u: AuthenticatedUser, @Query() q: ListQueryDto) {

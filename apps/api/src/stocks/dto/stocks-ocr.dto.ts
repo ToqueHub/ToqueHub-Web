@@ -1,5 +1,20 @@
+import { ProductKind } from '@prisma/client';
 import { Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsDateString, IsNumber, IsObject, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsDateString,
+  IsEnum,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 
 export class AnalyzeBatchDto {
   @IsArray()
@@ -23,6 +38,10 @@ export class CorrectedReceptionLineDto {
   @IsOptional()
   @IsBoolean()
   createProduct?: boolean;
+
+  @IsOptional()
+  @IsEnum(ProductKind)
+  productKind?: ProductKind;
 
   @IsOptional()
   @IsUUID()

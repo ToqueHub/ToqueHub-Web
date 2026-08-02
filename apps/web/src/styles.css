@@ -38019,3 +38019,62 @@ input:checked + .slider-round:before {
     grid-template-columns: 1fr;
   }
 }
+/* Stocks — matériel */
+.equipment-subtabs {
+  width: fit-content;
+  margin-bottom: 1rem;
+}
+
+.equipment-form .product-sheet-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.equipment-url-input {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.equipment-url-input input {
+  flex: 1;
+}
+
+.equipment-url-input a {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  color: #059669;
+}
+
+.stocks-equipment-section {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.stocks-equipment-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.stocks-equipment-section-heading div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.stocks-equipment-section-heading h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.stocks-equipment-section-heading p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
