@@ -3242,6 +3242,19 @@ export interface StocksOcrLine {
   /** Create this catalog product only when the OCR reception is validated. */
   createProduct?: boolean;
   productKind?: Product['kind'];
+  lineType?: 'equipment' | 'service' | 'accessory' | 'transport' | 'consumable' | 'unknown';
+  brand?: string | null;
+  model?: string | null;
+  listUnitPrice?: number | string | null;
+  discountPercent?: number | string | null;
+  acquisitionMode?: EquipmentAcquisitionMode | null;
+  financingProvider?: string | null;
+  financingStart?: string | null;
+  financingEnd?: string | null;
+  monthlyPayment?: number | string | null;
+  financedAmount?: number | string | null;
+  buyoutValue?: number | string | null;
+  equipmentNotes?: string | null;
   productName?: string | null;
   matchedUnitSymbol?: string | null;
   unitPrice?: number | string | null;
@@ -3278,6 +3291,7 @@ export interface StocksOcrReceptionData {
     | 'receipt'
     | 'supplier_order'
     | 'order_confirmation'
+    | 'quote'
     | 'unknown'
     | string;
   supplierName?: string | null;

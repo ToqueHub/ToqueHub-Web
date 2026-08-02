@@ -57,7 +57,7 @@ type PlanningView = 'day' | 'week' | 'month' | 'year';
 type SettingKey = 'presets' | 'availability' | 'rules' | 'costs' | 'notifications' | 'exports';
 type InitialPlanningStep = 'welcome' | 'services' | 'presets' | 'done';
 type DashboardPeriod = 'week' | 'month' | 'year';
-type PlanningDashboardBlockKey = 'periodStatus' | 'planningSetup' | 'plannedHours' | 'estimatedCost' | 'activeAlerts' | 'alertsToReview' | 'planning' | 'departmentHours' | 'actions' | 'history';
+type PlanningDashboardBlockKey = 'periodStatus' | 'planningSetup' | 'plannedHours' | 'estimatedCost' | 'activeAlerts' | 'alertsToReview' | 'planning' | 'departmentHours' | 'actions';
 type PlanningBlockMode = 'day' | 'week' | 'month';
 type PlanningBlockSize = 'small' | 'medium' | 'large';
 type PlanningDashboardConfig = {
@@ -161,7 +161,6 @@ const defaultPlanningDashboardConfig: PlanningDashboardConfig = {
     planning: true,
     departmentHours: true,
     actions: true,
-    history: true,
   },
 };
 const initialPlanningSteps: InitialPlanningStep[] = ['welcome', 'services', 'presets', 'done'];
@@ -674,7 +673,6 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
           onConfigChange={setDashboardConfig}
           hoursByDepartment={data?.dashboard?.hoursByDepartment as Array<Record<string, any>> | undefined}
           actions={data?.dashboard?.actions as Array<Record<string, any>> | undefined}
-          history={data?.historyHuman}
           assignments={assignments}
           sites={effectiveSites}
           selectedDate={selectedDate}
@@ -1281,7 +1279,7 @@ function RotationRuleList({ rotations, onEdit, onDelete, canWrite }: { rotations
   );
 }
 
-function PlanningDashboard({ dashboard, alerts, setup, period, setPeriod, config, onConfigChange, hoursByDepartment, actions, history, assignments, sites, selectedDate, dashboardSiteFilter, setDashboardSiteFilter, dashboardPeriodData, onboardingCompleted, onResumeOnboarding, onOpenPlanning }: { dashboard: ReturnType<typeof buildDashboard>; alerts: PlanningAlert[]; setup: ReturnType<typeof buildPlanningSetup>; period: DashboardPeriod; setPeriod: (value: DashboardPeriod) => void; config: PlanningDashboardConfig; onConfigChange: (value: PlanningDashboardConfig) => void; hoursByDepartment?: Array<Record<string, any>>; actions?: Array<Record<string, any>>; history?: Array<Record<string, any>>; assignments: PlanningAssignment[]; sites: Site[]; selectedDate: string; dashboardSiteFilter: string; setDashboardSiteFilter: (value: string) => void; dashboardPeriodData: DashboardPeriodData | null; onboardingCompleted: boolean; onResumeOnboarding: () => void; onOpenPlanning: (view: PlanningView) => void }) {
+function PlanningDashboard({ dashboard, alerts, setup, period, setPeriod, config, onConfigChange, hoursByDepartment, actions, assignments, sites, selectedDate, dashboardSiteFilter, setDashboardSiteFilter, dashboardPeriodData, onboardingCompleted, onResumeOnboarding, onOpenPlanning }: { dashboard: ReturnType<typeof buildDashboard>; alerts: PlanningAlert[]; setup: ReturnType<typeof buildPlanningSetup>; period: DashboardPeriod; setPeriod: (value: DashboardPeriod) => void; config: PlanningDashboardConfig; onConfigChange: (value: PlanningDashboardConfig) => void; hoursByDepartment?: Array<Record<string, any>>; actions?: Array<Record<string, any>>; assignments: PlanningAssignment[]; sites: Site[]; selectedDate: string; dashboardSiteFilter: string; setDashboardSiteFilter: (value: string) => void; dashboardPeriodData: DashboardPeriodData | null; onboardingCompleted: boolean; onResumeOnboarding: () => void; onOpenPlanning: (view: PlanningView) => void }) {
   const periodRange = getDashboardPeriodRange(period, selectedDate);
   const scheduleRange = getPlanningScheduleRange(config.planningBlockMode, selectedDate);
   const remoteMatches = dashboardPeriodData?.range.startDate === periodRange.startDate && dashboardPeriodData.range.endDate === periodRange.endDate && dashboardPeriodData.siteId === dashboardSiteFilter;
@@ -1344,10 +1342,6 @@ function PlanningDashboard({ dashboard, alerts, setup, period, setPeriod, config
         {config.blocks.actions ? <div className="card-modern planning-actions-panel">
           <div className="section-header-modern"><span className="card-title"><ListChecks size={18} /> Actions à traiter</span><span className="section-tagline">{periodDashboard.actionsToProcess} action(s)</span></div>
           {actionRows.length ? actionRows.slice(0, 6).map((action, index) => <div className="planning-action-line" key={`${action.type ?? 'action'}-${action.entityId ?? index}`}><strong>{action.label ?? action.type ?? 'Action Planning'}</strong><span>{action.priority ?? 'NORMAL'}</span></div>) : <p className="muted">Aucune action bloquante à traiter sur la période.</p>}
-        </div> : null}
-        {config.blocks.history ? <div className="card-modern planning-actions-panel">
-          <div className="section-header-modern"><span className="card-title"><Clock size={18} /> Historique période</span></div>
-          {history?.length ? history.slice(0, 5).map((item, index) => <div className="planning-action-line" key={String(item.id ?? index)}><strong>{String(item.label ?? item.action ?? 'Événement')}</strong><span>{formatShort(String(item.date ?? item.createdAt ?? ''))} {item.actor ? `- ${item.actor}` : ''}</span></div>) : <p className="muted">Aucun événement de période enregistré.</p>}
         </div> : null}
       </div>
     </>
@@ -1451,7 +1445,6 @@ function PlanningDashboardCustomizer({ config, onChange, onClose }: { config: Pl
     { key: 'planning', label: 'Planning', zone: 'SCHEDULE', description: 'Vue directe jour, semaine ou mois.' },
     { key: 'departmentHours', label: 'Répartition heures par service', zone: 'ANALYSE', description: 'Lecture par service.' },
     { key: 'actions', label: 'Actions à traiter', zone: 'ACTIONS', description: 'Actions opérationnelles de période.' },
-    { key: 'history', label: 'Historique période', zone: 'HISTORIQUE', description: 'Derniers événements enregistrés.' },
   ];
   function toggle(key: PlanningDashboardBlockKey) {
     onChange({ ...config, blocks: { ...config.blocks, [key]: !config.blocks[key] } });

@@ -1,0 +1,3691 @@
+{
+  "generatedAt": "2026-08-02T09:51:47.272Z",
+  "engine": {
+    "name": "@firecrawl/pdf-inspector",
+    "version": "1.11.2",
+    "repositoryCommit": "a15ec2d68d51dbe6a39d1da688ec7a3f642d846c",
+    "benchmarkRuns": 5,
+    "timingScope": "in-memory processPdf call; package initialization and file reads excluded"
+  },
+  "documentCount": 100,
+  "completeRunMs": [
+    138.26016600000003,
+    118.23870899999997,
+    170.49591599999997,
+    110.97245899999996,
+    114.44262499999991
+  ],
+  "medianCompleteRunMs": 118.23870899999997,
+  "sequentialDocumentsPerSecond": 845.7467173461782,
+  "successfulDocuments": 100,
+  "routingCorrectDocuments": 100,
+  "results": [
+    {
+      "id": "test-001",
+      "wallMsRuns": [
+        3.7535000000000025,
+        3.7825000000000273,
+        3.414666000000011,
+        3.173750000000041,
+        3.5868749999999636
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": true,
+      "pagesWithTables": [
+        1
+      ],
+      "pagesWithColumns": [
+        1
+      ],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 3,
+      "markdownCharacters": 1306,
+      "wallMsMedian": 3.5868749999999636,
+      "wallMsP95": 3.7825000000000273,
+      "category": "native_text",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-002",
+      "wallMsRuns": [
+        2.3447500000000048,
+        2.8924590000000308,
+        1.8541659999999638,
+        1.6680410000000165,
+        1.689583999999968
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": true,
+      "pagesWithTables": [
+        1
+      ],
+      "pagesWithColumns": [
+        1
+      ],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 1,
+      "markdownCharacters": 2563,
+      "wallMsMedian": 1.8541659999999638,
+      "wallMsP95": 2.8924590000000308,
+      "category": "native_text",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-003",
+      "wallMsRuns": [
+        1.733916999999991,
+        1.554708000000005,
+        1.4026250000000005,
+        1.450666999999953,
+        1.414583000000107
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": true,
+      "pagesWithTables": [
+        1
+      ],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 1,
+      "markdownCharacters": 1441,
+      "wallMsMedian": 1.450666999999953,
+      "wallMsP95": 1.733916999999991,
+      "category": "native_text",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-004",
+      "wallMsRuns": [
+        3.282457999999991,
+        2.1644999999999754,
+        1.904375000000016,
+        2.0260829999999714,
+        2.117834000000016
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": true,
+      "pagesWithTables": [
+        1
+      ],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 2,
+      "markdownCharacters": 2179,
+      "wallMsMedian": 2.117834000000016,
+      "wallMsP95": 3.282457999999991,
+      "category": "native_text",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-005",
+      "wallMsRuns": [
+        4.655041000000011,
+        4.569624999999974,
+        4.490458999999987,
+        4.3484999999999445,
+        4.308375000000069
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": true,
+      "pagesWithTables": [
+        1
+      ],
+      "pagesWithColumns": [
+        1
+      ],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 4,
+      "markdownCharacters": 1860,
+      "wallMsMedian": 4.490458999999987,
+      "wallMsP95": 4.655041000000011,
+      "category": "native_text",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-006",
+      "wallMsRuns": [
+        2.6544999999999845,
+        2.468166999999994,
+        2.371041000000048,
+        2.470291999999972,
+        2.4424999999999955
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": true,
+      "pagesWithTables": [
+        1
+      ],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 2,
+      "markdownCharacters": 1007,
+      "wallMsMedian": 2.468166999999994,
+      "wallMsP95": 2.6544999999999845,
+      "category": "native_text",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-007",
+      "wallMsRuns": [
+        1.5456250000000011,
+        1.4984580000000278,
+        1.5093749999999773,
+        1.4614579999999933,
+        1.530083999999988
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": true,
+      "pagesWithTables": [
+        1
+      ],
+      "pagesWithColumns": [
+        1
+      ],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 1,
+      "markdownCharacters": 615,
+      "wallMsMedian": 1.5093749999999773,
+      "wallMsP95": 1.5456250000000011,
+      "category": "native_text",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-008",
+      "wallMsRuns": [
+        2.673334000000011,
+        3.33220799999998,
+        2.420749999999998,
+        2.440042000000062,
+        2.8095420000000786
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": true,
+      "pagesWithTables": [
+        1
+      ],
+      "pagesWithColumns": [
+        1
+      ],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 2,
+      "markdownCharacters": 1935,
+      "wallMsMedian": 2.673334000000011,
+      "wallMsP95": 3.33220799999998,
+      "category": "native_text",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-009",
+      "wallMsRuns": [
+        3.6045420000000092,
+        3.3255000000000337,
+        3.303625000000011,
+        3.119957999999997,
+        3.25329099999999
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": true,
+      "pagesWithTables": [
+        1
+      ],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 3,
+      "markdownCharacters": 3063,
+      "wallMsMedian": 3.303625000000011,
+      "wallMsP95": 3.6045420000000092,
+      "category": "native_text",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-010",
+      "wallMsRuns": [
+        2.5100830000000087,
+        2.392667000000017,
+        2.9785839999999553,
+        2.1458330000000387,
+        2.668708000000038
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": true,
+      "pagesWithTables": [
+        1
+      ],
+      "pagesWithColumns": [
+        1
+      ],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 2,
+      "markdownCharacters": 959,
+      "wallMsMedian": 2.5100830000000087,
+      "wallMsP95": 2.9785839999999553,
+      "category": "native_text",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-011",
+      "wallMsRuns": [
+        4.922708,
+        4.783542000000011,
+        14.44437499999998,
+        4.945875000000001,
+        4.768374999999992
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": true,
+      "pagesWithTables": [],
+      "pagesWithColumns": [
+        1
+      ],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 4,
+      "markdownCharacters": 1285,
+      "wallMsMedian": 4.922708,
+      "wallMsP95": 14.44437499999998,
+      "category": "native_text",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-012",
+      "wallMsRuns": [
+        5.948374999999999,
+        5.8091249999999945,
+        20.85541599999999,
+        6.0382920000000695,
+        6.608707999999979
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": true,
+      "pagesWithTables": [],
+      "pagesWithColumns": [
+        1
+      ],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 6,
+      "markdownCharacters": 1735,
+      "wallMsMedian": 6.0382920000000695,
+      "wallMsP95": 20.85541599999999,
+      "category": "native_text",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-013",
+      "wallMsRuns": [
+        4.425792000000001,
+        3.0678330000000074,
+        8.298541,
+        3.868582999999944,
+        3.4640000000000555
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": true,
+      "pagesWithTables": [],
+      "pagesWithColumns": [
+        1
+      ],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 3,
+      "markdownCharacters": 4365,
+      "wallMsMedian": 3.868582999999944,
+      "wallMsP95": 8.298541,
+      "category": "native_text",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-014",
+      "wallMsRuns": [
+        2.3181669999999883,
+        2.081375000000037,
+        4.594333000000006,
+        2.109707999999955,
+        2.3757080000000315
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": true,
+      "pagesWithTables": [],
+      "pagesWithColumns": [
+        1
+      ],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 2,
+      "markdownCharacters": 1858,
+      "wallMsMedian": 2.3181669999999883,
+      "wallMsP95": 4.594333000000006,
+      "category": "native_text",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-015",
+      "wallMsRuns": [
+        4.4542920000000095,
+        4.58133399999997,
+        7.978875000000016,
+        4.295499999999947,
+        4.474125000000072
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": true,
+      "pagesWithTables": [],
+      "pagesWithColumns": [
+        1
+      ],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 4,
+      "markdownCharacters": 2047,
+      "wallMsMedian": 4.474125000000072,
+      "wallMsP95": 7.978875000000016,
+      "category": "native_text",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-016",
+      "wallMsRuns": [
+        2.6365419999999915,
+        2.614040999999986,
+        14.32020799999998,
+        2.9462919999999713,
+        2.499667000000045
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": true,
+      "pagesWithTables": [],
+      "pagesWithColumns": [
+        1
+      ],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 2,
+      "markdownCharacters": 4623,
+      "wallMsMedian": 2.6365419999999915,
+      "wallMsP95": 14.32020799999998,
+      "category": "native_text",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-017",
+      "wallMsRuns": [
+        2.0972919999999817,
+        2.237166000000002,
+        2.2733329999999796,
+        1.9498330000000124,
+        1.865000000000009
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": true,
+      "pagesWithTables": [],
+      "pagesWithColumns": [
+        1
+      ],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 1,
+      "markdownCharacters": 2126,
+      "wallMsMedian": 2.0972919999999817,
+      "wallMsP95": 2.2733329999999796,
+      "category": "native_text",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-018",
+      "wallMsRuns": [
+        2.359250000000003,
+        2.1365000000000123,
+        8.756083999999987,
+        2.0265000000000555,
+        1.9505420000000413
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": true,
+      "pagesWithTables": [],
+      "pagesWithColumns": [
+        1
+      ],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 1,
+      "markdownCharacters": 2324,
+      "wallMsMedian": 2.1365000000000123,
+      "wallMsP95": 8.756083999999987,
+      "category": "native_text",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-019",
+      "wallMsRuns": [
+        2.7444580000000087,
+        2.7780420000000277,
+        4.850832999999966,
+        2.805417000000034,
+        2.6845420000000786
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": true,
+      "pagesWithTables": [],
+      "pagesWithColumns": [
+        1
+      ],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 2,
+      "markdownCharacters": 773,
+      "wallMsMedian": 2.7780420000000277,
+      "wallMsP95": 4.850832999999966,
+      "category": "native_text",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-020",
+      "wallMsRuns": [
+        2.849084000000005,
+        2.5791249999999764,
+        2.782000000000039,
+        2.618417000000022,
+        3.052332999999976
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": true,
+      "pagesWithTables": [],
+      "pagesWithColumns": [
+        1
+      ],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 2,
+      "markdownCharacters": 4443,
+      "wallMsMedian": 2.782000000000039,
+      "wallMsP95": 3.052332999999976,
+      "category": "native_text",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-021",
+      "wallMsRuns": [
+        1.5953750000000184,
+        2.0492910000000393,
+        1.4729169999999385,
+        1.4970409999999674,
+        1.6336250000000518
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 1,
+      "markdownCharacters": 2062,
+      "wallMsMedian": 1.5953750000000184,
+      "wallMsP95": 2.0492910000000393,
+      "category": "native_text",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-022",
+      "wallMsRuns": [
+        1.1731249999999989,
+        1.4976669999999785,
+        1.1037919999999986,
+        1.0997499999999718,
+        1.2080839999999853
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 1,
+      "markdownCharacters": 2441,
+      "wallMsMedian": 1.1731249999999989,
+      "wallMsP95": 1.4976669999999785,
+      "category": "native_text",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-023",
+      "wallMsRuns": [
+        1.3248340000000098,
+        1.5766249999999786,
+        1.3029999999999973,
+        1.2922920000000886,
+        1.3544169999998985
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 1,
+      "markdownCharacters": 1697,
+      "wallMsMedian": 1.3248340000000098,
+      "wallMsP95": 1.5766249999999786,
+      "category": "native_text",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-024",
+      "wallMsRuns": [
+        2.3725000000000023,
+        2.44908300000003,
+        2.2951249999999845,
+        2.3807500000000346,
+        2.2414999999999736
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 2,
+      "markdownCharacters": 1508,
+      "wallMsMedian": 2.3725000000000023,
+      "wallMsP95": 2.44908300000003,
+      "category": "native_text",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-025",
+      "wallMsRuns": [
+        3.1298749999999984,
+        3.066000000000031,
+        2.9258330000000115,
+        2.6710839999999507,
+        2.783375000000092
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 2,
+      "markdownCharacters": 1140,
+      "wallMsMedian": 2.9258330000000115,
+      "wallMsP95": 3.1298749999999984,
+      "category": "native_text",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-026",
+      "wallMsRuns": [
+        1.8237919999999974,
+        1.750500000000045,
+        1.6148749999999836,
+        1.5254580000000715,
+        1.7335000000000491
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 1,
+      "markdownCharacters": 1256,
+      "wallMsMedian": 1.7335000000000491,
+      "wallMsP95": 1.8237919999999974,
+      "category": "native_text",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-027",
+      "wallMsRuns": [
+        3.8458750000000066,
+        3.751542000000029,
+        4.275582999999983,
+        3.836708000000044,
+        3.9768340000000535
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 3,
+      "markdownCharacters": 2691,
+      "wallMsMedian": 3.8458750000000066,
+      "wallMsP95": 4.275582999999983,
+      "category": "native_text",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-028",
+      "wallMsRuns": [
+        1.9246250000000202,
+        2.036584000000005,
+        1.7824590000000171,
+        2.022207999999978,
+        1.9298749999999245
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 1,
+      "markdownCharacters": 1229,
+      "wallMsMedian": 1.9298749999999245,
+      "wallMsP95": 2.036584000000005,
+      "category": "native_text",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-029",
+      "wallMsRuns": [
+        1.943125000000009,
+        2.187084000000027,
+        1.9241250000000036,
+        1.882249999999999,
+        2.005625000000009
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 1,
+      "markdownCharacters": 3675,
+      "wallMsMedian": 1.943125000000009,
+      "wallMsP95": 2.187084000000027,
+      "category": "native_text",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-030",
+      "wallMsRuns": [
+        1.3838340000000073,
+        1.5075420000000008,
+        1.2599170000000868,
+        1.2654579999999669,
+        1.3694169999999986
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 1,
+      "markdownCharacters": 2453,
+      "wallMsMedian": 1.3694169999999986,
+      "wallMsP95": 1.5075420000000008,
+      "category": "native_text",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-031",
+      "wallMsRuns": [
+        0.3652500000000032,
+        0.43708300000002964,
+        0.2872499999999718,
+        0.2881250000000364,
+        0.31999999999993634
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.31999999999993634,
+      "wallMsP95": 0.43708300000002964,
+      "category": "scan_clean",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-032",
+      "wallMsRuns": [
+        0.6925420000000031,
+        0.6328750000000127,
+        0.5957080000000587,
+        0.5815410000000156,
+        0.5810839999999189
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.5957080000000587,
+      "wallMsP95": 0.6925420000000031,
+      "category": "scan_clean",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-033",
+      "wallMsRuns": [
+        0.33191600000000676,
+        0.3244589999999903,
+        0.28970799999990504,
+        0.3748330000000806,
+        0.3205000000000382
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.3244589999999903,
+      "wallMsP95": 0.3748330000000806,
+      "category": "scan_clean",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-034",
+      "wallMsRuns": [
+        0.235541000000012,
+        0.2162089999999921,
+        0.2389580000000251,
+        0.20104200000002947,
+        0.20974999999998545
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.2162089999999921,
+      "wallMsP95": 0.2389580000000251,
+      "category": "scan_clean",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-035",
+      "wallMsRuns": [
+        0.3207919999999831,
+        0.2558750000000032,
+        0.22808299999996962,
+        0.3310840000000326,
+        0.2491250000000491
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.2558750000000032,
+      "wallMsP95": 0.3310840000000326,
+      "category": "scan_clean",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-036",
+      "wallMsRuns": [
+        0.3279590000000212,
+        0.26429200000001174,
+        0.24900000000002365,
+        0.24049999999999727,
+        0.25975000000005366
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.25975000000005366,
+      "wallMsP95": 0.3279590000000212,
+      "category": "scan_clean",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-037",
+      "wallMsRuns": [
+        0.8097080000000005,
+        0.5647500000000036,
+        0.7187079999999924,
+        0.5804170000000113,
+        0.5484160000000884
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.5804170000000113,
+      "wallMsP95": 0.8097080000000005,
+      "category": "scan_clean",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-038",
+      "wallMsRuns": [
+        0.45404199999998696,
+        0.428291999999999,
+        0.390041999999994,
+        0.39354100000002745,
+        0.39554199999997763
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.39554199999997763,
+      "wallMsP95": 0.45404199999998696,
+      "category": "scan_clean",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-039",
+      "wallMsRuns": [
+        0.2579589999999996,
+        0.2598750000000223,
+        0.20924999999999727,
+        0.19100000000003092,
+        0.22500000000002274
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.22500000000002274,
+      "wallMsP95": 0.2598750000000223,
+      "category": "scan_clean",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-040",
+      "wallMsRuns": [
+        0.6443329999999889,
+        0.5567080000000146,
+        0.5344579999999723,
+        0.5227919999999813,
+        0.5337079999999332
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.5344579999999723,
+      "wallMsP95": 0.6443329999999889,
+      "category": "scan_clean",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-041",
+      "wallMsRuns": [
+        0.35633299999997803,
+        0.33004199999999173,
+        0.3296669999999722,
+        0.2841670000000249,
+        0.30645800000002055
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.3296669999999722,
+      "wallMsP95": 0.35633299999997803,
+      "category": "scan_clean",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-042",
+      "wallMsRuns": [
+        0.30204200000000014,
+        0.22841700000003584,
+        0.3424590000000194,
+        0.19070799999997234,
+        0.22566700000004403
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.22841700000003584,
+      "wallMsP95": 0.3424590000000194,
+      "category": "scan_clean",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-043",
+      "wallMsRuns": [
+        0.4044580000000053,
+        0.46270800000002055,
+        0.4254590000000462,
+        0.311333999999988,
+        0.31108400000005076
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.4044580000000053,
+      "wallMsP95": 0.46270800000002055,
+      "category": "scan_clean",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-044",
+      "wallMsRuns": [
+        0.7090000000000032,
+        0.7901669999999967,
+        0.6878749999999627,
+        0.5804160000000138,
+        0.6092079999999669
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.6878749999999627,
+      "wallMsP95": 0.7901669999999967,
+      "category": "scan_clean",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-045",
+      "wallMsRuns": [
+        0.24662499999999454,
+        0.23900000000003274,
+        0.2541659999999979,
+        0.1857079999999769,
+        0.2347500000000764
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.23900000000003274,
+      "wallMsP95": 0.2541659999999979,
+      "category": "scan_clean",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-046",
+      "wallMsRuns": [
+        0.2607500000000016,
+        0.22320799999999963,
+        0.23824999999999363,
+        0.21024999999997362,
+        0.2336249999999609
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.2336249999999609,
+      "wallMsP95": 0.2607500000000016,
+      "category": "scan_lowres",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-047",
+      "wallMsRuns": [
+        0.24208400000000552,
+        0.19520900000003394,
+        0.16404199999999491,
+        0.13049999999998363,
+        0.16829100000006747
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.16829100000006747,
+      "wallMsP95": 0.24208400000000552,
+      "category": "scan_lowres",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-048",
+      "wallMsRuns": [
+        0.22120900000001598,
+        0.1657910000000129,
+        0.2147499999999809,
+        0.17849999999998545,
+        0.20012500000007094
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.20012500000007094,
+      "wallMsP95": 0.22120900000001598,
+      "category": "scan_lowres",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-049",
+      "wallMsRuns": [
+        0.30212500000001796,
+        0.31100000000003547,
+        0.31512499999996635,
+        0.24500000000000455,
+        0.3683330000000069
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.31100000000003547,
+      "wallMsP95": 0.3683330000000069,
+      "category": "scan_lowres",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-050",
+      "wallMsRuns": [
+        0.27412499999999795,
+        0.2682079999999587,
+        0.3235830000000419,
+        0.2353330000000824,
+        0.2850419999999758
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.27412499999999795,
+      "wallMsP95": 0.3235830000000419,
+      "category": "scan_lowres",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-051",
+      "wallMsRuns": [
+        0.24558299999998212,
+        0.22191700000001902,
+        0.2389159999999606,
+        0.19662499999992633,
+        0.25879200000008495
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.2389159999999606,
+      "wallMsP95": 0.25879200000008495,
+      "category": "scan_lowres",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-052",
+      "wallMsRuns": [
+        0.2118340000000103,
+        0.18729100000001608,
+        0.23158300000000054,
+        0.14699999999993452,
+        0.23599999999999
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.2118340000000103,
+      "wallMsP95": 0.23599999999999,
+      "category": "scan_lowres",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-053",
+      "wallMsRuns": [
+        0.09287499999999227,
+        0.12650000000002137,
+        0.087333000000001,
+        0.06312500000001364,
+        0.09687500000006821
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.09287499999999227,
+      "wallMsP95": 0.12650000000002137,
+      "category": "scan_lowres",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-054",
+      "wallMsRuns": [
+        0.1849589999999921,
+        0.14616699999999128,
+        0.1418340000000171,
+        0.09820799999999963,
+        0.16449999999997544
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.14616699999999128,
+      "wallMsP95": 0.1849589999999921,
+      "category": "scan_lowres",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-055",
+      "wallMsRuns": [
+        0.18362500000000637,
+        0.17300000000000182,
+        0.1742500000000291,
+        0.1420419999999467,
+        0.22487499999999727
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.1742500000000291,
+      "wallMsP95": 0.22487499999999727,
+      "category": "scan_lowres",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-056",
+      "wallMsRuns": [
+        0.2776669999999797,
+        0.2290830000000028,
+        0.22283299999998007,
+        0.17025000000001,
+        0.2102500000000873
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.22283299999998007,
+      "wallMsP95": 0.2776669999999797,
+      "category": "scan_lowres",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-057",
+      "wallMsRuns": [
+        0.12316599999999767,
+        0.1037499999999909,
+        0.13537500000001046,
+        0.12183299999992414,
+        0.1297500000000582
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.12316599999999767,
+      "wallMsP95": 0.13537500000001046,
+      "category": "scan_lowres",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-058",
+      "wallMsRuns": [
+        0.16979100000000358,
+        0.15316699999999628,
+        0.14449999999999363,
+        0.11916700000006131,
+        0.1316669999999931
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.14449999999999363,
+      "wallMsP95": 0.16979100000000358,
+      "category": "scan_lowres",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-059",
+      "wallMsRuns": [
+        0.19495800000001395,
+        0.16687500000000455,
+        0.16204199999998536,
+        0.13870799999995143,
+        0.18379099999992832
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.16687500000000455,
+      "wallMsP95": 0.19495800000001395,
+      "category": "scan_lowres",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-060",
+      "wallMsRuns": [
+        0.18429199999999923,
+        0.18316600000002836,
+        0.14758399999999483,
+        0.12066600000002836,
+        0.17729100000008202
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.17729100000008202,
+      "wallMsP95": 0.18429199999999923,
+      "category": "scan_lowres",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-061",
+      "wallMsRuns": [
+        0.2502499999999941,
+        0.23587500000002137,
+        0.26029199999999264,
+        0.5767499999999472,
+        0.247792000000004
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.2502499999999941,
+      "wallMsP95": 0.5767499999999472,
+      "category": "scan_skewed",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-062",
+      "wallMsRuns": [
+        0.44300000000001205,
+        0.400874999999985,
+        0.41045800000000554,
+        0.42695800000001327,
+        0.3927090000000817
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.41045800000000554,
+      "wallMsP95": 0.44300000000001205,
+      "category": "scan_skewed",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-063",
+      "wallMsRuns": [
+        0.32450000000000045,
+        0.3115829999999846,
+        0.34045900000000984,
+        0.2916250000000673,
+        0.32770800000002964
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.32450000000000045,
+      "wallMsP95": 0.34045900000000984,
+      "category": "scan_skewed",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-064",
+      "wallMsRuns": [
+        0.3632090000000119,
+        0.3164579999999546,
+        0.359375,
+        0.3408329999999751,
+        0.33216600000002927
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.3408329999999751,
+      "wallMsP95": 0.3632090000000119,
+      "category": "scan_skewed",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-065",
+      "wallMsRuns": [
+        0.36770799999999326,
+        0.28520800000001145,
+        0.3205829999999992,
+        0.2897499999999127,
+        0.30691699999999855
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.30691699999999855,
+      "wallMsP95": 0.36770799999999326,
+      "category": "scan_skewed",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-066",
+      "wallMsRuns": [
+        0.29929200000000833,
+        0.2780419999999708,
+        0.31579099999999016,
+        0.3246670000000904,
+        0.28016600000000835
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.29929200000000833,
+      "wallMsP95": 0.3246670000000904,
+      "category": "scan_skewed",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-067",
+      "wallMsRuns": [
+        0.22229200000001015,
+        0.2131249999999909,
+        0.267708999999968,
+        0.21145799999999326,
+        0.27212500000007367
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.22229200000001015,
+      "wallMsP95": 0.27212500000007367,
+      "category": "scan_skewed",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-068",
+      "wallMsRuns": [
+        0.4194169999999815,
+        0.39229199999999764,
+        0.3930829999999901,
+        0.3818749999999227,
+        0.49774999999999636
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.3930829999999901,
+      "wallMsP95": 0.49774999999999636,
+      "category": "scan_skewed",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-069",
+      "wallMsRuns": [
+        0.38966700000000287,
+        0.3292500000000018,
+        0.3354999999999677,
+        0.31074999999998454,
+        0.3681659999999738
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.3354999999999677,
+      "wallMsP95": 0.38966700000000287,
+      "category": "scan_skewed",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-070",
+      "wallMsRuns": [
+        0.2741670000000056,
+        0.25145899999995436,
+        0.26924999999999955,
+        0.22329100000001745,
+        0.269916999999964
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.26924999999999955,
+      "wallMsP95": 0.2741670000000056,
+      "category": "scan_skewed",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-071",
+      "wallMsRuns": [
+        0.34566599999999426,
+        0.2724579999999719,
+        0.2917499999999791,
+        0.24916700000005676,
+        0.31779199999994034
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.2917499999999791,
+      "wallMsP95": 0.34566599999999426,
+      "category": "scan_noisy",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-072",
+      "wallMsRuns": [
+        0.6614999999999895,
+        0.48879199999998946,
+        0.4932080000000383,
+        0.464458000000036,
+        0.4934170000000222
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.4932080000000383,
+      "wallMsP95": 0.6614999999999895,
+      "category": "scan_noisy",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-073",
+      "wallMsRuns": [
+        0.5964160000000334,
+        0.5784170000000017,
+        0.5354579999999487,
+        0.596834000000058,
+        0.52212499999996
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.5784170000000017,
+      "wallMsP95": 0.596834000000058,
+      "category": "scan_noisy",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-074",
+      "wallMsRuns": [
+        0.4767909999999915,
+        0.39674999999999727,
+        0.44691700000004175,
+        0.37933299999997416,
+        0.3957500000000209
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.39674999999999727,
+      "wallMsP95": 0.4767909999999915,
+      "category": "scan_noisy",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-075",
+      "wallMsRuns": [
+        0.632959000000028,
+        0.4642079999999851,
+        0.6358749999999986,
+        0.4619580000000951,
+        0.49795800000003965
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.49795800000003965,
+      "wallMsP95": 0.6358749999999986,
+      "category": "scan_noisy",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-076",
+      "wallMsRuns": [
+        0.2599159999999756,
+        0.22995900000000802,
+        0.23645799999997053,
+        0.19483400000001438,
+        0.2317089999999098
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.2317089999999098,
+      "wallMsP95": 0.2599159999999756,
+      "category": "scan_compressed",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-077",
+      "wallMsRuns": [
+        0.175707999999986,
+        0.20566699999994853,
+        0.12324999999998454,
+        0.165958000000046,
+        0.16325000000006185
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.165958000000046,
+      "wallMsP95": 0.20566699999994853,
+      "category": "scan_compressed",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-078",
+      "wallMsRuns": [
+        0.15229199999998855,
+        0.14674999999999727,
+        0.1187500000000341,
+        0.11191699999994853,
+        0.155666999999994
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.14674999999999727,
+      "wallMsP95": 0.155666999999994,
+      "category": "scan_compressed",
+      "layout": "simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-079",
+      "wallMsRuns": [
+        0.1957919999999831,
+        0.19308300000000145,
+        0.19299999999998363,
+        0.16620799999998326,
+        0.18258300000002237
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.19299999999998363,
+      "wallMsP95": 0.1957919999999831,
+      "category": "scan_compressed",
+      "layout": "table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-080",
+      "wallMsRuns": [
+        0.2801249999999982,
+        0.24220900000000256,
+        0.2632080000000201,
+        0.24175000000002456,
+        0.2614580000000615
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.2614580000000615,
+      "wallMsP95": 0.2801249999999982,
+      "category": "scan_compressed",
+      "layout": "multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-081",
+      "wallMsRuns": [
+        1.2433750000000146,
+        1.2778749999999945,
+        1.1698329999999828,
+        1.165083999999979,
+        1.2253339999999753
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": true,
+      "pagesWithTables": [
+        1
+      ],
+      "pagesWithColumns": [
+        1
+      ],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 1,
+      "markdownCharacters": 409,
+      "wallMsMedian": 1.2253339999999753,
+      "wallMsP95": 1.2778749999999945,
+      "category": "native_text",
+      "layout": "classic",
+      "origin": "synthetic-toquehub-business",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-082",
+      "wallMsRuns": [
+        1.2269580000000246,
+        1.2582499999999754,
+        1.2523330000000215,
+        1.1334170000000086,
+        1.165958000000046
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": true,
+      "pagesWithTables": [
+        1
+      ],
+      "pagesWithColumns": [
+        1
+      ],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 1,
+      "markdownCharacters": 450,
+      "wallMsMedian": 1.2269580000000246,
+      "wallMsP95": 1.2582499999999754,
+      "category": "native_text",
+      "layout": "landscape",
+      "origin": "synthetic-toquehub-business",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-083",
+      "wallMsRuns": [
+        1.258624999999995,
+        1.0881669999999986,
+        1.1618330000000014,
+        1.0824159999999665,
+        1.0834999999999582
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": true,
+      "pagesWithTables": [
+        1
+      ],
+      "pagesWithColumns": [
+        1
+      ],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 1,
+      "markdownCharacters": 399,
+      "wallMsMedian": 1.0881669999999986,
+      "wallMsP95": 1.258624999999995,
+      "category": "native_text",
+      "layout": "receipt",
+      "origin": "synthetic-toquehub-business",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-084",
+      "wallMsRuns": [
+        1.4963750000000005,
+        1.4457089999999653,
+        1.532583000000045,
+        1.3817080000000033,
+        1.418957999999975
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": true,
+      "pagesWithTables": [
+        1
+      ],
+      "pagesWithColumns": [
+        1
+      ],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 1,
+      "markdownCharacters": 475,
+      "wallMsMedian": 1.4457089999999653,
+      "wallMsP95": 1.532583000000045,
+      "category": "native_text",
+      "layout": "dense",
+      "origin": "synthetic-toquehub-business",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-085",
+      "wallMsRuns": [
+        1.3783750000000055,
+        1.5265420000000063,
+        1.404542000000049,
+        1.33075000000008,
+        1.3099589999999353
+      ],
+      "success": true,
+      "pdfType": "TextBased",
+      "pageCount": 1,
+      "pagesNeedingOcr": [],
+      "ocrReasonsByPage": [],
+      "confidence": 1,
+      "isComplexLayout": true,
+      "pagesWithTables": [
+        1
+      ],
+      "pagesWithColumns": [
+        1
+      ],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 1,
+      "markdownCharacters": 407,
+      "wallMsMedian": 1.3783750000000055,
+      "wallMsP95": 1.5265420000000063,
+      "category": "native_text",
+      "layout": "compact",
+      "origin": "synthetic-toquehub-business",
+      "expectedRoute": "local",
+      "predictedRoute": "local",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-086",
+      "wallMsRuns": [
+        0.16716700000000628,
+        0.18679200000002538,
+        0.14537500000000136,
+        0.13054199999999128,
+        0.13341700000000856
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.14537500000000136,
+      "wallMsP95": 0.18679200000002538,
+      "category": "scan_clean",
+      "layout": "classic",
+      "origin": "synthetic-toquehub-business",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-087",
+      "wallMsRuns": [
+        0.1629169999999931,
+        0.13966699999997445,
+        0.13887499999998454,
+        0.10325000000000273,
+        0.11745900000005349
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.13887499999998454,
+      "wallMsP95": 0.1629169999999931,
+      "category": "scan_clean",
+      "layout": "landscape",
+      "origin": "synthetic-toquehub-business",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-088",
+      "wallMsRuns": [
+        0.14091599999994742,
+        0.16858300000001236,
+        0.1089579999999728,
+        0.09045900000000984,
+        0.0987920000000031
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.1089579999999728,
+      "wallMsP95": 0.16858300000001236,
+      "category": "scan_clean",
+      "layout": "receipt",
+      "origin": "synthetic-toquehub-business",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-089",
+      "wallMsRuns": [
+        0.12041700000003175,
+        0.09624999999999773,
+        0.09074999999995725,
+        0.07583299999998871,
+        0.096416999999974
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.09624999999999773,
+      "wallMsP95": 0.12041700000003175,
+      "category": "scan_lowres",
+      "layout": "dense",
+      "origin": "synthetic-toquehub-business",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-090",
+      "wallMsRuns": [
+        0.11687499999999318,
+        0.09325000000001182,
+        0.09808299999997416,
+        0.06708400000002257,
+        0.07679099999995742
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.09325000000001182,
+      "wallMsP95": 0.11687499999999318,
+      "category": "scan_lowres",
+      "layout": "compact",
+      "origin": "synthetic-toquehub-business",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-091",
+      "wallMsRuns": [
+        0.10862499999996089,
+        0.09562500000004093,
+        0.1047500000000241,
+        0.07158299999991868,
+        0.07150000000001455
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.09562500000004093,
+      "wallMsP95": 0.10862499999996089,
+      "category": "scan_lowres",
+      "layout": "classic",
+      "origin": "synthetic-toquehub-business",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-092",
+      "wallMsRuns": [
+        0.20229199999999992,
+        0.16183399999999892,
+        0.1375409999999988,
+        0.11287500000003092,
+        0.11070799999993142
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.1375409999999988,
+      "wallMsP95": 0.20229199999999992,
+      "category": "scan_skewed",
+      "layout": "landscape",
+      "origin": "synthetic-toquehub-business",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-093",
+      "wallMsRuns": [
+        0.13816700000000992,
+        0.11262500000003683,
+        0.11966599999999517,
+        0.08216700000002675,
+        0.08320800000001327
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.11262500000003683,
+      "wallMsP95": 0.13816700000000992,
+      "category": "scan_skewed",
+      "layout": "receipt",
+      "origin": "synthetic-toquehub-business",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-094",
+      "wallMsRuns": [
+        0.4309579999999755,
+        0.4366669999999999,
+        0.4217909999999847,
+        0.37750000000005457,
+        0.4430839999999989
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.4309579999999755,
+      "wallMsP95": 0.4430839999999989,
+      "category": "scan_noisy",
+      "layout": "dense",
+      "origin": "synthetic-toquehub-business",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-095",
+      "wallMsRuns": [
+        0.12708299999997053,
+        0.087208999999973,
+        0.09325000000001182,
+        0.07629199999996672,
+        0.08345900000006168
+      ],
+      "success": true,
+      "pdfType": "Scanned",
+      "pageCount": 1,
+      "pagesNeedingOcr": [
+        1
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 1,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.949999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 0,
+      "markdownCharacters": 0,
+      "wallMsMedian": 0.087208999999973,
+      "wallMsP95": 0.12708299999997053,
+      "category": "scan_compressed",
+      "layout": "compact",
+      "origin": "synthetic-toquehub-business",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-096",
+      "wallMsRuns": [
+        4.048000000000002,
+        3.6211250000000064,
+        4.002541000000008,
+        3.992750000000001,
+        3.7694999999999936
+      ],
+      "success": true,
+      "pdfType": "Mixed",
+      "pageCount": 2,
+      "pagesNeedingOcr": [
+        2
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 2,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.6499999761581421,
+      "isComplexLayout": true,
+      "pagesWithTables": [
+        1
+      ],
+      "pagesWithColumns": [
+        1
+      ],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 3,
+      "markdownCharacters": 3181,
+      "wallMsMedian": 3.992750000000001,
+      "wallMsP95": 4.048000000000002,
+      "category": "mixed",
+      "layout": "table+multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-097",
+      "wallMsRuns": [
+        1.4151659999999993,
+        1.3331660000000056,
+        1.3736670000000117,
+        1.313833000000045,
+        1.294791000000032
+      ],
+      "success": true,
+      "pdfType": "Mixed",
+      "pageCount": 2,
+      "pagesNeedingOcr": [
+        2
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 2,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.699999988079071,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 1,
+      "markdownCharacters": 2551,
+      "wallMsMedian": 1.3331660000000056,
+      "wallMsP95": 1.4151659999999993,
+      "category": "mixed",
+      "layout": "simple+table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-098",
+      "wallMsRuns": [
+        1.9340409999999792,
+        2.012292000000002,
+        2.124167,
+        1.8105000000000473,
+        1.841374999999971
+      ],
+      "success": true,
+      "pdfType": "Mixed",
+      "pageCount": 2,
+      "pagesNeedingOcr": [
+        2
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 2,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.6499999761581421,
+      "isComplexLayout": true,
+      "pagesWithTables": [],
+      "pagesWithColumns": [
+        1
+      ],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 1,
+      "markdownCharacters": 1802,
+      "wallMsMedian": 1.9340409999999792,
+      "wallMsP95": 2.124167,
+      "category": "mixed",
+      "layout": "multi_column+simple",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-099",
+      "wallMsRuns": [
+        3.265958000000012,
+        3.4157920000000104,
+        3.02049999999997,
+        3.3834999999999127,
+        3.2993750000000546
+      ],
+      "success": true,
+      "pdfType": "Mixed",
+      "pageCount": 2,
+      "pagesNeedingOcr": [
+        2
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 2,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.6499999761581421,
+      "isComplexLayout": true,
+      "pagesWithTables": [
+        1
+      ],
+      "pagesWithColumns": [
+        1
+      ],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 3,
+      "markdownCharacters": 1608,
+      "wallMsMedian": 3.2993750000000546,
+      "wallMsP95": 3.4157920000000104,
+      "category": "mixed",
+      "layout": "table+multi_column",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    },
+    {
+      "id": "test-100",
+      "wallMsRuns": [
+        1.7619169999999826,
+        1.8999580000000265,
+        1.717917,
+        1.6784589999999753,
+        1.8465419999999995
+      ],
+      "success": true,
+      "pdfType": "Mixed",
+      "pageCount": 2,
+      "pagesNeedingOcr": [
+        2
+      ],
+      "ocrReasonsByPage": [
+        {
+          "page": 2,
+          "reasons": [
+            "scanned"
+          ]
+        }
+      ],
+      "confidence": 0.6499999761581421,
+      "isComplexLayout": false,
+      "pagesWithTables": [],
+      "pagesWithColumns": [],
+      "hasEncodingIssues": false,
+      "processingTimeMs": 1,
+      "markdownCharacters": 2347,
+      "wallMsMedian": 1.7619169999999826,
+      "wallMsP95": 1.8999580000000265,
+      "category": "mixed",
+      "layout": "simple+table",
+      "origin": "opendataloader-bench",
+      "expectedRoute": "ocr",
+      "predictedRoute": "ocr",
+      "routingCorrect": true
+    }
+  ]
+}

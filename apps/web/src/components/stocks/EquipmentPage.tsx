@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
@@ -110,7 +110,6 @@ export function EquipmentPage({
   categories,
   suppliers,
   sites,
-  primarySiteId,
   onAdd,
   onImportOcr,
   onMovement,
@@ -121,7 +120,6 @@ export function EquipmentPage({
   categories: Category[];
   suppliers: Supplier[];
   sites: Site[];
-  primarySiteId?: string;
   onAdd: () => void;
   onImportOcr: () => void;
   onMovement: (productId?: string) => void;
@@ -129,21 +127,15 @@ export function EquipmentPage({
   onEdit: (article: Article) => void;
 }) {
   const activeSites = sites.filter((site) => !site.isArchived && !site.archivedAt);
-  const defaultSiteId =
-    activeSites.find((site) => site.id === primarySiteId)?.id ?? activeSites[0]?.id ?? '';
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [supplierId, setSupplierId] = useState('');
-  const [siteId, setSiteId] = useState(defaultSiteId);
+  const [siteId, setSiteId] = useState('');
   const [subTab, setSubTab] = useState<'catalog' | 'categories'>('catalog');
   const [status, setStatus] = useState<'all' | 'in_stock' | 'restock' | 'financed' | 'attention'>(
     'all',
   );
   const now = Date.now();
-
-  useEffect(() => {
-    if (!siteId && defaultSiteId) setSiteId(defaultSiteId);
-  }, [defaultSiteId, siteId]);
 
   const equipmentStats = useMemo(() => {
     const items = data.items;
@@ -336,6 +328,7 @@ export function EquipmentPage({
                   value={siteId}
                   onChange={(event) => setSiteId(event.target.value)}
                 >
+                  <option value="">Tous les sites</option>
                   {activeSites.map((site) => (
                     <option key={site.id} value={site.id}>
                       {site.name}

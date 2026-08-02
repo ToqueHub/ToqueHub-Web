@@ -1,0 +1,33 @@
+# 3. Impact on Business Operations
+
+This section investigates the impact of public health measures on business operations. MSMEs were lockdown from March 30 to May 4, 2020, were starkly asked about their expectations for recovery and the main effects of COVID-19 on their businesses.
+
+## 3.1. Status of Business Operations
+
+As shown in Figure 3.1.1, the number of MSMEs (93% in July 2020, 98% in October 2020, and 99% “working as usual” gradually increased over the in January 2021) were operating normally, though
+
+course of the research period. The impacts of the
+
+felt, with only 30% of the MSMEs “working as usual,” while over half (58%) were temporarily completely closed.
+
+In the agriculture sector, a large majority of MSMEs
+
+**Figure 3.1.1: Status of operations during each survey phase (%)**
+
+2 2 <u>1</u>
+
+2 1
+
+40 83
+
+0 Lockdown Period July 2020 October 2020 January 2021
+
+Business premises closed to customers, but some business operations continue Business premises still open, but reduced operations Temporarily closed Working as usual
+
+during the first lockdown period, just over three lockdown period. In the handicraft/textile sector, 30% quarters (77%) were working as usual. In contrast, of MSMEs were temporarily closed as of July 2020, 63% of firms from the tourism sector and 62% reducing to 12% in January 2021. Similarly, in tourism, from the handicraft/textile sector were working as 27% of businesses were temporarily closed as of July usual as of July 2020, rising to 80% of tourism and 82% of handicraft/textile firms as of January 2021. 3.1.1 and Table 3.1.1 do not reflect those MSMEs who During the lockdown period, tourism and handicraft/ textile MSMEs were the hardest hit with just 12% 22 in October 2020, and 24 in January 2021. Of these and 15% respectively working as usual. As shown 50 businesses who permanently closed during the in Table 3.1.1., a majority of tourism and handicraft/ textile MSMEs were temporarily closed during the handicraft/textile, and two in agriculture.
+
+2020 and that reduced to 18% in January 2021. Figure
+
+were permanently closed; this was four in July 2020,
+
+research period, 30 were in the tourism sector, 18 in

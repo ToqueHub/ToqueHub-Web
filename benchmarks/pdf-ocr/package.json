@@ -1,0 +1,10 @@
+{
+  "name": "toquehub-pdf-ocr-benchmark",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Reproducible benchmark for pdf-inspector routing and ToqueHub's Mistral OCR pipeline.",
+  "dependencies": {
+    "@firecrawl/pdf-inspector": "1.11.2"
+  }
+}

@@ -386,7 +386,6 @@ function HrDashboard({
   const collaboratorsMissingContract = activeCollaborators.filter((c) => !hasContractCoverage(c));
   const withoutContract = collaboratorsMissingContract.length;
   const withoutPosition = activeCollaborators.filter((c) => !c.positionId && !c.position).length;
-  const withoutManager = activeCollaborators.filter((c) => !c.managerId && !c.manager).length;
   const contractsEndingSoon = activeCollaborators.filter((c) => {
     const endDate = c.activeContract?.endDate || c.contractEndDate;
     return endDate && new Date(endDate).getTime() - Date.now() < 60 * 24 * 60 * 60 * 1000 && new Date(endDate).getTime() > Date.now();
@@ -405,7 +404,6 @@ function HrDashboard({
   const [configExpanded, setConfigExpanded] = useState(false);
   const activeDepartmentsCount = departments.filter((item) => !isArchived(item)).length;
   const activePositionsCount = positions.filter((item) => !isArchived(item)).length;
-  const linkedCollaboratorsCount = activeCollaborators.filter((item) => item.userId || item.user).length;
   const setupProgress = Math.round(([onboardingHasServices, onboardingHasPositions, employeesUnlocked].filter(Boolean).length / 3) * 100);
   const setupSteps = [
     { title: 'Services', text: `${activeDepartmentsCount} service${activeDepartmentsCount > 1 ? 's' : ''}`, done: onboardingHasServices },
@@ -414,12 +412,8 @@ function HrDashboard({
   ];
   const stats: Array<{ label: string; value: React.ReactNode; icon: typeof UsersRound; tone: string; target?: HrTab }> = [
     { label: 'Collaborateurs', value: summary?.counts?.collaborators ?? activeCollaborators.length, icon: UsersRound, tone: 'emerald', target: 'collaborators' },
-    { label: 'Services', value: summary?.counts?.departments ?? activeDepartmentsCount, icon: Building2, tone: 'blue', target: 'departments' },
-    { label: 'Postes', value: summary?.counts?.positions ?? activePositionsCount, icon: BriefcaseBusiness, tone: 'orange', target: 'positions' },
-    { label: 'Avec compte ToqueHub', value: summary?.counts?.linkedCollaborators ?? linkedCollaboratorsCount, icon: ShieldCheck, tone: 'purple' },
     ...(withoutContract ? [{ label: 'Sans contrat', value: withoutContract, icon: ShieldCheck, tone: 'orange' }] : []),
     ...(withoutPosition ? [{ label: 'Sans poste principal', value: withoutPosition, icon: BriefcaseBusiness, tone: 'blue' }] : []),
-    ...(withoutManager ? [{ label: 'Sans responsable', value: withoutManager, icon: UserRound, tone: 'emerald' }] : []),
     ...(contractsEndingSoon ? [{ label: 'Contrats à échéance', value: contractsEndingSoon, icon: CalendarDays, tone: 'purple' }] : []),
     ...(reviewsSoon ? [{ label: 'Revalorisations prévues', value: reviewsSoon, icon: Sparkles, tone: 'orange' }] : []),
   ];

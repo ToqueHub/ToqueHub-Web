@@ -260,6 +260,7 @@ export function MenusApp({
     [menus, selectedMenuId],
   );
   const catalogs = useMemo(() => menus.filter((menu) => menu.kind === 'CATALOG'), [menus]);
+  const averageCatalogSellingPrice = useMemo(() => averageCatalogPrice(catalogs), [catalogs]);
   const selectedCatalog = useMemo(
     () => catalogs.find((menu) => menu.id === selectedMenuId) ?? catalogs[0],
     [catalogs, selectedMenuId],
@@ -1027,28 +1028,10 @@ export function MenusApp({
               ) : null}
               <div className="menus-grid">
                 <MetricCard
-                  icon={<ChefHat />}
-                  label="Menus actifs"
-                  value={
-                    dashboard?.stats?.activeMenus ??
-                    menus.filter((m) => m.status !== 'ARCHIVED').length
-                  }
-                  tone="blue"
-                />
-                <MetricCard
                   icon={<CalendarDays />}
                   label="Menus de la semaine"
                   value={dashboard?.stats?.weekMenus ?? menus.length}
                   tone="purple"
-                />
-                <MetricCard
-                  icon={<RefreshCw />}
-                  label="Cycles actifs"
-                  value={
-                    dashboard?.stats?.activeCycles ??
-                    cycles.filter((c) => c.status !== 'ARCHIVED').length
-                  }
-                  tone="emerald"
                 />
                 <MetricCard
                   icon={<UsersRound />}
@@ -1064,6 +1047,16 @@ export function MenusApp({
                   label="Coût moyen / repas"
                   value={`${money(dashboard?.stats?.averageCostPerMeal ?? averageCost(menus))} €`}
                   tone="emerald"
+                />
+                <MetricCard
+                  icon={<BookOpen />}
+                  label="Prix moyen des cartes"
+                  value={
+                    averageCatalogSellingPrice == null
+                      ? 'Non renseigné'
+                      : `${money(averageCatalogSellingPrice)} €`
+                  }
+                  tone="blue"
                 />
               </div>
 
@@ -4258,6 +4251,22 @@ function averageCost(menus: MenuPlan[]) {
     .map((m) => Number(m.costPerGuest ?? m.estimatedCostPerGuest ?? 0))
     .filter((n) => Number.isFinite(n) && n > 0);
   return values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+}
+function averageCatalogPrice(catalogs: MenuPlan[]) {
+  const prices = catalogs
+    .filter((catalog) => catalog.status !== 'ARCHIVED')
+    .flatMap((catalog) => catalog.items ?? [])
+    .map((item) => {
+      const sheet = item.technicalSheet;
+      return Number(
+        sheet?.targetSellingPriceInclTax ??
+          sheet?.targetSellingPriceHtPerPortion ??
+          sheet?.targetSellingPriceExclTax ??
+          0,
+      );
+    })
+    .filter((price) => Number.isFinite(price) && price > 0);
+  return prices.length ? prices.reduce((sum, price) => sum + price, 0) / prices.length : null;
 }
 function dateFr(value?: string | null) {
   return value ? new Date(value).toLocaleDateString('fr-FR') : '—';

@@ -1,0 +1,920 @@
+{
+  "generatedAt": "2026-08-02T10:01:02.392Z",
+  "engine": {
+    "name": "Guarded hybrid: local only for reliable native PDFs without detected tables",
+    "routingRule": "Use pdf-inspector only for TextBased PDFs without encoding issues, OCR pages, or detected tables; use ToqueHub OCR otherwise."
+  },
+  "documentCount": 100,
+  "successfulDocuments": 99,
+  "localDocuments": 20,
+  "ocrDocuments": 80,
+  "totalSimulatedLatencyMs": 201340.85879399994,
+  "latencyMs": {
+    "median": 1433.4152909999998,
+    "p95": 3148.0720419999984,
+    "max": 60013.429667000004
+  },
+  "estimatedSequentialDocumentsPerSecond": 0.4966701771264127,
+  "results": [
+    {
+      "id": "test-001",
+      "category": "native_text",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1784.633542,
+      "markdownCharacters": 984
+    },
+    {
+      "id": "test-002",
+      "category": "native_text",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 2245.3591659999997,
+      "markdownCharacters": 2406
+    },
+    {
+      "id": "test-003",
+      "category": "native_text",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1326.5405419999997,
+      "markdownCharacters": 1414
+    },
+    {
+      "id": "test-004",
+      "category": "native_text",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1746.7812090000002,
+      "markdownCharacters": 1954
+    },
+    {
+      "id": "test-005",
+      "category": "native_text",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1945.3338760000001,
+      "markdownCharacters": 2006
+    },
+    {
+      "id": "test-006",
+      "category": "native_text",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1122.4978340000007,
+      "markdownCharacters": 974
+    },
+    {
+      "id": "test-007",
+      "category": "native_text",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1433.4152909999998,
+      "markdownCharacters": 735
+    },
+    {
+      "id": "test-008",
+      "category": "native_text",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 2938.7946679999995,
+      "markdownCharacters": 1894
+    },
+    {
+      "id": "test-009",
+      "category": "native_text",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 2327.9923329999997,
+      "markdownCharacters": 2973
+    },
+    {
+      "id": "test-010",
+      "category": "native_text",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1493.4486239999997,
+      "markdownCharacters": 1050
+    },
+    {
+      "id": "test-011",
+      "category": "native_text",
+      "layout": "multi_column",
+      "selectedEngine": "firecrawl",
+      "success": true,
+      "simulatedLatencyMs": 4.922708,
+      "markdownCharacters": 1285
+    },
+    {
+      "id": "test-012",
+      "category": "native_text",
+      "layout": "multi_column",
+      "selectedEngine": "firecrawl",
+      "success": true,
+      "simulatedLatencyMs": 6.0382920000000695,
+      "markdownCharacters": 1735
+    },
+    {
+      "id": "test-013",
+      "category": "native_text",
+      "layout": "multi_column",
+      "selectedEngine": "firecrawl",
+      "success": true,
+      "simulatedLatencyMs": 3.868582999999944,
+      "markdownCharacters": 4365
+    },
+    {
+      "id": "test-014",
+      "category": "native_text",
+      "layout": "multi_column",
+      "selectedEngine": "firecrawl",
+      "success": true,
+      "simulatedLatencyMs": 2.3181669999999883,
+      "markdownCharacters": 1858
+    },
+    {
+      "id": "test-015",
+      "category": "native_text",
+      "layout": "multi_column",
+      "selectedEngine": "firecrawl",
+      "success": true,
+      "simulatedLatencyMs": 4.474125000000072,
+      "markdownCharacters": 2047
+    },
+    {
+      "id": "test-016",
+      "category": "native_text",
+      "layout": "multi_column",
+      "selectedEngine": "firecrawl",
+      "success": true,
+      "simulatedLatencyMs": 2.6365419999999915,
+      "markdownCharacters": 4623
+    },
+    {
+      "id": "test-017",
+      "category": "native_text",
+      "layout": "multi_column",
+      "selectedEngine": "firecrawl",
+      "success": true,
+      "simulatedLatencyMs": 2.0972919999999817,
+      "markdownCharacters": 2126
+    },
+    {
+      "id": "test-018",
+      "category": "native_text",
+      "layout": "multi_column",
+      "selectedEngine": "firecrawl",
+      "success": true,
+      "simulatedLatencyMs": 2.1365000000000123,
+      "markdownCharacters": 2324
+    },
+    {
+      "id": "test-019",
+      "category": "native_text",
+      "layout": "multi_column",
+      "selectedEngine": "firecrawl",
+      "success": true,
+      "simulatedLatencyMs": 2.7780420000000277,
+      "markdownCharacters": 773
+    },
+    {
+      "id": "test-020",
+      "category": "native_text",
+      "layout": "multi_column",
+      "selectedEngine": "firecrawl",
+      "success": true,
+      "simulatedLatencyMs": 2.782000000000039,
+      "markdownCharacters": 4443
+    },
+    {
+      "id": "test-021",
+      "category": "native_text",
+      "layout": "simple",
+      "selectedEngine": "firecrawl",
+      "success": true,
+      "simulatedLatencyMs": 1.5953750000000184,
+      "markdownCharacters": 2062
+    },
+    {
+      "id": "test-022",
+      "category": "native_text",
+      "layout": "simple",
+      "selectedEngine": "firecrawl",
+      "success": true,
+      "simulatedLatencyMs": 1.1731249999999989,
+      "markdownCharacters": 2441
+    },
+    {
+      "id": "test-023",
+      "category": "native_text",
+      "layout": "simple",
+      "selectedEngine": "firecrawl",
+      "success": true,
+      "simulatedLatencyMs": 1.3248340000000098,
+      "markdownCharacters": 1697
+    },
+    {
+      "id": "test-024",
+      "category": "native_text",
+      "layout": "simple",
+      "selectedEngine": "firecrawl",
+      "success": true,
+      "simulatedLatencyMs": 2.3725000000000023,
+      "markdownCharacters": 1508
+    },
+    {
+      "id": "test-025",
+      "category": "native_text",
+      "layout": "simple",
+      "selectedEngine": "firecrawl",
+      "success": true,
+      "simulatedLatencyMs": 2.9258330000000115,
+      "markdownCharacters": 1140
+    },
+    {
+      "id": "test-026",
+      "category": "native_text",
+      "layout": "simple",
+      "selectedEngine": "firecrawl",
+      "success": true,
+      "simulatedLatencyMs": 1.7335000000000491,
+      "markdownCharacters": 1256
+    },
+    {
+      "id": "test-027",
+      "category": "native_text",
+      "layout": "simple",
+      "selectedEngine": "firecrawl",
+      "success": true,
+      "simulatedLatencyMs": 3.8458750000000066,
+      "markdownCharacters": 2691
+    },
+    {
+      "id": "test-028",
+      "category": "native_text",
+      "layout": "simple",
+      "selectedEngine": "firecrawl",
+      "success": true,
+      "simulatedLatencyMs": 1.9298749999999245,
+      "markdownCharacters": 1229
+    },
+    {
+      "id": "test-029",
+      "category": "native_text",
+      "layout": "simple",
+      "selectedEngine": "firecrawl",
+      "success": true,
+      "simulatedLatencyMs": 1.943125000000009,
+      "markdownCharacters": 3675
+    },
+    {
+      "id": "test-030",
+      "category": "native_text",
+      "layout": "simple",
+      "selectedEngine": "firecrawl",
+      "success": true,
+      "simulatedLatencyMs": 1.3694169999999986,
+      "markdownCharacters": 2453
+    },
+    {
+      "id": "test-031",
+      "category": "scan_clean",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 2212.694291,
+      "markdownCharacters": 1343
+    },
+    {
+      "id": "test-032",
+      "category": "scan_clean",
+      "layout": "multi_column",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 3894.208249000002,
+      "markdownCharacters": 4883
+    },
+    {
+      "id": "test-033",
+      "category": "scan_clean",
+      "layout": "simple",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1971.2330009999973,
+      "markdownCharacters": 2158
+    },
+    {
+      "id": "test-034",
+      "category": "scan_clean",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1767.0109590000009,
+      "markdownCharacters": 1315
+    },
+    {
+      "id": "test-035",
+      "category": "scan_clean",
+      "layout": "multi_column",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1409.663417000001,
+      "markdownCharacters": 636
+    },
+    {
+      "id": "test-036",
+      "category": "scan_clean",
+      "layout": "simple",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1115.612916000001,
+      "markdownCharacters": 986
+    },
+    {
+      "id": "test-037",
+      "category": "scan_clean",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 4964.711084000005,
+      "markdownCharacters": 5136
+    },
+    {
+      "id": "test-038",
+      "category": "scan_clean",
+      "layout": "multi_column",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1647.3800000000062,
+      "markdownCharacters": 2502
+    },
+    {
+      "id": "test-039",
+      "category": "scan_clean",
+      "layout": "simple",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1674.682541999989,
+      "markdownCharacters": 845
+    },
+    {
+      "id": "test-040",
+      "category": "scan_clean",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 3303.3147500000105,
+      "markdownCharacters": 4649
+    },
+    {
+      "id": "test-041",
+      "category": "scan_clean",
+      "layout": "multi_column",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 2017.1905009999919,
+      "markdownCharacters": 1450
+    },
+    {
+      "id": "test-042",
+      "category": "scan_clean",
+      "layout": "simple",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1013.7140840000009,
+      "markdownCharacters": 1344
+    },
+    {
+      "id": "test-043",
+      "category": "scan_clean",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1262.5472919999984,
+      "markdownCharacters": 1602
+    },
+    {
+      "id": "test-044",
+      "category": "scan_clean",
+      "layout": "multi_column",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 3089.036040999996,
+      "markdownCharacters": 4119
+    },
+    {
+      "id": "test-045",
+      "category": "scan_clean",
+      "layout": "simple",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1791.485542000008,
+      "markdownCharacters": 1191
+    },
+    {
+      "id": "test-046",
+      "category": "scan_lowres",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1688.0234580000024,
+      "markdownCharacters": 2686
+    },
+    {
+      "id": "test-047",
+      "category": "scan_lowres",
+      "layout": "multi_column",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1407.4982079999954,
+      "markdownCharacters": 1652
+    },
+    {
+      "id": "test-048",
+      "category": "scan_lowres",
+      "layout": "simple",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1711.608917000002,
+      "markdownCharacters": 2583
+    },
+    {
+      "id": "test-049",
+      "category": "scan_lowres",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 3885.24962500001,
+      "markdownCharacters": 4883
+    },
+    {
+      "id": "test-050",
+      "category": "scan_lowres",
+      "layout": "multi_column",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1744.3017500000024,
+      "markdownCharacters": 2766
+    },
+    {
+      "id": "test-051",
+      "category": "scan_lowres",
+      "layout": "simple",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 2573.592749000001,
+      "markdownCharacters": 3281
+    },
+    {
+      "id": "test-052",
+      "category": "scan_lowres",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 3148.0720419999984,
+      "markdownCharacters": 2379
+    },
+    {
+      "id": "test-053",
+      "category": "scan_lowres",
+      "layout": "multi_column",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 607.3359159999943,
+      "markdownCharacters": 300
+    },
+    {
+      "id": "test-054",
+      "category": "scan_lowres",
+      "layout": "simple",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1127.1625009999998,
+      "markdownCharacters": 929
+    },
+    {
+      "id": "test-055",
+      "category": "scan_lowres",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1636.9829580000114,
+      "markdownCharacters": 1352
+    },
+    {
+      "id": "test-056",
+      "category": "scan_lowres",
+      "layout": "multi_column",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1733.4251240000087,
+      "markdownCharacters": 1796
+    },
+    {
+      "id": "test-057",
+      "category": "scan_lowres",
+      "layout": "simple",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1327.7483750000054,
+      "markdownCharacters": 1071
+    },
+    {
+      "id": "test-058",
+      "category": "scan_lowres",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1502.033667000001,
+      "markdownCharacters": 1392
+    },
+    {
+      "id": "test-059",
+      "category": "scan_lowres",
+      "layout": "multi_column",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1584.3319579999998,
+      "markdownCharacters": 2053
+    },
+    {
+      "id": "test-060",
+      "category": "scan_lowres",
+      "layout": "simple",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1006.7887079999929,
+      "markdownCharacters": 718
+    },
+    {
+      "id": "test-061",
+      "category": "scan_skewed",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1016.1019160000023,
+      "markdownCharacters": 780
+    },
+    {
+      "id": "test-062",
+      "category": "scan_skewed",
+      "layout": "multi_column",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1948.148541000004,
+      "markdownCharacters": 2810
+    },
+    {
+      "id": "test-063",
+      "category": "scan_skewed",
+      "layout": "simple",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 2186.359750000001,
+      "markdownCharacters": 2665
+    },
+    {
+      "id": "test-064",
+      "category": "scan_skewed",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 2106.9209159999937,
+      "markdownCharacters": 1577
+    },
+    {
+      "id": "test-065",
+      "category": "scan_skewed",
+      "layout": "multi_column",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1996.9714999999906,
+      "markdownCharacters": 2483
+    },
+    {
+      "id": "test-066",
+      "category": "scan_skewed",
+      "layout": "simple",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1990.5393340000048,
+      "markdownCharacters": 1754
+    },
+    {
+      "id": "test-067",
+      "category": "scan_skewed",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 2657.1108340000005,
+      "markdownCharacters": 1286
+    },
+    {
+      "id": "test-068",
+      "category": "scan_skewed",
+      "layout": "multi_column",
+      "selectedEngine": "toquehub-ocr",
+      "success": false,
+      "simulatedLatencyMs": 60013.429667000004,
+      "markdownCharacters": 0
+    },
+    {
+      "id": "test-069",
+      "category": "scan_skewed",
+      "layout": "simple",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1728.88254200002,
+      "markdownCharacters": 2548
+    },
+    {
+      "id": "test-070",
+      "category": "scan_skewed",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1734.9354579999806,
+      "markdownCharacters": 939
+    },
+    {
+      "id": "test-071",
+      "category": "scan_noisy",
+      "layout": "multi_column",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1430.555167000009,
+      "markdownCharacters": 850
+    },
+    {
+      "id": "test-072",
+      "category": "scan_noisy",
+      "layout": "simple",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1945.3897080000027,
+      "markdownCharacters": 1567
+    },
+    {
+      "id": "test-073",
+      "category": "scan_noisy",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 2626.257166999992,
+      "markdownCharacters": 2573
+    },
+    {
+      "id": "test-074",
+      "category": "scan_noisy",
+      "layout": "multi_column",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1768.415125000014,
+      "markdownCharacters": 2720
+    },
+    {
+      "id": "test-075",
+      "category": "scan_noisy",
+      "layout": "simple",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1431.926665999992,
+      "markdownCharacters": 1513
+    },
+    {
+      "id": "test-076",
+      "category": "scan_compressed",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1793.8506669999772,
+      "markdownCharacters": 1874
+    },
+    {
+      "id": "test-077",
+      "category": "scan_compressed",
+      "layout": "multi_column",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1891.2707499999983,
+      "markdownCharacters": 1020
+    },
+    {
+      "id": "test-078",
+      "category": "scan_compressed",
+      "layout": "simple",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 923.3820839999972,
+      "markdownCharacters": 423
+    },
+    {
+      "id": "test-079",
+      "category": "scan_compressed",
+      "layout": "table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1527.0273330000061,
+      "markdownCharacters": 1428
+    },
+    {
+      "id": "test-080",
+      "category": "scan_compressed",
+      "layout": "multi_column",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1717.6566250000096,
+      "markdownCharacters": 2273
+    },
+    {
+      "id": "test-081",
+      "category": "native_text",
+      "layout": "classic",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1129.694875999977,
+      "markdownCharacters": 493
+    },
+    {
+      "id": "test-082",
+      "category": "native_text",
+      "layout": "landscape",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1294.252665999972,
+      "markdownCharacters": 533
+    },
+    {
+      "id": "test-083",
+      "category": "native_text",
+      "layout": "receipt",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1105.0660420000113,
+      "markdownCharacters": 489
+    },
+    {
+      "id": "test-084",
+      "category": "native_text",
+      "layout": "dense",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1300.993750000002,
+      "markdownCharacters": 553
+    },
+    {
+      "id": "test-085",
+      "category": "native_text",
+      "layout": "compact",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1122.9227499999977,
+      "markdownCharacters": 486
+    },
+    {
+      "id": "test-086",
+      "category": "scan_clean",
+      "layout": "classic",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1260.602374999995,
+      "markdownCharacters": 554
+    },
+    {
+      "id": "test-087",
+      "category": "scan_clean",
+      "layout": "landscape",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1196.7317500000022,
+      "markdownCharacters": 481
+    },
+    {
+      "id": "test-088",
+      "category": "scan_clean",
+      "layout": "receipt",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1311.448040999999,
+      "markdownCharacters": 533
+    },
+    {
+      "id": "test-089",
+      "category": "scan_lowres",
+      "layout": "dense",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1245.8888329999731,
+      "markdownCharacters": 497
+    },
+    {
+      "id": "test-090",
+      "category": "scan_lowres",
+      "layout": "compact",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1336.4927090000074,
+      "markdownCharacters": 527
+    },
+    {
+      "id": "test-091",
+      "category": "scan_lowres",
+      "layout": "classic",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1117.8108330000086,
+      "markdownCharacters": 500
+    },
+    {
+      "id": "test-092",
+      "category": "scan_skewed",
+      "layout": "landscape",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1431.0237910000105,
+      "markdownCharacters": 535
+    },
+    {
+      "id": "test-093",
+      "category": "scan_skewed",
+      "layout": "receipt",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1227.079290999993,
+      "markdownCharacters": 484
+    },
+    {
+      "id": "test-094",
+      "category": "scan_noisy",
+      "layout": "dense",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 2052.361582999979,
+      "markdownCharacters": 544
+    },
+    {
+      "id": "test-095",
+      "category": "scan_compressed",
+      "layout": "compact",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1183.563459000007,
+      "markdownCharacters": 482
+    },
+    {
+      "id": "test-096",
+      "category": "mixed",
+      "layout": "table+multi_column",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 2612.217957999989,
+      "markdownCharacters": 5690
+    },
+    {
+      "id": "test-097",
+      "category": "mixed",
+      "layout": "simple+table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1723.1595830000037,
+      "markdownCharacters": 3445
+    },
+    {
+      "id": "test-098",
+      "category": "mixed",
+      "layout": "multi_column+simple",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1948.1578330000043,
+      "markdownCharacters": 2290
+    },
+    {
+      "id": "test-099",
+      "category": "mixed",
+      "layout": "table+multi_column",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1620.4635840000096,
+      "markdownCharacters": 3638
+    },
+    {
+      "id": "test-100",
+      "category": "mixed",
+      "layout": "simple+table",
+      "selectedEngine": "toquehub-ocr",
+      "success": true,
+      "simulatedLatencyMs": 1448.0919169999872,
+      "markdownCharacters": 3946
+    }
+  ]
+}

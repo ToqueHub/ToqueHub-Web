@@ -1,5 +1,5 @@
 import type { FormEvent, ReactNode } from 'react';
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Avatar,
@@ -2635,10 +2635,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     setShowCategoryModal(false);
   }
 
-  async function handleCreateEquipmentCategory(payload: {
-    name: string;
-    description?: string;
-  }) {
+  async function handleCreateEquipmentCategory(payload: { name: string; description?: string }) {
     await submit(
       () => api.createEquipmentCategory(token, payload),
       'Catégorie de matériel créée avec succès.',
@@ -2955,6 +2952,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     await api.analyzeStocksOcrBatch(
       token,
       uploaded.documents.map((document) => document.id),
+      ocrImportKind === 'EQUIPMENT' ? 'EQUIPMENT' : undefined,
     );
     const refreshed = await Promise.all(
       uploaded.documents.map((document) =>
@@ -2986,9 +2984,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               ...extraction.data,
               lines: extraction.data.lines.map((line) => {
                 const productId =
-                  line.productId && equipmentProductIds.has(line.productId)
-                    ? line.productId
-                    : null;
+                  line.productId && equipmentProductIds.has(line.productId) ? line.productId : null;
                 const categoryId =
                   line.categoryId && equipmentCategoryIds.has(line.categoryId)
                     ? line.categoryId
@@ -3003,9 +2999,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   categoryId,
                   categoryName: categoryId ? line.categoryName : null,
                   suggestedCategoryId,
-                  suggestedCategoryName: suggestedCategoryId
-                    ? line.suggestedCategoryName
-                    : null,
+                  suggestedCategoryName: suggestedCategoryId ? line.suggestedCategoryName : null,
                   productCandidates: (line.productCandidates ?? []).filter((candidate) =>
                     equipmentProductIds.has(candidate.id),
                   ),
@@ -3038,7 +3032,12 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   async function handleReanalyzeOcrWithAi() {
     if (!selectedOcrExtraction) return;
     const updated = await submit(
-      () => api.reanalyzeStocksOcrWithAi(token, selectedOcrExtraction.id),
+      () =>
+        api.reanalyzeStocksOcrWithAi(
+          token,
+          selectedOcrExtraction.id,
+          ocrImportKind === 'EQUIPMENT' ? 'EQUIPMENT' : undefined,
+        ),
       'Analyse IA relancée.',
     );
     setSelectedOcrExtraction(updated as StocksOcrExtraction);
@@ -3046,9 +3045,19 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
   async function handleCreateOcrReception(payload: StocksOcrExtraction['data']) {
     if (!selectedOcrExtraction) return;
+    const normalizedPayload =
+      ocrImportKind === 'EQUIPMENT'
+        ? {
+            ...payload,
+            lines: payload.lines.map((line) => ({
+              ...line,
+              productKind: 'EQUIPMENT' as const,
+            })),
+          }
+        : payload;
     await submit(
-      () => api.createStockReceptionFromOcr(token, selectedOcrExtraction.id, payload),
-      'La réception a été créée.',
+      () => api.createStockReceptionFromOcr(token, selectedOcrExtraction.id, normalizedPayload),
+      ocrImportKind === 'EQUIPMENT' ? 'Le matériel a été créé.' : 'La réception a été créée.',
     );
     const validatedDocumentId =
       selectedOcrExtraction.document?.id ?? selectedOcrExtraction.ocrDocument?.document?.id;
@@ -3081,8 +3090,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       ocrImportKind === 'EQUIPMENT'
         ? (equipmentArticles?.items.map((item) => item.product) ?? [])
         : products;
-    const availableCategories =
-      ocrImportKind === 'EQUIPMENT' ? equipmentCategories : categories;
+    const availableCategories = ocrImportKind === 'EQUIPMENT' ? equipmentCategories : categories;
     const categoryId = await resolveOcrCategoryIdForCreate(
       token,
       line,
@@ -3092,6 +3100,22 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       ocrImportKind === 'EQUIPMENT' ? 'EQUIPMENT' : undefined,
     );
     const description = ocrProductDescription(line);
+    const equipmentPayload =
+      ocrImportKind === 'EQUIPMENT'
+        ? {
+            brand: line.brand || undefined,
+            model: line.model || undefined,
+            acquisitionMode: line.acquisitionMode ?? 'CASH',
+            financingProvider: line.financingProvider || undefined,
+            financingStart: line.financingStart || undefined,
+            financingEnd: line.financingEnd || undefined,
+            monthlyPayment: nullableNumeric(line.monthlyPayment) ?? undefined,
+            financedAmount: nullableNumeric(line.financedAmount) ?? undefined,
+            buyoutValue: nullableNumeric(line.buyoutValue) ?? undefined,
+            notes: line.equipmentNotes || undefined,
+            condition: 'IN_SERVICE' as const,
+          }
+        : undefined;
     const existing = availableProducts.find(
       (product) =>
         (reference && product.sku === reference) ||
@@ -3117,11 +3141,25 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         ),
       );
       const shouldUpdateDescription = Boolean(description && !existing.description);
+      const shouldUpdateEquipment = Boolean(
+        ocrImportKind === 'EQUIPMENT' &&
+        (line.brand ||
+          line.model ||
+          line.financingProvider ||
+          line.financingStart ||
+          line.financingEnd ||
+          line.monthlyPayment != null ||
+          line.financedAmount != null ||
+          line.buyoutValue != null ||
+          line.equipmentNotes ||
+          line.acquisitionMode),
+      );
       if (
         shouldUpdatePrice ||
         shouldUpdateCategory ||
         shouldUpdateSupplier ||
-        shouldUpdateDescription
+        shouldUpdateDescription ||
+        shouldUpdateEquipment
       ) {
         return (await submit(
           () =>
@@ -3143,6 +3181,35 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                       existing.weightedAveragePrice,
                   ),
               kind: ocrImportKind === 'EQUIPMENT' ? 'EQUIPMENT' : undefined,
+              equipment:
+                ocrImportKind === 'EQUIPMENT'
+                  ? {
+                      ...equipmentPayload,
+                      brand: existing.equipmentProfile?.brand || equipmentPayload?.brand,
+                      model: existing.equipmentProfile?.model || equipmentPayload?.model,
+                      financingProvider:
+                        existing.equipmentProfile?.financingProvider ||
+                        equipmentPayload?.financingProvider,
+                      financingStart:
+                        existing.equipmentProfile?.financingStart ||
+                        equipmentPayload?.financingStart,
+                      financingEnd:
+                        existing.equipmentProfile?.financingEnd || equipmentPayload?.financingEnd,
+                      monthlyPayment:
+                        nullableNumeric(existing.equipmentProfile?.monthlyPayment) ??
+                        equipmentPayload?.monthlyPayment,
+                      financedAmount:
+                        nullableNumeric(existing.equipmentProfile?.financedAmount) ??
+                        equipmentPayload?.financedAmount,
+                      buyoutValue:
+                        nullableNumeric(existing.equipmentProfile?.buyoutValue) ??
+                        equipmentPayload?.buyoutValue,
+                      notes: existing.equipmentProfile?.notes || equipmentPayload?.notes,
+                      acquisitionMode:
+                        existing.equipmentProfile?.acquisitionMode ||
+                        equipmentPayload?.acquisitionMode,
+                    }
+                  : undefined,
             }),
           shouldUpdateSupplier
             ? 'Fournisseur produit lié depuis l’OCR.'
@@ -3164,12 +3231,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           primarySupplierId: supplierId || undefined,
           averagePrice: unitPrice,
           kind: ocrImportKind === 'EQUIPMENT' ? 'EQUIPMENT' : undefined,
-          equipment:
-            ocrImportKind === 'EQUIPMENT'
-              ? { acquisitionMode: 'CASH', condition: 'IN_SERVICE' }
-              : undefined,
+          equipment: ocrImportKind === 'EQUIPMENT' ? equipmentPayload : undefined,
         }),
-      'Produit créé depuis l’OCR.',
+      ocrImportKind === 'EQUIPMENT' ? 'Matériel créé depuis l’OCR.' : 'Produit créé depuis l’OCR.',
     )) as Product;
   }
 
@@ -4905,7 +4969,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                 <StocksDashboardPage
                   activeTab={activeTab}
                   products={products}
-                  suppliers={suppliers}
                   sites={sites}
                   locations={locations}
                   stocks={stocks}
@@ -4917,7 +4980,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   onImportOcr={() => setShowAddImportModal(true)}
                   onOpenExtraction={handleOpenOcrExtraction}
                   onOpenStocks={() => setActiveTab('articles')}
-                  onOpenEquipment={() => setActiveTab('equipment')}
                   onNavigate={goToTab}
                   onStartOnboarding={() => setShowStocksOnboarding(true)}
                   onCreateProduct={() => setShowAddImportModal(true)}
@@ -4981,7 +5043,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                     categories={equipmentCategories}
                     suppliers={suppliers}
                     sites={sites}
-                    primarySiteId={session.user.primarySiteId ?? undefined}
                     onAdd={() => {
                       setSelectedEquipment(null);
                       setShowEquipmentModal(true);
@@ -6002,6 +6063,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             suppliers={suppliers}
             units={units}
             sites={sites}
+            primarySiteId={session.user.primarySiteId ?? undefined}
             locations={locations}
             token={token}
             onSaveDraft={handleSaveOcrDraft}
@@ -7082,6 +7144,12 @@ function numeric(value: string | number | null | undefined) {
   return Number.isFinite(next) ? next : 0;
 }
 
+function nullableNumeric(value: string | number | null | undefined) {
+  if (value == null || value === '') return null;
+  const next = Number(value);
+  return Number.isFinite(next) ? next : null;
+}
+
 function normalizeLookup(value?: string | null) {
   return (value || '')
     .normalize('NFD')
@@ -7581,21 +7649,20 @@ async function resolveOcrCategoryIdForCreate(
           : api.createCategory(token, {
               name: suggestedCategoryName,
               description: 'Catégorie proposée automatiquement par l’analyse IA OCR.',
-            }))
-          .catch(async () => {
-            const refreshed = categoryKind
-              ? await api.equipmentCategories(token)
-              : await api.categories(token);
-            const existing = refreshed.find(
-              (category) =>
-                normalizeLookup(category.name) === normalizeLookup(suggestedCategoryName),
+            })
+        ).catch(async () => {
+          const refreshed = categoryKind
+            ? await api.equipmentCategories(token)
+            : await api.categories(token);
+          const existing = refreshed.find(
+            (category) => normalizeLookup(category.name) === normalizeLookup(suggestedCategoryName),
+          );
+          if (!existing)
+            throw new Error(
+              `Impossible de créer ou retrouver la catégorie "${suggestedCategoryName}".`,
             );
-            if (!existing)
-              throw new Error(
-                `Impossible de créer ou retrouver la catégorie "${suggestedCategoryName}".`,
-              );
-            return existing;
-          }),
+          return existing;
+        }),
       );
     }
     return (await ocrFallbackCategoryCache.get(cacheKey)!).id;
@@ -7618,26 +7685,25 @@ async function resolveOcrCategoryIdForCreate(
       (categoryKind
         ? api.createEquipmentCategory(token, {
             name: OCR_FALLBACK_CATEGORY_NAME,
-            description:
-              'Catégorie créée automatiquement pour le matériel OCR non encore classé.',
+            description: 'Catégorie créée automatiquement pour le matériel OCR non encore classé.',
           })
         : api.createCategory(token, {
             name: OCR_FALLBACK_CATEGORY_NAME,
             description:
               'Catégorie créée automatiquement pour les produits OCR quand aucune catégorie métier fiable n’existe encore.',
-          }))
-        .catch(async () => {
-          const refreshed = categoryKind
-            ? await api.equipmentCategories(token)
-            : await api.categories(token);
-          const existing = refreshed.find(
-            (category) =>
-              normalizeLookup(category.name) === normalizeLookup(OCR_FALLBACK_CATEGORY_NAME),
-          );
-          if (!existing)
-            throw new Error('Impossible de créer ou retrouver la catégorie OCR par défaut.');
-          return existing;
-        }),
+          })
+      ).catch(async () => {
+        const refreshed = categoryKind
+          ? await api.equipmentCategories(token)
+          : await api.categories(token);
+        const existing = refreshed.find(
+          (category) =>
+            normalizeLookup(category.name) === normalizeLookup(OCR_FALLBACK_CATEGORY_NAME),
+        );
+        if (!existing)
+          throw new Error('Impossible de créer ou retrouver la catégorie OCR par défaut.');
+        return existing;
+      }),
     );
   }
   return (await ocrFallbackCategoryCache.get(cacheKey)!).id;
@@ -12958,7 +13024,6 @@ function ArticleDrawer({
 function StocksDashboardPage({
   activeTab,
   products,
-  suppliers,
   sites,
   locations,
   stocks,
@@ -12971,14 +13036,12 @@ function StocksDashboardPage({
   onOpenAssistant,
   onOpenExtraction,
   onOpenStocks,
-  onOpenEquipment,
   onNavigate,
   onStartOnboarding,
   onCreateProduct,
 }: {
   activeTab: ActiveTab;
   products: Product[];
-  suppliers: Supplier[];
   sites: Site[];
   locations: Location[];
   stocks: Stock[];
@@ -12991,7 +13054,6 @@ function StocksDashboardPage({
   onOpenAssistant: () => void;
   onOpenExtraction: (extractionId: string) => Promise<void>;
   onOpenStocks: () => void;
-  onOpenEquipment: () => void;
   onNavigate: (tab: ActiveTab) => void;
   onStartOnboarding: () => void;
   onCreateProduct: () => void;
@@ -13042,14 +13104,29 @@ function StocksDashboardPage({
     const quantity = numeric(item.stock.quantity);
     const minimum = numeric(item.stock.minimumStock);
     const target = numeric(item.product.equipmentProfile?.targetQuantity);
-    return quantity <= minimum || (target > 0 && quantity < target);
+    return (minimum > 0 && quantity <= minimum) || (target > 0 && quantity < target);
   }).length;
-  const equipmentMonthlyPayments = equipmentItems.reduce((sum, item) => {
+  const equipmentFinancialItems = Array.from(
+    new Map(equipmentItems.map((item) => [item.product.id, item])).values(),
+  );
+  const activeFinancedEquipment = equipmentFinancialItems.filter((item) => {
     const profile = item.product.equipmentProfile;
-    if (!profile || profile.acquisitionMode === 'CASH') return sum;
-    if (profile.financingEnd && new Date(profile.financingEnd).getTime() < Date.now()) return sum;
-    return sum + numeric(profile.monthlyPayment);
-  }, 0);
+    if (!profile || profile.acquisitionMode === 'CASH') return false;
+    return !profile.financingEnd || new Date(profile.financingEnd).getTime() >= Date.now();
+  });
+  const equipmentMonthlyPayments = activeFinancedEquipment.reduce(
+    (sum, item) => sum + numeric(item.product.equipmentProfile?.monthlyPayment),
+    0,
+  );
+  const leasingDeadlines = equipmentFinancialItems
+    .flatMap((item) => {
+      const profile = item.product.equipmentProfile;
+      if (profile?.acquisitionMode !== 'LEASING' || !profile.financingEnd) return [];
+      const endDate = new Date(profile.financingEnd);
+      if (Number.isNaN(endDate.getTime()) || endDate.getTime() < Date.now()) return [];
+      return [{ item, endDate }];
+    })
+    .sort((a, b) => a.endDate.getTime() - b.endDate.getTime());
   const topConsumed = Object.values(
     movements
       .filter((m) =>
@@ -13134,25 +13211,18 @@ function StocksDashboardPage({
           delay={1}
         />
         <Metric
-          icon={<UsersRound size={20} />}
-          value={suppliers.filter((s) => !isArchived(s)).length}
-          label="Fournisseurs actifs"
-          tone="blue"
-          delay={2}
-        />
-        <Metric
           icon={<TrendingUp size={20} />}
           value={`${stockValue.toFixed(2)} €`}
           label="Valeur théorique"
           tone="emerald"
-          delay={3}
+          delay={2}
         />
         <Metric
           icon={<History size={20} />}
           value={movementsThisMonth}
           label="Mouvements du mois"
           tone="purple"
-          delay={4}
+          delay={3}
         />
       </div>
 
@@ -13162,15 +13232,12 @@ function StocksDashboardPage({
             <h2>Matériel</h2>
             <p>Valeur, réassort et engagements du parc matériel.</p>
           </div>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={onOpenEquipment}>
-            Gérer le matériel <ArrowRight size={14} />
-          </button>
         </div>
         <div className="metrics-grid">
           <Metric
             icon={<Boxes size={20} />}
             value={equipmentQuantity.toLocaleString('fr-FR')}
-            label="Matériels en parc"
+            label="Matériel"
             tone="blue"
             delay={1}
           />
@@ -13181,21 +13248,59 @@ function StocksDashboardPage({
             tone="emerald"
             delay={2}
           />
-          <Metric
-            icon={<AlertTriangle size={20} />}
-            value={equipmentToRestock}
-            label="À racheter"
-            tone="orange"
-            delay={3}
-          />
-          <Metric
-            icon={<CalendarCheck size={20} />}
-            value={`${equipmentMonthlyPayments.toFixed(2)} €`}
-            label="Mensualités actives"
-            tone="purple"
-            delay={4}
-          />
+          {equipmentToRestock > 0 ? (
+            <Metric
+              icon={<AlertTriangle size={20} />}
+              value={equipmentToRestock}
+              label="À racheter"
+              tone="orange"
+              delay={3}
+            />
+          ) : null}
+          {activeFinancedEquipment.length > 0 ? (
+            <Metric
+              icon={<CalendarCheck size={20} />}
+              value={`${equipmentMonthlyPayments.toFixed(2)} €`}
+              label="Mensualités actives"
+              tone="purple"
+              delay={4}
+            />
+          ) : null}
         </div>
+        {leasingDeadlines.length > 0 ? (
+          <div className="stocks-leasing-deadlines card-modern">
+            <div className="stocks-leasing-deadlines-heading">
+              <span className="card-title">
+                <CalendarCheck size={18} /> Échéances de leasing
+              </span>
+              <span className="section-tagline">
+                {leasingDeadlines.length} contrat{leasingDeadlines.length > 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="stocks-leasing-deadlines-list">
+              {leasingDeadlines.map(({ item, endDate }) => (
+                <div className="stocks-leasing-deadline" key={item.product.id}>
+                  <div>
+                    <strong>{item.product.name}</strong>
+                    {item.product.equipmentProfile?.financingProvider ? (
+                      <span>{item.product.equipmentProfile.financingProvider}</span>
+                    ) : null}
+                  </div>
+                  <div className="stocks-leasing-deadline-date">
+                    <span>Fin du leasing</span>
+                    <strong>
+                      {endDate.toLocaleDateString('fr-FR', {
+                        day: '2-digit',
+                        month: 'long',
+                        year: 'numeric',
+                      })}
+                    </strong>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <div className="double-panel">
@@ -23544,6 +23649,7 @@ function StocksOcrReviewPanel({
   suppliers,
   units,
   sites,
+  primarySiteId,
   locations,
   token,
   onSaveDraft,
@@ -23559,6 +23665,7 @@ function StocksOcrReviewPanel({
   suppliers: Supplier[];
   units: Unit[];
   sites: Site[];
+  primarySiteId?: string;
   locations: Location[];
   token: string;
   onSaveDraft: (payload: StocksOcrExtraction['data']) => Promise<void>;
@@ -23568,7 +23675,17 @@ function StocksOcrReviewPanel({
   onReanalyzeAi: () => Promise<void>;
   onClose: () => void;
 }) {
-  const [draft, setDraft] = useState(() => normalizeOcrReceptionData(extraction.data, suppliers));
+  const defaultEquipmentSiteId =
+    sites.find((site) => site.id === primarySiteId && !site.isArchived && !site.archivedAt)?.id ??
+    sites.find((site) => !site.isArchived && !site.archivedAt)?.id;
+  const normalizeDraft = (data: StocksOcrExtraction['data']) => {
+    const normalized = normalizeOcrReceptionData(data, suppliers);
+    const isEquipment = normalized.lines.some((line) => line.productKind === 'EQUIPMENT');
+    return isEquipment && !normalized.siteId && defaultEquipmentSiteId
+      ? { ...normalized, siteId: defaultEquipmentSiteId }
+      : normalized;
+  };
+  const [draft, setDraft] = useState(() => normalizeDraft(extraction.data));
   const [previewUrl, setPreviewUrl] = useState<string>();
   const [showPreview, setShowPreview] = useState(false);
   const [showViewerModal, setShowViewerModal] = useState(false);
@@ -23588,6 +23705,7 @@ function StocksOcrReviewPanel({
     'all' | 'review' | 'ready' | 'missing' | 'price' | 'ignored'
   >('all');
   const document = extraction.document ?? extraction.ocrDocument?.document;
+  const isEquipmentImport = draft.lines.some((line) => line.productKind === 'EQUIPMENT');
 
   function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
     if (zoomScale <= 1.0) return;
@@ -23618,7 +23736,7 @@ function StocksOcrReviewPanel({
   useEffect(() => {
     setDraft(
       enrichOcrProductMatches(
-        resolveOcrReceptionUnits(normalizeOcrReceptionData(extraction.data, suppliers), units),
+        resolveOcrReceptionUnits(normalizeDraft(extraction.data), units),
         products,
       ),
     );
@@ -23737,7 +23855,11 @@ function StocksOcrReviewPanel({
       else await onCreateReception(draft);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : 'La réception OCR n’a pas pu être enregistrée.',
+        err instanceof Error
+          ? err.message
+          : isEquipmentImport
+            ? 'Le matériel OCR n’a pas pu être enregistré.'
+            : 'La réception OCR n’a pas pu être enregistrée.',
       );
     } finally {
       setSubmitting(null);
@@ -23798,7 +23920,13 @@ function StocksOcrReviewPanel({
         matchingScore: 1,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Le produit OCR n’a pas pu être créé.');
+      setError(
+        err instanceof Error
+          ? err.message
+          : isEquipmentImport
+            ? 'Le matériel OCR n’a pas pu être créé.'
+            : 'Le produit OCR n’a pas pu être créé.',
+      );
     } finally {
       setCreatingProductLineId(null);
     }
@@ -23822,7 +23950,9 @@ function StocksOcrReviewPanel({
       setError(
         err instanceof Error
           ? err.message
-          : 'Le fournisseur OCR n’a pas pu être créé avant les produits.',
+          : isEquipmentImport
+            ? 'Le fournisseur OCR n’a pas pu être créé avant le matériel.'
+            : 'Le fournisseur OCR n’a pas pu être créé avant les produits.',
       );
       return;
     }
@@ -23854,7 +23984,7 @@ function StocksOcrReviewPanel({
     setCreatingAllProducts(false);
     if (failures.length) {
       setError(
-        `${failures.length} produit(s) n’ont pas pu être créés : ${failures.slice(0, 3).join(', ')}${failures.length > 3 ? '…' : ''}`,
+        `${failures.length} ${isEquipmentImport ? 'matériel(s)' : 'produit(s)'} n’ont pas pu être créés : ${failures.slice(0, 3).join(', ')}${failures.length > 3 ? '…' : ''}`,
       );
     }
   }
@@ -24079,7 +24209,10 @@ function StocksOcrReviewPanel({
             {[
               ['review', `À corriger (${activeLines.length - readyLines})`],
               ['ready', `Prêtes (${readyLines})`],
-              ['missing', `Produits manquants (${missingProducts})`],
+              [
+                'missing',
+                `${isEquipmentImport ? 'Matériels' : 'Produits'} manquants (${missingProducts})`,
+              ],
               ['price', `Prix/Qté (${priceIssues})`],
               ['ignored', `Ignorées (${ignoredLines.length})`],
               ['all', `Toutes (${draft.lines.length})`],
@@ -24148,8 +24281,8 @@ function StocksOcrReviewPanel({
             >
               <Package size={13} />{' '}
               {blockingMissingProducts === 1
-                ? 'Prévoir la création du produit'
-                : `Prévoir la création des ${blockingMissingProducts} produits`}
+                ? `Prévoir la création du ${isEquipmentImport ? 'matériel' : 'produit'}`
+                : `Prévoir la création des ${blockingMissingProducts} ${isEquipmentImport ? 'matériels' : 'produits'}`}
             </button>
           </div>
         </div>
@@ -24333,7 +24466,9 @@ function StocksOcrReviewPanel({
             <thead>
               <tr>
                 <th style={{ width: '25%' }}>Libellé OCR</th>
-                <th style={{ width: '35%' }}>Produit ToqueHub</th>
+                <th style={{ width: '35%' }}>
+                  {isEquipmentImport ? 'Matériel ToqueHub' : 'Produit ToqueHub'}
+                </th>
                 <th style={{ width: '10%' }}>Qté</th>
                 <th style={{ width: '10%' }}>Unité</th>
                 <th style={{ width: '10%' }}>P.U.</th>
@@ -24344,184 +24479,388 @@ function StocksOcrReviewPanel({
             </thead>
             <tbody>
               {displayedLineEntries.map(({ line, index }) => (
-                <tr key={line.id ?? index}>
-                  <td>
-                    <input
-                      value={line.ocrLabel || line.label || ''}
-                      onChange={(e) => updateLine(index, { ocrLabel: e.target.value })}
-                      title={line.sourceText || line.ocrLabel || line.label || ''}
-                    />
-                    {line.warnings?.length ? (
-                      <small className="ocr-line-warning">
-                        {translateOcrMessage(line.warnings[0])}
-                      </small>
-                    ) : null}
-                    {ocrLinePackageDescription(line) ? (
-                      <small className="ocr-line-warning">{ocrLinePackageDescription(line)}</small>
-                    ) : null}
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
-                      <button
-                        type="button"
-                        className="ocr-product-picker-trigger"
-                        onClick={() => setProductPickerLineIndex(index)}
-                        title={line.productName || 'Rechercher un produit ToqueHub'}
+                <Fragment key={line.id ?? index}>
+                  <tr>
+                    <td>
+                      <input
+                        value={line.ocrLabel || line.label || ''}
+                        onChange={(e) => updateLine(index, { ocrLabel: e.target.value })}
+                        title={line.sourceText || line.ocrLabel || line.label || ''}
+                      />
+                      {line.warnings?.length ? (
+                        <small className="ocr-line-warning">
+                          {translateOcrMessage(line.warnings[0])}
+                        </small>
+                      ) : null}
+                      {ocrLinePackageDescription(line) ? (
+                        <small className="ocr-line-warning">
+                          {ocrLinePackageDescription(line)}
+                        </small>
+                      ) : null}
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          className="ocr-product-picker-trigger"
+                          onClick={() => setProductPickerLineIndex(index)}
+                          title={line.productName || 'Rechercher un produit ToqueHub'}
+                        >
+                          <Search size={13} />
+                          <span>{line.productName || 'Rechercher / assigner'}</span>
+                        </button>
+                        {line.productId ? (
+                          <button
+                            type="button"
+                            className="icon-btn"
+                            onClick={() =>
+                              updateLine(index, {
+                                productId: null,
+                                productName: null,
+                                matchingStatus: 'NOT_FOUND',
+                                matchingScore: 0,
+                              })
+                            }
+                            title="Désassigner le produit"
+                          >
+                            <X size={13} />
+                          </button>
+                        ) : null}
+                        {!line.productId ? (
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() =>
+                              updateLine(index, {
+                                createProduct: !line.createProduct,
+                                matchingStatus: line.createProduct ? 'NOT_FOUND' : 'NEEDS_REVIEW',
+                                matchingScore: 0,
+                              })
+                            }
+                            style={{
+                              padding: '0.25rem 0.5rem',
+                              flexShrink: 0,
+                              borderRadius: '6px',
+                            }}
+                            title="Le produit sera créé uniquement à la validation de la réception"
+                          >
+                            {line.createProduct ? 'À créer' : '+ Créer'}
+                          </button>
+                        ) : null}
+                      </div>
+                      {line.productCandidates?.length && line.matchingStatus !== 'RECOGNIZED' ? (
+                        <div
+                          style={{
+                            display: 'flex',
+                            gap: '0.25rem',
+                            flexWrap: 'wrap',
+                            marginTop: '0.35rem',
+                          }}
+                        >
+                          {line.productCandidates.map((candidate) => (
+                            <button
+                              key={candidate.id}
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              style={{
+                                padding: '0.15rem 0.4rem',
+                                borderRadius: '6px',
+                                fontSize: '0.72rem',
+                              }}
+                              onClick={() => {
+                                const product = products.find((item) => item.id === candidate.id);
+                                if (product)
+                                  assignProductToLine(index, product, numeric(candidate.score));
+                                else
+                                  updateLine(index, {
+                                    productId: candidate.id,
+                                    productName: candidate.name,
+                                    unitId: candidate.unitId ?? line.unitId,
+                                    matchingStatus: 'RECOGNIZED',
+                                    matchingScore: candidate.score,
+                                  });
+                              }}
+                            >
+                              {candidate.name}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.001"
+                        value={line.quantity ?? ''}
+                        onChange={(e) =>
+                          updateLine(index, {
+                            quantity: e.target.value ? Number(e.target.value) : null,
+                          })
+                        }
+                      />
+                    </td>
+                    <td>
+                      <select
+                        value={line.unitId || ''}
+                        onChange={(e) => updateLine(index, { unitId: e.target.value || null })}
                       >
-                        <Search size={13} />
-                        <span>{line.productName || 'Rechercher / assigner'}</span>
-                      </button>
-                      {line.productId ? (
+                        <option value="">Choisir</option>
+                        {units.map((unit) => (
+                          <option key={unit.id} value={unit.id}>
+                            {unit.symbol}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        step="0.0001"
+                        value={line.unitPrice ?? ''}
+                        onChange={(e) =>
+                          updateLine(index, {
+                            unitPrice: e.target.value ? Number(e.target.value) : null,
+                          })
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        step="0.0001"
+                        value={line.lineTotal ?? line.total ?? ''}
+                        onChange={(e) =>
+                          updateLine(index, {
+                            lineTotal: e.target.value ? Number(e.target.value) : null,
+                          })
+                        }
+                      />
+                    </td>
+
+                    <td style={{ textAlign: 'center' }}>
+                      <span className={`badge ${ocrMatchClass(line.matchingStatus)}`}>
+                        {ocrLineStatusLabel(line)}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      {line.ignored ? (
                         <button
                           type="button"
                           className="icon-btn"
-                          onClick={() =>
-                            updateLine(index, {
-                              productId: null,
-                              productName: null,
-                              matchingStatus: 'NOT_FOUND',
-                              matchingScore: 0,
-                            })
-                          }
-                          title="Désassigner le produit"
+                          onClick={() => updateLine(index, { ignored: false })}
+                          title="Restaurer la ligne"
                         >
-                          <X size={13} />
+                          <CheckCircle2 size={14} />
                         </button>
-                      ) : null}
-                      {!line.productId ? (
+                      ) : (
                         <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() =>
-                            updateLine(index, {
-                              createProduct: !line.createProduct,
-                              matchingStatus: line.createProduct ? 'NOT_FOUND' : 'NEEDS_REVIEW',
-                              matchingScore: 0,
-                            })
-                          }
-                          style={{ padding: '0.25rem 0.5rem', flexShrink: 0, borderRadius: '6px' }}
-                          title="Le produit sera créé uniquement à la validation de la réception"
+                          type="button"
+                          className="icon-btn danger"
+                          onClick={() => removeLine(index)}
+                          title="Supprimer la ligne"
                         >
-                          {line.createProduct ? 'À créer' : '+ Créer'}
+                          <Trash2 size={14} />
                         </button>
-                      ) : null}
-                    </div>
-                    {line.productCandidates?.length && line.matchingStatus !== 'RECOGNIZED' ? (
-                      <div
-                        style={{
-                          display: 'flex',
-                          gap: '0.25rem',
-                          flexWrap: 'wrap',
-                          marginTop: '0.35rem',
-                        }}
-                      >
-                        {line.productCandidates.map((candidate) => (
-                          <button
-                            key={candidate.id}
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            style={{
-                              padding: '0.15rem 0.4rem',
-                              borderRadius: '6px',
-                              fontSize: '0.72rem',
-                            }}
-                            onClick={() => {
-                              const product = products.find((item) => item.id === candidate.id);
-                              if (product)
-                                assignProductToLine(index, product, numeric(candidate.score));
-                              else
+                      )}
+                    </td>
+                  </tr>
+                  {isEquipmentImport && !line.ignored ? (
+                    <tr className="equipment-ocr-detail-row">
+                      <td colSpan={8}>
+                        <div className="equipment-ocr-detail-grid">
+                          <label>
+                            Référence
+                            <input
+                              value={line.reference || ''}
+                              onChange={(e) =>
+                                updateLine(index, { reference: e.target.value || null })
+                              }
+                              placeholder="Référence fournisseur"
+                            />
+                          </label>
+                          <label>
+                            Marque
+                            <input
+                              value={line.brand || ''}
+                              onChange={(e) => updateLine(index, { brand: e.target.value || null })}
+                              placeholder="Ex. La Marzocco"
+                            />
+                          </label>
+                          <label>
+                            Modèle
+                            <input
+                              value={line.model || ''}
+                              onChange={(e) => updateLine(index, { model: e.target.value || null })}
+                              placeholder="Ex. GB5 S TZ AV-2 Gr"
+                            />
+                          </label>
+                          <label>
+                            Catégorie matériel
+                            <select
+                              value={line.categoryId || ''}
+                              onChange={(e) => {
+                                const category = categories.find(
+                                  (item) => item.id === e.target.value,
+                                );
                                 updateLine(index, {
-                                  productId: candidate.id,
-                                  productName: candidate.name,
-                                  unitId: candidate.unitId ?? line.unitId,
-                                  matchingStatus: 'RECOGNIZED',
-                                  matchingScore: candidate.score,
+                                  categoryId: category?.id || null,
+                                  categoryName: category?.name || null,
+                                  suggestedCategoryId: category?.id || null,
+                                  suggestedCategoryName: category?.name || null,
                                 });
-                            }}
-                          >
-                            {candidate.name}
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-                  </td>
-                  <td>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.001"
-                      value={line.quantity ?? ''}
-                      onChange={(e) =>
-                        updateLine(index, {
-                          quantity: e.target.value ? Number(e.target.value) : null,
-                        })
-                      }
-                    />
-                  </td>
-                  <td>
-                    <select
-                      value={line.unitId || ''}
-                      onChange={(e) => updateLine(index, { unitId: e.target.value || null })}
-                    >
-                      <option value="">Choisir</option>
-                      {units.map((unit) => (
-                        <option key={unit.id} value={unit.id}>
-                          {unit.symbol}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td>
-                    <input
-                      type="number"
-                      step="0.0001"
-                      value={line.unitPrice ?? ''}
-                      onChange={(e) =>
-                        updateLine(index, {
-                          unitPrice: e.target.value ? Number(e.target.value) : null,
-                        })
-                      }
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="number"
-                      step="0.0001"
-                      value={line.lineTotal ?? line.total ?? ''}
-                      onChange={(e) =>
-                        updateLine(index, {
-                          lineTotal: e.target.value ? Number(e.target.value) : null,
-                        })
-                      }
-                    />
-                  </td>
-
-                  <td style={{ textAlign: 'center' }}>
-                    <span className={`badge ${ocrMatchClass(line.matchingStatus)}`}>
-                      {ocrLineStatusLabel(line)}
-                    </span>
-                  </td>
-                  <td style={{ textAlign: 'center' }}>
-                    {line.ignored ? (
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        onClick={() => updateLine(index, { ignored: false })}
-                        title="Restaurer la ligne"
-                      >
-                        <CheckCircle2 size={14} />
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="icon-btn danger"
-                        onClick={() => removeLine(index)}
-                        title="Supprimer la ligne"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    )}
-                  </td>
-                </tr>
+                              }}
+                            >
+                              <option value="">Sans catégorie</option>
+                              {categories.map((category) => (
+                                <option key={category.id} value={category.id}>
+                                  {category.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            Acquisition
+                            <select
+                              value={line.acquisitionMode || 'CASH'}
+                              onChange={(e) =>
+                                updateLine(index, {
+                                  acquisitionMode: e.target
+                                    .value as StocksOcrLine['acquisitionMode'],
+                                })
+                              }
+                            >
+                              <option value="CASH">Achat direct</option>
+                              <option value="CREDIT">Crédit</option>
+                              <option value="LEASING">Leasing</option>
+                              <option value="RENTAL">Location</option>
+                            </select>
+                          </label>
+                          <label>
+                            Prix catalogue HT
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={line.listUnitPrice ?? ''}
+                              onChange={(e) =>
+                                updateLine(index, {
+                                  listUnitPrice: e.target.value ? Number(e.target.value) : null,
+                                })
+                              }
+                            />
+                          </label>
+                          <label>
+                            Remise (%)
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                              value={line.discountPercent ?? ''}
+                              onChange={(e) =>
+                                updateLine(index, {
+                                  discountPercent: e.target.value ? Number(e.target.value) : null,
+                                })
+                              }
+                            />
+                          </label>
+                          <label>
+                            Valeur de rachat (€)
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={line.buyoutValue ?? ''}
+                              onChange={(e) =>
+                                updateLine(index, {
+                                  buyoutValue: e.target.value ? Number(e.target.value) : null,
+                                })
+                              }
+                            />
+                          </label>
+                          {line.acquisitionMode && line.acquisitionMode !== 'CASH' ? (
+                            <>
+                              <label>
+                                Financeur
+                                <input
+                                  value={line.financingProvider || ''}
+                                  onChange={(e) =>
+                                    updateLine(index, {
+                                      financingProvider: e.target.value || null,
+                                    })
+                                  }
+                                />
+                              </label>
+                              <label>
+                                Début
+                                <input
+                                  type="date"
+                                  value={dateInputValue(line.financingStart)}
+                                  onChange={(e) =>
+                                    updateLine(index, { financingStart: e.target.value || null })
+                                  }
+                                />
+                              </label>
+                              <label>
+                                Fin
+                                <input
+                                  type="date"
+                                  value={dateInputValue(line.financingEnd)}
+                                  onChange={(e) =>
+                                    updateLine(index, { financingEnd: e.target.value || null })
+                                  }
+                                />
+                              </label>
+                              <label>
+                                Mensualité (€)
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={line.monthlyPayment ?? ''}
+                                  onChange={(e) =>
+                                    updateLine(index, {
+                                      monthlyPayment: e.target.value
+                                        ? Number(e.target.value)
+                                        : null,
+                                    })
+                                  }
+                                />
+                              </label>
+                              <label>
+                                Montant financé (€)
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={line.financedAmount ?? ''}
+                                  onChange={(e) =>
+                                    updateLine(index, {
+                                      financedAmount: e.target.value
+                                        ? Number(e.target.value)
+                                        : null,
+                                    })
+                                  }
+                                />
+                              </label>
+                            </>
+                          ) : null}
+                          <label className="equipment-ocr-notes">
+                            Notes et conditions détectées
+                            <textarea
+                              rows={2}
+                              value={line.equipmentNotes || ''}
+                              onChange={(e) =>
+                                updateLine(index, { equipmentNotes: e.target.value || null })
+                              }
+                              placeholder="Conditions de leasing, rachat, garantie…"
+                            />
+                          </label>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
               ))}
               {!displayedLineEntries.length ? (
                 <tr>
@@ -24544,10 +24883,10 @@ function StocksOcrReviewPanel({
             <AlertCircle size={16} />
             <span>
               {blockingMissingProducts
-                ? `${blockingMissingProducts} produit(s) non reconnu(s) dans ToqueHub. Associez-les ou marquez-les à créer. `
+                ? `${blockingMissingProducts} ${isEquipmentImport ? 'matériel(s)' : 'produit(s)'} non reconnu(s) dans ToqueHub. Associez-les ou marquez-les à créer. `
                 : ''}
               {productsToCreate
-                ? `${productsToCreate} produit(s) seront créés à la validation de la réception. `
+                ? `${productsToCreate} ${isEquipmentImport ? 'matériel(s)' : 'produit(s)'} seront créés à la validation. `
                 : ''}
               {invalidQuantities ? `${invalidQuantities} quantité(s) invalides.` : ''}
             </span>
@@ -24580,7 +24919,13 @@ function StocksOcrReviewPanel({
             onClick={() => void submit('create')}
             style={{ borderRadius: '10px' }}
           >
-            {submitting === 'create' ? 'Création de la réception…' : 'Valider la réception'}
+            {submitting === 'create'
+              ? isEquipmentImport
+                ? 'Création du matériel…'
+                : 'Création de la réception…'
+              : isEquipmentImport
+                ? 'Valider le matériel'
+                : 'Valider la réception'}
           </button>
         </div>
       </div>
@@ -25150,14 +25495,12 @@ function isKesproOcrReception(data: StocksOcrExtraction['data']) {
     .filter(Boolean)
     .join(' ');
   const explicitKespro =
-    /kespro|order_confirmation|supplier_order|confirmed quantity\s*\/\s*me|tilauksen tiedot|tilaushistoria/i.test(
-      documentText,
-    );
-  const customerMisreadAsSupplier =
-    /the french caf/i.test(supplierName) &&
-    /\b(LTK|PKT|KPL|RS|PSS|TLK|PRK|PAK)\b/i.test(lineUnits) &&
-    (data.lines ?? []).length >= 3;
-  return Boolean(purchaseOrderNumber) && (explicitKespro || customerMisreadAsSupplier);
+    /kespro|confirmed quantity\s*\/\s*me|tilauksen tiedot|tilaushistoria/i.test(documentText) ||
+    /kespro/i.test(supplierName);
+  const kesproOrderSignature =
+    /confirmed quantity\s*\/\s*me|tilauksen tiedot|tilaushistoria/i.test(documentText) &&
+    /\b(LTK|PKT|KPL|RS|PSS|TLK|PRK|PAK)\b/i.test(lineUnits);
+  return Boolean(explicitKespro && (purchaseOrderNumber || kesproOrderSignature));
 }
 
 function ocrStateClass(state: string) {
@@ -25219,9 +25562,15 @@ function ocrLineStatus(line: StocksOcrLine) {
 function hasOcrPriceMismatch(line: StocksOcrLine) {
   const qty = numeric(line.quantity);
   const unitPrice = numeric(line.unitPrice);
+  const listUnitPrice = numeric(line.listUnitPrice);
+  const discountPercent = numeric(line.discountPercent);
   const total = numeric(line.lineTotal ?? line.total);
   if (!qty || !unitPrice || !total) return false;
-  return Math.abs(qty * unitPrice - total) > Math.max(0.05, total * 0.02);
+  const expected =
+    listUnitPrice > 0 && discountPercent > 0
+      ? qty * listUnitPrice * (1 - discountPercent / 100)
+      : qty * unitPrice;
+  return Math.abs(expected - total) > Math.max(0.05, total * 0.02);
 }
 
 function isOcrLineReady(line: StocksOcrLine) {
@@ -25243,7 +25592,8 @@ function ocrLineStatusLabel(line: StocksOcrLine) {
   if (line.createProduct && !line.productId) return 'À créer';
   if (status === 'price_mismatch') return 'Prix';
   if (status === 'quantity_suspicious') return 'Qté';
-  if (status === 'missing_product') return 'Produit';
+  if (status === 'missing_product')
+    return line.productKind === 'EQUIPMENT' ? 'Matériel' : 'Produit';
   if (status === 'ready') return 'Prêt';
   return ocrMatchLabel(line.matchingStatus);
 }
@@ -25275,7 +25625,8 @@ function ocrLinePackageDescription(line: StocksOcrLine) {
 }
 
 function ocrProductDescription(line: StocksOcrLine) {
-  return ocrLinePackageDescription(line) || undefined;
+  const parts = [ocrLinePackageDescription(line), line.equipmentNotes].filter(Boolean);
+  return parts.length ? parts.join(' · ') : undefined;
 }
 
 function ocrPackageDescriptionFromName(value?: string | null) {
@@ -25363,6 +25714,7 @@ function documentTypeLabel(type?: string | null) {
   if (type === 'receipt') return 'Ticket de caisse';
   if (type === 'supplier_order') return 'Commande';
   if (type === 'order_confirmation') return 'Confirmation';
+  if (type === 'quote') return 'Offre';
   return 'Non classé';
 }
 
@@ -25372,6 +25724,7 @@ function documentTypeBadge(type?: string | null) {
   if (type === 'receipt') return 'badge-reception';
   if (type === 'supplier_order') return 'badge-production';
   if (type === 'order_confirmation') return 'badge-correction';
+  if (type === 'quote') return 'badge-correction';
   return 'badge-correction';
 }
 

@@ -1422,13 +1422,10 @@ export function TechnicalSheetsApp({
             <DashboardTab
               dashboard={dashboard}
               recipes={recipes}
-              categories={categories}
               averageCost={averageCost}
               onStartOnboarding={() => setOnboardingVisible(true)}
               onOpenRecipes={() => onNavigate('recipes')}
-              onOpenCategories={() => onNavigate('categories')}
               onOpenCosts={() => onNavigate('costs')}
-              onOpenProduction={() => onNavigate('production')}
               loading={loading}
             />
           )}
@@ -2835,24 +2832,18 @@ function BlockingState({ onInstallStocks }: { onInstallStocks: () => void }) {
 function DashboardTab({
   dashboard,
   recipes,
-  categories,
   averageCost,
   onStartOnboarding,
   onOpenRecipes,
-  onOpenCategories,
   onOpenCosts,
-  onOpenProduction,
   loading,
 }: {
   dashboard?: TechnicalSheetDashboard;
   recipes: TechnicalSheetRecipe[];
-  categories: TechnicalSheetCategory[];
   averageCost: number;
   onStartOnboarding: () => void;
   onOpenRecipes: () => void;
-  onOpenCategories: () => void;
   onOpenCosts: () => void;
-  onOpenProduction: () => void;
   loading: boolean;
 }) {
   const latest = dashboard?.latestRecipes ?? recipes.slice(0, 5);
@@ -2869,25 +2860,11 @@ function DashboardTab({
           onClick={onOpenRecipes}
         />
         <MetricCard
-          label="Catégories recettes"
-          value={dashboard?.categoryCount ?? categories.filter((c) => !isArchived(c)).length}
-          icon={<ClipboardList size={20} />}
-          tone="blue"
-          onClick={onOpenCategories}
-        />
-        <MetricCard
           label="Coût matière moyen"
           value={money(averageCost)}
           icon={<Calculator size={20} />}
           tone="orange"
           onClick={onOpenCosts}
-        />
-        <MetricCard
-          label="Produits Stocks utilisés"
-          value={dashboard?.usedStockProductsCount ?? '—'}
-          icon={<Utensils size={20} />}
-          tone="purple"
-          onClick={onOpenProduction}
         />
       </div>
 

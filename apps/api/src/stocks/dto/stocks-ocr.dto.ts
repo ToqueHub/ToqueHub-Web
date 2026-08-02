@@ -1,4 +1,4 @@
-import { ProductKind } from '@prisma/client';
+import { EquipmentAcquisitionMode, ProductKind } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   IsArray,
@@ -20,6 +20,16 @@ export class AnalyzeBatchDto {
   @IsArray()
   @IsUUID('4', { each: true })
   documentIds!: string[];
+
+  @IsOptional()
+  @IsEnum(ProductKind)
+  kind?: ProductKind;
+}
+
+export class AnalyzeOcrContextDto {
+  @IsOptional()
+  @IsEnum(ProductKind)
+  kind?: ProductKind;
 }
 
 export class CorrectedReceptionLineDto {
@@ -42,6 +52,61 @@ export class CorrectedReceptionLineDto {
   @IsOptional()
   @IsEnum(ProductKind)
   productKind?: ProductKind;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  lineType?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  brand?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(180)
+  model?: string;
+
+  @IsOptional()
+  @IsEnum(EquipmentAcquisitionMode)
+  acquisitionMode?: EquipmentAcquisitionMode;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(180)
+  financingProvider?: string;
+
+  @IsOptional()
+  @IsDateString()
+  financingStart?: string;
+
+  @IsOptional()
+  @IsDateString()
+  financingEnd?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  monthlyPayment?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  financedAmount?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  buyoutValue?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  equipmentNotes?: string;
 
   @IsOptional()
   @IsUUID()
@@ -119,6 +184,19 @@ export class CorrectedReceptionLineDto {
   @IsNumber({ maxDecimalPlaces: 4 })
   @Min(0)
   unitPrice?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  listUnitPrice?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  discountPercent?: number;
 
   @IsOptional()
   @Type(() => Number)

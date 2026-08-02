@@ -172,13 +172,20 @@ const STOCKS_OCR_CATEGORY_HINTS = [
 ];
 
 type BusinessDocumentType =
-  'invoice' | 'delivery_note' | 'receipt' | 'supplier_order' | 'order_confirmation' | 'unknown';
+  | 'invoice'
+  | 'delivery_note'
+  | 'receipt'
+  | 'supplier_order'
+  | 'order_confirmation'
+  | 'quote'
+  | 'unknown';
 const BUSINESS_DOCUMENT_TYPES: BusinessDocumentType[] = [
   'invoice',
   'delivery_note',
   'receipt',
   'supplier_order',
   'order_confirmation',
+  'quote',
   'unknown',
 ];
 
@@ -215,6 +222,20 @@ interface ExtractedLine {
   lineConfidence?: number | null;
   warnings?: string[];
   sourceText?: string | null;
+  productKind?: ProductKind;
+  lineType?: 'equipment' | 'service' | 'accessory' | 'transport' | 'consumable' | 'unknown';
+  brand?: string | null;
+  model?: string | null;
+  listUnitPrice?: number | null;
+  discountPercent?: number | null;
+  acquisitionMode?: EquipmentAcquisitionMode | null;
+  financingProvider?: string | null;
+  financingStart?: string | null;
+  financingEnd?: string | null;
+  monthlyPayment?: number | null;
+  financedAmount?: number | null;
+  buyoutValue?: number | null;
+  equipmentNotes?: string | null;
 }
 
 type ProductNutritionKey =
@@ -1213,7 +1234,12 @@ export class StocksOcrService {
     return { document, absolutePath: join(STOCKS_OCR_UPLOAD_ROOT, document.storagePath) };
   }
 
-  async analyzeDocument(organizationId: string, actor: Actor, documentId: string) {
+  async analyzeDocument(
+    organizationId: string,
+    actor: Actor,
+    documentId: string,
+    kind?: ProductKind,
+  ) {
     this.assertOcr(actor);
     await this.assertOcrConfigured(organizationId);
     const document = await this.prisma.document.findFirst({
@@ -1231,17 +1257,22 @@ export class StocksOcrService {
         status: OcrProcessingStatus.PENDING,
       },
     });
-    void this.processOcr(organizationId, actor, document.id, ocr.id);
+    void this.processOcr(organizationId, actor, document.id, ocr.id, kind);
     return { documentId: document.id, ocrDocumentId: ocr.id, status: OcrProcessingStatus.PENDING };
   }
 
-  async analyzeBatch(organizationId: string, actor: Actor, documentIds: string[]) {
+  async analyzeBatch(
+    organizationId: string,
+    actor: Actor,
+    documentIds: string[],
+    kind?: ProductKind,
+  ) {
     if (!documentIds?.length) throw new BadRequestException('Aucun document fourni');
     if (documentIds.length > MAX_FILES)
       throw new BadRequestException(`Vous pouvez analyser ${MAX_FILES} fichiers maximum.`);
     const jobs = [];
     for (const documentId of documentIds)
-      jobs.push(await this.analyzeDocument(organizationId, actor, documentId));
+      jobs.push(await this.analyzeDocument(organizationId, actor, documentId, kind));
     return { jobs };
   }
 
@@ -1339,7 +1370,12 @@ export class StocksOcrService {
     return this.formatExtraction(extraction);
   }
 
-  async reanalyzeExtractionWithAi(organizationId: string, actor: Actor, extractionId: string) {
+  async reanalyzeExtractionWithAi(
+    organizationId: string,
+    actor: Actor,
+    extractionId: string,
+    requestedKind?: ProductKind,
+  ) {
     this.assertOcr(actor);
     await this.assertOcrConfigured(organizationId);
     const extraction = await this.prisma.ocrBusinessExtraction.findFirst({
@@ -1350,10 +1386,18 @@ export class StocksOcrService {
     const markdown = extraction.ocrDocument.rawMarkdown || extraction.ocrDocument.rawText || '';
     if (!markdown.trim())
       throw new BadRequestException('Aucun texte OCR disponible pour relancer l’analyse IA.');
+    const currentData = (extraction.correctedJson || extraction.extractedJson) as any;
+    const kind =
+      requestedKind ??
+      (Array.isArray(currentData?.lines) &&
+      currentData.lines.some((line: any) => line?.productKind === ProductKind.EQUIPMENT)
+        ? ProductKind.EQUIPMENT
+        : undefined);
     const extracted = await this.extractBusinessData(
       organizationId,
       markdown,
       extraction.ocrDocument.rawJson,
+      kind,
     );
     const updated = await this.prisma.ocrBusinessExtraction.update({
       where: { id: extraction.id },
@@ -1379,7 +1423,15 @@ export class StocksOcrService {
       where: { id: extractionId, organizationId },
     });
     if (!extraction) throw new NotFoundException('Extraction introuvable');
-    const corrected = this.normalizeCorrectionPayload(dto);
+    const extractionKind = this.ocrExtractionProductKind(extraction);
+    const siteId =
+      extractionKind === ProductKind.EQUIPMENT
+        ? await this.resolveEquipmentOcrSiteId(organizationId, dto.siteId)
+        : dto.siteId;
+    const corrected = this.normalizeCorrectionPayload(
+      { ...dto, siteId: siteId ?? undefined },
+      extractionKind,
+    );
     const updated = await this.prisma.ocrBusinessExtraction.update({
       where: { id: extraction.id },
       data: {
@@ -1409,9 +1461,17 @@ export class StocksOcrService {
     if (alreadyValidated)
       throw new BadRequestException('Cette extraction OCR a déjà été validée en réception.');
     if (dto.supplierId) await this.ensureSupplier(organizationId, dto.supplierId);
-    if (dto.siteId) await this.ensureSite(organizationId, dto.siteId);
+    const extractionKind = this.ocrExtractionProductKind(extraction);
+    const siteId =
+      extractionKind === ProductKind.EQUIPMENT
+        ? await this.resolveEquipmentOcrSiteId(organizationId, dto.siteId)
+        : dto.siteId;
+    if (siteId) await this.ensureSite(organizationId, siteId);
     if (dto.locationId) await this.ensureLocation(organizationId, dto.locationId);
-    const corrected = this.normalizeCorrectionPayload(dto);
+    const corrected = this.normalizeCorrectionPayload(
+      { ...dto, siteId: siteId ?? undefined },
+      extractionKind,
+    );
     const lines = corrected.lines.filter((line) => !line.ignored);
     if (!lines.length) throw new BadRequestException('Aucune ligne à réceptionner');
     for (const line of lines) {
@@ -1483,6 +1543,7 @@ export class StocksOcrService {
             );
         if (!product)
           throw new BadRequestException('Produit introuvable sur une ligne de réception.');
+        await this.upsertEquipmentProfileFromOcrLineTx(tx, organizationId, product.id, line);
         const unit = line.unitId
           ? await tx.unit.findFirst({ where: { id: line.unitId, organizationId } })
           : product.unit;
@@ -1768,9 +1829,7 @@ export class StocksOcrService {
       });
       if (!category)
         throw new BadRequestException(`Catégorie introuvable pour le produit « ${name} ».`);
-      if (
-        (category.kind === ProductKind.EQUIPMENT) !== (productKind === ProductKind.EQUIPMENT)
-      ) {
+      if ((category.kind === ProductKind.EQUIPMENT) !== (productKind === ProductKind.EQUIPMENT)) {
         throw new BadRequestException(`La catégorie sélectionnée ne correspond pas à « ${name} ».`);
       }
     }
@@ -1798,7 +1857,16 @@ export class StocksOcrService {
             ? {
                 create: {
                   organizationId,
-                  acquisitionMode: EquipmentAcquisitionMode.CASH,
+                  brand: line.brand || null,
+                  model: line.model || null,
+                  acquisitionMode: line.acquisitionMode ?? EquipmentAcquisitionMode.CASH,
+                  financingProvider: line.financingProvider || null,
+                  financingStart: line.financingStart ? new Date(line.financingStart) : null,
+                  financingEnd: line.financingEnd ? new Date(line.financingEnd) : null,
+                  monthlyPayment: this.decimalOrNull(line.monthlyPayment),
+                  financedAmount: this.decimalOrNull(line.financedAmount),
+                  buyoutValue: this.decimalOrNull(line.buyoutValue),
+                  notes: line.equipmentNotes || null,
                   condition: EquipmentCondition.IN_SERVICE,
                 },
               }
@@ -1814,11 +1882,115 @@ export class StocksOcrService {
     });
   }
 
+  private async upsertEquipmentProfileFromOcrLineTx(
+    tx: Tx,
+    organizationId: string,
+    productId: string,
+    line: ReturnType<StocksOcrService['normalizeCorrectionPayload']>['lines'][number],
+  ) {
+    if (line.productKind !== ProductKind.EQUIPMENT) return;
+    const hasEquipmentDetails = Boolean(
+      line.brand ||
+      line.model ||
+      line.acquisitionMode ||
+      line.financingProvider ||
+      line.financingStart ||
+      line.financingEnd ||
+      line.monthlyPayment != null ||
+      line.financedAmount != null ||
+      line.buyoutValue != null ||
+      line.equipmentNotes,
+    );
+    if (!hasEquipmentDetails) return;
+
+    const acquisitionMode = line.acquisitionMode ?? EquipmentAcquisitionMode.CASH;
+    const financingReset =
+      line.acquisitionMode === EquipmentAcquisitionMode.CASH
+        ? {
+            financingProvider: null,
+            financingStart: null,
+            financingEnd: null,
+            monthlyPayment: null,
+            financedAmount: null,
+            buyoutValue: null,
+          }
+        : {};
+    const createData = {
+      organizationId,
+      productId,
+      brand: line.brand || null,
+      model: line.model || null,
+      acquisitionMode,
+      financingProvider: line.financingProvider || null,
+      financingStart: line.financingStart ? new Date(line.financingStart) : null,
+      financingEnd: line.financingEnd ? new Date(line.financingEnd) : null,
+      monthlyPayment: this.decimalOrNull(line.monthlyPayment),
+      financedAmount: this.decimalOrNull(line.financedAmount),
+      buyoutValue: this.decimalOrNull(line.buyoutValue),
+      notes: line.equipmentNotes || null,
+      condition: EquipmentCondition.IN_SERVICE,
+    };
+    const updateData = {
+      ...(line.brand != null ? { brand: line.brand || null } : {}),
+      ...(line.model != null ? { model: line.model || null } : {}),
+      ...(line.acquisitionMode ? { acquisitionMode: line.acquisitionMode } : {}),
+      ...(line.financingProvider != null
+        ? { financingProvider: line.financingProvider || null }
+        : {}),
+      ...(line.financingStart != null
+        ? { financingStart: line.financingStart ? new Date(line.financingStart) : null }
+        : {}),
+      ...(line.financingEnd != null
+        ? { financingEnd: line.financingEnd ? new Date(line.financingEnd) : null }
+        : {}),
+      ...(line.monthlyPayment != null
+        ? { monthlyPayment: this.decimalOrNull(line.monthlyPayment) }
+        : {}),
+      ...(line.financedAmount != null
+        ? { financedAmount: this.decimalOrNull(line.financedAmount) }
+        : {}),
+      ...(line.buyoutValue != null ? { buyoutValue: this.decimalOrNull(line.buyoutValue) } : {}),
+      ...(line.equipmentNotes != null ? { notes: line.equipmentNotes || null } : {}),
+      ...financingReset,
+    };
+    await tx.equipmentProfile.upsert({
+      where: { productId },
+      create: createData,
+      update: updateData,
+    });
+  }
+
+  private async resolveEquipmentOcrSiteId(organizationId: string, requestedSiteId?: string | null) {
+    if (requestedSiteId) return requestedSiteId;
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { primarySiteId: true },
+    });
+    if (organization?.primarySiteId) {
+      const primarySite = await this.prisma.site.findFirst({
+        where: {
+          id: organization.primarySiteId,
+          organizationId,
+          isArchived: false,
+        },
+        select: { id: true },
+      });
+      if (primarySite) return primarySite.id;
+    }
+    const firstActiveSite = await this.prisma.site.findFirst({
+      where: { organizationId, isArchived: false },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    return firstActiveSite?.id ?? null;
+  }
+
   private async processOcr(
     organizationId: string,
     actor: Actor,
     documentId: string,
     ocrDocumentId: string,
+    kind?: ProductKind,
   ) {
     const started = Date.now();
     try {
@@ -1834,7 +2006,7 @@ export class StocksOcrService {
         where: { id: ocrDocumentId },
         data: { status: OcrProcessingStatus.PROCESSING },
       });
-      const result = await this.callMistral(organizationId, document);
+      const result = await this.callMistral(organizationId, document, kind);
       const rawText = this.rawTextFromOcr(result.rawJson);
       const updatedOcr = await this.prisma.ocrDocument.update({
         where: { id: ocrDocumentId },
@@ -1851,6 +2023,7 @@ export class StocksOcrService {
         organizationId,
         result.markdown || rawText,
         result.rawJson,
+        kind,
       );
       const extraction = await this.prisma.ocrBusinessExtraction.create({
         data: {
@@ -1898,6 +2071,7 @@ export class StocksOcrService {
   private async callMistral(
     organizationId: string,
     document: { storagePath: string; mimeType: string; sizeBytes: number; id: string },
+    kind?: ProductKind,
   ) {
     if (OCR_PROVIDER !== 'mistral') throw new BadRequestException('Provider OCR non configuré');
     const apiKey = await this.resolveMistralApiKey(organizationId);
@@ -1907,7 +2081,7 @@ export class StocksOcrService {
     const mimeType = this.mimeForDocument(document.mimeType, document.storagePath);
     const isPdf = mimeType === 'application/pdf';
     const dataUrl = `data:${mimeType};base64,${buffer.toString('base64')}`;
-    const body = this.mistralOcrRequestBody(isPdf, dataUrl, true);
+    const body = this.mistralOcrRequestBody(isPdf, dataUrl, true, kind);
     const controller = new AbortController();
     const timeout = setTimeout(
       () => controller.abort(),
@@ -1928,7 +2102,7 @@ export class StocksOcrService {
         response = await fetch('https://api.mistral.ai/v1/ocr', {
           method: 'POST',
           headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify(this.mistralOcrRequestBody(isPdf, dataUrl, false)),
+          body: JSON.stringify(this.mistralOcrRequestBody(isPdf, dataUrl, false, kind)),
           signal: controller.signal,
         });
         json = await response.json().catch(() => ({}));
@@ -1952,7 +2126,12 @@ export class StocksOcrService {
     }
   }
 
-  private mistralOcrRequestBody(isPdf: boolean, dataUrl: string, withAnnotation: boolean) {
+  private mistralOcrRequestBody(
+    isPdf: boolean,
+    dataUrl: string,
+    withAnnotation: boolean,
+    kind?: ProductKind,
+  ) {
     const body: any = {
       model: OCR_MODEL,
       document: isPdf
@@ -1965,7 +2144,7 @@ export class StocksOcrService {
       body.confidence_scores_granularity = 'page';
     }
     if (withAnnotation && OCR_DOCUMENT_ANNOTATION_ENABLED) {
-      body.document_annotation_prompt = this.invoiceUnderstandingInstructions();
+      body.document_annotation_prompt = this.invoiceUnderstandingInstructions(kind);
       body.document_annotation_format = this.aiResponseFormat('toquehub_stock_ocr_annotation');
     }
     return body;
@@ -1979,6 +2158,7 @@ export class StocksOcrService {
     organizationId: string,
     markdown: string,
     rawJson?: any,
+    kind?: ProductKind,
   ): Promise<BusinessExtraction> {
     const text = markdown || '';
     const lines = text
@@ -2029,18 +2209,20 @@ export class StocksOcrService {
     if (specialized) {
       const matched = await this.matchLines(
         organizationId,
-        matchedSupplierExtraction.lines,
+        matchedSupplierExtraction.lines.map((line) => this.applyImportKind(line, kind)),
         matchedSupplierExtraction.supplierId,
+        kind,
       );
       return { ...matchedSupplierExtraction, lines: matched, items: matched };
     }
     const ocrAnnotation = this.extractMistralOcrDocumentAnnotation(
       rawJson,
       matchedSupplierExtraction,
+      kind,
     );
     if (ocrAnnotation?.lines?.length) {
       const merged = this.mergeAiAnalysis(matchedSupplierExtraction, ocrAnnotation);
-      const matched = await this.matchLines(organizationId, merged.lines, merged.supplierId);
+      const matched = await this.matchLines(organizationId, merged.lines, merged.supplierId, kind);
       return { ...merged, lines: matched };
     }
     const aiExtraction = await this.analyzeOcrWithMistralAi(
@@ -2048,6 +2230,7 @@ export class StocksOcrService {
       markdown,
       rawJson,
       matchedSupplierExtraction,
+      kind,
     ).catch((error) => {
       this.logger.warn(
         `Analyse IA OCR indisponible org=${organizationId}: ${error?.message || error}`,
@@ -2058,7 +2241,7 @@ export class StocksOcrService {
       );
     });
     const merged = this.mergeAiAnalysis(matchedSupplierExtraction, aiExtraction);
-    const matched = await this.matchLines(organizationId, merged.lines, merged.supplierId);
+    const matched = await this.matchLines(organizationId, merged.lines, merged.supplierId, kind);
     return { ...merged, lines: matched };
   }
 
@@ -2067,9 +2250,10 @@ export class StocksOcrService {
     markdown: string,
     rawJson: any,
     fallback: BusinessExtraction,
+    kind?: ProductKind,
   ): Promise<Partial<BusinessExtraction>> {
-    const references = await this.ocrReferenceContext(organizationId);
-    const prompt = this.invoiceUnderstandingInstructions();
+    const references = await this.ocrReferenceContext(organizationId, kind);
+    const prompt = this.invoiceUnderstandingInstructions(kind);
     try {
       const parsed = await this.mistralClient.chatJson<any>(
         organizationId,
@@ -2093,7 +2277,7 @@ export class StocksOcrService {
         'toquehub_stock_ocr_analysis',
         this.aiAnalysisSchema(),
       );
-      return this.normalizeAiExtraction(parsed, fallback);
+      return this.normalizeAiExtraction(parsed, fallback, kind);
     } catch (error: any) {
       return this.aiFallback(fallback, error?.message || 'Analyse IA indisponible');
     }
@@ -2102,13 +2286,14 @@ export class StocksOcrService {
   private extractMistralOcrDocumentAnnotation(
     rawJson: any,
     fallback: BusinessExtraction,
+    kind?: ProductKind,
   ): Partial<BusinessExtraction> | null {
     const annotation = rawJson?.document_annotation;
     if (annotation == null) return null;
     try {
       const parsed =
         typeof annotation === 'string' ? this.parseAiJsonContent(annotation) : annotation;
-      const normalized = this.normalizeAiExtraction(parsed, fallback);
+      const normalized = this.normalizeAiExtraction(parsed, fallback, kind);
       return {
         ...normalized,
         aiAnalysis: {
@@ -2125,12 +2310,29 @@ export class StocksOcrService {
     }
   }
 
-  private invoiceUnderstandingInstructions() {
+  private invoiceUnderstandingInstructions(kind?: ProductKind) {
+    const equipmentInstructions =
+      kind === ProductKind.EQUIPMENT
+        ? [
+            'CONTEXTE IMPÉRATIF: ce document est importé dans le module Matériel, jamais dans le catalogue Produits.',
+            'Chaque bien physique durable doit avoir productKind=EQUIPMENT et lineType=equipment. Un accessoire physique utile au matériel doit avoir productKind=EQUIPMENT et lineType=accessory.',
+            'Les prestations, installations, heures de travail et déplacements doivent rester visibles mais avoir lineType=service ou transport, lineStatus=non_product_line, isStockItem=false et ignored=true.',
+            'Sépare si possible le nom commercial en brand (marque) et model (modèle). Conserve dans reference la référence fournisseur complète, y compris lorsque le code est coupé sur deux lignes.',
+            'Les catégories proposées doivent venir uniquement du référentiel de catégories Matériel fourni. N’utilise jamais une catégorie du catalogue Produits.',
+            'Pour pc, pcs et kpl, utilise l’unité pièce et propose son unitId si elle existe dans le référentiel.',
+            'En présence d’une remise, unitPrice doit être le prix unitaire NET réellement facturé, listUnitPrice le prix catalogue avant remise, discountPercent le pourcentage de remise et total le total net de ligne.',
+            'Détecte les achats comptants, crédits, locations et leasings. Renseigne acquisitionMode avec CASH, CREDIT, RENTAL ou LEASING uniquement si le document le permet.',
+            'Reconnais aussi les termes finnois de financement et de rachat: leasing, vuokra, rahoitus, lunastus, lunastushinta. Renseigne buyoutValue pour une valeur de rachat explicite.',
+            'Renseigne financingProvider, financingStart, financingEnd, monthlyPayment et financedAmount seulement s’ils sont explicitement présents; n’invente jamais de durée, date ou mensualité.',
+            'Place les conditions liées au matériel, au leasing ou au rachat dans equipmentNotes, en français concis, sans perdre le montant ni la devise.',
+          ]
+        : [];
     return [
-      'Tu analyses un bon de livraison, une facture fournisseur, une commande ou un ticket de caisse pour un module de stock restauration.',
+      'Tu analyses un bon de livraison, une facture fournisseur, une offre commerciale, une commande ou un ticket de caisse pour un module de stock restauration.',
       'Retourne uniquement le JSON conforme au schema.',
       'Objectifs: extraire le fournisseur, ses identifiants stables, les numéros documentaires, dates, totaux et les lignes utiles pour réception fournisseur.',
-      'Types possibles: invoice, delivery_note, receipt, supplier_order, order_confirmation, unknown.',
+      'Types possibles: invoice, delivery_note, receipt, supplier_order, order_confirmation, quote, unknown.',
+      'Le fournisseur est toujours l’émetteur ou l’entreprise figurant dans l’en-tête. Ne prends jamais le client, l’acheteur ou l’adresse de livraison comme fournisseur.',
       'Un ticket de caisse (receipt) contient souvent une enseigne ou un magasin, une adresse, une date et heure, un total payé, un bloc TVA et des produits suivis de leur quantité et prix au KG/KPL/L. En finnois, YHTEENSÄ=total, ALV=TVA, VEROTON=hors taxe, VERO=taxe, VEROLLINEN=TTC, KPL=pièce, KG=kilogramme et Y-tunnus=identifiant entreprise.',
       'Pour un produit vendu au poids ou à la pièce sur un ticket, extrais la quantité et l’unité depuis la ligne de détail, le prix après €/KG, €/KPL ou €/L comme unitPrice, et le montant à droite de la ligne produit comme total.',
       'Les remises (alennus) ne sont pas des produits stockables. Ignore-les comme lignes tout en conservant le total réellement payé dans totalIncludingTax.',
@@ -2140,6 +2342,7 @@ export class StocksOcrService {
       'Pour Kespro, Order number est toujours le numéro de commande fournisseur et doit être renseigné dans document.purchaseOrderNumber.',
       'Ignore les lignes adresse, SIRET, téléphone, fax, RCS, conditions, totaux, mentions légales, pieds de page et en-têtes.',
       'Regroupe les lignes produit éclatées. Conserve les lots et DLC/DDM si présents.',
+      'Conserve chaque code article et rassemble les fragments d’une référence coupée sur plusieurs lignes.',
       'Conserve le texte original du produit dans nameOriginal ou label. Ne traduis pas les noms produits.',
       'Les quantités collées aux unités comme 1,00ltk doivent devenir quantity=1.00 et unit=ltk.',
       'Les lignes RAHTI/transport doivent être conservées mais classées non_product_line, isFreight=true, isStockItem=false, ignored=true.',
@@ -2148,6 +2351,7 @@ export class StocksOcrService {
       'Si aucun produit fiable, propose un libellé propre, une unité, une catégorie et un SKU/référence si présent.',
       'La catégorie est obligatoire en sortie: choisis categoryId parmi les catégories existantes dès qu’une catégorie est plausible.',
       'Si aucune catégorie existante ne convient, renseigne categoryName avec une catégorie métier française précise, jamais "Non classé", "À classer" ou "Divers".',
+      ...equipmentInstructions,
       'Les nombres doivent être des nombres JSON, pas des chaînes. Les dates doivent être YYYY-MM-DD.',
       'Tous les messages humains dans warnings, suggestedActions et line.warnings doivent être rédigés en français, jamais en anglais.',
     ].join('\n');
@@ -2254,17 +2458,41 @@ export class StocksOcrService {
             required: [
               'label',
               'reference',
+              'supplierProductCode',
+              'nameOriginal',
+              'descriptionOriginal',
               'quantity',
               'unit',
               'unitPrice',
+              'listUnitPrice',
+              'discountPercent',
               'total',
               'vatRate',
               'lotNumber',
               'bestBeforeDate',
+              'originCountry',
+              'statisticalCode',
+              'netWeight',
+              'isFreight',
+              'isStockItem',
+              'packageDescription',
+              'ignored',
               'productId',
               'unitId',
               'categoryId',
               'categoryName',
+              'productKind',
+              'lineType',
+              'brand',
+              'model',
+              'acquisitionMode',
+              'financingProvider',
+              'financingStart',
+              'financingEnd',
+              'monthlyPayment',
+              'financedAmount',
+              'buyoutValue',
+              'equipmentNotes',
               'lineStatus',
               'confidence',
               'warnings',
@@ -2279,6 +2507,8 @@ export class StocksOcrService {
               quantity: nullableNumber,
               unit: nullableString,
               unitPrice: nullableNumber,
+              listUnitPrice: nullableNumber,
+              discountPercent: nullableNumber,
               total: nullableNumber,
               vatRate: nullableNumber,
               lotNumber: nullableString,
@@ -2294,6 +2524,40 @@ export class StocksOcrService {
               unitId: nullableString,
               categoryId: nullableString,
               categoryName: nullableString,
+              productKind: {
+                anyOf: [{ type: 'string', enum: Object.values(ProductKind) }, { type: 'null' }],
+              },
+              lineType: {
+                anyOf: [
+                  {
+                    type: 'string',
+                    enum: [
+                      'equipment',
+                      'service',
+                      'accessory',
+                      'transport',
+                      'consumable',
+                      'unknown',
+                    ],
+                  },
+                  { type: 'null' },
+                ],
+              },
+              brand: nullableString,
+              model: nullableString,
+              acquisitionMode: {
+                anyOf: [
+                  { type: 'string', enum: Object.values(EquipmentAcquisitionMode) },
+                  { type: 'null' },
+                ],
+              },
+              financingProvider: nullableString,
+              financingStart: nullableString,
+              financingEnd: nullableString,
+              monthlyPayment: nullableNumber,
+              financedAmount: nullableNumber,
+              buyoutValue: nullableNumber,
+              equipmentNotes: nullableString,
               lineStatus: {
                 type: 'string',
                 enum: [
@@ -2331,58 +2595,129 @@ export class StocksOcrService {
   private normalizeAiExtraction(
     ai: any,
     fallback: BusinessExtraction,
+    kind?: ProductKind,
   ): Partial<BusinessExtraction> {
     const warnings = this.cleanOcrMessages(ai?.warnings, 12);
     const lines = Array.isArray(ai?.lines)
       ? ai.lines
           .filter((line: any) => line?.lineStatus !== 'duplicate_line')
-          .map((line: any) => ({
-            label: this.cleanString(line.label) || null,
-            reference: this.cleanString(line.reference) || null,
-            supplierProductCode:
-              this.cleanString(line.supplierProductCode) ||
-              this.cleanString(line.reference) ||
-              null,
-            nameOriginal:
-              this.cleanString(line.nameOriginal) || this.cleanString(line.label) || null,
-            nameNormalized: this.normalizeProductText(
-              this.cleanString(line.nameOriginal) || this.cleanString(line.label) || '',
-            ),
-            descriptionOriginal: this.cleanString(line.descriptionOriginal) || null,
-            quantity: this.numberOrNull(line.quantity),
-            unit: this.cleanString(line.unit) || null,
-            unitPrice: this.numberOrNull(line.unitPrice),
-            total: this.numberOrNull(line.total),
-            vatRate: this.numberOrNull(line.vatRate),
-            lotNumber: this.cleanString(line.lotNumber) || null,
-            bestBeforeDate: this.cleanDate(line.bestBeforeDate),
-            originCountry: this.cleanString(line.originCountry) || null,
-            statisticalCode: this.cleanString(line.statisticalCode) || null,
-            netWeight: this.numberOrNull(line.netWeight),
-            isFreight:
-              typeof line.isFreight === 'boolean'
-                ? line.isFreight
-                : /\bRAHTI\b/i.test(String(line.label || '')),
-            isStockItem:
-              typeof line.isStockItem === 'boolean'
-                ? line.isStockItem
-                : line.lineStatus !== 'non_product_line',
-            packageDescription:
-              this.cleanString(line.packageDescription) ||
-              this.packageDescriptionFromName(
+          .map((line: any) => {
+            const quantity = this.numberOrNull(line.quantity);
+            const total = this.numberOrNull(line.total);
+            const sourceUnitPrice = this.numberOrNull(line.unitPrice);
+            const discountPercent = this.numberOrNull(line.discountPercent);
+            const hasDiscount = discountPercent != null && discountPercent > 0;
+            const listUnitPrice =
+              this.numberOrNull(line.listUnitPrice) ?? (hasDiscount ? sourceUnitPrice : null);
+            const unitPrice =
+              hasDiscount && quantity && total != null ? total / quantity : sourceUnitPrice;
+            const discountReconcilesTotal = Boolean(
+              hasDiscount &&
+              quantity &&
+              total != null &&
+              listUnitPrice != null &&
+              Math.abs(quantity * listUnitPrice * (1 - discountPercent! / 100) - total) <= 0.05,
+            );
+            const rawLineStatus = this.cleanString(line.lineStatus) || 'needs_review';
+            const lineStatus =
+              rawLineStatus === 'price_mismatch' && discountReconcilesTotal
+                ? 'needs_review'
+                : rawLineStatus;
+            const rawLineType = this.cleanString(line.lineType);
+            const lineType = [
+              'equipment',
+              'service',
+              'accessory',
+              'transport',
+              'consumable',
+              'unknown',
+            ].includes(rawLineType || '')
+              ? (rawLineType as ExtractedLine['lineType'])
+              : kind === ProductKind.EQUIPMENT
+                ? lineStatus === 'non_product_line'
+                  ? /drive|km|déplacement|transport|rahti/i.test(String(line.label || ''))
+                    ? 'transport'
+                    : 'service'
+                  : 'equipment'
+                : 'unknown';
+            const acquisitionMode = Object.values(EquipmentAcquisitionMode).includes(
+              line.acquisitionMode,
+            )
+              ? (line.acquisitionMode as EquipmentAcquisitionMode)
+              : null;
+            const productKind =
+              kind === ProductKind.EQUIPMENT
+                ? ProductKind.EQUIPMENT
+                : Object.values(ProductKind).includes(line.productKind)
+                  ? (line.productKind as ProductKind)
+                  : undefined;
+            const lineWarnings = this.cleanOcrMessages(line.warnings, 6).filter(
+              (warning) =>
+                !discountReconcilesTotal ||
+                !/prix unitaire.*(?:diff|écart)|price.*(?:diff|mismatch)/i.test(warning),
+            );
+            return {
+              label: this.cleanString(line.label) || null,
+              reference: this.cleanString(line.reference) || null,
+              supplierProductCode:
+                this.cleanString(line.supplierProductCode) ||
+                this.cleanString(line.reference) ||
+                null,
+              nameOriginal:
+                this.cleanString(line.nameOriginal) || this.cleanString(line.label) || null,
+              nameNormalized: this.normalizeProductText(
                 this.cleanString(line.nameOriginal) || this.cleanString(line.label) || '',
-              ) ||
-              null,
-            ignored: Boolean(line.ignored) || line.lineStatus === 'non_product_line',
-            productId: this.uuidOrNull(line.productId),
-            unitId: this.uuidOrNull(line.unitId),
-            categoryId: this.uuidOrNull(line.categoryId),
-            categoryName: this.cleanString(line.categoryName) || null,
-            lineStatus: this.cleanString(line.lineStatus) || 'needs_review',
-            lineConfidence: this.numberOrNull(line.confidence),
-            warnings: this.cleanOcrMessages(line.warnings, 6),
-            sourceText: this.cleanString(line.sourceText) || null,
-          }))
+              ),
+              descriptionOriginal: this.cleanString(line.descriptionOriginal) || null,
+              quantity,
+              unit: this.normalizeEquipmentUnit(this.cleanString(line.unit), kind),
+              unitPrice,
+              listUnitPrice,
+              discountPercent,
+              total,
+              vatRate: this.numberOrNull(line.vatRate),
+              lotNumber: this.cleanString(line.lotNumber) || null,
+              bestBeforeDate: this.cleanDate(line.bestBeforeDate),
+              originCountry: this.cleanString(line.originCountry) || null,
+              statisticalCode: this.cleanString(line.statisticalCode) || null,
+              netWeight: this.numberOrNull(line.netWeight),
+              isFreight:
+                typeof line.isFreight === 'boolean'
+                  ? line.isFreight
+                  : lineType === 'transport' || /\bRAHTI\b/i.test(String(line.label || '')),
+              isStockItem:
+                typeof line.isStockItem === 'boolean'
+                  ? line.isStockItem
+                  : lineStatus !== 'non_product_line',
+              packageDescription:
+                this.cleanString(line.packageDescription) ||
+                this.packageDescriptionFromName(
+                  this.cleanString(line.nameOriginal) || this.cleanString(line.label) || '',
+                ) ||
+                null,
+              ignored: Boolean(line.ignored) || lineStatus === 'non_product_line',
+              productId: this.uuidOrNull(line.productId),
+              unitId: this.uuidOrNull(line.unitId),
+              categoryId: this.uuidOrNull(line.categoryId),
+              categoryName: this.cleanString(line.categoryName) || null,
+              productKind,
+              lineType,
+              brand: this.cleanString(line.brand) || null,
+              model: this.cleanString(line.model) || null,
+              acquisitionMode,
+              financingProvider: this.cleanString(line.financingProvider) || null,
+              financingStart: this.cleanDate(line.financingStart),
+              financingEnd: this.cleanDate(line.financingEnd),
+              monthlyPayment: this.numberOrNull(line.monthlyPayment),
+              financedAmount: this.numberOrNull(line.financedAmount),
+              buyoutValue: this.numberOrNull(line.buyoutValue),
+              equipmentNotes: this.cleanString(line.equipmentNotes) || null,
+              lineStatus,
+              lineConfidence: this.numberOrNull(line.confidence),
+              warnings: lineWarnings,
+              sourceText: this.cleanString(line.sourceText) || null,
+            };
+          })
           .filter((line: ExtractedLine) => line.label && line.quantity != null)
           .slice(0, 120)
       : [];
@@ -2425,7 +2760,7 @@ export class StocksOcrService {
         totalIncludingTax:
           this.numberOrNull(ai?.totals?.totalIncludingTax) ?? fallback.totals.totalIncludingTax,
       },
-      lines: lines.length ? lines : fallback.lines,
+      lines: lines.length ? lines : fallback.lines.map((line) => this.applyImportKind(line, kind)),
       documentConfidence,
       warnings,
       suggestedActions: this.cleanOcrMessages(ai?.suggestedActions, 10),
@@ -2486,7 +2821,7 @@ export class StocksOcrService {
     };
   }
 
-  private async ocrReferenceContext(organizationId: string) {
+  private async ocrReferenceContext(organizationId: string, kind?: ProductKind) {
     const [suppliers, products, categories, units] = await Promise.all([
       this.prisma.supplier.findMany({
         where: { organizationId, isArchived: false },
@@ -2495,10 +2830,16 @@ export class StocksOcrService {
         take: 200,
       }),
       this.prisma.product.findMany({
-        where: { organizationId, isArchived: false },
+        where: {
+          organizationId,
+          isArchived: false,
+          kind:
+            kind === ProductKind.EQUIPMENT ? ProductKind.EQUIPMENT : { not: ProductKind.EQUIPMENT },
+        },
         select: {
           id: true,
           name: true,
+          kind: true,
           sku: true,
           categoryId: true,
           unitId: true,
@@ -2508,8 +2849,13 @@ export class StocksOcrService {
         take: 500,
       }),
       this.prisma.category.findMany({
-        where: { organizationId, isArchived: false },
-        select: { id: true, name: true, description: true },
+        where: {
+          organizationId,
+          isArchived: false,
+          kind:
+            kind === ProductKind.EQUIPMENT ? ProductKind.EQUIPMENT : { not: ProductKind.EQUIPMENT },
+        },
+        select: { id: true, name: true, description: true, kind: true },
         orderBy: { name: 'asc' },
         take: 120,
       }),
@@ -2520,7 +2866,14 @@ export class StocksOcrService {
         take: 120,
       }),
     ]);
-    return { suppliers, products, categories, units, categoryHints: STOCKS_OCR_CATEGORY_HINTS };
+    return {
+      importKind: kind ?? ProductKind.UNSPECIFIED,
+      suppliers,
+      products,
+      categories,
+      units,
+      categoryHints: kind === ProductKind.EQUIPMENT ? [] : STOCKS_OCR_CATEGORY_HINTS,
+    };
   }
 
   private compactExtractionForAi(extraction: BusinessExtraction) {
@@ -2536,6 +2889,35 @@ export class StocksOcrService {
   private cleanString(value: any) {
     const str = value == null ? '' : String(value).replace(/\s+/g, ' ').trim();
     return str || null;
+  }
+
+  private normalizeEquipmentUnit(value: string | null, kind?: ProductKind) {
+    if (!value) return null;
+    if (kind === ProductKind.EQUIPMENT && /^(?:pc|pcs|kpl|piece|pi[eè]ce)s?$/i.test(value))
+      return 'pièce';
+    return value;
+  }
+
+  private applyImportKind(line: ExtractedLine, kind?: ProductKind): ExtractedLine {
+    if (kind !== ProductKind.EQUIPMENT) return line;
+    const ignored =
+      Boolean(line.ignored) || line.isStockItem === false || line.lineStatus === 'non_product_line';
+    const lineType =
+      line.lineType && line.lineType !== 'unknown'
+        ? line.lineType
+        : ignored
+          ? /drive|km|déplacement|transport|rahti/i.test(
+              `${line.label || ''} ${line.sourceText || ''}`,
+            )
+            ? 'transport'
+            : 'service'
+          : 'equipment';
+    return {
+      ...line,
+      productKind: ProductKind.EQUIPMENT,
+      lineType,
+      unit: this.normalizeEquipmentUnit(line.unit, kind),
+    };
   }
 
   private cleanSupplierIdentifiers(
@@ -2612,6 +2994,7 @@ export class StocksOcrService {
     if (this.isKesproOrder(text))
       return /confirmed quantity/i.test(text) ? 'order_confirmation' : 'supplier_order';
     if (this.isFinnishRetailReceipt(text)) return 'receipt';
+    if (/\b(?:offer|offre|tarjous)\b/i.test(text)) return 'quote';
     if (/\bfacture\b|\binvoice\b/i.test(text)) return 'invoice';
     if (/\b(bon de livraison|bl\b|livraison|delivery note)\b/i.test(text)) return 'delivery_note';
     return 'unknown';
@@ -3664,12 +4047,19 @@ export class StocksOcrService {
     organizationId: string,
     lines: ExtractedLine[],
     supplierId?: string | null,
+    kind?: ProductKind,
   ) {
     const products = await this.prisma.product.findMany({
-      where: { organizationId, isArchived: false },
+      where: {
+        organizationId,
+        isArchived: false,
+        kind:
+          kind === ProductKind.EQUIPMENT ? ProductKind.EQUIPMENT : { not: ProductKind.EQUIPMENT },
+      },
       include: { unit: true, category: true, primarySupplier: true },
     });
-    return lines.map((line) => {
+    return lines.map((rawLine) => {
+      const line = this.applyImportKind(rawLine, kind);
       if (
         (line as any).ignored ||
         (line as any).isFreight ||
@@ -4512,7 +4902,7 @@ export class StocksOcrService {
     return Math.min(0.99, Math.max(0.3, recognized / extraction.lines.length));
   }
 
-  private normalizeCorrectionPayload(dto: SaveOcrCorrectionDto) {
+  private normalizeCorrectionPayload(dto: SaveOcrCorrectionDto, forcedKind?: ProductKind) {
     return {
       supplierId: dto.supplierId || null,
       supplierName: dto.supplierName || null,
@@ -4537,6 +4927,7 @@ export class StocksOcrService {
       aiAnalysis: dto.aiAnalysis ?? null,
       lines: (dto.lines || []).map((line) => ({
         ...line,
+        productKind: forcedKind ?? line.productKind ?? ProductKind.UNSPECIFIED,
         productId: line.productId || null,
         createProduct: Boolean(line.createProduct && !line.productId),
         unitId: line.unitId || null,
@@ -4560,6 +4951,20 @@ export class StocksOcrService {
         sourceText: line.sourceText || null,
       })),
     };
+  }
+
+  private ocrExtractionProductKind(extraction: {
+    extractedJson?: unknown;
+    correctedJson?: unknown;
+  }) {
+    const sources = [extraction.correctedJson, extraction.extractedJson];
+    return sources.some(
+      (source: any) =>
+        Array.isArray(source?.lines) &&
+        source.lines.some((line: any) => line?.productKind === ProductKind.EQUIPMENT),
+    )
+      ? ProductKind.EQUIPMENT
+      : undefined;
   }
 
   private formatExtraction(extraction: any) {

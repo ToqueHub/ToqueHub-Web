@@ -4267,6 +4267,59 @@
   font-weight: 600;
 }
 
+.stocks-ocr-lines .equipment-ocr-detail-row td {
+  padding: 0 0.75rem 0.85rem !important;
+  background: #f8fbfa;
+  border-top: 0;
+}
+
+.equipment-ocr-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 0.65rem;
+  padding: 0.8rem;
+  border: 1px solid #d9eee7;
+  border-radius: 12px;
+  background: #f3faf7;
+}
+
+.equipment-ocr-detail-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  color: #53657a;
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.equipment-ocr-detail-grid input,
+.equipment-ocr-detail-grid select,
+.equipment-ocr-detail-grid textarea {
+  min-width: 0 !important;
+  font-weight: 500 !important;
+  color: var(--text-main);
+}
+
+.equipment-ocr-detail-grid textarea {
+  width: 100%;
+  min-height: 64px;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--light-border);
+  border-radius: 8px;
+  background: white;
+  resize: vertical;
+}
+
+.equipment-ocr-notes {
+  grid-column: span 2;
+}
+
+@media (max-width: 1180px) {
+  .equipment-ocr-detail-grid {
+    grid-template-columns: repeat(2, minmax(180px, 1fr));
+  }
+}
+
 .ocr-product-picker-trigger {
   min-width: 0;
   flex: 1;
@@ -38077,4 +38130,55 @@ input:checked + .slider-round:before {
   margin: 0;
   color: var(--text-muted);
   font-size: 0.8rem;
+}
+
+.stocks-leasing-deadlines {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem 1.15rem;
+}
+
+.stocks-leasing-deadlines-heading,
+.stocks-leasing-deadline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.stocks-leasing-deadlines-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.stocks-leasing-deadline {
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--light-border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.stocks-leasing-deadline > div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.stocks-leasing-deadline span {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.stocks-leasing-deadline-date {
+  text-align: right;
+}
+
+@media (max-width: 680px) {
+  .stocks-leasing-deadline {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .stocks-leasing-deadline-date {
+    text-align: left;
+  }
 }

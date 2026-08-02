@@ -1,3 +1,4 @@
+import { EquipmentAcquisitionMode, Prisma, ProductKind } from '@prisma/client';
 import { StocksOcrService } from './stocks-ocr.service';
 
 type ExpectedItem = {
@@ -41,10 +42,19 @@ function mockStocksService(): any {
 }
 
 async function extract(text: string) {
-  const service = new StocksOcrService(mockPrisma(), mockMarginsService(), mockMistralClient(), mockStocksService());
-  jest.spyOn(service as any, 'analyzeOcrWithMistralAi').mockImplementation((_organizationId, _markdown, _rawJson, fallback) => {
-    return Promise.resolve((service as any).aiFallback(fallback, 'Analyse IA désactivée en test.'));
-  });
+  const service = new StocksOcrService(
+    mockPrisma(),
+    mockMarginsService(),
+    mockMistralClient(),
+    mockStocksService(),
+  );
+  jest
+    .spyOn(service as any, 'analyzeOcrWithMistralAi')
+    .mockImplementation((_organizationId, _markdown, _rawJson, fallback) => {
+      return Promise.resolve(
+        (service as any).aiFallback(fallback, 'Analyse IA désactivée en test.'),
+      );
+    });
   return (service as any).extractBusinessData('org-1', text, null);
 }
 
@@ -190,10 +200,39 @@ const tingstadCases: Array<{
       ],
     }),
     items: [
-      { code: '318145', name: 'PVC-kelmua Wrapmaster 45cm x 300m', quantity: 1, unit: 'ltk', unitPrice: 36, total: 36 },
-      { code: '250250100', name: 'Kakkulaatikko ikkunalla, valkoinen', quantity: 2, unit: 'ltk', unitPrice: 64.26, total: 128.52 },
-      { code: '320320120', name: 'Kakkulaatikko ikkunalla valkoinen', quantity: 1, unit: 'ltk', unitPrice: 59.5, total: 59.5 },
-      { code: '5555', name: 'RAHTI 1/kpl', quantity: 1, unit: 'kpl', unitPrice: 25, total: 25, freight: true },
+      {
+        code: '318145',
+        name: 'PVC-kelmua Wrapmaster 45cm x 300m',
+        quantity: 1,
+        unit: 'ltk',
+        unitPrice: 36,
+        total: 36,
+      },
+      {
+        code: '250250100',
+        name: 'Kakkulaatikko ikkunalla, valkoinen',
+        quantity: 2,
+        unit: 'ltk',
+        unitPrice: 64.26,
+        total: 128.52,
+      },
+      {
+        code: '320320120',
+        name: 'Kakkulaatikko ikkunalla valkoinen',
+        quantity: 1,
+        unit: 'ltk',
+        unitPrice: 59.5,
+        total: 59.5,
+      },
+      {
+        code: '5555',
+        name: 'RAHTI 1/kpl',
+        quantity: 1,
+        unit: 'kpl',
+        unitPrice: 25,
+        total: 25,
+        freight: true,
+      },
     ],
   },
   {
@@ -223,8 +262,23 @@ const tingstadCases: Array<{
       ],
     }),
     items: [
-      { code: '1053070', name: 'KAKKUALUSTA KULTA 80MM KORVA', quantity: 10, unit: 'ltk', unitPrice: 17, total: 170 },
-      { code: '5555', name: 'RAHTI 1/kpl', quantity: 1, unit: 'kpl', unitPrice: 25, total: 0, freight: true },
+      {
+        code: '1053070',
+        name: 'KAKKUALUSTA KULTA 80MM KORVA',
+        quantity: 10,
+        unit: 'ltk',
+        unitPrice: 17,
+        total: 170,
+      },
+      {
+        code: '5555',
+        name: 'RAHTI 1/kpl',
+        quantity: 1,
+        unit: 'kpl',
+        unitPrice: 25,
+        total: 0,
+        freight: true,
+      },
     ],
   },
   {
@@ -254,8 +308,22 @@ const tingstadCases: Array<{
       ],
     }),
     items: [
-      { code: '1053070', name: 'KAKKUALUSTA KULTA 80MM KORVA', quantity: 10, unit: 'ltk', unitPrice: 17, total: 170 },
-      { code: '39556', name: 'KAKKUALUSTA 106X56MM 250/ltk', quantity: 10, unit: 'ltk', unitPrice: 19.8, total: 198 },
+      {
+        code: '1053070',
+        name: 'KAKKUALUSTA KULTA 80MM KORVA',
+        quantity: 10,
+        unit: 'ltk',
+        unitPrice: 17,
+        total: 170,
+      },
+      {
+        code: '39556',
+        name: 'KAKKUALUSTA 106X56MM 250/ltk',
+        quantity: 10,
+        unit: 'ltk',
+        unitPrice: 19.8,
+        total: 198,
+      },
     ],
   },
 ];
@@ -330,20 +398,104 @@ const kesproCases: Array<{
     }),
     items: [
       { name: 'Tomaatti NL/BE 1lk', quantity: 1, unit: 'LTK', unitPrice: 8.33, total: 8.33 },
-      { name: 'Katrin hand towel C-fold 2-ply 100 sheets', quantity: 2, unit: 'LTK', unitPrice: 18.92, total: 37.84 },
-      { name: 'Menu nitrile glove black M 100pcs', quantity: 2, unit: 'PKT', unitPrice: 5.18, total: 10.36 },
-      { name: 'Kiilto MD Green 10l machine dishwashing detergent', quantity: 1, unit: 'KPL', unitPrice: 60.76, total: 60.76 },
-      { name: 'Cessibon blend of cream 250g natural', quantity: 2, unit: 'LTK', unitPrice: 14.18, total: 28.36 },
-      { name: 'Oddlygood Barista oat drink 1l gluten-free UHT', quantity: 1, unit: 'LTK', unitPrice: 17.18, total: 17.18 },
-      { name: 'Pirkka lactose-free milkdrink 1l 3%', quantity: 4, unit: 'LTK', unitPrice: 24.83, total: 99.31 },
-      { name: 'Menu finnish strawberry 2,5kg frozen', quantity: 1, unit: 'LTK', unitPrice: 59.82, total: 59.82 },
-      { name: 'Mehukatti Trip Raspberry drink 2 dl', quantity: 1, unit: 'LTK', unitPrice: 9.3, total: 9.3 },
-      { name: 'Mehukatti Trip Pear drink 2dl', quantity: 1, unit: 'LTK', unitPrice: 9.3, total: 9.3 },
-      { name: 'Ramlösa Kvarn Tipo 00 2kg Wheatflour', quantity: 1, unit: 'PAK', unitPrice: 17.61, total: 17.61 },
-      { name: 'Urbani Tartufi Salsa tartufata tryffeli paste 500g', quantity: 3, unit: 'PRK', unitPrice: 17.85, total: 53.55 },
-      { name: 'Fredman piping bag blue 270x530mm 72pcs', quantity: 2, unit: 'LTK', unitPrice: 24.43, total: 48.85 },
-      { name: 'SBS Levain leipä viipaloitu 1250g frozen', quantity: 2, unit: 'LTK', unitPrice: 38.78, total: 77.56 },
-      { name: 'Santa Maria poppy seed blue 550g', quantity: 1, unit: 'TLK', unitPrice: 7.83, total: 7.83 },
+      {
+        name: 'Katrin hand towel C-fold 2-ply 100 sheets',
+        quantity: 2,
+        unit: 'LTK',
+        unitPrice: 18.92,
+        total: 37.84,
+      },
+      {
+        name: 'Menu nitrile glove black M 100pcs',
+        quantity: 2,
+        unit: 'PKT',
+        unitPrice: 5.18,
+        total: 10.36,
+      },
+      {
+        name: 'Kiilto MD Green 10l machine dishwashing detergent',
+        quantity: 1,
+        unit: 'KPL',
+        unitPrice: 60.76,
+        total: 60.76,
+      },
+      {
+        name: 'Cessibon blend of cream 250g natural',
+        quantity: 2,
+        unit: 'LTK',
+        unitPrice: 14.18,
+        total: 28.36,
+      },
+      {
+        name: 'Oddlygood Barista oat drink 1l gluten-free UHT',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 17.18,
+        total: 17.18,
+      },
+      {
+        name: 'Pirkka lactose-free milkdrink 1l 3%',
+        quantity: 4,
+        unit: 'LTK',
+        unitPrice: 24.83,
+        total: 99.31,
+      },
+      {
+        name: 'Menu finnish strawberry 2,5kg frozen',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 59.82,
+        total: 59.82,
+      },
+      {
+        name: 'Mehukatti Trip Raspberry drink 2 dl',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 9.3,
+        total: 9.3,
+      },
+      {
+        name: 'Mehukatti Trip Pear drink 2dl',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 9.3,
+        total: 9.3,
+      },
+      {
+        name: 'Ramlösa Kvarn Tipo 00 2kg Wheatflour',
+        quantity: 1,
+        unit: 'PAK',
+        unitPrice: 17.61,
+        total: 17.61,
+      },
+      {
+        name: 'Urbani Tartufi Salsa tartufata tryffeli paste 500g',
+        quantity: 3,
+        unit: 'PRK',
+        unitPrice: 17.85,
+        total: 53.55,
+      },
+      {
+        name: 'Fredman piping bag blue 270x530mm 72pcs',
+        quantity: 2,
+        unit: 'LTK',
+        unitPrice: 24.43,
+        total: 48.85,
+      },
+      {
+        name: 'SBS Levain leipä viipaloitu 1250g frozen',
+        quantity: 2,
+        unit: 'LTK',
+        unitPrice: 38.78,
+        total: 77.56,
+      },
+      {
+        name: 'Santa Maria poppy seed blue 550g',
+        quantity: 1,
+        unit: 'TLK',
+        unitPrice: 7.83,
+        total: 7.83,
+      },
     ],
   },
   {
@@ -387,14 +539,62 @@ const kesproCases: Array<{
       ],
     }),
     items: [
-      { name: 'Munax Proedd barn liquid egg yolk 1000g', quantity: 1, unit: 'LTK', unitPrice: 53.91, total: 53.91 },
-      { name: 'Munax Proegg barn liquid egg white 1000g', quantity: 1, unit: 'LTK', unitPrice: 26.51, total: 26.51 },
-      { name: 'Munax Proegg Barn liquid whole egg 1000g', quantity: 1, unit: 'LTK', unitPrice: 28.79, total: 28.79 },
-      { name: 'Arla butter 500g lactosefree less salt', quantity: 1, unit: 'LTK', unitPrice: 74.89, total: 74.89 },
-      { name: 'Menu finnish strawberry 2,5kg frozen', quantity: 1, unit: 'LTK', unitPrice: 59.82, total: 59.82 },
-      { name: 'Menu strawberry 400g ES/NL/BE/MA', quantity: 2, unit: 'RS', unitPrice: 5.67, total: 11.35 },
-      { name: 'Juhla Mocca coffee 500g filter ground', quantity: 2, unit: 'PKT', unitPrice: 8.81, total: 17.61 },
-      { name: 'Karelia overripe fat-free ham slice 1kg', quantity: 1, unit: 'RS', unitPrice: 10.59, total: 10.59 },
+      {
+        name: 'Munax Proedd barn liquid egg yolk 1000g',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 53.91,
+        total: 53.91,
+      },
+      {
+        name: 'Munax Proegg barn liquid egg white 1000g',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 26.51,
+        total: 26.51,
+      },
+      {
+        name: 'Munax Proegg Barn liquid whole egg 1000g',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 28.79,
+        total: 28.79,
+      },
+      {
+        name: 'Arla butter 500g lactosefree less salt',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 74.89,
+        total: 74.89,
+      },
+      {
+        name: 'Menu finnish strawberry 2,5kg frozen',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 59.82,
+        total: 59.82,
+      },
+      {
+        name: 'Menu strawberry 400g ES/NL/BE/MA',
+        quantity: 2,
+        unit: 'RS',
+        unitPrice: 5.67,
+        total: 11.35,
+      },
+      {
+        name: 'Juhla Mocca coffee 500g filter ground',
+        quantity: 2,
+        unit: 'PKT',
+        unitPrice: 8.81,
+        total: 17.61,
+      },
+      {
+        name: 'Karelia overripe fat-free ham slice 1kg',
+        quantity: 1,
+        unit: 'RS',
+        unitPrice: 10.59,
+        total: 10.59,
+      },
     ],
   },
   {
@@ -446,26 +646,140 @@ const kesproCases: Array<{
     }),
     items: [
       { name: 'Sosa liquid glucose 7kg', quantity: 1, unit: 'KPL', unitPrice: 44.82, total: 44.82 },
-      { name: 'Sosa vegan gelatin mousse 500g', quantity: 1, unit: 'PRK', unitPrice: 34.32, total: 34.32 },
-      { name: 'Maille Dijon wholegrain mustard 1kg', quantity: 1, unit: 'KPL', unitPrice: 6.45, total: 6.45 },
-      { name: 'Pirkka lactose-free milkdrink 1l 3%', quantity: 3, unit: 'LTK', unitPrice: 22.84, total: 68.52 },
-      { name: 'Cessibon blend of cream 250g natural', quantity: 1, unit: 'LTK', unitPrice: 14.19, total: 14.19 },
-      { name: 'Menu lactose free whipping cream 38 % 1l UHT', quantity: 2, unit: 'LTK', unitPrice: 46.11, total: 92.22 },
-      { name: 'Castelli mascarpone 250g lactose free', quantity: 1, unit: 'PAK', unitPrice: 18.61, total: 18.61 },
-      { name: 'Fazer Aito Plant-based Whipping gluten-free whippable vegetable fat product 1l', quantity: 1, unit: 'LTK', unitPrice: 21.54, total: 21.54 },
-      { name: 'Philadelphia Original cream cheese 1,5kg Lactose Free', quantity: 1, unit: 'LTK', unitPrice: 48.28, total: 48.28 },
-      { name: 'SBS Levain leipä viipaloitu 1250g frozen', quantity: 2, unit: 'LTK', unitPrice: 38.78, total: 77.56 },
-      { name: 'Tuotenimeä ei saatavilla', quantity: 1, unit: 'LTK', unitPrice: 20.96, total: 20.96 },
-      { name: 'Mimis Geranium flower 15kpl Suomi', quantity: 1, unit: 'RS', unitPrice: 3.63, total: 3.63 },
+      {
+        name: 'Sosa vegan gelatin mousse 500g',
+        quantity: 1,
+        unit: 'PRK',
+        unitPrice: 34.32,
+        total: 34.32,
+      },
+      {
+        name: 'Maille Dijon wholegrain mustard 1kg',
+        quantity: 1,
+        unit: 'KPL',
+        unitPrice: 6.45,
+        total: 6.45,
+      },
+      {
+        name: 'Pirkka lactose-free milkdrink 1l 3%',
+        quantity: 3,
+        unit: 'LTK',
+        unitPrice: 22.84,
+        total: 68.52,
+      },
+      {
+        name: 'Cessibon blend of cream 250g natural',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 14.19,
+        total: 14.19,
+      },
+      {
+        name: 'Menu lactose free whipping cream 38 % 1l UHT',
+        quantity: 2,
+        unit: 'LTK',
+        unitPrice: 46.11,
+        total: 92.22,
+      },
+      {
+        name: 'Castelli mascarpone 250g lactose free',
+        quantity: 1,
+        unit: 'PAK',
+        unitPrice: 18.61,
+        total: 18.61,
+      },
+      {
+        name: 'Fazer Aito Plant-based Whipping gluten-free whippable vegetable fat product 1l',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 21.54,
+        total: 21.54,
+      },
+      {
+        name: 'Philadelphia Original cream cheese 1,5kg Lactose Free',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 48.28,
+        total: 48.28,
+      },
+      {
+        name: 'SBS Levain leipä viipaloitu 1250g frozen',
+        quantity: 2,
+        unit: 'LTK',
+        unitPrice: 38.78,
+        total: 77.56,
+      },
+      {
+        name: 'Tuotenimeä ei saatavilla',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 20.96,
+        total: 20.96,
+      },
+      {
+        name: 'Mimis Geranium flower 15kpl Suomi',
+        quantity: 1,
+        unit: 'RS',
+        unitPrice: 3.63,
+        total: 3.63,
+      },
       { name: 'Mimis marigold 7 pcs', quantity: 1, unit: 'RS', unitPrice: 3.63, total: 3.63 },
-      { name: 'Menu raspberry 225g NL/BE/PT/ES', quantity: 2, unit: 'RS', unitPrice: 6.14, total: 12.28 },
-      { name: 'Menu basil 100g Finland 1cl', quantity: 2, unit: 'PSS', unitPrice: 3.17, total: 6.34 },
-      { name: 'Moroccan Mint 100g ES/DE/FR/KE 1cl', quantity: 2, unit: 'PSS', unitPrice: 2.23, total: 4.45 },
-      { name: 'Lime 1kg 48-54mm BR/MX 1lk', quantity: 2, unit: 'PSS', unitPrice: 2.95, total: 5.89 },
-      { name: 'Mimis Special mix 70g Finland', quantity: 2, unit: 'RS', unitPrice: 2.81, total: 5.61 },
-      { name: 'Menu nitrile glove black M 100pcs', quantity: 2, unit: 'PKT', unitPrice: 4.94, total: 9.88 },
-      { name: 'Findus raspberry purée 2kg frozen', quantity: 1, unit: 'LTK', unitPrice: 26.59, total: 26.59 },
-      { name: 'Ecotime pulp plate 40pc/23cm', quantity: 1, unit: 'LTK', unitPrice: 62.01, total: 62.01 },
+      {
+        name: 'Menu raspberry 225g NL/BE/PT/ES',
+        quantity: 2,
+        unit: 'RS',
+        unitPrice: 6.14,
+        total: 12.28,
+      },
+      {
+        name: 'Menu basil 100g Finland 1cl',
+        quantity: 2,
+        unit: 'PSS',
+        unitPrice: 3.17,
+        total: 6.34,
+      },
+      {
+        name: 'Moroccan Mint 100g ES/DE/FR/KE 1cl',
+        quantity: 2,
+        unit: 'PSS',
+        unitPrice: 2.23,
+        total: 4.45,
+      },
+      {
+        name: 'Lime 1kg 48-54mm BR/MX 1lk',
+        quantity: 2,
+        unit: 'PSS',
+        unitPrice: 2.95,
+        total: 5.89,
+      },
+      {
+        name: 'Mimis Special mix 70g Finland',
+        quantity: 2,
+        unit: 'RS',
+        unitPrice: 2.81,
+        total: 5.61,
+      },
+      {
+        name: 'Menu nitrile glove black M 100pcs',
+        quantity: 2,
+        unit: 'PKT',
+        unitPrice: 4.94,
+        total: 9.88,
+      },
+      {
+        name: 'Findus raspberry purée 2kg frozen',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 26.59,
+        total: 26.59,
+      },
+      {
+        name: 'Ecotime pulp plate 40pc/23cm',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 62.01,
+        total: 62.01,
+      },
     ],
   },
   {
@@ -513,26 +827,140 @@ const kesproCases: Array<{
       ],
     }),
     items: [
-      { name: 'Oddlygood Barista oat drink 1l gluten-free UHT', quantity: 1, unit: 'LTK', unitPrice: 17.18, total: 17.18 },
-      { name: 'Menu lactose free butter 500g less salt', quantity: 1, unit: 'LTK', unitPrice: 61.67, total: 61.67 },
-      { name: 'Menu lactose free whipping cream 38 % 1l UHT', quantity: 1, unit: 'LTK', unitPrice: 46.11, total: 46.11 },
-      { name: 'Cessibon blend of cream 250g natural', quantity: 2, unit: 'LTK', unitPrice: 14.18, total: 28.36 },
-      { name: 'Menu lactosefree milkdrink 3% 1l ESL', quantity: 8, unit: 'LTK', unitPrice: 8.14, total: 65.13 },
-      { name: 'President Brie cheese 1kg', quantity: 1, unit: 'LTK', unitPrice: 20.62, total: 20.62 },
-      { name: 'Menu nitrile glove black XL 100pcs', quantity: 1, unit: 'PKT', unitPrice: 4.94, total: 4.94 },
-      { name: 'Lambi Toilet paper 32rl white', quantity: 1, unit: 'PAK', unitPrice: 13.63, total: 13.63 },
-      { name: 'Menu nitrile glove black M 100pcs', quantity: 2, unit: 'PKT', unitPrice: 4.94, total: 9.88 },
-      { name: 'Menu wood fibre spoon reusable 168mm 70pcs', quantity: 2, unit: 'PKT', unitPrice: 5.83, total: 11.67 },
-      { name: 'Menu wood fibre knive reusable 167mm 80pcs', quantity: 2, unit: 'PKT', unitPrice: 5.26, total: 10.52 },
-      { name: 'Pirkka napkin 24cm 50pcs black', quantity: 3, unit: 'LTK', unitPrice: 16.66, total: 49.99 },
-      { name: 'Menu wood fibre fork reusable 167mm 80pcs', quantity: 2, unit: 'PKT', unitPrice: 5.59, total: 11.19 },
-      { name: 'Van Houten cocoa powder 250g', quantity: 1, unit: 'LTK', unitPrice: 71.49, total: 71.49 },
-      { name: 'Juhla Mocca coffee 500g filter ground', quantity: 2, unit: 'PKT', unitPrice: 8.81, total: 17.61 },
+      {
+        name: 'Oddlygood Barista oat drink 1l gluten-free UHT',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 17.18,
+        total: 17.18,
+      },
+      {
+        name: 'Menu lactose free butter 500g less salt',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 61.67,
+        total: 61.67,
+      },
+      {
+        name: 'Menu lactose free whipping cream 38 % 1l UHT',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 46.11,
+        total: 46.11,
+      },
+      {
+        name: 'Cessibon blend of cream 250g natural',
+        quantity: 2,
+        unit: 'LTK',
+        unitPrice: 14.18,
+        total: 28.36,
+      },
+      {
+        name: 'Menu lactosefree milkdrink 3% 1l ESL',
+        quantity: 8,
+        unit: 'LTK',
+        unitPrice: 8.14,
+        total: 65.13,
+      },
+      {
+        name: 'President Brie cheese 1kg',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 20.62,
+        total: 20.62,
+      },
+      {
+        name: 'Menu nitrile glove black XL 100pcs',
+        quantity: 1,
+        unit: 'PKT',
+        unitPrice: 4.94,
+        total: 4.94,
+      },
+      {
+        name: 'Lambi Toilet paper 32rl white',
+        quantity: 1,
+        unit: 'PAK',
+        unitPrice: 13.63,
+        total: 13.63,
+      },
+      {
+        name: 'Menu nitrile glove black M 100pcs',
+        quantity: 2,
+        unit: 'PKT',
+        unitPrice: 4.94,
+        total: 9.88,
+      },
+      {
+        name: 'Menu wood fibre spoon reusable 168mm 70pcs',
+        quantity: 2,
+        unit: 'PKT',
+        unitPrice: 5.83,
+        total: 11.67,
+      },
+      {
+        name: 'Menu wood fibre knive reusable 167mm 80pcs',
+        quantity: 2,
+        unit: 'PKT',
+        unitPrice: 5.26,
+        total: 10.52,
+      },
+      {
+        name: 'Pirkka napkin 24cm 50pcs black',
+        quantity: 3,
+        unit: 'LTK',
+        unitPrice: 16.66,
+        total: 49.99,
+      },
+      {
+        name: 'Menu wood fibre fork reusable 167mm 80pcs',
+        quantity: 2,
+        unit: 'PKT',
+        unitPrice: 5.59,
+        total: 11.19,
+      },
+      {
+        name: 'Van Houten cocoa powder 250g',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 71.49,
+        total: 71.49,
+      },
+      {
+        name: 'Juhla Mocca coffee 500g filter ground',
+        quantity: 2,
+        unit: 'PKT',
+        unitPrice: 8.81,
+        total: 17.61,
+      },
       { name: 'Menu apple juice 1l', quantity: 1, unit: 'LTK', unitPrice: 21.99, total: 21.99 },
-      { name: 'Menu blueberry 300g ES/NL/ZW/MA', quantity: 1, unit: 'RS', unitPrice: 6.14, total: 6.14 },
-      { name: 'Brunberg Dark chocolate lactose free 150g', quantity: 1, unit: 'LTK', unitPrice: 85.23, total: 85.23 },
-      { name: 'Brunberg 150g Lactose free milk chocolate', quantity: 1, unit: 'LTK', unitPrice: 85.23, total: 85.23 },
-      { name: 'Karelia overripe fat-free ham slice 1kg', quantity: 2, unit: 'RS', unitPrice: 10.59, total: 21.18 },
+      {
+        name: 'Menu blueberry 300g ES/NL/ZW/MA',
+        quantity: 1,
+        unit: 'RS',
+        unitPrice: 6.14,
+        total: 6.14,
+      },
+      {
+        name: 'Brunberg Dark chocolate lactose free 150g',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 85.23,
+        total: 85.23,
+      },
+      {
+        name: 'Brunberg 150g Lactose free milk chocolate',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 85.23,
+        total: 85.23,
+      },
+      {
+        name: 'Karelia overripe fat-free ham slice 1kg',
+        quantity: 2,
+        unit: 'RS',
+        unitPrice: 10.59,
+        total: 21.18,
+      },
     ],
   },
   {
@@ -571,18 +999,72 @@ const kesproCases: Array<{
       ],
     }),
     items: [
-      { name: 'MF La Rose Noire large paper thin flower tart shell vegan 36x11g frozen', quantity: 1, unit: 'RS', unitPrice: 59.5, total: 59.5 },
-      { name: 'Vertmont Organic Maple Syrup 187ml / 250g', quantity: 1, unit: 'LTK', unitPrice: 18.04, total: 18.04 },
-      { name: 'Pirkka rapeseed oil 900ml', quantity: 1, unit: 'LTK', unitPrice: 25.79, total: 25.79 },
-      { name: 'Pirkka liquid honey 350g', quantity: 1, unit: 'LTK', unitPrice: 22.25, total: 22.25 },
+      {
+        name: 'MF La Rose Noire large paper thin flower tart shell vegan 36x11g frozen',
+        quantity: 1,
+        unit: 'RS',
+        unitPrice: 59.5,
+        total: 59.5,
+      },
+      {
+        name: 'Vertmont Organic Maple Syrup 187ml / 250g',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 18.04,
+        total: 18.04,
+      },
+      {
+        name: 'Pirkka rapeseed oil 900ml',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 25.79,
+        total: 25.79,
+      },
+      {
+        name: 'Pirkka liquid honey 350g',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 22.25,
+        total: 22.25,
+      },
       { name: 'Pirkka olive oil 1l', quantity: 1, unit: 'LTK', unitPrice: 65.68, total: 65.68 },
-      { name: 'Pirkka lactose-free milkdrink 1l 3%', quantity: 2, unit: 'LTK', unitPrice: 22.84, total: 45.68 },
-      { name: 'Menu lactose free whipping cream 38 % 1l UHT', quantity: 1, unit: 'LTK', unitPrice: 46.11, total: 46.11 },
-      { name: 'Filos 150g feta lactose free', quantity: 1, unit: 'LTK', unitPrice: 18.01, total: 18.01 },
+      {
+        name: 'Pirkka lactose-free milkdrink 1l 3%',
+        quantity: 2,
+        unit: 'LTK',
+        unitPrice: 22.84,
+        total: 45.68,
+      },
+      {
+        name: 'Menu lactose free whipping cream 38 % 1l UHT',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 46.11,
+        total: 46.11,
+      },
+      {
+        name: 'Filos 150g feta lactose free',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 18.01,
+        total: 18.01,
+      },
       { name: 'Valmix Zucchini bits 1kg', quantity: 1, unit: 'PSS', unitPrice: 7.25, total: 7.25 },
       { name: 'Mimis marigold 7 pcs', quantity: 1, unit: 'RS', unitPrice: 3.63, total: 3.63 },
-      { name: 'Mimis Geranium flower 15kpl Suomi', quantity: 1, unit: 'RS', unitPrice: 3.63, total: 3.63 },
-      { name: 'Pirkka trash bag black 150l 10pcs', quantity: 1, unit: 'LTK', unitPrice: 31.69, total: 31.69 },
+      {
+        name: 'Mimis Geranium flower 15kpl Suomi',
+        quantity: 1,
+        unit: 'RS',
+        unitPrice: 3.63,
+        total: 3.63,
+      },
+      {
+        name: 'Pirkka trash bag black 150l 10pcs',
+        quantity: 1,
+        unit: 'LTK',
+        unitPrice: 31.69,
+        total: 31.69,
+      },
     ],
   },
 ];
@@ -746,51 +1228,59 @@ Y-tunnus 3207393-3
     });
   });
 
-  it.each(tingstadCases)('extracts Tingstad invoice %s without losing product lines', async (testCase) => {
-    const extraction = await extract(testCase.text);
+  it.each(tingstadCases)(
+    'extracts Tingstad invoice %s without losing product lines',
+    async (testCase) => {
+      const extraction = await extract(testCase.text);
 
-    expect(extraction.documentType).toBe('invoice');
-    expect(extraction.supplier.name).toBe('AB Tingstad papper');
-    expect(extraction.supplierName).toBe('AB Tingstad papper');
-    expect(extraction.document.invoiceNumber).toBe(testCase.invoiceNumber);
-    expect(extraction.document.documentDate).toBe(testCase.invoiceDate);
-    expect(extraction.invoice.dueDate).toBe(testCase.dueDate);
-    expect(extraction.document.purchaseOrderNumber).toBe(testCase.orderNumber);
-    expect(extraction.customer.customerNumber).toBe('318379');
-    expect(extraction.customer.deliveryAddress).toContain('KITKANTIE 2');
-    expect(extraction.totals.totalIncludingTax).toBeCloseTo(testCase.grandTotal, 2);
-    expectItems(extraction.lines, testCase.items);
-  });
+      expect(extraction.documentType).toBe('invoice');
+      expect(extraction.supplier.name).toBe('AB Tingstad papper');
+      expect(extraction.supplierName).toBe('AB Tingstad papper');
+      expect(extraction.document.invoiceNumber).toBe(testCase.invoiceNumber);
+      expect(extraction.document.documentDate).toBe(testCase.invoiceDate);
+      expect(extraction.invoice.dueDate).toBe(testCase.dueDate);
+      expect(extraction.document.purchaseOrderNumber).toBe(testCase.orderNumber);
+      expect(extraction.customer.customerNumber).toBe('318379');
+      expect(extraction.customer.deliveryAddress).toContain('KITKANTIE 2');
+      expect(extraction.totals.totalIncludingTax).toBeCloseTo(testCase.grandTotal, 2);
+      expectItems(extraction.lines, testCase.items);
+    },
+  );
 
-  it.each(kesproCases)('classifies Kespro order history %s as non-invoice and extracts confirmed quantities', async (testCase) => {
-    const extraction = await extract(testCase.text);
+  it.each(kesproCases)(
+    'classifies Kespro order history %s as non-invoice and extracts confirmed quantities',
+    async (testCase) => {
+      const extraction = await extract(testCase.text);
 
-    expect(extraction.documentType).toBe('order_confirmation');
-    expect(extraction.documentType).not.toBe('invoice');
-    expect(extraction.supplier.name).toBe('Kespro');
-    expect(extraction.document.purchaseOrderNumber).toBe(testCase.orderNumber);
-    expect(extraction.order.orderDate).toBe(testCase.orderDate);
-    expect(extraction.order.selectedDeliveryDate).toBe(testCase.deliveryDate);
-    expect(extraction.totals.totalIncludingTax).toBeCloseTo(testCase.total, 2);
-    expectItems(extraction.lines, testCase.items);
-  });
+      expect(extraction.documentType).toBe('order_confirmation');
+      expect(extraction.documentType).not.toBe('invoice');
+      expect(extraction.supplier.name).toBe('Kespro');
+      expect(extraction.document.purchaseOrderNumber).toBe(testCase.orderNumber);
+      expect(extraction.order.orderDate).toBe(testCase.orderDate);
+      expect(extraction.order.selectedDeliveryDate).toBe(testCase.deliveryDate);
+      expect(extraction.totals.totalIncludingTax).toBeCloseTo(testCase.total, 2);
+      expectItems(extraction.lines, testCase.items);
+    },
+  );
 
   it('handles Kespro exported PDF glyphs without losing categories or product names', async () => {
-    const extraction = await extract(kesproFixture({
-      orderNumber: '23529809',
-      orderDate: 'Friday 26.06.2026',
-      deliveryDate: 'Wednesday 01.07.2026',
-      productCount: 1,
-      withoutTax: '8,33',
-      vat: '0,00',
-      total: '8,33',
-      rows: [
-        ' Fruits & vegetables',
-        'Tomaatti NL/BE 1lk  8,33 € / LTK 1 Confirmed quantity / ME 8,33 €',
-        'VAT 0 % units VAT 0 %',
-        '1 LTK (6 KG)',
-      ],
-    }));
+    const extraction = await extract(
+      kesproFixture({
+        orderNumber: '23529809',
+        orderDate: 'Friday 26.06.2026',
+        deliveryDate: 'Wednesday 01.07.2026',
+        productCount: 1,
+        withoutTax: '8,33',
+        vat: '0,00',
+        total: '8,33',
+        rows: [
+          ' Fruits & vegetables',
+          'Tomaatti NL/BE 1lk  8,33 € / LTK 1 Confirmed quantity / ME 8,33 €',
+          'VAT 0 % units VAT 0 %',
+          '1 LTK (6 KG)',
+        ],
+      }),
+    );
 
     expect(extraction.lines).toHaveLength(1);
     expect(extraction.lines[0].label).toBe('Tomaatti NL/BE 1lk');
@@ -836,63 +1326,85 @@ Total 103,25 €
   });
 
   it('extracts the Kespro order number from the English order header', () => {
-    const service = new StocksOcrService(mockPrisma(), mockMarginsService(), mockMistralClient(), mockStocksService());
-    expect((service as any).extractPurchaseOrderNumber('Order number 23371013 Delivery address Kitkantie 2')).toBe('23371013');
-    expect((service as any).extractPurchaseOrderNumber('23371013 - Tilauksen tiedot - Tilaushistoria')).toBe('23371013');
+    const service = new StocksOcrService(
+      mockPrisma(),
+      mockMarginsService(),
+      mockMistralClient(),
+      mockStocksService(),
+    );
+    expect(
+      (service as any).extractPurchaseOrderNumber(
+        'Order number 23371013 Delivery address Kitkantie 2',
+      ),
+    ).toBe('23371013');
+    expect(
+      (service as any).extractPurchaseOrderNumber('23371013 - Tilauksen tiedot - Tilaushistoria'),
+    ).toBe('23371013');
   });
 
   it('uses Mistral OCR document annotation before the chat fallback', async () => {
-    const service = new StocksOcrService(mockPrisma(), mockMarginsService(), mockMistralClient(), mockStocksService());
-    const chatFallback = jest.spyOn(service as any, 'analyzeOcrWithMistralAi').mockRejectedValue(new Error('chat fallback should not run'));
-    const extraction = await (service as any).extractBusinessData('org-1', 'Facture fournisseur\nTotal TTC: 12,00', {
-      document_annotation: JSON.stringify({
-        documentType: 'invoice',
-        documentConfidence: 0.91,
-        warnings: [],
-        suggestedActions: ['Vérifier les produits avant réception.'],
-        supplier: { name: 'Fournisseur Test', supplierId: null, confidence: 0.88 },
-        document: {
-          invoiceNumber: 'FAC-123',
-          deliveryNoteNumber: null,
-          purchaseOrderNumber: null,
-          documentDate: '2026-06-30',
-          deliveryDate: null,
-        },
-        totals: { totalExcludingTax: 10, totalTax: 2, totalIncludingTax: 12 },
-        totalsCheck: { computedTotal: 10, documentTotal: 12, delta: 0, status: 'ok' },
-        lines: [
-          {
-            label: 'Farine T45',
-            reference: 'FAR45',
-            supplierProductCode: 'FAR45',
-            nameOriginal: 'Farine T45',
-            descriptionOriginal: null,
-            quantity: 2,
-            unit: 'kg',
-            unitPrice: 5,
-            total: 10,
-            vatRate: 20,
-            lotNumber: null,
-            bestBeforeDate: null,
-            originCountry: null,
-            statisticalCode: null,
-            netWeight: null,
-            isFreight: false,
-            isStockItem: true,
-            packageDescription: null,
-            ignored: false,
-            productId: null,
-            unitId: null,
-            categoryId: null,
-            categoryName: 'Épicerie',
-            lineStatus: 'missing_product',
-            confidence: 0.91,
-            warnings: [],
-            sourceText: 'Farine T45 2 kg 5,00 10,00',
+    const service = new StocksOcrService(
+      mockPrisma(),
+      mockMarginsService(),
+      mockMistralClient(),
+      mockStocksService(),
+    );
+    const chatFallback = jest
+      .spyOn(service as any, 'analyzeOcrWithMistralAi')
+      .mockRejectedValue(new Error('chat fallback should not run'));
+    const extraction = await (service as any).extractBusinessData(
+      'org-1',
+      'Facture fournisseur\nTotal TTC: 12,00',
+      {
+        document_annotation: JSON.stringify({
+          documentType: 'invoice',
+          documentConfidence: 0.91,
+          warnings: [],
+          suggestedActions: ['Vérifier les produits avant réception.'],
+          supplier: { name: 'Fournisseur Test', supplierId: null, confidence: 0.88 },
+          document: {
+            invoiceNumber: 'FAC-123',
+            deliveryNoteNumber: null,
+            purchaseOrderNumber: null,
+            documentDate: '2026-06-30',
+            deliveryDate: null,
           },
-        ],
-      }),
-    });
+          totals: { totalExcludingTax: 10, totalTax: 2, totalIncludingTax: 12 },
+          totalsCheck: { computedTotal: 10, documentTotal: 12, delta: 0, status: 'ok' },
+          lines: [
+            {
+              label: 'Farine T45',
+              reference: 'FAR45',
+              supplierProductCode: 'FAR45',
+              nameOriginal: 'Farine T45',
+              descriptionOriginal: null,
+              quantity: 2,
+              unit: 'kg',
+              unitPrice: 5,
+              total: 10,
+              vatRate: 20,
+              lotNumber: null,
+              bestBeforeDate: null,
+              originCountry: null,
+              statisticalCode: null,
+              netWeight: null,
+              isFreight: false,
+              isStockItem: true,
+              packageDescription: null,
+              ignored: false,
+              productId: null,
+              unitId: null,
+              categoryId: null,
+              categoryName: 'Épicerie',
+              lineStatus: 'missing_product',
+              confidence: 0.91,
+              warnings: [],
+              sourceText: 'Farine T45 2 kg 5,00 10,00',
+            },
+          ],
+        }),
+      },
+    );
 
     expect(chatFallback).not.toHaveBeenCalled();
     expect(extraction.supplierName).toBe('Fournisseur Test');
@@ -921,24 +1433,241 @@ Total TTC: 9,90
     expect(extraction.totals.totalIncludingTax).toBeCloseTo(9.9, 2);
     expect(extraction.lines.length).toBeGreaterThanOrEqual(1);
   });
+
+  it('classifies a supplier offer as a quote', () => {
+    const service = new StocksOcrService(
+      mockPrisma(),
+      mockMarginsService(),
+      mockMistralClient(),
+      mockStocksService(),
+    );
+
+    expect(
+      (service as any).detectDocumentType(
+        'Kaffecentralen Finland Oy Ab\nOffer 3998\nOffer date 16.06.2025',
+      ),
+    ).toBe('quote');
+  });
+
+  it('keeps equipment details and reconciles a discounted line at its net unit price', () => {
+    const service = new StocksOcrService(
+      mockPrisma(),
+      mockMarginsService(),
+      mockMistralClient(),
+      mockStocksService(),
+    );
+    const fallback: any = {
+      documentType: 'quote',
+      supplier: { name: 'Kaffecentralen Finland Oy Ab' },
+      supplierName: 'Kaffecentralen Finland Oy Ab',
+      supplierIdentifiers: [],
+      document: {
+        invoiceNumber: null,
+        deliveryNoteNumber: null,
+        purchaseOrderNumber: null,
+        receiptNumber: null,
+        documentDate: '2025-06-16',
+        deliveryDate: null,
+      },
+      totals: { totalExcludingTax: 17416.58, totalTax: 4441.23, totalIncludingTax: 21857.81 },
+      lines: [],
+    };
+    const normalized = (service as any).normalizeAiExtraction(
+      {
+        documentType: 'quote',
+        supplier: { name: 'Kaffecentralen Finland Oy Ab', supplierId: null, identifiers: [] },
+        document: fallback.document,
+        totals: fallback.totals,
+        lines: [
+          {
+            label: 'La Marzocco GB5 S TZ AV-2 Gr',
+            reference: '19.211.222',
+            quantity: 1,
+            unit: 'pc',
+            unitPrice: 14700,
+            listUnitPrice: 14700,
+            discountPercent: 0,
+            total: 14700,
+            productKind: 'EQUIPMENT',
+            lineType: 'equipment',
+            brand: 'La Marzocco',
+            model: 'GB5 S TZ AV-2 Gr',
+            acquisitionMode: 'LEASING',
+            buyoutValue: 300,
+            equipmentNotes: 'Valeur de rachat convenue après leasing : 300 € HT.',
+            lineStatus: 'missing_product',
+            warnings: [],
+            confidence: 0.97,
+          },
+          {
+            label: 'Mazzer Major V Electronic Black',
+            reference: 'FMJC01EE00/B QN-QQC',
+            quantity: 1,
+            unit: 'pc',
+            unitPrice: 2064,
+            listUnitPrice: 2064,
+            discountPercent: 15,
+            total: 1754.4,
+            productKind: 'EQUIPMENT',
+            lineType: 'equipment',
+            brand: 'Mazzer',
+            model: 'Major V Electronic Black',
+            acquisitionMode: null,
+            buyoutValue: null,
+            equipmentNotes: null,
+            lineStatus: 'price_mismatch',
+            warnings: [
+              'Le prix unitaire indiqué diffère du prix facturé après remise. Vérifier la remise.',
+            ],
+            confidence: 0.96,
+          },
+        ],
+        warnings: [],
+        suggestedActions: [],
+        documentConfidence: 0.96,
+      },
+      fallback,
+      ProductKind.EQUIPMENT,
+    );
+    const leasingLine = normalized.lines[0];
+    const discountedLine = normalized.lines[1];
+
+    expect(leasingLine).toMatchObject({
+      reference: '19.211.222',
+      unit: 'pièce',
+      productKind: ProductKind.EQUIPMENT,
+      brand: 'La Marzocco',
+      model: 'GB5 S TZ AV-2 Gr',
+      acquisitionMode: EquipmentAcquisitionMode.LEASING,
+      buyoutValue: 300,
+    });
+    expect(discountedLine).toMatchObject({
+      reference: 'FMJC01EE00/B QN-QQC',
+      unit: 'pièce',
+      unitPrice: 1754.4,
+      listUnitPrice: 2064,
+      discountPercent: 15,
+      productKind: ProductKind.EQUIPMENT,
+      brand: 'Mazzer',
+      model: 'Major V Electronic Black',
+      lineStatus: 'needs_review',
+    });
+    expect(discountedLine.warnings).toEqual([]);
+  });
 });
 describe('StocksOcrService reception safeguards', () => {
   it('preserves the deferred product-creation choice in a corrected OCR line', () => {
-    const service = new StocksOcrService(mockPrisma(), mockMarginsService(), mockMistralClient(), mockStocksService());
+    const service = new StocksOcrService(
+      mockPrisma(),
+      mockMarginsService(),
+      mockMistralClient(),
+      mockStocksService(),
+    );
     const corrected = (service as any).normalizeCorrectionPayload({
-      lines: [{ ocrLabel: 'Farine T45', quantity: 2, unit: 'kg', unitId: '2bc2ee6f-11be-4e8f-a298-fcf2d0af9171', createProduct: true }],
+      lines: [
+        {
+          ocrLabel: 'Farine T45',
+          quantity: 2,
+          unit: 'kg',
+          unitId: '2bc2ee6f-11be-4e8f-a298-fcf2d0af9171',
+          createProduct: true,
+        },
+      ],
     });
 
-    expect(corrected.lines[0]).toMatchObject({ productId: null, createProduct: true, ocrLabel: 'Farine T45' });
+    expect(corrected.lines[0]).toMatchObject({
+      productId: null,
+      createProduct: true,
+      ocrLabel: 'Farine T45',
+    });
+  });
+
+  it('keeps every corrected line in the equipment context of its OCR extraction', () => {
+    const service = new StocksOcrService(
+      mockPrisma(),
+      mockMarginsService(),
+      mockMistralClient(),
+      mockStocksService(),
+    );
+    const extractionKind = (service as any).ocrExtractionProductKind({
+      correctedJson: { lines: [{ ocrLabel: 'Matériel corrigé sans type' }] },
+      extractedJson: { lines: [{ productKind: ProductKind.EQUIPMENT }] },
+    });
+    const corrected = (service as any).normalizeCorrectionPayload(
+      {
+        lines: [
+          {
+            ocrLabel: 'KAKKUALUSTA KULTA 80MM KORVA 250/ltk',
+            quantity: 12,
+            unit: 'carton',
+            unitId: '2bc2ee6f-11be-4e8f-a298-fcf2d0af9171',
+            categoryId: '1dd6b658-4ad1-4bd6-aa92-dbbde86fc717',
+            createProduct: true,
+          },
+        ],
+      },
+      extractionKind,
+    );
+
+    expect(extractionKind).toBe(ProductKind.EQUIPMENT);
+    expect(corrected.lines[0].productKind).toBe(ProductKind.EQUIPMENT);
+  });
+
+  it('persists a leasing choice on equipment already present in the catalogue', async () => {
+    const service = new StocksOcrService(
+      mockPrisma(),
+      mockMarginsService(),
+      mockMistralClient(),
+      mockStocksService(),
+    );
+    const equipmentProfile = { upsert: jest.fn().mockResolvedValue({}) };
+
+    await (service as any).upsertEquipmentProfileFromOcrLineTx(
+      { equipmentProfile },
+      'org-1',
+      'equipment-1',
+      {
+        productKind: ProductKind.EQUIPMENT,
+        acquisitionMode: EquipmentAcquisitionMode.LEASING,
+        financingProvider: 'Nordea Finance',
+        financingStart: '2026-08-01',
+        financingEnd: '2031-08-01',
+        monthlyPayment: 420,
+      },
+    );
+
+    expect(equipmentProfile.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { productId: 'equipment-1' },
+        update: expect.objectContaining({
+          acquisitionMode: EquipmentAcquisitionMode.LEASING,
+          financingProvider: 'Nordea Finance',
+          monthlyPayment: expect.any(Prisma.Decimal),
+        }),
+      }),
+    );
   });
 
   it('rejects a second validation for the same OCR extraction before creating stock', async () => {
     const prisma: any = mockPrisma();
-    prisma.ocrBusinessExtraction = { findFirst: jest.fn().mockResolvedValue({ id: 'extraction-1' }) };
+    prisma.ocrBusinessExtraction = {
+      findFirst: jest.fn().mockResolvedValue({ id: 'extraction-1' }),
+    };
     prisma.stockReception = { findFirst: jest.fn().mockResolvedValue({ id: 'reception-1' }) };
-    const service = new StocksOcrService(prisma, mockMarginsService(), mockMistralClient(), mockStocksService());
+    const service = new StocksOcrService(
+      prisma,
+      mockMarginsService(),
+      mockMistralClient(),
+      mockStocksService(),
+    );
 
-    await expect(service.createReceptionFromExtraction('org-1', { id: 'user-1', role: 'Manager' }, 'extraction-1', { lines: [] }))
-      .rejects.toThrow('déjà été validée');
+    await expect(
+      service.createReceptionFromExtraction(
+        'org-1',
+        { id: 'user-1', role: 'Manager' },
+        'extraction-1',
+        { lines: [] },
+      ),
+    ).rejects.toThrow('déjà été validée');
   });
 });

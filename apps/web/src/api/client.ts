@@ -3699,10 +3699,10 @@ export const api = {
       return response.json() as Promise<{ documents: StocksOcrStatus['document'][] }>;
     });
   },
-  analyzeStocksOcrBatch(token: string, documentIds: string[]) {
+  analyzeStocksOcrBatch(token: string, documentIds: string[], kind?: 'EQUIPMENT') {
     return request<{ jobs: Array<{ documentId: string; ocrDocumentId: string; status: string }> }>(
       '/stocks/ocr/documents/analyze-batch',
-      { method: 'POST', body: JSON.stringify({ documentIds }) },
+      { method: 'POST', body: JSON.stringify({ documentIds, kind }) },
       token,
     );
   },
@@ -3715,10 +3715,10 @@ export const api = {
   stocksOcrExtraction(token: string, extractionId: string) {
     return request<StocksOcrExtraction>(`/stocks/ocr/extractions/${extractionId}`, {}, token);
   },
-  reanalyzeStocksOcrWithAi(token: string, extractionId: string) {
+  reanalyzeStocksOcrWithAi(token: string, extractionId: string, kind?: 'EQUIPMENT') {
     return request<StocksOcrExtraction>(
       `/stocks/ocr/extractions/${extractionId}/reanalyze-ai`,
-      { method: 'POST' },
+      { method: 'POST', body: JSON.stringify({ kind }) },
       token,
     );
   },

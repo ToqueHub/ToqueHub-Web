@@ -29,7 +29,7 @@ import {
   MarginsQueryDto,
   UpdateMarginSettingsDto,
 } from './dto/stocks-margins.dto';
-import { AnalyzeBatchDto, SaveOcrCorrectionDto } from './dto/stocks-ocr.dto';
+import { AnalyzeBatchDto, AnalyzeOcrContextDto, SaveOcrCorrectionDto } from './dto/stocks-ocr.dto';
 import {
   BulkAssignProductSitesDto,
   CommitProductImportDto,
@@ -121,7 +121,12 @@ export class StocksController {
 
   @Post('stocks/ocr/documents/analyze-batch')
   analyzeOcrBatch(@CurrentUser() user: AuthenticatedUser, @Body() dto: AnalyzeBatchDto) {
-    return this.stocksOcrService.analyzeBatch(this.org(user), this.actor(user), dto.documentIds);
+    return this.stocksOcrService.analyzeBatch(
+      this.org(user),
+      this.actor(user),
+      dto.documentIds,
+      dto.kind,
+    );
   }
 
   @Get('stocks/ocr/documents/statuses')
@@ -149,11 +154,13 @@ export class StocksController {
   reanalyzeOcrExtractionWithAi(
     @CurrentUser() user: AuthenticatedUser,
     @Param('extractionId') extractionId: string,
+    @Body() dto: AnalyzeOcrContextDto,
   ) {
     return this.stocksOcrService.reanalyzeExtractionWithAi(
       this.org(user),
       this.actor(user),
       extractionId,
+      dto.kind,
     );
   }
 
@@ -191,10 +198,7 @@ export class StocksController {
   }
 
   @Get('equipment/categories')
-  listEquipmentCategories(
-    @CurrentUser() u: AuthenticatedUser,
-    @Query() q: ListQueryDto,
-  ) {
+  listEquipmentCategories(@CurrentUser() u: AuthenticatedUser, @Query() q: ListQueryDto) {
     return this.stocksService.listCategories(this.org(u), {
       ...q,
       kind: ProductKind.EQUIPMENT,
@@ -202,10 +206,7 @@ export class StocksController {
   }
 
   @Post('equipment/categories')
-  createEquipmentCategory(
-    @CurrentUser() u: AuthenticatedUser,
-    @Body() d: UpsertCategoryDto,
-  ) {
+  createEquipmentCategory(@CurrentUser() u: AuthenticatedUser, @Body() d: UpsertCategoryDto) {
     return this.stocksService.createCategory(this.org(u), this.actor(u), {
       ...d,
       kind: ProductKind.EQUIPMENT,
@@ -368,15 +369,8 @@ export class StocksController {
     return this.stocksProductImportService.commitProductImport(this.org(u), this.actor(u), dto);
   }
   @Post('products/sites/assign')
-  assignProductSites(
-    @CurrentUser() u: AuthenticatedUser,
-    @Body() dto: BulkAssignProductSitesDto,
-  ) {
-    return this.stocksProductImportService.assignProductSites(
-      this.org(u),
-      this.actor(u),
-      dto,
-    );
+  assignProductSites(@CurrentUser() u: AuthenticatedUser, @Body() dto: BulkAssignProductSitesDto) {
+    return this.stocksProductImportService.assignProductSites(this.org(u), this.actor(u), dto);
   }
   @Post('products/csv-creator/preview')
   previewProductCreator(@CurrentUser() u: AuthenticatedUser, @Body() dto: ProductCreatorRowsDto) {
