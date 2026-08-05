@@ -19,7 +19,14 @@
     "seed:caterer-demo": "node --env-file=../../.env --import tsx scripts/seed-caterer-production-demo.ts",
     "seed:haccp-dashboard-demo": "node --env-file=../../.env --import tsx scripts/seed-haccp-dashboard-demo.ts",
     "seed:mobile-reception-demo": "node --env-file=../../.env --import tsx scripts/seed-mobile-reception-demo.ts",
-    "seed:production-flow-day": "node --env-file=../../.env --import tsx scripts/seed-production-flow-day.ts"
+    "seed:production-flow-day": "node --env-file=../../.env --import tsx scripts/seed-production-flow-day.ts",
+    "finance:import-budget": "node --env-file=../../.env --import tsx scripts/import-finance-budget.ts",
+    "finance:verify-fennoa": "node --env-file=../../.env --import tsx scripts/verify-fennoa-connection.ts",
+    "finance:sync-fennoa": "node --env-file=../../.env --import tsx scripts/sync-fennoa-finance.ts",
+    "finance:import-flatpay": "node --env-file=../../.env --import tsx scripts/import-flatpay-reports.ts",
+    "finance:sync-flatpay-portal": "node --env-file=../../.env --import tsx scripts/sync-flatpay-portal.ts",
+    "finance:install-flatpay-automation": "node --env-file=../../.env --import tsx scripts/install-flatpay-automation.ts",
+    "finance:sync-pos": "node --env-file=../../.env --import tsx scripts/sync-pos-finance.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.2",
@@ -48,6 +55,7 @@
     "passport-jwt": "^4.0.1",
     "pdf-lib": "^1.17.1",
     "pdfkit": "^0.19.1",
+    "playwright-core": "^1.62.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "socket.io": "^4.8.3",

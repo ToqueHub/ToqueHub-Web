@@ -1,5 +1,11 @@
 export type EstablishmentType =
-  'Restaurant' | 'EHPAD' | 'Collectivité' | 'Hôtel' | 'Traiteur' | 'Cuisine centrale' | 'Autre';
+  | 'Restaurant'
+  | 'EHPAD'
+  | 'Collectivité'
+  | 'Hôtel'
+  | 'Traiteur'
+  | 'Cuisine centrale'
+  | 'Autre';
 export type TeamSize = '1-5' | '6-10' | '11-20' | '20+';
 export type HrCountryCode = 'FR' | 'FI';
 export type RegulatoryCountryCode = 'FR' | 'FI';
@@ -388,7 +394,11 @@ export interface DevSwitchConfig {
 export type WorkspaceOnboardingStatus = 'PENDING' | 'IN_PROGRESS' | 'DEFERRED' | 'COMPLETED';
 
 export type WorkspaceOnboardingStep =
-  'WELCOME' | 'ECOSYSTEM' | 'STARTER_BUNDLE' | 'INSTALLATION' | 'MINI_TOUR';
+  | 'WELCOME'
+  | 'ECOSYSTEM'
+  | 'STARTER_BUNDLE'
+  | 'INSTALLATION'
+  | 'MINI_TOUR';
 
 export interface WorkspaceOnboardingState {
   eligible: boolean;
@@ -701,6 +711,7 @@ export interface DashboardCockpitCard {
   items?: Array<{ title: string; detail: string }>;
   progress?: number;
   critical?: boolean;
+  trend?: number[];
 }
 
 export interface DashboardCockpit {
@@ -989,7 +1000,12 @@ export interface HrOnboardingProgress {
 }
 
 export type PlanningAlertLevel =
-  'critique' | 'attention' | 'information' | 'critical' | 'warning' | 'info';
+  | 'critique'
+  | 'attention'
+  | 'information'
+  | 'critical'
+  | 'warning'
+  | 'info';
 
 export interface PlanningAlert {
   id?: string;
@@ -1163,7 +1179,11 @@ export interface PlanningEmployeeTemplateAssignment {
 }
 
 export type PlanningPeriodStatusCode =
-  'DRAFT' | 'CONTROLLED' | 'PUBLISHED' | 'MODIFIED_AFTER_PUBLICATION' | 'LOCKED';
+  | 'DRAFT'
+  | 'CONTROLLED'
+  | 'PUBLISHED'
+  | 'MODIFIED_AFTER_PUBLICATION'
+  | 'LOCKED';
 
 export interface PlanningPeriodStatus {
   status: PlanningPeriodStatusCode | string;
@@ -2244,11 +2264,22 @@ export interface SupplierPurchasingPayload {
 }
 
 export type PurchaseOrderStatus =
-  'DRAFT' | 'SENT' | 'ACKNOWLEDGED' | 'PARTIALLY_RECEIVED' | 'RECEIVED' | 'CLOSED' | 'CANCELLED';
+  | 'DRAFT'
+  | 'SENT'
+  | 'ACKNOWLEDGED'
+  | 'PARTIALLY_RECEIVED'
+  | 'RECEIVED'
+  | 'CLOSED'
+  | 'CANCELLED';
 
 export type PurchaseReceiptStatus = 'DRAFT' | 'REVIEW_NEEDED' | 'VALIDATED' | 'CANCELLED';
 export type PurchaseReceiptLineStatus =
-  'MATCHED' | 'SHORT' | 'OVER' | 'UNEXPECTED' | 'SUBSTITUTED' | 'NEEDS_REVIEW';
+  | 'MATCHED'
+  | 'SHORT'
+  | 'OVER'
+  | 'UNEXPECTED'
+  | 'SUBSTITUTED'
+  | 'NEEDS_REVIEW';
 
 export interface PurchaseOrderLine {
   id: string;
@@ -2446,6 +2477,493 @@ export interface PurchasingBootstrap {
   sites: Site[];
   locations: Location[];
   permissions: string[];
+}
+
+export type FinanceProvider = 'FENNOA' | 'FLATPAY' | 'PAYPAL_POS' | 'LOYVERSE' | 'GENERIC';
+export type FinanceSourceStatus = 'NOT_CONNECTED' | 'READY' | 'ATTENTION' | 'ERROR';
+export type FinanceImportStatus = 'UPLOADED' | 'NEEDS_REVIEW' | 'READY' | 'FAILED';
+export type FinanceReportKind =
+  | 'SALES_ORDERS'
+  | 'PRODUCT_SALES'
+  | 'DAILY_CLOSURE'
+  | 'RECEIPTS'
+  | 'ACCOUNTING'
+  | 'BUDGET'
+  | 'UNKNOWN';
+
+export interface FinanceMetric {
+  id: string;
+  label: string;
+  value: number | null;
+  unit: 'currency' | 'percentage' | string;
+  status: 'ready' | 'provisional' | 'unavailable';
+  source: string | null;
+  asOf: string | null;
+  coverage: number | null;
+  reason?: string | null;
+}
+
+export interface FinanceDashboardMetric {
+  id: string;
+  label: string;
+  value: number | null;
+  unit: 'currency' | 'percentage' | 'number';
+  budget: number | null;
+  variance: number | null;
+  variancePercent: number | null;
+  previous: number | null;
+  favorable: boolean | null;
+  status: 'ready' | 'provisional' | 'unavailable';
+  help: string;
+  actualValue?: number | null;
+  actualLabel?: string;
+  targetLabel?: string;
+  displayable: boolean;
+  availabilityReason?: string | null;
+}
+
+export interface FinanceDashboardPeriod {
+  kind: 'annual' | 'monthly' | 'daily';
+  label: string;
+  from: string;
+  to: string;
+  status: 'ready' | 'provisional';
+  core: FinanceDashboardMetric[];
+  optional: FinanceDashboardMetric[];
+  series: Array<{
+    periodStart?: string;
+    date?: string;
+    label?: string;
+    actualRevenue?: number | null;
+    budgetRevenue?: number | null;
+    actualResult?: number | null;
+    budgetResult?: number | null;
+    budgetBreakEven?: number | null;
+    cumulativeActualRevenue?: number;
+    cumulativeBudgetRevenue?: number;
+    revenue?: number;
+    transactions?: number;
+  }>;
+  comparison: {
+    modeLabel: string;
+    periods: Array<{
+      id: string;
+      label: string;
+      detail: string;
+      from: string;
+      to: string;
+      isCurrent: boolean;
+      basis: 'cash_register' | 'accounting' | 'mixed' | 'unavailable';
+      sources: Record<
+        | 'revenue'
+        | 'operating_expenses'
+        | 'payroll'
+        | 'operating_result'
+        | 'transactions'
+        | 'average_ticket'
+        | 'contribution_margin'
+        | 'contribution_margin_rate',
+        'cash_register' | 'accounting' | 'mixed' | 'unavailable'
+      >;
+      metrics: {
+        revenue: number | null;
+        operating_expenses: number | null;
+        payroll: number | null;
+        operating_result: number | null;
+        transactions: number | null;
+        average_ticket: number | null;
+        contribution_margin: number | null;
+        contribution_margin_rate: number | null;
+      };
+    }>;
+  };
+}
+
+export interface FinanceRevenueReconciliation {
+  cashRegisterRevenue: number | null;
+  accountingRevenue: number | null;
+  difference: number | null;
+  selectedRevenue: number | null;
+  basis: 'cash_register' | 'accounting' | 'mixed' | 'unavailable';
+  status: 'matched' | 'attention' | 'partial';
+}
+
+export interface FinanceDataSource {
+  id: string;
+  siteId?: string | null;
+  provider: FinanceProvider;
+  name: string;
+  externalLocationId?: string | null;
+  sourceType: 'ACCOUNTING_API' | 'POS_API' | 'FILE_IMPORT';
+  status: FinanceSourceStatus;
+  isPrimarySales: boolean;
+  isPrimaryPos: boolean;
+  lastSyncedAt?: string | null;
+  coverageStart?: string | null;
+  coverageEnd?: string | null;
+  site?: { id: string; name: string } | null;
+}
+
+export interface FinancePosApiConfiguration {
+  id?: string | null;
+  provider: 'LOYVERSE' | 'PAYPAL_POS';
+  configured: boolean;
+  authMode: 'PERSONAL_TOKEN' | 'ASSERTION_GRANT';
+  clientId?: string | null;
+  secretMask?: string | null;
+  apiBaseUrl: string;
+  historyStart?: string | null;
+  schedule: string[];
+  configuredAt?: string | null;
+  lastSyncedAt?: string | null;
+  lastError?: string | null;
+  defaultSite?: { id: string; name: string } | null;
+  runtime: 'TOQUEHUB_LOCAL_API';
+  connections?: FinancePosApiConfiguration[];
+}
+
+export interface FinanceFlatpayConfiguration {
+  id?: string | null;
+  portalUrl: string;
+  username?: string | null;
+  configured: boolean;
+  credentialStorage?: string | null;
+  passwordMask?: string | null;
+  configuredAt?: string | null;
+  lastSyncedAt?: string | null;
+  lastError?: string | null;
+  automationInstalledAt?: string | null;
+  automationInbox?: string | null;
+  automationSchedule?: string[];
+  historyStart?: string | null;
+  defaultSite?: { id: string; name: string } | null;
+  automationRuntime?: 'TOQUEHUB_LOCAL_AGENT';
+  platform?: 'darwin' | 'win32' | 'linux' | string;
+  requiredReports?: Array<'orders' | 'sales-overview'>;
+  connections?: FinanceFlatpayConfiguration[];
+}
+
+export interface FinanceImportBatch {
+  id: string;
+  sourceId?: string | null;
+  fileName: string;
+  fileSize: number;
+  status: FinanceImportStatus;
+  provider: FinanceProvider;
+  reportKind: FinanceReportKind;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  rowCount?: number | null;
+  duplicateCount: number;
+  warnings: string[];
+  createdAt: string;
+  source?: { id: string; name: string } | null;
+}
+
+export interface FinanceBootstrap {
+  installed: boolean;
+  organizationId: string;
+  permissions: string[];
+  settings: {
+    defaultCurrency: string;
+    fiscalYearStartMonth: number;
+    timezone: string;
+    fennoa: {
+      baseUrl: string;
+      apiVersion: string;
+      username?: string | null;
+      apiKeyConfigured: boolean;
+      apiKeyMask?: string | null;
+      apiKeyUpdatedAt?: string | null;
+      lastTestedAt?: string | null;
+      lastError?: string | null;
+    } | null;
+    flatpay: FinanceFlatpayConfiguration | null;
+    pos: {
+      loyverse: FinancePosApiConfiguration;
+      paypalPos: FinancePosApiConfiguration;
+    };
+  };
+  period: {
+    preset: string;
+    label: string;
+    from: string | null;
+    to: string | null;
+  };
+  metrics: FinanceMetric[];
+  analysis: {
+    sales: {
+      net: number;
+      gross: number;
+      vat: number;
+      transactions: number;
+      averageTicket: number | null;
+    };
+    profitability: {
+      revenue: number;
+      materialPurchases: number;
+      payroll: number;
+      otherExpenses: number;
+      operatingResult: number | null;
+      payrollRatio: number | null;
+      purchaseRatio: number | null;
+    };
+    budget: {
+      revenue: number | null;
+      expenses: number | null;
+      revenueVariance: number | null;
+    };
+    series: Array<{ date: string; revenue: number; result: number }>;
+  };
+  dashboard: {
+    context: {
+      asOf: string;
+      fiscalStart: string;
+      fiscalEnd: string;
+      elapsedMonths: number;
+      totalMonths: number;
+      periodProgress: number;
+      actualCoverageLabel: string;
+      dataCoverageStart: string | null;
+      coverageComplete: boolean;
+      budgetCoverageLabel: string;
+    };
+    health: {
+      level: 'good' | 'attention' | 'critical' | 'unknown';
+      label: string;
+      summary: string;
+    };
+    reconciliation: {
+      lockedThrough: string | null;
+      annual: FinanceRevenueReconciliation;
+      monthly: FinanceRevenueReconciliation;
+      daily: FinanceRevenueReconciliation;
+    };
+    annual: FinanceDashboardPeriod;
+    monthly: FinanceDashboardPeriod;
+    daily: FinanceDashboardPeriod;
+    budget: null | {
+      id: string;
+      name: string;
+      scenario?: string | null;
+      currency: string;
+      startDate: string;
+      endDate: string;
+      isReference: boolean;
+      totals: Record<string, number | null>;
+      targets?: {
+        periodStart: string;
+        label: string;
+        days: number;
+        revenueMonth: number | null;
+        revenueWeek: number | null;
+        revenueDay: number | null;
+        breakEvenMonth: number | null;
+        breakEvenWeek: number | null;
+        breakEvenDay: number | null;
+        operatingResult: number | null;
+        pointMortDay: number | null;
+        pointMortDate: string | null;
+      };
+      series: FinanceDashboardPeriod['series'];
+    };
+    preferences: {
+      selected: string[];
+      available: Array<{ id: string; label: string; unit: string; help: string }>;
+    };
+    mistral: { configured: boolean };
+  };
+  scope: {
+    mode: 'consolidated' | 'site';
+    site: { id: string; name: string } | null;
+    accountingAllocated: boolean;
+    note: string;
+  };
+  sources: FinanceDataSource[];
+  sites: Array<{ id: string; name: string }>;
+  imports: FinanceImportBatch[];
+  quality: {
+    level: 'empty' | 'partial' | 'ready';
+    label: string;
+    connectedSourceCount: number;
+    sourceCount: number;
+    pendingReviewCount: number;
+    lastUpdatedAt: string | null;
+  };
+}
+
+export interface FinanceAiAnalysis {
+  status: 'favorable' | 'attention' | 'critical' | 'insufficient_data';
+  summary: string;
+  strengths: string[];
+  risks: string[];
+  actions: Array<{ priority: 'P1' | 'P2' | 'P3'; title: string; detail: string }>;
+  dataLimits: string[];
+}
+
+export interface FinanceSalesInsights {
+  period: { from: string; to: string; days: number; timeZone: string };
+  scope?: { siteId: string | null };
+  summary: {
+    revenue: number;
+    netRevenue: number;
+    transactions: number;
+    averageTicket: number | null;
+    refunds: number;
+    discounts: number;
+    cancellations: number;
+    productCount: number;
+    categoryCount: number;
+    peakHour: FinanceSalesHour | null;
+    peakWeekday: FinanceSalesWeekday | null;
+  };
+  comparisons: {
+    previousPeriod: FinanceSalesComparison;
+    previousYear: FinanceSalesComparison;
+  };
+  hourly: FinanceSalesHour[];
+  weekdays: FinanceSalesWeekday[];
+  daily: Array<{ date: string; revenue: number; transactions: number }>;
+  products: FinanceSalesProduct[];
+  topProducts: FinanceSalesProduct[];
+  lowProducts: FinanceSalesProduct[];
+  categories: Array<{
+    category: string;
+    quantity: number;
+    gross: number;
+    net: number;
+    sharePercent: number;
+  }>;
+  staffing: {
+    available: boolean;
+    assignments: number;
+    plannedHours: number;
+    revenuePerPlannedHour: number | null;
+    hourly: Array<{
+      hour: number;
+      plannedHours: number;
+      revenue: number;
+      transactions: number;
+      revenuePerPlannedHour: number | null;
+      transactionsPerPlannedHour: number | null;
+    }>;
+    pressureHours: Array<{
+      hour: number;
+      plannedHours: number;
+      revenue: number;
+      transactions: number;
+      revenuePerPlannedHour: number | null;
+      transactionsPerPlannedHour: number | null;
+    }>;
+  };
+  quality: {
+    transactionRows: number;
+    crossSourceDuplicatesExcluded: number;
+    productRows: number;
+    productCoverageDays: number;
+    productCoveragePercent: number;
+    selectedProductReports: number;
+    overlappingProductReportsExcluded: number;
+    productPeriod: { from: string; to: string } | null;
+    sources: Array<{ id: string; name: string; provider: FinanceProvider }>;
+    limitations: string[];
+  };
+  productComparisons: {
+    previousPeriodCoveragePercent: number;
+    previousYearCoveragePercent: number;
+    previousYearProductCount: number;
+  };
+}
+
+export interface FinanceSalesHour {
+  hour: number;
+  label: string;
+  revenue: number;
+  transactions: number;
+  sharePercent: number;
+  averageTicket: number | null;
+}
+
+export interface FinanceSalesWeekday {
+  weekday: number;
+  label: string;
+  revenue: number;
+  transactions: number;
+  sharePercent: number;
+  averageTicket: number | null;
+}
+
+export interface FinanceSalesComparison {
+  from: string;
+  to: string;
+  revenue: number;
+  netRevenue: number;
+  transactions: number;
+  averageTicket: number | null;
+  refunds: number;
+  discounts: number;
+  cancellations: number;
+  revenueVariationPercent: number | null;
+  transactionVariationPercent: number | null;
+  averageTicketVariationPercent: number | null;
+}
+
+export interface FinanceSalesProduct {
+  name: string;
+  category: string;
+  quantity: number;
+  gross: number;
+  net: number;
+  discount: number;
+  sharePercent: number;
+  previousQuantity: number | null;
+  quantityVariationPercent: number | null;
+  margin: number | null;
+  marginRate: number | null;
+  unitCost: number | null;
+  estimatedCost: number | null;
+}
+
+export interface ConfigureFennoaPayload {
+  username: string;
+  apiKey?: string;
+  baseUrl?: string;
+  apiVersion?: 'v1' | 'v2';
+}
+
+export interface ConfigureFlatpayPayload {
+  siteId: string;
+  username: string;
+  password?: string;
+  portalUrl?: string;
+}
+
+export interface ConfigurePosApiPayload {
+  siteId: string;
+  clientId?: string;
+  secret?: string;
+  historyStart?: string;
+  schedule?: string[];
+}
+
+export interface FennoaSyncResult {
+  ok: boolean;
+  runId?: string;
+  from?: string;
+  to?: string;
+  accountsCount: number;
+  periodsCount?: number;
+  ledgerRowsCount?: number;
+  budgetRowsCount?: number;
+  periodsSyncedCount?: number;
+  full?: boolean;
+  automaticFullBackfill?: boolean;
+  testedAt?: string;
+}
+
+export interface FinanceImportResult {
+  duplicate: boolean;
+  batch: FinanceImportBatch;
 }
 
 export interface PurchasingEmailConnection {
@@ -2848,7 +3366,11 @@ export interface CatererClient {
 export type CatererEventStatus = 'DRAFT' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
 export type CatererFulfillmentMode = 'DELIVERY' | 'PICKUP' | 'ON_SITE';
 export type CatererProductionState =
-  'NOT_GENERATED' | 'DIRTY' | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED';
+  | 'NOT_GENERATED'
+  | 'DIRTY'
+  | 'PLANNED'
+  | 'IN_PROGRESS'
+  | 'COMPLETED';
 
 export interface CatererPrestation {
   id: string;
@@ -3643,7 +4165,9 @@ export type ProductionHistoryAction =
   | 'REALIZED_PORTIONS_UPDATED';
 export type ProductionExportFormat = 'PDF' | 'EXCEL' | 'PRINT';
 export type ProductionExportType =
-  'PRODUCTION_SHEET' | 'MATERIAL_REQUIREMENTS' | 'TEAM_ASSIGNMENTS';
+  | 'PRODUCTION_SHEET'
+  | 'MATERIAL_REQUIREMENTS'
+  | 'TEAM_ASSIGNMENTS';
 export type ProductionDestockingStatus = 'PROPOSED' | 'CONFIRMED' | 'CANCELLED';
 
 export interface ProductionQuery {
@@ -4161,7 +4685,11 @@ export type ProductionNeedSource =
   | 'SUB_RECIPE'
   | 'TRANSFER_REQUEST';
 export type ProductionNeedStatus =
-  'DRAFT' | 'CONFIRMED' | 'PARTIALLY_COVERED' | 'COVERED' | 'CANCELLED';
+  | 'DRAFT'
+  | 'CONFIRMED'
+  | 'PARTIALLY_COVERED'
+  | 'COVERED'
+  | 'CANCELLED';
 export type ProductionProfileMode = 'FIXED' | 'MULTIPLES' | 'FLEXIBLE' | 'FORMATS' | 'EQUIPMENT';
 export type ProductionBatchStatus =
   | 'TO_PREPARE'
@@ -4173,7 +4701,13 @@ export type ProductionBatchStatus =
   | 'PARTIALLY_LOST'
   | 'CANCELLED';
 export type ProductionOperationStatus =
-  'PENDING' | 'READY' | 'IN_PROGRESS' | 'COMPLETED' | 'BLOCKED' | 'SKIPPED' | 'CANCELLED';
+  | 'PENDING'
+  | 'READY'
+  | 'IN_PROGRESS'
+  | 'COMPLETED'
+  | 'BLOCKED'
+  | 'SKIPPED'
+  | 'CANCELLED';
 export type ConservationState =
   | 'AMBIENT'
   | 'CHILLED'

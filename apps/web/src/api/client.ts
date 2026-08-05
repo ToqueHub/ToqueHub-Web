@@ -179,6 +179,14 @@ import type {
   PurchaseReceiptLineStatus,
   PurchaseOrderPayload,
   PurchaseReceiptPayload,
+  FinanceBootstrap,
+  FinanceSalesInsights,
+  ConfigureFlatpayPayload,
+  ConfigurePosApiPayload,
+  FinanceImportResult,
+  ConfigureFennoaPayload,
+  FennoaSyncResult,
+  FinanceAiAnalysis,
 } from '../types';
 
 type PlanningRangeParams = {
@@ -331,10 +339,11 @@ function filenameFromContentDisposition(disposition: string | null, fallback: st
 }
 
 async function request<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const response = await fetch(`${API_URL}/api${path}`, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
+      ...(!isFormData ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
@@ -663,6 +672,173 @@ export const api = {
     return request<{ installed: boolean; installedApplications?: string[] }>(
       '/purchasing/uninstall',
       { method: 'POST' },
+      token,
+    );
+  },
+  installFinance(token: string) {
+    return request<FinanceBootstrap & { installedApplications?: string[] }>(
+      '/finance/install',
+      { method: 'POST' },
+      token,
+    );
+  },
+  uninstallFinance(token: string) {
+    return request<{ installed: boolean; installedApplications?: string[] }>(
+      '/finance/uninstall',
+      { method: 'POST' },
+      token,
+    );
+  },
+  financeBootstrap(token: string, preset = 'current_month', asOf?: string, siteId?: string) {
+    const query = new URLSearchParams({ preset });
+    if (asOf) query.set('to', asOf);
+    if (siteId) query.set('siteId', siteId);
+    return request<FinanceBootstrap>(`/finance/bootstrap?${query}`, {}, token);
+  },
+  importFinanceFile(token: string, file: File, siteId?: string) {
+    const body = new FormData();
+    body.append('file', file);
+    if (siteId) body.append('siteId', siteId);
+    return request<FinanceImportResult>('/finance/imports', { method: 'POST', body }, token);
+  },
+  configureFennoa(token: string, payload: ConfigureFennoaPayload) {
+    return request<FinanceBootstrap['settings']['fennoa']>(
+      '/finance/fennoa/configuration',
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      token,
+    );
+  },
+  financeFennoaConfiguration(token: string) {
+    return request<FinanceBootstrap['settings']['fennoa']>(
+      '/finance/fennoa/configuration',
+      {},
+      token,
+    );
+  },
+  testFennoa(token: string) {
+    return request<FennoaSyncResult>('/finance/fennoa/test', { method: 'POST' }, token);
+  },
+  syncFennoa(token: string, payload: { from?: string; to?: string; full?: boolean } = {}) {
+    return request<FennoaSyncResult>(
+      '/finance/fennoa/sync',
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
+  },
+  setFinancePrimarySalesSource(token: string, sourceId: string) {
+    return request<{ sourceId: string; isPrimaryPos: boolean }>(
+      `/finance/sources/${sourceId}/primary-sales`,
+      { method: 'POST' },
+      token,
+    );
+  },
+  setFinancePrimaryPosSource(token: string, sourceId: string) {
+    return request<{ sourceId: string; isPrimaryPos: boolean }>(
+      `/finance/sources/${sourceId}/primary-pos`,
+      { method: 'POST' },
+      token,
+    );
+  },
+  setFinanceSalesSourceInclusion(token: string, sourceId: string, enabled: boolean) {
+    return request<{
+      sourceId: string;
+      isPrimarySales: boolean;
+      contributesToSales: boolean;
+    }>(
+      `/finance/sources/${sourceId}/sales-inclusion`,
+      { method: 'PATCH', body: JSON.stringify({ enabled }) },
+      token,
+    );
+  },
+  updateFinancePreferences(token: string, dashboardKpis: string[]) {
+    return request<{ dashboardKpis: string[] }>(
+      '/finance/preferences',
+      { method: 'PATCH', body: JSON.stringify({ dashboardKpis }) },
+      token,
+    );
+  },
+  financeAiAnalysis(
+    token: string,
+    view: 'annual' | 'monthly' | 'daily' | 'sales',
+    period: { from?: string; asOf?: string; siteId?: string } = {},
+  ) {
+    return request<FinanceAiAnalysis>(
+      '/finance/analysis/ai',
+      { method: 'POST', body: JSON.stringify({ view, ...period }) },
+      token,
+    );
+  },
+  financeSalesInsights(token: string, from: string, to: string, siteId?: string) {
+    const query = new URLSearchParams({ from, to });
+    if (siteId) query.set('siteId', siteId);
+    return request<FinanceSalesInsights>(`/finance/sales-insights?${query}`, {}, token);
+  },
+  configureFlatpay(token: string, payload: ConfigureFlatpayPayload) {
+    return request<NonNullable<FinanceBootstrap['settings']['flatpay']>>(
+      '/finance/flatpay/configuration',
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      token,
+    );
+  },
+  installFlatpayAutomation(
+    token: string,
+    payload: { siteId: string; schedule: string[]; historyStart?: string },
+  ) {
+    return request<{
+      installed: boolean;
+      schedule: string[];
+      inbox: string;
+      historyStart: string | null;
+      message: string;
+    }>(
+      '/finance/flatpay/automation/install',
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
+  },
+  reconnectFlatpayAutomation(token: string, siteId: string) {
+    return request<{ started: boolean; alreadyRunning: boolean; message: string }>(
+      '/finance/flatpay/automation/reconnect',
+      { method: 'POST', body: JSON.stringify({ siteId }) },
+      token,
+    );
+  },
+  configureFinancePos(
+    token: string,
+    provider: 'loyverse' | 'paypal_pos',
+    payload: ConfigurePosApiPayload,
+  ) {
+    return request<FinanceBootstrap['settings']['pos']['loyverse']>(
+      `/finance/pos/${provider}/configuration`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      token,
+    );
+  },
+  testFinancePos(token: string, provider: 'loyverse' | 'paypal_pos', siteId: string) {
+    return request<{ ok: boolean; provider: string; message: string }>(
+      `/finance/pos/${provider}/test?siteId=${encodeURIComponent(siteId)}`,
+      { method: 'POST' },
+      token,
+    );
+  },
+  syncFinancePos(
+    token: string,
+    provider: 'loyverse' | 'paypal_pos',
+    payload: { from?: string; to?: string; siteId?: string } = {},
+  ) {
+    return request<{
+      ok: boolean;
+      provider: string;
+      locations: number;
+      transactions: number;
+      productRows: number;
+      message: string;
+    }>(`/finance/pos/${provider}/sync`, { method: 'POST', body: JSON.stringify(payload) }, token);
+  },
+  mapFinanceSourceSite(token: string, sourceId: string, siteId: string) {
+    return request<{ source: FinanceBootstrap['sources'][number] }>(
+      `/finance/sources/${sourceId}/site`,
+      { method: 'PATCH', body: JSON.stringify({ siteId }) },
       token,
     );
   },

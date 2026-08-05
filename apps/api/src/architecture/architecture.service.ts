@@ -86,6 +86,15 @@ const MODULE_DEFINITIONS = [
     patterns: [/^Purchasing/, /^SupplierPurchasing/, /^SupplierProduct/, /^Purchase/],
     labels: ['purchasing', 'purchase', 'order', 'supplier', 'receipt', 'dispatch'],
   },
+  {
+    id: 'finance',
+    name: 'Finance',
+    installedField: 'financeInstalledAt',
+    description: 'Pilotage des ventes, de la rentabilité, de la trésorerie, des budgets et de la qualité des sources.',
+    dependencies: ['Core'],
+    patterns: [/^Finance/],
+    labels: ['finance', 'accounting', 'sales', 'budget', 'cash', 'margin', 'profitability'],
+  },
 ] as const;
 
 const COMMON_FIELD_NAMES = new Set(['id', 'organizationId', 'createdAt', 'updatedAt', 'isArchived', 'archivedAt']);

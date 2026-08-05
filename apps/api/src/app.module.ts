@@ -23,6 +23,7 @@ import { StockAssistantModule } from './stock-assistant/stock-assistant.module';
 import { TechnicalSheetAssistantModule } from './technical-sheet-assistant/technical-sheet-assistant.module';
 import { HaccpAssistantModule } from './haccp-assistant/haccp-assistant.module';
 import { PurchasingModule } from './purchasing/purchasing.module';
+import { FinanceModule } from './finance/finance.module';
 import { SecretsModule } from './common/secrets/secrets.module';
 import { HumanSupportModule } from './human-support/human-support.module';
 
@@ -56,6 +57,7 @@ import { HumanSupportModule } from './human-support/human-support.module';
     TechnicalSheetAssistantModule,
     HaccpAssistantModule,
     PurchasingModule,
+    FinanceModule,
     HumanSupportModule,
   ],
 })

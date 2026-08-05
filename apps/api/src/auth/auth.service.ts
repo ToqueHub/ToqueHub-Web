@@ -632,6 +632,7 @@ export class AuthService {
       ...(currentUser.organization.menusInstalledAt ? ['menus'] : []),
       ...(currentUser.organization.haccpInstalledAt ? ['haccp'] : []),
       ...(currentUser.organization.purchasingInstalledAt ? ['purchasing'] : []),
+      ...(currentUser.organization.financeInstalledAt ? ['finance'] : []),
     ];
     const checklist = {
       applicationInstalled: installedApplications.length > 0,
@@ -907,6 +908,7 @@ export class AuthService {
       menusInstalledAt?: Date | null;
       haccpInstalledAt?: Date | null;
       purchasingInstalledAt?: Date | null;
+      financeInstalledAt?: Date | null;
         mistralApiKey?: string | null;
         mistralApiKeyUpdatedAt?: Date | null;
         resendApiKey?: string | null;
@@ -950,6 +952,7 @@ export class AuthService {
         ...(user.organization?.menusInstalledAt ? ['menus'] : []),
         ...(user.organization?.haccpInstalledAt ? ['haccp'] : []),
         ...(user.organization?.purchasingInstalledAt ? ['purchasing'] : []),
+        ...(user.organization?.financeInstalledAt ? ['finance'] : []),
       ],
       role: user.role.name,
       status: 'status' in user ? user.status : undefined,
@@ -996,6 +999,7 @@ export class AuthService {
       productionInstalledAt?: Date | null;
       menusInstalledAt?: Date | null;
       purchasingInstalledAt?: Date | null;
+      financeInstalledAt?: Date | null;
       mistralApiKey?: string | null;
       mistralApiKeyUpdatedAt?: Date | null;
       resendApiKey?: string | null;
