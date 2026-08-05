@@ -7,6 +7,10 @@ import {
   UserStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  deduplicateCrossSourceSales,
+  resolveContributingSalesSourceIds,
+} from '../finance/finance-sales-dedupe';
 import { DashboardExternalService } from './dashboard-external.service';
 
 type Zone = 'kpi' | 'activity' | 'analytics' | 'alerts';
@@ -468,7 +472,7 @@ export class DashboardService {
       haccp,
       haccpAlerts,
       haccpToday,
-      todayRevenue,
+      todayRevenues,
     ] = await Promise.all([
       has('stocks') ? this.stockValue(organizationId) : null,
       has('stocks') ? this.stockAlerts(organizationId) : null,
@@ -485,7 +489,7 @@ export class DashboardService {
       has('haccp') ? this.haccpScore(organizationId) : null,
       has('haccp') ? this.haccpAlerts(organizationId) : null,
       has('haccp') ? this.haccpToday(organizationId) : null,
-      has('finance') ? this.financeTodayRevenue(organizationId) : null,
+      has('finance') ? this.financeTodayRevenues(organizationId) : null,
     ]);
     const card = (
       id: string,
@@ -545,31 +549,54 @@ export class DashboardService {
         ),
       ),
     ];
+    const formatRevenueCard = (
+      revenue: NonNullable<typeof todayRevenues>['sites'][number],
+      id: string,
+      title: string,
+    ) => ({
+      ...card(
+        id,
+        'finance',
+        title,
+        revenue.grossAmount == null
+          ? '—'
+          : new Intl.NumberFormat('fr-FR', {
+              style: 'currency',
+              currency: 'EUR',
+              maximumFractionDigits: 0,
+            }).format(revenue.grossAmount),
+        revenue.grossAmount == null
+          ? `${revenue.providerLabel} · en attente des ventes du jour`
+          : `TTC · ${revenue.transactions} ticket(s) · ${revenue.providerLabel} · màj ${revenue.updatedAtLabel}`,
+        '/finance/daily',
+        'blue',
+      ),
+      trend: revenue.trend,
+    });
+    const financeRevenueCards = todayRevenues
+      ? [
+          ...(todayRevenues.total
+            ? [
+                formatRevenueCard(
+                  todayRevenues.total,
+                  'finance.today-revenue',
+                  'CA du jour · Tous les sites',
+                ),
+              ]
+            : []),
+          ...todayRevenues.sites.map((revenue) =>
+            formatRevenueCard(
+              revenue,
+              todayRevenues.sites.length === 1
+                ? 'finance.today-revenue'
+                : `finance.today-revenue.site.${revenue.siteId}`,
+              `CA du jour · ${revenue.siteName}`,
+            ),
+          ),
+        ]
+      : [];
     const overview = [
-      ...(todayRevenue
-        ? [
-            {
-              ...card(
-                'finance.today-revenue',
-                'finance',
-                'Chiffre d’affaires du jour',
-                todayRevenue.grossAmount == null
-                  ? '—'
-                  : new Intl.NumberFormat('fr-FR', {
-                      style: 'currency',
-                      currency: 'EUR',
-                      maximumFractionDigits: 0,
-                    }).format(todayRevenue.grossAmount),
-                todayRevenue.grossAmount == null
-                  ? `${todayRevenue.providerLabel} · en attente des ventes du jour`
-                  : `TTC · ${todayRevenue.transactions} ticket(s) · ${todayRevenue.providerLabel} · màj ${todayRevenue.updatedAtLabel}`,
-                '/finance/daily',
-                'blue',
-              ),
-              trend: todayRevenue.trend,
-            },
-          ]
-        : []),
+      ...financeRevenueCards,
       ...(haccp
         ? [
             card(
@@ -748,7 +775,15 @@ export class DashboardService {
     ];
     const hidden = new Set(preferences.hiddenWidgetIds);
     const visible = (cards: any[], force = false) =>
-      cards.filter((item) => force || !hidden.has(item.id));
+      cards.filter(
+        (item) =>
+          force ||
+          (!hidden.has(item.id) &&
+            !(
+              item.id.startsWith('finance.today-revenue.site.') &&
+              hidden.has('finance.today-revenue')
+            )),
+      );
     return {
       version: 2,
       generatedAt: new Date().toISOString(),
@@ -1122,71 +1157,152 @@ export class DashboardService {
     return { sources, readySources, pendingImports, latestImport };
   }
 
-  private async financeTodayRevenue(organizationId: string) {
-    const sources = await this.prisma.financeDataSource.findMany({
-      where: {
-        organizationId,
-        sourceType: { not: 'ACCOUNTING_API' },
-      },
-      orderBy: [{ isPrimaryPos: 'desc' }, { lastSyncedAt: 'desc' }, { createdAt: 'asc' }],
-      select: {
-        id: true,
-        provider: true,
-        name: true,
-        isPrimaryPos: true,
-        isPrimarySales: true,
-        lastSyncedAt: true,
-      },
-    });
-    const source =
-      sources.find(({ isPrimaryPos }) => isPrimaryPos) ??
-      sources.find(({ provider, isPrimarySales }) => provider === 'FLATPAY' && isPrimarySales) ??
-      sources.find(({ isPrimarySales }) => isPrimarySales);
-    if (!source) return null;
-
+  private async financeTodayRevenues(organizationId: string) {
+    const [sites, sources] = await Promise.all([
+      this.prisma.site.findMany({
+        where: { organizationId, isArchived: false },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, name: true },
+      }),
+      this.prisma.financeDataSource.findMany({
+        where: {
+          organizationId,
+          sourceType: { not: 'ACCOUNTING_API' },
+        },
+        orderBy: [{ isPrimaryPos: 'desc' }, { lastSyncedAt: 'desc' }, { createdAt: 'asc' }],
+        select: {
+          id: true,
+          provider: true,
+          name: true,
+          siteId: true,
+          isPrimaryPos: true,
+          isPrimarySales: true,
+          lastSyncedAt: true,
+        },
+      }),
+    ]);
+    const contributingSourceIds = resolveContributingSalesSourceIds(sources);
+    const contributingSourceIdSet = new Set(contributingSourceIds);
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-    const rows = await this.prisma.financeDailySales.findMany({
-      where: {
-        organizationId,
-        sourceId: source.id,
-        isRevenueRecord: true,
-        saleDate: { gte: start, lt: end },
-      },
-      select: { saleDate: true, grossAmount: true, transactionCount: true, createdAt: true },
-      orderBy: { saleDate: 'asc' },
-    });
-    const grossAmount = rows.length
-      ? rows.reduce((sum, row) => sum + Number(row.grossAmount), 0)
-      : null;
-    const transactions = rows.reduce((sum, row) => sum + row.transactionCount, 0);
+    const importedRows = contributingSourceIds.length
+      ? await this.prisma.financeDailySales.findMany({
+          where: {
+            organizationId,
+            sourceId: { in: contributingSourceIds },
+            isRevenueRecord: true,
+            saleDate: { gte: start, lt: end },
+          },
+          select: {
+            sourceId: true,
+            saleDate: true,
+            grossAmount: true,
+            transactionCount: true,
+            paymentMethod: true,
+            metadata: true,
+            createdAt: true,
+            source: {
+              select: { provider: true, siteId: true, isPrimaryPos: true },
+            },
+          },
+          orderBy: { saleDate: 'asc' },
+        })
+      : [];
+    const rows = deduplicateCrossSourceSales(importedRows).rows;
+    const contributingSources = sources.filter(({ id }) => contributingSourceIdSet.has(id));
+    const hasUnassignedSource = contributingSources.some(({ siteId }) => !siteId);
+    const displayedSites = [
+      ...sites,
+      ...(hasUnassignedSource ? [{ id: 'unassigned', name: 'Non attribué' }] : []),
+    ];
     const checkpoints = [7, 15, 19, 23];
-    const trend = checkpoints.map((hour) =>
-      rows
-        .filter(({ saleDate }) => saleDate.getHours() < hour)
-        .reduce((sum, row) => sum + Number(row.grossAmount), 0),
-    );
-    const providerLabel =
-      source.provider === 'FLATPAY'
-        ? 'Flatpay'
-        : source.provider === 'PAYPAL_POS'
+    const providerName = (provider: string, fallback: string) =>
+      provider === 'FLATPAY'
+        ? 'FlatPay'
+        : provider === 'PAYPAL_POS'
           ? 'PayPal POS'
-          : source.provider === 'LOYVERSE'
+          : provider === 'LOYVERSE'
             ? 'Loyverse'
-            : source.name;
-    const dataUpdatedAt = rows.reduce<Date | null>(
-      (latest, row) => (!latest || row.createdAt > latest ? row.createdAt : latest),
-      null,
-    );
-    const updatedAtLabel =
-      (dataUpdatedAt ?? source.lastSyncedAt)
+            : fallback;
+    const formatTime = (value: Date | null) =>
+      value
         ? new Intl.DateTimeFormat('fr-FR', {
             hour: '2-digit',
             minute: '2-digit',
-          }).format(dataUpdatedAt ?? source.lastSyncedAt!)
+          }).format(value)
         : '—';
-    return { grossAmount, transactions, trend, providerLabel, updatedAtLabel };
+    const summaries = displayedSites.map((site) => {
+      const siteId = site.id === 'unassigned' ? null : site.id;
+      const siteSources = contributingSources.filter((source) => source.siteId === siteId);
+      const siteRows = rows.filter((row) => row.source?.siteId === siteId);
+      const grossAmount = siteRows.length
+        ? siteRows.reduce((sum, row) => sum + Number(row.grossAmount), 0)
+        : null;
+      const transactions = siteRows.reduce((sum, row) => sum + row.transactionCount, 0);
+      const trend = checkpoints.map((hour) =>
+        siteRows
+          .filter(({ saleDate }) => saleDate.getHours() < hour)
+          .reduce((sum, row) => sum + Number(row.grossAmount), 0),
+      );
+      const providerLabel = [
+        ...new Set(
+          siteRows.length
+            ? siteRows.map((row) =>
+                providerName(row.source?.provider ?? '', row.source?.provider ?? 'Caisse'),
+              )
+            : siteSources.map(({ provider, name }) => providerName(provider, name)),
+        ),
+      ].join(' + ');
+      const dataUpdatedAt = siteRows.reduce<Date | null>(
+        (latest, row) => (!latest || row.createdAt > latest ? row.createdAt : latest),
+        null,
+      );
+      const sourceUpdatedAt = siteSources.reduce<Date | null>(
+        (latest, source) =>
+          source.lastSyncedAt && (!latest || source.lastSyncedAt > latest)
+            ? source.lastSyncedAt
+            : latest,
+        null,
+      );
+      return {
+        siteId: site.id,
+        siteName: site.name,
+        grossAmount,
+        transactions,
+        trend,
+        providerLabel: providerLabel || 'Aucune caisse active',
+        updatedAtLabel: formatTime(dataUpdatedAt ?? sourceUpdatedAt),
+        updatedAt: dataUpdatedAt ?? sourceUpdatedAt,
+      };
+    });
+    const sitesWithRevenue = summaries.filter(({ grossAmount }) => grossAmount != null);
+    const total =
+      sitesWithRevenue.length > 1
+        ? {
+            siteId: 'all',
+            siteName: 'Tous les sites',
+            grossAmount: sitesWithRevenue.reduce((sum, site) => sum + (site.grossAmount ?? 0), 0),
+            transactions: sitesWithRevenue.reduce((sum, site) => sum + site.transactions, 0),
+            trend: checkpoints.map((_, index) =>
+              sitesWithRevenue.reduce((sum, site) => sum + site.trend[index], 0),
+            ),
+            providerLabel: `${sitesWithRevenue.length} établissements`,
+            updatedAtLabel: formatTime(
+              sitesWithRevenue.reduce<Date | null>(
+                (latest, site) =>
+                  site.updatedAt && (!latest || site.updatedAt > latest) ? site.updatedAt : latest,
+                null,
+              ),
+            ),
+            updatedAt: sitesWithRevenue.reduce<Date | null>(
+              (latest, site) =>
+                site.updatedAt && (!latest || site.updatedAt > latest) ? site.updatedAt : latest,
+              null,
+            ),
+          }
+        : null;
+    return summaries.length ? { sites: summaries, total } : null;
   }
 
   private async stockValue(organizationId: string) {

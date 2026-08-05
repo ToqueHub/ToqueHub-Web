@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   AlertCircle,
   AlertTriangle,
@@ -12,6 +12,7 @@ import {
   ChevronRight,
   CircleDollarSign,
   Database,
+  Download,
   FileSpreadsheet,
   Gauge,
   LayoutDashboard,
@@ -37,6 +38,8 @@ import type {
   FinanceProvider,
   FinanceReportKind,
   FinanceSourceStatus,
+  FinanceExportReport,
+  FinanceSalesExportPeriod,
 } from '../../types';
 import './styles/FinanceApp.css';
 import {
@@ -91,6 +94,15 @@ const TITLES: Record<FinanceTab, string> = {
   budget: 'Budget & trajectoire',
   sources: 'Sources & qualité',
 };
+
+const FINANCE_LOADING_STEPS = [
+  'Connexion sécurisée aux sources financières…',
+  'Consolidation des établissements…',
+  'Rapprochement des caisses et de la comptabilité…',
+  'Calcul des indicateurs et des comparaisons…',
+  'Contrôle de la fraîcheur des données…',
+  'Finalisation de votre espace Finance…',
+];
 
 const PROVIDER_LABELS: Record<FinanceProvider, string> = {
   FENNOA: 'Fennoa',
@@ -373,16 +385,17 @@ export function FinanceWorkspace({ token, tab, onNavigate }: Props) {
   return (
     <div className="finance-app">
       <motion.section
-        className="finance-hero"
+        className="welcome-hero stocks-hero hr-hero finance-hero"
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35 }}
       >
         <div className="finance-hero-copy">
-          <span className="finance-eyebrow">
-            <WalletCards size={15} /> Pilotage financier
+          <span className="welcome-tag">
+            <WalletCards size={14} /> ToqueHub Finance
           </span>
-          <h1>{TITLES[tab]}</h1>
-          <p>
+          <h1 className="welcome-title">{TITLES[tab]}</h1>
+          <p className="welcome-desc">
             Une lecture simple pour décider, avec le détail nécessaire pour contrôler chaque
             chiffre.
           </p>
@@ -527,6 +540,8 @@ export function FinanceWorkspace({ token, tab, onNavigate }: Props) {
           onSetPrimaryPos={(id) => void setPrimaryPos(id)}
           onSyncFennoa={() => void syncFennoa()}
           onReload={() => void load(true, asOf)}
+          asOf={asOf}
+          selectedSiteId={selectedSiteId || undefined}
         />
       )}
     </div>
@@ -534,31 +549,74 @@ export function FinanceWorkspace({ token, tab, onNavigate }: Props) {
 }
 
 function FinanceLoadingState({ tab }: { tab: FinanceTab }) {
+  const [stepIndex, setStepIndex] = useState(0);
+
+  useEffect(() => {
+    const interval = globalThis.setInterval(() => {
+      setStepIndex((current) =>
+        current < FINANCE_LOADING_STEPS.length - 1 ? current + 1 : current,
+      );
+    }, 900);
+    return () => globalThis.clearInterval(interval);
+  }, []);
+
+  const progressPercent = Math.min(
+    ((stepIndex + 1) / FINANCE_LOADING_STEPS.length) * 100,
+    100,
+  );
+
   return (
-    <div className="finance-app finance-loading-shell" aria-busy="true" aria-live="polite">
-      <section className="finance-loading-hero">
-        <span />
-        <strong>{TITLES[tab]}</strong>
-        <i />
-      </section>
-      <div className="finance-loading-navigation" />
-      <div className="finance-loading-heading">
-        <span />
-        <i />
+    <div
+      className="cockpit-loading-shell finance-initial-loading"
+      aria-busy="true"
+      aria-live="polite"
+      aria-label={`Chargement de ${TITLES[tab]}`}
+    >
+      <div className="cockpit-loading-skeleton-bg">
+        <div className="skeleton-header" />
+        <div className="skeleton-grid">
+          {Array.from({ length: 4 }, (_, index) => (
+            <div className="skeleton-card" key={index} />
+          ))}
+        </div>
       </div>
-      <section className="finance-loading-cards">
-        {Array.from({ length: tab === 'sources' ? 5 : 4 }, (_, index) => (
-          <article key={index}>
-            <span />
-            <i />
-            <i />
-            <i />
-          </article>
-        ))}
-      </section>
-      <p className="finance-loading-caption">
-        <LoaderCircle className="spin" size={18} /> Consolidation des données Finance…
-      </p>
+
+      <div className="cockpit-loading-card-centered">
+        <div className="cockpit-loader-spinner-wrapper">
+          <div className="cockpit-minimal-spinner" />
+          <div className="cockpit-loader-icon">
+            <WalletCards size={32} className="chef-hat-pulse" />
+          </div>
+        </div>
+
+        <div className="cockpit-loading-info">
+          <div className="cockpit-brand-badge">
+            <Sparkles size={12} />
+            <span>ToqueHub Finance</span>
+          </div>
+          <h2 className="cockpit-loading-title">
+            Préparation de votre analyse
+            <span className="dot-flashing" />
+          </h2>
+          <div className="cockpit-step-wrapper">
+            <AnimatePresence mode="wait">
+              <motion.span
+                key={stepIndex}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.25 }}
+                className="cockpit-current-step"
+              >
+                {FINANCE_LOADING_STEPS[stepIndex]}
+              </motion.span>
+            </AnimatePresence>
+          </div>
+          <div className="cockpit-progress-container" aria-hidden="true">
+            <div className="cockpit-progress-bar" style={{ width: `${progressPercent}%` }} />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1739,6 +1797,8 @@ function SourcesView({
   onSetPrimaryPos,
   onSyncFennoa,
   onReload,
+  asOf,
+  selectedSiteId,
 }: {
   token: string;
   data: FinanceBootstrap;
@@ -1749,9 +1809,12 @@ function SourcesView({
   onSetPrimaryPos: (id: string) => void;
   onSyncFennoa: () => void;
   onReload: () => void;
+  asOf: string;
+  selectedSiteId?: string;
 }) {
   const [selectedProvider, setSelectedProvider] = useState<FinanceProvider>();
   const [importOpen, setImportOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [flatpaySettingsSiteId, setFlatpaySettingsSiteId] = useState<string>();
   const [posSettings, setPosSettings] = useState<{
     provider: 'LOYVERSE' | 'PAYPAL_POS';
@@ -1786,9 +1849,14 @@ function SourcesView({
             sont contrôlés avant d’alimenter le grand livre ToqueHub.
           </p>
         </div>
-        <button type="button" className="btn btn-primary" onClick={() => setImportOpen(true)}>
-          <UploadCloud size={16} /> Importer
-        </button>
+        <div className="finance-source-export-actions">
+          <button type="button" className="btn btn-secondary" onClick={() => setExportOpen(true)}>
+            <Download size={16} /> Exporter
+          </button>
+          <button type="button" className="btn btn-primary" onClick={() => setImportOpen(true)}>
+            <UploadCloud size={16} /> Importer
+          </button>
+        </div>
       </section>
       <section className="finance-connectors-grid">
         {(['FENNOA', 'LOYVERSE', 'FLATPAY', 'GENERIC', 'PAYPAL_POS'] as FinanceProvider[]).map(
@@ -1865,6 +1933,15 @@ function SourcesView({
           onImport={async (files, siteId) => {
             if (await onFiles(files, siteId)) setImportOpen(false);
           }}
+        />
+      ) : null}
+      {exportOpen ? (
+        <FinanceExportModal
+          token={token}
+          sites={data.sites}
+          asOf={asOf}
+          initialSiteId={selectedSiteId}
+          onClose={() => setExportOpen(false)}
         />
       ) : null}
       <ImportHistory imports={data.imports} />
@@ -2152,6 +2229,217 @@ function ProviderDetailsModal({
             ) : null}
           </div>
         </div>
+      </section>
+    </div>
+  );
+}
+
+const FINANCE_EXPORT_OPTIONS: Array<{
+  id: Exclude<FinanceExportReport, 'sales'>;
+  title: string;
+  description: string;
+}> = [
+  {
+    id: 'executive_annual',
+    title: 'Analyse annuelle',
+    description: 'Synthèse exécutive, trajectoire, alertes, budget, historique et sources.',
+  },
+  {
+    id: 'annual',
+    title: 'Annuel détaillé',
+    description: 'KPI, réel vs budget mois par mois, comparaisons et rapprochement comptable.',
+  },
+  {
+    id: 'monthly',
+    title: 'Mensuel',
+    description: 'Situation du mois, activité quotidienne, objectifs et historique comparable.',
+  },
+  {
+    id: 'daily',
+    title: 'Journalier',
+    description: 'Pilotage du jour, objectifs, sources, écarts et comparaison N-1.',
+  },
+];
+
+const SALES_EXPORT_OPTIONS: Array<{
+  id: FinanceSalesExportPeriod;
+  title: string;
+  description: string;
+}> = [
+  { id: 'daily', title: 'Journée', description: 'Ventes, heures, produits et effectif du jour.' },
+  { id: 'monthly', title: 'Mois', description: 'Évolution quotidienne et analyse commerciale du mois.' },
+  { id: 'annual', title: 'Année', description: 'Saisonnalité, comparaisons, produits et catégories.' },
+  { id: 'custom', title: 'Période libre', description: 'Choisissez précisément les dates à analyser.' },
+];
+
+function FinanceExportModal({
+  token,
+  sites,
+  asOf,
+  initialSiteId,
+  onClose,
+}: {
+  token: string;
+  sites: FinanceBootstrap['sites'];
+  asOf: string;
+  initialSiteId?: string;
+  onClose: () => void;
+}) {
+  const [family, setFamily] = useState<'finance' | 'sales'>('finance');
+  const [report, setReport] = useState<Exclude<FinanceExportReport, 'sales'>>('executive_annual');
+  const [salesPeriod, setSalesPeriod] = useState<FinanceSalesExportPeriod>('monthly');
+  const [referenceDate, setReferenceDate] = useState(asOf.slice(0, 10));
+  const [from, setFrom] = useState(`${asOf.slice(0, 7)}-01`);
+  const [to, setTo] = useState(asOf.slice(0, 10));
+  const [siteId, setSiteId] = useState(initialSiteId ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+
+  const generate = async () => {
+    setBusy(true);
+    setError(undefined);
+    try {
+      await api.downloadFinancePdf(token, {
+        report: family === 'finance' ? report : 'sales',
+        period: family === 'sales' ? salesPeriod : undefined,
+        asOf: referenceDate,
+        from: family === 'sales' && salesPeriod === 'custom' ? from : undefined,
+        to: family === 'sales' && salesPeriod === 'custom' ? to : undefined,
+        siteId: siteId || undefined,
+      });
+    } catch (reason) {
+      setError(messageOf(reason, 'Impossible de générer cet export.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className="finance-settings-modal-overlay"
+      role="presentation"
+      onMouseDown={() => !busy && onClose()}
+    >
+      <section
+        className="finance-import-modal finance-export-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="finance-export-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="finance-provider-details-header">
+          <div>
+            <span>Export Finance</span>
+            <h2 id="finance-export-title">Créer un rapport professionnel</h2>
+            <p>
+              Le document reprend la lecture ToqueHub, ses comparaisons et la traçabilité des
+              chiffres.
+            </p>
+          </div>
+          <button type="button" disabled={busy} onClick={onClose} aria-label="Fermer">
+            <X size={20} />
+          </button>
+        </header>
+        <div className="finance-export-modal-body">
+          <div className="finance-export-family-tabs" role="tablist" aria-label="Type d’export">
+            <button
+              type="button"
+              className={family === 'finance' ? 'active' : ''}
+              onClick={() => setFamily('finance')}
+            >
+              <BarChart3 size={17} /> Analyse financière
+            </button>
+            <button
+              type="button"
+              className={family === 'sales' ? 'active' : ''}
+              onClick={() => setFamily('sales')}
+            >
+              <Activity size={17} /> Ventes & affluence
+            </button>
+          </div>
+
+          <div className="finance-export-choice-grid">
+            {(family === 'finance' ? FINANCE_EXPORT_OPTIONS : SALES_EXPORT_OPTIONS).map((option) => {
+              const selected = family === 'finance' ? report === option.id : salesPeriod === option.id;
+              return (
+                <button
+                  type="button"
+                  key={option.id}
+                  className={selected ? 'selected' : ''}
+                  onClick={() => {
+                    if (family === 'finance')
+                      setReport(option.id as Exclude<FinanceExportReport, 'sales'>);
+                    else setSalesPeriod(option.id as FinanceSalesExportPeriod);
+                  }}
+                >
+                  <span>{selected ? <CheckCircle2 size={17} /> : <FileSpreadsheet size={17} />}</span>
+                  <strong>{option.title}</strong>
+                  <small>{option.description}</small>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="finance-export-fields">
+            <label className="finance-import-site-select">
+              <span>Établissement</span>
+              <select value={siteId} onChange={(event) => setSiteId(event.target.value)}>
+                <option value="">Tous les établissements (consolidé)</option>
+                {sites.map((site) => (
+                  <option key={site.id} value={site.id}>
+                    {site.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {family !== 'sales' || salesPeriod !== 'custom' ? (
+              <label className="finance-import-site-select">
+                <span>{family === 'finance' ? 'Situation au' : 'Date de référence'}</span>
+                <input
+                  type="date"
+                  value={referenceDate}
+                  onChange={(event) => setReferenceDate(event.target.value)}
+                />
+              </label>
+            ) : (
+              <>
+                <label className="finance-import-site-select">
+                  <span>Du</span>
+                  <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
+                </label>
+                <label className="finance-import-site-select">
+                  <span>Au</span>
+                  <input type="date" value={to} onChange={(event) => setTo(event.target.value)} />
+                </label>
+              </>
+            )}
+          </div>
+
+          <div className="finance-export-contents">
+            <ShieldCheck size={19} />
+            <div>
+              <strong>Un document prêt à partager et à contrôler</strong>
+              <p>
+                KPI, budget, écarts, comparaisons, graphiques, tableaux détaillés, périmètre,
+                fraîcheur, sources et limites disponibles sont automatiquement inclus.
+              </p>
+            </div>
+          </div>
+          {error ? (
+            <div className="alert-modern error">
+              <AlertCircle size={16} /> {error}
+            </div>
+          ) : null}
+        </div>
+        <footer className="finance-settings-modal-footer">
+          <button type="button" className="btn btn-secondary" disabled={busy} onClick={onClose}>
+            Annuler
+          </button>
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void generate()}>
+            {busy ? <LoaderCircle size={16} className="spin" /> : <Download size={16} />}
+            {busy ? 'Génération en cours…' : 'Générer le PDF'}
+          </button>
+        </footer>
       </section>
     </div>
   );

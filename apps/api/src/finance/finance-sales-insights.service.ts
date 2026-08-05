@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { FinanceImportStatus, FinanceReportKind, FinanceSourceType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { deduplicateCrossSourceSales } from './finance-sales-dedupe';
+import {
+  deduplicateCrossSourceSales,
+  resolveContributingSalesSourceIds,
+} from './finance-sales-dedupe';
 
 type Range = { from: Date; to: Date };
 type FinanceSaleRow = Prisma.FinanceDailySalesGetPayload<{
@@ -225,7 +228,17 @@ export class FinanceSalesInsightsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async build(organizationId: string, query: { from?: string; to?: string; siteId?: string } = {}) {
-    const settings = await this.prisma.financeSettings.findUnique({ where: { organizationId } });
+    const [settings, financeSources] = await Promise.all([
+      this.prisma.financeSettings.findUnique({ where: { organizationId } }),
+      this.prisma.financeDataSource.findMany({
+        where: {
+          organizationId,
+          sourceType: { not: FinanceSourceType.ACCOUNTING_API },
+          ...(query.siteId ? { siteId: query.siteId } : {}),
+        },
+      }),
+    ]);
+    const contributingSourceIds = resolveContributingSalesSourceIds(financeSources);
     const timeZone = settings?.timezone || 'Europe/Helsinki';
     const now = new Date();
     const to = endOfDay(parseDate(query.to, now));
@@ -240,15 +253,8 @@ export class FinanceSalesInsightsService {
         OR: [current, previous, previousYear].map((range) => ({
           saleDate: { gte: range.from, lte: range.to },
         })),
+        sourceId: { in: contributingSourceIds },
         AND: [
-          {
-            source: {
-              is: {
-                isPrimarySales: true,
-                ...(query.siteId ? { siteId: query.siteId } : {}),
-              },
-            },
-          },
           {
             OR: [
               {
@@ -283,9 +289,9 @@ export class FinanceSalesInsightsService {
 
     const [currentProducts, previousProducts, previousYearProducts, technicalSheets, assignments] =
       await Promise.all([
-        this.productsFor(organizationId, current, query.siteId),
-        this.productsFor(organizationId, previous, query.siteId),
-        this.productsFor(organizationId, previousYear, query.siteId),
+        this.productsFor(organizationId, current, contributingSourceIds),
+        this.productsFor(organizationId, previous, contributingSourceIds),
+        this.productsFor(organizationId, previousYear, contributingSourceIds),
         this.prisma.technicalSheet.findMany({
           where: {
             organizationId,
@@ -620,7 +626,7 @@ export class FinanceSalesInsightsService {
     };
   }
 
-  private async productsFor(organizationId: string, range: Range, siteId?: string) {
+  private async productsFor(organizationId: string, range: Range, contributingSourceIds: string[]) {
     const batches = await this.prisma.financeImportBatch.findMany({
       where: {
         organizationId,
@@ -628,7 +634,7 @@ export class FinanceSalesInsightsService {
         reportKind: { in: [FinanceReportKind.PRODUCT_SALES, FinanceReportKind.RECEIPTS] },
         periodStart: { not: null },
         periodEnd: { not: null, lte: range.to },
-        source: { isPrimarySales: true, ...(siteId ? { siteId } : {}) },
+        sourceId: { in: contributingSourceIds },
       },
       select: { id: true, sourceId: true, periodStart: true, periodEnd: true, createdAt: true },
       orderBy: [{ periodEnd: 'desc' }, { createdAt: 'desc' }],
@@ -652,9 +658,8 @@ export class FinanceSalesInsightsService {
     const apiSources = await this.prisma.financeDataSource.findMany({
       where: {
         organizationId,
-        isPrimarySales: true,
+        id: { in: contributingSourceIds },
         sourceType: FinanceSourceType.POS_API,
-        ...(siteId ? { siteId } : {}),
       },
       select: { id: true },
     });

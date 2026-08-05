@@ -16,6 +16,7 @@ import { FlatpayAutomationService } from './flatpay-automation.service';
 import { PosApiCredentialsService } from './pos-api-credentials.service';
 import { PosApiSyncService } from './pos-api-sync.service';
 import { FinanceDocumentOcrService } from './finance-document-ocr.service';
+import { FinanceExportService } from './finance-export.service';
 
 @Module({
   imports: [MistralModule],
@@ -36,6 +37,7 @@ import { FinanceDocumentOcrService } from './finance-document-ocr.service';
     PosApiCredentialsService,
     PosApiSyncService,
     FinanceDocumentOcrService,
+    FinanceExportService,
   ],
 })
 export class FinanceModule {}

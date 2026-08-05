@@ -2777,6 +2777,10 @@ export interface FinanceBootstrap {
     mode: 'consolidated' | 'site';
     site: { id: string; name: string } | null;
     accountingAllocated: boolean;
+    budgetAllocated: boolean;
+    accountingMode: 'consolidated' | 'direct' | 'exclusive_site_fallback' | 'unavailable';
+    budgetMode: 'consolidated' | 'direct' | 'exclusive_site_fallback' | 'unavailable';
+    accountingSourceIds: string[];
     note: string;
   };
   sources: FinanceDataSource[];
@@ -2922,6 +2926,19 @@ export interface FinanceSalesProduct {
   marginRate: number | null;
   unitCost: number | null;
   estimatedCost: number | null;
+}
+
+export type FinanceExportReport = 'executive_annual' | 'annual' | 'monthly' | 'daily' | 'sales';
+
+export type FinanceSalesExportPeriod = 'daily' | 'monthly' | 'annual' | 'custom';
+
+export interface FinanceExportParams {
+  report: FinanceExportReport;
+  period?: FinanceSalesExportPeriod;
+  asOf?: string;
+  from?: string;
+  to?: string;
+  siteId?: string;
 }
 
 export interface ConfigureFennoaPayload {
@@ -3952,6 +3969,90 @@ export interface Inventory {
   site?: Site | null;
   location?: Location | null;
   lines?: InventoryLine[];
+}
+
+export interface InventoryImportCandidate {
+  productId: string;
+  name: string;
+  unitId: string;
+  unitLabel: string;
+  score: number;
+}
+
+export interface InventoryImportPreviewRow {
+  sourceId: string;
+  sheetName: string;
+  rowNumber: number;
+  sourceName: string;
+  countedQuantity: number;
+  unitLabel?: string | null;
+  unitPriceExVat?: number | null;
+  totalExVat?: number | null;
+  categoryName?: string | null;
+  supplierName?: string | null;
+  action: 'MATCH' | 'CREATE' | 'IGNORE';
+  productId?: string | null;
+  productName?: string | null;
+  unitId?: string | null;
+  resolvedUnitLabel?: string | null;
+  theoreticalQuantity: number;
+  varianceQuantity: number;
+  matchMethod?: 'exact' | 'learned_alias' | 'mistral_suggestion' | null;
+  matchConfidence?: number | null;
+  needsReview: boolean;
+  selected: boolean;
+  warnings: string[];
+  candidates: InventoryImportCandidate[];
+}
+
+export interface InventoryImportPreview {
+  filename: string;
+  site: { id: string; name: string };
+  sourceKind: 'spreadsheetml' | 'xlsx' | 'csv';
+  sheets: Array<{ name: string; rowsRead: number; productsFound: number }>;
+  rows: InventoryImportPreviewRow[];
+  issues: Array<{
+    sheetName: string;
+    rowNumber: number;
+    code: string;
+    message: string;
+  }>;
+  summary: {
+    productRows: number;
+    zeroQuantityRows: number;
+    fractionalQuantityRows: number;
+    calculatedValueExVat: number;
+    reportedRowsValueExVat?: number | null;
+    workbookSummaryValueExVat?: number | null;
+    exactMatches: number;
+    learnedMatches: number;
+    suggestedMatches: number;
+    productsToCreate: number;
+    rowsNeedingReview: number;
+  };
+  availableUnits: Array<{ id: string; name: string; symbol: string; type: string }>;
+  ai: {
+    status: 'not_needed' | 'no_match' | 'unavailable' | 'applied';
+    provider?: string | null;
+    model?: string | null;
+    privacy: string;
+    warnings: string[];
+  };
+}
+
+export interface InventoryImportCommitResult {
+  inventory: Inventory;
+  status: 'DRAFT';
+  stockUpdated: false;
+  summary: {
+    importedRows: number;
+    inventoryLines: number;
+    matchedProducts: number;
+    createdProducts: number;
+    updatedPrices: number;
+    learnedAliases: number;
+  };
+  nextStep: string;
 }
 
 export interface AuditEntry {

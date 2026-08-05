@@ -50,7 +50,11 @@ export function DocumentOcrUpload({
 
   return (
     <div className="stocks-ocr-import">
-      {error && <div className="alert-modern error"><AlertCircle size={16} /> {error}</div>}
+      {error && (
+        <div className="alert-modern error">
+          <AlertCircle size={16} /> {error}
+        </div>
+      )}
       <label
         className="stocks-ocr-dropzone"
         onDragOver={(event) => event.preventDefault()}
@@ -61,7 +65,9 @@ export function DocumentOcrUpload({
       >
         <FileText size={32} />
         <span>Déposer vos documents ici ou cliquer pour parcourir</span>
-        <small>{acceptedFormats} · {maxFiles} fichiers maximum</small>
+        <small>
+          {acceptedFormats} · {maxFiles} fichiers maximum
+        </small>
         <input
           type="file"
           accept={accept}
@@ -78,7 +84,9 @@ export function DocumentOcrUpload({
                 <FileText size={18} />
                 <div className="stocks-ocr-file-row-details">
                   <span>{file.name}</span>
-                  <small>{formatBytes(file.size)} · {fileTypeLabel(file)}</small>
+                  <small>
+                    {formatBytes(file.size)} · {fileTypeLabel(file)}
+                  </small>
                 </div>
                 <button
                   type="button"
@@ -94,7 +102,11 @@ export function DocumentOcrUpload({
         </div>
       )}
       <div className="modal-footer stocks-ocr-upload-footer">
-        <button className="btn btn-primary" disabled={!files.length || submitting} onClick={() => void submit()}>
+        <button
+          className="btn btn-primary"
+          disabled={!files.length || submitting}
+          onClick={() => void submit()}
+        >
           {submitting ? 'Analyse en cours…' : submitLabel(files.length)}
         </button>
       </div>
@@ -110,7 +122,14 @@ function formatBytes(size: number) {
 }
 
 function fileTypeLabel(file: File) {
-  return file.type === 'application/pdf'
-    ? 'PDF'
-    : file.type.split('/')[1]?.toUpperCase() || 'Document';
+  const extension = file.name.split('.').pop()?.toUpperCase();
+  if (
+    extension &&
+    ['PDF', 'PNG', 'JPEG', 'JPG', 'WEBP', 'HEIC', 'HEIF', 'AVIF', 'XML', 'XLSX', 'CSV'].includes(
+      extension,
+    )
+  ) {
+    return extension === 'JPG' ? 'JPEG' : extension;
+  }
+  return file.type.split('/')[1]?.toUpperCase() || 'Document';
 }

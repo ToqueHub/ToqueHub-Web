@@ -15,7 +15,21 @@ export function DocumentationPage() {
   const filteredChapters = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase('fr');
     if (!needle) return chapters;
-    return chapters.filter((chapter) => [chapter.title, chapter.eyebrow, chapter.goal, chapter.audience, ...chapter.steps, ...chapter.tips].join(' ').toLocaleLowerCase('fr').includes(needle));
+    return chapters.filter((chapter) => {
+      const screens = screensByChapter[chapter.id] ?? [];
+      const flow = operationalFlows[chapter.id];
+      const searchable = [
+        chapter.title,
+        chapter.eyebrow,
+        chapter.goal,
+        chapter.audience,
+        ...chapter.steps,
+        ...chapter.tips,
+        ...screens.flatMap((screen) => [screen.title, screen.purpose, screen.actions, ...(screen.flow ?? [])]),
+        ...(flow ? [flow.when, ...flow.prerequisites, ...flow.steps, ...flow.checks, flow.result, ...flow.pitfalls] : []),
+      ];
+      return searchable.join(' ').toLocaleLowerCase('fr').includes(needle);
+    });
   }, [query]);
 
   useEffect(() => {
@@ -29,6 +43,15 @@ export function DocumentationPage() {
     });
     return () => observer.disconnect();
   }, [filteredChapters]);
+
+  useEffect(() => {
+    const id = decodeURIComponent(window.location.hash.replace(/^#/, ''));
+    if (!chapters.some((chapter) => chapter.id === id)) return;
+    setActiveId(id);
+    window.requestAnimationFrame(() => {
+      document.getElementById(`chapter-${id}`)?.scrollIntoView({ block: 'start' });
+    });
+  }, []);
 
   const goToChapter = (id: string) => {
     document.getElementById(`chapter-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -67,7 +90,7 @@ export function DocumentationPage() {
 
       <section className="docs-content">
         <section className="docs-hero">
-          <p className="docs-overline">Manuel opérationnel · édition 1.0</p>
+          <p className="docs-overline">Manuel opérationnel · édition 2.1</p>
           <h1>Le guide complet pour faire vivre <em>ToqueHub</em> au quotidien.</h1>
           <p>Ce livret accompagne la brigade, les responsables et les administrateurs dans chaque geste métier. Il explique quoi faire, dans quel ordre et pourquoi — sans code ni jargon technique.</p>
           <div className="docs-hero-meta"><span><CheckCircle2 size={17} /> Procédures réelles</span><span><ClipboardList size={17} /> {chapters.length} chapitres pratiques</span><span><BookOpen size={17} /> Web, mobile et exploitation locale</span></div>
@@ -75,8 +98,8 @@ export function DocumentationPage() {
 
         <section className="docs-roadmap" aria-labelledby="roadmap-title">
           <p className="docs-overline">Le bon ordre</p><h2 id="roadmap-title">Le fil conducteur de votre cuisine</h2>
-          <div className="docs-flow"><span>Référentiels</span><ChevronRight /><span>Stocks</span><ChevronRight /><span>Fiches techniques</span><ChevronRight /><span>Production</span><ChevronRight /><span>Menus</span><ChevronRight /><span>HACCP & RH</span></div>
-          <p>Chaque étape utilise les données de la précédente. Cette progression évite les doubles saisies et rend les indicateurs fiables.</p>
+          <div className="docs-flow"><span>Référentiels</span><ChevronRight /><span>Stocks</span><ChevronRight /><span>Fiches techniques</span><ChevronRight /><span>Production & Menus</span><ChevronRight /><span>HACCP & équipes</span><ChevronRight /><span>Achats, Finance & connecteurs</span></div>
+          <p>Chaque étape utilise les données de la précédente. Cette progression évite les doubles saisies, clarifie les responsabilités et rend les indicateurs fiables.</p>
         </section>
 
         {filteredChapters.map((chapter) => <Chapter key={chapter.id} chapter={chapter} onRelatedClick={goToChapter} />)}

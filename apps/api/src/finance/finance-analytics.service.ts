@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { FinanceAccountCategory, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { deduplicateCrossSourceSales } from './finance-sales-dedupe';
+import {
+  deduplicateCrossSourceSales,
+  resolveContributingSalesSourceIds,
+} from './finance-sales-dedupe';
 import type { FinanceBootstrapQueryDto } from './dto/finance.dto';
 
 type MetricStatus = 'ready' | 'provisional' | 'unavailable';
@@ -36,6 +39,59 @@ type DashboardPeriodContext = {
   fixedCostsOverride?: number | null;
   fixedCostAllocationDays?: number;
 };
+
+export type FinanceSiteDataScopeMode =
+  | 'consolidated'
+  | 'direct'
+  | 'exclusive_site_fallback'
+  | 'unavailable';
+
+export function resolveFinanceSiteDataScope(input: {
+  siteId?: string;
+  activeSalesSiteIds: string[];
+  directAccountingSourceIds: string[];
+  globalAccountingSourceIds: string[];
+  budgetSiteId?: string | null;
+  hasBudget: boolean;
+}) {
+  if (!input.siteId) {
+    return {
+      accountingMode: 'consolidated' as FinanceSiteDataScopeMode,
+      accountingSourceIds: [
+        ...new Set([...input.directAccountingSourceIds, ...input.globalAccountingSourceIds]),
+      ],
+      budgetMode: input.hasBudget
+        ? ('consolidated' as FinanceSiteDataScopeMode)
+        : ('unavailable' as FinanceSiteDataScopeMode),
+      includeBudget: input.hasBudget,
+    };
+  }
+
+  const exclusiveSite =
+    input.activeSalesSiteIds.length === 1 && input.activeSalesSiteIds[0] === input.siteId;
+  const accountingSourceIds = [...input.directAccountingSourceIds];
+  let accountingMode: FinanceSiteDataScopeMode = accountingSourceIds.length
+    ? 'direct'
+    : 'unavailable';
+  if (!accountingSourceIds.length && exclusiveSite && input.globalAccountingSourceIds.length) {
+    accountingSourceIds.push(...input.globalAccountingSourceIds);
+    accountingMode = 'exclusive_site_fallback';
+  }
+
+  const budgetIsDirect = input.hasBudget && input.budgetSiteId === input.siteId;
+  const budgetCanFollowExclusiveSite =
+    input.hasBudget && input.budgetSiteId == null && exclusiveSite;
+  return {
+    accountingMode,
+    accountingSourceIds,
+    budgetMode: budgetIsDirect
+      ? ('direct' as FinanceSiteDataScopeMode)
+      : budgetCanFollowExclusiveSite
+        ? ('exclusive_site_fallback' as FinanceSiteDataScopeMode)
+        : ('unavailable' as FinanceSiteDataScopeMode),
+    includeBudget: budgetIsDirect || budgetCanFollowExclusiveSite,
+  };
+}
 
 const OPTIONAL_KPIS = [
   {
@@ -370,7 +426,12 @@ export class FinanceAnalyticsService {
       this.prisma.financeSettings.findUnique({ where: { organizationId } }),
       this.prisma.financeBudgetPlan.findFirst({
         where: { organizationId, isReference: true },
-        include: { lines: { orderBy: { periodStart: 'asc' } } },
+        include: {
+          lines: { orderBy: { periodStart: 'asc' } },
+          importBatch: {
+            select: { source: { select: { siteId: true } } },
+          },
+        },
         orderBy: { updatedAt: 'desc' },
       }),
       this.prisma.organization.findUnique({
@@ -381,12 +442,22 @@ export class FinanceAnalyticsService {
     const scopedSources = query.siteId
       ? sources.filter(({ siteId }) => siteId === query.siteId)
       : sources;
+    const allContributingSalesSourceIds = resolveContributingSalesSourceIds(
+      sources.filter(({ sourceType }) => sourceType !== 'ACCOUNTING_API'),
+    );
+    const contributingSalesSourceIds = resolveContributingSalesSourceIds(
+      scopedSources.filter(({ sourceType }) => sourceType !== 'ACCOUNTING_API'),
+    );
+    const contributingSalesSourceIdSet = new Set(contributingSalesSourceIds);
     const latestCoverage = scopedSources
       .map(({ coverageEnd }) => coverageEnd)
       .filter((value): value is Date => Boolean(value && value <= now))
       .sort((left, right) => right.getTime() - left.getTime())[0];
-    const earliestRelevantCoverage = scopedSources
-      .filter(({ isPrimarySales, sourceType }) => isPrimarySales || sourceType === 'ACCOUNTING_API')
+    let earliestRelevantCoverage = scopedSources
+      .filter(
+        ({ id, sourceType }) =>
+          contributingSalesSourceIdSet.has(id) || sourceType === 'ACCOUNTING_API',
+      )
       .map(({ coverageStart }) => coverageStart)
       .filter((value): value is Date => Boolean(value))
       .sort((left, right) => left.getTime() - right.getTime())[0];
@@ -425,12 +496,11 @@ export class FinanceAnalyticsService {
     const annualBudgetTo = endOfMonth(asOf) > fiscalEnd ? fiscalEnd : endOfMonth(asOf);
     const annualActualTo = asOf > fiscalEnd ? fiscalEnd : asOf;
     const readFrom = shiftYear(fiscalStart, -3);
-    const [ledger, importedSales, periods] = await Promise.all([
+    const [allLedger, importedSales, periods, activeSalesSources] = await Promise.all([
       this.prisma.financeLedgerEntry.findMany({
         where: {
           organizationId,
           entryDate: { gte: readFrom, lte: annualBudgetTo },
-          ...(query.siteId ? { source: { siteId: query.siteId } } : {}),
         },
         orderBy: { entryDate: 'asc' },
       }),
@@ -439,19 +509,79 @@ export class FinanceAnalyticsService {
           organizationId,
           saleDate: { gte: readFrom, lte: annualBudgetTo },
           isRevenueRecord: true,
-          source: { isPrimarySales: true, ...(query.siteId ? { siteId: query.siteId } : {}) },
+          sourceId: { in: contributingSalesSourceIds },
         },
         include: { source: { select: { isPrimaryPos: true, provider: true, siteId: true } } },
         orderBy: { saleDate: 'asc' },
       }),
       this.prisma.financeAccountingPeriod.findMany({ where: { organizationId } }),
+      this.prisma.financeDataSource.findMany({
+        where: {
+          organizationId,
+          id: { in: allContributingSalesSourceIds },
+          siteId: { not: null },
+          dailySales: {
+            some: {
+              saleDate: { gte: fiscalStart, lte: annualActualTo },
+              isRevenueRecord: true,
+            },
+          },
+        },
+        select: { siteId: true },
+      }),
     ]);
+    const activeSalesSiteIds = [
+      ...new Set(
+        activeSalesSources
+          .map(({ siteId }) => siteId)
+          .filter((siteId): siteId is string => Boolean(siteId)),
+      ),
+    ];
+    const directAccountingSourceIds = query.siteId
+      ? sources
+          .filter(
+            ({ siteId, sourceType }) => siteId === query.siteId && sourceType === 'ACCOUNTING_API',
+          )
+          .map(({ id }) => id)
+      : sources.filter(({ sourceType }) => sourceType === 'ACCOUNTING_API').map(({ id }) => id);
+    const globalAccountingSourceIds = sources
+      .filter(({ siteId, sourceType }) => !siteId && sourceType === 'ACCOUNTING_API')
+      .map(({ id }) => id);
+    const dataScope = resolveFinanceSiteDataScope({
+      siteId: query.siteId,
+      activeSalesSiteIds,
+      directAccountingSourceIds,
+      globalAccountingSourceIds,
+      budgetSiteId: budgetPlan?.importBatch?.source?.siteId,
+      hasBudget: Boolean(budgetPlan),
+    });
+    const accountingSourceIdSet = new Set(dataScope.accountingSourceIds);
+    const ledger = query.siteId
+      ? allLedger.filter(({ sourceId }) => accountingSourceIdSet.has(sourceId))
+      : allLedger;
+    if (query.siteId && dataScope.accountingSourceIds.length) {
+      const accountingSources = sources.filter(({ id }) => accountingSourceIdSet.has(id));
+      earliestRelevantCoverage = [...scopedSources, ...accountingSources]
+        .filter(
+          ({ id, sourceType }) =>
+            contributingSalesSourceIdSet.has(id) || sourceType === 'ACCOUNTING_API',
+        )
+        .map(({ coverageStart }) => coverageStart)
+        .filter((value): value is Date => Boolean(value))
+        .sort((left, right) => left.getTime() - right.getTime())[0];
+    }
     const sales = deduplicateCrossSourceSales(importedSales).rows;
     const categoryByCode = new Map(accounts.map(({ code, category }) => [code, category]));
     const accountingLockedThrough = this.accountingLockedThrough(periods);
-    const cash = query.siteId
-      ? null
-      : await this.cashBalanceFor(organizationId, accounts, annualActualTo);
+    const cash =
+      query.siteId && dataScope.accountingMode === 'unavailable'
+        ? null
+        : await this.cashBalanceFor(
+            organizationId,
+            accounts,
+            annualActualTo,
+            query.siteId ? dataScope.accountingSourceIds : undefined,
+          );
     const annualActual = this.aggregate(
       ledger,
       sales,
@@ -504,7 +634,7 @@ export class FinanceAnalyticsService {
       shiftYear(endOfUtcDay(asOf), -1),
       accountingLockedThrough,
     );
-    const budgetLines = query.siteId ? [] : (budgetPlan?.lines ?? []);
+    const budgetLines = dataScope.includeBudget ? (budgetPlan?.lines ?? []) : [];
     const annualBudget = this.budgetAggregate(budgetLines, fiscalStart, annualBudgetTo);
     const monthlyBudget = this.budgetAggregate(budgetLines, monthStart, monthEnd);
     const weekdayProfile = activeWeekdayProfile(sales);
@@ -757,20 +887,19 @@ export class FinanceAnalyticsService {
           totalMonths,
           periodProgress: totalMonths ? round((elapsedMonths / totalMonths) * 100, 1) : 0,
           actualCoverageLabel: earliestRelevantCoverage
-            ? `Du ${earliestRelevantCoverage.toLocaleDateString('fr-FR')} au ${asOf.toLocaleDateString('fr-FR')}`
-            : `Données disponibles jusqu’au ${asOf.toLocaleDateString('fr-FR')}`,
+            ? `Du ${earliestRelevantCoverage.toLocaleDateString('fr-FR', { timeZone: 'UTC' })} au ${asOf.toLocaleDateString('fr-FR', { timeZone: 'UTC' })}`
+            : `Données disponibles jusqu’au ${asOf.toLocaleDateString('fr-FR', { timeZone: 'UTC' })}`,
           dataCoverageStart: earliestRelevantCoverage ?? null,
           coverageComplete: Boolean(
-            !query.siteId &&
             earliestRelevantCoverage &&
             earliestRelevantCoverage <= fiscalStart &&
             annualActual.operatingExpenses != null,
           ),
-          budgetCoverageLabel: query.siteId
-            ? 'Budget non affecté à cet établissement'
-            : budgetPlan
+          budgetCoverageLabel: dataScope.includeBudget
+            ? budgetPlan
               ? `${elapsedMonths} mois comparés aux ${elapsedMonths} mêmes mois budgétés`
-              : 'Aucun budget de référence',
+              : 'Aucun budget de référence'
+            : 'Budget non affecté à cet établissement',
         },
         health,
         reconciliation: {
@@ -814,7 +943,7 @@ export class FinanceAnalyticsService {
           comparison: dailyComparison,
         },
         budget:
-          budgetPlan && !query.siteId
+          budgetPlan && dataScope.includeBudget
             ? {
                 id: budgetPlan.id,
                 name: budgetPlan.name,
@@ -830,6 +959,10 @@ export class FinanceAnalyticsService {
             : null,
         preferences: { selected: selectedKpis, available: OPTIONAL_KPIS },
         mistral: { configured: Boolean(organization?.mistralApiKey) },
+      },
+      dataScope: {
+        ...dataScope,
+        activeSalesSiteIds,
       },
     };
   }
@@ -1454,13 +1587,19 @@ export class FinanceAnalyticsService {
     organizationId: string,
     accounts: Array<{ code: string; category: FinanceAccountCategory }>,
     to: Date,
+    sourceIds?: string[],
   ) {
     const cashCodes = accounts
       .filter(({ category }) => category === FinanceAccountCategory.CASH)
       .map(({ code }) => code);
     if (!cashCodes.length) return null;
     const rows = await this.prisma.financeLedgerEntry.findMany({
-      where: { organizationId, accountCode: { in: cashCodes }, entryDate: { lte: to } },
+      where: {
+        organizationId,
+        accountCode: { in: cashCodes },
+        entryDate: { lte: to },
+        ...(sourceIds ? { sourceId: { in: sourceIds } } : {}),
+      },
       orderBy: { entryDate: 'asc' },
     });
     if (!rows.length) return null;
@@ -1483,7 +1622,7 @@ export class FinanceAnalyticsService {
         level: 'unknown',
         label: 'Lecture incomplète',
         summary:
-          'Les ventes visibles sont réelles, mais la comptabilité ne couvre pas encore toute la période. Connectez Fennoa avant de conclure sur la rentabilité.',
+          'Les ventes visibles sont réelles, mais les données comptables enregistrées ne couvrent pas encore ce périmètre. Vérifiez la période synchronisée ou l’affectation aux établissements avant de conclure sur la rentabilité.',
       };
     if (result?.value != null && result.value < 0)
       return {

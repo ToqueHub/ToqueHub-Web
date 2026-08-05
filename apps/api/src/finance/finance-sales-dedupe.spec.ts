@@ -1,5 +1,8 @@
 import { FinanceProvider } from '@prisma/client';
-import { deduplicateCrossSourceSales } from './finance-sales-dedupe';
+import {
+  deduplicateCrossSourceSales,
+  resolveContributingSalesSourceIds,
+} from './finance-sales-dedupe';
 
 const saleDate = new Date('2026-08-04T10:30:00.000Z');
 const shared = {
@@ -87,5 +90,54 @@ describe('deduplicateCrossSourceSales', () => {
 
     expect(result.duplicateCandidates).toBe(0);
     expect(result.rows).toHaveLength(2);
+  });
+});
+
+describe('resolveContributingSalesSourceIds', () => {
+  it("inclut les copies techniques d'une caisse active sur le même établissement", () => {
+    expect(
+      resolveContributingSalesSourceIds([
+        {
+          id: 'flatpay-historique',
+          provider: FinanceProvider.FLATPAY,
+          siteId: 'kuusamo',
+          isPrimarySales: true,
+          isPrimaryPos: true,
+        },
+        {
+          id: 'flatpay-renomme',
+          provider: FinanceProvider.FLATPAY,
+          siteId: 'kuusamo',
+          isPrimarySales: false,
+          isPrimaryPos: false,
+        },
+        {
+          id: 'paypal-inactif',
+          provider: FinanceProvider.PAYPAL_POS,
+          siteId: 'kuusamo',
+          isPrimarySales: false,
+          isPrimaryPos: false,
+        },
+      ]),
+    ).toEqual(['flatpay-historique', 'flatpay-renomme']);
+  });
+
+  it('conserve séparément les comptes du même fournisseur rattachés à deux sites', () => {
+    expect(
+      resolveContributingSalesSourceIds([
+        {
+          id: 'flatpay-kuusamo',
+          provider: FinanceProvider.FLATPAY,
+          siteId: 'kuusamo',
+          isPrimarySales: true,
+        },
+        {
+          id: 'flatpay-oulu',
+          provider: FinanceProvider.FLATPAY,
+          siteId: 'oulu',
+          isPrimarySales: true,
+        },
+      ]),
+    ).toEqual(['flatpay-kuusamo', 'flatpay-oulu']);
   });
 });

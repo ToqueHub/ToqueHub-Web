@@ -1,5 +1,6 @@
 import {
   computeBudgetTransactionPacing,
+  resolveFinanceSiteDataScope,
   resolveMonthlyActualTo,
 } from './finance-analytics.service';
 
@@ -60,5 +61,60 @@ describe('Finance monthly display range', () => {
     expect(resolveMonthlyActualTo(new Date('2026-07-09T23:59:59.999Z'), now)).toEqual(
       new Date('2026-07-31T23:59:59.999Z'),
     );
+  });
+});
+
+describe('Finance site accounting and budget scope', () => {
+  it('uses the stored global accounting data for the only active site', () => {
+    expect(
+      resolveFinanceSiteDataScope({
+        siteId: 'kuusamo',
+        activeSalesSiteIds: ['kuusamo'],
+        directAccountingSourceIds: [],
+        globalAccountingSourceIds: ['fennoa'],
+        budgetSiteId: 'kuusamo',
+        hasBudget: true,
+      }),
+    ).toEqual({
+      accountingMode: 'exclusive_site_fallback',
+      accountingSourceIds: ['fennoa'],
+      budgetMode: 'direct',
+      includeBudget: true,
+    });
+  });
+
+  it('does not assign global accounting data when several sites are active', () => {
+    expect(
+      resolveFinanceSiteDataScope({
+        siteId: 'kuusamo',
+        activeSalesSiteIds: ['kuusamo', 'oulu'],
+        directAccountingSourceIds: [],
+        globalAccountingSourceIds: ['fennoa'],
+        budgetSiteId: 'kuusamo',
+        hasBudget: true,
+      }),
+    ).toEqual({
+      accountingMode: 'unavailable',
+      accountingSourceIds: [],
+      budgetMode: 'direct',
+      includeBudget: true,
+    });
+  });
+
+  it('includes every stored source in the consolidated view without duplicates', () => {
+    expect(
+      resolveFinanceSiteDataScope({
+        activeSalesSiteIds: ['kuusamo', 'oulu'],
+        directAccountingSourceIds: ['fennoa', 'local-ledger'],
+        globalAccountingSourceIds: ['fennoa'],
+        budgetSiteId: null,
+        hasBudget: true,
+      }),
+    ).toEqual({
+      accountingMode: 'consolidated',
+      accountingSourceIds: ['fennoa', 'local-ledger'],
+      budgetMode: 'consolidated',
+      includeBudget: true,
+    });
   });
 });

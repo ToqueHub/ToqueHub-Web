@@ -10,6 +10,8 @@ import type {
   AuditEntry,
   ArchitectureAnalysis,
   Inventory,
+  InventoryImportCommitResult,
+  InventoryImportPreview,
   Location,
   Lot,
   Product,
@@ -187,6 +189,7 @@ import type {
   ConfigureFennoaPayload,
   FennoaSyncResult,
   FinanceAiAnalysis,
+  FinanceExportParams,
 } from '../types';
 
 type PlanningRangeParams = {
@@ -694,6 +697,26 @@ export const api = {
     if (asOf) query.set('to', asOf);
     if (siteId) query.set('siteId', siteId);
     return request<FinanceBootstrap>(`/finance/bootstrap?${query}`, {}, token);
+  },
+  async downloadFinancePdf(token: string, params: FinanceExportParams) {
+    const search = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') search.set(key, String(value));
+    });
+    const response = await fetch(`${API_URL}/api/finance/exports/pdf?${search.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
+    const blob = await response.blob();
+    const disposition = response.headers.get('Content-Disposition') ?? '';
+    const filename =
+      disposition.match(/filename="?([^";]+)"?/)?.[1] ?? `toquehub-finance-${params.report}.pdf`;
+    const url = URL.createObjectURL(blob);
+    const link = globalThis.document.createElement('a');
+    link.href = url;
+    link.download = decodeURIComponent(filename);
+    link.click();
+    URL.revokeObjectURL(url);
   },
   importFinanceFile(token: string, file: File, siteId?: string) {
     const body = new FormData();
@@ -4201,6 +4224,50 @@ export const api = {
   },
   inventories(token: string) {
     return request<Inventory[]>('/inventories', {}, token);
+  },
+  async analyzeInventoryImport(token: string, file: File, siteId: string) {
+    const body = new FormData();
+    body.append('file', file);
+    body.append('siteId', siteId);
+    const response = await fetch(`${API_URL}/api/inventories/import/analyze`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    });
+    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
+    return response.json() as Promise<InventoryImportPreview>;
+  },
+  commitInventoryImport(
+    token: string,
+    payload: {
+      siteId: string;
+      name: string;
+      inventoryDate?: string;
+      comment?: string;
+      updatePrices?: boolean;
+      createMissingCategories?: boolean;
+      createMissingSuppliers?: boolean;
+      learnAliases?: boolean;
+      rows: Array<{
+        sourceId: string;
+        sourceName: string;
+        countedQuantity: number;
+        unitLabel?: string;
+        unitPriceExVat?: number;
+        categoryName?: string;
+        supplierName?: string;
+        action: 'MATCH' | 'CREATE' | 'IGNORE';
+        productId?: string;
+        unitId?: string;
+        selected?: boolean;
+      }>;
+    },
+  ) {
+    return request<InventoryImportCommitResult>(
+      '/inventories/import/commit',
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
   },
   createInventory(
     token: string,

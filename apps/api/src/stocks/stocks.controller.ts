@@ -25,6 +25,10 @@ import { AdjustProductStockDto } from './dto/adjust-product-stock.dto';
 import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
 import { CreateInventoryDto, UpdateInventoryCountsDto } from './dto/inventory.dto';
 import {
+  AnalyzeInventoryImportDto,
+  CommitInventoryImportDto,
+} from './dto/stocks-inventory-import.dto';
+import {
   GenerateMarginReportDto,
   MarginsQueryDto,
   UpdateMarginSettingsDto,
@@ -48,6 +52,7 @@ import {
   UpsertUnitDto,
 } from './dto/stocks-reference.dto';
 import { StocksMarginsService } from './stocks-margins.service';
+import { StocksInventoryImportService } from './stocks-inventory-import.service';
 import { StocksOcrService } from './stocks-ocr.service';
 import { StocksProductImportService } from './stocks-product-import.service';
 import { StocksService } from './stocks.service';
@@ -62,6 +67,7 @@ export class StocksController {
     private readonly stocksOcrService: StocksOcrService,
     private readonly stocksMarginsService: StocksMarginsService,
     private readonly stocksProductImportService: StocksProductImportService,
+    private readonly stocksInventoryImportService: StocksInventoryImportService,
   ) {}
 
   private org(user: AuthenticatedUser) {
@@ -529,6 +535,29 @@ export class StocksController {
   ) {
     return this.stocksService.listInventories(this.org(u), q);
   }
+
+  @Post('inventories/import/analyze')
+  @UseInterceptors(FileInterceptor('file', { limits: { files: 1, fileSize: 8 * 1024 * 1024 } }))
+  analyzeInventoryImport(
+    @CurrentUser() u: AuthenticatedUser,
+    @Body() d: AnalyzeInventoryImportDto,
+    @UploadedFile() file: any,
+  ) {
+    return this.stocksInventoryImportService.analyze(
+      this.org(u),
+      this.actor(u),
+      d.siteId,
+      file,
+    );
+  }
+  @Post('inventories/import/commit')
+  commitInventoryImport(
+    @CurrentUser() u: AuthenticatedUser,
+    @Body() d: CommitInventoryImportDto,
+  ) {
+    return this.stocksInventoryImportService.commit(this.org(u), this.actor(u), d);
+  }
+
   @Post('inventories') createInventory(
     @CurrentUser() u: AuthenticatedUser,
     @Body() d: CreateInventoryDto,

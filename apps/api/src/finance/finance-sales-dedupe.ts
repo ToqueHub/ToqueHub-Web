@@ -8,6 +8,30 @@ type SalesRow = {
   source?: { isPrimaryPos?: boolean; provider?: string; siteId?: string | null } | null;
 };
 
+type SalesSource = {
+  id: string;
+  provider: string;
+  siteId?: string | null;
+  isPrimarySales: boolean;
+};
+
+function sourceScope(source: Pick<SalesSource, 'provider' | 'siteId'>) {
+  return `${source.provider}|${source.siteId || 'unassigned'}`;
+}
+
+/**
+ * Une migration de nom ou un ancien import peut laisser plusieurs sources techniques pour une
+ * même caisse et un même établissement. Dès qu'une de ces sources contribue au CA, toutes ses
+ * copies techniques sont lues puis dédupliquées ticket par ticket. Les autres caisses restent
+ * exclues tant que l'utilisateur ne les active pas.
+ */
+export function resolveContributingSalesSourceIds<T extends SalesSource>(sources: T[]) {
+  const enabledScopes = new Set(
+    sources.filter(({ isPrimarySales }) => isPrimarySales).map(sourceScope),
+  );
+  return sources.filter((source) => enabledScopes.has(sourceScope(source))).map(({ id }) => id);
+}
+
 function amountKey(value: unknown) {
   const amount = Number(value);
   return Number.isFinite(amount) ? amount.toFixed(4) : '0.0000';

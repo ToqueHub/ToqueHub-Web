@@ -45,10 +45,12 @@ export const chapters: GuideChapter[] = [
     related: ['stocks', 'fiches-techniques', 'achats']
   },
   {
-    id: 'stocks', title: 'Stocks, inventaires et mouvements', eyebrow: 'Pilotage matière', status: 'Disponible', audience: 'Magasinier, chef, gestionnaire',
-    goal: 'Suivre ce qui entre, sort et reste disponible sans perdre l’historique des mouvements.',
+    id: 'stocks', title: 'Stocks, matériel, inventaires et mouvements', eyebrow: 'Pilotage matière', status: 'Disponible', audience: 'Magasinier, chef, gestionnaire',
+    goal: 'Suivre les produits et le parc matériel, ce qui entre, sort et reste disponible, sans perdre l’historique des mouvements.',
     prerequisites: ['Référentiels produits, unités et emplacements renseignés.'],
     steps: [
+      'Importez ou créez le catalogue produits, puis organisez catégories, unités, fournisseurs, sites et emplacements.',
+      'Séparez les denrées du matériel et renseignez les informations de parc utiles aux équipements.',
       'Consultez le stock courant par produit et emplacement pour visualiser les niveaux disponibles.',
       'Enregistrez toute entrée par une réception et toute sortie par le mouvement adapté : production, perte, correction ou inventaire.',
       'Ajoutez les informations de lot quand la traçabilité de la marchandise le nécessite.',
@@ -60,18 +62,18 @@ export const chapters: GuideChapter[] = [
     related: ['ocr-stocks', 'marges', 'production']
   },
   {
-    id: 'ocr-stocks', title: 'Import et OCR de documents', eyebrow: 'Stocks', status: 'Disponible', audience: 'Réceptionnaire, gestionnaire',
-    goal: 'Transformer un bon de livraison ou une facture en réception contrôlée.',
-    prerequisites: ['Fournisseurs et produits référencés.'],
+    id: 'ocr-stocks', title: 'Imports tableurs et OCR Stocks', eyebrow: 'Stocks', status: 'Disponible', audience: 'Réceptionnaire, gestionnaire',
+    goal: 'Construire un catalogue depuis un CSV/XLSX, reprendre un inventaire tableur ou transformer un document d’achat en réception contrôlée.',
+    prerequisites: ['Au moins un site configuré ; documents lisibles pour les parcours OCR.'],
     steps: [
-      'Importez une image ou un document d’achat depuis le module Stocks.',
-      'Laissez ToqueHub extraire les lignes, puis vérifiez systématiquement les quantités, unités, prix et fournisseur.',
-      'Rapprochez chaque ligne avec un produit existant ; créez un produit uniquement si le référentiel le justifie.',
-      'Corrigez les ambiguïtés signalées, notamment les conditionnements et les taxes.',
-      'Validez la réception seulement après le contrôle physique de la livraison.'
+      'Choisissez le parcours adapté : catalogue CSV/XLSX, inventaire CSV/XLSX/XML ou document d’achat analysé.',
+      'Vérifiez l’association des colonnes et les lignes détectées avant toute création de produit ou d’inventaire.',
+      'Pour un document d’achat, contrôlez systématiquement quantités, unités, prix, fournisseur et rapprochement produit.',
+      'Corrigez les doublons, ambiguïtés de conditionnement et lignes signalées comme nécessitant une revue.',
+      'Conservez l’inventaire importé en brouillon jusqu’au comptage ; validez une réception uniquement après le contrôle physique.'
     ],
-    result: 'La réception crée les mouvements de stock après une validation humaine, avec le document source conservé.',
-    tips: ['L’OCR propose : il ne remplace pas le contrôle de réception.', 'Traitez les écarts fournisseur avant de valider le document.'],
+    result: 'Le catalogue, l’inventaire ou la réception est préparé par l’import puis confirmé par une personne avant tout effet sur le stock réel.',
+    tips: ['Un classeur structuré est lu directement, sans OCR.', 'L’OCR propose : il ne remplace jamais le contrôle de réception.'],
     related: ['stocks', 'achats']
   },
   {
@@ -104,47 +106,50 @@ export const chapters: GuideChapter[] = [
     related: ['production', 'menus', 'marges']
   },
   {
-    id: 'production', title: 'Production', eyebrow: 'Exécution cuisine', status: 'Disponible', audience: 'Chef, responsable de production',
-    goal: 'Planifier, réaliser et tracer les fabrications à partir des fiches techniques.',
-    prerequisites: ['Stocks et fiches techniques disponibles ; RH et planning sont optionnels.'],
+    id: 'production', title: 'Production et planning opérationnel', eyebrow: 'Exécution cuisine', status: 'Disponible', audience: 'Chef, responsable de production, manager',
+    goal: 'Piloter des campagnes de fabrication et organiser les tâches de la brigade à partir des fiches techniques, menus et événements.',
+    prerequisites: ['Stocks et Fiches Techniques installés ; RH améliore les affectations, mais une tâche peut rester non affectée selon les droits.'],
     steps: [
-      'Créez un ordre de production depuis une fiche technique et indiquez le volume attendu.',
-      'Contrôlez les besoins matières recalculés et les alertes de disponibilité.',
-      'Affectez si besoin un service ou des collaborateurs, puis faites évoluer le statut de l’ordre.',
-      'Renseignez la réalisation effective et les écarts observés.',
-      'Examinez le déstockage proposé puis confirmez-le pour enregistrer les sorties matières.'
+      'Dans Fabrication, créez ou ouvrez une campagne à partir d’une fiche technique, d’un menu ou d’un dossier traiteur.',
+      'Contrôlez site, date, quantité cible, besoins matières, opérations et état de la campagne.',
+      'Validez la campagne lorsque les informations nécessaires sont prêtes pour l’exécution.',
+      'Dans Planning opérationnel, placez les tâches en attente sur la journée ou la semaine et affectez service, poste ou collaborateurs.',
+      'Suivez les statuts, horaires et priorités ; scindez une recette en étapes lorsque son déroulé doit être distribué.',
+      'Renseignez l’avancement réel et consultez les liens conservés vers la fiche, le menu ou l’événement source.'
     ],
-    result: 'La production relie la recette, le besoin matière, l’exécution et le stock réellement consommé.',
-    tips: ['Une alerte de rupture doit être traitée avant le lancement.', 'Le déstockage reste proposé jusqu’à votre validation.'],
+    result: 'La fabrication et le travail de la brigade restent reliés à leurs recettes, quantités, origines, personnes et horaires.',
+    tips: ['Une campagne décrit ce qui doit être fabriqué ; une tâche décrit qui fait quoi et quand.', 'Gardez les tâches non planifiées dans la file jusqu’à ce qu’un horaire soit réellement décidé.'],
     related: ['menus', 'stocks', 'planning']
   },
   {
-    id: 'menus', title: 'Menus et cycles', eyebrow: 'Planification culinaire', status: 'Disponible', audience: 'Chef, diététicien, gestionnaire',
-    goal: 'Préparer des menus, variantes et prévisions de convives puis générer les productions nécessaires.',
+    id: 'menus', title: 'Menus, cartes, événements et cycles', eyebrow: 'Planification culinaire', status: 'Disponible', audience: 'Chef, diététicien, restaurateur, traiteur, gestionnaire',
+    goal: 'Adapter la planification culinaire au profil de l’activité puis relier cartes, menus ou événements aux productions nécessaires.',
     prerequisites: ['L’installation de Menus installe Stocks, Fiches Techniques et Production si nécessaire ; configurez-les progressivement avant vos premières productions.'],
     steps: [
-      'Créez un menu et positionnez les préparations existantes aux dates et services concernés.',
-      'Définissez les groupes de convives, régimes et variantes nécessaires.',
-      'Renseignez ou mettez à jour les prévisions de convives.',
-      'Utilisez un cycle pour répliquer une organisation récurrente sans recréer chaque journée.',
-      'Vérifiez les quantités puis générez les productions depuis le menu.'
+      'Choisissez le profil correspondant à votre activité : restaurant/café, traiteur ou cuisine centrale.',
+      'Pour une carte, ajoutez produits Stocks et fiches d’assemblage, puis contrôlez disponibilité et seuils de préparation.',
+      'Pour un menu collectif, positionnez les fiches aux dates et services, puis renseignez régimes, groupes et prévisions de convives.',
+      'Pour un événement traiteur, centralisez client, prestations, logistique, recettes, documents et passage en Production.',
+      'Pour une cuisine centrale, organisez cycles, effectifs habituels, sites de production et documents de distribution.',
+      'Validez les volumes avant de préparer les manques ou de générer les fabrications.'
     ],
-    result: 'Le menu transforme une intention de service en productions reliées à des fiches techniques existantes.',
-    tips: ['Validez les prévisions avant de générer.', 'Une variante doit répondre à un besoin identifié, pas remplacer la recette de base.'],
+    result: 'L’offre commerciale ou alimentaire devient un besoin de production traçable, sans dupliquer produits ni recettes.',
+    tips: ['Le profil change l’expérience et les onglets : choisissez-le avant de former l’équipe.', 'Le profil peut être adapté plus tard depuis le module, mais vérifiez l’impact avec l’équipe avant de le changer.'],
     related: ['fiches-techniques', 'production']
   },
   {
-    id: 'haccp', title: 'HACCP et traçabilité', eyebrow: 'Sécurité alimentaire', status: 'Disponible', audience: 'Brigade, responsable HACCP',
-    goal: 'Digitaliser les contrôles quotidiens et conserver une preuve exploitable de chaque action.',
+    id: 'haccp', title: 'HACCP, capteurs et traçabilité terrain', eyebrow: 'Sécurité alimentaire', status: 'Disponible', audience: 'Brigade, responsable HACCP, administrateur',
+    goal: 'Configurer le plan de maîtrise sanitaire sur le web, exécuter les contrôles sur mobile et réunir les preuves dans un historique commun.',
     steps: [
-      'Commencez la journée par le tableau de bord HACCP et traitez les alertes prioritaires.',
-      'Enregistrez les températures des équipements et indiquez toute action corrective nécessaire.',
-      'Contrôlez les réceptions, consignez les lots et complétez la traçabilité des produits.',
-      'Réalisez les processus dédiés : nettoyage, huiles, refroidissement, congélation et réchauffement.',
-      'Ajoutez les photos requises, consultez l’historique puis générez le rapport journalier.'
+      'Dans ToqueHub web, configurez enceintes, équipements de process, zones, surfaces, fréquences et seuils.',
+      'Appairez les capteurs Sonoff/Zigbee si ce périmètre est déployé, puis vérifiez leur équipement associé et les notifications.',
+      'Sur l’application mobile, la brigade réalise températures, réceptions, traçabilité, nettoyage, huiles et processus chaud/froid.',
+      'En cas d’alerte, contrôlez physiquement l’équipement et consignez la mesure ainsi que l’action corrective.',
+      'Depuis le web, consultez les registres synchronisés, les courbes capteurs et les preuves photo.',
+      'Contrôlez les rapports PDF quotidiens archivés automatiquement et complétez toute information manquante à sa source.'
     ],
-    result: 'Les contrôles sont datés, attribués et réunis dans un historique prêt à être consulté.',
-    tips: ['Saisissez le contrôle au moment où il est réalisé.', 'Documentez une non-conformité et son action corrective dans la même séquence.'],
+    result: 'La configuration, les contrôles terrain, les alertes capteurs et les rapports restent synchronisés et attribuables.',
+    tips: ['Le web prépare et supervise ; l’application mobile accompagne l’exécution quotidienne.', 'Un capteur complète le contrôle humain, il ne le remplace pas.'],
     related: ['mobile', 'stocks', 'sauvegardes']
   },
   {
@@ -205,18 +210,54 @@ export const chapters: GuideChapter[] = [
     related: ['parcours', 'sauvegardes', 'referentiels']
   },
   {
-    id: 'achats', title: 'Achats', eyebrow: 'Approvisionnement', status: 'À configurer', audience: 'Gestionnaire, acheteur',
-    goal: 'Préparer, envoyer et réceptionner les commandes fournisseurs à partir des référentiels Stocks.',
+    id: 'achats', title: 'Achats', eyebrow: 'Approvisionnement', status: 'Disponible', audience: 'Gestionnaire, acheteur, réceptionnaire',
+    goal: 'Préparer, envoyer avec le bon de commande PDF et réceptionner les commandes fournisseurs à partir des référentiels Stocks.',
+    prerequisites: ['Fournisseurs et produits Stocks prêts.', 'Pour envoyer depuis ToqueHub : au moins une connexion Google Workspace/Gmail, Microsoft 365/Outlook, SMTP ou Resend configurée et testée.'],
     steps: [
       'Terminez le guide de configuration : fournisseurs, paramètres et messagerie d’envoi si elle est utilisée.',
+      'Dans Messagerie fournisseur, connectez Google Workspace/Gmail ou Microsoft 365/Outlook par OAuth, configurez un SMTP sécurisé ou renseignez Resend ; lancez le test puis activez la connexion retenue.',
       'Utilisez les référentiels, niveaux de stock et besoins de production pour préparer une commande fournisseur.',
-      'Contrôlez l’aperçu et le destinataire avant l’envoi, puis suivez la confirmation et le statut de la commande.',
+      'Contrôlez l’aperçu, le destinataire et le PDF avant l’envoi, puis suivez chaque tentative, la confirmation et le statut de la commande.',
       'Créez une réception depuis la commande, contrôlez les quantités et écarts, puis validez l’intégration en stock.',
       'Clôturez la commande seulement lorsque les réceptions attendues et les écarts sont traités.'
     ],
     result: 'Les achats suivent un cycle traçable, du brouillon à la réception validée, sans dupliquer produits ni fournisseurs.',
-    tips: ['Une réception partielle laisse la commande ouverte tant que tout n’est pas traité.', 'Testez la messagerie fournisseur avant le premier envoi réel.'],
-    related: ['referentiels', 'stocks', 'ocr-stocks']
+    tips: ['Une réception partielle laisse la commande ouverte tant que tout n’est pas traité.', 'Une connexion enregistrée n’est pas nécessairement active : testez-la, puis vérifiez la messagerie choisie avant l’envoi réel.', 'Les secrets et jetons de messagerie sont réservés à la configuration autorisée.'],
+    related: ['integrations', 'referentiels', 'stocks', 'ocr-stocks']
+  },
+  {
+    id: 'integrations', title: 'Intégrations et connecteurs', eyebrow: 'Services externes', status: 'À configurer', audience: 'Administrateur, direction, référent de module',
+    goal: 'Savoir quels services externes ToqueHub sait réellement connecter, à quoi ils servent et comment contrôler leur activation.',
+    prerequisites: ['Un compte administrateur ou les permissions du module concerné.', 'Les identifiants, clés API ou autorisations OAuth fournis par le service externe.', 'Une sauvegarde récente avant une modification d’infrastructure importante.'],
+    steps: [
+      'Pour Achats, choisissez Google Workspace/Gmail, Microsoft 365/Outlook, SMTP sécurisé ou Resend ; configurez, testez puis activez une messagerie pour joindre le PDF aux commandes fournisseur.',
+      'Pour Finance, rattachez Fennoa, Flatpay, Loyverse ou PayPal POS/Zettle au bon établissement ; les imports génériques restent disponibles pour les fichiers pris en charge.',
+      'Configurez Mistral uniquement si vous utilisez l’OCR documentaire, les suggestions de rapprochement ou les analyses assistées ; conservez toujours la validation humaine.',
+      'Dans Cours des produits, utilisez les cotations publiques RNM FranceAgriMer comme tendance de marché, jamais comme prix facturé automatiquement.',
+      'Dans Sauvegardes, connectez Google Drive par OAuth, testez la connexion et vérifiez l’envoi d’une sauvegarde identifiée.',
+      'Pour HACCP, déployez les capteurs Sonoff/Zigbee et les services IoT locaux uniquement après appairage, association à l’équipement réel et test d’alerte.',
+      'Après chaque connexion, contrôlez son statut, sa dernière synchronisation, son périmètre et le comportement prévu en cas d’indisponibilité.'
+    ],
+    result: 'Chaque connecteur est affecté à un usage précis, testé avant mise en service et surveillé sans devenir une source de données opaque.',
+    tips: ['OAuth évite de confier le mot de passe de votre boîte à ToqueHub.', 'Ne mélangez pas Google Workspace pour les commandes et Google Drive pour les sauvegardes : ce sont deux connexions distinctes.', 'Une intégration indisponible ne doit jamais empêcher le parcours manuel prévu.'],
+    related: ['achats', 'finance', 'sauvegardes', 'haccp']
+  },
+  {
+    id: 'finance', title: 'Finance et ventes', eyebrow: 'Pilotage économique', status: 'Disponible', audience: 'Direction, finance, gestionnaire',
+    goal: 'Consolider des données comptables et opérationnelles pour piloter ventes, rentabilité, trésorerie et budget sans refaire la comptabilité.',
+    prerequisites: ['Sources identifiées : Fennoa, caisse/POS ou fichiers à importer.', 'Chaque source opérationnelle rattachée au bon établissement avant consolidation.'],
+    steps: [
+      'Ouvrez Sources & qualité, connectez Fennoa ou une caisse compatible, ou importez les rapports disponibles.',
+      'Rattachez chaque source au bon établissement et choisissez la source POS principale lorsqu’un même périmètre en contient plusieurs.',
+      'Vérifiez période, statut, couverture et doublons avant d’inclure une source dans le chiffre d’affaires.',
+      'Lisez le cockpit puis les vues Ventes, Annuel, Mensuel, Journalier et Budget avec leur source et leur période affichées.',
+      'Dans Ventes & affluence, analysez transactions, ticket moyen, heures, jours, produits, catégories et rapprochement avec l’effectif planifié.',
+      'Lancez l’analyste Mistral seulement si la clé est configurée et relisez ses signaux à la lumière des agrégats et limites indiqués.',
+      'Générez le rapport PDF adapté : synthèse annuelle, rapport annuel, mensuel, journalier ou ventes sur une période définie.'
+    ],
+    result: 'La direction dispose d’indicateurs consolidés dont la provenance, la fraîcheur et les limites restent visibles.',
+    tips: ['Fennoa reste la vérité comptable ; les caisses apportent le détail opérationnel et le provisoire.', 'N’interprétez jamais une période partiellement couverte comme une période complète.'],
+    related: ['integrations', 'marges', 'achats', 'planning', 'sauvegardes']
   },
   {
     id: 'mobile', title: 'Application mobile terrain', eyebrow: 'Mobilité', status: 'Disponible', audience: 'Brigade, responsable HACCP',
@@ -238,13 +279,13 @@ export const chapters: GuideChapter[] = [
     steps: [
       'Définissez une fréquence de sauvegarde adaptée à l’activité de l’établissement.',
       'Vérifiez régulièrement qu’une sauvegarde est créée, téléchargeable et identifiable par date.',
-      'Utilisez le stockage distant chiffré seulement après sa configuration par l’administrateur.',
+      'Connectez Google Drive par OAuth si un stockage distant est prévu, testez la connexion puis vérifiez l’envoi d’une sauvegarde identifiée.',
       'Avant une mise à jour, réalisez une sauvegarde et consultez les informations de version.',
       'En cas d’incident, diagnostiquez l’accès réseau et l’état du serveur ; restaurez uniquement une sauvegarde validée.'
     ],
     result: 'Les données restent récupérables et les opérations de maintenance suivent un processus maîtrisé.',
     tips: ['Testez une restauration sur un environnement prévu à cet effet.', 'Une sauvegarde non vérifiée n’est pas une garantie de reprise.'],
-    related: ['iot', 'utilisateurs']
+    related: ['integrations', 'iot', 'utilisateurs']
   },
   {
     id: 'iot', title: 'Capteurs et serveur local', eyebrow: 'Exploitation locale', status: 'À configurer', audience: 'Administrateur, responsable HACCP',
@@ -268,8 +309,8 @@ export const chapters: GuideChapter[] = [
       'Semaine 1 : configurez Stocks, puis préparez les utilisateurs, rôles et référentiels produits.',
       'Semaine 2 : enregistrez les mouvements réels et réalisez un premier inventaire.',
       'Semaine 3 : standardisez les fiches techniques les plus produites.',
-      'Semaine 4 : pilotez les premières productions puis les menus.',
-      'Ensuite : activez les routines HACCP, RH/planning, mobile et capteurs selon votre organisation.'
+      'Semaine 4 : pilotez les premières campagnes de fabrication puis adaptez Menus à votre activité.',
+      'Ensuite : activez les routines HACCP mobile, RH/planning, Achats et Finance selon votre organisation.'
     ],
     result: 'Chaque module reçoit des données fiables avant de devenir un outil quotidien de la brigade.',
     tips: ['Commencez avec un périmètre pilote.', 'Gardez un référent métier par module pendant le déploiement.'],
@@ -300,14 +341,17 @@ export const screensByChapter: Record<string, GuideScreen[]> = {
   ],
   stocks: [
     { title: 'Tableau de bord Stocks', purpose: 'Voir la valeur, les alertes, les niveaux faibles et les dernières activités.', actions: 'Traiter une rupture ou ouvrir directement le produit, l’inventaire ou la réception concernée.' },
-    { title: 'Produits', purpose: 'Consulter le catalogue et le stock disponible par article.', actions: 'Rechercher, filtrer, créer un mouvement ou lancer un inventaire depuis la fiche appropriée.' },
+    { title: 'Produits', purpose: 'Consulter le catalogue et le stock disponible par article.', actions: 'Rechercher, filtrer, ajouter manuellement ou ouvrir l’assistant d’import CSV/XLSX et contrôler chaque ligne proposée.' },
+    { title: 'Matériel', purpose: 'Gérer séparément le parc d’équipements et son stock.', actions: 'Créer les catégories et fiches matériel, suivre leur emplacement et utiliser les mouvements dédiés sans les mélanger aux denrées.' },
     { title: 'Fournisseur', purpose: 'Gérer les partenaires associés aux articles.', actions: 'Mettre à jour les coordonnées et les relations produit-fournisseur sans recréer les articles.' },
-    { title: 'Inventaire', purpose: 'Comparer le niveau théorique au comptage physique.', actions: 'Préparer un comptage, saisir les quantités observées, expliquer l’écart puis valider.' },
+    { title: 'Inventaire', purpose: 'Comparer le niveau théorique au comptage physique.', actions: 'Créer un inventaire complet ou importer un CSV/XLSX/XML en brouillon, contrôler les lignes, saisir les quantités observées, expliquer l’écart puis valider.' },
     { title: 'Réglage', purpose: 'Accéder aux catégories, unités, types de mouvement et audit.', actions: 'N’ajuster les paramètres que si la structure métier évolue ; consulter l’audit avant toute correction.' },
   ],
   'ocr-stocks': [
-    { title: 'Importer un document', purpose: 'Ajouter un bon de livraison ou une facture au format accepté.', actions: 'Choisir le document lisible et vérifier qu’il correspond à la livraison physique.' },
-    { title: 'Analyse OCR', purpose: 'Lire les lignes proposées par l’analyse automatique.', actions: 'Contrôler fournisseur, produit, quantité, unité et prix ; aucun champ ne doit être validé sans vérification.' },
+    { title: 'Import catalogue CSV/XLSX', purpose: 'Créer ou enrichir le référentiel produits depuis un tableur.', actions: 'Vérifier la structure, associer les colonnes, traiter doublons et lignes à revoir puis sélectionner uniquement les lignes prêtes.' },
+    { title: 'Import inventaire', purpose: 'Préparer un comptage à partir d’un CSV, XLSX ou Excel XML.', actions: 'Contrôler le site, les produits rapprochés et les quantités ; l’import crée un brouillon et ne modifie pas immédiatement le stock.' },
+    { title: 'Importer un document', purpose: 'Ajouter un bon de commande, bon de livraison, facture ou photo au format accepté.', actions: 'Choisir le document lisible et vérifier qu’il correspond à l’opération physique.' },
+    { title: 'Analyse OCR', purpose: 'Lire les lignes proposées par l’analyse automatique.', actions: 'Contrôler fournisseur, produit, quantité, unité et prix ; aucun champ ne doit être validé sans vérification humaine.' },
     { title: 'Rapprochement et réception', purpose: 'Associer les lignes aux produits du catalogue avant de créer la réception.', actions: 'Corriger les ambiguïtés, gérer les écarts puis valider la réception qui crée les mouvements de stock.' },
   ],
   marges: [
@@ -325,17 +369,17 @@ export const screensByChapter: Record<string, GuideScreen[]> = {
     { title: 'Production théorique', purpose: 'Simuler les quantités pour un nombre de portions donné.', actions: 'Choisir une fiche, saisir les portions et exporter le résultat sans déclencher de sortie de stock.' },
   ],
   production: [
-    { title: 'Tableau de bord', purpose: 'Prioriser les ordres, alertes et productions à venir.', actions: 'Ouvrir l’ordre concerné ou créer une nouvelle production.' },
-    { title: 'Ordres de production', purpose: 'Créer et faire évoluer chaque fabrication.', actions: 'Définir la date, portions, priorité, responsable et statut ; documenter les écarts de réalisation.' },
-    { title: 'Calendrier', purpose: 'Lire les productions sur la période choisie.', actions: 'Ouvrir un ordre depuis la date et vérifier les chevauchements.' },
-    { title: 'Productions du jour', purpose: 'Concentrer la brigade sur les réalisations du service.', actions: 'Suivre le statut, confirmer le résultat et traiter les retards ou alertes.' },
-    { title: 'Affectations RH', purpose: 'Relier une fabrication à un service ou à des collaborateurs.', actions: 'Affecter seulement des personnes disponibles ; RH reste propriétaire de leurs informations.' },
-    { title: 'Besoins matières', purpose: 'Comparer les ingrédients requis avec le stock disponible.', actions: 'Résoudre les manques avant le lancement et confirmer ensuite le déstockage proposé.' },
-    { title: 'Exports & Documents', purpose: 'Préparer les fiches cuisine, besoins matières et rapports.', actions: 'Choisir le périmètre puis le format PDF, Excel ou impression.' },
-    { title: 'Historique d’audit', purpose: 'Retrouver les actions et changements liés aux ordres.', actions: 'Consulter l’événement avant de corriger une anomalie ou de répondre à une question.' },
+    { title: 'Fabrication — campagnes', purpose: 'Piloter ce qui doit être fabriqué par période et par site.', actions: 'Créer une campagne, choisir la fiche, la date et la quantité cible, puis suivre son état en tableau, grille ou kanban.' },
+    { title: 'Détail d’une campagne', purpose: 'Réunir informations générales, besoins matières et données RH.', actions: 'Contrôler la quantité, les opérations, le service et les responsables avant validation ou passage en exécution.' },
+    { title: 'Planning des tâches', purpose: 'Organiser le travail opérationnel en vue jour ou semaine.', actions: 'Placer les éléments de la file sur un horaire, ajuster leur durée puis vérifier les chevauchements et priorités.' },
+    { title: 'Assistant de tâche', purpose: 'Créer une tâche manuelle, depuis une fiche, une étape de recette, un modèle de poste ou une campagne.', actions: 'Choisir site, service, personnes, contenu, date, horaires et quantité ; laisser non affecté seulement si le circuit le permet.' },
+    { title: 'Depuis un menu', purpose: 'Créer des tâches simples pour les fiches présentes dans un menu.', actions: 'Choisir le menu, le service RH, la date et l’heure puis contrôler les tâches générées dans la file.' },
+    { title: 'Dossier traiteur', purpose: 'Faire passer les fabrications et la logistique d’un événement au planning.', actions: 'Valider les fabrications, préparer les tâches logistiques puis ouvrir le planning sur les dates de production concernées.' },
   ],
   menus: [
-    { title: 'Tableau de bord', purpose: 'Piloter les menus à préparer et les raccourcis de planification.', actions: 'Ouvrir la liste, le calendrier, un cycle ou les régimes selon l’action à réaliser.' },
+    { title: 'Choix du profil', purpose: 'Adapter le module au type d’activité.', actions: 'Choisir restaurant/café, traiteur ou cuisine centrale ; les outils et vues opérationnelles s’adaptent automatiquement.' },
+    { title: 'Restaurant/café — Carte', purpose: 'Composer les cartes nourriture et boissons et calculer leur disponibilité.', actions: 'Ajouter produits Stocks ou fiches d’assemblage, renseigner portions/seuils et préparer uniquement les manques dans Production.' },
+    { title: 'Collectivité — Tableau de bord', purpose: 'Piloter les menus à préparer et les raccourcis de planification.', actions: 'Ouvrir la liste, le calendrier, un cycle ou les régimes selon l’action à réaliser.' },
     { title: 'Menus planifiés', purpose: 'Créer les menus et leurs préparations par service.', actions: 'Ajouter les fiches techniques existantes, définir le statut brouillon, validé, publié ou archivé.' },
     { title: 'Calendrier', purpose: 'Visualiser les menus par jour, semaine, mois ou année.', actions: 'Ouvrir le menu d’une date pour l’ajuster ou contrôler sa publication.' },
     { title: 'Cycles', purpose: 'Répliquer une organisation alimentaire récurrente.', actions: 'Créer un cycle, le prévisualiser, le dupliquer puis contrôler ses dates avant application.' },
@@ -343,18 +387,18 @@ export const screensByChapter: Record<string, GuideScreen[]> = {
     { title: 'Convives par groupes', purpose: 'Prévoir les volumes par population.', actions: 'Mettre à jour les effectifs avant toute génération de production.' },
     { title: 'Exports & Documents', purpose: 'Préparer les supports de diffusion et de cuisine.', actions: 'Choisir le menu, la période et le format demandé.' },
     { title: 'Historique d’audit', purpose: 'Consulter les changements de planification.', actions: 'Vérifier qui a publié, modifié ou généré une production.' },
+    { title: 'Traiteur — Événements', purpose: 'Gérer dossiers client, prestations, recettes, lieu, logistique et statuts.', actions: 'Constituer le dossier, confirmer l’événement puis transmettre fabrications et tâches logistiques à Production.' },
+    { title: 'Cuisine centrale', purpose: 'Préparer cycles, effectifs habituels et documents de distribution.', actions: 'Définir le site de production, construire le cycle et télécharger les documents nécessaires.' },
   ],
   haccp: [
-    { title: 'Tableau de bord HACCP', purpose: 'Prioriser les contrôles, écarts et actions sanitaires de la journée.', actions: 'Traiter les alertes avant d’ouvrir les écrans de saisie.' },
-    { title: 'Configuration zones & matériels', purpose: 'Préparer les équipements, processus et zones de nettoyage.', actions: 'Renseigner le référentiel avant de demander des relevés à la brigade.' },
+    { title: 'Tableau de bord HACCP web', purpose: 'Superviser le score, les domaines couverts, alertes et preuves synchronisées.', actions: 'Identifier les priorités, puis ouvrir le registre ou l’alerte concerné ; les saisies terrain courantes se font dans l’application mobile.' },
+    { title: 'Zones & matériels', purpose: 'Configurer enceintes, équipements de process, zones et surfaces de nettoyage.', actions: 'Terminer le socle avant de demander des relevés à la brigade ; les mêmes références sont partagées avec le mobile.' },
     { title: 'Capteurs', purpose: 'Suivre les sondes connectées et leur lien avec les enceintes HACCP.', actions: 'Appairer/configurer avec l’administrateur, nommer clairement le capteur et vérifier qu’il est rattaché au bon équipement.', flow: ['Ouvrir Capteurs et vérifier l’état de chaque sonde.', 'Si une sonde est hors ligne, contrôler alimentation, réseau et emplacement ; basculer immédiatement sur un relevé manuel.', 'Après remise en service, vérifier que la sonde remonte une mesure cohérente avec la température observée sur place.'] },
     { title: 'Alertes température', purpose: 'Prioriser une température trop chaude, trop froide, hors seuil ou un capteur indisponible.', actions: 'Ne clôturez pas une alerte par simple lecture écran : une vérification physique et une action corrective sont nécessaires.', flow: ['Ouvrir Alertes et identifier l’équipement, la valeur observée, le seuil et le niveau de gravité.', 'Se rendre auprès de l’équipement ; contrôler la température avec une méthode de secours si nécessaire et vérifier porte, charge, alimentation ou réglage.', 'Appliquer la mesure corrective adaptée à la procédure de l’établissement : sécuriser les denrées, alerter le responsable, isoler le matériel ou ajuster son fonctionnement.', 'Créer ou compléter le relevé de température avec la mesure vérifiée et la correction apportée.', 'Contrôler le relevé suivant : l’alerte n’est considérée résolue que lorsque la situation est redevenue conforme et tracée.'] },
-    { title: 'Températures', purpose: 'Enregistrer et consulter les relevés des enceintes.', actions: 'Choisir l’équipement, saisir la mesure et la correction si la valeur est hors seuil.', flow: ['Ouvrir Températures puis choisir l’équipement concerné.', 'Saisir le relevé réellement mesuré, jamais une estimation.', 'En cas de valeur hors seuil, renseigner la remarque et l’action menée dans la même intervention.', 'Consulter le détail et l’historique pour confirmer le retour à la normale ou escalader au responsable HACCP.'] },
-    { title: 'Nettoyage', purpose: 'Gérer les zones, surfaces, sessions actives et l’historique.', actions: 'Démarrer la session, marquer les surfaces, compléter et clôturer sans omission.' },
-    { title: 'Traçabilité et réceptions', purpose: 'Consigner lots, produits, contrôles de livraison et étiquetage.', actions: 'Vérifier la marchandise, compléter les données puis conserver les preuves nécessaires.' },
-    { title: 'Processus', purpose: 'Suivre refroidissement, congélation et remise en température.', actions: 'Sélectionner produit et équipement, enregistrer les étapes et contrôler la conformité.' },
-    { title: 'Huiles, production et produits HACCP', purpose: 'Tracer les bains de friture, préparations et durées de conservation.', actions: 'Associer le bon équipement/produit, joindre une photo si demandée et consulter l’historique.' },
-    { title: 'Étiquettes et rapports', purpose: 'Imprimer des étiquettes de traçabilité et produire les rapports sanitaires.', actions: 'Vérifier les informations avant impression, puis générer le rapport de la période concernée.' },
+    { title: 'Températures', purpose: 'Consulter les relevés manuels et automatiques, ainsi que les courbes capteurs.', actions: 'Contrôler la cohérence des mesures et ouvrir l’historique du capteur ; créer le relevé terrain depuis le mobile lorsqu’une vérification est nécessaire.' },
+    { title: 'Registres synchronisés', purpose: 'Retrouver nettoyage, traçabilité, réceptions, processus, huiles et productions saisis par l’équipe.', actions: 'Consulter détail, décision, notes et photos ; corriger l’information dans le parcours métier qui l’a créée.' },
+    { title: 'Produits & étiquettes', purpose: 'Préparer les données de conservation et l’impression de traçabilité.', actions: 'Vérifier produit, lot et date avant impression, avec une imprimante configurée.' },
+    { title: 'Rapports', purpose: 'Retrouver les dossiers sanitaires PDF classés par année et mois.', actions: 'Contrôler le rapport quotidien archivé automatiquement et télécharger la période nécessaire.' },
   ],
   rh: [
     { title: 'Tableau de bord RH', purpose: 'Suivre l’avancement de la structure et les compteurs essentiels.', actions: 'Terminer les prérequis proposés avant de créer des collaborateurs.' },
@@ -367,7 +411,7 @@ export const screensByChapter: Record<string, GuideScreen[]> = {
   planning: [
     { title: 'Tableau de bord', purpose: 'Piloter une période : statut, heures, coût estimé, alertes, actions et historique.', actions: 'Choisir la période, personnaliser les blocs et ouvrir l’action qui demande une décision.' },
     { title: 'Planning', purpose: 'Construire les affectations en vue jour, semaine, mois ou année.', actions: 'Créer une affectation, contrôler les conflits, puis préparer la publication de la période.' },
-    { title: 'Présences', purpose: 'Consulter ou gérer les présences liées à l’exploitation.', actions: 'Sélectionner la période et vérifier les informations avant un export ou un verrouillage.' },
+    { title: 'Émargement', purpose: 'Comparer les heures planifiées aux présences de la période.', actions: 'Sélectionner le mois, vérifier les lignes collaborateur et traiter les écarts avant un export ou un verrouillage.' },
     { title: 'Absences et besoins', purpose: 'Enregistrer les indisponibilités et les besoins opérationnels à couvrir.', actions: 'Saisir l’absence avant l’affectation ; ajuster les besoins avant de rechercher un remplacement.' },
     { title: 'Remplacements', purpose: 'Proposer et accepter un remplaçant adapté à une situation ouverte.', actions: 'Vérifier disponibilité, service et compétence, puis accepter la proposition retenue.' },
     { title: 'Modèles et rotations', purpose: 'Réutiliser des journées types et roulements hebdomadaires.', actions: 'Prévisualiser la génération ou la rotation, puis l’appliquer seulement après contrôle.' },
@@ -387,11 +431,35 @@ export const screensByChapter: Record<string, GuideScreen[]> = {
     { title: 'Doublons, impact, roadmap et documentation', purpose: 'Identifier les incohérences, zones touchées et état de maturité.', actions: 'Traiter un doublon à sa source, puis suivre les recommandations et l’état réel du module.' },
   ],
   achats: [
-    { title: 'Guide de configuration', purpose: 'Préparer fournisseurs, paramètres et première commande.', actions: 'Suivre l’assistant jusqu’à la messagerie fournisseur si cette fonction est activée.' },
+    { title: 'Guide de configuration', purpose: 'Préparer fournisseurs, paramètres, messagerie et première commande.', actions: 'Suivre l’assistant dans l’ordre ; la page Messagerie permet de revenir ensuite sur la connexion active.' },
+    { title: 'Messagerie fournisseur', purpose: 'Choisir la voie utilisée pour expédier les bons de commande PDF.', actions: 'Connecter Google Workspace/Gmail ou Microsoft 365/Outlook par OAuth 2.0, configurer un serveur SMTP sécurisé ou une clé Resend ; tester la connexion, l’activer et vérifier l’adresse d’envoi.' },
     { title: 'Tableau de bord', purpose: 'Voir commandes à préparer, montants, livraisons et réceptions à contrôler.', actions: 'Ouvrir la commande ou réception prioritaire depuis les indicateurs.' },
-    { title: 'Commandes', purpose: 'Préparer, filtrer, envoyer, confirmer, réceptionner, clôturer ou annuler les commandes.', actions: 'Contrôler les lignes et le fournisseur avant envoi ; suivre le statut jusqu’à clôture.' },
+    { title: 'Commandes', purpose: 'Préparer, filtrer, envoyer avec PDF, confirmer, réceptionner, clôturer ou annuler les commandes.', actions: 'Contrôler lignes, fournisseur, destinataire et aperçu PDF ; après l’envoi, vérifier le fournisseur de messagerie, l’identifiant du message et le statut conservés.' },
     { title: 'Réceptions', purpose: 'Importer, contrôler et valider les livraisons contre les commandes.', actions: 'Gérer les écarts et les réceptions partielles avant l’intégration dans Stocks.' },
-    { title: 'Historique', purpose: 'Retrouver les événements du module Achats.', actions: 'S’en servir pour expliquer un statut, un écart ou une action d’envoi.' },
+    { title: 'Historique', purpose: 'Retrouver les événements du module Achats et les tentatives d’envoi.', actions: 'S’en servir pour expliquer un statut, un écart ou une action ; corriger la connexion avant de relancer un envoi échoué.' },
+  ],
+  integrations: [
+    { title: 'Achats · Google Workspace / Gmail', purpose: 'Envoyer depuis une boîte Google professionnelle ou Gmail autorisée.', actions: 'Lancer OAuth 2.0, sélectionner le compte, autoriser l’envoi, attendre le retour ToqueHub, tester puis activer la connexion.' },
+    { title: 'Achats · Microsoft 365 / Outlook', purpose: 'Envoyer depuis une boîte Microsoft professionnelle.', actions: 'Passer par Microsoft Identity, autoriser l’accès demandé, revenir dans ToqueHub, tester puis activer la connexion.' },
+    { title: 'Achats · SMTP sécurisé', purpose: 'Utiliser un serveur de messagerie compatible.', actions: 'Renseigner expéditeur, hôte, port, sécurité TLS, identifiant et mot de passe d’application ; tester la boîte puis l’activer.' },
+    { title: 'Achats · Resend', purpose: 'Utiliser l’API transactionnelle Resend pour les commandes.', actions: 'Renseigner la clé API, l’adresse expéditrice vérifiée, le nom et éventuellement reply-to ; lancer l’e-mail de test puis vérifier l’état actif.' },
+    { title: 'Finance · Fennoa et caisses', purpose: 'Rapprocher la comptabilité et les ventes opérationnelles.', actions: 'Configurer Fennoa, Flatpay, Loyverse ou PayPal POS/Zettle, rattacher au bon site, tester/synchroniser et désigner le POS principal sans additionner les doublons.' },
+    { title: 'Mistral · OCR et analyses', purpose: 'Assister la lecture documentaire, les rapprochements Stocks et l’analyse Finance/HACCP selon les écrans activés.', actions: 'Configurer la clé dans l’administration ; contrôler les propositions et conserver la validation humaine avant tout effet métier.' },
+    { title: 'RNM FranceAgriMer', purpose: 'Consulter les cours et tendances publics des denrées.', actions: 'Rechercher, suivre des favoris et comparer les périodes ; ne jamais remplacer automatiquement un prix fournisseur par une cotation RNM.' },
+    { title: 'Sauvegardes · Google Drive', purpose: 'Copier des sauvegardes vers un dossier distant autorisé.', actions: 'Configurer le client, connecter le compte par OAuth, tester l’accès puis envoyer une sauvegarde et vérifier son identifiant distant.' },
+    { title: 'HACCP · Sonoff/Zigbee', purpose: 'Remonter des mesures de capteurs vers l’instance locale.', actions: 'Installer les services IoT prévus, appairer la sonde, l’associer à l’équipement physique, tester une mesure et une alerte puis conserver une procédure manuelle.' },
+  ],
+  finance: [
+    { title: 'Tableau de bord', purpose: 'Lire le cockpit financier et la trajectoire de l’exercice.', actions: 'Choisir le périmètre établissement, contrôler la période et ouvrir l’indicateur qui demande une explication.' },
+    { title: 'Ventes & affluence', purpose: 'Analyser CA TTC, transactions, ticket moyen, heures, jours, produits et catégories.', actions: 'Comparer les périodes, vérifier la couverture produit et les doublons écartés, puis rapprocher l’affluence de l’effectif planifié si disponible.' },
+    { title: 'Analyse annuelle', purpose: 'Comparer le réalisé cumulé au budget cumulé des mêmes mois.', actions: 'Lire les indicateurs, le réel vs budget et le rapprochement caisse/comptabilité sans extrapoler les mois non engagés.' },
+    { title: 'Analyse mensuelle', purpose: 'Étudier un mois et ses comparaisons.', actions: 'Vérifier si la période est clôturée dans Fennoa ou encore provisoire côté caisse avant d’interpréter l’écart.' },
+    { title: 'Analyse journalière', purpose: 'Piloter le jour, les objectifs et les écarts disponibles.', actions: 'Contrôler fraîcheur et source ; comparer à N-1 seulement si une période comparable existe.' },
+    { title: 'Budget & trajectoire', purpose: 'Lire le scénario, les lignes mensuelles et objectifs de référence.', actions: 'Importer ou synchroniser le budget, puis contrôler ses dates et ses huit indicateurs avant comparaison.' },
+    { title: 'Sources & qualité', purpose: 'Configurer Fennoa, Flatpay, Loyverse, PayPal POS/Zettle ou des imports génériques.', actions: 'Tester les connexions, rattacher au site, choisir le POS principal et surveiller statut, couverture, imports et doublons.' },
+    { title: 'Import documentaire', purpose: 'Analyser PDF, image, XLS/XLSX ou CSV et conserver le fichier source.', actions: 'Rattacher au bon établissement ; relire les périodes, signes, unités et totaux. Sans clé Mistral, les tableurs restent lisibles mais les images/PDF passent à contrôler.' },
+    { title: 'Analyste Mistral', purpose: 'Produire des signaux et actions à partir d’agrégats financiers vérifiés.', actions: 'Lancer l’analyse sur la vue utile, puis lire aussi les limites de couverture ; ne pas prendre le texte généré pour une écriture comptable.' },
+    { title: 'Exports PDF', purpose: 'Créer des rapports professionnels avec KPI, graphiques, tableaux, sources et limites.', actions: 'Choisir synthèse annuelle, annuel, mensuel, journalier ou ventes, définir la période et le site puis vérifier le document généré.' },
   ],
   mobile: [
     { title: 'Bienvenue, découverte et connexion', purpose: 'Découvrir le serveur local, le sélectionner puis ouvrir une session.', actions: 'Vérifier le réseau local ; en cas d’échec, renseigner l’adresse du serveur communiquée par l’administrateur.' },
@@ -408,7 +476,7 @@ export const screensByChapter: Record<string, GuideScreen[]> = {
   sauvegardes: [
     { title: 'Liste et création de sauvegardes', purpose: 'Voir, créer, télécharger et planifier les sauvegardes de l’instance.', actions: 'Nommer/identifier les sauvegardes et vérifier leur date avant toute opération sensible.' },
     { title: 'Restauration', purpose: 'Remettre une sauvegarde validée en cas d’incident.', actions: 'Confirmer le périmètre et la date ; réaliser l’opération dans un créneau maîtrisé.' },
-    { title: 'Stockage distant chiffré', purpose: 'Configurer l’intégration cloud autorisée.', actions: 'Vérifier la connexion et conserver les accès exclusivement côté administration.' },
+    { title: 'Google Drive', purpose: 'Configurer le stockage distant actuellement pris en charge.', actions: 'Configurer OAuth, connecter le compte, tester l’accès, envoyer une sauvegarde choisie et contrôler son statut ; conserver les accès côté administration.' },
     { title: 'Mises à jour et diagnostic', purpose: 'Maintenir le serveur local, Docker ou Raspberry Pi.', actions: 'Sauvegarder avant mise à jour, consulter l’état du service et suivre le diagnostic réseau en cas de panne.' },
   ],
   iot: [
@@ -429,19 +497,21 @@ export const operationalFlows: Record<string, OperationalFlow> = {
   demarrer: { when: 'Lors de la première prise en main ou de l’arrivée d’un nouvel utilisateur.', prerequisites: ['Un compte individuel actif.', 'L’adresse de l’instance locale.'], steps: ['Se connecter avec son compte personnel.', 'Pour le créateur administrateur, suivre la visite guidée et confirmer le socle Stocks, Fiches Techniques et HACCP.', 'Vérifier l’établissement et les modules disponibles.', 'Lire les alertes et ouvrir le tableau de bord général.', 'Configurer Stocks avant toute saisie dans les modules dépendants.', 'Demander le bon rôle si une action est absente.'], checks: ['Le nom de l’établissement est correct.', 'Aucun compte partagé n’est utilisé.', 'L’installation du socle ne déclenche pas une mise en production automatique.'], result: 'L’utilisateur accède uniquement aux outils utiles à sa mission et le créateur dispose d’un socle prêt à configurer.', pitfalls: ['Créer des données métier avec un compte administrateur partagé.', 'Configurer plusieurs modules en parallèle avant de fiabiliser Stocks.'] },
   referentiels: { when: 'Avant d’utiliser Stocks, fiches techniques, achats ou production.', prerequisites: ['Liste validée des produits, familles, fournisseurs et lieux de stockage.'], steps: ['Créer les unités de gestion réellement utilisées.', 'Créer les catégories pour classer les produits.', 'Créer les fournisseurs.', 'Créer chaque produit une seule fois et lui associer ses références.', 'Déclarer les sites et emplacements.', 'Relire les doublons avec le référent catalogue.'], checks: ['Chaque produit possède une unité cohérente.', 'Les noms correspondent au vocabulaire de la brigade.'], result: 'Tous les modules utilisent le même catalogue et aucune donnée n’est ressaisie ailleurs.', pitfalls: ['Créer un nouveau produit pour une simple variante de conditionnement.', 'Mélanger l’unité d’achat et l’unité de stock sans règle claire.'] },
   stocks: { when: 'À chaque réception, sortie matière, perte, correction ou inventaire.', prerequisites: ['Référentiel produit complet.', 'Personne habilitée à enregistrer les mouvements.'], steps: ['Consulter le niveau de stock et les alertes.', 'Choisir le mouvement qui correspond au fait réel.', 'Saisir quantité, unité, emplacement, date et motif.', 'Ajouter lot ou information de traçabilité si nécessaire.', 'Contrôler le mouvement créé dans l’historique.', 'Faire un inventaire physique régulier et valider les écarts justifiés.'], checks: ['Le mouvement correspond à une réalité physique.', 'Une correction est motivée.', 'Le stock final est cohérent avec le comptage.'], result: 'Le stock courant découle d’un historique complet et vérifiable.', pitfalls: ['Modifier une quantité sans mouvement.', 'Utiliser une correction pour masquer une perte ou une réception.'] },
-  'ocr-stocks': { when: 'Lorsqu’un bon de livraison ou une facture doit devenir une réception.', prerequisites: ['Document lisible.', 'Produits et fournisseurs déjà référencés.'], steps: ['Importer le document.', 'Attendre l’extraction puis comparer les lignes au papier ou à la marchandise.', 'Rapprocher chaque ligne du bon produit.', 'Corriger quantités, unités, prix et lots ambigus.', 'Traiter les écarts fournisseur.', 'Valider la réception seulement après contrôle physique.'], checks: ['Chaque ligne a un produit correct.', 'Les conditionnements sont compris.', 'La réception correspond à ce qui est réellement livré.'], result: 'Les mouvements de réception sont fiables et leur origine documentaire est conservée.', pitfalls: ['Valider des données OCR sans les lire.', 'Créer des doublons de produit pour accélérer le rapprochement.'] },
+  'ocr-stocks': { when: 'Pour reprendre un catalogue, préparer un inventaire ou analyser un document d’achat.', prerequisites: ['Site configuré.', 'Fichier structuré ou document lisible.', 'Personne chargée de la revue.'], steps: ['Choisir catalogue, inventaire ou OCR documentaire.', 'Importer le CSV/XLSX/XML accepté ou déposer le document.', 'Contrôler le mapping des colonnes ou les lignes extraites.', 'Rapprocher les produits et traiter doublons, unités et conditionnements ambigus.', 'Sélectionner uniquement les lignes prêtes.', 'Conserver l’inventaire en brouillon ou valider la réception après contrôle physique.'], checks: ['Chaque ligne pointe vers le bon produit.', 'Le site et le fournisseur sont corrects.', 'Aucun stock réel ne change avant la validation prévue.'], result: 'L’import accélère la préparation tout en conservant une validation humaine avant l’effet métier.', pitfalls: ['Envoyer un classeur structuré à l’OCR au lieu de le lire directement.', 'Valider toutes les lignes sans examiner les doublons et avertissements.'] },
   marges: { when: 'Pour analyser une hausse de coût, fixer un prix ou préparer une décision fournisseur.', prerequisites: ['Prix d’achat actualisés par les réceptions.', 'Fiches techniques reliées aux produits.'], steps: ['Choisir le produit, fournisseur ou la période à analyser.', 'Comparer coût courant et historique.', 'Consulter les tendances de cotation lorsque disponible.', 'Identifier si la variation provient du marché, du fournisseur ou de la saisie.', 'Mettre à jour le prix source si nécessaire.', 'Recalculer les fiches techniques concernées et partager la décision.'], checks: ['Le prix analysé provient d’une réception réelle.', 'La période de comparaison est comparable.'], result: 'La décision économique s’appuie sur des coûts vérifiables.', pitfalls: ['Prendre une cotation de marché pour un prix de facture.', 'Modifier une marge sans actualiser le coût matière.'] },
   'fiches-techniques': { when: 'Pour standardiser une préparation ou mettre à jour une recette existante.', prerequisites: ['Produits Stocks actifs.', 'Catégories de recettes prêtes.'], steps: ['Créer ou ouvrir la fiche.', 'Définir portions de référence et catégorie.', 'Ajouter chaque ingrédient depuis Stocks avec sa quantité.', 'Rédiger les étapes de réalisation dans l’ordre réel.', 'Vérifier allergènes et coût matière.', 'Simuler d’autres volumes si nécessaire.', 'Dupliquer avant une variation majeure, puis archiver l’ancienne version au besoin.'], checks: ['Tous les ingrédients pointent vers le bon produit.', 'La portion de référence est réaliste.', 'Le coût est recalculé après changement de prix.'], result: 'La recette est reproductible, chiffrée et exploitable par Production et Menus.', pitfalls: ['Écrire un ingrédient libre au lieu de le sélectionner dans Stocks.', 'Écraser une recette historique au lieu de la dupliquer.'] },
-  production: { when: 'Pour fabriquer une recette planifiée ou une production exceptionnelle.', prerequisites: ['Fiche technique active.', 'Stocks et responsables disponibles.'], steps: ['Créer l’ordre à partir de la fiche et fixer date, heure, portions et priorité.', 'Lire les besoins matières et les alertes.', 'Résoudre les ruptures ou justifier explicitement tout contournement critique.', 'Affecter responsables et équipe si nécessaire.', 'Réaliser la production et saisir les quantités réellement obtenues.', 'Effectuer le contrôle qualité.', 'Examiner puis confirmer le déstockage proposé.', 'Consulter l’historique et produire les documents nécessaires.'], checks: ['Aucun manque matière critique n’est ignoré.', 'Le déstockage est confirmé après la réalisation.', 'Les écarts de portions sont expliqués.'], result: 'La fabrication est reliée à la recette, au stock consommé et aux personnes impliquées.', pitfalls: ['Clôturer sans contrôle qualité.', 'Confondre proposition de déstockage et mouvement déjà confirmé.'] },
-  menus: { when: 'Pour préparer les repas, cycles et volumes de service.', prerequisites: ['Menus installe Stocks, Fiches Techniques et Production si nécessaire.', 'Avant la première génération : fiches techniques, groupes de convives et régimes sont configurés.'], steps: ['Créer le menu sur la bonne date et le bon service.', 'Ajouter les fiches techniques existantes à chaque composante.', 'Créer les variantes régime nécessaires.', 'Renseigner les prévisions de convives par groupe.', 'Vérifier coûts, allergènes et quantités.', 'Valider puis publier le menu.', 'Générer les productions seulement après validation des volumes.'], checks: ['Chaque préparation est une fiche technique existante.', 'Les effectifs sont à jour avant la génération.', 'Le statut publié correspond à une version validée.'], result: 'Le menu pilote directement les productions sans dupliquer recettes ni ingrédients.', pitfalls: ['Générer les productions avant les prévisions.', 'Créer une recette dans Menus au lieu de Fiches techniques.'] },
-  haccp: { when: 'Chaque jour, à chaque contrôle sanitaire et à toute non-conformité.', prerequisites: ['Équipements, zones, produits et seuils configurés.', 'Brigade formée aux procédures de l’établissement.'], steps: ['Ouvrir le tableau HACCP et traiter d’abord les alertes.', 'Vérifier capteurs et compléter les relevés de température.', 'Contrôler les réceptions, lots et traçabilités du jour.', 'Effectuer nettoyage, huiles et processus chaud/froid planifiés.', 'Enregistrer immédiatement une non-conformité et son action corrective.', 'Joindre les preuves requises.', 'Relire les éléments incomplets puis générer le rapport journalier.'], checks: ['Chaque alerte a une vérification terrain.', 'Les valeurs sont réellement mesurées.', 'Les actions correctives sont tracées dans la même intervention.'], result: 'Le dossier sanitaire quotidien est complet, attribué et consultable.', pitfalls: ['Reporter une saisie en fin de journée de mémoire.', 'Traiter une alerte capteur sans contrôler l’équipement.'] },
+  production: { when: 'Pour transformer un besoin de fabrication en travail planifié pour la brigade.', prerequisites: ['Fiche technique active ou source Menus/Traiteur.', 'Site de production.', 'Services et collaborateurs RH si des affectations nominatives sont attendues.'], steps: ['Créer ou ouvrir la campagne de fabrication.', 'Vérifier quantité cible, date, opérations et besoins matières.', 'Affecter le service et valider la campagne.', 'Ouvrir le planning opérationnel.', 'Placer les tâches en attente sur un horaire ou les créer depuis une fiche, une étape, un menu ou un modèle.', 'Affecter les personnes et ajuster la durée.', 'Faire évoluer les statuts au fil de l’exécution et documenter les blocages.'], checks: ['La campagne et la tâche ne sont pas confondues.', 'Le site, le service et les quantités sont cohérents.', 'Les éléments encore sans horaire restent visibles dans la file.'], result: 'Le besoin culinaire devient une campagne suivie et un ensemble de tâches planifiées, reliées à leurs sources.', pitfalls: ['Planifier une tâche avant de valider sa quantité ou son site.', 'Créer une tâche manuelle qui duplique une fabrication déjà générée.'] },
+  menus: { when: 'Pour organiser une carte, un service collectif, un événement ou une production centralisée.', prerequisites: ['Profil d’activité choisi.', 'Stocks, Fiches Techniques et Production installés/configurés selon le parcours.'], steps: ['Choisir ou confirmer le profil d’activité.', 'Construire la carte, le menu, le cycle ou le dossier événementiel avec les références existantes.', 'Renseigner disponibilité, convives, client, logistique ou site de distribution selon le profil.', 'Contrôler quantités, allergènes, statuts et alertes bloquantes.', 'Valider ou publier la version attendue.', 'Préparer les manques ou générer les fabrications.', 'Suivre le passage dans Production et conserver les documents/historiques.'], checks: ['Aucun produit ou recette n’est recréé dans Menus.', 'Le profil correspond aux écrans utilisés par l’équipe.', 'Les volumes sont validés avant génération.'], result: 'Chaque type d’activité dispose d’un parcours adapté tout en partageant les mêmes référentiels et la même production.', pitfalls: ['Former l’équipe avant d’avoir fixé le profil.', 'Utiliser un menu collectif pour gérer un dossier traiteur complet.'] },
+  haccp: { when: 'Lors de la configuration du PMS, à chaque contrôle terrain et à toute alerte.', prerequisites: ['Équipements, zones, produits et seuils configurés sur le web.', 'Application mobile connectée pour la brigade.', 'Procédures de l’établissement connues.'], steps: ['Configurer le socle HACCP dans ToqueHub web.', 'Appairer et tester les capteurs si le périmètre IoT est actif.', 'Réaliser les contrôles quotidiens dans l’application mobile.', 'Enregistrer immédiatement mesure, non-conformité, correction et preuve.', 'Surveiller alertes et courbes depuis le web.', 'Contrôler les registres synchronisés et le rapport PDF quotidien.', 'Corriger les informations incomplètes dans leur parcours source.'], checks: ['Chaque alerte reçoit une vérification terrain.', 'La file mobile est synchronisée.', 'Le rapport reprend les contrôles réellement effectués.'], result: 'Le web, le mobile et les capteurs composent un dossier sanitaire continu et consultable.', pitfalls: ['Saisir de mémoire en fin de journée.', 'Considérer un capteur ou un PDF comme un remplacement de l’action corrective.'] },
   rh: { when: 'À la création d’une structure, à l’arrivée, l’évolution ou au départ d’un collaborateur.', prerequisites: ['Services validés.', 'Postes structurés par service.'], steps: ['Terminer l’assistant de structure.', 'Créer services puis postes.', 'Créer la fiche collaborateur.', 'Associer service, poste, responsable et statut.', 'Lier un compte utilisateur uniquement si la personne doit accéder à ToqueHub.', 'Ajouter les documents et formations selon les droits.', 'Mettre à jour l’organigramme et archiver plutôt que supprimer lors d’un départ.'], checks: ['La personne existe une seule fois.', 'Les documents sensibles restent accessibles aux seuls rôles autorisés.'], result: 'RH devient la référence des personnes utilisée par Planning et Production.', pitfalls: ['Créer un compte utilisateur sans fiche collaborateur lorsque la liaison est requise.', 'Supprimer un historique de départ.'] },
   planning: { when: 'Pour préparer, contrôler, publier puis clôturer une période de travail.', prerequisites: ['Planning installe automatiquement RH lorsque nécessaire.', 'Avant la première publication : au moins un service, un poste et un collaborateur actif correctement rattaché.', 'Créneaux, règles et disponibilités configurés.'], steps: ['Choisir la période et consulter son état.', 'Saisir absences et besoins opérationnels.', 'Créer les affectations ou appliquer un modèle après prévisualisation.', 'Traiter les conflits et proposer un remplacement si nécessaire.', 'Contrôler heures, alertes et coûts estimés.', 'Publier la période une fois validée.', 'Verrouiller après diffusion pour préparer les exports ou la paie.'], checks: ['Absences et besoins sont intégrés.', 'Les conflits ouverts ont une décision.', 'La période publiée est celle réellement diffusée.'], result: 'Le planning est cohérent, communicable et traçable.', pitfalls: ['Modifier une période verrouillée sans décision formelle.', 'Appliquer une rotation sans prévisualisation.'] },
   utilisateurs: { when: 'À chaque arrivée, changement de mission ou départ d’une personne ayant un accès.', prerequisites: ['Fiche RH si la personne est collaborateur.', 'Rôle cible défini.'], steps: ['Créer ou inviter le compte.', 'Associer la fiche collaborateur si applicable.', 'Attribuer le rôle minimal nécessaire.', 'Vérifier les permissions sensibles.', 'Tester l’accès avec la personne ou par contrôle administrateur.', 'Désactiver ou ajuster le compte dès la fin de mission.'], checks: ['Un compte correspond à une personne.', 'Aucun droit d’administration n’est accordé par confort.'], result: 'Chaque action est attribuable et l’accès est proportionné au besoin.', pitfalls: ['Partager des identifiants.', 'Conserver un accès après un départ.'] },
   architecture: { when: 'Avant d’activer un module, modifier un référentiel ou préparer une évolution.', prerequisites: ['Accès administrateur.', 'Périmètre de la décision identifié.'], steps: ['Ouvrir la vue globale pour identifier les modules concernés.', 'Consulter les données propriétaires dans Data Map.', 'Lire les relations et l’impact avant toute décision.', 'Identifier un éventuel doublon à sa source.', 'Vérifier l’état du module et la roadmap.', 'Préparer une sauvegarde et une communication avant intervention.'], checks: ['La donnée existe déjà ou non dans un module propriétaire.', 'Les conséquences sur les modules dépendants sont comprises.'], result: 'Les évolutions limitent les doublons et les effets de bord.', pitfalls: ['Modifier une donnée partagée sans vérifier ses dépendances.'] },
-  achats: { when: 'Pour commander, suivre et réceptionner un approvisionnement fournisseur.', prerequisites: ['Fournisseurs et produits Stocks prêts.', 'Messagerie testée si envoi depuis ToqueHub.'], steps: ['Terminer le guide de configuration.', 'Créer une commande avec ses lignes et quantités.', 'Contrôler fournisseur, adresses, prix et destinataire.', 'Envoyer ou conserver le brouillon selon le circuit choisi.', 'Suivre confirmation, livraison et éventuels écarts.', 'Créer une réception, accepter les quantités réelles et valider.', 'Clôturer la commande après traitement des réceptions partielles.'], checks: ['Le bon fournisseur est sélectionné.', 'Les écarts sont expliqués avant validation.', 'Les mouvements de stock proviennent d’une réception validée.'], result: 'Le cycle achat est relié aux Stocks et reste historisé de bout en bout.', pitfalls: ['Envoyer une commande sans aperçu.', 'Clôturer malgré une réception partielle non traitée.'] },
+  achats: { when: 'Pour commander, envoyer et réceptionner un approvisionnement fournisseur.', prerequisites: ['Fournisseurs et produits Stocks prêts.', 'Si ToqueHub expédie le bon : Google Workspace/Gmail, Microsoft 365/Outlook, SMTP ou Resend connecté, testé et actif.'], steps: ['Terminer le guide de configuration.', 'Dans Messagerie fournisseur, connecter la voie d’envoi autorisée, lancer le test et l’activer.', 'Créer une commande avec ses lignes et quantités.', 'Contrôler fournisseur, adresses, prix, destinataire et aperçu PDF.', 'Envoyer ou conserver le brouillon selon le circuit choisi.', 'Vérifier le statut de la tentative et la confirmation fournisseur.', 'Créer une réception, accepter les quantités réelles, expliquer les écarts et valider.', 'Clôturer la commande après traitement des réceptions partielles.'], checks: ['Le bon fournisseur et le bon destinataire sont sélectionnés.', 'La connexion active correspond à l’adresse d’envoi attendue.', 'Le PDF joint a été relu.', 'Les écarts sont expliqués avant validation.', 'Les mouvements de stock proviennent d’une réception validée.'], result: 'Le cycle achat, son envoi et ses réceptions restent reliés aux Stocks et historisés de bout en bout.', pitfalls: ['Confondre une connexion enregistrée avec une connexion testée et active.', 'Envoyer une commande sans relire son PDF.', 'Clôturer malgré une réception partielle non traitée.'] },
+  integrations: { when: 'Lors de la première connexion d’un service externe, d’un changement de compte ou d’un incident de synchronisation.', prerequisites: ['Droits adaptés au module et à l’administration.', 'Identifiants, clé API ou consentement OAuth du service.', 'Périmètre organisation/site connu.'], steps: ['Choisir le connecteur correspondant au besoin réel.', 'Configurer la connexion sans exposer le secret à un utilisateur non autorisé.', 'Pour OAuth, terminer le parcours chez le fournisseur puis revenir dans ToqueHub.', 'Lancer le test proposé et lire le message de résultat.', 'Activer la connexion ou la rattacher au bon site seulement après succès.', 'Réaliser une opération témoin : e-mail, synchronisation, OCR, cotation, sauvegarde ou mesure.', 'Contrôler la trace, la date, le périmètre et le résultat métier.', 'Documenter le mode manuel de secours puis surveiller les erreurs.'], checks: ['Le compte connecté est celui de l’établissement.', 'Le site et le fournisseur sélectionnés sont corrects.', 'Aucun secret n’est copié dans un document partagé.', 'Le fonctionnement de secours est connu.'], result: 'L’intégration est explicite, testée, rattachée au bon périmètre et réversible sans perdre le parcours manuel.', pitfalls: ['Activer une connexion sans test.', 'Additionner deux sources Finance qui couvrent les mêmes ventes.', 'Prendre une suggestion Mistral ou RNM pour une donnée validée.', 'Confondre Gmail Achats et Google Drive Sauvegardes.'] },
+  finance: { when: 'Pour consolider les chiffres, comprendre une variation ou préparer un rapport de direction.', prerequisites: ['Sources connectées ou fichiers disponibles.', 'Rattachement correct de chaque source à un établissement.', 'Permissions Finance adaptées.'], steps: ['Connecter ou importer les sources.', 'Tester leur accès puis lancer les synchronisations nécessaires.', 'Contrôler période, statut, couverture, rattachement et doublons.', 'Définir le POS principal et les sources incluses dans le CA.', 'Lire le cockpit puis approfondir dans la vue annuelle, mensuelle, journalière, ventes ou budget.', 'Utiliser l’analyste Mistral si configuré, en conservant les limites affichées.', 'Générer et relire le PDF adapté avant diffusion.'], checks: ['Fennoa et la caisse ne sont pas additionnés en double.', 'La période comparée possède une couverture suffisante.', 'Le périmètre site ou organisation est explicite.'], result: 'Les indicateurs et rapports restent rapprochables de leurs fichiers, connecteurs, périodes et règles de consolidation.', pitfalls: ['Prendre un chiffre provisoire de caisse pour une clôture comptable.', 'Diffuser une analyse sans sa couverture ni ses sources.'] },
   mobile: { when: 'Pour réaliser un contrôle HACCP sur le terrain avec ou sans réseau temporaire.', prerequisites: ['Application installée.', 'Serveur connu et compte autorisé.'], steps: ['Découvrir ou saisir le serveur puis se connecter.', 'Vérifier le tableau HACCP et l’état de synchronisation.', 'Réaliser le contrôle dans l’écran correspondant.', 'Ajouter mesures, lots, photos et corrections immédiatement.', 'Si hors ligne, poursuivre sans désinstaller l’application.', 'Reconnecter l’appareil et vérifier que toutes les opérations sont synchronisées.', 'Générer ou consulter le rapport une fois les contrôles terminés.'], checks: ['L’équipement est relié au bon serveur.', 'La file hors ligne est vide après synchronisation.'], result: 'Les actions terrain restent tracées même pendant une coupure de réseau.', pitfalls: ['Supposer qu’une saisie hors ligne est arrivée au serveur sans vérifier.', 'Supprimer l’application avant synchronisation.'] },
-  sauvegardes: { when: 'Avant mise à jour, changement technique, incident ou à fréquence planifiée.', prerequisites: ['Droits administrateur.', 'Emplacement de sauvegarde validé.'], steps: ['Vérifier les dernières sauvegardes.', 'Créer une sauvegarde avant une opération à risque.', 'Télécharger ou vérifier le dépôt distant chiffré.', 'Documenter date et raison de la sauvegarde.', 'En cas d’incident, diagnostiquer avant restauration.', 'Restaurer uniquement une sauvegarde identifiée et validée.', 'Vérifier l’accès, les données et les services après restauration.'], checks: ['La sauvegarde existe et peut être identifiée.', 'Une restauration est testée selon la procédure prévue.'], result: 'La continuité de l’instance est préparée et les restaurations sont maîtrisées.', pitfalls: ['Mettre à jour sans sauvegarde.', 'Restaurer une date non vérifiée en production.'] },
+  sauvegardes: { when: 'Avant mise à jour, changement technique, incident ou à fréquence planifiée.', prerequisites: ['Droits administrateur.', 'Emplacement de sauvegarde validé.', 'Compte Google Drive autorisé si la copie distante est utilisée.'], steps: ['Vérifier les dernières sauvegardes.', 'Créer une sauvegarde avant une opération à risque.', 'La télécharger ou connecter Google Drive par OAuth, tester la connexion puis envoyer la sauvegarde choisie.', 'Contrôler le statut et l’identifiant de la copie distante.', 'Documenter date et raison de la sauvegarde.', 'En cas d’incident, diagnostiquer avant restauration.', 'Restaurer uniquement une sauvegarde identifiée et validée.', 'Vérifier l’accès, les données et les services après restauration.'], checks: ['La sauvegarde existe et peut être identifiée.', 'La copie Google Drive est confirmée si ce canal est requis.', 'Une restauration est testée selon la procédure prévue.'], result: 'La continuité de l’instance est préparée et les restaurations locales ou copiées vers Google Drive sont maîtrisées.', pitfalls: ['Mettre à jour sans sauvegarde.', 'Supposer qu’une connexion Drive suffit sans contrôler l’envoi du fichier.', 'Restaurer une date non vérifiée en production.'] },
   iot: { when: 'Lors du déploiement ou de la maintenance de capteurs HACCP.', prerequisites: ['Serveur local opérationnel.', 'Capteurs, réseau et emplacements préparés.'], steps: ['Installer/configurer les services IoT autorisés.', 'Appairer chaque capteur.', 'Nommer et associer le capteur au bon équipement.', 'Définir ou vérifier les seuils de l’équipement.', 'Tester une remontée et une alerte.', 'Prévoir le relevé manuel de secours.', 'Contrôler périodiquement l’état en ligne des capteurs.'], checks: ['Chaque capteur est physiquement identifiable.', 'Une alerte test a été reçue et traitée selon la procédure.'], result: 'Les capteurs complètent les contrôles HACCP sans devenir un point de défaillance unique.', pitfalls: ['Se fier à une sonde sans vérification initiale.', 'Ne pas prévoir de procédure manuelle.'] },
-  parcours: { when: 'Lors de l’adoption progressive de ToqueHub dans un établissement.', prerequisites: ['Référent métier nommé pour chaque domaine.', 'Temps de formation et données de départ disponibles.'], steps: ['Installer et sécuriser les accès.', 'Utiliser la visite guidée pour préparer le socle Stocks, Fiches Techniques et HACCP.', 'Configurer Stocks et construire les référentiels avec un périmètre pilote.', 'Créer les fiches techniques essentielles.', 'Passer à Production puis Menus.', 'Mettre progressivement en service les routines HACCP déjà installées.', 'Ajouter RH, Planning, mobile et IoT selon la maturité.', 'Mesurer les écarts et améliorer les procédures.'], checks: ['Chaque étape possède un responsable.', 'Les données de l’étape précédente sont validées avant la suivante.', 'Un module installé n’est mis en production qu’après configuration et formation.'], result: 'Le déploiement reste progressif et les modules reposent sur des données fiables.', pitfalls: ['Activer tous les modules sans référentiels ni formation.', 'Recréer les mêmes données dans plusieurs modules.'] },
+  parcours: { when: 'Lors de l’adoption progressive de ToqueHub dans un établissement.', prerequisites: ['Référent métier nommé pour chaque domaine.', 'Temps de formation et données de départ disponibles.'], steps: ['Installer et sécuriser les accès.', 'Utiliser la visite guidée pour préparer le socle Stocks, Fiches Techniques et HACCP.', 'Configurer Stocks et construire les référentiels avec un périmètre pilote.', 'Créer les fiches techniques essentielles.', 'Passer à Production puis choisir le profil Menus adapté.', 'Mettre progressivement en service les routines HACCP web/mobile.', 'Structurer RH avant Planning.', 'Activer Achats puis Finance lorsque les référentiels et sources sont fiables.', 'Ajouter IoT et connecteurs externes selon la maturité.', 'Mesurer les écarts et améliorer les procédures.'], checks: ['Chaque étape possède un responsable.', 'Les données de l’étape précédente sont validées avant la suivante.', 'Un module installé n’est mis en production qu’après configuration et formation.'], result: 'Le déploiement reste progressif et les modules reposent sur des données fiables.', pitfalls: ['Activer tous les modules sans référentiels ni formation.', 'Recréer les mêmes données dans plusieurs modules.'] },
 };

@@ -207,7 +207,9 @@ export class FinanceService {
         orderBy: { name: 'asc' },
       }),
     ]);
-    const selectedSite = query.siteId ? sites.find(({ id }) => id === query.siteId) : null;
+    const selectedSite = query.siteId
+      ? (sites.find(({ id }) => id === query.siteId) ?? null)
+      : null;
     if (query.siteId && !selectedSite) {
       throw new BadRequestException('Établissement Finance introuvable.');
     }
@@ -216,8 +218,11 @@ export class FinanceService {
       query,
       settings?.fiscalYearStartMonth ?? 1,
     );
+    const accountingSourceIds = new Set(analytics.dataScope.accountingSourceIds);
     const scopedSources = selectedSite
-      ? sources.filter(({ siteId }) => siteId === selectedSite.id)
+      ? sources.filter(
+          ({ id, siteId }) => siteId === selectedSite.id || accountingSourceIds.has(id),
+        )
       : sources;
     const connectedSources = scopedSources.filter(
       ({ status }) => status === FinanceSourceStatus.READY,
@@ -244,15 +249,16 @@ export class FinanceService {
       scope: {
         mode: selectedSite ? 'site' : 'consolidated',
         site: selectedSite,
-        accountingAllocated: selectedSite
-          ? sources.some(
-              ({ siteId, sourceType }) =>
-                siteId === selectedSite.id && sourceType === FinanceSourceType.ACCOUNTING_API,
-            )
-          : true,
-        note: selectedSite
-          ? 'Les ventes et l’affluence sont limitées à cet établissement. Les charges, la trésorerie et le budget restent indisponibles tant qu’ils ne sont pas affectés à ce site.'
-          : 'Tous les établissements et toutes les caisses incluses sont consolidés.',
+        accountingAllocated: analytics.dataScope.accountingMode !== 'unavailable',
+        budgetAllocated: analytics.dataScope.budgetMode !== 'unavailable',
+        accountingMode: analytics.dataScope.accountingMode,
+        budgetMode: analytics.dataScope.budgetMode,
+        accountingSourceIds: analytics.dataScope.accountingSourceIds,
+        note: this.financeScopeNote(
+          selectedSite,
+          analytics.dataScope.accountingMode,
+          analytics.dataScope.budgetMode,
+        ),
       },
       sources,
       sites,
@@ -276,6 +282,28 @@ export class FinanceService {
             .sort((left, right) => right.getTime() - left.getTime())[0] ?? null,
       },
     };
+  }
+
+  private financeScopeNote(
+    site: { id: string; name: string } | null,
+    accountingMode: 'consolidated' | 'direct' | 'exclusive_site_fallback' | 'unavailable',
+    budgetMode: 'consolidated' | 'direct' | 'exclusive_site_fallback' | 'unavailable',
+  ) {
+    if (!site) return 'Tous les établissements et toutes les caisses incluses sont consolidés.';
+
+    const accountingNote =
+      accountingMode === 'exclusive_site_fallback'
+        ? `La comptabilité Fennoa enregistrée au niveau de l’organisation est attribuée à ${site.name}, seul établissement présentant une activité de caisse sur l’exercice analysé.`
+        : accountingMode === 'direct'
+          ? `La comptabilité affectée à ${site.name} est incluse.`
+          : 'La comptabilité globale n’est pas ventilée entre les établissements et reste exclue de cette vue.';
+    const budgetNote =
+      budgetMode === 'direct'
+        ? `Le budget affecté à ${site.name} est inclus.`
+        : budgetMode === 'exclusive_site_fallback'
+          ? `Le budget global est attribué à ${site.name}, seul établissement actif sur la période.`
+          : 'Aucun budget affecté à cet établissement n’est inclus.';
+    return `Les ventes et l’affluence sont limitées à ${site.name}. ${accountingNote} ${budgetNote}`;
   }
 
   async importFile(
@@ -496,21 +524,37 @@ export class FinanceService {
       );
     }
     const baseSourceName = financeSourceName(classification.provider);
-    const sourceName =
+    const requestedSourceName =
       target.sourceName?.trim() ||
       (classification.provider === FinanceProvider.GENERIC && requestedSite
         ? `${baseSourceName} · ${requestedSite.name}`
         : baseSourceName);
     const sourceType = FinanceSourceType.FILE_IMPORT;
-    const existingSource = await this.prisma.financeDataSource.findUnique({
+    const namedSource = await this.prisma.financeDataSource.findUnique({
       where: {
         organizationId_provider_name: {
           organizationId,
           provider: classification.provider,
-          name: sourceName,
+          name: requestedSourceName,
         },
       },
     });
+    // Le nom est une présentation, pas l'identité d'une caisse. Après un renommage (par exemple
+    // « FlatPay POS » vers « FlatPay POS · Kuusamo »), un nouvel import doit continuer à alimenter
+    // la source déjà rattachée à ce fournisseur et à cet établissement.
+    const siteSource =
+      requestedSite && classification.provider !== FinanceProvider.GENERIC
+        ? await this.prisma.financeDataSource.findFirst({
+            where: {
+              organizationId,
+              provider: classification.provider,
+              siteId: requestedSite.id,
+            },
+            orderBy: [{ isPrimaryPos: 'desc' }, { isPrimarySales: 'desc' }, { createdAt: 'asc' }],
+          })
+        : null;
+    const existingSource = siteSource ?? namedSource;
+    const sourceName = existingSource?.name ?? requestedSourceName;
     const defaultSite =
       classification.provider === FinanceProvider.FENNOA
         ? null
@@ -544,6 +588,16 @@ export class FinanceService {
       [existingSource?.coverageEnd, parsed.periodEnd]
         .filter((value): value is Date => Boolean(value))
         .sort((left, right) => right.getTime() - left.getTime())[0] ?? null;
+    const revenueRows = parsed.rows.filter(({ isRevenueRecord }) => isRevenueRecord).length;
+    const shouldEnableExistingSalesSource =
+      Boolean(existingSource && !existingSource.isPrimarySales && revenueRows > 0) &&
+      (await this.prisma.financeDailySales.count({
+        where: {
+          organizationId,
+          sourceId: existingSource!.id,
+          isRevenueRecord: true,
+        },
+      })) === 0;
     const source = await this.prisma.financeDataSource.upsert({
       where: {
         organizationId_provider_name: {
@@ -559,6 +613,7 @@ export class FinanceService {
             lastSyncedAt: new Date(),
             coverageStart,
             coverageEnd,
+            ...(shouldEnableExistingSalesSource ? { isPrimarySales: true } : {}),
           }
         : {},
       create: {
@@ -580,7 +635,6 @@ export class FinanceService {
         coverageEnd,
       },
     });
-    const revenueRows = parsed.rows.filter(({ isRevenueRecord }) => isRevenueRecord).length;
     const canBecomePrimaryPos =
       source.sourceType !== FinanceSourceType.ACCOUNTING_API && revenueRows > 0;
     if (

@@ -23,10 +23,45 @@ export const FINANCE_PERIOD_PRESETS = [
   'fiscal_year',
 ] as const;
 
+export const FINANCE_EXPORT_REPORTS = [
+  'executive_annual',
+  'annual',
+  'monthly',
+  'daily',
+  'sales',
+] as const;
+
+export const FINANCE_SALES_EXPORT_PERIODS = ['daily', 'monthly', 'annual', 'custom'] as const;
+
 export class FinanceBootstrapQueryDto {
   @IsOptional()
   @IsIn(FINANCE_PERIOD_PRESETS)
   preset?: (typeof FINANCE_PERIOD_PRESETS)[number];
+
+  @IsOptional()
+  @IsDateString()
+  from?: string;
+
+  @IsOptional()
+  @IsDateString()
+  to?: string;
+
+  @IsOptional()
+  @IsUUID()
+  siteId?: string;
+}
+
+export class FinanceExportQueryDto {
+  @IsIn(FINANCE_EXPORT_REPORTS)
+  report!: (typeof FINANCE_EXPORT_REPORTS)[number];
+
+  @IsOptional()
+  @IsIn(FINANCE_SALES_EXPORT_PERIODS)
+  period?: (typeof FINANCE_SALES_EXPORT_PERIODS)[number];
+
+  @IsOptional()
+  @IsDateString()
+  asOf?: string;
 
   @IsOptional()
   @IsDateString()

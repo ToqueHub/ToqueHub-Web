@@ -6,7 +6,11 @@ import {
   ShieldCheck, 
   Calendar, 
   Utensils, 
-  DollarSign, 
+  Factory,
+  ShoppingCart,
+  WalletCards,
+  Truck,
+  Mail,
   Plus, 
   AlertTriangle, 
   Thermometer, 
@@ -15,7 +19,20 @@ import {
   CheckCircle2 
 } from 'lucide-react';
 
-type SimulatorTab = 'recipes' | 'stock' | 'haccp' | 'planning';
+type SimulatorTab = 'recipes' | 'stock' | 'production' | 'caterer' | 'haccp' | 'purchasing' | 'planning' | 'finance';
+type CatererFormat = 'Cocktail' | 'Buffet' | 'Repas assis';
+type ProductionStatus = 'À préparer' | 'En cours' | 'Terminée';
+
+const simulatorTabs: { id: SimulatorTab; label: string; icon: typeof Utensils }[] = [
+  { id: 'recipes', label: 'Fiches techniques', icon: Utensils },
+  { id: 'stock', label: 'Stocks', icon: Package },
+  { id: 'production', label: 'Production', icon: Factory },
+  { id: 'caterer', label: 'Traiteur', icon: Truck },
+  { id: 'haccp', label: 'HACCP', icon: ShieldCheck },
+  { id: 'purchasing', label: 'Achats', icon: ShoppingCart },
+  { id: 'planning', label: 'Planning', icon: Calendar },
+  { id: 'finance', label: 'Finance', icon: WalletCards },
+];
 
 export function InteractiveSimulator() {
   const [activeTab, setActiveTab] = useState<SimulatorTab>('recipes');
@@ -92,6 +109,19 @@ export function InteractiveSimulator() {
     setShifts(prev => ({ ...prev, [person]: roles[nextIdx] }));
   };
 
+  // Production, caterer, purchasing and finance scenarios
+  const [productionTarget, setProductionTarget] = useState(180);
+  const [productionStatus, setProductionStatus] = useState<ProductionStatus>('À préparer');
+  const [catererGuests, setCatererGuests] = useState(120);
+  const [catererFormat, setCatererFormat] = useState<CatererFormat>('Cocktail');
+  const [receivedQuantity, setReceivedQuantity] = useState(48);
+  const [emailProvider, setEmailProvider] = useState('Google Workspace');
+  const [financePeriod, setFinancePeriod] = useState(30);
+
+  const catererUnits = catererFormat === 'Cocktail' ? catererGuests * 12 : catererGuests;
+  const catererUnitLabel = catererFormat === 'Cocktail' ? 'pièces à produire' : 'portions à produire';
+  const financeFactor = financePeriod / 30;
+
   return (
     <div id="interactive-simulator" className="glass-card" style={{ padding: '2.5rem', marginTop: '3rem' }}>
       <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
@@ -102,48 +132,25 @@ export function InteractiveSimulator() {
           Testez le Cœur Métier de <span style={{ color: 'var(--primary-emerald)' }}>ToqueHub</span>
         </h2>
         <p style={{ maxWidth: '600px', margin: '0 auto', fontSize: '0.95rem', color: 'var(--text-muted)' }}>
-          Une interface de contrôle intuitive conçue pour simplifier la vie de votre brigade. Ajustez les données pour voir le simulateur réagir.
+          Huit scénarios illustrent la chaîne métier, du calcul d’une recette au pilotage financier. Testez les données puis ouvrez le guide pour les procédures complètes.
         </p>
       </div>
 
       {/* Tabs Navigation */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        gap: '1.25rem', 
-        marginBottom: '2.5rem', 
-        flexWrap: 'wrap',
-        borderBottom: '1px solid var(--border-light)',
-        paddingBottom: '0.2rem'
-      }}>
-        <button 
-          id="sim-tab-recipes"
-          className={`simulator-tab ${activeTab === 'recipes' ? 'active' : ''}`}
-          onClick={() => setActiveTab('recipes')}
-        >
-          <Utensils size={14} /> Fiches Techniques
-        </button>
-        <button 
-          id="sim-tab-stock"
-          className={`simulator-tab ${activeTab === 'stock' ? 'active' : ''}`}
-          onClick={() => setActiveTab('stock')}
-        >
-          <Package size={14} /> Suivi des Stocks
-        </button>
-        <button 
-          id="sim-tab-haccp"
-          className={`simulator-tab ${activeTab === 'haccp' ? 'active' : ''}`}
-          onClick={() => setActiveTab('haccp')}
-        >
-          <ShieldCheck size={14} /> Traçabilité HACCP
-        </button>
-        <button 
-          id="sim-tab-planning"
-          className={`simulator-tab ${activeTab === 'planning' ? 'active' : ''}`}
-          onClick={() => setActiveTab('planning')}
-        >
-          <Calendar size={14} /> Plannings RH
-        </button>
+      <div className="simulator-tabs" role="tablist" aria-label="Scénarios métier ToqueHub">
+        {simulatorTabs.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            id={`sim-tab-${id}`}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === id}
+            className={`simulator-tab ${activeTab === id ? 'active' : ''}`}
+            onClick={() => setActiveTab(id)}
+          >
+            <Icon size={15} /> {label}
+          </button>
+        ))}
       </div>
 
       {/* Simulator Content Area */}
@@ -158,7 +165,8 @@ export function InteractiveSimulator() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.3 }}
-              style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: '2.5rem', alignItems: 'start' }}
+              className="simulator-panel-grid"
+              style={{ alignItems: 'start' }}
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -267,7 +275,8 @@ export function InteractiveSimulator() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.3 }}
-              style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: '2.5rem', alignItems: 'start' }}
+              className="simulator-panel-grid"
+              style={{ alignItems: 'start' }}
             >
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
@@ -369,7 +378,93 @@ export function InteractiveSimulator() {
             </motion.div>
           )}
 
-          {/* TAB 3: HACCP */}
+          {/* TAB 3: PRODUCTION */}
+          {activeTab === 'production' && (
+            <motion.div
+              key="production"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.3 }}
+              className="simulator-panel-grid"
+            >
+              <div className="simulator-scenario">
+                <div>
+                  <span className="simulator-eyebrow">Campagne de fabrication</span>
+                  <h3>Velouté de courge · Service du soir</h3>
+                  <p>Modifiez l’objectif puis faites progresser la campagne comme la brigade pendant l’exécution.</p>
+                </div>
+                <div className="simulator-control-card">
+                  <div className="simulator-control-heading"><span>Quantité cible</span><strong>{productionTarget} portions</strong></div>
+                  <input id="production-slider" type="range" min="40" max="400" step="20" value={productionTarget} onChange={(event) => setProductionTarget(Number(event.target.value))} />
+                  <div className="simulator-choice-row">
+                    {(['À préparer', 'En cours', 'Terminée'] as ProductionStatus[]).map((status) => <button key={status} type="button" className={productionStatus === status ? 'is-selected' : ''} onClick={() => setProductionStatus(status)}>{status}</button>)}
+                  </div>
+                </div>
+                <div className="simulator-metric-grid">
+                  <div><small>Lots de 60</small><strong>{Math.ceil(productionTarget / 60)}</strong></div>
+                  <div><small>Temps estimé</small><strong>{Math.ceil(productionTarget / 45)} h</strong></div>
+                  <div><small>État</small><strong>{productionStatus}</strong></div>
+                </div>
+              </div>
+              <div className="simulator-summary-card">
+                <Factory size={24} />
+                <div><span className="simulator-eyebrow">Chaîne reliée</span><h3>Du besoin aux tâches</h3></div>
+                <ul className="simulator-checklist">
+                  <li><CheckCircle2 /> Fiche technique et opérations reprises</li>
+                  <li><CheckCircle2 /> Besoins matières recalculés pour {productionTarget} portions</li>
+                  <li><CheckCircle2 /> Site, service et responsables conservés</li>
+                  <li className={productionStatus === 'Terminée' ? 'is-complete' : ''}><CheckCircle2 /> Avancement visible dans le planning opérationnel</li>
+                </ul>
+                <span className="badge-neon badge-neon-emerald">Campagne · {productionStatus}</span>
+              </div>
+            </motion.div>
+          )}
+
+          {/* TAB 4: CATERER */}
+          {activeTab === 'caterer' && (
+            <motion.div
+              key="caterer"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.3 }}
+              className="simulator-panel-grid"
+            >
+              <div className="simulator-scenario">
+                <div>
+                  <span className="simulator-eyebrow">Dossier traiteur</span>
+                  <h3>Réception Maison Lenoir</h3>
+                  <p>Adaptez le format et les convives pour visualiser le besoin transmis à la production.</p>
+                </div>
+                <div className="simulator-control-card">
+                  <div className="simulator-choice-row">
+                    {(['Cocktail', 'Buffet', 'Repas assis'] as CatererFormat[]).map((format) => <button key={format} type="button" className={catererFormat === format ? 'is-selected' : ''} onClick={() => setCatererFormat(format)}>{format}</button>)}
+                  </div>
+                  <div className="simulator-control-heading"><span>Convives confirmés</span><strong>{catererGuests}</strong></div>
+                  <input id="caterer-slider" type="range" min="20" max="300" step="10" value={catererGuests} onChange={(event) => setCatererGuests(Number(event.target.value))} />
+                </div>
+                <div className="simulator-metric-grid">
+                  <div><small>{catererUnitLabel}</small><strong>{catererUnits}</strong></div>
+                  <div><small>Lots de production</small><strong>{Math.ceil(catererUnits / (catererFormat === 'Cocktail' ? 240 : 40))}</strong></div>
+                  <div><small>Équipe service</small><strong>{Math.max(2, Math.ceil(catererGuests / 35))} pers.</strong></div>
+                </div>
+              </div>
+              <div className="simulator-summary-card">
+                <Truck size={24} />
+                <div><span className="simulator-eyebrow">Événement · 18 septembre</span><h3>Un dossier, plusieurs métiers</h3></div>
+                <ul className="simulator-checklist">
+                  <li><CheckCircle2 /> Client, horaires et lieu centralisés</li>
+                  <li><CheckCircle2 /> Prestations, recettes et allergènes réunis</li>
+                  <li><CheckCircle2 /> Logistique et documents rattachés au dossier</li>
+                  <li><CheckCircle2 /> Passage en Production sans recréer les fiches</li>
+                </ul>
+                <span className="badge-neon badge-neon-emerald">{catererFormat} · {catererGuests} convives</span>
+              </div>
+            </motion.div>
+          )}
+
+          {/* TAB 5: HACCP */}
           {activeTab === 'haccp' && (
             <motion.div
               key="haccp"
@@ -377,7 +472,8 @@ export function InteractiveSimulator() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.3 }}
-              style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: '2.5rem', alignItems: 'center' }}
+              className="simulator-panel-grid"
+              style={{ alignItems: 'center' }}
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                 <div>
@@ -537,7 +633,91 @@ export function InteractiveSimulator() {
             </motion.div>
           )}
 
-          {/* TAB 4: PLANNING */}
+          {/* TAB 6: PURCHASING */}
+          {activeTab === 'purchasing' && (
+            <motion.div
+              key="purchasing"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.3 }}
+              className="simulator-panel-grid"
+            >
+              <div className="simulator-scenario">
+                <div>
+                  <span className="simulator-eyebrow">Commande fournisseur BC-2026-184</span>
+                  <h3>Envoi et réception partielle</h3>
+                  <p>Choisissez la messagerie active et simulez la quantité réellement livrée sur 80 unités commandées.</p>
+                </div>
+                <div className="simulator-control-card">
+                  <div className="simulator-choice-row simulator-choice-row-wrap">
+                    {['Google Workspace', 'Microsoft 365', 'SMTP', 'Resend'].map((provider) => <button key={provider} type="button" className={emailProvider === provider ? 'is-selected' : ''} onClick={() => setEmailProvider(provider)}>{provider}</button>)}
+                  </div>
+                  <div className="simulator-control-heading"><span>Quantité réceptionnée</span><strong>{receivedQuantity} / 80</strong></div>
+                  <input id="purchasing-slider" type="range" min="0" max="80" step="4" value={receivedQuantity} onChange={(event) => setReceivedQuantity(Number(event.target.value))} />
+                </div>
+                <div className="simulator-metric-grid">
+                  <div><small>Réception</small><strong>{Math.round((receivedQuantity / 80) * 100)} %</strong></div>
+                  <div><small>Reste attendu</small><strong>{80 - receivedQuantity}</strong></div>
+                  <div><small>Commande</small><strong>{receivedQuantity === 80 ? 'À clôturer' : receivedQuantity > 0 ? 'Partielle' : 'Envoyée'}</strong></div>
+                </div>
+              </div>
+              <div className="simulator-summary-card">
+                <Mail size={24} />
+                <div><span className="simulator-eyebrow">Messagerie fournisseur</span><h3>{emailProvider} actif</h3></div>
+                <ul className="simulator-checklist">
+                  <li><CheckCircle2 /> Connexion testée avant le premier envoi</li>
+                  <li><CheckCircle2 /> Bon de commande PDF joint au message</li>
+                  <li><CheckCircle2 /> Tentative et statut conservés dans l’historique</li>
+                  <li className={receivedQuantity === 80 ? 'is-complete' : ''}><CheckCircle2 /> Stock mis à jour après validation de la réception</li>
+                </ul>
+                <span className={`badge-neon ${receivedQuantity === 80 ? 'badge-neon-emerald' : 'badge-neon-blue'}`}>{receivedQuantity === 80 ? 'Livraison complète' : 'Réception partielle'}</span>
+              </div>
+            </motion.div>
+          )}
+
+          {/* TAB 7: FINANCE */}
+          {activeTab === 'finance' && (
+            <motion.div
+              key="finance"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.3 }}
+              className="simulator-panel-grid"
+            >
+              <div className="simulator-scenario">
+                <div>
+                  <span className="simulator-eyebrow">Ventes & affluence</span>
+                  <h3>Pilotage multi-source</h3>
+                  <p>Changez la période pour comparer chiffre d’affaires, transactions et ticket moyen sur un même périmètre.</p>
+                </div>
+                <div className="simulator-control-card">
+                  <div className="simulator-choice-row">
+                    {[7, 30, 90].map((days) => <button key={days} type="button" className={financePeriod === days ? 'is-selected' : ''} onClick={() => setFinancePeriod(days)}>{days} jours</button>)}
+                  </div>
+                </div>
+                <div className="simulator-metric-grid">
+                  <div><small>CA TTC</small><strong>{Math.round(42860 * financeFactor).toLocaleString('fr-FR')} €</strong></div>
+                  <div><small>Transactions</small><strong>{Math.round(1842 * financeFactor).toLocaleString('fr-FR')}</strong></div>
+                  <div><small>Ticket moyen</small><strong>23,27 €</strong></div>
+                </div>
+              </div>
+              <div className="simulator-summary-card">
+                <WalletCards size={24} />
+                <div><span className="simulator-eyebrow">Sources contrôlées</span><h3>Couverture : 100 %</h3></div>
+                <ul className="simulator-checklist">
+                  <li><CheckCircle2 /> Fennoa · vérité comptable</li>
+                  <li><CheckCircle2 /> Flatpay, Loyverse ou PayPal POS / Zettle</li>
+                  <li><CheckCircle2 /> Source principale et doublons contrôlés</li>
+                  <li><CheckCircle2 /> Rapport PDF avec période et provenance</li>
+                </ul>
+                <span className="badge-neon badge-neon-emerald">Période complète · {financePeriod} jours</span>
+              </div>
+            </motion.div>
+          )}
+
+          {/* TAB 8: PLANNING */}
           {activeTab === 'planning' && (
             <motion.div
               key="planning"
@@ -545,7 +725,8 @@ export function InteractiveSimulator() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.3 }}
-              style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: '2.5rem', alignItems: 'start' }}
+              className="simulator-panel-grid"
+              style={{ alignItems: 'start' }}
             >
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>

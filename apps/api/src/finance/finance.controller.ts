@@ -7,10 +7,12 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
@@ -24,6 +26,7 @@ import {
   ConfigurePosApiDto,
   FinanceAiAnalysisDto,
   FinanceBootstrapQueryDto,
+  FinanceExportQueryDto,
   FinanceSalesInsightsQueryDto,
   InstallFlatpayAutomationDto,
   MapFinanceSourceSiteDto,
@@ -40,6 +43,7 @@ import { FlatpayCredentialsService } from './flatpay-credentials.service';
 import { FlatpayAutomationService } from './flatpay-automation.service';
 import { PosApiCredentialsService, posApiProvider } from './pos-api-credentials.service';
 import { PosApiSyncService } from './pos-api-sync.service';
+import { FinanceExportService } from './finance-export.service';
 
 @ApiTags('finance')
 @ApiBearerAuth()
@@ -56,6 +60,7 @@ export class FinanceController {
     private readonly flatpayAutomation: FlatpayAutomationService,
     private readonly posApiCredentials: PosApiCredentialsService,
     private readonly posApiSync: PosApiSyncService,
+    private readonly financeExport: FinanceExportService,
   ) {}
 
   private org(user: AuthenticatedUser) {
@@ -78,6 +83,22 @@ export class FinanceController {
   @Get('bootstrap')
   bootstrap(@CurrentUser() user: AuthenticatedUser, @Query() query: FinanceBootstrapQueryDto) {
     return this.finance.bootstrap(this.org(user), user, query);
+  }
+
+  @Get('exports/pdf')
+  async exportPdf(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: FinanceExportQueryDto,
+    @Res() response: Response,
+  ) {
+    const file = await this.financeExport.generate(this.org(user), user, query);
+    response.setHeader('Content-Type', 'application/pdf');
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${encodeURIComponent(file.filename)}"`,
+    );
+    response.setHeader('Content-Length', String(file.buffer.length));
+    response.send(file.buffer);
   }
 
   @Patch('fennoa/configuration')

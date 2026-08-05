@@ -69,53 +69,134 @@ describe('DashboardService preferences', () => {
 });
 
 describe('DashboardService finance cockpit KPI', () => {
-  it('uses only the principal POS and builds the four daily checkpoints', async () => {
+  it('sépare les établissements, additionne leurs POS et déduplique une source renommée', async () => {
     const prisma = {
+      site: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'kuusamo', name: 'Kuusamo' },
+          { id: 'oulu', name: 'Oulu' },
+        ]),
+      },
       financeDataSource: {
         findMany: jest.fn().mockResolvedValue([
           {
             id: 'flatpay-main',
             provider: 'FLATPAY',
             name: 'Flatpay',
+            siteId: 'kuusamo',
             isPrimaryPos: true,
             isPrimarySales: true,
             lastSyncedAt: new Date('2026-08-03T19:05:00.000Z'),
           },
           {
-            id: 'paypal-secondary',
+            id: 'flatpay-renamed',
+            provider: 'FLATPAY',
+            name: 'FlatPay POS · Kuusamo',
+            siteId: 'kuusamo',
+            isPrimaryPos: false,
+            isPrimarySales: false,
+            lastSyncedAt: new Date('2026-08-03T19:06:00.000Z'),
+          },
+          {
+            id: 'paypal-kuusamo',
             provider: 'PAYPAL_POS',
             name: 'PayPal POS',
+            siteId: 'kuusamo',
             isPrimaryPos: false,
             isPrimarySales: true,
             lastSyncedAt: new Date('2026-08-03T20:00:00.000Z'),
+          },
+          {
+            id: 'flatpay-oulu',
+            provider: 'FLATPAY',
+            name: 'FlatPay POS · Oulu',
+            siteId: 'oulu',
+            isPrimaryPos: true,
+            isPrimarySales: true,
+            lastSyncedAt: new Date('2026-08-03T23:00:00.000Z'),
+          },
+          {
+            id: 'loyverse-disabled',
+            provider: 'LOYVERSE',
+            name: 'Loyverse · Oulu',
+            siteId: 'oulu',
+            isPrimaryPos: false,
+            isPrimarySales: false,
+            lastSyncedAt: null,
           },
         ]),
       },
       financeDailySales: {
         findMany: jest.fn().mockResolvedValue([
           {
+            sourceId: 'flatpay-main',
             saleDate: new Date(2026, 7, 3, 6),
             grossAmount: 100,
             transactionCount: 1,
+            paymentMethod: 'Card',
+            metadata: { receiptNumber: '100' },
             createdAt: new Date('2026-08-03T07:05:00.000Z'),
+            source: {
+              provider: 'FLATPAY',
+              siteId: 'kuusamo',
+              isPrimaryPos: true,
+            },
           },
           {
+            sourceId: 'flatpay-renamed',
+            saleDate: new Date(2026, 7, 3, 6),
+            grossAmount: 100,
+            transactionCount: 1,
+            paymentMethod: 'Card',
+            metadata: { receiptNumber: '100' },
+            createdAt: new Date('2026-08-03T07:06:00.000Z'),
+            source: {
+              provider: 'FLATPAY',
+              siteId: 'kuusamo',
+              isPrimaryPos: false,
+            },
+          },
+          {
+            sourceId: 'flatpay-renamed',
             saleDate: new Date(2026, 7, 3, 14),
             grossAmount: 200,
             transactionCount: 2,
+            paymentMethod: 'Card',
+            metadata: { receiptNumber: '101' },
             createdAt: new Date('2026-08-03T15:05:00.000Z'),
+            source: {
+              provider: 'FLATPAY',
+              siteId: 'kuusamo',
+              isPrimaryPos: false,
+            },
           },
           {
+            sourceId: 'paypal-kuusamo',
             saleDate: new Date(2026, 7, 3, 18),
-            grossAmount: 300,
-            transactionCount: 3,
+            grossAmount: 50,
+            transactionCount: 1,
+            paymentMethod: 'Card',
+            metadata: { receiptNumber: 'P-1' },
             createdAt: new Date('2026-08-03T19:05:00.000Z'),
+            source: {
+              provider: 'PAYPAL_POS',
+              siteId: 'kuusamo',
+              isPrimaryPos: false,
+            },
           },
           {
+            sourceId: 'flatpay-oulu',
             saleDate: new Date(2026, 7, 3, 22),
             grossAmount: 400,
             transactionCount: 4,
+            paymentMethod: 'Card',
+            metadata: { receiptNumber: 'O-1' },
             createdAt: new Date('2026-08-03T23:05:00.000Z'),
+            source: {
+              provider: 'FLATPAY',
+              siteId: 'oulu',
+              isPrimaryPos: true,
+            },
           },
         ]),
       },
@@ -126,26 +207,51 @@ describe('DashboardService finance cockpit KPI', () => {
     try {
       const result = await (
         service as unknown as {
-          financeTodayRevenue: (organizationId: string) => Promise<{
-            grossAmount: number | null;
-            transactions: number;
-            trend: number[];
-            providerLabel: string;
+          financeTodayRevenues: (organizationId: string) => Promise<{
+            sites: Array<{
+              siteId: string;
+              grossAmount: number | null;
+              transactions: number;
+              trend: number[];
+              providerLabel: string;
+            }>;
+            total: { grossAmount: number; transactions: number; trend: number[] } | null;
           } | null>;
         }
-      ).financeTodayRevenue('organization-1');
+      ).financeTodayRevenues('organization-1');
 
-      expect(result).toEqual(
+      expect(result?.sites).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            siteId: 'kuusamo',
+            grossAmount: 350,
+            transactions: 4,
+            trend: [100, 300, 350, 350],
+            providerLabel: 'FlatPay + PayPal POS',
+          }),
+          expect.objectContaining({
+            siteId: 'oulu',
+            grossAmount: 400,
+            transactions: 4,
+            trend: [0, 0, 0, 400],
+            providerLabel: 'FlatPay',
+          }),
+        ]),
+      );
+      expect(result?.total).toEqual(
         expect.objectContaining({
-          grossAmount: 1_000,
-          transactions: 10,
-          trend: [100, 300, 600, 1_000],
-          providerLabel: 'Flatpay',
+          grossAmount: 750,
+          transactions: 8,
+          trend: [100, 300, 350, 750],
         }),
       );
       expect(prisma.financeDailySales.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ sourceId: 'flatpay-main' }),
+          where: expect.objectContaining({
+            sourceId: {
+              in: ['flatpay-main', 'flatpay-renamed', 'paypal-kuusamo', 'flatpay-oulu'],
+            },
+          }),
         }),
       );
     } finally {

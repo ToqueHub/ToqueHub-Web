@@ -7,6 +7,8 @@ export function DocumentOcrAnalysisPanel({
   maxFiles,
   maxSizeBytes,
   acceptedFormats,
+  accept,
+  submitLabel,
   onUpload,
   onOpenExtraction,
   onDownload,
@@ -18,6 +20,8 @@ export function DocumentOcrAnalysisPanel({
   maxFiles: number;
   maxSizeBytes?: number;
   acceptedFormats: string;
+  accept?: string;
+  submitLabel?: (count: number) => string;
   onUpload: (files: File[]) => Promise<void>;
   onOpenExtraction: (extractionId: string) => Promise<void>;
   onDownload?: (documentId: string, filename: string) => Promise<void>;
@@ -31,6 +35,8 @@ export function DocumentOcrAnalysisPanel({
         maxFiles={maxFiles}
         maxSizeBytes={maxSizeBytes}
         acceptedFormats={acceptedFormats}
+        accept={accept}
+        submitLabel={submitLabel}
         onUpload={onUpload}
       />
       {statuses.length ? (

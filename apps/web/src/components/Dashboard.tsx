@@ -122,6 +122,7 @@ import { DocumentOcrAnalysisPanel } from './ui/DocumentOcrAnalysisPanel';
 import { GuidedWelcome } from './ui/GuidedWelcome';
 import { WorkspaceOnboarding } from './WorkspaceOnboarding';
 import { EquipmentForm, EquipmentPage, type EquipmentFormPayload } from './stocks/EquipmentPage';
+import { InventoryImportWizard } from './stocks/InventoryImportWizard';
 
 const PurchasingApp = lazy(() =>
   import('./PurchasingApp').then((module) => ({ default: module.PurchasingApp })),
@@ -697,6 +698,8 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [showSiteModal, setShowSiteModal] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [showInventoryModal, setShowInventoryModal] = useState(false);
+  const [showInventoryImportModal, setShowInventoryImportModal] = useState(false);
+  const [inventoryImportInitialFile, setInventoryImportInitialFile] = useState<File | null>(null);
   const [showOcrImportModal, setShowOcrImportModal] = useState(false);
   const [showOcrReviewModal, setShowOcrReviewModal] = useState(false);
   const [ocrImportKind, setOcrImportKind] = useState<'UNSPECIFIED' | 'EQUIPMENT'>('UNSPECIFIED');
@@ -3095,6 +3098,21 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     );
   }
 
+  async function handleUploadStocksDocument(files: File[]) {
+    if (ocrImportKind === 'EQUIPMENT') return handleUploadStocksOcr(files);
+    const inventoryFiles = files.filter(isStructuredInventoryFile);
+    if (!inventoryFiles.length) return handleUploadStocksOcr(files);
+    if (files.length !== 1) {
+      throw new Error(
+        'Importez l’inventaire seul. Les factures, bons de livraison et inventaires sont contrôlés dans des parcours distincts.',
+      );
+    }
+    setShowOcrImportModal(false);
+    setOcrImportKind('UNSPECIFIED');
+    setInventoryImportInitialFile(inventoryFiles[0]);
+    setShowInventoryImportModal(true);
+  }
+
   async function handleOpenOcrExtraction(extractionId: string) {
     const extraction = await api.stocksOcrExtraction(token, extractionId);
     const equipmentProductIds = new Set(
@@ -3402,6 +3420,22 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     );
     if ((created as Inventory | null)?.id) setSelectedInventoryId((created as Inventory).id);
     setShowInventoryModal(false);
+  }
+
+  async function handleCommitInventoryImport(
+    payload: Parameters<typeof api.commitInventoryImport>[1],
+  ) {
+    setError(undefined);
+    setSuccess(undefined);
+    const result = await api.commitInventoryImport(token, payload);
+    await refresh();
+    setShowInventoryImportModal(false);
+    setInventoryImportInitialFile(null);
+    setSelectedInventoryId(result.inventory.id);
+    setSuccess(
+      `Inventaire importé en brouillon · ${result.summary.inventoryLines} produit(s) à contrôler. Le stock réel n’a pas encore été modifié.`,
+    );
+    return result;
   }
 
   async function handleSaveInventoryCounts(
@@ -6015,6 +6049,11 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   setShowAddImportModal(false);
                   setShowProductCreatorModal(true);
                 }}
+                onInventory={() => {
+                  setShowAddImportModal(false);
+                  setInventoryImportInitialFile(null);
+                  setShowInventoryImportModal(true);
+                }}
                 onOcr={() => {
                   setShowAddImportModal(false);
                   setOcrImportKind('UNSPECIFIED');
@@ -6202,16 +6241,28 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         title={
           ocrImportKind === 'EQUIPMENT'
             ? 'Analyser une facture ou un contrat de matériel'
-            : 'Analyser ticket / bon de commande / facture / BL'
+            : 'Analyser un document ou un inventaire'
         }
         size="lg"
       >
         <DocumentOcrAnalysisPanel
           statuses={ocrStatuses}
           maxFiles={8}
-          acceptedFormats="PDF, PNG, JPEG, WEBP ou HEIC"
+          acceptedFormats={
+            ocrImportKind === 'EQUIPMENT'
+              ? 'PDF, PNG, JPEG, WEBP ou HEIC'
+              : 'PDF, image, CSV, Excel .xlsx ou Excel XML .xml'
+          }
+          accept={
+            ocrImportKind === 'EQUIPMENT'
+              ? undefined
+              : '.xml,.xlsx,.csv,application/pdf,image/png,image/jpeg,image/webp,image/heic,image/heif,image/avif,text/xml,text/csv,application/xml,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          }
+          submitLabel={() =>
+            ocrImportKind === 'EQUIPMENT' ? 'Lancer l’analyse OCR' : 'Analyser le document'
+          }
           heading="Suivi des analyses de l’instance"
-          onUpload={handleUploadStocksOcr}
+          onUpload={handleUploadStocksDocument}
           onOpenExtraction={handleOpenOcrExtraction}
           onDownload={(documentId, filename) =>
             api.downloadStocksDocument(token, documentId, filename)
@@ -6341,6 +6392,20 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           onClose={() => setShowInventoryModal(false)}
         />
       </Modal>
+
+      <InventoryImportWizard
+        isOpen={showInventoryImportModal}
+        sites={sites}
+        products={products}
+        primarySiteId={session.user.primarySiteId ?? undefined}
+        initialFile={inventoryImportInitialFile}
+        onClose={() => {
+          setShowInventoryImportModal(false);
+          setInventoryImportInitialFile(null);
+        }}
+        onAnalyze={(file, siteId) => api.analyzeInventoryImport(token, file, siteId)}
+        onCommit={handleCommitInventoryImport}
+      />
 
       <InventoryDetailModal
         inventory={selectedInventory}
@@ -11247,14 +11312,20 @@ const PRODUCT_IMPORT_FIELD_LABELS: Record<ProductImportField, string> = {
   preparationInstructions: 'Préparation',
 };
 
+function isStructuredInventoryFile(file: File) {
+  return /\.(?:xml|xlsx|csv)$/i.test(file.name);
+}
+
 function AddImportChooser({
   onManual,
   onCsv,
+  onInventory,
   onCreator,
   onOcr,
 }: {
   onManual: () => void;
   onCsv: () => void;
+  onInventory: () => void;
   onCreator: () => void;
   onOcr: () => void;
 }) {
@@ -11396,6 +11467,59 @@ function AddImportChooser({
 
       <button
         type="button"
+        onClick={onInventory}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1rem',
+          padding: '1.2rem 1.25rem',
+          background: '#ffffff',
+          border: '1.5px solid #d7e4df',
+          borderRadius: '16px',
+          cursor: 'pointer',
+          textAlign: 'left',
+          width: '100%',
+          transition: 'all 0.2s ease',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+        }}
+        onMouseOver={(event) => {
+          event.currentTarget.style.borderColor = '#10b981';
+          event.currentTarget.style.transform = 'translateY(-1.5px)';
+          event.currentTarget.style.boxShadow = '0 6px 15px rgba(16, 185, 129, 0.08)';
+        }}
+        onMouseOut={(event) => {
+          event.currentTarget.style.borderColor = '#d7e4df';
+          event.currentTarget.style.transform = 'none';
+          event.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.02)';
+        }}
+      >
+        <div
+          style={{
+            width: '40px',
+            height: '40px',
+            borderRadius: '12px',
+            background: 'rgba(16, 185, 129, 0.08)',
+            color: '#059669',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <ClipboardList size={20} />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0f172a' }}>
+            Importer un inventaire existant
+          </span>
+          <small style={{ fontSize: '0.78rem', color: '#64748b', lineHeight: 1.3 }}>
+            Lire un CSV, Excel ou XML, rapprocher les produits et préparer un inventaire brouillon.
+          </small>
+        </div>
+      </button>
+
+      <button
+        type="button"
         onClick={onCreator}
         style={{
           display: 'flex',
@@ -11484,7 +11608,7 @@ function AddImportChooser({
           <small
             style={{ fontSize: '0.78rem', color: 'rgba(255, 255, 255, 0.85)', lineHeight: 1.3 }}
           >
-            Lire une facture, un BL ou une commande, puis valider la réception.
+            Lire une facture, un BL, une commande ou un inventaire, puis ouvrir le contrôle adapté.
           </small>
         </div>
       </button>
@@ -15499,9 +15623,11 @@ function InventoryDetailModal({
       onClose={onClose}
       title={inventory?.name ?? 'Inventaire'}
       size="xl"
+      bodyClassName="inventory-detail-modal-body"
+      overlayClassName="inventory-detail-modal-overlay"
     >
       {inventory ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div className="inventory-detail-modal-layout">
           {error ? (
             <div className="alert-modern error">
               <AlertCircle size={16} /> {error}
@@ -15546,7 +15672,7 @@ function InventoryDetailModal({
               </button>
             ) : null}
           </div>
-          <div className="table-wrapper" style={{ maxHeight: '48vh', overflow: 'auto' }}>
+          <div className="table-wrapper inventory-detail-table-scroll">
             <table className="table-modern">
               <thead>
                 <tr>
@@ -15631,7 +15757,7 @@ function InventoryDetailModal({
               </tbody>
             </table>
           </div>
-          <div className="modal-footer" style={{ margin: '0 -1.75rem -1.75rem' }}>
+          <div className="modal-footer inventory-detail-modal-footer">
             <button
               type="button"
               className="btn btn-secondary"
