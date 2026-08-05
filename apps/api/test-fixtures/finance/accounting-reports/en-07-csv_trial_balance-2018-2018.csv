@@ -1,0 +1,15 @@
+﻿Northstar Foods Ltd,INCOME STATEMENT
+Financial year from 2018-01-01 to 2018-12-31
+Account,Description,Amount
+3000,Revenue and turnover,"2,147,850,000.00"
+4000,Materials and merchandise purchases,"(618,580,800.00)"
+5000,"Wages, salaries and social costs","700,199,100.00"
+6000,Rent and occupancy costs,"(203,272,524.00)"
+6100,Energy and utilities,"82,090,827.00"
+6200,Marketing and communication,"(46,909,044.00)"
+7000,Depreciation and amortisation,"(58,636,305.00)"
+,Total operating expenses,"1,709,688,600.00"
+,Operating profit (loss),"438,161,400.00"
+8000,Financial expenses,"(23,626,350.00)"
+9000,Income tax expense,"(78,761,659.50)"
+,Net profit (loss),"335,773,390.50"

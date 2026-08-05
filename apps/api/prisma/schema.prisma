@@ -600,6 +600,72 @@ enum PurchaseReceiptLineStatus {
   NEEDS_REVIEW
 }
 
+enum FinanceProvider {
+  FENNOA
+  FLATPAY
+  PAYPAL_POS
+  LOYVERSE
+  GENERIC
+}
+
+enum FinanceSourceType {
+  ACCOUNTING_API
+  POS_API
+  FILE_IMPORT
+}
+
+enum FinanceSourceStatus {
+  NOT_CONNECTED
+  READY
+  ATTENTION
+  ERROR
+}
+
+enum FinancePosAuthMode {
+  PERSONAL_TOKEN
+  ASSERTION_GRANT
+}
+
+enum FinanceImportStatus {
+  UPLOADED
+  NEEDS_REVIEW
+  READY
+  FAILED
+}
+
+enum FinanceReportKind {
+  SALES_ORDERS
+  PRODUCT_SALES
+  DAILY_CLOSURE
+  RECEIPTS
+  ACCOUNTING
+  BUDGET
+  UNKNOWN
+}
+
+enum FinanceAccountCategory {
+  REVENUE
+  MATERIAL_PURCHASES
+  PAYROLL
+  OTHER_OPEX
+  CASH
+  FINANCIAL
+  TAX
+  OTHER
+}
+
+enum FinanceSyncRunType {
+  TEST
+  FULL
+  INCREMENTAL
+}
+
+enum FinanceSyncRunStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
 enum StockProposalType {
   RECEIPT
   WASTE
@@ -948,6 +1014,9 @@ enum AuditAction {
   MODULE_MENUS_UNINSTALLED
   MODULE_PURCHASING_INSTALLED
   MODULE_PURCHASING_UNINSTALLED
+  MODULE_FINANCE_INSTALLED
+  MODULE_FINANCE_UNINSTALLED
+  FINANCE_IMPORT_UPLOADED
   HACCP_SENSOR_DISCOVERED
   HACCP_SENSOR_RENAMED
   HACCP_SENSOR_ASSIGNED
@@ -1026,6 +1095,7 @@ model Organization {
   menusInstalledAt              DateTime?
   haccpInstalledAt              DateTime?
   purchasingInstalledAt         DateTime?
+  financeInstalledAt            DateTime?
   mistralApiKey                 String?   @db.Text
   mistralApiKeyUpdatedAt        DateTime?
   resendApiKey                  String?   @db.Text
@@ -1204,6 +1274,19 @@ model Organization {
   purchaseOrderEvents                   PurchaseOrderEvent[]
   purchasingEmailConnections            PurchasingEmailConnection[]
   purchasingEmailOAuthStates            PurchasingEmailOAuthState[]
+  financeSettings                       FinanceSettings?
+  financeDataSources                    FinanceDataSource[]
+  financePosConnections                 FinancePosConnection[]
+  financeFlatpayConnections             FinanceFlatpayConnection[]
+  financeImportBatches                  FinanceImportBatch[]
+  financeAccounts                       FinanceAccount[]
+  financeAccountingPeriods              FinanceAccountingPeriod[]
+  financeLedgerEntries                  FinanceLedgerEntry[]
+  financeBudgetLines                    FinanceBudgetLine[]
+  financeBudgetPlans                    FinanceBudgetPlan[]
+  financeBudgetPlanLines                FinanceBudgetPlanLine[]
+  financeSyncRuns                       FinanceSyncRun[]
+  financeDailySales                     FinanceDailySales[]
   humanSupportTickets                   HumanSupportTicket[]
 
   @@index([regulatoryCountryCode])
@@ -1344,6 +1427,7 @@ model User {
 
   ownedWorkspaceOnboardings  WorkspaceOnboardingProgress[] @relation("WorkspaceOnboardingOwner")
   purchasingEmailOAuthStates PurchasingEmailOAuthState[]
+  financeImportBatches       FinanceImportBatch[]          @relation("FinanceImportUploadedBy")
 
   organization                       Organization?                  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   role                               Role                           @relation(fields: [roleId], references: [id], onDelete: Restrict)
@@ -1915,6 +1999,9 @@ model Site {
   menuDispatchDestinations     MenuDispatch[]                @relation("MenuDispatchDestinationSite")
   cycleForecastDestinations    MenuCycleForecast[]           @relation("MenuCycleForecastDestinationSite")
   menuForecastDestinations     MenuGuestForecast[]           @relation("MenuGuestForecastDestinationSite")
+  financeDataSources           FinanceDataSource[]           @relation("FinanceDataSourceSite")
+  financePosConnections        FinancePosConnection[]        @relation("FinancePosConnectionDefaultSite")
+  financeFlatpayConnections    FinanceFlatpayConnection[]    @relation("FinanceFlatpayConnectionDefaultSite")
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -2281,6 +2368,368 @@ model PurchasingSettings {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("purchasing_settings")
+}
+
+model FinanceSettings {
+  id                           String    @id @default(uuid()) @db.Uuid
+  organizationId               String    @unique @db.Uuid
+  defaultCurrency              String    @default("EUR") @db.Char(3)
+  fiscalYearStartMonth         Int       @default(1)
+  timezone                     String    @default("Europe/Helsinki")
+  dashboardKpis                String[]  @default(["average_ticket", "transactions", "contribution_margin", "cash", "fixed_costs", "break_even"])
+  fennoaBaseUrl                String    @default("https://app.fennoa.com/api")
+  fennoaApiVersion             String    @default("v1")
+  fennoaUsername               String?
+  fennoaApiKeyEncrypted        String?   @db.Text
+  fennoaApiKeyMask             String?
+  fennoaApiKeyCipherVersion    Int?
+  fennoaApiKeyUpdatedAt        DateTime?
+  fennoaLastTestedAt           DateTime?
+  fennoaLastError              String?   @db.Text
+  flatpayPortalUrl             String    @default("https://portal.flatpay.com")
+  flatpayUsername              String?
+  flatpayCredentialStorage     String?
+  flatpayPasswordEncrypted     String?   @db.Text
+  flatpayPasswordMask          String?
+  flatpayConfiguredAt          DateTime?
+  flatpayLastSyncedAt          DateTime?
+  flatpayLastError             String?   @db.Text
+  flatpayAutomationInstalledAt DateTime?
+  flatpayAutomationInbox       String?
+  flatpayAutomationSchedule    String[]  @default(["07:00", "15:00", "19:00", "23:00"])
+  flatpayHistoryStart          DateTime?
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("finance_settings")
+}
+
+model FinanceDataSource {
+  id                 String              @id @default(uuid()) @db.Uuid
+  organizationId     String              @db.Uuid
+  siteId             String?             @db.Uuid
+  provider           FinanceProvider
+  name               String
+  externalLocationId String?
+  sourceType         FinanceSourceType
+  status             FinanceSourceStatus @default(NOT_CONNECTED)
+  isPrimarySales     Boolean             @default(false)
+  isPrimaryPos       Boolean             @default(false)
+  lastSyncedAt       DateTime?
+  coverageStart      DateTime?
+  coverageEnd        DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  organization  Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site          Site?                @relation("FinanceDataSourceSite", fields: [siteId], references: [id], onDelete: SetNull)
+  imports       FinanceImportBatch[]
+  ledgerEntries FinanceLedgerEntry[]
+  syncRuns      FinanceSyncRun[]
+  dailySales    FinanceDailySales[]
+
+  @@unique([organizationId, provider, name])
+  @@index([organizationId, status])
+  @@index([siteId])
+  @@map("finance_data_sources")
+}
+
+model FinancePosConnection {
+  id                 String             @id @default(uuid()) @db.Uuid
+  organizationId     String             @db.Uuid
+  defaultSiteId      String             @db.Uuid
+  provider           FinanceProvider
+  accountFingerprint String
+  authMode           FinancePosAuthMode
+  clientId           String?
+  secretEncrypted    String             @db.Text
+  secretMask         String
+  apiBaseUrl         String
+  historyStart       DateTime?
+  schedule           String[]           @default(["07:00", "15:00", "19:00", "23:00"])
+  configuredAt       DateTime           @default(now())
+  lastSyncedAt       DateTime?
+  lastError          String?            @db.Text
+  syncCursor         Json?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  defaultSite  Site         @relation("FinancePosConnectionDefaultSite", fields: [defaultSiteId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, provider, defaultSiteId])
+  @@unique([organizationId, provider, accountFingerprint])
+  @@index([defaultSiteId])
+  @@map("finance_pos_connections")
+}
+
+model FinanceFlatpayConnection {
+  id                    String    @id @default(uuid()) @db.Uuid
+  organizationId        String    @db.Uuid
+  defaultSiteId         String    @db.Uuid
+  portalUrl             String    @default("https://portal.flatpay.com")
+  username              String
+  accountFingerprint    String
+  credentialStorage     String
+  passwordEncrypted     String?   @db.Text
+  passwordMask          String
+  configuredAt          DateTime  @default(now())
+  lastSyncedAt          DateTime?
+  lastError             String?   @db.Text
+  automationInstalledAt DateTime?
+  automationInbox       String?
+  automationSchedule    String[]  @default(["07:00", "15:00", "19:00", "23:00"])
+  historyStart          DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  defaultSite  Site         @relation("FinanceFlatpayConnectionDefaultSite", fields: [defaultSiteId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, defaultSiteId])
+  @@unique([organizationId, accountFingerprint])
+  @@index([defaultSiteId])
+  @@map("finance_flatpay_connections")
+}
+
+model FinanceImportBatch {
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @db.Uuid
+  sourceId       String?             @db.Uuid
+  uploadedById   String              @db.Uuid
+  fileName       String
+  fileHash       String
+  mimeType       String?
+  fileSize       Int
+  status         FinanceImportStatus @default(UPLOADED)
+  provider       FinanceProvider
+  reportKind     FinanceReportKind   @default(UNKNOWN)
+  periodStart    DateTime?
+  periodEnd      DateTime?
+  rowCount       Int?
+  duplicateCount Int                 @default(0)
+  grossTotal     Decimal?            @db.Decimal(14, 4)
+  netTotal       Decimal?            @db.Decimal(14, 4)
+  vatTotal       Decimal?            @db.Decimal(14, 4)
+  warnings       String[]            @default([])
+  metadata       Json?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  source       FinanceDataSource?  @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  uploadedBy   User                @relation("FinanceImportUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  dailySales   FinanceDailySales[]
+  budgetPlans  FinanceBudgetPlan[]
+
+  @@unique([organizationId, fileHash])
+  @@index([organizationId, createdAt])
+  @@index([sourceId])
+  @@index([uploadedById])
+  @@map("finance_import_batches")
+}
+
+model FinanceBudgetPlan {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  importBatchId  String?  @db.Uuid
+  name           String
+  scenario       String?
+  currency       String   @default("EUR") @db.Char(3)
+  startDate      DateTime
+  endDate        DateTime
+  source         String   @default("LOCAL_IMPORT")
+  isReference    Boolean  @default(false)
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  importBatch  FinanceImportBatch?     @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  lines        FinanceBudgetPlanLine[]
+
+  @@index([organizationId, isReference])
+  @@index([organizationId, startDate, endDate])
+  @@index([importBatchId])
+  @@map("finance_budget_plans")
+}
+
+model FinanceBudgetPlanLine {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  planId         String   @db.Uuid
+  metric         String
+  label          String
+  periodStart    DateTime
+  amount         Decimal  @db.Decimal(14, 4)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan         FinanceBudgetPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, metric, periodStart])
+  @@index([organizationId, metric, periodStart])
+  @@map("finance_budget_plan_lines")
+}
+
+model FinanceAccount {
+  id               String                 @id @default(uuid()) @db.Uuid
+  organizationId   String                 @db.Uuid
+  code             String
+  name             String
+  nameSv           String?
+  nameEn           String?
+  vatCodeId        Int?
+  vatCodeType      Int?
+  vatCode          String?
+  isActive         Boolean                @default(true)
+  category         FinanceAccountCategory @default(OTHER)
+  categoryOverride Boolean                @default(false)
+  lastSyncedAt     DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, code])
+  @@index([organizationId, category])
+  @@map("finance_accounts")
+}
+
+model FinanceAccountingPeriod {
+  id                 String    @id @default(uuid()) @db.Uuid
+  organizationId     String    @db.Uuid
+  externalId         Int
+  startDate          DateTime
+  endDate            DateTime
+  accountingLockedAt DateTime?
+  salesLockedAt      DateTime?
+  purchasesLockedAt  DateTime?
+  lastSyncedAt       DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, externalId])
+  @@index([organizationId, startDate, endDate])
+  @@map("finance_accounting_periods")
+}
+
+model FinanceLedgerEntry {
+  id                  String   @id @default(uuid()) @db.Uuid
+  organizationId      String   @db.Uuid
+  sourceId            String   @db.Uuid
+  externalKey         String
+  externalStatementId String?
+  accountCode         String
+  entryDate           DateTime
+  debit               Decimal  @default(0) @db.Decimal(14, 4)
+  credit              Decimal  @default(0) @db.Decimal(14, 4)
+  openingBalance      Decimal? @db.Decimal(14, 4)
+  closingBalance      Decimal? @db.Decimal(14, 4)
+  description         String?  @db.Text
+  series              String?
+  number              Int?
+  entryType           Int?
+  sourceEntityId      String?
+  sourceUrl           String?  @db.Text
+  dimensions          Json?
+  syncedAt            DateTime @default(now())
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  source       FinanceDataSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, externalKey])
+  @@index([organizationId, entryDate])
+  @@index([organizationId, accountCode, entryDate])
+  @@index([sourceId])
+  @@map("finance_ledger_entries")
+}
+
+model FinanceBudgetLine {
+  id                         String   @id @default(uuid()) @db.Uuid
+  organizationId             String   @db.Uuid
+  externalKey                String
+  externalBudgetId           Int?
+  budgetName                 String?
+  accountingPeriodExternalId Int
+  accountCode                String
+  month                      Int
+  amount                     Decimal  @db.Decimal(14, 4)
+  dimensions                 Json?
+  syncedAt                   DateTime @default(now())
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, externalKey])
+  @@index([organizationId, accountingPeriodExternalId, month])
+  @@index([organizationId, accountCode])
+  @@map("finance_budget_lines")
+}
+
+model FinanceSyncRun {
+  id              String               @id @default(uuid()) @db.Uuid
+  organizationId  String               @db.Uuid
+  sourceId        String               @db.Uuid
+  type            FinanceSyncRunType
+  status          FinanceSyncRunStatus @default(RUNNING)
+  startedAt       DateTime             @default(now())
+  completedAt     DateTime?
+  periodStart     DateTime?
+  periodEnd       DateTime?
+  accountsCount   Int                  @default(0)
+  ledgerRowsCount Int                  @default(0)
+  budgetRowsCount Int                  @default(0)
+  errorMessage    String?              @db.Text
+  metadata        Json?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  source       FinanceDataSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, startedAt])
+  @@index([sourceId, status])
+  @@map("finance_sync_runs")
+}
+
+model FinanceDailySales {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String   @db.Uuid
+  sourceId         String   @db.Uuid
+  importBatchId    String?  @db.Uuid
+  externalKey      String
+  saleDate         DateTime
+  grossAmount      Decimal  @default(0) @db.Decimal(14, 4)
+  netAmount        Decimal  @default(0) @db.Decimal(14, 4)
+  vatAmount        Decimal  @default(0) @db.Decimal(14, 4)
+  refundAmount     Decimal  @default(0) @db.Decimal(14, 4)
+  costAmount       Decimal? @db.Decimal(14, 4)
+  transactionCount Int      @default(0)
+  paymentMethod    String?
+  productCategory  String?
+  isRevenueRecord  Boolean  @default(true)
+  metadata         Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  source       FinanceDataSource   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  importBatch  FinanceImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, sourceId, externalKey])
+  @@index([organizationId, saleDate])
+  @@index([sourceId, saleDate])
+  @@index([importBatchId])
+  @@map("finance_daily_sales")
 }
 
 model PurchasingEmailConnection {

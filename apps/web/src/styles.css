@@ -33003,6 +33003,9 @@ input:checked + .slider-round:before {
 .cockpit-card-sparkline.stock {
   color: #10b981 !important;
 }
+.cockpit-card-sparkline.finance {
+  color: #2563eb !important;
+}
 
 /* Bar charts reset */
 .cockpit-mini-bar-chart svg {

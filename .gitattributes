@@ -1,0 +1,9 @@
+*.pdf binary
+*.xlsx binary
+*.xls binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.heic binary
+
+apps/api/test-fixtures/finance/accounting-reports/*.csv text eol=lf

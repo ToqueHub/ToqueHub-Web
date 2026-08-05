@@ -78,6 +78,7 @@ import {
   Shield,
   RefreshCw,
   LineChart,
+  BarChart3,
   Heart,
   Pin,
   Building2,
@@ -100,6 +101,10 @@ import {
   CloudSun,
   Newspaper,
   MapPinned,
+  WalletCards,
+  Activity,
+  Landmark,
+  Target,
 } from 'lucide-react';
 import { ArchitectureCenter } from './ArchitectureCenter';
 import { UsersPage, UserForm } from './UsersPage';
@@ -120,6 +125,9 @@ import { EquipmentForm, EquipmentPage, type EquipmentFormPayload } from './stock
 
 const PurchasingApp = lazy(() =>
   import('./PurchasingApp').then((module) => ({ default: module.PurchasingApp })),
+);
+const FinanceApp = lazy(() =>
+  import('./FinanceApp').then((module) => ({ default: module.FinanceApp })),
 );
 
 import { ApiError, api } from '../api/client';
@@ -188,6 +196,7 @@ import type {
   SystemUpdateStatus,
   OrganizationRemoteAccess,
   RemoteAccessStatus,
+  FinanceBootstrap,
   WorkspaceOnboardingState,
   WorkspaceOnboardingStep,
 } from '../types';
@@ -346,6 +355,27 @@ const apps = [
     status: 'Disponible',
   },
   {
+    id: 'finance',
+    icon: WalletCards,
+    title: 'Finance',
+    category: 'Pilotage & Rentabilité',
+    price: 'Gratuit',
+    gradient: 'linear-gradient(135deg, #0f766e 0%, #2563eb 100%)',
+    developer: 'ToqueHub Core',
+    rating: 'Nouveau',
+    ratingCount: 'V1',
+    ageLimit: '3+',
+    size: '2.1 Mo',
+    tagline: 'Comprenez ventes, rentabilité, trésorerie et budget sans refaire votre comptabilité.',
+    description:
+      'Finance est un module de pilotage, pas un logiciel de saisie comptable. Fennoa reste la vérité comptable ; les systèmes de caisse et imports apportent le détail opérationnel. Chaque chiffre affiche sa source, sa période et son niveau de couverture.\n\nFonctionnalités V1 :\n- Cockpit financier lisible en un coup d’œil.\n- Ventes, rentabilité, trésorerie et budget dans des vues dédiées.\n- Sources Fennoa, caisse et imports universels.\n- Conservation des fichiers et détection des doublons.\n- États explicites lorsque les données sont incomplètes ou indisponibles.',
+    screenshots: ['Cockpit financier', 'Sources & qualité', 'Budget & prévisions'],
+    changelog: 'Fondation V1 avec installation, permissions, cockpit et registre des imports.',
+    version: 'v1.0.0',
+    compatibility: 'ToqueHub Core v0.1.0+ · Fennoa et caisses optionnels',
+    status: 'Disponible',
+  },
+  {
     id: 'hr',
     icon: UsersRound,
     title: 'RH',
@@ -497,7 +527,14 @@ type ActiveTab =
   | 'purchasing-dashboard'
   | 'purchasing-orders'
   | 'purchasing-receipts'
-  | 'purchasing-history';
+  | 'purchasing-history'
+  | 'finance-cockpit'
+  | 'finance-sales'
+  | 'finance-annual'
+  | 'finance-monthly'
+  | 'finance-daily'
+  | 'finance-budget'
+  | 'finance-sources';
 type StocksSettingsTab = 'categories' | 'units' | 'movements' | 'locations' | 'audit';
 
 const STOCKS_ALL_TABS: ActiveTab[] = [
@@ -533,6 +570,7 @@ type Confirmation =
   | 'uninstall-production'
   | 'uninstall-menus'
   | 'uninstall-purchasing'
+  | 'uninstall-finance'
   | null;
 type AppNotification = {
   id: string;
@@ -609,6 +647,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [menusMenuExpanded, setMenusMenuExpanded] = useState(() => false);
   const [haccpMenuExpanded, setHaccpMenuExpanded] = useState(() => false);
   const [purchasingMenuExpanded, setPurchasingMenuExpanded] = useState(() => false);
+  const [financeMenuExpanded, setFinanceMenuExpanded] = useState(() => false);
   const [technicalSheetsMenuExpanded, setTechnicalSheetsMenuExpanded] = useState(() => false);
   const [appSearchQuery, setAppSearchQuery] = useState('');
   const [showAppSearch, setShowAppSearch] = useState(false);
@@ -1273,6 +1312,22 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const menusInstalled = installedApps.includes('menus');
   const haccpInstalled = installedApps.includes('haccp');
   const purchasingInstalled = installedApps.includes('purchasing');
+  const financeInstalled = installedApps.includes('finance');
+  useEffect(() => {
+    if (!financeInstalled) return;
+    let cancelled = false;
+    const preload = () => {
+      if (cancelled) return;
+      void import('./FinanceApp')
+        .then(({ preloadFinanceWorkspace }) => preloadFinanceWorkspace(token))
+        .catch(() => undefined);
+    };
+    const timeoutId = window.setTimeout(preload, 750);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [financeInstalled, token]);
   const planningPrerequisiteMessage = rhPlanningReadiness.ready
     ? undefined
     : rhPlanningReadiness.message;
@@ -1395,10 +1450,27 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       ].includes(activeTab),
     [activeTab],
   );
+  const isFinanceTab = useMemo(
+    () =>
+      [
+        'finance-cockpit',
+        'finance-sales',
+        'finance-annual',
+        'finance-monthly',
+        'finance-daily',
+        'finance-budget',
+        'finance-sources',
+      ].includes(activeTab),
+    [activeTab],
+  );
 
   useEffect(() => {
     if (isPurchasingTab) setPurchasingMenuExpanded(true);
   }, [isPurchasingTab]);
+
+  useEffect(() => {
+    if (isFinanceTab) setFinanceMenuExpanded(true);
+  }, [isFinanceTab]);
 
   useEffect(() => {
     if (isMenusTab) {
@@ -1746,6 +1818,25 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         ],
       },
       {
+        id: 'finance',
+        title: 'Finance',
+        icon: WalletCards,
+        installed: financeInstalled,
+        expanded: financeMenuExpanded,
+        setExpanded: setFinanceMenuExpanded,
+        isActive: isFinanceTab,
+        defaultTab: 'finance-cockpit',
+        submenu: [
+          { tab: 'finance-cockpit', label: 'Tableau de bord', icon: LayoutDashboard },
+          { tab: 'finance-sales', label: 'Ventes & affluence', icon: Activity },
+          { tab: 'finance-annual', label: 'Annuel', icon: BarChart3 },
+          { tab: 'finance-monthly', label: 'Mensuel', icon: CalendarDays },
+          { tab: 'finance-daily', label: 'Journalier', icon: LineChart },
+          { tab: 'finance-budget', label: 'Budget', icon: Target },
+          { tab: 'finance-sources', label: 'Sources & qualité', icon: Database },
+        ],
+      },
+      {
         id: 'rnm-prices',
         title: 'Cours des Produits',
         icon: LineChart,
@@ -1789,6 +1880,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       purchasingInstalled,
       purchasingMenuExpanded,
       isPurchasingTab,
+      financeInstalled,
+      financeMenuExpanded,
+      isFinanceTab,
       rnmInstalled,
       rnmMenuExpanded,
       isRnmTab,
@@ -2078,6 +2172,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       case 'purchasing':
         result = await api.installPurchasing(token);
         break;
+      case 'finance':
+        result = await api.installFinance(token);
+        break;
       case 'hr':
         result = await api.installHr(token);
         break;
@@ -2306,6 +2403,28 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     }
   }
 
+  async function uninstallFinance() {
+    setAppActionLoading(true);
+    setError(undefined);
+    setSuccess(undefined);
+    try {
+      const summary = await api.uninstallFinance(token);
+      setInstalledApps(
+        summary.installedApplications ?? installedApps.filter((app) => app !== 'finance'),
+      );
+      if (isFinanceTab) setActiveTab('applications');
+      setSuccess(
+        'L’application Finance a été retirée de la navigation. Sources, imports et réglages sont conservés.',
+      );
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Suppression de Finance impossible.');
+    } finally {
+      setAppActionLoading(false);
+      setConfirmation(null);
+    }
+  }
+
   async function triggerInstallApp(appId: string) {
     if (
       ![
@@ -2318,6 +2437,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         'menus',
         'haccp',
         'purchasing',
+        'finance',
       ].includes(appId)
     )
       return;
@@ -2366,7 +2486,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                         ? await api.installHaccp(token)
                         : appId === 'purchasing'
                           ? await api.installPurchasing(token)
-                          : await api.installStocks(token);
+                          : appId === 'finance'
+                            ? await api.installFinance(token)
+                            : await api.installStocks(token);
         setDashboardSummary((prev) => ({ ...prev, ...summary }) as DashboardSummary);
         setInstalledApps(
           summary.installedApplications ?? Array.from(new Set([...installedApps, appId])),
@@ -2388,7 +2510,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                         ? 'L’application HACCP a été installée. Dashboard conformité, contrôles et rapports sont disponibles.'
                         : appId === 'purchasing'
                           ? 'L’application Achats a été installée. La configuration guidée est prête.'
-                          : 'L’application Stocks a été installée avec succès. Le référentiel de base est prêt : importez vos produits ou analysez un document.',
+                          : appId === 'finance'
+                            ? 'L’application Finance a été installée. Connectez Fennoa ou importez vos rapports de caisse pour commencer.'
+                            : 'L’application Stocks a été installée avec succès. Le référentiel de base est prêt : importez vos produits ou analysez un document.',
         );
         if (appId === 'stocks') {
           setActiveTab('stocks-dashboard');
@@ -2405,6 +2529,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         if (appId === 'menus') setActiveTab('menus-dashboard');
         if (appId === 'haccp') setActiveTab('haccp-dashboard');
         if (appId === 'purchasing') setActiveTab('purchasing-dashboard');
+        if (appId === 'finance') setActiveTab('finance-cockpit');
         await refresh();
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Erreur lors de l’installation.');
@@ -3545,6 +3670,13 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     'purchasing-orders': 'Commandes fournisseurs',
     'purchasing-receipts': 'Réceptions Achats',
     'purchasing-history': 'Historique Achats',
+    'finance-cockpit': 'Cockpit financier',
+    'finance-sales': 'Ventes & affluence',
+    'finance-annual': 'Analyse annuelle',
+    'finance-monthly': 'Analyse mensuelle',
+    'finance-daily': 'Analyse journalière',
+    'finance-budget': 'Budget & trajectoire',
+    'finance-sources': 'Sources & qualité',
     'haccp-products': 'Produits HACCP',
     'haccp-labels': 'Étiquettes HACCP',
     'haccp-reports': 'Rapports HACCP',
@@ -4558,7 +4690,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                                 ? 'uninstall-menus'
                                 : appId === 'purchasing'
                                   ? 'uninstall-purchasing'
-                                  : 'uninstall-stocks',
+                                  : appId === 'finance'
+                                    ? 'uninstall-finance'
+                                    : 'uninstall-stocks',
                     )
                   }
                 />
@@ -4863,6 +4997,48 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                             : next === 'history'
                               ? 'purchasing-history'
                               : 'purchasing-dashboard',
+                      )
+                    }
+                  />
+                </Suspense>
+              )}
+
+              {isFinanceTab && financeInstalled && (
+                <Suspense
+                  fallback={<div className="dashboard-loading">Chargement du module Finance…</div>}
+                >
+                  <FinanceApp
+                    token={token}
+                    tab={
+                      activeTab === 'finance-annual'
+                        ? 'annual'
+                        : activeTab === 'finance-sales'
+                          ? 'sales'
+                          : activeTab === 'finance-monthly'
+                            ? 'monthly'
+                            : activeTab === 'finance-daily'
+                              ? 'daily'
+                              : activeTab === 'finance-budget'
+                                ? 'budget'
+                                : activeTab === 'finance-sources'
+                                  ? 'sources'
+                                  : 'cockpit'
+                    }
+                    onNavigate={(next) =>
+                      setActiveTab(
+                        next === 'annual'
+                          ? 'finance-annual'
+                          : next === 'sales'
+                            ? 'finance-sales'
+                            : next === 'monthly'
+                              ? 'finance-monthly'
+                              : next === 'daily'
+                                ? 'finance-daily'
+                                : next === 'budget'
+                                  ? 'finance-budget'
+                                  : next === 'sources'
+                                    ? 'finance-sources'
+                                    : 'finance-cockpit',
                       )
                     }
                   />
@@ -6313,6 +6489,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               if (selectedStoreApp.id === 'menus') setActiveTab('menus-dashboard');
               if (selectedStoreApp.id === 'planning') setActiveTab('planning-dashboard');
               if (selectedStoreApp.id === 'purchasing') setActiveTab('purchasing-dashboard');
+              if (selectedStoreApp.id === 'finance') setActiveTab('finance-cockpit');
               setSelectedStoreApp(null);
             }}
             onUninstall={() => {
@@ -6324,6 +6501,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               else if (selectedStoreApp.id === 'planning') setConfirmation('uninstall-planning');
               else if (selectedStoreApp.id === 'purchasing')
                 setConfirmation('uninstall-purchasing');
+              else if (selectedStoreApp.id === 'finance') setConfirmation('uninstall-finance');
               else
                 setConfirmation(
                   selectedStoreApp.id === 'rnm-prices'
@@ -6633,6 +6811,17 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         loading={appActionLoading}
         onCancel={() => setConfirmation(null)}
         onConfirm={uninstallPurchasing}
+      />
+
+      <ConfirmationModal
+        isOpen={confirmation === 'uninstall-finance'}
+        title="Supprimer l’application Finance ?"
+        text="L’entrée disparaîtra de la navigation, mais les sources, fichiers importés et réglages financiers seront conservés pour une réactivation ultérieure."
+        confirmLabel="Supprimer"
+        danger
+        loading={appActionLoading}
+        onCancel={() => setConfirmation(null)}
+        onConfirm={uninstallFinance}
       />
 
       <Modal
@@ -8351,6 +8540,8 @@ function CockpitCard({
   // Icon mapping
   const getCardIcon = () => {
     const title = card.title.toLowerCase();
+    if (title.includes("chiffre d'affaires") || title.includes('chiffre d’affaires'))
+      return <TrendingUp size={20} />;
     if (title.includes('haccp') || title.includes('conform')) return <ShieldCheck size={20} />;
     if (title.includes('effectif') || title.includes('collaborat')) return <UsersRound size={20} />;
     if (title.includes('stock') || title.includes('mouvement')) return <Package size={20} />;
@@ -8365,6 +8556,7 @@ function CockpitCard({
 
   const getTone = () => {
     const title = card.title.toLowerCase();
+    if (title.includes("chiffre d'affaires") || title.includes('chiffre d’affaires')) return 'blue';
     if (title.includes('haccp') || title.includes('conform')) return 'emerald';
     if (title.includes('effectif') || title.includes('collaborat')) return 'teal';
     if (title.includes('stock') || title.includes('mouvement')) return 'emerald';
@@ -8394,6 +8586,19 @@ function CockpitCard({
   // Custom SVGs (using computed real history values)
   const renderSparkline = () => {
     const title = card.title.toLowerCase();
+
+    if (
+      (title.includes("chiffre d'affaires") || title.includes('chiffre d’affaires')) &&
+      card.trend &&
+      card.trend.length >= 2
+    ) {
+      const pathPoints = getSparklinePoints(card.trend);
+      return (
+        <svg className="cockpit-card-sparkline finance" viewBox="0 0 100 30" width="80" height="24">
+          <path d={pathPoints} fill="none" strokeWidth="2.5" strokeLinecap="round" />
+        </svg>
+      );
+    }
 
     if (title.includes('haccp')) {
       const current = parseFloat(String(card.value)) || 85;
@@ -8764,6 +8969,7 @@ function moduleTargetTab(module?: string): ActiveTab | undefined {
   if (moduleKey.includes('rnm')) return 'rnm-dashboard';
   if (moduleKey.includes('haccp')) return 'haccp-dashboard';
   if (moduleKey.includes('purchas')) return 'purchasing-dashboard';
+  if (moduleKey.includes('finance')) return 'finance-daily';
   return undefined;
 }
 
@@ -9242,7 +9448,8 @@ function computeStocksReadiness(
   const catalogReady = Boolean(activeProducts.length);
   const hasValidatedOcr = ocrStatuses.some((status) => {
     const document = status.document as unknown as
-      { receptionId?: string | null; receptionStatus?: string | null } | undefined;
+      | { receptionId?: string | null; receptionStatus?: string | null }
+      | undefined;
     return Boolean(
       document?.receptionId ||
       document?.receptionStatus === 'VALIDATED' ||
@@ -17390,7 +17597,12 @@ type SettingsSubTab =
   | 'api-keys'
   | 'core';
 type OrganizationSettingModal =
-  'name' | 'establishmentType' | 'regulatoryCountry' | 'secondarySites' | 'siteForm' | null;
+  | 'name'
+  | 'establishmentType'
+  | 'regulatoryCountry'
+  | 'secondarySites'
+  | 'siteForm'
+  | null;
 type SiteDraft = {
   name: string;
   description: string;
@@ -18005,6 +18217,17 @@ function SettingsPage({
   const [resendKeyMessage, setResendKeyMessage] = useState<string>();
   const [resendKeyError, setResendKeyError] = useState<string>();
   const [savingResendKey, setSavingResendKey] = useState(false);
+  const [fennoaConfiguration, setFennoaConfiguration] =
+    useState<FinanceBootstrap['settings']['fennoa']>(null);
+  const [fennoaForm, setFennoaForm] = useState({
+    username: '',
+    apiKey: '',
+    baseUrl: 'https://app.fennoa.com/api',
+    apiVersion: 'v1' as 'v1' | 'v2',
+  });
+  const [fennoaMessage, setFennoaMessage] = useState<string>();
+  const [fennoaError, setFennoaError] = useState<string>();
+  const [fennoaBusy, setFennoaBusy] = useState<'load' | 'save' | 'test' | 'sync'>();
   const [githubToken, setGithubToken] = useState('');
   const [githubTokenConfigured, setGithubTokenConfigured] = useState(initialGithubConfigured);
   const [githubTokenMasked, setGithubTokenMasked] = useState<string | null | undefined>(
@@ -18116,6 +18339,26 @@ function SettingsPage({
       setActiveSubTab('api-keys');
     }
   }, [focusApiKeys]);
+
+  useEffect(() => {
+    if (activeSubTab !== 'api-keys' || fennoaConfiguration || fennoaBusy === 'load') return;
+    setFennoaBusy('load');
+    api
+      .financeFennoaConfiguration(token)
+      .then((configuration) => {
+        setFennoaConfiguration(configuration);
+        if (configuration) {
+          setFennoaForm({
+            username: configuration.username ?? '',
+            apiKey: '',
+            baseUrl: configuration.baseUrl,
+            apiVersion: configuration.apiVersion === 'v2' ? 'v2' : 'v1',
+          });
+        }
+      })
+      .catch(() => setFennoaConfiguration(null))
+      .finally(() => setFennoaBusy(undefined));
+  }, [activeSubTab, fennoaBusy, fennoaConfiguration, token]);
 
   useEffect(() => {
     if (activeSubTab === 'updates' && isAdmin && !updateStatus && !updateLoading) {
@@ -18277,6 +18520,63 @@ function SettingsPage({
       );
     } finally {
       setSavingResendKey(false);
+    }
+  }
+
+  async function saveFennoaConfiguration() {
+    setFennoaBusy('save');
+    setFennoaError(undefined);
+    setFennoaMessage(undefined);
+    try {
+      const configuration = await api.configureFennoa(token, {
+        username: fennoaForm.username.trim(),
+        apiKey: fennoaForm.apiKey.trim() || undefined,
+        baseUrl: fennoaForm.baseUrl.trim(),
+        apiVersion: fennoaForm.apiVersion,
+      });
+      setFennoaConfiguration(configuration);
+      setFennoaForm((current) => ({ ...current, apiKey: '' }));
+      setFennoaMessage('Connexion Fennoa enregistrée de façon sécurisée.');
+    } catch (err) {
+      setFennoaError(err instanceof Error ? err.message : 'Impossible d’enregistrer Fennoa.');
+    } finally {
+      setFennoaBusy(undefined);
+    }
+  }
+
+  async function testFennoaConfiguration() {
+    setFennoaBusy('test');
+    setFennoaError(undefined);
+    setFennoaMessage(undefined);
+    try {
+      const result = await api.testFennoa(token);
+      const configuration = await api.financeFennoaConfiguration(token);
+      setFennoaConfiguration(configuration);
+      setFennoaMessage(
+        `Connexion validée · ${result.accountsCount} compte(s) · ${result.periodsCount ?? 0} exercice(s).`,
+      );
+    } catch (err) {
+      setFennoaError(err instanceof Error ? err.message : 'Le test Fennoa a échoué.');
+    } finally {
+      setFennoaBusy(undefined);
+    }
+  }
+
+  async function syncFennoaConfiguration() {
+    setFennoaBusy('sync');
+    setFennoaError(undefined);
+    setFennoaMessage(undefined);
+    try {
+      const result = await api.syncFennoa(token);
+      const configuration = await api.financeFennoaConfiguration(token);
+      setFennoaConfiguration(configuration);
+      setFennoaMessage(
+        `Synchronisation terminée${result.full ? ' · historique complet' : ''} · ${result.periodsSyncedCount ?? 1} exercice(s) · ${result.ledgerRowsCount ?? 0} écriture(s) · ${result.budgetRowsCount ?? 0} ligne(s) de budget.`,
+      );
+    } catch (err) {
+      setFennoaError(err instanceof Error ? err.message : 'La synchronisation Fennoa a échoué.');
+    } finally {
+      setFennoaBusy(undefined);
     }
   }
 
@@ -19866,6 +20166,205 @@ function SettingsPage({
                       : 'Sauvegarder la clé'}
                 </button>
               </section>
+
+              <section
+                style={{
+                  borderTop: '1px solid var(--light-border)',
+                  marginTop: '2rem',
+                  paddingTop: '2rem',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: '1rem',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    marginBottom: '1.25rem',
+                  }}
+                >
+                  <div>
+                    <span
+                      className="card-title"
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}
+                    >
+                      <Building2 size={18} /> Fennoa
+                    </span>
+                    <p className="muted" style={{ fontSize: '0.82rem', margin: '0.25rem 0 0' }}>
+                      API comptable du module Finance : comptes, écritures, exercices, soldes et
+                      budgets.
+                    </p>
+                  </div>
+                  <span
+                    className={`badge ${fennoaConfiguration?.apiKeyConfigured ? 'badge-reception' : 'badge-correction'}`}
+                  >
+                    {fennoaConfiguration?.apiKeyConfigured ? 'Fennoa configuré' : 'Non configuré'}
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '1.5rem',
+                    background: '#f8fafc',
+                    padding: '1.5rem',
+                    borderRadius: '16px',
+                    border: '1px solid var(--light-border)',
+                    marginBottom: '1.5rem',
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 54,
+                      height: 54,
+                      borderRadius: 12,
+                      display: 'grid',
+                      placeItems: 'center',
+                      flex: '0 0 auto',
+                      background: 'white',
+                      color: '#2563eb',
+                      border: '1px solid var(--light-border)',
+                    }}
+                  >
+                    <Landmark size={26} />
+                  </span>
+                  <p
+                    style={{
+                      color: 'var(--text-muted)',
+                      fontSize: '0.85rem',
+                      lineHeight: 1.6,
+                      margin: 0,
+                      flex: 1,
+                    }}
+                  >
+                    <strong>Fennoa</strong> reste la vérité comptable. L’identifiant et la clé sont
+                    chiffrés côté serveur ; seule une version masquée est affichée ici.
+                  </p>
+                </div>
+
+                {fennoaConfiguration?.apiKeyConfigured ? (
+                  <div
+                    className="alert-modern info"
+                    style={{
+                      marginBottom: '1.25rem',
+                      background: '#f0fdf4',
+                      borderColor: '#bbf7d0',
+                      color: '#166534',
+                    }}
+                  >
+                    <ShieldCheck size={16} style={{ color: '#10b981' }} />
+                    <span style={{ fontSize: '0.85rem' }}>
+                      Clé API active : <code>{fennoaConfiguration.apiKeyMask ?? '••••••••'}</code>
+                    </span>
+                  </div>
+                ) : null}
+                {fennoaError ? (
+                  <div className="alert-modern error" style={{ marginBottom: '1.25rem' }}>
+                    <AlertCircle size={16} /> {fennoaError}
+                  </div>
+                ) : null}
+                {fennoaMessage ? (
+                  <div className="alert-modern success" style={{ marginBottom: '1.25rem' }}>
+                    <CheckCircle2 size={16} /> {fennoaMessage}
+                  </div>
+                ) : null}
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
+                    gap: '0.8rem',
+                    marginBottom: '1rem',
+                  }}
+                >
+                  <label
+                    style={{ display: 'grid', gap: '0.5rem', fontWeight: 700, fontSize: '0.85rem' }}
+                  >
+                    Utilisateur / alias API
+                    <input
+                      value={fennoaForm.username}
+                      onChange={(event) =>
+                        setFennoaForm({ ...fennoaForm, username: event.target.value })
+                      }
+                      placeholder="Utilisateur API Fennoa"
+                    />
+                  </label>
+                  <label
+                    style={{ display: 'grid', gap: '0.5rem', fontWeight: 700, fontSize: '0.85rem' }}
+                  >
+                    Clé API Fennoa
+                    <input
+                      type="password"
+                      value={fennoaForm.apiKey}
+                      onChange={(event) =>
+                        setFennoaForm({ ...fennoaForm, apiKey: event.target.value })
+                      }
+                      placeholder={
+                        fennoaConfiguration?.apiKeyConfigured
+                          ? 'Nouvelle clé ou conserver la clé actuelle'
+                          : 'Clé créée dans Fennoa'
+                      }
+                      autoComplete="off"
+                    />
+                  </label>
+                  <label
+                    style={{ display: 'grid', gap: '0.5rem', fontWeight: 700, fontSize: '0.85rem' }}
+                  >
+                    URL de l’API
+                    <input
+                      value={fennoaForm.baseUrl}
+                      onChange={(event) =>
+                        setFennoaForm({ ...fennoaForm, baseUrl: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label
+                    style={{ display: 'grid', gap: '0.5rem', fontWeight: 700, fontSize: '0.85rem' }}
+                  >
+                    Adaptateur
+                    <select
+                      value={fennoaForm.apiVersion}
+                      onChange={(event) =>
+                        setFennoaForm({
+                          ...fennoaForm,
+                          apiVersion: event.target.value as 'v1' | 'v2',
+                        })
+                      }
+                    >
+                      <option value="v1">Fennoa API v1</option>
+                      <option value="v2">Fennoa API v2</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => void saveFennoaConfiguration()}
+                    disabled={Boolean(fennoaBusy) || !fennoaForm.username.trim()}
+                  >
+                    {fennoaBusy === 'save' ? 'Enregistrement…' : 'Enregistrer Fennoa'}
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => void testFennoaConfiguration()}
+                    disabled={Boolean(fennoaBusy) || !fennoaConfiguration?.apiKeyConfigured}
+                  >
+                    <ShieldCheck size={16} />{' '}
+                    {fennoaBusy === 'test' ? 'Test…' : 'Tester la connexion'}
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => void syncFennoaConfiguration()}
+                    disabled={Boolean(fennoaBusy) || !fennoaConfiguration?.apiKeyConfigured}
+                  >
+                    <RefreshCw size={16} />{' '}
+                    {fennoaBusy === 'sync' ? 'Synchronisation…' : 'Synchroniser maintenant'}
+                  </button>
+                </div>
+              </section>
             </div>
           )}
 
@@ -20712,7 +21211,13 @@ function UnitForm({ onSubmit, onClose }: UnitFormProps) {
 
 // Product Form
 type ProductSheetTab =
-  'identity' | 'supplier' | 'stock' | 'packaging' | 'allergens' | 'nutrition' | 'storage';
+  | 'identity'
+  | 'supplier'
+  | 'stock'
+  | 'packaging'
+  | 'allergens'
+  | 'nutrition'
+  | 'storage';
 
 const PRODUCT_SHEET_TABS: Array<{ id: ProductSheetTab; label: string }> = [
   { id: 'identity', label: 'Identité' },

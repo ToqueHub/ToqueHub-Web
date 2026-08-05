@@ -51,12 +51,16 @@ const BASE_PERMISSIONS = [
   { key: 'purchasing.send', description: 'Envoyer les commandes fournisseurs' },
   { key: 'purchasing.receive', description: 'Valider les réceptions fournisseurs' },
   { key: 'purchasing.manage', description: 'Configurer les achats et les e-mails fournisseurs' },
+  { key: 'finance.read', description: 'Consulter le pilotage financier' },
+  { key: 'finance.import', description: 'Importer des rapports comptables et de caisse' },
+  { key: 'finance.budget', description: 'Créer et modifier les budgets financiers' },
+  { key: 'finance.manage', description: 'Configurer les sources et les règles Finance' },
 ];
 
 const DEFAULT_ROLE_PERMISSIONS: Record<CoreRoleName, string[]> = {
   [CoreRoleName.ADMIN]: BASE_PERMISSIONS.map((permission) => permission.key),
-  [CoreRoleName.MANAGER]: ['catalog.read', 'catalog.write', 'stocks.read', 'stocks.write', 'stocks.audit.read', 'hr.read', 'hr.write', 'planning.read', 'planning.write', 'rnm-prices.read', 'technical-sheets.read', 'technical-sheets.write', 'production.read', 'production.write', 'production.need.create', 'production.menu.generate', 'production.campaign.validate', 'production.batch.execute', 'production.loss.declare', 'production.stock.adjust', 'production.profile.manage', 'production.override', 'production.traceability.read', 'menus.read', 'menus.write', 'haccp.read', 'haccp.write', 'haccp.validate', 'haccp.export', 'purchasing.read', 'purchasing.draft', 'purchasing.write', 'purchasing.send', 'purchasing.receive', 'purchasing.manage'],
-  [CoreRoleName.USER]: ['catalog.read', 'stocks.read', 'hr.read', 'planning.read', 'rnm-prices.read', 'technical-sheets.read', 'production.read', 'production.batch.execute', 'production.loss.declare', 'production.traceability.read', 'menus.read', 'haccp.read', 'purchasing.read', 'purchasing.draft'],
+  [CoreRoleName.MANAGER]: ['catalog.read', 'catalog.write', 'stocks.read', 'stocks.write', 'stocks.audit.read', 'hr.read', 'hr.write', 'planning.read', 'planning.write', 'rnm-prices.read', 'technical-sheets.read', 'technical-sheets.write', 'production.read', 'production.write', 'production.need.create', 'production.menu.generate', 'production.campaign.validate', 'production.batch.execute', 'production.loss.declare', 'production.stock.adjust', 'production.profile.manage', 'production.override', 'production.traceability.read', 'menus.read', 'menus.write', 'haccp.read', 'haccp.write', 'haccp.validate', 'haccp.export', 'purchasing.read', 'purchasing.draft', 'purchasing.write', 'purchasing.send', 'purchasing.receive', 'purchasing.manage', 'finance.read', 'finance.import', 'finance.budget', 'finance.manage'],
+  [CoreRoleName.USER]: ['catalog.read', 'stocks.read', 'hr.read', 'planning.read', 'rnm-prices.read', 'technical-sheets.read', 'production.read', 'production.batch.execute', 'production.loss.declare', 'production.traceability.read', 'menus.read', 'haccp.read', 'purchasing.read', 'purchasing.draft', 'finance.read'],
 };
 
 type UserWithRole = Prisma.UserGetPayload<{ include: { role: { include: { permissions: { include: { permission: true } } } } } }>;

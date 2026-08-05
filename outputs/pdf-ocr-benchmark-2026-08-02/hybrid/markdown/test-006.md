@@ -1,5 +1,0 @@
-||recommendations to strengthen related processes. Furthermore, DPN Argentina Examples of such greetings are as follows:|In this content, DPN Argentina provides a brief explanation of the SDGs and the 2030 Agenda action plans, and most importantly, their role in advancing the 2030 Agenda through the SDGs Monitoring and Evaluation Program with a focus on certain thematic areas. These focuses allow DPN Argentina to investigate through monitoring and preparing reports on the development of public policies and actions of organizations responsible for compliance with the SDGs, as well as proposals, and days related to the SDGs by also including the SDGs logo in each of these uploads.|also regularly uploads commemorations of|
-|---|---|---|---|
-||||DPN Argentina Content: World Health Figure 6 Day Celebration 98 (7 April 2021).|
-|98|PNArgentina/status/1379765916259483648.|DPN Argentina, “Día Mundial de la #Salud”, accessed on 5 December 2021,[https://twitter.com/D||](https://twitter.com/D||)
-|||23||

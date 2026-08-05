@@ -67,3 +67,89 @@ describe('DashboardService preferences', () => {
     expect(service.getDashboard).toHaveBeenCalledWith(userId, organizationId);
   });
 });
+
+describe('DashboardService finance cockpit KPI', () => {
+  it('uses only the principal POS and builds the four daily checkpoints', async () => {
+    const prisma = {
+      financeDataSource: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'flatpay-main',
+            provider: 'FLATPAY',
+            name: 'Flatpay',
+            isPrimaryPos: true,
+            isPrimarySales: true,
+            lastSyncedAt: new Date('2026-08-03T19:05:00.000Z'),
+          },
+          {
+            id: 'paypal-secondary',
+            provider: 'PAYPAL_POS',
+            name: 'PayPal POS',
+            isPrimaryPos: false,
+            isPrimarySales: true,
+            lastSyncedAt: new Date('2026-08-03T20:00:00.000Z'),
+          },
+        ]),
+      },
+      financeDailySales: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            saleDate: new Date(2026, 7, 3, 6),
+            grossAmount: 100,
+            transactionCount: 1,
+            createdAt: new Date('2026-08-03T07:05:00.000Z'),
+          },
+          {
+            saleDate: new Date(2026, 7, 3, 14),
+            grossAmount: 200,
+            transactionCount: 2,
+            createdAt: new Date('2026-08-03T15:05:00.000Z'),
+          },
+          {
+            saleDate: new Date(2026, 7, 3, 18),
+            grossAmount: 300,
+            transactionCount: 3,
+            createdAt: new Date('2026-08-03T19:05:00.000Z'),
+          },
+          {
+            saleDate: new Date(2026, 7, 3, 22),
+            grossAmount: 400,
+            transactionCount: 4,
+            createdAt: new Date('2026-08-03T23:05:00.000Z'),
+          },
+        ]),
+      },
+    };
+    const service = new DashboardService(prisma as never, {} as never);
+
+    jest.useFakeTimers().setSystemTime(new Date(2026, 7, 3, 22, 30));
+    try {
+      const result = await (
+        service as unknown as {
+          financeTodayRevenue: (organizationId: string) => Promise<{
+            grossAmount: number | null;
+            transactions: number;
+            trend: number[];
+            providerLabel: string;
+          } | null>;
+        }
+      ).financeTodayRevenue('organization-1');
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          grossAmount: 1_000,
+          transactions: 10,
+          trend: [100, 300, 600, 1_000],
+          providerLabel: 'Flatpay',
+        }),
+      );
+      expect(prisma.financeDailySales.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ sourceId: 'flatpay-main' }),
+        }),
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
