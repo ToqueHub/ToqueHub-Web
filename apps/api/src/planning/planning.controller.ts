@@ -105,6 +105,14 @@ export class PlanningController {
     res.send(file.buffer);
   }
 
+  @Get('exports/attendance/pdf')
+  async exportAttendancePdf(@CurrentUser() user: AuthenticatedUser, @Query() q: PlanningAttendanceQueryDto, @Res() res: Response) {
+    const file = await this.planningService.exportAttendancePdf(this.org(user), q);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${file.filename}"`);
+    res.send(file.buffer);
+  }
+
   @Post('exports') prepareExport(@CurrentUser() user: AuthenticatedUser, @Body() dto: PrepareExportDto) { return this.planningService.prepareExport(this.org(user), this.actor(user), dto); }
 
   @Get('rotations') rotations(@CurrentUser() user: AuthenticatedUser, @Query() q: PlanningQueryDto) { return this.planningService.listPlanningRotations(this.org(user), q); }

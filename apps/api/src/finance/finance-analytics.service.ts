@@ -46,6 +46,25 @@ export type FinanceSiteDataScopeMode =
   | 'exclusive_site_fallback'
   | 'unavailable';
 
+export function selectFinanceBudgetPlan<T extends { siteId?: string | null }>(
+  plans: T[],
+  siteId?: string,
+) {
+  if (!siteId) return plans[0] ?? null;
+  return plans.find((plan) => plan.siteId === siteId) ?? plans.find((plan) => !plan.siteId) ?? null;
+}
+
+export function allocateMonthlyBudgetPerCalendarDay(
+  month: Date,
+  budget: { revenue: number | null; operatingResult: number | null },
+) {
+  const days = endOfMonth(month).getUTCDate();
+  return {
+    revenue: budget.revenue == null ? null : round(budget.revenue / days),
+    operatingResult: budget.operatingResult == null ? null : round(budget.operatingResult / days),
+  };
+}
+
 export function resolveFinanceSiteDataScope(input: {
   siteId?: string;
   activeSalesSiteIds: string[];
@@ -270,6 +289,25 @@ function endOfUtcDay(value: Date) {
   );
 }
 
+export function resolveFinanceAsOfDate(input: {
+  requestedAsOf?: Date | null;
+  latestSaleDate?: Date | null;
+  latestCoverage?: Date | null;
+  now?: Date;
+}) {
+  const now = input.now ?? new Date();
+  const requestedAsOf = input.requestedAsOf;
+  const selectedDate =
+    requestedAsOf && !Number.isNaN(requestedAsOf.getTime())
+      ? requestedAsOf
+      : input.latestSaleDate && input.latestSaleDate <= now
+        ? input.latestSaleDate
+        : input.latestCoverage && input.latestCoverage <= now
+          ? input.latestCoverage
+          : now;
+  return endOfUtcDay(selectedDate);
+}
+
 function startOfMonth(value: Date) {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), 1));
 }
@@ -420,14 +458,15 @@ export class FinanceAnalyticsService {
     fiscalYearStartMonth: number,
   ) {
     const now = new Date();
-    const [accounts, sources, settings, budgetPlan, organization] = await Promise.all([
+    const [accounts, sources, settings, budgetPlans, organization] = await Promise.all([
       this.prisma.financeAccount.findMany({ where: { organizationId } }),
       this.prisma.financeDataSource.findMany({ where: { organizationId } }),
       this.prisma.financeSettings.findUnique({ where: { organizationId } }),
-      this.prisma.financeBudgetPlan.findFirst({
+      this.prisma.financeBudgetPlan.findMany({
         where: { organizationId, isReference: true },
         include: {
           lines: { orderBy: { periodStart: 'asc' } },
+          site: { select: { id: true, name: true } },
           importBatch: {
             select: { source: { select: { siteId: true } } },
           },
@@ -439,6 +478,9 @@ export class FinanceAnalyticsService {
         select: { mistralApiKey: true },
       }),
     ]);
+    // Un budget est une trajectoire d'établissement. Les anciennes lignes sans site restent
+    // lisibles pendant la migration, mais ne prennent jamais le pas sur une affectation directe.
+    const budgetPlan = selectFinanceBudgetPlan(budgetPlans, query.siteId);
     const scopedSources = query.siteId
       ? sources.filter(({ siteId }) => siteId === query.siteId)
       : sources;
@@ -449,6 +491,19 @@ export class FinanceAnalyticsService {
       scopedSources.filter(({ sourceType }) => sourceType !== 'ACCOUNTING_API'),
     );
     const contributingSalesSourceIdSet = new Set(contributingSalesSourceIds);
+    const latestContributingSale = contributingSalesSourceIds.length
+      ? await this.prisma.financeDailySales.findFirst({
+          where: {
+            organizationId,
+            sourceId: { in: contributingSalesSourceIds },
+            saleDate: { lte: now },
+            isRevenueRecord: true,
+            OR: [{ transactionCount: { gt: 0 } }, { netAmount: { not: 0 } }],
+          },
+          select: { saleDate: true },
+          orderBy: { saleDate: 'desc' },
+        })
+      : null;
     const latestCoverage = scopedSources
       .map(({ coverageEnd }) => coverageEnd)
       .filter((value): value is Date => Boolean(value && value <= now))
@@ -462,11 +517,12 @@ export class FinanceAnalyticsService {
       .filter((value): value is Date => Boolean(value))
       .sort((left, right) => left.getTime() - right.getTime())[0];
     const requestedAsOf = query.to ? new Date(query.to) : null;
-    const asOf = endOfUtcDay(
-      requestedAsOf && !Number.isNaN(requestedAsOf.getTime())
-        ? requestedAsOf
-        : (latestCoverage ?? now),
-    );
+    const asOf = resolveFinanceAsOfDate({
+      requestedAsOf,
+      latestSaleDate: latestContributingSale?.saleDate,
+      latestCoverage,
+      now,
+    });
     const fiscalStartMonth =
       budgetPlan?.startDate.getUTCMonth() ?? Math.min(12, Math.max(1, fiscalYearStartMonth)) - 1;
     const fiscalStartYear =
@@ -552,7 +608,7 @@ export class FinanceAnalyticsService {
       activeSalesSiteIds,
       directAccountingSourceIds,
       globalAccountingSourceIds,
-      budgetSiteId: budgetPlan?.importBatch?.source?.siteId,
+      budgetSiteId: budgetPlan?.siteId ?? budgetPlan?.importBatch?.source?.siteId,
       hasBudget: Boolean(budgetPlan),
     });
     const accountingSourceIdSet = new Set(dataScope.accountingSourceIds);
@@ -722,7 +778,12 @@ export class FinanceAnalyticsService {
       budgetLines,
       accountingLockedThrough,
     );
-    const dailySeries = this.dailySeries(monthStart, monthlyActualTo, sales);
+    const dailySeries = this.dailySeries(
+      monthStart,
+      monthlyActualTo,
+      sales,
+      allocateMonthlyBudgetPerCalendarDay(monthStart, monthlyBudget),
+    );
     const elapsedMonths = Math.max(
       0,
       series.filter(({ periodStart }) => sameOrBeforeMonth(new Date(periodStart), annualBudgetTo))
@@ -946,6 +1007,8 @@ export class FinanceAnalyticsService {
           budgetPlan && dataScope.includeBudget
             ? {
                 id: budgetPlan.id,
+                siteId: budgetPlan.siteId,
+                site: budgetPlan.site,
                 name: budgetPlan.name,
                 scenario: budgetPlan.scenario,
                 currency: budgetPlan.currency,
@@ -1560,6 +1623,7 @@ export class FinanceAnalyticsService {
     start: Date,
     end: Date,
     sales: Array<{ saleDate: Date; netAmount: Prisma.Decimal; transactionCount: number }>,
+    dailyBudget?: { revenue: number | null; operatingResult: number | null },
   ) {
     const byDay = new Map<string, { revenue: number; transactions: number }>();
     for (const row of sales) {
@@ -1570,7 +1634,13 @@ export class FinanceAnalyticsService {
       current.transactions += row.transactionCount;
       byDay.set(key, current);
     }
-    const result: Array<{ date: string; revenue: number; transactions: number }> = [];
+    const result: Array<{
+      date: string;
+      revenue: number;
+      transactions: number;
+      budgetRevenue: number | null;
+      budgetResult: number | null;
+    }> = [];
     for (let cursor = startOfUtcDay(start); cursor <= end; cursor = shiftDays(cursor, 1)) {
       const date = utcDateKey(cursor);
       const values = byDay.get(date) ?? { revenue: 0, transactions: 0 };
@@ -1578,6 +1648,8 @@ export class FinanceAnalyticsService {
         date,
         revenue: round(values.revenue),
         transactions: values.transactions,
+        budgetRevenue: dailyBudget?.revenue ?? null,
+        budgetResult: dailyBudget?.operatingResult ?? null,
       });
     }
     return result;

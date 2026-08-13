@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
-import { AlertCircle, ArrowLeft, BriefcaseBusiness, CalendarDays, CheckCircle2, FileText, GraduationCap, History, NotebookText, Search, ShieldCheck, Sparkles, UploadCloud, UserRound, UsersRound, X, ChevronDown, Mail, Phone, MapPin, Globe, Languages, Hash } from 'lucide-react';
-import type { CoreUser, HrCollaborator, HrCollaboratorPayload, HrContractAnalysis, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, RegulatoryCountryCode, Site } from '../../../types';
+import { AlertCircle, ArrowLeft, BriefcaseBusiness, CalendarDays, CheckCircle2, FileText, GraduationCap, History, Info, NotebookText, Search, ShieldCheck, Sparkles, UploadCloud, UserRound, UsersRound, X, ChevronDown, Mail, Phone, MapPin, Globe, Languages, Hash } from 'lucide-react';
+import type { CoreRole, CoreUser, HrCollaborator, HrCollaboratorPayload, HrContractAnalysis, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, RegulatoryCountryCode, Site, ToqueHubAccountCreationPayload } from '../../../types';
 import { HR_CATALOG } from '../../../hr-catalog';
 
 type TabId = 'profile' | 'professional' | 'contracts' | 'documents' | 'trainings' | 'organization' | 'history';
@@ -41,6 +41,13 @@ function secondarySiteNames(collaborator?: HrCollaborator) {
   return (collaborator?.secondarySites ?? [])
     .map((item) => 'siteId' in item ? item.site?.name : item.name)
     .filter(Boolean) as string[];
+}
+
+function defaultCollaboratorSiteId(sites: Site[], primarySiteId?: string | null) {
+  return sites.find((site) => site.id === primarySiteId)?.id
+    ?? sites.find((site) => site.isPrimary || site.isMain)?.id
+    ?? sites[0]?.id
+    ?? '';
 }
 
 function collaboratorSecondaryPositionIds(collaborator?: HrCollaborator) {
@@ -87,7 +94,7 @@ function FormField({
   );
 }
 
-export function CollaboratorModal({ collaborator, collaborators, departments, positions, users, sites, regulatoryCountryCode, onClose, onSubmit, onAnalyzeContract, onViewDocument, onDownloadDocument, onReplaceDocument, onDeleteDocument }: { collaborator?: HrCollaborator; collaborators: HrCollaborator[]; departments: HrDepartment[]; positions: HrPosition[]; users: CoreUser[]; sites: Site[]; regulatoryCountryCode?: RegulatoryCountryCode | null; onClose: () => void; onSubmit: (payload: HrCollaboratorPayload, documents: PendingHrDocumentUpload[]) => Promise<void>; onAnalyzeContract: (files: File[]) => Promise<HrContractAnalysis>; onViewDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onDownloadDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument?: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument?: (employeeId: string, documentId: string) => Promise<void> }) {
+export function CollaboratorModal({ collaborator, collaborators, departments, positions, roles, users, sites, primarySiteId, regulatoryCountryCode, canCreateToqueHubAccount = false, onClose, onSubmit, onAnalyzeContract, onViewDocument, onDownloadDocument, onReplaceDocument, onDeleteDocument }: { collaborator?: HrCollaborator; collaborators: HrCollaborator[]; departments: HrDepartment[]; positions: HrPosition[]; roles: CoreRole[]; users: CoreUser[]; sites: Site[]; primarySiteId?: string | null; regulatoryCountryCode?: RegulatoryCountryCode | null; canCreateToqueHubAccount?: boolean; onClose: () => void; onSubmit: (payload: HrCollaboratorPayload, documents: PendingHrDocumentUpload[], options: { toqueHubAccount?: ToqueHubAccountCreationPayload }) => Promise<void>; onAnalyzeContract: (files: File[]) => Promise<HrContractAnalysis>; onViewDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onDownloadDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument?: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument?: (employeeId: string, documentId: string) => Promise<void> }) {
   const [creationStage, setCreationStage] = useState<'choice' | 'ocr' | 'form'>(collaborator ? 'form' : 'choice');
   const [activeTab, setActiveTab] = useState<TabId>('profile');
   const [submitting, setSubmitting] = useState(false);
@@ -99,6 +106,10 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
   const [pendingDocuments, setPendingDocuments] = useState<PendingHrDocumentUpload[]>([]);
   const [contractAnalysis, setContractAnalysis] = useState<HrContractAnalysis | null>(null);
   const [contractAttachmentNotice, setContractAttachmentNotice] = useState('');
+  const [accountPanelOpen, setAccountPanelOpen] = useState(false);
+  const [accountRole, setAccountRole] = useState(() => defaultCoreRole(roles));
+  const [accountPassword, setAccountPassword] = useState('');
+  const [accountError, setAccountError] = useState('');
   const [selectedTrainings, setSelectedTrainings] = useState<string[]>(collaborator?.trainingNames ?? []);
   const [customTraining, setCustomTraining] = useState('');
   const [form, setForm] = useState<HrCollaboratorPayload>({
@@ -114,13 +125,21 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
     primaryLanguage: collaborator?.primaryLanguage ?? '',
     secondaryLanguage: collaborator?.secondaryLanguage ?? '',
     emergencyContact: collaborator?.emergencyContact ?? '',
+    emergencyContactFirstName: collaborator?.emergencyContactFirstName ?? '',
+    emergencyContactLastName: collaborator?.emergencyContactLastName ?? '',
+    emergencyContactPhone: collaborator?.emergencyContactPhone ?? '',
+    emergencyContactEmail: collaborator?.emergencyContactEmail ?? '',
     birthDate: toInputDate(collaborator?.birthDate),
     personalIdentityNumber: collaborator?.personalIdentityNumber ?? '',
     hireDate: toInputDate(collaborator?.hireDate) || new Date().toISOString().slice(0, 10),
     departmentId: collaborator?.departmentId ?? collaborator?.department?.id ?? '',
     positionId: collaborator?.positionId ?? collaborator?.position?.id ?? '',
     secondaryPositionIds: collaboratorSecondaryPositionIds(collaborator),
-    siteId: collaborator?.mainSiteId ?? collaborator?.siteId ?? collaborator?.mainSite?.id ?? collaborator?.site?.id ?? '',
+    siteId: collaborator?.mainSiteId
+      ?? collaborator?.siteId
+      ?? collaborator?.mainSite?.id
+      ?? collaborator?.site?.id
+      ?? defaultCollaboratorSiteId(sites, primarySiteId),
     secondarySiteIds: collaboratorSecondarySiteIds(collaborator),
     employeeNumber: collaborator?.employeeNumber ?? '',
     notes: cleanLegacyHrNotes(collaborator?.notes),
@@ -136,6 +155,11 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
     rateEffectiveDate: toInputDate(collaborator?.currentCompensation?.effectiveFrom) || toInputDate(collaborator?.rateEffectiveDate),
     nextReviewDate: toInputDate(collaborator?.nextSalaryReview?.dueDate) || toInputDate(collaborator?.nextReviewDate),
     reviewFrequency: collaborator?.nextSalaryReview?.frequencyMonths === 1 ? 'MONTHLY' : collaborator?.nextSalaryReview?.frequencyMonths === 3 ? 'QUARTERLY' : collaborator?.nextSalaryReview?.frequencyMonths === 12 ? 'YEARLY' : collaborator?.reviewFrequency ?? '',
+    revaluationEnabled: Boolean(
+      collaborator?.nextSalaryReview?.dueDate ||
+      collaborator?.nextReviewDate ||
+      collaborator?.reviewFrequency,
+    ),
   });
 
   const activeDepartments = departments.filter((department) => !isArchived(department));
@@ -146,6 +170,10 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
   const availableUsers = users.filter((user) => user.status !== 'DISABLED' || user.id === form.userId);
   const set = <K extends keyof HrCollaboratorPayload>(key: K, value: HrCollaboratorPayload[K]) => {
     setDirty(true);
+    if (accountPanelOpen && (key === 'firstName' || key === 'lastName' || key === 'email')) {
+      setAccountError('');
+      setSubmitError('');
+    }
     if (isRequiredField(key) && String(value ?? '').trim()) {
       setRequiredErrors((prev) => {
         const next = { ...prev };
@@ -229,16 +257,31 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
     event.preventDefault();
     const nextRequiredErrors = validateRequiredFields(form);
     const nextErrors = validate(form);
+    const nextAccountError = !collaborator && accountPanelOpen
+      ? validateToqueHubAccount(form, accountRole, accountPassword)
+      : '';
     setErrors(nextErrors);
     setRequiredErrors(nextRequiredErrors);
+    setAccountError(nextAccountError);
+    setSubmitError(nextAccountError);
     if (Object.keys(nextErrors).length) {
       setActiveTab(Object.keys(nextErrors)[0] as TabId);
+      return;
+    }
+    if (nextAccountError) {
+      setActiveTab('professional');
       return;
     }
     setSubmitting(true);
     setSubmitError('');
     try {
-      await onSubmit(cleanPayload({ ...form, trainingNames: selectedTrainings }), pendingDocuments);
+      const payload = cleanPayload({ ...form, trainingNames: selectedTrainings });
+      if (!collaborator && accountPanelOpen) payload.userId = undefined;
+      await onSubmit(payload, pendingDocuments, {
+        toqueHubAccount: !collaborator && accountPanelOpen
+          ? { role: accountRole, temporaryPassword: accountPassword }
+          : undefined,
+      });
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Impossible d'enregistrer le collaborateur.");
     } finally {
@@ -323,8 +366,8 @@ export function CollaboratorModal({ collaborator, collaborators, departments, po
         ) : null}
         <div className="hr-collaborator-body">
           {activeTab === 'profile' ? <ProfileTab form={form} set={set} requiredErrors={requiredErrors} regulatoryCountryCode={regulatoryCountryCode} /> : null}
-          {activeTab === 'professional' ? <ProfessionalTab form={form} set={set} requiredErrors={requiredErrors} validationError={errors.professional} departments={activeDepartments} positions={primaryPositions} allPositions={activePositions} selectedDepartment={selectedDepartment} sites={sites} managers={availableManagers} users={availableUsers} positionResetMessage={positionResetMessage} clearPositionResetMessage={() => setPositionResetMessage('')} /> : null}
-          {activeTab === 'contracts' ? <ContractsTab form={form} set={set} collaborator={collaborator} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /> : null}
+          {activeTab === 'professional' ? <ProfessionalTab form={form} set={set} requiredErrors={requiredErrors} validationError={errors.professional} departments={activeDepartments} positions={primaryPositions} allPositions={activePositions} selectedDepartment={selectedDepartment} sites={sites} managers={availableManagers} roles={roles} users={availableUsers} collaborator={collaborator} canCreateToqueHubAccount={canCreateToqueHubAccount} accountPanelOpen={accountPanelOpen} accountRole={accountRole} accountPassword={accountPassword} accountError={accountError} onAccountPanelOpenChange={(open) => { setAccountPanelOpen(open); setAccountError(''); setSubmitError(''); setDirty(true); }} onAccountRoleChange={(role) => { setAccountRole(role); setAccountError(''); setSubmitError(''); setDirty(true); }} onAccountPasswordChange={(password) => { setAccountPassword(password); setAccountError(''); setSubmitError(''); setDirty(true); }} positionResetMessage={positionResetMessage} clearPositionResetMessage={() => setPositionResetMessage('')} /> : null}
+          {activeTab === 'contracts' ? <ContractsTab form={form} set={set} validationError={errors.contracts} collaborator={collaborator} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /> : null}
           {activeTab === 'documents' ? <DocumentsTab collaborator={collaborator} pendingDocuments={pendingDocuments} onDocumentsChange={(documents) => { setPendingDocuments(documents); setDirty(true); }} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} /> : null}
           {activeTab === 'trainings' ? <TrainingsTab regulatoryCountryCode={regulatoryCountryCode} selectedTrainings={selectedTrainings} onSelectedTrainings={(trainings) => { setSelectedTrainings(trainings); setDirty(true); }} customTraining={customTraining} onCustomTraining={setCustomTraining} /> : null}
           {activeTab === 'organization' ? <OrganizationTab collaborator={collaborator} /> : null}
@@ -351,14 +394,14 @@ function CreationSourceChooser({ onManual, onOcr }: { onManual: () => void; onOc
         <p>Dans les deux cas, vous continuerez dans le même formulaire et garderez la main sur toutes les informations.</p>
       </div>
       <div className="onboarding-options-grid hr-collaborator-source-options">
-        <button type="button" className="onboarding-option-card emerald" onClick={onManual}>
+        <button type="button" className="onboarding-option-card" onClick={onManual}>
           <div className="onboarding-option-icon"><UserRound size={21} /></div>
           <div className="onboarding-option-content">
             <span className="onboarding-option-title">Saisie manuelle</span>
             <span className="onboarding-option-desc">Ouvrir la fiche actuelle et renseigner le profil, le poste, le contrat et les documents.</span>
           </div>
         </button>
-        <button type="button" className="onboarding-option-card blue" onClick={onOcr}>
+        <button type="button" className="onboarding-option-card" onClick={onOcr}>
           <div className="onboarding-option-icon"><FileText size={21} /></div>
           <div className="onboarding-option-content">
             <span className="onboarding-option-title">Analyser des documents avec l’OCR</span>
@@ -525,14 +568,61 @@ function ProfileTab({ form, set, requiredErrors, regulatoryCountryCode }: TabPro
       <FormField label="Langue secondaire" icon={<Languages size={16} />}>
         <input placeholder="Anglais" value={form.secondaryLanguage ?? ''} onChange={(e) => set('secondaryLanguage', e.target.value)} />
       </FormField>
-      <FormField label="Contact d'urgence" icon={<Phone size={16} />} className="span-2">
-        <input placeholder="Nom, relation et téléphone" value={form.emergencyContact ?? ''} onChange={(e) => set('emergencyContact', e.target.value)} />
-      </FormField>
+      <section className="hr-emergency-contact-card">
+        <header>
+          <span className="hr-emergency-contact-icon"><ShieldCheck size={18} /></span>
+          <div>
+            <strong>Contact d’urgence</strong>
+            <small>Personne à joindre en priorité en cas de besoin.</small>
+          </div>
+        </header>
+        <div className="hr-emergency-contact-grid">
+          <FormField label="Prénom" icon={<UserRound size={16} />}>
+            <input
+              autoComplete="off"
+              placeholder="Marie"
+              value={form.emergencyContactFirstName ?? ''}
+              onChange={(e) => set('emergencyContactFirstName', e.target.value)}
+            />
+          </FormField>
+          <FormField label="Nom" icon={<UserRound size={16} />}>
+            <input
+              autoComplete="off"
+              placeholder="Dupont"
+              value={form.emergencyContactLastName ?? ''}
+              onChange={(e) => set('emergencyContactLastName', e.target.value)}
+            />
+          </FormField>
+          <FormField label="Numéro de téléphone" icon={<Phone size={16} />}>
+            <input
+              type="tel"
+              autoComplete="off"
+              placeholder={regulatoryCountryCode === 'FI' ? '+358 40 123 4567' : '+33 6 12 34 56 78'}
+              value={form.emergencyContactPhone ?? ''}
+              onChange={(e) => set('emergencyContactPhone', e.target.value)}
+            />
+          </FormField>
+          <FormField label="Adresse e-mail" icon={<Mail size={16} />}>
+            <input
+              type="email"
+              autoComplete="off"
+              placeholder="marie.dupont@example.com"
+              value={form.emergencyContactEmail ?? ''}
+              onChange={(e) => set('emergencyContactEmail', e.target.value)}
+            />
+          </FormField>
+        </div>
+        {form.emergencyContact ? (
+          <p className="hr-emergency-contact-legacy">
+            <Info size={15} /> Ancienne information conservée : {form.emergencyContact}
+          </p>
+        ) : null}
+      </section>
     </div>
   </TabPanel>;
 }
 
-function ProfessionalTab({ form, set, requiredErrors, validationError, departments, positions, allPositions, selectedDepartment, sites, managers, users, positionResetMessage, clearPositionResetMessage }: TabProps & { requiredErrors: RequiredFieldErrors; validationError?: string; departments: HrDepartment[]; positions: HrPosition[]; allPositions: HrPosition[]; selectedDepartment?: HrDepartment; sites: Site[]; managers: HrCollaborator[]; users: CoreUser[]; positionResetMessage: string; clearPositionResetMessage: () => void }) {
+function ProfessionalTab({ form, set, requiredErrors, validationError, departments, positions, allPositions, selectedDepartment, sites, managers, roles, users, collaborator, canCreateToqueHubAccount, accountPanelOpen, accountRole, accountPassword, accountError, onAccountPanelOpenChange, onAccountRoleChange, onAccountPasswordChange, positionResetMessage, clearPositionResetMessage }: TabProps & { requiredErrors: RequiredFieldErrors; validationError?: string; departments: HrDepartment[]; positions: HrPosition[]; allPositions: HrPosition[]; selectedDepartment?: HrDepartment; sites: Site[]; managers: HrCollaborator[]; roles: CoreRole[]; users: CoreUser[]; collaborator?: HrCollaborator; canCreateToqueHubAccount: boolean; accountPanelOpen: boolean; accountRole: string; accountPassword: string; accountError: string; onAccountPanelOpenChange: (open: boolean) => void; onAccountRoleChange: (role: string) => void; onAccountPasswordChange: (password: string) => void; positionResetMessage: string; clearPositionResetMessage: () => void }) {
   return <TabPanel icon={<BriefcaseBusiness size={18} />} title="Professionnel">
     {validationError ? <div className="hr-tab-validation-error" role="alert"><AlertCircle size={18} /><div><strong>Informations professionnelles incomplètes</strong><span>{validationError}</span></div></div> : null}
     <div className="hr-form-grid">
@@ -577,20 +667,62 @@ function ProfessionalTab({ form, set, requiredErrors, validationError, departmen
       <FormField label="Notes professionnelles" className="span-2">
         <textarea placeholder="Ajouter des notes professionnelles..." value={form.notes ?? ''} onChange={(e) => set('notes', e.target.value)} />
       </FormField>
-      <FormField label="Compte ToqueHub associé" icon={<UserRound size={16} />} className="span-2" isSelect={true}>
-        <select value={form.userId ?? ''} onChange={(e) => set('userId', e.target.value)}>
-          <option value="">Aucun compte associé</option>
-          {users.map((user) => <option key={user.id} value={user.id}>{displayUser(user)}</option>)}
-        </select>
-      </FormField>
+      {!collaborator && canCreateToqueHubAccount ? (
+        <div className={`hr-account-creation-option span-2 ${accountPanelOpen ? 'selected' : ''}`}>
+          <button
+            type="button"
+            className="hr-account-creation-toggle"
+            aria-expanded={accountPanelOpen}
+            onClick={() => onAccountPanelOpenChange(!accountPanelOpen)}
+          >
+            <span className="hr-account-creation-icon"><UserRound size={18} /></span>
+            <span className="hr-account-creation-copy">
+              <strong>Ajouter un compte ToqueHub</strong>
+              <small>Le prénom, le nom et l’e-mail seront repris automatiquement depuis l’onglet Profil.</small>
+            </span>
+            <ChevronDown className="hr-account-creation-chevron" size={18} />
+          </button>
+          {accountPanelOpen ? (
+            <div className="hr-account-creation-fields">
+              {accountError ? <div className="hr-account-creation-error" role="alert"><AlertCircle size={16} /><span>{accountError}</span></div> : null}
+              <FormField label="Rôle sur la plateforme *" icon={<ShieldCheck size={16} />} isSelect={true}>
+                <select value={accountRole} onChange={(event) => onAccountRoleChange(event.target.value)} required>
+                  {coreRoleOptions(roles).map((role) => <option key={role} value={role}>{role}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Mot de passe temporaire *" icon={<ShieldCheck size={16} />}>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={8}
+                  value={accountPassword}
+                  onChange={(event) => onAccountPasswordChange(event.target.value)}
+                  placeholder="8 caractères minimum"
+                  required
+                />
+              </FormField>
+              <small className="hr-account-creation-help">Ce mot de passe ne sera plus affiché après l’enregistrement.</small>
+            </div>
+          ) : null}
+        </div>
+      ) : collaborator ? (
+        <FormField label="Compte ToqueHub associé" icon={<UserRound size={16} />} className="span-2" isSelect={true}>
+          <select value={form.userId ?? ''} onChange={(e) => set('userId', e.target.value)}>
+            <option value="">Aucun compte associé</option>
+            {users.map((user) => <option key={user.id} value={user.id}>{displayUser(user)}</option>)}
+          </select>
+        </FormField>
+      ) : null}
     </div>
   </TabPanel>;
 }
 
-function ContractsTab({ form, set, collaborator, onViewDocument, onDownloadDocument, onReplaceDocument, onDeleteDocument }: TabProps & { collaborator?: HrCollaborator; onViewDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onDownloadDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument?: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument?: (employeeId: string, documentId: string) => Promise<void> }) {
+function ContractsTab({ form, set, validationError, collaborator, onViewDocument, onDownloadDocument, onReplaceDocument, onDeleteDocument }: TabProps & { validationError?: string; collaborator?: HrCollaborator; onViewDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onDownloadDocument?: (employeeId: string, document: HrDocument) => Promise<void>; onReplaceDocument?: (employeeId: string, documentId: string, file: File) => Promise<HrDocument | void>; onDeleteDocument?: (employeeId: string, documentId: string) => Promise<void> }) {
   const [weeklyHoursInput, setWeeklyHoursInput] = useState(() => hoursInputValue(form.contractWeeklyMinutes ?? collaborator?.activeContract?.weeklyHours ?? null));
+  const revaluationEnabled = Boolean(form.revaluationEnabled);
   const weekly = form.contractWeeklyMinutes ?? collaborator?.activeContract?.weeklyHours ?? null;
   const rate = form.hourlyRate ?? collaborator?.currentCompensation?.hourlyRate ?? null;
+  const isPermanentContract = form.contractType === 'CDI';
   const weeklyHours = weekly != null ? weekly / 60 : null;
   const weeklyGross = rate != null && weeklyHours != null ? rate * weeklyHours : null;
   function updateWeeklyHours(value: string) {
@@ -599,10 +731,23 @@ function ContractsTab({ form, set, collaborator, onViewDocument, onDownloadDocum
     const hours = parseHoursInput(value);
     set('contractWeeklyMinutes', hours != null ? Math.round(hours * 60) : null);
   }
+  function updateContractType(contractType: string) {
+    set('contractType', contractType);
+    if (contractType === 'CDI') set('contractEndDate', '');
+  }
+  function updateRevaluationEnabled(enabled: boolean) {
+    set('revaluationEnabled', enabled);
+    if (!enabled) {
+      set('rateEffectiveDate', '');
+      set('nextReviewDate', '');
+      set('reviewFrequency', '');
+    }
+  }
   return <TabPanel icon={<ShieldCheck size={18} />} title="Contrats & rémunération">
+    {validationError ? <div className="hr-tab-validation-error" role="alert"><AlertCircle size={18} /><div><strong>Revalorisation incomplète</strong><span>{validationError}</span></div></div> : null}
     <div className="hr-form-grid">
       <FormField label="Type de contrat" icon={<ShieldCheck size={16} />} isSelect={true}>
-        <select value={form.contractType ?? ''} onChange={(e) => set('contractType', e.target.value)}>
+        <select value={form.contractType ?? ''} onChange={(e) => updateContractType(e.target.value)}>
           <option value="">-</option>
           <option value="CDI">CDI</option>
           <option value="CDD">CDD</option>
@@ -612,8 +757,14 @@ function ContractsTab({ form, set, collaborator, onViewDocument, onDownloadDocum
           <option value="OTHER">Autre</option>
         </select>
       </FormField>
-      <FormField label="Date de fin" icon={<CalendarDays size={16} />}>
-        <input type="date" value={form.contractEndDate ?? ''} onChange={(e) => set('contractEndDate', e.target.value)} />
+      <FormField label="Date de fin" icon={<CalendarDays size={16} />} className={isPermanentContract ? 'hr-field-disabled' : ''}>
+        <input
+          type="date"
+          value={isPermanentContract ? '' : form.contractEndDate ?? ''}
+          onChange={(e) => set('contractEndDate', e.target.value)}
+          disabled={isPermanentContract}
+          title={isPermanentContract ? 'Un CDI ne comporte pas de date de fin.' : undefined}
+        />
       </FormField>
       <FormField label="Fin de période d'essai" icon={<CalendarDays size={16} />}>
         <input type="date" value={form.trialEndDate ?? ''} onChange={(e) => set('trialEndDate', e.target.value)} />
@@ -632,21 +783,38 @@ function ContractsTab({ form, set, collaborator, onViewDocument, onDownloadDocum
           <option value="CHF">CHF</option>
         </select>
       </FormField>
-      <FormField label="Date d'effet" icon={<CalendarDays size={16} />}>
-        <input type="date" value={form.rateEffectiveDate ?? ''} onChange={(e) => set('rateEffectiveDate', e.target.value)} />
-      </FormField>
-      <FormField label="Prochaine revalorisation" icon={<CalendarDays size={16} />}>
-        <input type="date" value={form.nextReviewDate ?? ''} onChange={(e) => set('nextReviewDate', e.target.value)} />
-      </FormField>
-      <FormField label="Fréquence de revalorisation" icon={<CalendarDays size={16} />} isSelect={true}>
-        <select value={form.reviewFrequency ?? ''} onChange={(e) => set('reviewFrequency', e.target.value)}>
-          <option value="">-</option>
-          <option value="MONTHLY">Mensuelle</option>
-          <option value="QUARTERLY">Trimestrielle</option>
-          <option value="YEARLY">Annuelle</option>
-          <option value="CUSTOM">Personnalisée</option>
-        </select>
-      </FormField>
+      <section className={`hr-revaluation-option ${revaluationEnabled ? 'selected' : ''}`}>
+        <label className="hr-revaluation-toggle">
+          <input
+            type="checkbox"
+            checked={revaluationEnabled}
+            onChange={(event) => updateRevaluationEnabled(event.target.checked)}
+          />
+          <span>
+            <strong>Revalorisation</strong>
+            <small>Planifier une date d’effet et le prochain examen de la rémunération.</small>
+          </span>
+        </label>
+        {revaluationEnabled ? (
+          <div className="hr-revaluation-fields">
+            <FormField label="Date d'effet" icon={<CalendarDays size={16} />}>
+              <input type="date" value={form.rateEffectiveDate ?? ''} onChange={(e) => set('rateEffectiveDate', e.target.value)} />
+            </FormField>
+            <FormField label="Prochaine revalorisation" icon={<CalendarDays size={16} />}>
+              <input type="date" value={form.nextReviewDate ?? ''} onChange={(e) => set('nextReviewDate', e.target.value)} />
+            </FormField>
+            <FormField label="Fréquence de revalorisation" icon={<CalendarDays size={16} />} isSelect={true}>
+              <select value={form.reviewFrequency ?? ''} onChange={(e) => set('reviewFrequency', e.target.value)}>
+                <option value="">-</option>
+                <option value="MONTHLY">Mensuelle</option>
+                <option value="QUARTERLY">Trimestrielle</option>
+                <option value="YEARLY">Annuelle</option>
+                <option value="CUSTOM">Personnalisée</option>
+              </select>
+            </FormField>
+          </div>
+        ) : null}
+      </section>
     </div>
     {weeklyGross != null ? <div className="hr-salary-preview"><strong>Estimation brute salarié</strong><span>Salaire hebdomadaire brut : <strong>{weeklyGross.toFixed(2)} {form.currency}</strong></span><span>Salaire mensuel brut estimé : <strong>{((weeklyGross * 52) / 12).toFixed(2)} {form.currency}</strong></span><span>Salaire annuel brut estimé : <strong>{(weeklyGross * 52).toFixed(2)} {form.currency}</strong></span><small>Estimation basée uniquement sur la durée hebdomadaire contractuelle et le taux horaire. Hors congés payés, primes, majorations, absences et charges patronales.</small><small>Coût employeur estimé : non disponible pour l'instant.</small></div> : null}
     <ContractHistory collaborator={collaborator} onViewDocument={onViewDocument} onDownloadDocument={onDownloadDocument} onReplaceDocument={onReplaceDocument} onDeleteDocument={onDeleteDocument} />
@@ -868,7 +1036,25 @@ function validateRequiredFields(form: HrCollaboratorPayload) {
 
 function validate(form: HrCollaboratorPayload) {
   const errors: Partial<Record<TabId, string>> = {};
-  if (!form.firstName.trim() || !form.lastName.trim()) errors.profile = 'Prénom et nom obligatoires';
+  const profileErrors: string[] = [];
+  if (!form.firstName.trim() || !form.lastName.trim()) profileErrors.push('Prénom et nom obligatoires.');
+  const emergencyFields = [
+    ['le prénom', form.emergencyContactFirstName],
+    ['le nom', form.emergencyContactLastName],
+    ['le numéro de téléphone', form.emergencyContactPhone],
+    ["l’adresse e-mail", form.emergencyContactEmail],
+  ] as const;
+  if (emergencyFields.some(([, value]) => value?.trim())) {
+    const missingEmergencyFields = emergencyFields
+      .filter(([, value]) => !value?.trim())
+      .map(([label]) => label);
+    if (missingEmergencyFields.length) {
+      profileErrors.push(`Contact d’urgence incomplet : renseignez ${missingEmergencyFields.join(', ')}.`);
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.emergencyContactEmail!.trim())) {
+      profileErrors.push("L’adresse e-mail du contact d’urgence n’est pas valide.");
+    }
+  }
+  if (profileErrors.length) errors.profile = profileErrors.join(' ');
   const missingProfessionalFields = [
     !form.hireDate ? "la date d'embauche" : '',
     !form.departmentId ? 'le service principal' : '',
@@ -877,7 +1063,38 @@ function validate(form: HrCollaboratorPayload) {
   if (missingProfessionalFields.length) {
     errors.professional = `Complétez ${missingProfessionalFields.join(', ')} avant l'enregistrement.`;
   }
+  if (form.revaluationEnabled) {
+    const missingRevaluationFields = [
+      !form.rateEffectiveDate ? "la date d’effet" : '',
+      !form.nextReviewDate ? 'la prochaine revalorisation' : '',
+      !form.reviewFrequency ? 'la fréquence de revalorisation' : '',
+    ].filter(Boolean);
+    if (missingRevaluationFields.length) {
+      errors.contracts = `Complétez ${missingRevaluationFields.join(', ')} ou décochez Revalorisation.`;
+    }
+  }
   return errors;
+}
+function coreRoleValue(role: CoreRole) { return role.name ?? role.label ?? role.key ?? ''; }
+function coreRoleOptions(roles: CoreRole[]) {
+  const options = roles.map(coreRoleValue).filter(Boolean);
+  return options.length ? options : ['Utilisateur', 'Manager', 'Administrateur'];
+}
+function defaultCoreRole(roles: CoreRole[]) {
+  const options = coreRoleOptions(roles);
+  return options.find((role) => role === 'Utilisateur') ?? options[0];
+}
+function validateToqueHubAccount(form: HrCollaboratorPayload, role: string, password: string) {
+  const missingIdentity = [
+    !form.firstName.trim() ? 'le prénom' : '',
+    !form.lastName.trim() ? 'le nom' : '',
+    !form.email?.trim() ? "l’adresse e-mail" : '',
+  ].filter(Boolean);
+  if (missingIdentity.length) return `Renseignez ${missingIdentity.join(', ')} dans l’onglet Profil pour créer le compte ToqueHub.`;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email!.trim())) return 'Renseignez une adresse e-mail valide dans l’onglet Profil.';
+  if (!role) return 'Choisissez le rôle à attribuer au compte ToqueHub.';
+  if (password.length < 8) return 'Le mot de passe temporaire doit contenir au moins 8 caractères.';
+  return '';
 }
 function isRequiredField(key: keyof HrCollaboratorPayload): key is RequiredFieldId { return key === 'firstName' || key === 'lastName' || key === 'hireDate' || key === 'departmentId' || key === 'positionId'; }
 function cleanPayload(form: HrCollaboratorPayload): HrCollaboratorPayload {
@@ -892,6 +1109,10 @@ function cleanPayload(form: HrCollaboratorPayload): HrCollaboratorPayload {
     primaryLanguage: form.primaryLanguage || undefined,
     secondaryLanguage: form.secondaryLanguage || undefined,
     emergencyContact: form.emergencyContact || undefined,
+    emergencyContactFirstName: form.emergencyContactFirstName || undefined,
+    emergencyContactLastName: form.emergencyContactLastName || undefined,
+    emergencyContactPhone: form.emergencyContactPhone || undefined,
+    emergencyContactEmail: form.emergencyContactEmail || undefined,
     birthDate: form.birthDate || undefined,
     personalIdentityNumber: form.personalIdentityNumber || undefined,
     siteId: form.siteId || undefined,
@@ -902,14 +1123,15 @@ function cleanPayload(form: HrCollaboratorPayload): HrCollaboratorPayload {
     secondaryPositionIds: validUuidList(form.secondaryPositionIds ?? []).length ? validUuidList(form.secondaryPositionIds ?? []) : undefined,
     secondarySiteIds: form.secondarySiteIds?.length ? form.secondarySiteIds : undefined,
     contractType: form.contractType || undefined,
-    contractEndDate: form.contractEndDate || undefined,
+    contractEndDate: form.contractType === 'CDI' ? undefined : form.contractEndDate || undefined,
     trialEndDate: form.trialEndDate || undefined,
     contractWeeklyMinutes: form.contractWeeklyMinutes ?? undefined,
     hourlyRate: form.hourlyRate ?? undefined,
     currency: form.currency || undefined,
-    rateEffectiveDate: form.rateEffectiveDate || undefined,
-    nextReviewDate: form.nextReviewDate || undefined,
-    reviewFrequency: form.reviewFrequency || undefined,
+    rateEffectiveDate: form.revaluationEnabled ? form.rateEffectiveDate || undefined : undefined,
+    nextReviewDate: form.revaluationEnabled ? form.nextReviewDate || undefined : undefined,
+    reviewFrequency: form.revaluationEnabled ? form.reviewFrequency || undefined : undefined,
+    revaluationEnabled: Boolean(form.revaluationEnabled),
     trainingNames: form.trainingNames,
   };
 }

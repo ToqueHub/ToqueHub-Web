@@ -7,6 +7,7 @@ export type PurchasingEmailSettings = {
 export type PurchaseOrderEmailLine = {
   productNameSnapshot: string;
   supplierReferenceSnapshot: string | null;
+  product?: { gtin?: string | null } | null;
   unitSymbolSnapshot: string | null;
   orderedQuantity: unknown;
   unitPrice: unknown;

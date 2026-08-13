@@ -216,6 +216,15 @@ export class FinanceController {
     return this.finance.mapSourceSite(this.org(user), user, id, dto.siteId);
   }
 
+  @Patch('budgets/:id/site')
+  mapBudgetSite(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: MapFinanceSourceSiteDto,
+  ) {
+    return this.finance.mapBudgetSite(this.org(user), user, id, dto.siteId);
+  }
+
   @Get('accounts')
   accounts(@CurrentUser() user: AuthenticatedUser) {
     return this.finance.accounts(this.org(user), user);

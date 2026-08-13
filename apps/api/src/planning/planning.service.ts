@@ -3,7 +3,7 @@ import { HrAbsenceStatus, HrEmployeeStatus, PlanningAssignmentOrigin, PlanningAs
 import PDFDocument from 'pdfkit';
 import { HrTimeAccountService } from '../hr/time-accounts/hr-time-account.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { AcceptReplacementDto, ApplyPlanningRotationDto, ApplyPlanningTemplateDto, GeneratePlanningDto, MovePlanningAssignmentDto, PlanningContextQueryDto, PlanningExportPdfQueryDto, PlanningPeriodActionDto, PlanningQueryDto, PlanningRotationPreviewDto, PrepareExportDto, SetEmployeePlanningTemplatesDto, UpsertDayPlanningAssignmentDto, UpsertDayPresetDto, UpsertHrAbsenceDto, UpsertHrSkillDto, UpsertPlanningAssignmentDto, UpsertPlanningNeedDto, UpsertPlanningTemplateDto, UpsertWeeklyRotationDto } from './dto/planning.dto';
+import { AcceptReplacementDto, ApplyPlanningRotationDto, ApplyPlanningTemplateDto, GeneratePlanningDto, MovePlanningAssignmentDto, PlanningAttendanceQueryDto, PlanningContextQueryDto, PlanningExportPdfQueryDto, PlanningPeriodActionDto, PlanningQueryDto, PlanningRotationPreviewDto, PrepareExportDto, SetEmployeePlanningTemplatesDto, UpsertDayPlanningAssignmentDto, UpsertDayPresetDto, UpsertHrAbsenceDto, UpsertHrSkillDto, UpsertPlanningAssignmentDto, UpsertPlanningNeedDto, UpsertPlanningTemplateDto, UpsertWeeklyRotationDto } from './dto/planning.dto';
 import { PlanningCodeDictionaryService } from './planning-code-dictionary.service';
 import { PlanningDayStatusService } from './planning-day-status.service';
 import { PlanningAttendanceService } from './planning-attendance.service';
@@ -18,9 +18,11 @@ type OperationalNeedMetadata = { season: string; timeSlot: string; note?: string
 type PlanningTemplateKind = 'DAY_PRESET' | 'WEEKLY_ROTATION';
 type PlanningPeriodStatus = 'DRAFT' | 'CONTROLLED' | 'PUBLISHED' | 'MODIFIED_AFTER_PUBLICATION' | 'LOCKED';
 type PlanningPeriodEventType = 'CONTROLLED' | 'PUBLISHED' | 'MODIFIED_AFTER_PUBLICATION' | 'LOCKED';
-type PlanningPdfInput = { title: string; organizationName: string; mode: 'week' | 'month'; period: Period; assignments: AnyAssignment[] };
+type PlanningPdfInput = { title: string; organizationName: string; mode: 'week' | 'month' | 'custom'; period: Period; assignments: AnyAssignment[] };
 type PlanningPdfRow = { employeeName: string; departmentName: string; assignmentsByDate: Map<string, AnyAssignment[]> };
 type PlanningPdfPage = { days: string[]; rows: PlanningPdfRow[]; rowHeights: number[] };
+type AttendanceExportRow = Record<string, any>;
+type AttendanceExportEmployee = { employeeId: string; employeeName: string; departmentName: string; positionName: string; siteName: string; rows: AttendanceExportRow[] };
 
 const WRITE_ROLES = ['SUPER_ADMIN', 'Administrateur', 'ADMIN', 'Manager', 'MANAGER', 'Chef', 'Responsable'];
 const NEED_SEASONS: Record<string, string> = { basse: 'Basse', normale: 'Normale', haute: 'Haute', 'evenement-brunch': 'Événement / brunch' };
@@ -203,7 +205,7 @@ export class PlanningService {
   }
 
   async exportPlanningPdf(organizationId: string, q: PlanningExportPdfQueryDto) {
-    const mode = q.mode === 'month' ? 'month' : 'week';
+    const mode = q.mode === 'custom' ? 'custom' : q.mode === 'month' ? 'month' : 'week';
     const period = this.exportPeriod(mode, q);
     const where = this.assignmentWhere(organizationId, { ...q, startDate: this.iso(period.start), endDate: this.iso(period.end), pageSize: undefined }, period, true);
     if (!q.status) where.status = { not: PlanningAssignmentStatus.CANCELLED };
@@ -217,13 +219,31 @@ export class PlanningService {
       }),
     ]);
     const buffer = await this.buildPlanningPdf({
-      title: mode === 'month' ? 'Planning mensuel' : 'Planning hebdomadaire',
+      title: mode === 'custom' ? 'Planning personnalisé' : mode === 'month' ? 'Planning mensuel' : 'Planning hebdomadaire',
       organizationName: organization?.name ?? 'ToqueHub',
       mode,
       period,
       assignments,
     });
-    return { buffer, filename: `planning-${mode}-${this.iso(period.start)}-${this.iso(period.end)}.pdf` };
+    return { buffer, filename: `planning-${this.iso(period.start)}-${this.iso(period.end)}.pdf` };
+  }
+
+  async exportAttendancePdf(organizationId: string, q: PlanningAttendanceQueryDto) {
+    if (!this.attendanceService) throw new BadRequestException('Le service d’émargement est indisponible.');
+    const now = new Date();
+    const month = q.month ?? now.getMonth() + 1;
+    const year = q.year ?? now.getFullYear();
+    const attendance = await this.attendanceService.list(organizationId, { ...q, month, year, startDate: undefined, endDate: undefined, employeeId: undefined, pageSize: 5000 });
+    const organization = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } });
+    const rows = (attendance.rows as AttendanceExportRow[]).filter(row => Number(row.plannedMinutes ?? 0) > 0);
+    const employees = this.attendanceExportEmployees(rows);
+    const buffer = await this.buildAttendancePdf({
+      organizationName: organization?.name ?? 'ToqueHub',
+      month,
+      year,
+      employees,
+    });
+    return { buffer, filename: `feuilles-emargement-${year}-${String(month).padStart(2, '0')}.pdf` };
   }
 
   async createAssignment(organizationId: string, actor: Actor, dto: UpsertPlanningAssignmentDto) {
@@ -841,7 +861,16 @@ export class PlanningService {
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) days.push(this.iso(d));
     return { start, end, month, year, days };
   }
-  private exportPeriod(mode: 'week' | 'month', q: PlanningExportPdfQueryDto): Period {
+  private exportPeriod(mode: 'week' | 'month' | 'custom', q: PlanningExportPdfQueryDto): Period {
+    if (mode === 'custom') {
+      if (!q.startDate || !q.endDate) throw new BadRequestException('Les dates de début et de fin sont obligatoires pour un export personnalisé.');
+      const start = this.day(this.parseDate(q.startDate));
+      const end = this.endDay(this.parseDate(q.endDate));
+      if (end < start) throw new BadRequestException('La date de fin doit être postérieure ou égale à la date de début.');
+      const days: string[] = [];
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) days.push(this.iso(d));
+      return { start, end, month: start.getMonth() + 1, year: start.getFullYear(), days };
+    }
     const now = new Date();
     const base = q.startDate || q.date
       ? this.parseDate(q.startDate ?? q.date ?? '')
@@ -855,6 +884,138 @@ export class PlanningService {
     const days: string[] = [];
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) days.push(this.iso(d));
     return { start, end, month: start.getMonth() + 1, year: start.getFullYear(), days };
+  }
+  private attendanceExportEmployees(rows: AttendanceExportRow[]): AttendanceExportEmployee[] {
+    const groups = new Map<string, AttendanceExportEmployee>();
+    for (const row of rows) {
+      const employeeId = String(row.employeeId ?? 'unknown');
+      const employee = groups.get(employeeId) ?? {
+        employeeId,
+        employeeName: String(row.employeeName ?? 'Collaborateur'),
+        departmentName: String(row.departmentName ?? ''),
+        positionName: String(row.positionName ?? ''),
+        siteName: String(row.siteName ?? ''),
+        rows: [],
+      };
+      employee.rows.push(row);
+      groups.set(employeeId, employee);
+    }
+    return [...groups.values()]
+      .map(employee => ({
+        ...employee,
+        rows: employee.rows.sort((a, b) => String(a.date ?? '').localeCompare(String(b.date ?? '')) || this.timeLabel(a.plannedStartTime).localeCompare(this.timeLabel(b.plannedStartTime))),
+      }))
+      .sort((a, b) => a.employeeName.localeCompare(b.employeeName, 'fr'));
+  }
+  private async buildAttendancePdf(input: { organizationName: string; month: number; year: number; employees: AttendanceExportEmployee[] }) {
+    return new Promise<Buffer>((resolve, reject) => {
+      const doc = new PDFDocument({
+        size: 'A4',
+        layout: 'landscape',
+        margin: 26,
+        bufferPages: false,
+        info: {
+          Title: `Feuilles d’émargement ${String(input.month).padStart(2, '0')}/${input.year}`,
+          Author: 'ToqueHub',
+          Creator: 'ToqueHub',
+          Subject: `Émargement mensuel - ${input.organizationName}`,
+          Keywords: 'émargement, planning, horaires, signatures',
+        },
+      });
+      const chunks: Buffer[] = [];
+      doc.on('data', chunk => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+      this.drawAttendancePdf(doc, input);
+      doc.end();
+    });
+  }
+  private drawAttendancePdf(doc: PDFKit.PDFDocument, input: { organizationName: string; month: number; year: number; employees: AttendanceExportEmployee[] }) {
+    const rowsPerPage = 17;
+    const pages = input.employees.flatMap(employee => {
+      const pageCount = Math.max(1, Math.ceil(employee.rows.length / rowsPerPage));
+      return Array.from({ length: pageCount }, (_, index) => ({ employee, rows: employee.rows.slice(index * rowsPerPage, (index + 1) * rowsPerPage), page: index + 1, pageCount }));
+    });
+    if (!pages.length) {
+      this.drawEmptyAttendancePdf(doc, input);
+      return;
+    }
+    pages.forEach((page, index) => {
+      if (index > 0) doc.addPage({ size: 'A4', layout: 'landscape', margin: 26 });
+      this.drawAttendancePdfPage(doc, input, page.employee, page.rows, page.page, page.pageCount);
+    });
+  }
+  private drawEmptyAttendancePdf(doc: PDFKit.PDFDocument, input: { organizationName: string; month: number; year: number }) {
+    const monthLabel = new Date(input.year, input.month - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(18).text('Feuilles d’émargement', { align: 'center' });
+    doc.moveDown(0.4).fillColor('#64748b').font('Helvetica').fontSize(10).text(`${input.organizationName} · ${monthLabel}`, { align: 'center' });
+    doc.moveDown(4).fillColor('#475569').font('Helvetica-Bold').fontSize(13).text('Aucune heure planifiée sur ce mois.', { align: 'center' });
+  }
+  private drawAttendancePdfPage(doc: PDFKit.PDFDocument, input: { organizationName: string; month: number; year: number }, employee: AttendanceExportEmployee, rows: AttendanceExportRow[], page: number, pageCount: number) {
+    const left = doc.page.margins.left;
+    const right = doc.page.width - doc.page.margins.right;
+    const width = right - left;
+    const monthLabel = new Date(input.year, input.month - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    const employeeMeta = [employee.positionName, employee.departmentName, employee.siteName].filter(Boolean).join(' · ');
+    const totalMinutes = employee.rows.reduce((sum, row) => sum + Number(row.plannedMinutes ?? 0), 0);
+
+    doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(16).text('Feuille d’émargement', left, 27, { width: width * 0.55 });
+    doc.fillColor('#0f766e').font('Helvetica-Bold').fontSize(12).text(employee.employeeName, left, 49, { width: width * 0.55 });
+    doc.fillColor('#64748b').font('Helvetica').fontSize(7.5).text(employeeMeta || 'Collaborateur', left, 66, { width: width * 0.6 });
+    doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(10).text(monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1), right - 220, 30, { width: 220, align: 'right' });
+    doc.fillColor('#64748b').font('Helvetica').fontSize(7.5).text(`${input.organizationName} · ${this.formatPdfMinutes(totalMinutes)} planifiées · Page ${page}/${pageCount}`, right - 300, 50, { width: 300, align: 'right' });
+
+    const tableY = 88;
+    const headerHeight = 28;
+    const rowHeight = 25;
+    const columns = [
+      { label: 'Date', width: 74 },
+      { label: 'Shift prévu', width: 96 },
+      { label: 'Durée', width: 60 },
+      { label: 'Affectation', width: 130 },
+      { label: 'Rectification demandée', width: 230 },
+      { label: 'Signature du salarié', width: width - 590 },
+    ];
+    let x = left;
+    doc.fillColor('#ecfdf5').rect(left, tableY, width, headerHeight).fill();
+    columns.forEach(column => {
+      doc.lineWidth(0.6).strokeColor('#b8d9cd').rect(x, tableY, column.width, headerHeight).stroke();
+      doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(7.2).text(column.label, x + 4, tableY + 9, { width: column.width - 8, align: 'center' });
+      x += column.width;
+    });
+
+    rows.forEach((row, index) => {
+      const y = tableY + headerHeight + index * rowHeight;
+      const background = index % 2 ? '#f8fafc' : '#ffffff';
+      doc.fillColor(background).rect(left, y, width, rowHeight).fill();
+      const values = [
+        this.attendancePdfDate(row.date),
+        `${this.timeLabel(row.plannedStartTime)} – ${this.timeLabel(row.plannedEndTime)}`,
+        this.formatPdfMinutes(Number(row.plannedMinutes ?? 0)),
+        [row.positionName, row.departmentName, row.siteName].filter(Boolean).join(' · ') || 'Planning',
+        '',
+        '',
+      ];
+      x = left;
+      columns.forEach((column, columnIndex) => {
+        doc.lineWidth(0.45).strokeColor('#dbe4ee').rect(x, y, column.width, rowHeight).stroke();
+        if (columnIndex < 4) {
+          doc.fillColor(columnIndex === 0 ? '#0f172a' : '#475569').font(columnIndex === 0 ? 'Helvetica-Bold' : 'Helvetica').fontSize(columnIndex === 3 ? 6.2 : 7).text(values[columnIndex], x + 4, y + 8, { width: column.width - 8, height: 11, ellipsis: true, align: columnIndex === 3 ? 'left' : 'center' });
+        } else {
+          doc.strokeColor('#cbd5e1').lineWidth(0.4).roundedRect(x + 4, y + 4, column.width - 8, rowHeight - 8, 2).stroke();
+        }
+        x += column.width;
+      });
+    });
+
+    const footerY = doc.page.height - doc.page.margins.bottom - 24;
+    doc.fillColor('#64748b').font('Helvetica').fontSize(6.6).text('Signature : je confirme les horaires indiqués. En cas d’écart, je renseigne la correction souhaitée dans la case « Rectification demandée » avant de signer.', left, footerY, { width: width * 0.78 });
+    doc.fillColor('#94a3b8').text('Document généré par ToqueHub', right - 170, footerY, { width: 170, align: 'right' });
+  }
+  private attendancePdfDate(value: unknown) {
+    const raw = value instanceof Date ? this.iso(value) : String(value ?? '').slice(0, 10);
+    const date = this.parseDate(raw);
+    return date.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' }).replace('.', '');
   }
   private async buildPlanningPdf(input: PlanningPdfInput) {
     return new Promise<Buffer>((resolve, reject) => {
@@ -1315,8 +1476,6 @@ export class PlanningService {
   private planningRulesCatalog() {
     const rules = [
       { key: 'closing-covered', name: 'Fermeture obligatoire couverte', description: 'Déclenche une alerte bloquante si un besoin fermeture n’a aucune affectation couvrante.', status: 'active', impact: 'blocking', requiredData: ['planning_operational_needs.timeSlot=fermeture', 'planning_assignments'] },
-      { key: 'minimum-by-service', name: 'Minimum par service', description: 'Compare les besoins par service aux affectations qui couvrent le jour et le créneau.', status: 'active', impact: 'warning', requiredData: ['planning_operational_needs', 'planning_assignments'] },
-      { key: 'required-position-present', name: 'Poste obligatoire présent', description: 'Déclenche une alerte si un besoin avec poste défini n’est pas couvert par ce poste.', status: 'active', impact: 'warning', requiredData: ['planning_operational_needs.positionId', 'planning_assignments.positionId'] },
       { key: 'weekly-quota', name: 'Quota hebdomadaire', description: 'Compare les heures planifiées aux heures contractuelles RH.', status: 'active', impact: 'warning', requiredData: ['planning_assignments', 'hr_contracts'] },
       { key: 'mandatory-break', name: 'Pause obligatoire', description: 'Préparé pour règles configurables France/Finlande, non codé en dur.', status: 'to_configure', impact: 'warning', requiredData: ['planning_assignments.breakMinutes', 'planning_rule_profiles'] },
       { key: 'minimum-rest-between-shifts', name: 'Repos minimum entre shifts', description: 'Préparé pour profil entreprise configurable.', status: 'to_configure', impact: 'warning', requiredData: ['planning_assignments', 'planning_rule_profiles'] },

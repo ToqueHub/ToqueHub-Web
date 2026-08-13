@@ -1727,7 +1727,7 @@
   gap: 1rem;
   padding: 0.4rem 0.1rem;
 }
-.finance-period-title > div > span {
+.finance-period-title > div:first-child > span {
   color: #0f766e;
   font-size: 0.68rem;
   font-weight: 850;
@@ -1755,6 +1755,35 @@
   font-size: 0.68rem;
   font-weight: 850;
   white-space: nowrap;
+}
+.finance-budget-reference-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+.finance-budget-site-control {
+  min-height: 2.15rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 0.65rem;
+  border: 1px solid var(--light-border);
+  border-radius: 0.75rem;
+  background: #fff;
+  color: #0f766e;
+}
+.finance-budget-site-control select {
+  max-width: 12rem;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+  cursor: pointer;
 }
 .finance-core-grid {
   display: grid;
@@ -1884,6 +1913,34 @@
   display: block;
   margin: 0.22rem 0;
   font-size: 1.12rem;
+}
+.finance-budget-total-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+.finance-budget-margin-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0.18rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.6rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+.finance-budget-margin-badge.positive {
+  background: #ecfdf5;
+  color: #047857;
+}
+.finance-budget-margin-badge.negative {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+.finance-budget-margin-badge.neutral {
+  background: #f1f5f9;
+  color: #64748b;
 }
 .finance-optional-card p {
   margin: 0;

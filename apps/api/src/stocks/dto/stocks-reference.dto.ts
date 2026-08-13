@@ -89,6 +89,14 @@ export class UpsertCategoryDto {
   @MaxLength(500)
   description?: string;
 
+  @ApiPropertyOptional({ description: 'Taux de TVA de la catégorie, en pourcentage.' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  vatRate?: number;
+
   @ApiPropertyOptional({ enum: ProductKind, default: ProductKind.UNSPECIFIED })
   @IsOptional()
   @IsEnum(ProductKind)

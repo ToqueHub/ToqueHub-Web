@@ -74,7 +74,7 @@ export function OrderLinesTable({ order }: { order: PurchaseOrder }) {
         <thead>
           <tr>
             <th>Produit</th>
-            <th>Référence</th>
+            <th>GTIN / EAN</th>
             <th>Commandé</th>
             <th>Reçu</th>
             <th>Prix HT</th>
@@ -85,7 +85,7 @@ export function OrderLinesTable({ order }: { order: PurchaseOrder }) {
           {(order.lines ?? []).map((line) => (
             <tr key={line.id}>
               <td>{line.productNameSnapshot}</td>
-              <td>{line.supplierReferenceSnapshot || '—'}</td>
+              <td>{line.product?.gtin?.trim() || '—'}</td>
               <td>{line.orderedQuantity}</td>
               <td>{line.receivedQuantity}</td>
               <td>{money(line.unitPrice, order.currency)}</td>
@@ -285,14 +285,12 @@ export function PurchasingSkeleton() {
   );
 }
 
-export function tabTitle(tab: 'dashboard' | 'orders' | 'receipts' | 'history') {
+export function tabTitle(tab: 'dashboard' | 'orders' | 'receipts') {
   return tab === 'dashboard'
     ? 'Tableau de bord Achats'
     : tab === 'orders'
       ? 'Commandes fournisseurs'
-      : tab === 'receipts'
-        ? 'Réceptions et écarts'
-        : 'Historique des achats';
+      : 'Réceptions et écarts';
 }
 
 export function money(value: number | string | null | undefined, currency = 'EUR') {

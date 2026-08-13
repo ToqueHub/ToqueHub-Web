@@ -63,6 +63,7 @@ services:
       TOQUEHUB_OAUTH_BROKER_URL: ${TOQUEHUB_OAUTH_BROKER_URL:-https://oauth.toquehub.app}
       BACKUP_CLOUD_ENCRYPTION_KEY: ${BACKUP_CLOUD_ENCRYPTION_KEY:-replace-with-a-32-byte-minimum-random-secret}
       PURCHASING_EMAIL_ENCRYPTION_KEY: ${PURCHASING_EMAIL_ENCRYPTION_KEY:-replace-with-a-32-byte-minimum-random-secret}
+      HR_SENSITIVE_DATA_ENCRYPTION_KEY: ${HR_SENSITIVE_DATA_ENCRYPTION_KEY:-replace-with-a-dedicated-32-byte-minimum-random-secret}
       BACKUP_DIR: /app/data/backups
       UPLOAD_DIR: /app/data/uploads
       HR_UPLOAD_DIR: /app/data/uploads/hr

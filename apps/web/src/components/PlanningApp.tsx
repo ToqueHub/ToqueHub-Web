@@ -17,11 +17,11 @@ import {
   Info,
   Layers,
   ListChecks,
-  RefreshCw,
   Repeat2,
   Search,
   Settings2,
   ShieldAlert,
+  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   UserRound,
@@ -52,9 +52,9 @@ import type {
   UserSession,
 } from '../types';
 
-type PlanningTab = 'dashboard' | 'planning' | 'settings' | 'attendance';
+type PlanningTab = 'dashboard' | 'planning' | 'settings' | 'attendance' | 'exports';
 type PlanningView = 'day' | 'week' | 'month' | 'year';
-type SettingKey = 'presets' | 'availability' | 'rules' | 'costs' | 'notifications' | 'exports';
+type SettingKey = 'presets' | 'availability' | 'rules' | 'costs' | 'notifications';
 type InitialPlanningStep = 'welcome' | 'services' | 'presets' | 'done';
 type DashboardPeriod = 'week' | 'month' | 'year';
 type PlanningDashboardBlockKey = 'periodStatus' | 'planningSetup' | 'plannedHours' | 'estimatedCost' | 'activeAlerts' | 'alertsToReview' | 'planning' | 'departmentHours' | 'actions';
@@ -123,6 +123,7 @@ const tabLabels: Array<[PlanningTab, string]> = [
   ['planning', 'Planning'],
   ['settings', 'Paramétrage'],
   ['attendance', 'Émargement'],
+  ['exports', 'Export'],
 ];
 
 const dayNames = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
@@ -202,6 +203,7 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
   const [dashboardPeriodData, setDashboardPeriodData] = useState<DashboardPeriodData | null>(null);
   const [showDashboardCustomizer, setShowDashboardCustomizer] = useState(false);
   const [planningSiteInitialized, setPlanningSiteInitialized] = useState(false);
+  const [publishingPeriod, setPublishingPeriod] = useState(false);
   const planningSetupStorageKey = `${PLANNING_INITIAL_SETUP_PREFIX}.${session.user.organizationId ?? session.user.id}`;
   const planningSetupDismissedStorageKey = `${PLANNING_INITIAL_SETUP_DISMISSED_PREFIX}.${session.user.organizationId ?? session.user.id}`;
   const [initialSetupCompleted, setInitialSetupCompleted] = useState(() => localStorage.getItem(planningSetupStorageKey) === 'true');
@@ -589,44 +591,28 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
     }
   }
 
-  async function controlPlanningPeriod() {
-    if (!canWrite) return;
+  async function publishPlanningPeriod() {
+    if (!canWrite || publishingPeriod) return;
+    setPublishingPeriod(true);
+    setError(undefined);
+    setNotice(undefined);
     try {
-      const result = await api.controlPlanningPeriod(token, periodPayload);
-      setNotice(result.publishable ? 'Planning contrôlé : aucune alerte bloquante.' : `Planning contrôlé : ${result.control?.blockingAlerts ?? 0} alerte(s) bloquante(s).`);
-      await loadContext({ showLoading: false });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Contrôle du planning impossible');
-    }
-  }
-
-  async function publishPlanningPeriod(force = false) {
-    if (!canWrite) return;
-    const message = force ? 'Publier malgré les alertes ou sans contrôle complet ?' : 'Publier le planning de la période sélectionnée ?';
-    if (!window.confirm(message)) return;
-    try {
-      await api.publishPlanningPeriod(token, { ...periodPayload, force });
-      setNotice('Planning publié. Les notifications salariés sont préparées pour un canal futur.');
-      await loadContext({ showLoading: false });
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 400 && !force) {
-        const confirmed = window.confirm(`${err.message}. Forcer la publication ?`);
-        if (confirmed) await publishPlanningPeriod(true);
+      const control = await api.controlPlanningPeriod(token, periodPayload);
+      if (!control.publishable) {
+        await loadContext({ showLoading: false });
+        const blockingAlerts = control.control?.blockingAlerts ?? 0;
+        setError(
+          `Publication impossible : ${blockingAlerts} alerte(s) bloquante(s) détectée(s). Corrigez-les avant de publier.`,
+        );
         return;
       }
-      setError(err instanceof Error ? err.message : 'Publication impossible');
-    }
-  }
-
-  async function lockPlanningPeriod() {
-    if (!canWrite) return;
-    if (!window.confirm('Verrouiller cette période pour préparer paie/export ? Les modifications resteront possibles seulement avec avertissement.')) return;
-    try {
-      await api.lockPlanningPeriod(token, periodPayload);
-      setNotice('Période verrouillée pour paie/export futur.');
+      await api.publishPlanningPeriod(token, periodPayload);
       await loadContext({ showLoading: false });
+      setNotice('Planning contrôlé et publié. Les notifications salariés sont préparées pour un canal futur.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Verrouillage impossible');
+      setError(err instanceof Error ? err.message : 'Publication impossible');
+    } finally {
+      setPublishingPeriod(false);
     }
   }
 
@@ -636,10 +622,14 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
         <div>
           <span className="welcome-tag">ToqueHub Planning</span>
           <h1>Planning</h1>
-          <p>Construisez le planning mensuel avec les données RH en lecture seule et les affectations Planning réelles.</p>
+          <p>Organisez les équipes, répartissez les affectations et anticipez les besoins de chaque établissement depuis un calendrier partagé.</p>
         </div>
         <div className="planning-hero-actions">
-          <button className="btn btn-secondary" onClick={() => void loadContext()}><RefreshCw size={16} /> Actualiser</button>
+          {tab === 'dashboard' ? (
+            <button className="btn btn-secondary btn-outline planning-hero-guide" type="button" onClick={() => openInitialSetup('services')}>
+              <Sparkles size={16} /> Guide de configuration
+            </button>
+          ) : null}
           <button className="btn btn-primary" onClick={() => onNavigate('planning')}><CalendarDays size={16} /> Construire</button>
         </div>
       </div>
@@ -656,9 +646,8 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
         <PeriodWorkflowPanel
           status={periodStatus}
           canWrite={canWrite}
-          onControl={controlPlanningPeriod}
-          onPublish={() => publishPlanningPeriod(false)}
-          onLock={lockPlanningPeriod}
+          publishing={publishingPeriod}
+          onPublish={publishPlanningPeriod}
         />
       ) : null}
 
@@ -733,7 +722,6 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
 
       {tab === 'settings' ? (
         <PlanningSettings
-          token={token}
           selected={selectedSetting}
           setSelected={setSelectedSetting}
           templates={templates}
@@ -746,12 +734,6 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
           sites={effectiveSites}
           collaborators={effectiveCollaborators}
           settings={data?.settings}
-          setup={setup}
-          onOpenInitialSetup={() => openInitialSetup('services')}
-          selectedDate={selectedDate}
-          siteFilter={siteFilter}
-          serviceFilter={serviceFilter}
-          employeeFilter={employeeFilter}
           canWrite={canWrite}
           onSaveDayPreset={saveDayPreset}
           onDeleteDayPreset={deleteDayPreset}
@@ -763,6 +745,12 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
 
       {tab === 'attendance' ? (
         <AttendanceView rows={attendanceRows} assignments={filteredAssignments} collaborators={effectiveCollaborators} selectedMonth={selectedDate.slice(0, 7)} employeeFilter={employeeFilter} />
+      ) : null}
+
+      {tab === 'exports' ? (
+        <div className="card-modern settings-detail planning-export-page">
+          <PlanningExportsSettings token={token} selectedDate={selectedDate} siteFilter={siteFilter} serviceFilter={serviceFilter} employeeFilter={employeeFilter} />
+        </div>
       ) : null}
 
       {showInitialSetup ? (
@@ -1436,7 +1424,7 @@ function PlanningSchedulePreview({ assignments, selectedDate, mode, size, period
 
 function PlanningDashboardCustomizer({ config, onChange, onClose }: { config: PlanningDashboardConfig; onChange: (value: PlanningDashboardConfig) => void; onClose: () => void }) {
   const blocks: Array<{ key: PlanningDashboardBlockKey; label: string; zone: string; description: string }> = [
-    { key: 'periodStatus', label: 'Statut période', zone: 'PILOTAGE', description: 'Contrôler, publier et verrouiller la période.' },
+    { key: 'periodStatus', label: 'Statut période', zone: 'PILOTAGE', description: 'Contrôler automatiquement puis publier la période.' },
     { key: 'planningSetup', label: 'Planning à finaliser', zone: 'SETUP', description: 'Étapes utiles avant exploitation.' },
     { key: 'plannedHours', label: 'Heures planifiées', zone: 'KPI', description: 'Total prévu sur la période.' },
     { key: 'estimatedCost', label: 'Coût estimé', zone: 'KPI', description: 'Affiché seulement si les coûts sont configurés.' },
@@ -1521,7 +1509,7 @@ function PlanningDashboardCustomizer({ config, onChange, onClose }: { config: Pl
   );
 }
 
-function PeriodWorkflowPanel({ status, canWrite, onControl, onPublish, onLock }: { status?: PlanningPeriodStatus; canWrite: boolean; onControl: () => Promise<void>; onPublish: () => Promise<void>; onLock: () => Promise<void> }) {
+function PeriodWorkflowPanel({ status, canWrite, publishing, onPublish }: { status?: PlanningPeriodStatus; canWrite: boolean; publishing: boolean; onPublish: () => Promise<void> }) {
   const code = status?.status ?? 'DRAFT';
   const blocking = Number(status?.blockingAlerts ?? 0);
   const warning = Number(status?.warningAlerts ?? 0);
@@ -1538,9 +1526,7 @@ function PeriodWorkflowPanel({ status, canWrite, onControl, onPublish, onLock }:
         {status?.modifiedAfterLock ? <span className="status-pill warning">Modifié après verrouillage</span> : null}
       </div>
       <div className="setup-actions">
-        <button className="btn btn-secondary" type="button" disabled={!canWrite} onClick={() => void onControl()}><ShieldAlert size={16} /> Contrôler</button>
-        <button className="btn btn-primary" type="button" disabled={!canWrite} onClick={() => void onPublish()}><Bell size={16} /> Publier</button>
-        <button className="btn btn-secondary" type="button" disabled={!canWrite} onClick={() => void onLock()}><FileSignature size={16} /> Verrouiller période</button>
+        <button className="btn btn-primary" type="button" disabled={!canWrite || publishing} onClick={() => void onPublish()}><Bell size={16} /> {publishing ? 'Contrôle en cours...' : 'Publier'}</button>
       </div>
       {code === 'LOCKED' ? <p className="muted">Période verrouillée pour paie/export futur. Toute modification doit être confirmée par un manager.</p> : null}
       {code === 'MODIFIED_AFTER_PUBLICATION' ? <p className="muted">Le planning publié a été modifié. Un nouveau contrôle ou une republication peut être nécessaire.</p> : null}
@@ -2085,82 +2071,181 @@ function AssignmentEditModal({ assignment, collaborators, departments, positions
   );
 }
 
-function PlanningSettings({ token, selected, setSelected, templates, rotations, dayPresets, employeeTemplateAssignments, absences, departments, positions, sites, collaborators, settings, setup, onOpenInitialSetup, selectedDate, siteFilter, serviceFilter, employeeFilter, canWrite, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { token: string; selected: SettingKey; setSelected: (value: SettingKey) => void; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; dayPresets: PlanningTemplate[]; employeeTemplateAssignments: PlanningEmployeeTemplateAssignment[]; absences: Array<Record<string, any>>; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; settings?: Record<string, any>; setup: ReturnType<typeof buildPlanningSetup>; onOpenInitialSetup: () => void; selectedDate: string; siteFilter: string; serviceFilter: string; employeeFilter: string; canWrite: boolean; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
+function PlanningSettings({ selected, setSelected, templates, rotations, dayPresets, employeeTemplateAssignments, absences, departments, positions, sites, collaborators, settings, canWrite, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { selected: SettingKey; setSelected: (value: SettingKey) => void; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; dayPresets: PlanningTemplate[]; employeeTemplateAssignments: PlanningEmployeeTemplateAssignment[]; absences: Array<Record<string, any>>; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; settings?: Record<string, any>; canWrite: boolean; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
+  const activeSetting: SettingKey = selected === 'costs' || selected === 'notifications' ? 'presets' : selected;
+
+  useEffect(() => {
+    if (selected === 'costs' || selected === 'notifications') setSelected('presets');
+  }, [selected, setSelected]);
+
   const cards: Array<{ key: SettingKey; title: string; description: string; count: string; status: PlanningSetupStatus; Icon: typeof Repeat2 }> = [
     { key: 'presets', title: 'Presets / roulements horaires', description: 'Presets journaliers et roulements semaine propriétaires Planning.', count: `${dayPresets.length + rotations.length} élément(s)`, status: dayPresets.length && rotations.length ? 'done' : dayPresets.length || rotations.length ? 'partial' : 'todo', Icon: Repeat2 },
     { key: 'availability', title: 'Indisponibilités & absences', description: 'Absences RH en lecture seule et futures indisponibilités Planning.', count: `${absences.length} absence(s)`, status: 'partial', Icon: ShieldAlert },
     { key: 'rules', title: 'Règles planning', description: 'Couverture, repos, quota, pauses et conflits configurables.', count: 'Préparé', status: 'done', Icon: SlidersHorizontal },
-    { key: 'costs', title: 'Coûts', description: 'Salaire brut RH et estimation employeur.', count: 'Non configuré', status: 'partial', Icon: Coins },
-    { key: 'notifications', title: 'Notifications', description: 'Publication et rappels salariés futurs.', count: 'Préparé', status: 'partial', Icon: Bell },
-    { key: 'exports', title: 'Exports', description: 'Planning PDF semaine et mois.', count: 'PDF actif', status: 'done', Icon: FileSignature },
   ];
   return (
-    <>
-      <PlanningSetupPanel setup={setup} compact={false} onOpenInitialSetup={onOpenInitialSetup} />
-      <div className="planning-settings-layout">
+    <div className="planning-settings-layout">
         <div className="planning-settings-tabs">
-          {cards.map(({ key, title, count, status, Icon }) => <button key={key} className={`settings-tab ${selected === key ? 'active' : ''}`} onClick={() => setSelected(key)}><Icon size={16} /><span>{title}</span><small>{count}</small><em className={`setup-status ${status}`}>{setupStatusLabel(status)}</em></button>)}
+          {cards.map(({ key, title, count, status, Icon }) => <button key={key} className={`settings-tab ${activeSetting === key ? 'active' : ''}`} onClick={() => setSelected(key)}><Icon size={16} /><span>{title}</span><small>{count}</small><em className={`setup-status ${status}`}>{setupStatusLabel(status)}</em></button>)}
         </div>
         <div className="card-modern settings-detail">
-          <SettingsDetail token={token} selected={selected} templates={templates} rotations={rotations} dayPresets={dayPresets} employeeTemplateAssignments={employeeTemplateAssignments} absences={absences} departments={departments} positions={positions} sites={sites} collaborators={collaborators} settings={settings} selectedDate={selectedDate} siteFilter={siteFilter} serviceFilter={serviceFilter} employeeFilter={employeeFilter} canWrite={canWrite} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} onSaveWeeklyRotation={onSaveWeeklyRotation} onDeleteWeeklyRotation={onDeleteWeeklyRotation} onSaveEmployeeTemplateAssignment={onSaveEmployeeTemplateAssignment} />
+          <SettingsDetail selected={activeSetting} templates={templates} rotations={rotations} dayPresets={dayPresets} employeeTemplateAssignments={employeeTemplateAssignments} absences={absences} departments={departments} positions={positions} sites={sites} collaborators={collaborators} settings={settings} canWrite={canWrite} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} onSaveWeeklyRotation={onSaveWeeklyRotation} onDeleteWeeklyRotation={onDeleteWeeklyRotation} onSaveEmployeeTemplateAssignment={onSaveEmployeeTemplateAssignment} />
         </div>
-      </div>
-    </>
+    </div>
   );
 }
 
-function SettingsDetail({ token, selected, rotations, dayPresets, employeeTemplateAssignments, absences, departments, positions, sites, collaborators, settings, selectedDate, siteFilter, serviceFilter, employeeFilter, canWrite, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { token: string; selected: SettingKey; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; dayPresets: PlanningTemplate[]; employeeTemplateAssignments: PlanningEmployeeTemplateAssignment[]; absences: Array<Record<string, any>>; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; settings?: Record<string, any>; selectedDate: string; siteFilter: string; serviceFilter: string; employeeFilter: string; canWrite: boolean; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
+function SettingsDetail({ selected, rotations, dayPresets, employeeTemplateAssignments, absences, departments, positions, sites, collaborators, settings, canWrite, onSaveDayPreset, onDeleteDayPreset, onSaveWeeklyRotation, onDeleteWeeklyRotation, onSaveEmployeeTemplateAssignment }: { selected: SettingKey; templates: PlanningTemplate[]; rotations: PlanningTemplate[]; dayPresets: PlanningTemplate[]; employeeTemplateAssignments: PlanningEmployeeTemplateAssignment[]; absences: Array<Record<string, any>>; departments: HrDepartment[]; positions: HrPosition[]; sites: Site[]; collaborators: HrCollaborator[]; settings?: Record<string, any>; canWrite: boolean; onSaveDayPreset: (payload: PlanningDayPresetPayload, id?: string) => Promise<void>; onDeleteDayPreset: (id: string) => Promise<void>; onSaveWeeklyRotation: (payload: PlanningWeeklyRotationPayload, id?: string) => Promise<void>; onDeleteWeeklyRotation: (id: string) => Promise<void>; onSaveEmployeeTemplateAssignment: (payload: PlanningEmployeeTemplateAssignment) => Promise<void> }) {
   if (selected === 'presets') return <PresetsRotationsSettings dayPresets={dayPresets} weeklyRotations={rotations} assignments={employeeTemplateAssignments} departments={departments} positions={positions} sites={sites} collaborators={collaborators} canWrite={canWrite} onSaveDayPreset={onSaveDayPreset} onDeleteDayPreset={onDeleteDayPreset} onSaveWeeklyRotation={onSaveWeeklyRotation} onDeleteWeeklyRotation={onDeleteWeeklyRotation} onSaveEmployeeTemplateAssignment={onSaveEmployeeTemplateAssignment} />;
   if (selected === 'availability') return <><span className="card-title">Indisponibilités & absences</span><div className="settings-list">{absences.map((absence) => <div key={absence.id}><strong>{collaboratorName(findCollaborator(collaborators, absence.employeeId ?? absence.collaboratorId))}</strong><span>{absence.type ?? absence.reason ?? 'Absence'} - {formatShort(absence.startDate)} à {formatShort(absence.endDate)} - lecture seule RH</span></div>)}{!absences.length ? <p className="muted">Aucune absence RH sur la période. Les indisponibilités Planning auront leur propre stockage plus tard.</p> : null}</div></>;
   if (selected === 'rules') return <PlanningRulesSettings rules={settings?.rules as Array<Record<string, any>> | undefined} />;
   if (selected === 'costs') return <EmployerCostsSettings />;
   if (selected === 'notifications') return <PlaceholderList title="Notifications" items={['Publication Planning', 'Rappels émargement', 'Alertes manager']} />;
-  if (selected === 'exports') return <PlanningExportsSettings token={token} selectedDate={selectedDate} siteFilter={siteFilter} serviceFilter={serviceFilter} employeeFilter={employeeFilter} />;
   return null;
 }
 
 function PlanningExportsSettings({ token, selectedDate, siteFilter, serviceFilter, employeeFilter }: { token: string; selectedDate: string; siteFilter: string; serviceFilter: string; employeeFilter: string }) {
-  const [exportDate, setExportDate] = useState(selectedDate);
-  const [busyMode, setBusyMode] = useState<'week' | 'month' | null>(null);
+  const [exportType, setExportType] = useState<'planning' | 'attendance' | null>(null);
+  const [startDate, setStartDate] = useState(selectedDate);
+  const [endDate, setEndDate] = useState(selectedDate);
+  const [attendanceMonth, setAttendanceMonth] = useState(selectedDate.slice(0, 7));
+  const [busy, setBusy] = useState<'planning' | 'attendance' | null>(null);
   const [message, setMessage] = useState('');
+  const rangeIsValid = Boolean(startDate && endDate && endDate >= startDate);
+  const rangeDayCount = rangeIsValid
+    ? Math.round((parseLocalDate(endDate).getTime() - parseLocalDate(startDate).getTime()) / 86_400_000) + 1
+    : 0;
 
-  useEffect(() => setExportDate(selectedDate), [selectedDate]);
+  useEffect(() => {
+    if (exportType === 'planning') return;
+    setStartDate(selectedDate);
+    setEndDate(selectedDate);
+  }, [selectedDate, exportType]);
 
-  async function download(mode: 'week' | 'month') {
-    setBusyMode(mode);
+  useEffect(() => {
+    if (exportType !== 'attendance') setAttendanceMonth(selectedDate.slice(0, 7));
+  }, [selectedDate, exportType]);
+
+  async function downloadPlanning() {
     setMessage('');
+    if (!startDate || !endDate) {
+      setMessage('Sélectionnez une date de début et une date de fin.');
+      return;
+    }
+    if (endDate < startDate) {
+      setMessage('La date de fin doit être postérieure ou égale à la date de début.');
+      return;
+    }
+    setBusy('planning');
     try {
       await api.downloadPlanningPdf(token, {
-        mode,
-        startDate: exportDate,
+        mode: 'custom',
+        startDate,
+        endDate,
         siteId: siteFilter || undefined,
         departmentId: serviceFilter || undefined,
         employeeId: employeeFilter || undefined,
       });
-      setMessage(mode === 'week' ? 'Export semaine généré.' : 'Export mois généré.');
+      setMessage(`Planning exporté sur ${rangeDayCount} jour${rangeDayCount > 1 ? 's' : ''}.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Impossible de générer l'export.");
     } finally {
-      setBusyMode(null);
+      setBusy(null);
+    }
+  }
+
+  async function downloadAttendance() {
+    setMessage('');
+    if (!/^\d{4}-\d{2}$/.test(attendanceMonth)) {
+      setMessage('Sélectionnez le mois à exporter.');
+      return;
+    }
+    const [year, month] = attendanceMonth.split('-').map(Number);
+    setBusy('attendance');
+    try {
+      await api.downloadPlanningAttendancePdf(token, {
+        month,
+        year,
+        siteId: siteFilter || undefined,
+        departmentId: serviceFilter || undefined,
+      });
+      const label = parseLocalDate(`${attendanceMonth}-01`).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+      setMessage(`Feuilles d’émargement générées pour ${label}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Impossible de générer les feuilles d’émargement.");
+    } finally {
+      setBusy(null);
     }
   }
 
   return (
     <>
       <div className="section-header-modern">
-        <span className="card-title">Exports PDF</span>
-        <span className="section-tagline">Semaine et mois</span>
+        <span className="card-title">Exports RH</span>
+        <span className="section-tagline">Choisissez le document à préparer</span>
       </div>
-      <div className="planning-settings-controls">
-        <div className="planning-form-row">
-          <label className="planning-field">Date de référence<input type="date" value={exportDate} onChange={(event) => setExportDate(event.target.value)} /></label>
-        </div>
-        <div className="setup-actions">
-          <button className="btn btn-secondary" type="button" disabled={busyMode !== null} onClick={() => void download('week')}><FileSignature size={16} /> {busyMode === 'week' ? 'Génération...' : 'Exporter semaine PDF'}</button>
-          <button className="btn btn-primary" type="button" disabled={busyMode !== null} onClick={() => void download('month')}><FileSignature size={16} /> {busyMode === 'month' ? 'Génération...' : 'Exporter mois PDF'}</button>
-        </div>
-        {message ? <p className="muted">{message}</p> : null}
+      <div className="planning-export-launch">
+        <button className={`planning-export-choice ${exportType === 'planning' ? 'active' : ''}`} type="button" onClick={() => { setExportType('planning'); setMessage(''); }}>
+          <span className="planning-export-choice-icon"><CalendarDays size={20} /></span>
+          <span className="planning-export-choice-copy">
+            <strong>Planning des équipes</strong>
+            <small>Le planning à transmettre aux collaborateurs sur une période personnalisée.</small>
+          </span>
+          <em>Choisir une période</em>
+        </button>
+        <button className={`planning-export-choice ${exportType === 'attendance' ? 'active' : ''}`} type="button" onClick={() => { setExportType('attendance'); setMessage(''); }}>
+          <span className="planning-export-choice-icon"><ListChecks size={20} /></span>
+          <span className="planning-export-choice-copy">
+            <strong>Feuilles d’émargement</strong>
+            <small>Une feuille nominative mensuelle avec les shifts, la signature et les rectifications.</small>
+          </span>
+          <em>Choisir un mois</em>
+        </button>
       </div>
+      {exportType === 'planning' ? (
+        <div className="planning-export-range-panel">
+          <div className="planning-export-range-header">
+            <div>
+              <strong>Choisir la période</strong>
+              <span>Les deux dates sont incluses dans le document.</span>
+            </div>
+          </div>
+          <div className="planning-export-range-grid">
+            <label className="planning-field">Date de début<input type="date" value={startDate} max={endDate || undefined} onChange={(event) => setStartDate(event.target.value)} /></label>
+            <label className="planning-field">Date de fin<input type="date" value={endDate} min={startDate || undefined} onChange={(event) => setEndDate(event.target.value)} /></label>
+          </div>
+          <div className={`planning-export-range-summary ${rangeIsValid ? '' : 'invalid'}`}>
+            <CalendarDays size={17} />
+            <span>{rangeIsValid ? `${rangeDayCount} jour${rangeDayCount > 1 ? 's' : ''} sélectionné${rangeDayCount > 1 ? 's' : ''}` : 'Vérifiez les dates sélectionnées'}</span>
+          </div>
+          <div className="setup-actions planning-export-actions">
+            <button className="btn btn-secondary" type="button" disabled={busy !== null} onClick={() => { setExportType(null); setMessage(''); }}>Annuler</button>
+            <button className="btn btn-primary" type="button" disabled={busy !== null || !rangeIsValid} onClick={() => void downloadPlanning()}><FileSignature size={16} /> {busy === 'planning' ? 'Génération...' : 'Exporter le planning'}</button>
+          </div>
+        </div>
+      ) : null}
+      {exportType === 'attendance' ? (
+        <div className="planning-export-range-panel planning-attendance-export-panel">
+          <div className="planning-export-range-header">
+            <div>
+              <strong>Exporter les feuilles d’émargement</strong>
+              <span>Tous les collaborateurs ayant des heures sur le mois auront leur propre feuille nominative.</span>
+            </div>
+          </div>
+          <div className="planning-export-month-grid">
+            <label className="planning-field">Mois à exporter<input type="month" value={attendanceMonth} onChange={(event) => setAttendanceMonth(event.target.value)} /></label>
+            <div className="planning-attendance-export-info">
+              <ListChecks size={18} />
+              <span>Chaque shift comportera une zone de signature et une case de rectification à remplir en cas d’écart.</span>
+            </div>
+          </div>
+          <div className="setup-actions planning-export-actions">
+            <button className="btn btn-secondary" type="button" disabled={busy !== null} onClick={() => { setExportType(null); setMessage(''); }}>Annuler</button>
+            <button className="btn btn-primary" type="button" disabled={busy !== null || !attendanceMonth} onClick={() => void downloadAttendance()}><FileSignature size={16} /> {busy === 'attendance' ? 'Génération...' : 'Exporter les feuilles'}</button>
+          </div>
+        </div>
+      ) : null}
+      {message ? <p className={message.startsWith('Planning exporté') || message.startsWith('Feuilles d’émargement générées') ? 'success' : 'alert'}>{message}</p> : null}
     </>
   );
 }
@@ -2289,8 +2374,6 @@ function PresetsRotationsSettings({ dayPresets, weeklyRotations, assignments, de
 
 const fallbackPlanningRules = [
   { key: 'closing-covered', name: 'Fermeture obligatoire couverte', description: 'Alerte si un créneau de fermeture n’a aucune affectation couvrante.', status: 'active', impact: 'blocking', requiredData: ['Créneaux fermeture', 'Affectations'] },
-  { key: 'minimum-by-service', name: 'Minimum par service', description: 'Compare la couverture par service aux affectations du jour et du créneau.', status: 'active', impact: 'warning', requiredData: ['Services', 'Affectations'] },
-  { key: 'required-position-present', name: 'Poste obligatoire présent', description: 'Alerte si un créneau avec poste défini n’est pas couvert par ce poste.', status: 'active', impact: 'warning', requiredData: ['Postes RH', 'Affectations'] },
   { key: 'weekly-quota', name: 'Quota hebdomadaire', description: 'Compare planifié et durée contractuelle RH.', status: 'active', impact: 'warning', requiredData: ['Contrats RH', 'Affectations'] },
   { key: 'mandatory-break', name: 'Pause obligatoire', description: 'Préparé pour profils configurables entreprise.', status: 'to_configure', impact: 'warning', requiredData: ['Règles configurables'] },
   { key: 'minimum-rest-between-shifts', name: 'Repos minimum entre shifts', description: 'Préparé pour les règles configurables de l’établissement.', status: 'to_configure', impact: 'warning', requiredData: ['Règles configurables'] },
@@ -2302,9 +2385,29 @@ function PlanningRulesSettings({ rules }: { rules?: Array<Record<string, any>> }
   const rows = rules?.length ? rules : fallbackPlanningRules;
   return (
     <>
-      <div className="section-header-modern"><span className="card-title">Règles planning</span><span className="section-tagline">Calculées quand les données existent, sinon préparées</span></div>
+      <div className="section-header-modern"><span className="card-title">Règles planning</span><span className="section-tagline">Contrôles appliqués avant la publication du planning</span></div>
       <div className="settings-list planning-rule-list">
-        {rows.map((rule) => <div key={String(rule.key ?? rule.name)}><strong>{rule.name}</strong><span>{rule.description}</span><div className="rule-meta-row"><span className={`status-pill ${rule.status === 'active' ? 'success' : rule.status === 'partial' ? 'warning' : ''}`}>{ruleStatusLabel(rule.status)}</span><span className="status-pill">{impactLabel(rule.impact)}</span><small>{(rule.requiredData ?? []).join(', ')}</small></div></div>)}
+        {rows.map((rule) => (
+          <div className={`planning-rule-item rule-status-${String(rule.status ?? 'prepared')}`} key={String(rule.key ?? rule.name)}>
+            <div className="planning-rule-heading">
+              <span className="planning-rule-icon"><ShieldCheck size={18} /></span>
+              <div className="planning-rule-copy">
+                <strong>{rule.name}</strong>
+                <span>{rule.description}</span>
+              </div>
+            </div>
+            <div className="planning-rule-badges">
+              <span className={`planning-rule-badge status-${String(rule.status ?? 'prepared')}`}>{ruleStatusLabel(rule.status)}</span>
+              <span className={`planning-rule-badge impact-${String(rule.impact ?? 'information')}`}>{impactLabel(rule.impact)}</span>
+            </div>
+            <div className="planning-rule-sources">
+              <small>Données vérifiées</small>
+              <div>
+                {(rule.requiredData ?? []).map((source: string) => <span key={source}>{source}</span>)}
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </>
   );
@@ -2331,18 +2434,22 @@ function PayrollRulesSettings({ profile }: { profile?: Record<string, any> }) {
 }
 
 function EmployerCostsSettings() {
+  const [employerCoefficient, setEmployerCoefficient] = useState('1.42');
+
   return (
     <>
       <div className="section-header-modern"><span className="card-title">Coûts employeur</span><span className="section-tagline">Mode simple préparé</span></div>
       <div className="payroll-profile-box">
         <label className="planning-field">Coefficient employeur simple
-          <input type="number" min="1" step="0.01" value="1.42" disabled />
+          <input
+            type="number"
+            min="1"
+            step="0.01"
+            value={employerCoefficient}
+            onChange={(event) => setEmployerCoefficient(event.target.value)}
+          />
         </label>
-        <p className="muted">Le dashboard utilise déjà les salaires RH disponibles pour un coût estimé basique. Le coefficient configurable reste placeholder tant qu’aucun stockage cohérent n’est validé.</p>
-      </div>
-      <div className="settings-list">
-        <div><strong>Formule préparée</strong><span>Brut RH x coefficient employeur, puis règles avancées paie/comptabilité plus tard.</span></div>
-        <div><strong>Mode avancé futur</strong><span>Majorations, primes, charges, exports paie et ventilation comptable.</span></div>
+        <p className="muted">Le dashboard utilise les salaires RH disponibles pour préparer une estimation simple du coût employeur.</p>
       </div>
     </>
   );
@@ -2417,50 +2524,6 @@ function PlanningSetupCompact({ setup, onResume }: { setup: ReturnType<typeof bu
           Reprendre l'onboarding <ArrowRight size={15} />
         </button>
       </div>
-    </div>
-  );
-}
-
-function PlanningSetupPanel({ setup, compact, onOpenInitialSetup }: { setup: ReturnType<typeof buildPlanningSetup>; compact: boolean; onOpenInitialSetup: () => void }) {
-  const collapsed = setup.complete;
-  return (
-    <div
-      className={`card-modern planning-setup-panel ${compact ? 'compact' : ''} ${collapsed ? 'collapsed' : ''}`}
-      style={{
-        padding: '1.3rem',
-        borderRadius: '22px',
-        background: '#ffffff',
-        border: '1px solid #e2e8f0',
-        boxShadow: '0 8px 24px rgba(15, 23, 42, 0.04)',
-      }}
-    >
-      <div className="section-header-modern" style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center' }}>
-        <div>
-          <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '.45rem', fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
-            <Sparkles size={18} color="#10b981" /> {setup.complete ? 'Configuration Planning terminée' : 'Configuration Planning à compléter'}
-          </span>
-          <span className="section-tagline" style={{ color: '#64748b', fontSize: '.82rem', fontWeight: 600 }}>{setup.progress}% prêt · Mode : Hybride</span>
-        </div>
-        <button className="production-btn-glass" style={{ color: '#334155', borderColor: '#cbd5e1', background: '#f8fafc', minHeight: '36px', fontSize: '.8rem', padding: '0 .85rem' }} type="button" onClick={onOpenInitialSetup}>
-          Modifier les paramètres
-        </button>
-      </div>
-      {!collapsed ? (
-        <>
-          <div className="progress-bar-bg planning-setup-progress" style={{ height: '7px', borderRadius: '999px', background: '#e2e8f0', margin: '1rem 0' }}>
-            <div className="progress-bar-fill" style={{ width: `${setup.progress}%`, height: '100%', borderRadius: '999px', background: 'linear-gradient(90deg, #10b981 0%, #34d399 100%)' }} />
-          </div>
-          <div className="planning-setup-summary-grid">
-            {setup.steps.slice(0, 4).map((step) => (
-              <div key={step.key} className={`planning-setup-summary ${step.status}`}>
-                <strong>{step.title}</strong>
-                <span>{step.description}</span>
-              </div>
-            ))}
-          </div>
-          <p className="muted">Presets horaires, statuts et roulements restent modifiables depuis les sections ci-dessous.</p>
-        </>
-      ) : null}
     </div>
   );
 }

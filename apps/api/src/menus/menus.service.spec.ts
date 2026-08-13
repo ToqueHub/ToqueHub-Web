@@ -86,8 +86,9 @@ describe('MenusService card availability', () => {
               technicalSheetId: rootSheet.id,
               technicalSheet: rootSheet,
               menuCategory: { id: 'cat-1', name: 'Sucré' },
-              servingQuantity: 1,
-              targetReadyQuantity: 10,
+              // Les anciennes valeurs configurables ne doivent plus remplacer le rendement de la fiche.
+              servingQuantity: 2,
+              targetReadyQuantity: 24,
               portionsOverride: null,
               availabilityEnabled: true,
             },
@@ -127,6 +128,8 @@ describe('MenusService card availability', () => {
     expect(report.items[0]).toEqual(
       expect.objectContaining({
         status: 'COMPONENT_MISSING',
+        targetPortions: 10,
+        servingQuantity: 1,
         availablePortions: 3,
         projectedPortions: 5,
         toProducePortions: 5,

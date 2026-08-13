@@ -363,6 +363,11 @@ export interface CoreRole {
   isSystem?: boolean;
 }
 
+export interface ToqueHubAccountCreationPayload {
+  role: string;
+  temporaryPassword: string;
+}
+
 export interface CoreUser {
   id: string;
   username?: string | null;
@@ -376,6 +381,7 @@ export interface CoreUser {
   lastLoginAt?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+  collaboratorPhotoUrl?: string | null;
   isPrimaryAdmin?: boolean;
   permissions?: string[];
 }
@@ -840,6 +846,10 @@ export interface HrCollaborator {
   primaryLanguage?: string | null;
   secondaryLanguage?: string | null;
   emergencyContact?: string | null;
+  emergencyContactFirstName?: string | null;
+  emergencyContactLastName?: string | null;
+  emergencyContactPhone?: string | null;
+  emergencyContactEmail?: string | null;
   birthDate?: string | null;
   personalIdentityNumber?: string | null;
   hireDate: string;
@@ -908,6 +918,10 @@ export interface HrCollaboratorPayload {
   primaryLanguage?: string;
   secondaryLanguage?: string;
   emergencyContact?: string;
+  emergencyContactFirstName?: string;
+  emergencyContactLastName?: string;
+  emergencyContactPhone?: string;
+  emergencyContactEmail?: string;
   birthDate?: string;
   personalIdentityNumber?: string;
   hireDate: string;
@@ -933,6 +947,7 @@ export interface HrCollaboratorPayload {
   rateEffectiveDate?: string;
   nextReviewDate?: string;
   reviewFrequency?: string;
+  revaluationEnabled?: boolean;
 }
 
 export interface HrContractAnalysis {
@@ -1714,6 +1729,7 @@ export interface Category {
   id: string;
   name: string;
   description?: string | null;
+  vatRate?: string | number | null;
   kind?: 'UNSPECIFIED' | 'EQUIPMENT' | string;
   archivedAt?: string | null;
   isArchived?: boolean;
@@ -1750,6 +1766,16 @@ export interface EquipmentProfile {
   financedAmount?: string | number | null;
   buyoutValue?: string | number | null;
   notes?: string | null;
+}
+
+export interface EquipmentDocument {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  status: string;
+  uploadedAt: string;
+  updatedAt: string;
 }
 
 export interface Product {
@@ -2187,33 +2213,6 @@ export interface TechnicalSheetHistoryEntry {
     firstName?: string | null;
     lastName?: string | null;
   } | null;
-}
-
-export interface TechnicalSheetSimulationLine {
-  productId: string;
-  productName: string;
-  quantity: number | string;
-  unitId?: string;
-  unitSymbol?: string;
-  estimatedCost?: number | string | null;
-  isCalculable?: boolean;
-  nonCalculableReason?: string | null;
-}
-
-export interface TechnicalSheetSimulation {
-  id?: string;
-  recipeId: string;
-  recipe?: TechnicalSheetRecipe | null;
-  requestedPortions: number | string;
-  lines: TechnicalSheetSimulationLine[];
-  estimatedCost?: number | string | null;
-  allergens?: TechnicalSheetAllergen[];
-  simulatedAt?: string;
-}
-
-export interface TechnicalSheetSimulationPayload {
-  recipeId: string;
-  requestedPortions: number;
 }
 
 export interface Supplier {
@@ -2744,6 +2743,8 @@ export interface FinanceBootstrap {
     daily: FinanceDashboardPeriod;
     budget: null | {
       id: string;
+      siteId: string | null;
+      site: { id: string; name: string } | null;
       name: string;
       scenario?: string | null;
       currency: string;
@@ -3955,6 +3956,15 @@ export interface InventoryLine {
   theoreticalQuantity?: string | number | null;
   variance?: string | number | null;
   varianceQuantity?: string | number | null;
+  financialSource?: {
+    documentId?: string | null;
+    documentLabel?: string | null;
+    documentDate?: string | null;
+    supplierName?: string | null;
+    unitPriceExcludingTax?: string | number | null;
+    vatRate?: string | number | null;
+    vatRateSource?: 'CATEGORY' | 'RECEPTION' | string | null;
+  } | null;
 }
 
 export interface Inventory {

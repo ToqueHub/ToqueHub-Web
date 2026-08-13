@@ -15,6 +15,7 @@ import type {
   Location,
   Lot,
   Product,
+  EquipmentDocument,
   ProductLabelOcrBatchStatus,
   ProductLabelOcrResult,
   ProductImportCommitResult,
@@ -61,6 +62,7 @@ import type {
   HrPosition,
   HrReferencePayload,
   HrSummary,
+  ToqueHubAccountCreationPayload,
   PlanningAlert,
   PlanningAssignment,
   PlanningAttendanceResponse,
@@ -90,8 +92,6 @@ import type {
   TechnicalSheetRecipe,
   TechnicalSheetRecipePayload,
   TechnicalSheetRecipesResponse,
-  TechnicalSheetSimulation,
-  TechnicalSheetSimulationPayload,
   ProductionDashboard,
   ProductionOrder,
   ProductionOrdersResponse,
@@ -861,6 +861,13 @@ export const api = {
   mapFinanceSourceSite(token: string, sourceId: string, siteId: string) {
     return request<{ source: FinanceBootstrap['sources'][number] }>(
       `/finance/sources/${sourceId}/site`,
+      { method: 'PATCH', body: JSON.stringify({ siteId }) },
+      token,
+    );
+  },
+  mapFinanceBudgetSite(token: string, budgetId: string, siteId: string) {
+    return request<FinanceBootstrap['dashboard']['budget']>(
+      `/finance/budgets/${budgetId}/site`,
       { method: 'PATCH', body: JSON.stringify({ siteId }) },
       token,
     );
@@ -2679,6 +2686,13 @@ export const api = {
       token,
     );
   },
+  reassignTechnicalSheetRecipeCategory(token: string, id: string, categoryId: string) {
+    return request<TechnicalSheetRecipe>(
+      `/technical-sheets/recipes/${id}/category`,
+      { method: 'PATCH', body: JSON.stringify({ categoryId }) },
+      token,
+    );
+  },
   updateTechnicalSheetRecipePricing(
     token: string,
     id: string,
@@ -2699,6 +2713,26 @@ export const api = {
       { method: 'POST' },
       token,
     );
+  },
+  deleteTechnicalSheetRecipe(token: string, id: string) {
+    return request<{ id: string; deleted: boolean }>(
+      `/technical-sheets/recipes/${id}/delete`,
+      { method: 'POST' },
+      token,
+    );
+  },
+  async exportTechnicalSheetRecipePdf(token: string, id: string) {
+    const response = await fetch(`${API_URL}/api/technical-sheets/recipes/${id}/export.pdf`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
+    return {
+      blob: await response.blob(),
+      filename: filenameFromContentDisposition(
+        response.headers.get('Content-Disposition'),
+        `fiche-technique-${id}.pdf`,
+      ),
+    };
   },
   duplicateTechnicalSheetRecipe(
     token: string,
@@ -2735,39 +2769,6 @@ export const api = {
   technicalSheetCosts(token: string) {
     return request<TechnicalSheetRecipe[]>('/technical-sheets/costs', {}, token);
   },
-  simulateTechnicalSheetProduction(token: string, payload: TechnicalSheetSimulationPayload) {
-    return request<TechnicalSheetSimulation>(
-      '/technical-sheets/production/simulate',
-      { method: 'POST', body: JSON.stringify(payload) },
-      token,
-    );
-  },
-  async exportTechnicalSheetProductionCsv(token: string, id: string) {
-    const response = await fetch(`${API_URL}/api/technical-sheets/production/${id}/export.csv`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
-    return {
-      blob: await response.blob(),
-      filename: filenameFromContentDisposition(
-        response.headers.get('Content-Disposition'),
-        `production-theorique-${id}.csv`,
-      ),
-    };
-  },
-  async exportTechnicalSheetProductionPdf(token: string, id: string) {
-    const response = await fetch(`${API_URL}/api/technical-sheets/production/${id}/export.pdf`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
-    return {
-      blob: await response.blob(),
-      filename: filenameFromContentDisposition(
-        response.headers.get('Content-Disposition'),
-        `production-theorique-${id}.pdf`,
-      ),
-    };
-  },
   planningBootstrap(token: string, params: PlanningRangeParams = {}) {
     const search = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
@@ -2803,7 +2804,7 @@ export const api = {
   },
   async downloadPlanningPdf(
     token: string,
-    params: PlanningRangeParams & { mode: 'week' | 'month' },
+    params: PlanningRangeParams & { mode: 'week' | 'month' | 'custom' },
   ) {
     const search = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
@@ -2816,7 +2817,35 @@ export const api = {
     const blob = await response.blob();
     const disposition = response.headers.get('Content-Disposition') ?? '';
     const filename =
-      disposition.match(/filename="?([^"]+)"?/)?.[1] ?? `planning-${params.mode}.pdf`;
+      disposition.match(/filename="?([^"]+)"?/)?.[1] ??
+      `planning-${params.startDate ?? params.mode}-${params.endDate ?? ''}.pdf`;
+    const url = URL.createObjectURL(blob);
+    const link = globalThis.document.createElement('a');
+    link.href = url;
+    link.download = decodeURIComponent(filename);
+    link.click();
+    URL.revokeObjectURL(url);
+  },
+  async downloadPlanningAttendancePdf(
+    token: string,
+    params: { month: number; year: number; siteId?: string; departmentId?: string },
+  ) {
+    const search = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') search.set(key, String(value));
+    });
+    const response = await fetch(
+      `${API_URL}/api/planning/exports/attendance/pdf?${search.toString()}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
+    const blob = await response.blob();
+    const disposition = response.headers.get('Content-Disposition') ?? '';
+    const filename =
+      disposition.match(/filename="?([^"]+)"?/)?.[1] ??
+      `feuilles-emargement-${params.year}-${String(params.month).padStart(2, '0')}.pdf`;
     const url = URL.createObjectURL(blob);
     const link = globalThis.document.createElement('a');
     link.href = url;
@@ -3375,9 +3404,48 @@ export const api = {
   equipmentCategories(token: string) {
     return request<Category[]>('/equipment/categories', {}, token);
   },
+  equipmentDocuments(token: string, productId: string) {
+    return request<EquipmentDocument[]>(
+      `/equipment/${encodeURIComponent(productId)}/documents`,
+      {},
+      token,
+    );
+  },
+  async uploadEquipmentDocuments(token: string, productId: string, files: File[]) {
+    const body = new FormData();
+    files.forEach((file) => body.append('files', file));
+    const response = await fetch(
+      `${API_URL}/api/equipment/${encodeURIComponent(productId)}/documents`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body,
+      },
+    );
+    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
+    return response.json() as Promise<EquipmentDocument[]>;
+  },
+  async downloadEquipmentDocument(
+    token: string,
+    productId: string,
+    document: EquipmentDocument,
+  ) {
+    const response = await fetch(
+      `${API_URL}/api/equipment/${encodeURIComponent(productId)}/documents/${encodeURIComponent(document.id)}/download`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = globalThis.document.createElement('a');
+    link.href = url;
+    link.download = document.originalName;
+    link.click();
+    URL.revokeObjectURL(url);
+  },
   createCategory(
     token: string,
-    payload: { name: string; description?: string; kind?: 'EQUIPMENT' },
+    payload: { name: string; description?: string; vatRate?: number; kind?: 'EQUIPMENT' },
   ) {
     return request<Category>(
       '/categories',
@@ -3392,7 +3460,11 @@ export const api = {
       token,
     );
   },
-  updateCategory(token: string, id: string, payload: { name?: string; description?: string }) {
+  updateCategory(
+    token: string,
+    id: string,
+    payload: { name?: string; description?: string; vatRate?: number },
+  ) {
     return request<Category>(
       `/categories/${id}`,
       { method: 'PATCH', body: JSON.stringify(payload) },
@@ -4546,10 +4618,17 @@ export const api = {
     };
     return { summary, collaborators, departments, positions, availableUsers, onboarding };
   },
-  createHrCollaborator(token: string, payload: HrCollaboratorPayload) {
+  createHrCollaborator(
+    token: string,
+    payload: HrCollaboratorPayload,
+    toqueHubAccount?: ToqueHubAccountCreationPayload,
+  ) {
     return request<HrCollaborator>(
       '/hr/employees',
-      { method: 'POST', body: JSON.stringify(toHrEmployeePayload(payload)) },
+      {
+        method: 'POST',
+        body: JSON.stringify({ ...toHrEmployeePayload(payload), toqueHubAccount }),
+      },
       token,
     );
   },

@@ -28,6 +28,50 @@ describe('DashboardService preferences', () => {
     expect(preferences.autoHideSidebar).toBe(false);
   });
 
+  it('hides optional dashboard widgets by default while keeping them customizable', () => {
+    const { service } = createService();
+
+    const preferences = (
+      service as unknown as { defaultPreferences: () => unknown }
+    ).defaultPreferences() as { hiddenWidgetIds: string[] };
+
+    expect(preferences.hiddenWidgetIds).toEqual([
+      'technical-sheets.recipes',
+      'hr.latest-employees',
+      'technical-sheets.latest',
+      'technical-sheets.top-products',
+      'planning.coverage',
+    ]);
+  });
+
+  it('allows a default-hidden widget to be activated', async () => {
+    const hiddenWidgetIds = [
+      'technical-sheets.recipes',
+      'hr.latest-employees',
+      'technical-sheets.latest',
+      'technical-sheets.top-products',
+      'planning.coverage',
+    ];
+    const { service, prisma } = createService({
+      layout: {},
+      hiddenWidgetIds,
+      pinnedWidgetIds: [],
+      autoHideSidebar: false,
+    });
+
+    await service.updatePreferences(userId, organizationId, {
+      hiddenWidgetIds: hiddenWidgetIds.filter((id) => id !== 'technical-sheets.recipes'),
+    });
+
+    expect(prisma.dashboardPreference.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          hiddenWidgetIds: hiddenWidgetIds.filter((id) => id !== 'technical-sheets.recipes'),
+        }),
+      }),
+    );
+  });
+
   it('persists the dynamic sidebar preference for the user and organization', async () => {
     const { service, prisma } = createService({
       layout: {},

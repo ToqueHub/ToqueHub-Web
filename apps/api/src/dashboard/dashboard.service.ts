@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import {
+  CatererEventStatus,
   Prisma,
   ProductionAlertSeverity,
   ProductionDestockingStatus,
@@ -78,6 +79,13 @@ type OrganizationInstallState = {
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const ZONES: Zone[] = ['kpi', 'activity', 'analytics', 'alerts'];
 const ADMIN_ROLES = new Set(['SUPER_ADMIN', 'Administrateur']);
+const DEFAULT_HIDDEN_WIDGET_IDS = [
+  'technical-sheets.recipes',
+  'hr.latest-employees',
+  'technical-sheets.latest',
+  'technical-sheets.top-products',
+  'planning.coverage',
+];
 
 const APP_PERMISSIONS: Partial<Record<AppId, string>> = {
   stocks: 'stocks.read',
@@ -473,6 +481,7 @@ export class DashboardService {
       haccpAlerts,
       haccpToday,
       todayRevenues,
+      nextCatererEvent,
     ] = await Promise.all([
       has('stocks') ? this.stockValue(organizationId) : null,
       has('stocks') ? this.stockAlerts(organizationId) : null,
@@ -490,6 +499,7 @@ export class DashboardService {
       has('haccp') ? this.haccpAlerts(organizationId) : null,
       has('haccp') ? this.haccpToday(organizationId) : null,
       has('finance') ? this.financeTodayRevenues(organizationId) : null,
+      has('menus') ? this.nextCatererEvent(organizationId) : null,
     ]);
     const card = (
       id: string,
@@ -661,6 +671,30 @@ export class DashboardService {
               `${recipes.categoryCount} catégories · coût moyen ${recipes.averageMaterialCost.toFixed(2)} €`,
               '/technical-sheets',
               'orange',
+            ),
+          ]
+        : []),
+      ...(nextCatererEvent
+        ? [
+            card(
+              'menus.next-event',
+              'menus',
+              'Date du prochain événement',
+              nextCatererEvent.event?.startsAt
+                ? new Intl.DateTimeFormat('fr-FR', {
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric',
+                  }).format(nextCatererEvent.event.startsAt)
+                : 'À planifier',
+              nextCatererEvent.event?.startsAt
+                ? `${nextCatererEvent.event.name} · ${new Intl.DateTimeFormat('fr-FR', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  }).format(nextCatererEvent.event.startsAt)}`
+                : 'Aucun événement à venir',
+              '/menus',
+              'violet',
             ),
           ]
         : []),
@@ -1033,7 +1067,7 @@ export class DashboardService {
             .map((w) => w.id),
         ]),
       ) as Record<Zone, string[]>,
-      hiddenWidgetIds: [],
+      hiddenWidgetIds: DEFAULT_HIDDEN_WIDGET_IDS,
       pinnedWidgetIds: [],
     });
   }
@@ -1567,6 +1601,33 @@ export class DashboardService {
       }),
     ]);
     return { published, validated, draft };
+  }
+
+  private async nextCatererEvent(organizationId: string) {
+    const settings = await this.prisma.menuSettings.findUnique({
+      where: { organizationId },
+      select: { usageProfile: true },
+    });
+    if (!settings || !['CATERER', 'CUSTOM'].includes(settings.usageProfile)) return null;
+
+    const event = await this.prisma.catererEvent.findFirst({
+      where: {
+        organizationId,
+        startsAt: { gte: new Date() },
+        status: {
+          notIn: [CatererEventStatus.CANCELLED, CatererEventStatus.COMPLETED],
+        },
+      },
+      orderBy: { startsAt: 'asc' },
+      select: {
+        id: true,
+        reference: true,
+        name: true,
+        startsAt: true,
+      },
+    });
+
+    return { event };
   }
 
   private menusToday(organizationId: string) {

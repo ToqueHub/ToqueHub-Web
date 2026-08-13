@@ -2,7 +2,7 @@ import { ArrowRight, Building2, ClipboardCheck, FileText, ShoppingCart, Truck } 
 import type { PurchaseOrder, PurchasingDashboard } from '../../../types';
 import { OrderTable, money } from '../components/PurchasingUi';
 
-type PurchasingTab = 'dashboard' | 'orders' | 'receipts' | 'history';
+type PurchasingTab = 'dashboard' | 'orders' | 'receipts';
 
 export function PurchasingDashboardView({
   dashboard,

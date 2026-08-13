@@ -5,6 +5,7 @@ import { Prisma, UnitType, AuditAction, UserStatus, Permission } from '@prisma/c
 import { compare, hash } from 'bcryptjs';
 import type { AuthenticatedUser } from './authenticated-user';
 import { PrismaService } from '../prisma/prisma.service';
+import { stockCategoryVatPolicy } from '../stocks/stocks-category-vat-policy';
 import { BootstrapAdminDto } from './dto/bootstrap-admin.dto';
 import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
 import { LoginDto } from './dto/login.dto';
@@ -32,12 +33,9 @@ const DEFAULT_STOCK_UNITS = [
   { name: 'Kilogramme', symbol: 'kg', type: UnitType.MASS },
   { name: 'Gramme', symbol: 'g', type: UnitType.MASS },
   { name: 'Litre', symbol: 'L', type: UnitType.VOLUME },
-  { name: 'Millilitre', symbol: 'mL', type: UnitType.VOLUME },
+  { name: 'Centilitre', symbol: 'cL', type: UnitType.VOLUME },
   { name: 'Pièce', symbol: 'pièce', type: UnitType.COUNT },
-  { name: 'Barquette', symbol: 'barquette', type: UnitType.PACKAGE },
   { name: 'Caisse', symbol: 'caisse', type: UnitType.PACKAGE },
-  { name: 'Carton', symbol: 'carton', type: UnitType.PACKAGE },
-  { name: 'Bac', symbol: 'bac', type: UnitType.PACKAGE },
 ];
 const DEFAULT_STOCK_LOCATIONS = ['Réserve sèche', 'Chambre froide positive', 'Chambre froide négative', 'Congélateur', 'Cuisine', 'Zone de production', 'Quai de réception'];
 
@@ -391,7 +389,11 @@ export class AuthService {
     }
 
     await this.prisma.$transaction(async (tx) => {
-      await this.createDefaultStockCategories(tx, organizationId);
+      await this.createDefaultStockCategories(
+        tx,
+        organizationId,
+        organization.regulatoryCountryCode,
+      );
       await this.createDefaultStockUnits(tx, organizationId);
       await this.seedConversions(tx, organizationId);
       const site = await tx.site.upsert({
@@ -426,7 +428,11 @@ export class AuthService {
 
     await this.prisma.$transaction(async (tx) => {
       if (dto.categories) {
-        await this.createDefaultStockCategories(tx, organizationId);
+        await this.createDefaultStockCategories(
+          tx,
+          organizationId,
+          organization.regulatoryCountryCode,
+        );
       }
 
       if (dto.units) {
@@ -807,8 +813,8 @@ export class AuthService {
     const pairs: Array<[string, string, string]> = [
       ['kg', 'g', '1000'],
       ['g', 'kg', '0.001'],
-      ['L', 'mL', '1000'],
-      ['mL', 'L', '0.001'],
+      ['L', 'cL', '100'],
+      ['cL', 'L', '0.01'],
     ];
 
     for (const [from, to, factor] of pairs) {
@@ -832,9 +838,14 @@ export class AuthService {
     }
   }
 
-  private createDefaultStockCategories(tx: Prisma.TransactionClient, organizationId: string) {
+  private createDefaultStockCategories(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    regulatoryCountryCode?: string | null,
+  ) {
+    const vatRate = stockCategoryVatPolicy(regulatoryCountryCode).defaultRate;
     return tx.category.createMany({
-      data: DEFAULT_STOCK_CATEGORIES.map((name) => ({ organizationId, name })),
+      data: DEFAULT_STOCK_CATEGORIES.map((name) => ({ organizationId, name, vatRate })),
       skipDuplicates: true,
     });
   }
@@ -865,15 +876,7 @@ export class AuthService {
   }
 
   private createDefaultUnits(tx: Prisma.TransactionClient, organizationId: string) {
-    return tx.unit.createMany({
-      data: [
-        { organizationId, name: 'Kilogramme', symbol: 'kg', type: UnitType.MASS },
-        { organizationId, name: 'Gramme', symbol: 'g', type: UnitType.MASS },
-        { organizationId, name: 'Litre', symbol: 'L', type: UnitType.VOLUME },
-        { organizationId, name: 'Pièce', symbol: 'pc', type: UnitType.COUNT },
-      ],
-      skipDuplicates: true,
-    });
+    return this.createDefaultStockUnits(tx, organizationId);
   }
 
   private serializeUser(user: {

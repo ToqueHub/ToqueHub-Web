@@ -130,6 +130,10 @@ export class UpdateTechnicalSheetPricingDto {
   targetSellingPriceInclTax?: number | null;
 }
 
+export class ReassignTechnicalSheetCategoryDto {
+  @IsUUID() categoryId!: string;
+}
+
 export class DuplicateTechnicalSheetDto {
   @IsOptional() @IsString() @MaxLength(220) name?: string;
   @IsOptional()

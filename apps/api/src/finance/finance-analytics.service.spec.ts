@@ -1,8 +1,72 @@
 import {
+  allocateMonthlyBudgetPerCalendarDay,
   computeBudgetTransactionPacing,
+  resolveFinanceAsOfDate,
   resolveFinanceSiteDataScope,
   resolveMonthlyActualTo,
+  selectFinanceBudgetPlan,
 } from './finance-analytics.service';
+
+describe('Finance automatic reference date', () => {
+  const now = new Date('2026-08-07T21:55:00.000Z');
+
+  it('uses the latest day containing real sales instead of stale source coverage', () => {
+    expect(
+      resolveFinanceAsOfDate({
+        latestSaleDate: new Date('2026-08-07T09:19:00.000Z'),
+        latestCoverage: new Date('2026-08-04T23:59:59.999Z'),
+        now,
+      }),
+    ).toEqual(new Date('2026-08-07T23:59:59.999Z'));
+  });
+
+  it('falls back to source coverage when no sale is available', () => {
+    expect(
+      resolveFinanceAsOfDate({
+        latestCoverage: new Date('2026-08-04T18:33:00.000Z'),
+        now,
+      }),
+    ).toEqual(new Date('2026-08-04T23:59:59.999Z'));
+  });
+
+  it('keeps an explicitly selected day even when it has no sales', () => {
+    expect(
+      resolveFinanceAsOfDate({
+        requestedAsOf: new Date('2026-08-08T00:00:00.000Z'),
+        latestSaleDate: new Date('2026-08-07T09:19:00.000Z'),
+        latestCoverage: new Date('2026-08-04T23:59:59.999Z'),
+        now,
+      }),
+    ).toEqual(new Date('2026-08-08T23:59:59.999Z'));
+  });
+});
+
+describe('Finance daily budget allocation', () => {
+  it('uses the actual number of calendar days in the selected month', () => {
+    expect(
+      allocateMonthlyBudgetPerCalendarDay(new Date('2026-06-01T00:00:00.000Z'), {
+        revenue: 28_060.67,
+        operatingResult: 2_464.96,
+      }),
+    ).toEqual({ revenue: 935.36, operatingResult: 82.17 });
+
+    expect(
+      allocateMonthlyBudgetPerCalendarDay(new Date('2026-08-01T00:00:00.000Z'), {
+        revenue: 30_315,
+        operatingResult: 4_516,
+      }),
+    ).toEqual({ revenue: 977.9, operatingResult: 145.68 });
+  });
+
+  it('keeps missing budget metrics unavailable', () => {
+    expect(
+      allocateMonthlyBudgetPerCalendarDay(new Date('2026-06-01T00:00:00.000Z'), {
+        revenue: null,
+        operatingResult: null,
+      }),
+    ).toEqual({ revenue: null, operatingResult: null });
+  });
+});
 
 describe('Finance transaction budget pacing', () => {
   it('derives daily, weekly and monthly targets from the revenue budget', () => {
@@ -116,5 +180,26 @@ describe('Finance site accounting and budget scope', () => {
       budgetMode: 'consolidated',
       includeBudget: true,
     });
+  });
+});
+
+describe('Finance site budget selection', () => {
+  const plans = [
+    { id: 'kuusamo-budget', siteId: 'kuusamo' },
+    { id: 'oulu-budget', siteId: 'oulu' },
+    { id: 'legacy-budget', siteId: null },
+  ];
+
+  it('selects the budget explicitly assigned to the requested site', () => {
+    expect(selectFinanceBudgetPlan(plans, 'kuusamo')?.id).toBe('kuusamo-budget');
+    expect(selectFinanceBudgetPlan(plans, 'oulu')?.id).toBe('oulu-budget');
+  });
+
+  it('uses an unassigned legacy budget only as a migration fallback', () => {
+    expect(selectFinanceBudgetPlan([plans[2]], 'kuusamo')?.id).toBe('legacy-budget');
+  });
+
+  it('does not leak another site budget into the requested site', () => {
+    expect(selectFinanceBudgetPlan([plans[0]], 'oulu')).toBeNull();
   });
 });

@@ -574,8 +574,9 @@ export class MenusService {
     const totalGuests = menu.guestForecasts.length ? menu.guestForecasts.reduce((sum, forecast) => sum + forecast.count, 0) : menu.expectedGuests;
     const items = menu.items.map((item) => {
       const servingQuantity = Math.max(Number(item.servingQuantity ?? 1), 0.001);
-      const targetPortions = menu.kind === MenuKind.CATALOG ? Number(item.targetReadyQuantity ?? item.portionsOverride ?? 0) : Number(item.portionsOverride ?? totalGuests ?? 0);
+      const configuredTargetPortions = menu.kind === MenuKind.CATALOG ? Number(item.targetReadyQuantity ?? item.portionsOverride ?? 0) : Number(item.portionsOverride ?? totalGuests ?? 0);
       if (item.productId) {
+        const targetPortions = configuredTargetPortions;
         const product = item.product;
         if (!item.availabilityEnabled || !product) {
           const unitPrice = Number(product?.averagePrice ?? 0);
@@ -636,13 +637,17 @@ export class MenusService {
         };
       }
       const sheet = sheetsById.get(item.technicalSheetId) ?? item.technicalSheet;
+      const recipeServingQuantity = menu.kind === MenuKind.CATALOG ? 1 : servingQuantity;
+      const targetPortions = menu.kind === MenuKind.CATALOG
+        ? Math.max(Number(sheet?.referencePortions ?? 1), 0.001)
+        : configuredTargetPortions;
       const outputProduct = sheet?.outputProduct;
       if (!item.availabilityEnabled || !sheet?.outputProductId || !outputProduct || !sheet.yieldUnitId) {
         const components = sheet
           ? buildComponents(
               sheet.id,
               targetPortions > 0
-                ? targetPortions * servingQuantity
+                ? targetPortions * recipeServingQuantity
                 : Math.max(Number(sheet.referencePortions ?? 1), 0.001),
             )
           : [];
@@ -652,7 +657,7 @@ export class MenusService {
           technicalSheetId: item.technicalSheetId,
           name: sheet?.name ?? 'Fiche technique',
           category: item.menuCategory,
-          servingQuantity,
+          servingQuantity: recipeServingQuantity,
           targetPortions,
           recipeCost: Number(sheet?.totalCost ?? 0),
           costPerPortion: Number(sheet?.costPerPortion ?? 0),
@@ -663,7 +668,7 @@ export class MenusService {
       }
       const availableOutput = convert(productBalance(sheet.outputProductId), outputProduct.unitId, sheet.yieldUnitId) ?? 0;
       const inProductionOutput = convert(productionByProduct.get(sheet.outputProductId) ?? 0, outputProduct.unitId, sheet.yieldUnitId) ?? 0;
-      const targetOutput = targetPortions * servingQuantity;
+      const targetOutput = targetPortions * recipeServingQuantity;
       const toProduceOutput = Math.max(targetOutput - availableOutput - inProductionOutput, 0);
       const productionComponents = buildComponents(sheet.id, toProduceOutput);
       const components = buildComponents(
@@ -676,8 +681,8 @@ export class MenusService {
       const allComponents = flattened(productionComponents);
       const hasBlockedComponent = allComponents.some((component) => component.status === 'BLOCKED' || component.status === 'NOT_CONFIGURED');
       const hasMissingPreparation = allComponents.some((component) => component.kind === 'SUB_RECIPE' && component.missingQuantity > 0);
-      const availablePortions = Math.floor(availableOutput / servingQuantity);
-      const projectedPortions = Math.floor((availableOutput + inProductionOutput) / servingQuantity);
+      const availablePortions = Math.floor(availableOutput / recipeServingQuantity);
+      const projectedPortions = Math.floor((availableOutput + inProductionOutput) / recipeServingQuantity);
       let status = 'READY';
       if (targetOutput > availableOutput) status = toProduceOutput <= 0 ? 'LOW_STOCK' : hasBlockedComponent ? 'BLOCKED' : hasMissingPreparation ? 'COMPONENT_MISSING' : 'TO_PRODUCE';
       return {
@@ -687,7 +692,7 @@ export class MenusService {
         name: sheet.name,
         category: item.menuCategory,
         outputProduct: { id: outputProduct.id, name: outputProduct.name, unit: sheet.yieldUnit ?? outputProduct.unit },
-        servingQuantity,
+        servingQuantity: recipeServingQuantity,
         targetPortions,
         lowStockThreshold: Number(item.lowStockThreshold ?? 0),
         stockQuantity: availableOutput,
@@ -695,7 +700,7 @@ export class MenusService {
         availablePortions,
         projectedPortions,
         toProduceQuantity: toProduceOutput,
-        toProducePortions: Math.ceil(toProduceOutput / servingQuantity),
+        toProducePortions: Math.ceil(toProduceOutput / recipeServingQuantity),
         recipeCost: Number(sheet.totalCost ?? 0),
         costPerPortion: Number(sheet.costPerPortion ?? 0),
         status,

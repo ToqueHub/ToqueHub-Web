@@ -6,7 +6,6 @@ import {
   Building2,
   CalendarDays,
   Check,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -31,7 +30,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { api } from '../api/client';
-import type { CoreUser, HrCollaborator, HrCollaboratorPayload, HrContractAnalysis, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, HrPositionTaskPreset, HrReferencePayload, HrSummary, OperationalTaskCategory, RegulatoryCountryCode, Site } from '../types';
+import type { CoreRole, CoreUser, HrCollaborator, HrCollaboratorPayload, HrContractAnalysis, HrDepartment, HrDocument, HrHistoryEntry, HrPosition, HrPositionTaskPreset, HrReferencePayload, HrSummary, OperationalTaskCategory, RegulatoryCountryCode, Site, ToqueHubAccountCreationPayload } from '../types';
 import { HR_CATALOG } from '../hr-catalog';
 import { CollaboratorModal as CollaboratorDossierModal } from './hr/collaborator/CollaboratorModal';
 
@@ -60,14 +59,16 @@ type HrAppProps = {
   collaborators: HrCollaborator[];
   departments: HrDepartment[];
   positions: HrPosition[];
+  roles: CoreRole[];
   users: CoreUser[];
   sites: Site[];
+  primarySiteId?: string | null;
   regulatoryCountryCode?: RegulatoryCountryCode | null;
   onboarding?: any;
   canWrite: boolean;
   loading?: boolean;
   onNavigate: (tab: HrTab) => void;
-  onCreateCollaborator: (payload: HrCollaboratorPayload) => Promise<HrCollaborator | void>;
+  onCreateCollaborator: (payload: HrCollaboratorPayload, toqueHubAccount?: ToqueHubAccountCreationPayload) => Promise<HrCollaborator | void>;
   onAnalyzeCollaboratorContract: (files: File[]) => Promise<HrContractAnalysis>;
   onUpdateCollaborator: (id: string, payload: Partial<HrCollaboratorPayload>) => Promise<HrCollaborator | void>;
   onArchiveCollaborator: (id: string) => Promise<void>;
@@ -89,6 +90,7 @@ type HrAppProps = {
   onCompletePositions?: () => Promise<void>;
   onUnlockEmployees?: () => Promise<void>;
   onExitToOverview?: () => void;
+  canCreateToqueHubAccount?: boolean;
 };
 
 export function HrApp({
@@ -97,8 +99,10 @@ export function HrApp({
   collaborators,
   departments,
   positions,
+  roles,
   users,
   sites,
+  primarySiteId,
   regulatoryCountryCode,
   onboarding,
   canWrite,
@@ -126,6 +130,7 @@ export function HrApp({
   onCompletePositions,
   onUnlockEmployees,
   onExitToOverview,
+  canCreateToqueHubAccount = false,
 }: HrAppProps) {
   const [collaboratorModal, setCollaboratorModal] = useState<HrCollaborator | 'new' | null>(null);
   const [selectedCollaborator, setSelectedCollaborator] = useState<HrCollaborator | null>(null);
@@ -171,7 +176,7 @@ export function HrApp({
   const canAccessCollaborators = employeesUnlocked;
   const canAccessOrgChart = employeesUnlocked;
   const needsInitialWizard = canWrite && !employeesUnlocked;
-  const canRenderWizard = canWrite && wizardOpen && !onboarding?.completedAt;
+  const canRenderWizard = canWrite && wizardOpen;
 
   useEffect(() => {
     if (needsInitialWizard) setWizardOpen(true);
@@ -196,9 +201,16 @@ export function HrApp({
         <div>
           <span className="welcome-tag"><UsersRound size={14} /> ToqueHub RH</span>
           <h1 className="welcome-title">Ressources Humaines</h1>
-          <p className="welcome-desc">Vue d’ensemble de votre organisation. Centralisez les collaborateurs, services, postes et responsables sans recréer le Core.</p>
+          <p className="welcome-desc">Pilotez vos équipes en un seul endroit : collaborateurs, services, postes et responsabilités, avec une organisation claire et toujours à jour.</p>
         </div>
-        {canWrite && canAccessCollaborators ? <button className="btn btn-primary" onClick={() => setCollaboratorModal('new')}><Plus size={16} /> Nouveau collaborateur</button> : null}
+        <div className="hr-hero-actions">
+          {tab === 'dashboard' && canWrite ? (
+            <button className="btn btn-secondary btn-outline hr-hero-guide" type="button" onClick={() => setWizardOpen(true)}>
+              <Sparkles size={16} /> Guide de configuration
+            </button>
+          ) : null}
+          {canWrite && canAccessCollaborators ? <button className="btn btn-primary" onClick={() => setCollaboratorModal('new')}><Plus size={16} /> Nouveau collaborateur</button> : null}
+        </div>
       </motion.section>
 
       <div className="hr-tabs">
@@ -213,14 +225,7 @@ export function HrApp({
         <HrDashboard
           summary={summary}
           collaborators={collaborators}
-          departments={departments}
-          positions={positions}
           onNavigate={onNavigate}
-          canWrite={canWrite}
-          onboarding={onboarding}
-          onStartWizard={() => {
-            setWizardOpen(true);
-          }}
         />
       ) : null}
 
@@ -263,9 +268,12 @@ export function HrApp({
           collaborators={collaborators.filter((item) => !isArchived(item))}
           departments={activeDepartments}
           positions={activePositions}
+          roles={roles}
           users={selectableUsers}
           sites={sites.filter((site) => !isArchived(site))}
+          primarySiteId={primarySiteId}
           regulatoryCountryCode={regulatoryCountryCode}
+          canCreateToqueHubAccount={canCreateToqueHubAccount}
           onAnalyzeContract={onAnalyzeCollaboratorContract}
           onClose={() => setCollaboratorModal(null)}
           onDeleteDocument={async (employeeId, documentId) => {
@@ -279,8 +287,9 @@ export function HrApp({
           }}
           onViewDocument={onViewCollaboratorDocument}
           onDownloadDocument={onDownloadCollaboratorDocument}
-          onSubmit={async (payload, documents) => {
-            const saved = collaboratorModal === 'new' ? await onCreateCollaborator(payload) : await onUpdateCollaborator(collaboratorModal.id, payload);
+          onSubmit={async (payload, documents, options) => {
+            const isCreating = collaboratorModal === 'new';
+            const saved = isCreating ? await onCreateCollaborator(payload, options.toqueHubAccount) : await onUpdateCollaborator(collaboratorModal.id, payload);
             const employeeId = saved?.id ?? (collaboratorModal !== 'new' ? collaboratorModal.id : undefined);
             if (employeeId && documents.length) {
               for (const document of documents) {
@@ -359,21 +368,11 @@ export function HrApp({
 function HrDashboard({
   summary,
   collaborators,
-  departments,
-  positions,
   onNavigate,
-  canWrite,
-  onboarding,
-  onStartWizard,
 }: {
   summary?: HrSummary;
   collaborators: HrCollaborator[];
-  departments: HrDepartment[];
-  positions: HrPosition[];
   onNavigate: (tab: HrTab) => void;
-  canWrite: boolean;
-  onboarding?: any;
-  onStartWizard: () => void;
 }) {
   const activeCollaborators = collaborators.filter((collaborator) => !isArchived(collaborator));
   const latest = [...activeCollaborators].sort((a, b) => dateValue(b.hireDate) - dateValue(a.hireDate)).slice(0, 5);
@@ -394,22 +393,6 @@ function HrDashboard({
     const dueDate = c.nextSalaryReview?.dueDate || c.nextReviewDate;
     return dueDate && new Date(dueDate).getTime() - Date.now() < 60 * 24 * 60 * 60 * 1000 && new Date(dueDate).getTime() > Date.now();
   }).length;
-  const hasDepartments = departments.filter((d) => !isArchived(d)).length > 0;
-  const hasPositions = positions.filter((p) => !isArchived(p)).length > 0;
-  const hasCollaborators = activeCollaborators.length > 0;
-  const onboardingHasServices = onboarding ? Boolean(onboarding.servicesCompletedAt) : hasDepartments;
-  const onboardingHasPositions = onboarding ? Boolean(onboarding.positionsCompletedAt) : hasPositions;
-  const employeesUnlocked = onboarding ? Boolean(onboarding.employeesUnlockedAt) : hasCollaborators;
-  const onboardingComplete = employeesUnlocked;
-  const [configExpanded, setConfigExpanded] = useState(false);
-  const activeDepartmentsCount = departments.filter((item) => !isArchived(item)).length;
-  const activePositionsCount = positions.filter((item) => !isArchived(item)).length;
-  const setupProgress = Math.round(([onboardingHasServices, onboardingHasPositions, employeesUnlocked].filter(Boolean).length / 3) * 100);
-  const setupSteps = [
-    { title: 'Services', text: `${activeDepartmentsCount} service${activeDepartmentsCount > 1 ? 's' : ''}`, done: onboardingHasServices },
-    { title: 'Postes', text: `${activePositionsCount} poste${activePositionsCount > 1 ? 's' : ''}`, done: onboardingHasPositions },
-    { title: 'Structure', text: employeesUnlocked ? 'Collaborateurs débloqués' : 'Structure à valider', done: employeesUnlocked },
-  ];
   const stats: Array<{ label: string; value: React.ReactNode; icon: typeof UsersRound; tone: string; target?: HrTab }> = [
     { label: 'Collaborateurs', value: summary?.counts?.collaborators ?? activeCollaborators.length, icon: UsersRound, tone: 'emerald', target: 'collaborators' },
     ...(withoutContract ? [{ label: 'Sans contrat', value: withoutContract, icon: ShieldCheck, tone: 'orange' }] : []),
@@ -417,14 +400,6 @@ function HrDashboard({
     ...(contractsEndingSoon ? [{ label: 'Contrats à échéance', value: contractsEndingSoon, icon: CalendarDays, tone: 'purple' }] : []),
     ...(reviewsSoon ? [{ label: 'Revalorisations prévues', value: reviewsSoon, icon: Sparkles, tone: 'orange' }] : []),
   ];
-
-  const nextStepLabel = !onboardingHasServices
-    ? 'Sélectionner les services'
-    : !onboardingHasPositions
-    ? 'Sélectionner les postes'
-    : !employeesUnlocked
-    ? 'Valider la structure RH'
-    : 'Configuration terminée';
 
   return <>
     {collaboratorsMissingContract.length ? (
@@ -434,36 +409,6 @@ function HrDashboard({
           <strong>Contrat manquant</strong>
           <span>Contrat manquant pour : {collaboratorsMissingContract.map(fullName).join(', ')}</span>
         </div>
-      </div>
-    ) : null}
-    {canWrite ? (
-      <div className="stocks-dashboard-setup-row hr-dashboard-setup-row">
-        <motion.section className="card-modern stocks-setup-card hr-setup-card" style={{ position: 'relative' }} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <div className="section-header-modern">
-            <div className="section-info">
-              <span className="card-title"><Sparkles size={18} /> Configuration initiale du module RH</span>
-              <span className="section-tagline">{nextStepLabel}</span>
-            </div>
-            <div className="stocks-setup-actions">
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setConfigExpanded((value) => !value)}>{configExpanded ? 'Replier' : 'Détails'}</button>
-              <button type="button" className="btn btn-primary btn-sm" onClick={onStartWizard}>{onboardingComplete ? 'Revoir' : 'Continuer'}</button>
-            </div>
-          </div>
-          <div className="stocks-setup-progress">
-            <div className="progress-bar-bg"><div className="progress-bar-fill" style={{ width: `${setupProgress}%` }} /></div>
-            <strong>{setupProgress}%</strong>
-          </div>
-          {configExpanded ? (
-            <div className="stocks-setup-step-grid">
-              {setupSteps.map((step) => (
-                <div key={step.title} className={`stocks-setup-step ${step.done ? 'done' : 'todo'}`}>
-                  {step.done ? <CheckCircle2 size={16} /> : <Clock size={16} />}
-                  <div><strong>{step.title}</strong><span>{step.text}</span></div>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </motion.section>
       </div>
     ) : null}
     <div className="metrics-grid hr-metrics-grid">
@@ -974,6 +919,7 @@ function HrOnboardingWizard({
             collaborators={activeWizardCollaborators}
             departments={wizardDepartments}
             positions={wizardPositions}
+            roles={[]}
             users={users}
             sites={sites.filter((site) => !isArchived(site))}
             regulatoryCountryCode={regulatoryCountryCode}
@@ -1894,7 +1840,23 @@ function CollaboratorSheet({ collaborator, regulatoryCountryCode, canWrite, onCl
   }
   if (hasText(collaborator.primaryLanguage)) personalRows.push([<NotebookText size={14} />, `Langue principale : ${collaborator.primaryLanguage}`]);
   if (hasText(collaborator.secondaryLanguage)) personalRows.push([<NotebookText size={14} />, `Langue secondaire : ${collaborator.secondaryLanguage}`]);
-  if (hasText(collaborator.emergencyContact)) personalRows.push([<ShieldCheck size={14} />, `Contact d'urgence : ${collaborator.emergencyContact}`]);
+  const emergencyContactName = [
+    collaborator.emergencyContactFirstName,
+    collaborator.emergencyContactLastName,
+  ].filter(hasText).join(' ');
+  const emergencyContactDetails = [
+    emergencyContactName,
+    collaborator.emergencyContactPhone,
+    collaborator.emergencyContactEmail,
+  ].filter(hasText);
+  if (emergencyContactDetails.length) {
+    personalRows.push([
+      <ShieldCheck size={14} />,
+      `Contact d’urgence : ${emergencyContactDetails.join(' · ')}`,
+    ]);
+  } else if (hasText(collaborator.emergencyContact)) {
+    personalRows.push([<ShieldCheck size={14} />, `Contact d’urgence : ${collaborator.emergencyContact}`]);
+  }
 
   if (hasText(positionName)) professionalRows.push([<BriefcaseBusiness size={14} />, `Poste principal : ${positionName}`]);
   if (secondaryPositions.length) {
@@ -2355,6 +2317,11 @@ function isUuid(value?: string | null) {
   return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
 }
 function collaboratorToPayload(collaborator: HrCollaborator, patch: Partial<HrCollaboratorPayload> = {}): HrCollaboratorPayload {
+  const revaluationEnabled = Boolean(
+    collaborator.nextSalaryReview?.dueDate ||
+    collaborator.nextReviewDate ||
+    collaborator.reviewFrequency,
+  );
   return {
     photoUrl: collaborator.photoUrl ?? collaborator.photoDataUrl ?? undefined,
     firstName: collaborator.firstName,
@@ -2368,6 +2335,10 @@ function collaboratorToPayload(collaborator: HrCollaborator, patch: Partial<HrCo
     primaryLanguage: collaborator.primaryLanguage ?? undefined,
     secondaryLanguage: collaborator.secondaryLanguage ?? undefined,
     emergencyContact: collaborator.emergencyContact ?? undefined,
+    emergencyContactFirstName: collaborator.emergencyContactFirstName ?? undefined,
+    emergencyContactLastName: collaborator.emergencyContactLastName ?? undefined,
+    emergencyContactPhone: collaborator.emergencyContactPhone ?? undefined,
+    emergencyContactEmail: collaborator.emergencyContactEmail ?? undefined,
     birthDate: toInputDate(collaborator.birthDate) || undefined,
     personalIdentityNumber: collaborator.personalIdentityNumber ?? undefined,
     hireDate: toInputDate(collaborator.hireDate) || new Date().toISOString().slice(0, 10),
@@ -2388,9 +2359,10 @@ function collaboratorToPayload(collaborator: HrCollaborator, patch: Partial<HrCo
     trainingNames: collaborator.trainingNames ?? undefined,
     hourlyRate: collaborator.currentCompensation?.hourlyRate ?? collaborator.hourlyRate ?? undefined,
     currency: collaborator.currentCompensation?.currency ?? collaborator.currency ?? undefined,
-    rateEffectiveDate: toInputDate(collaborator.currentCompensation?.effectiveFrom) || toInputDate(collaborator.rateEffectiveDate) || undefined,
-    nextReviewDate: toInputDate(collaborator.nextSalaryReview?.dueDate) || toInputDate(collaborator.nextReviewDate) || undefined,
-    reviewFrequency: collaborator.reviewFrequency ?? undefined,
+    rateEffectiveDate: revaluationEnabled ? toInputDate(collaborator.currentCompensation?.effectiveFrom) || toInputDate(collaborator.rateEffectiveDate) || undefined : undefined,
+    nextReviewDate: revaluationEnabled ? toInputDate(collaborator.nextSalaryReview?.dueDate) || toInputDate(collaborator.nextReviewDate) || undefined : undefined,
+    reviewFrequency: revaluationEnabled ? collaborator.reviewFrequency ?? undefined : undefined,
+    revaluationEnabled,
     ...patch,
   };
 }

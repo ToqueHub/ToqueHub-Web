@@ -63,7 +63,12 @@ const DEFAULT_ROLE_PERMISSIONS: Record<CoreRoleName, string[]> = {
   [CoreRoleName.USER]: ['catalog.read', 'stocks.read', 'hr.read', 'planning.read', 'rnm-prices.read', 'technical-sheets.read', 'production.read', 'production.batch.execute', 'production.loss.declare', 'production.traceability.read', 'menus.read', 'haccp.read', 'purchasing.read', 'purchasing.draft', 'finance.read'],
 };
 
-type UserWithRole = Prisma.UserGetPayload<{ include: { role: { include: { permissions: { include: { permission: true } } } } } }>;
+const USER_WITH_ROLE_INCLUDE = Prisma.validator<Prisma.UserInclude>()({
+  role: { include: { permissions: { include: { permission: true } } } },
+  hrEmployee: { select: { photoDataUrl: true } },
+});
+
+type UserWithRole = Prisma.UserGetPayload<{ include: typeof USER_WITH_ROLE_INCLUDE }>;
 
 @Injectable()
 export class UsersService {
@@ -80,7 +85,7 @@ export class UsersService {
     const users = await this.prisma.user.findMany({
       where: { organizationId },
       orderBy: [{ isPrimaryAdmin: 'desc' }, { createdAt: 'asc' }],
-      include: { role: { include: { permissions: { include: { permission: true } } } } },
+      include: USER_WITH_ROLE_INCLUDE,
     });
     return users.map((entry) => this.serializeUser(entry));
   }
@@ -110,10 +115,19 @@ export class UsersService {
     this.assertAdmin(actor);
     const organizationId = this.requireOrganization(actor);
     await this.ensureCoreRolesAndPermissions();
-    const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    return this.createManagedUserRecord(organizationId, dto);
+  }
+
+  async createManagedUserRecord(
+    organizationId: string,
+    dto: CreateManagedUserDto,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const existing = await client.user.findUnique({ where: { email: dto.email } });
     if (existing) throw new ConflictException('Email already exists');
-    const role = await this.findCoreRole(dto.role);
-    const user = await this.prisma.user.create({
+    const role = await client.role.findUnique({ where: { name: dto.role } });
+    if (!role) throw new NotFoundException('Role not found');
+    const user = await client.user.create({
       data: {
         username: dto.email,
         email: dto.email,
@@ -125,7 +139,7 @@ export class UsersService {
         status: UserStatus.INVITED,
         isActive: true,
       },
-      include: { role: { include: { permissions: { include: { permission: true } } } } },
+      include: USER_WITH_ROLE_INCLUDE,
     });
     return this.serializeUser(user);
   }
@@ -163,7 +177,7 @@ export class UsersService {
     const updated = await this.prisma.user.update({
       where: { id },
       data,
-      include: { role: { include: { permissions: { include: { permission: true } } } } },
+      include: USER_WITH_ROLE_INCLUDE,
     });
     return this.serializeUser(updated);
   }
@@ -254,6 +268,7 @@ export class UsersService {
       lastLoginAt: user.lastLoginAt,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
+      collaboratorPhotoUrl: user.hrEmployee?.photoDataUrl ?? null,
       permissions: user.role.permissions.map((rp) => rp.permission.key).sort(),
     };
   }

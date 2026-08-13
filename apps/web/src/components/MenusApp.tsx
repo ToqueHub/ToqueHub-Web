@@ -16,7 +16,6 @@ import {
   Factory,
   History,
   LayoutDashboard,
-  PackageCheck,
   Plus,
   RefreshCw,
   Search,
@@ -41,10 +40,8 @@ import type {
   MenuCyclePayload,
   MenuDiet,
   MenuExport,
-  MenuExportPayload,
   MenuGuestGroup,
   MenuGuestForecast,
-  MenuHistoryEntry,
   MenuItemPayload,
   MenuModuleDashboard,
   MenuPlan,
@@ -64,6 +61,11 @@ import type {
 } from '../types';
 import { CatererMenusApp } from './CatererMenusApp';
 import { CentralKitchenMenusApp } from './CentralKitchenMenusApp';
+import {
+  TechnicalSheetPickerModal,
+  type TechnicalSheetPickerItem,
+} from './TechnicalSheetPickerModal';
+import { ProductPickerModal } from './ProductPickerModal';
 
 type MenusTab =
   | 'dashboard'
@@ -73,8 +75,7 @@ type MenusTab =
   | 'cycles'
   | 'diets'
   | 'guests'
-  | 'exports'
-  | 'history';
+  | 'exports';
 
 interface MenusAppProps {
   token: string;
@@ -169,13 +170,6 @@ const catalogCategoryPresets: Record<
   ],
 };
 
-const normalizeCatalogLookup = (value?: string | null) =>
-  (value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLocaleLowerCase('fr')
-    .trim();
-
 export function MenusApp({
   token,
   session,
@@ -201,7 +195,6 @@ export function MenusApp({
   const [diets, setDiets] = useState<MenuDiet[]>([]);
   const [guestGroups, setGuestGroups] = useState<MenuGuestGroup[]>([]);
   const [exportsList, setExportsList] = useState<MenuExport[]>([]);
-  const [history, setHistory] = useState<MenuHistoryEntry[]>([]);
   const [recipes, setRecipes] = useState<TechnicalSheetRecipe[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedMenuId, setSelectedMenuId] = useState<string>();
@@ -216,10 +209,7 @@ export function MenusApp({
     technicalSheetId: '',
     productId: '',
     menuCategoryId: '',
-    servingQuantity: 1,
-    targetReadyQuantity: 0,
   });
-  const [catalogSourceSearch, setCatalogSourceSearch] = useState('');
   const [categoryName, setCategoryName] = useState('');
   const [catalogWizardOpen, setCatalogWizardOpen] = useState(false);
   const [catalogWizardDismissed, setCatalogWizardDismissed] = useState(false);
@@ -242,7 +232,6 @@ export function MenusApp({
   });
   const [generationMode, setGenerationMode] = useState<'DETAILED' | 'GROUPED'>('DETAILED');
   const [generationResult, setGenerationResult] = useState<MenuProductionGenerationResult>();
-  const [exportKind, setExportKind] = useState<MenuExportPayload['kind']>('PUBLIC_DISPLAY');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
@@ -292,61 +281,20 @@ export function MenusApp({
         .sort((a, b) => a.name.localeCompare(b.name, 'fr')),
     [products],
   );
-  const catalogProductOptions = useMemo(() => {
-    const query = normalizeCatalogLookup(catalogSourceSearch);
-    return activeProducts
-      .filter((product) => !selectedCatalog?.items?.some((item) => item.productId === product.id))
-      .filter(
-        (product) =>
-          !query ||
-          normalizeCatalogLookup(
-            [
-              product.name,
-              product.sku,
-              product.gtin,
-              product.category?.name,
-              product.primarySupplier?.name,
-            ]
-              .filter(Boolean)
-              .join(' '),
-          ).includes(query),
-      )
-      .slice(0, 100)
-      .map((product) => ({
-        id: product.id,
-        label: product.name,
-        detail: [product.sku, product.category?.name, product.unit?.symbol]
-          .filter(Boolean)
-          .join(' · '),
-      }));
-  }, [activeProducts, catalogSourceSearch, selectedCatalog?.items]);
-  const catalogRecipeOptions = useMemo(() => {
-    const query = normalizeCatalogLookup(catalogSourceSearch);
-    return menuEligibleRecipes
-      .filter(
+  const catalogProductChoices = useMemo(
+    () =>
+      activeProducts.filter(
+        (product) => !selectedCatalog?.items?.some((item) => item.productId === product.id),
+      ),
+    [activeProducts, selectedCatalog?.items],
+  );
+  const catalogRecipeChoices = useMemo(
+    () =>
+      menuEligibleRecipes.filter(
         (recipe) => !selectedCatalog?.items?.some((item) => item.technicalSheetId === recipe.id),
-      )
-      .filter(
-        (recipe) =>
-          !query ||
-          normalizeCatalogLookup(
-            [
-              recipe.name,
-              recipe.category?.name,
-              recipe.description,
-              recipe.mode === 'PRODUCTION' ? 'fabrication preparation' : 'assemblage produit fini',
-            ]
-              .filter(Boolean)
-              .join(' '),
-          ).includes(query),
-      )
-      .slice(0, 100)
-      .map((recipe) => ({
-        id: recipe.id,
-        label: recipe.name,
-        detail: `${recipe.mode === 'PRODUCTION' ? 'Fabrication / préparation' : 'Assemblage / produit fini'}${recipe.category?.name ? ` · ${recipe.category.name}` : ''}`,
-      }));
-  }, [menuEligibleRecipes, catalogSourceSearch, selectedCatalog?.items]);
+      ),
+    [menuEligibleRecipes, selectedCatalog?.items],
+  );
   const catalogCategories = useMemo(() => {
     if (!selectedCatalog?.catalogType) return categories;
     return categories.filter((category) => category.catalogType === selectedCatalog.catalogType);
@@ -375,7 +323,6 @@ export function MenusApp({
         dietsResult,
         groupsResult,
         exportsResult,
-        historyResult,
         recipesResult,
         productsResult,
       ] = await Promise.all([
@@ -387,7 +334,6 @@ export function MenusApp({
         api.menuDiets(token).catch(() => []),
         api.menuGuestGroups(token).catch(() => []),
         api.menuExports(token, activityFilter).catch(() => []),
-        api.menuHistory(token, activityFilter ? { activity: activityFilter } : {}).catch(() => []),
         api
           .technicalSheetRecipes(token, { includeArchived: true, pageSize: 200 })
           .then((result) => result.items)
@@ -402,7 +348,6 @@ export function MenusApp({
       setDiets(dietsResult);
       setGuestGroups(groupsResult);
       setExportsList(exportsResult);
-      setHistory(historyResult);
       setRecipes(recipesResult);
       setProducts(productsResult);
       if (!selectedMenuId && menusResult[0])
@@ -588,8 +533,7 @@ export function MenusApp({
           productId:
             catalogItemForm.sourceType === 'PRODUCT' ? catalogItemForm.productId : undefined,
           menuCategoryId: catalogItemForm.menuCategoryId || undefined,
-          servingQuantity: Number(catalogItemForm.servingQuantity),
-          targetReadyQuantity: Number(catalogItemForm.targetReadyQuantity),
+          servingQuantity: 1,
           availabilityEnabled: true,
         },
       ],
@@ -602,10 +546,7 @@ export function MenusApp({
       technicalSheetId: '',
       productId: '',
       menuCategoryId: catalogCategories[0]?.id ?? '',
-      servingQuantity: 1,
-      targetReadyQuantity: 0,
     });
-    setCatalogSourceSearch('');
   }
 
   async function createCategory(event: React.FormEvent<HTMLFormElement>) {
@@ -720,12 +661,12 @@ export function MenusApp({
     }, 'Prévision de convives enregistrée par groupe, sans donnée nominative.');
   }
 
-  async function prepareExport() {
+  async function prepareExport(kind: 'KITCHEN' | 'DINING_ROOM' | 'PUBLIC_DISPLAY') {
     if (!selectedMenu) return;
     await run(async () => {
       const item = await api.prepareMenuExport(token, {
         menuId: selectedMenu.id,
-        kind: exportKind,
+        kind,
         format: 'PDF',
       });
       await downloadExportFile(item);
@@ -821,9 +762,7 @@ export function MenusApp({
             ? 'clients'
             : tab === 'exports'
               ? 'documents'
-              : tab === 'history'
-                ? 'history'
-                : 'dashboard';
+              : 'dashboard';
     return (
       <CatererMenusApp
         token={token}
@@ -929,7 +868,6 @@ export function MenusApp({
               ['dashboard', 'Tableau de bord'],
               ['catalog', 'Carte'],
               ['exports', 'Exports & Documents'],
-              ['history', 'Historique & audit'],
             ]
           : ([
               ['dashboard', 'Tableau de bord'],
@@ -944,7 +882,6 @@ export function MenusApp({
               ...(settings?.dietsEnabled ? [['diets', 'Régimes']] : []),
               ...(settings?.guestForecastsEnabled ? [['guests', 'Convives par groupes']] : []),
               ['exports', 'Exports & Documents'],
-              ['history', 'Historique d’audit'],
             ] as Array<[MenusTab, string]>)
         ).map(([id, label]) => (
           <button
@@ -1033,15 +970,20 @@ export function MenusApp({
                   value={dashboard?.stats?.weekMenus ?? menus.length}
                   tone="purple"
                 />
-                <MetricCard
-                  icon={<UsersRound />}
-                  label="Convives aujourd’hui"
-                  value={
-                    dashboard?.stats?.todayGuests ??
-                    menus.reduce((sum, m) => sum + Number(m.expectedGuests ?? m.guestCount ?? 0), 0)
-                  }
-                  tone="orange"
-                />
+                {!restaurantExperience ? (
+                  <MetricCard
+                    icon={<UsersRound />}
+                    label="Convives aujourd’hui"
+                    value={
+                      dashboard?.stats?.todayGuests ??
+                      menus.reduce(
+                        (sum, m) => sum + Number(m.expectedGuests ?? m.guestCount ?? 0),
+                        0,
+                      )
+                    }
+                    tone="orange"
+                  />
+                ) : null}
                 <MetricCard
                   icon={<FileText />}
                   label="Coût moyen / repas"
@@ -1058,140 +1000,6 @@ export function MenusApp({
                   }
                   tone="blue"
                 />
-              </div>
-
-              <div
-                className="menus-grid"
-                style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))' }}
-              >
-                <div className="card-modern">
-                  <span
-                    className="card-title"
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                  >
-                    <AlertCircle size={18} /> Alertes Menus
-                  </span>
-                  <div
-                    className="menus-alert-list"
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '0.75rem',
-                      marginTop: '1.25rem',
-                    }}
-                  >
-                    {(dashboard?.alerts?.length ? dashboard.alerts : buildAlerts(menus)).map(
-                      (alert, index) => (
-                        <div key={index} className={`menus-alert ${alert.severity ?? 'warning'}`}>
-                          <AlertCircle size={16} />
-                          <span>{alert.message}</span>
-                        </div>
-                      ),
-                    )}
-                  </div>
-                </div>
-
-                <div className="card-modern">
-                  <span
-                    className="card-title"
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                  >
-                    <Sparkles size={18} /> Actions rapides
-                  </span>
-                  <div className="quick-actions-grid">
-                    {restaurantExperience ? (
-                      <>
-                        <button
-                          className="btn btn-primary"
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '0.5rem',
-                          }}
-                          onClick={() => onNavigate('catalog')}
-                        >
-                          <BookOpen size={16} /> Ouvrir la carte
-                        </button>
-                        <button
-                          className="btn btn-secondary"
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '0.5rem',
-                          }}
-                          onClick={() => onNavigate('exports')}
-                        >
-                          <Download size={16} /> Exports & Documents
-                        </button>
-                        <button
-                          className="btn btn-secondary"
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '0.5rem',
-                          }}
-                          onClick={() => onNavigate('history')}
-                        >
-                          <History size={16} /> Historique & audit
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          className="btn btn-primary"
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '0.5rem',
-                          }}
-                          onClick={() => onNavigate('menus')}
-                        >
-                          <Plus size={16} /> Créer un menu
-                        </button>
-                        <button
-                          className="btn btn-secondary"
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '0.5rem',
-                          }}
-                          onClick={() => onNavigate('calendar')}
-                        >
-                          <Calendar size={16} /> Calendrier
-                        </button>
-                        <button
-                          className="btn btn-secondary"
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '0.5rem',
-                          }}
-                          onClick={() => onNavigate('cycles')}
-                        >
-                          <RefreshCw size={16} /> Créer un cycle
-                        </button>
-                        <button
-                          className="btn btn-secondary"
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '0.5rem',
-                          }}
-                          onClick={() => onNavigate('diets')}
-                        >
-                          <UsersRound size={16} /> Gérer les régimes
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
               </div>
             </div>
           )}
@@ -1306,21 +1114,6 @@ export function MenusApp({
                       >
                         <button
                           className="btn btn-secondary"
-                          onClick={() =>
-                            selectedCatalog &&
-                            api
-                              .menuAvailability(
-                                token,
-                                selectedCatalog.id,
-                                selectedCatalog.siteId || undefined,
-                              )
-                              .then(setAvailability)
-                          }
-                        >
-                          <RefreshCw size={15} /> Actualiser
-                        </button>
-                        <button
-                          className="btn btn-secondary"
                           disabled={!canManage}
                           onClick={openCatalogWizard}
                         >
@@ -1336,38 +1129,6 @@ export function MenusApp({
                       </div>
                     </div>
                   </div>
-
-                  {availability ? (
-                    <div
-                      className="menus-grid"
-                      style={{ gridTemplateColumns: 'repeat(4, minmax(150px, 1fr))' }}
-                    >
-                      <MetricCard
-                        label="Articles suivis"
-                        value={availability.summary.total}
-                        icon={<Boxes />}
-                        tone="blue"
-                      />
-                      <MetricCard
-                        label="Disponibles"
-                        value={availability.summary.ready}
-                        icon={<PackageCheck />}
-                        tone="emerald"
-                      />
-                      <MetricCard
-                        label="À produire"
-                        value={availability.summary.toProduce}
-                        icon={<Factory />}
-                        tone="orange"
-                      />
-                      <MetricCard
-                        label="À vérifier"
-                        value={availability.summary.blocked}
-                        icon={<AlertCircle />}
-                        tone="purple"
-                      />
-                    </div>
-                  ) : null}
 
                   <div
                     style={{
@@ -1487,7 +1248,6 @@ export function MenusApp({
                                 type="button"
                                 className={`btn ${catalogItemForm.sourceType === 'PRODUCT' ? 'btn-primary' : 'btn-secondary'}`}
                                 onClick={() => {
-                                  setCatalogSourceSearch('');
                                   setCatalogItemForm({
                                     ...catalogItemForm,
                                     sourceType: 'PRODUCT',
@@ -1502,7 +1262,6 @@ export function MenusApp({
                                 type="button"
                                 className={`btn ${catalogItemForm.sourceType === 'TECHNICAL_SHEET' ? 'btn-primary' : 'btn-secondary'}`}
                                 onClick={() => {
-                                  setCatalogSourceSearch('');
                                   setCatalogItemForm({
                                     ...catalogItemForm,
                                     sourceType: 'TECHNICAL_SHEET',
@@ -1516,45 +1275,28 @@ export function MenusApp({
                             </div>
                           </div>
                           {catalogItemForm.sourceType === 'PRODUCT' ? (
-                            <CatalogSourceAutocomplete
+                            <ProductModalSelect
                               label="Produit Stocks"
-                              placeholder="Rechercher parmi vos produits…"
-                              options={catalogProductOptions}
+                              products={catalogProductChoices}
                               value={catalogItemForm.productId}
-                              search={catalogSourceSearch}
-                              onSearch={(value) => {
-                                setCatalogSourceSearch(value);
-                                setCatalogItemForm((current) => ({ ...current, productId: '' }));
-                              }}
-                              onSelect={(option) => {
-                                setCatalogSourceSearch(option?.label ?? '');
+                              onChange={(productId) => {
                                 setCatalogItemForm((current) => ({
                                   ...current,
-                                  productId: option?.id ?? '',
+                                  productId,
                                 }));
                               }}
                               emptyText="Aucun produit Stocks trouvé"
-                              helper="Pour un vin, une eau, un soft ou tout article vendu tel quel. Commencez à écrire pour consulter les résultats."
+                              helper="Pour un vin, une eau, un soft ou tout article vendu tel quel."
                             />
                           ) : (
-                            <CatalogSourceAutocomplete
+                            <TechnicalSheetModalSelect
                               label="Fiche technique active"
-                              placeholder="Rechercher une fiche technique…"
-                              options={catalogRecipeOptions}
+                              recipes={catalogRecipeChoices}
                               value={catalogItemForm.technicalSheetId}
-                              search={catalogSourceSearch}
-                              onSearch={(value) => {
-                                setCatalogSourceSearch(value);
+                              onChange={(technicalSheetId) => {
                                 setCatalogItemForm((current) => ({
                                   ...current,
-                                  technicalSheetId: '',
-                                }));
-                              }}
-                              onSelect={(option) => {
-                                setCatalogSourceSearch(option?.label ?? '');
-                                setCatalogItemForm((current) => ({
-                                  ...current,
-                                  technicalSheetId: option?.id ?? '',
+                                  technicalSheetId,
                                 }));
                               }}
                               emptyText="Aucune fiche technique active trouvée"
@@ -1580,44 +1322,6 @@ export function MenusApp({
                               ))}
                             </select>
                           </label>
-                          <div
-                            style={{
-                              display: 'grid',
-                              gridTemplateColumns: '1fr 1fr',
-                              gap: '0.65rem',
-                            }}
-                          >
-                            <label>
-                              Qté par portion
-                              <input
-                                type="number"
-                                min="0.001"
-                                step="any"
-                                value={catalogItemForm.servingQuantity}
-                                onChange={(event) =>
-                                  setCatalogItemForm({
-                                    ...catalogItemForm,
-                                    servingQuantity: Number(event.target.value),
-                                  })
-                                }
-                              />
-                            </label>
-                            <label>
-                              Objectif prêt
-                              <input
-                                type="number"
-                                min="0"
-                                step="any"
-                                value={catalogItemForm.targetReadyQuantity}
-                                onChange={(event) =>
-                                  setCatalogItemForm({
-                                    ...catalogItemForm,
-                                    targetReadyQuantity: Number(event.target.value),
-                                  })
-                                }
-                              />
-                            </label>
-                          </div>
                           <button
                             className="btn btn-primary"
                             disabled={
@@ -2459,197 +2163,69 @@ export function MenusApp({
           )}
 
           {tab === 'exports' && (
-            <div className="double-panel">
-              <div className="card-modern">
-                <span className="card-title">
-                  <Download size={18} /> Préparer un export
-                </span>
-                <p className="muted" style={{ marginTop: '0.25rem', marginBottom: '1.25rem' }}>
-                  Choisissez le document utile. Chaque export est un PDF figé et historisé à partir
-                  de la carte actuelle.
-                </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              <div className="caterer-card">
+                <div className="caterer-card-header">
+                  <span className="caterer-card-title">
+                    <FileText size={20} color="#10b981" /> Documents du menu
+                  </span>
+                </div>
 
-                <form
-                  className="menus-form-grid"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void prepareExport();
-                  }}
-                >
-                  <label className="menus-form-span">
-                    Menu ciblé
-                    <select
-                      value={selectedMenuId ?? ''}
-                      onChange={(e) => setSelectedMenuId(e.target.value)}
-                      required
-                    >
-                      <option value="">Choisir un menu...</option>
-                      {menus.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <div className="menus-form-span">
-                    <strong style={{ display: 'block', marginBottom: '.65rem' }}>
-                      Document à générer
-                    </strong>
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                        gap: '.75rem',
-                      }}
-                    >
-                      {[
-                        {
-                          kind: 'KITCHEN' as const,
-                          title: 'Dossier cuisine',
-                          description: 'Quantités, allergènes et contrôles pour la brigade.',
-                          icon: <ChefHat size={22} />,
-                        },
-                        {
-                          kind: 'DINING_ROOM' as const,
-                          title: 'Fiche salle',
-                          description: 'Briefing, allergènes et informations de présentation.',
-                          icon: <ClipboardList size={22} />,
-                        },
-                        {
-                          kind: 'PUBLIC_DISPLAY' as const,
-                          title: 'Menu client',
-                          description: 'Présentation élégante prête à imprimer ou envoyer.',
-                          icon: <FileText size={22} />,
-                        },
-                      ].map((documentOption) => {
-                        const selected = exportKind === documentOption.kind;
-                        return (
-                          <button
-                            key={documentOption.kind}
-                            type="button"
-                            aria-pressed={selected}
-                            onClick={() => setExportKind(documentOption.kind)}
-                            style={{
-                              minHeight: 150,
-                              padding: '1rem',
-                              borderRadius: 16,
-                              border: selected ? '2px solid #10b981' : '1px solid #dbe4ee',
-                              background: selected ? '#f0fdf4' : '#ffffff',
-                              color: '#0f172a',
-                              textAlign: 'left',
-                              cursor: 'pointer',
-                              boxShadow: selected ? '0 10px 26px rgba(16, 185, 129, .12)' : 'none',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: '.65rem',
-                            }}
-                          >
-                            <span
-                              style={{
-                                width: 42,
-                                height: 42,
-                                borderRadius: 12,
-                                display: 'grid',
-                                placeItems: 'center',
-                                color: '#059669',
-                                background: '#ecfdf5',
-                              }}
-                            >
-                              {documentOption.icon}
-                            </span>
-                            <strong style={{ fontSize: '1rem' }}>{documentOption.title}</strong>
-                            <span className="muted" style={{ fontSize: '.8rem', lineHeight: 1.45 }}>
-                              {documentOption.description}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <button
-                    className="btn btn-primary menus-form-span"
-                    type="submit"
-                    disabled={!selectedMenu || !canManage || saving}
-                    style={{ marginTop: '0.5rem' }}
-                  >
-                    <Download size={16} /> Générer et télécharger le PDF
-                  </button>
-                </form>
-
-                <p
-                  className="muted"
+                <label
                   style={{
-                    fontSize: '0.8rem',
-                    marginTop: '1.25rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.35rem',
+                    display: 'grid',
+                    gap: '.4rem',
+                    maxWidth: 450,
+                    marginBottom: '1.25rem',
                   }}
                 >
-                  <AlertCircle size={14} /> Le Dossier cuisine et le Menu client reprennent la même
-                  charte que la section Traiteur & Événementiel.
-                </p>
-
-                {exportKind === 'KITCHEN' && (
-                  <div
+                  <span style={{ fontSize: '.85rem', fontWeight: 600, color: '#475569' }}>
+                    Sélectionner un menu :
+                  </span>
+                  <select
+                    value={selectedMenuId ?? ''}
+                    onChange={(event) => setSelectedMenuId(event.target.value)}
                     style={{
-                      marginTop: '1rem',
-                      padding: '1rem',
-                      borderRadius: 14,
-                      background: '#f0fdf4',
-                      border: '1px solid #bbf7d0',
+                      padding: '.6rem .8rem',
+                      borderRadius: 10,
+                      border: '1px solid var(--light-border)',
                     }}
                   >
-                    <strong style={{ display: 'block', marginBottom: '.3rem' }}>
-                      Contenu du dossier cuisine
-                    </strong>
-                    <span className="muted" style={{ fontSize: '.84rem' }}>
-                      Un document opérationnel synthétique : site, service, volume, composition à
-                      produire, quantités calculées, allergènes et cases de contrôle.
-                    </span>
-                  </div>
-                )}
+                    <option value="">Choisir un menu...</option>
+                    {menus.map((menu) => (
+                      <option key={menu.id} value={menu.id}>
+                        {menu.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-                {exportKind === 'DINING_ROOM' && (
-                  <div
-                    style={{
-                      marginTop: '1rem',
-                      padding: '1rem',
-                      borderRadius: 14,
-                      background: '#f8fafc',
-                      border: '1px solid #dbe4ee',
-                    }}
-                  >
-                    <strong style={{ display: 'block', marginBottom: '.3rem' }}>
-                      Contenu de la fiche salle
-                    </strong>
-                    <span className="muted" style={{ fontSize: '.84rem' }}>
-                      Une fiche de briefing claire par article avec description, allergènes et
-                      fournisseurs renseignés dans les fiches techniques.
-                    </span>
-                  </div>
-                )}
-
-                {exportKind === 'PUBLIC_DISPLAY' && (
-                  <div
-                    style={{
-                      marginTop: '1rem',
-                      padding: '1rem',
-                      borderRadius: 14,
-                      background: '#fafaf9',
-                      border: '1px solid #e7e5e4',
-                    }}
-                  >
-                    <strong style={{ display: 'block', marginBottom: '.3rem' }}>
-                      Contenu du menu client
-                    </strong>
-                    <span className="muted" style={{ fontSize: '.84rem' }}>
-                      Le nom du menu, la date, le lieu et les plats classés par rubrique dans une
-                      présentation sans annotations internes, prête pour le client.
-                    </span>
-                  </div>
-                )}
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+                    gap: '1.25rem',
+                  }}
+                >
+                  <MenuDocumentCard
+                    title="Dossier cuisine"
+                    text="Quantités calculées, composition, allergènes et contrôles pour la brigade de cuisine."
+                    disabled={!selectedMenu || !canManage || saving}
+                    onClick={() => void prepareExport('KITCHEN')}
+                  />
+                  <MenuDocumentCard
+                    title="Fiche salle"
+                    text="Briefing par article, allergènes et informations utiles à la présentation en salle."
+                    disabled={!selectedMenu || !canManage || saving}
+                    onClick={() => void prepareExport('DINING_ROOM')}
+                  />
+                  <MenuDocumentCard
+                    title="Menu client"
+                    text="Présentation élégante sans annotations internes, prête à imprimer ou à envoyer en PDF."
+                    disabled={!selectedMenu || !canManage || saving}
+                    onClick={() => void prepareExport('PUBLIC_DISPLAY')}
+                  />
+                </div>
               </div>
 
               <div className="card-modern">
@@ -2725,103 +2301,6 @@ export function MenusApp({
             </div>
           )}
 
-          {tab === 'history' && (
-            <div
-              className="card-modern"
-              style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}
-            >
-              <span className="card-title">
-                <History size={18} /> Historique d’audit Menus
-              </span>
-
-              {history.length ? (
-                <div
-                  className="menus-timeline"
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '1.5rem',
-                    position: 'relative',
-                    paddingLeft: '1rem',
-                  }}
-                >
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      bottom: 0,
-                      left: '20px',
-                      width: '2px',
-                      background: '#e2e8f0',
-                      zIndex: 1,
-                    }}
-                  />
-
-                  {history.map((entry) => (
-                    <div
-                      key={entry.id}
-                      style={{
-                        display: 'flex',
-                        gap: '1.5rem',
-                        position: 'relative',
-                        zIndex: 2,
-                        alignItems: 'flex-start',
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: '10px',
-                          height: '10px',
-                          borderRadius: '50%',
-                          background: 'var(--primary)',
-                          border: '3px solid white',
-                          boxShadow: '0 0 0 1px var(--primary)',
-                          marginTop: '0.35rem',
-                          flexShrink: 0,
-                        }}
-                      />
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                        <div
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.5rem',
-                            flexWrap: 'wrap',
-                          }}
-                        >
-                          <strong style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>
-                            {entry.action}
-                          </strong>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                            le {dateFr(entry.createdAt)}{' '}
-                            {entry.createdAt
-                              ? `à ${new Date(entry.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
-                              : ''}
-                          </span>
-                          <span
-                            className="badge badge-reception"
-                            style={{ fontSize: '0.72rem', padding: '0.1rem 0.35rem' }}
-                          >
-                            {entry.user?.email ?? 'Système'}
-                          </span>
-                        </div>
-                        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                          {entry.context ?? entry.summary ?? '—'}
-                          {entry.menu?.name && ` (Menu: ${entry.menu.name})`}
-                          {entry.cycle?.name && ` (Cycle: ${entry.cycle.name})`}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <EmptyState
-                  title="Historique vide"
-                  desc="Aucun log d’activité pour le module Menus."
-                />
-              )}
-            </div>
-          )}
         </motion.div>
       </AnimatePresence>
 
@@ -2847,156 +2326,184 @@ export function MenusApp({
   );
 }
 
-type CatalogSourceOption = { id: string; label: string; detail?: string };
-
-function CatalogSourceAutocomplete({
+function ProductModalSelect({
   label,
-  placeholder,
-  options,
+  products,
   value,
-  search,
-  onSearch,
-  onSelect,
-  emptyText,
+  onChange,
   helper,
+  emptyText,
 }: {
   label: string;
-  placeholder: string;
-  options: CatalogSourceOption[];
+  products: Product[];
   value: string;
-  search: string;
-  onSearch: (value: string) => void;
-  onSelect: (option?: CatalogSourceOption) => void;
-  emptyText: string;
-  helper: string;
+  onChange: (productId: string) => void;
+  helper?: string;
+  emptyText?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const visibleOptions = options.slice(0, 12);
+  const selectedProduct = products.find((product) => product.id === value);
+
   return (
-    <div className="custom-autocomplete-wrapper" style={{ position: 'relative' }}>
-      <label style={{ display: 'block' }}>{label}</label>
-      <div style={{ position: 'relative', marginTop: '0.35rem' }}>
-        <input
-          value={search}
-          onChange={(event) => {
-            onSearch(event.target.value);
-            setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-          onBlur={() => setOpen(false)}
-          placeholder={placeholder}
-          role="combobox"
-          aria-autocomplete="list"
-          aria-expanded={open}
-          style={{ width: '100%', paddingRight: value ? '2.25rem' : undefined }}
-        />
-        {value ? (
-          <button
-            type="button"
-            aria-label="Effacer la sélection"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => {
-              onSelect(undefined);
-              setOpen(true);
-            }}
-            style={{
-              position: 'absolute',
-              right: '0.55rem',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              border: 0,
-              background: 'transparent',
-              color: '#64748b',
-              cursor: 'pointer',
-              display: 'grid',
-              placeItems: 'center',
-              padding: '0.2rem',
-            }}
-          >
-            <X size={15} />
-          </button>
-        ) : null}
-      </div>
-      {open ? (
-        <div
-          className="custom-autocomplete-dropdown"
-          role="listbox"
-          style={{
-            position: 'absolute',
-            top: 'calc(100% - 1.55rem)',
-            left: 0,
-            right: 0,
-            zIndex: 1400,
-            maxHeight: 280,
-            overflowY: 'auto',
-            border: '1px solid #cbd5e1',
-            borderRadius: 12,
-            background: '#fff',
-            boxShadow: '0 14px 32px rgba(15, 23, 42, 0.16)',
-          }}
-        >
-          {visibleOptions.length ? (
-            visibleOptions.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                role="option"
-                aria-selected={option.id === value}
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  onSelect(option);
-                  setOpen(false);
-                }}
-                style={{
-                  width: '100%',
-                  border: 0,
-                  borderBottom: '1px solid #f1f5f9',
-                  background: option.id === value ? '#ecfdf5' : '#fff',
-                  padding: '0.7rem 0.8rem',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                }}
-              >
-                <strong style={{ display: 'block', color: '#0f172a', fontSize: '0.84rem' }}>
-                  {option.label}
-                </strong>
-                {option.detail ? (
-                  <span
-                    style={{
-                      display: 'block',
-                      color: '#64748b',
-                      fontSize: '0.73rem',
-                      marginTop: '0.15rem',
-                    }}
-                  >
-                    {option.detail}
-                  </span>
-                ) : null}
-              </button>
-            ))
-          ) : (
-            <div style={{ padding: '0.85rem', color: '#64748b', fontSize: '0.8rem' }}>
-              {emptyText}
-            </div>
-          )}
-          {options.length > visibleOptions.length ? (
-            <div
-              style={{
-                padding: '0.55rem 0.8rem',
-                color: '#64748b',
-                fontSize: '0.72rem',
-                background: '#f8fafc',
-              }}
-            >
-              {options.length - visibleOptions.length} autre(s) résultat(s) — précisez votre
-              recherche.
-            </div>
-          ) : null}
-        </div>
+    <div className="custom-autocomplete-wrapper">
+      <span style={{ display: 'block', fontSize: '.82rem', fontWeight: 700, color: '#334155' }}>
+        {label}
+      </span>
+      <button
+        type="button"
+        className={
+          selectedProduct
+            ? 'technical-sheet-picker-trigger selected'
+            : 'technical-sheet-picker-trigger'
+        }
+        disabled={!products.length}
+        onClick={() => setOpen(true)}
+        style={{ marginTop: '.35rem' }}
+      >
+        <span className="technical-sheet-picker-trigger-icon">
+          <Search size={18} />
+        </span>
+        <span className="technical-sheet-picker-trigger-copy">
+          <strong>{selectedProduct?.name ?? 'Rechercher un produit Stocks'}</strong>
+          <small>
+            {selectedProduct
+              ? [
+                  selectedProduct.category?.name,
+                  selectedProduct.gtin
+                    ? `EAN ${selectedProduct.gtin}`
+                    : selectedProduct.sku
+                      ? `SKU ${selectedProduct.sku}`
+                      : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')
+              : products.length
+                ? `${products.length} produit(s) disponible(s)`
+                : 'Aucun produit disponible'}
+          </small>
+        </span>
+        <span className="technical-sheet-picker-trigger-action">
+          {selectedProduct ? 'Changer' : 'Rechercher'}
+        </span>
+      </button>
+      {helper ? (
+        <small className="muted" style={{ display: 'block', marginTop: '.4rem' }}>
+          {helper}
+        </small>
       ) : null}
-      <small className="muted" style={{ display: 'block', marginTop: '0.4rem' }}>
-        {helper}
-      </small>
+      <ProductPickerModal
+        open={open}
+        products={products}
+        selectedProductId={value}
+        title="Catalogue des produits Stocks"
+        subtitle="Recherchez un produit vendu tel quel, puis choisissez-le pour l’ajouter à la carte."
+        emptyMessage={emptyText}
+        onClose={() => setOpen(false)}
+        onSelect={(product) => {
+          onChange(product.id);
+          setOpen(false);
+        }}
+      />
+    </div>
+  );
+}
+
+function TechnicalSheetModalSelect({
+  label,
+  recipes,
+  value,
+  onChange,
+  helper,
+  emptyText,
+}: {
+  label: string;
+  recipes: TechnicalSheetRecipe[];
+  value: string;
+  onChange: (technicalSheetId: string) => void;
+  helper?: string;
+  emptyText?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selectedRecipe = recipes.find((recipe) => recipe.id === value);
+  const items = useMemo<TechnicalSheetPickerItem[]>(
+    () =>
+      recipes.map((recipe) => {
+        const portions = Number(recipe.referencePortions ?? recipe.portions ?? 0);
+        const mass = Number(recipe.totalMassGrams ?? 0);
+        return {
+          id: recipe.id,
+          name: recipe.name,
+          category: recipe.category?.name ?? 'Sans catégorie',
+          group: recipe.category?.name ?? 'Sans catégorie',
+          referenceLabel:
+            recipe.yieldMode === 'MASS' && mass > 0
+              ? `${mass.toLocaleString('fr-FR')} g`
+              : portions > 0
+                ? `${portions.toLocaleString('fr-FR')} portions`
+                : null,
+          durationMinutes: Number(recipe.totalTimeMinutes ?? 0) || null,
+          contextLabel:
+            recipe.mode === 'PRODUCTION'
+              ? 'Fabrication / préparation'
+              : 'Assemblage / produit fini',
+        };
+      }),
+    [recipes],
+  );
+
+  return (
+    <div className="custom-autocomplete-wrapper">
+      <span style={{ display: 'block', fontSize: '.82rem', fontWeight: 700, color: '#334155' }}>
+        {label}
+      </span>
+      <button
+        type="button"
+        className={
+          selectedRecipe
+            ? 'technical-sheet-picker-trigger selected'
+            : 'technical-sheet-picker-trigger'
+        }
+        disabled={!recipes.length}
+        onClick={() => setOpen(true)}
+        style={{ marginTop: '.35rem' }}
+      >
+        <span className="technical-sheet-picker-trigger-icon">
+          <Search size={18} />
+        </span>
+        <span className="technical-sheet-picker-trigger-copy">
+          <strong>{selectedRecipe?.name ?? 'Rechercher une fiche technique'}</strong>
+          <small>
+            {selectedRecipe
+              ? `${selectedRecipe.category?.name ?? 'Sans catégorie'} · ${
+                  selectedRecipe.mode === 'PRODUCTION' ? 'Fabrication' : 'Assemblage'
+                }`
+              : recipes.length
+                ? `${recipes.length} fiche(s) active(s) disponible(s)`
+                : 'Aucune fiche technique disponible'}
+          </small>
+        </span>
+        <span className="technical-sheet-picker-trigger-action">
+          {selectedRecipe ? 'Changer' : 'Rechercher'}
+        </span>
+      </button>
+      {helper ? (
+        <small className="muted" style={{ display: 'block', marginTop: '.4rem' }}>
+          {helper}
+        </small>
+      ) : null}
+      <TechnicalSheetPickerModal
+        open={open}
+        items={items}
+        selectedSheetId={value}
+        title="Catalogue des fiches techniques"
+        subtitle="Recherchez par nom ou catégorie, puis choisissez la fiche à ajouter."
+        emptyMessage={emptyText}
+        onClose={() => setOpen(false)}
+        onSelectSheet={(item) => {
+          onChange(item.id);
+          setOpen(false);
+        }}
+      />
     </div>
   );
 }
@@ -3555,17 +3062,6 @@ function MenuProfileSetup({
       background: 'rgba(124, 58, 237, 0.08)',
       border: 'rgba(124, 58, 237, 0.25)',
     },
-    {
-      id: 'CENTRAL_KITCHEN',
-      title: 'Cuisine centrale',
-      description:
-        'Cycles de menus planifiés, sites de livraison, régimes spécifiques et convives.',
-      examples: 'Scolaire, santé, collectivités, EHPAD',
-      icon: <Factory size={24} />,
-      color: '#f59e0b',
-      background: 'rgba(245, 158, 11, 0.08)',
-      border: 'rgba(245, 158, 11, 0.25)',
-    },
   ];
 
   return (
@@ -4075,17 +3571,13 @@ function CompositionBuilder({
           ))}
         </select>
       </label>
-      <label>
-        Fiche technique existante
-        <select value={technicalSheetId} onChange={(e) => setTechnicalSheetId(e.target.value)}>
-          <option value="">Choisir…</option>
-          {recipes.map((recipe) => (
-            <option key={recipe.id} value={recipe.id}>
-              {recipe.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <TechnicalSheetModalSelect
+        label="Fiche technique existante"
+        recipes={recipes}
+        value={technicalSheetId}
+        onChange={setTechnicalSheetId}
+        emptyText="Aucune fiche technique active ne correspond à cette recherche."
+      />
       <label>
         Coef. portions
         <input
@@ -4172,6 +3664,62 @@ function GuestRow({ menu, forecast }: { menu: MenuPlan; forecast: MenuGuestForec
         <strong>{forecast.count}</strong>
       </td>
     </tr>
+  );
+}
+
+function MenuDocumentCard({
+  title,
+  text,
+  onClick,
+  disabled,
+}: {
+  title: string;
+  text: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="caterer-doc-card">
+      <div>
+        <div
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 14,
+            background: 'rgba(16, 185, 129, 0.08)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#10b981',
+            marginBottom: '.85rem',
+          }}
+        >
+          <FileText size={22} />
+        </div>
+        <strong
+          style={{
+            display: 'block',
+            color: 'var(--text-main)',
+            fontSize: '1.05rem',
+            marginBottom: '.4rem',
+          }}
+        >
+          {title}
+        </strong>
+        <p className="muted" style={{ fontSize: '.83rem', lineHeight: 1.55, margin: 0 }}>
+          {text}
+        </p>
+      </div>
+      <button
+        type="button"
+        className="btn btn-secondary"
+        disabled={disabled}
+        onClick={onClick}
+        style={{ marginTop: '1.25rem', width: '100%', justifyContent: 'center', borderRadius: 12 }}
+      >
+        <Download size={14} /> Télécharger le PDF
+      </button>
+    </div>
   );
 }
 
@@ -4270,24 +3818,6 @@ function averageCatalogPrice(catalogs: MenuPlan[]) {
 }
 function dateFr(value?: string | null) {
   return value ? new Date(value).toLocaleDateString('fr-FR') : '—';
-}
-function buildAlerts(menus: MenuPlan[]) {
-  const planned = menus.filter((menu) => menu.kind !== 'CATALOG');
-  const alerts = [];
-  if (menus.some((m) => (m.items?.length ?? 0) === 0))
-    alerts.push({ message: 'Certaines cartes ou menus sont encore vides.', severity: 'warning' });
-  if (planned.some((m) => !(m.expectedGuests ?? m.guestCount)))
-    alerts.push({ message: 'Menus sans estimation de convives.', severity: 'warning' });
-  if (
-    planned.some((m) => ['VALIDATED', 'PUBLISHED'].includes(m.status) && !m.productionGeneratedAt)
-  )
-    alerts.push({
-      message: 'Menus validés ou publiés non générés en Production.',
-      severity: 'warning',
-    });
-  if (alerts.length === 0)
-    alerts.push({ message: 'Aucune alerte bloquante détectée.', severity: 'success' });
-  return alerts;
 }
 function groupMenusForCalendar(menus: MenuPlan[], view: MenuCalendarView) {
   const datedMenus = menus.filter((menu) => menu.date);

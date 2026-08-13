@@ -51,10 +51,7 @@ export function OrdersView({
   const [composerOrder, setComposerOrder] = useState<PurchaseOrder | null | undefined>();
   const [working, setWorking] = useState<string>();
   const [emailPreview, setEmailPreview] = useState<PurchaseEmailPreview & { orderId: string }>();
-  const [reasonAction, setReasonAction] = useState<{
-    order: PurchaseOrder;
-    kind: 'cancel' | 'close';
-  }>();
+  const [cancelOrder, setCancelOrder] = useState<PurchaseOrder>();
   const openOrder = async (id: string, edit = false) => {
     setWorking(id);
     try {
@@ -264,20 +261,11 @@ export function OrdersView({
                 <button
                   className="btn btn-secondary"
                   disabled={working === selected.id}
-                  onClick={() => setReasonAction({ order: selected, kind: 'cancel' })}
+                  onClick={() => setCancelOrder(selected)}
                 >
                   <X size={16} /> Annuler la commande
                 </button>
               )}
-            {can('purchasing.write') && selected.status === 'PARTIALLY_RECEIVED' && (
-              <button
-                className="btn btn-secondary"
-                disabled={working === selected.id}
-                onClick={() => setReasonAction({ order: selected, kind: 'close' })}
-              >
-                <CheckCircle2 size={16} /> Clôturer le reliquat
-              </button>
-            )}
           </div>
         </Modal>
       )}
@@ -307,29 +295,18 @@ export function OrdersView({
           <div className="modal-footer"><button className="btn btn-secondary" onClick={() => setEmailPreview(undefined)}>Annuler</button><button className="btn btn-primary" disabled={!emailPreview.recipient || !emailPreview.subject || working === emailPreview.orderId} onClick={() => void act(emailPreview.orderId, () => api.sendPurchaseOrder(token, emailPreview.orderId, { idempotencyKey: crypto.randomUUID(), recipient: emailPreview.recipient || undefined, subject: emailPreview.subject, body: emailPreview.text }), 'Commande envoyée au fournisseur.')}><Send size={16} /> Confirmer l’envoi</button></div>
         </Modal>
       )}
-      {reasonAction && (
+      {cancelOrder && (
         <ReasonDialog
-          title={
-            reasonAction.kind === 'cancel'
-              ? `Annuler ${reasonAction.order.number}`
-              : `Clôturer le reliquat ${reasonAction.order.number}`
-          }
-          label={
-            reasonAction.kind === 'cancel'
-              ? 'Motif d’annulation'
-              : 'Justification de la clôture du reliquat'
-          }
-          onClose={() => setReasonAction(undefined)}
+          title={`Annuler ${cancelOrder.number}`}
+          label="Motif d’annulation"
+          onClose={() => setCancelOrder(undefined)}
           onConfirm={(reason) => {
-            const current = reasonAction;
-            setReasonAction(undefined);
+            const current = cancelOrder;
+            setCancelOrder(undefined);
             void act(
-              current.order.id,
-              () =>
-                current.kind === 'cancel'
-                  ? api.cancelPurchaseOrder(token, current.order.id, reason)
-                  : api.closePurchaseOrder(token, current.order.id, reason),
-              current.kind === 'cancel' ? 'Commande annulée.' : 'Reliquat clôturé.',
+              current.id,
+              () => api.cancelPurchaseOrder(token, current.id, reason),
+              'Commande annulée.',
             );
           }}
         />

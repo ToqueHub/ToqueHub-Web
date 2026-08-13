@@ -112,6 +112,117 @@ describe('StocksService articles pagination', () => {
   });
 });
 
+describe('StocksService inventory valuation sources', () => {
+  it('attaches the latest validated purchasing document data without leaking reception lines', async () => {
+    const prisma = {
+      inventory: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'inventory-1',
+            name: 'Inventaire août',
+            lines: [
+              {
+                id: 'line-1',
+                productId: 'product-1',
+                product: {
+                  id: 'product-1',
+                  name: 'Farine',
+                  category: { id: 'category-1', name: 'Épicerie', vatRate: new Prisma.Decimal('13.5') },
+                  stockReceptionLines: [
+                    {
+                      unitPrice: new Prisma.Decimal('2.35'),
+                      vatRate: new Prisma.Decimal('10'),
+                      reception: {
+                        documentId: 'document-1',
+                        invoiceNumber: 'FAC-2026-42',
+                        deliveryNoteNumber: null,
+                        purchaseOrderNumber: null,
+                        receiptNumber: null,
+                        documentDate: new Date('2026-08-10'),
+                        deliveryDate: null,
+                        supplierName: null,
+                        supplier: { name: 'Maison Fournil' },
+                        document: { originalName: 'facture-aout.pdf' },
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        ]),
+      },
+    };
+    const service = new StocksService(prisma as any);
+
+    const [inventory] = await service.listInventories('org-1');
+    const line = inventory.lines[0];
+
+    expect(line.product).not.toHaveProperty('stockReceptionLines');
+    expect(line.financialSource).toEqual(
+      expect.objectContaining({
+        documentId: 'document-1',
+        documentLabel: 'Facture FAC-2026-42',
+        supplierName: 'Maison Fournil',
+      }),
+    );
+    expect(String(line.financialSource?.unitPriceExcludingTax)).toBe('2.35');
+    expect(String(line.financialSource?.vatRate)).toBe('13.5');
+    expect(line.financialSource?.vatRateSource).toBe('CATEGORY');
+    expect(prisma.inventory.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: expect.objectContaining({
+          lines: expect.objectContaining({
+            include: expect.objectContaining({
+              product: expect.objectContaining({
+                include: expect.objectContaining({
+                  stockReceptionLines: expect.objectContaining({ take: 1 }),
+                }),
+              }),
+            }),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('uses the category VAT even when no validated purchasing document exists', async () => {
+    const prisma = {
+      inventory: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'inventory-1',
+            name: 'Inventaire août',
+            lines: [
+              {
+                id: 'line-1',
+                productId: 'product-1',
+                product: {
+                  id: 'product-1',
+                  name: 'Jus de pomme',
+                  category: {
+                    id: 'category-1',
+                    name: 'Boissons sans alcool',
+                    vatRate: new Prisma.Decimal('13.5'),
+                  },
+                  stockReceptionLines: [],
+                },
+              },
+            ],
+          },
+        ]),
+      },
+    };
+    const service = new StocksService(prisma as any);
+
+    const [inventory] = await service.listInventories('org-1');
+
+    expect(String(inventory.lines[0].financialSource?.vatRate)).toBe('13.5');
+    expect(inventory.lines[0].financialSource?.vatRateSource).toBe('CATEGORY');
+    expect(inventory.lines[0].financialSource?.documentId).toBeNull();
+  });
+});
+
 describe('StocksService category scopes', () => {
   it('keeps equipment categories out of the product catalogue by default', async () => {
     const prisma = { category: { findMany: jest.fn().mockResolvedValue([]) } };
@@ -136,6 +247,60 @@ describe('StocksService category scopes', () => {
       expect.objectContaining({
         where: expect.objectContaining({ kind: ProductKind.EQUIPMENT }),
       }),
+    );
+  });
+});
+
+describe('StocksService native stock units', () => {
+  const nativeUnits = [
+    { id: 'kg', name: 'Kilogramme', symbol: 'kg', type: 'MASS', isArchived: false },
+    { id: 'g', name: 'Gramme', symbol: 'g', type: 'MASS', isArchived: false },
+    { id: 'l', name: 'Litre', symbol: 'L', type: 'VOLUME', isArchived: false },
+    { id: 'cl', name: 'Centilitre', symbol: 'cL', type: 'VOLUME', isArchived: false },
+    { id: 'piece', name: 'Pièce', symbol: 'pièce', type: 'COUNT', isArchived: false },
+    { id: 'caisse', name: 'Caisse', symbol: 'caisse', type: 'PACKAGE', isArchived: false },
+  ];
+
+  it('returns only the six native units in their fixed order', async () => {
+    const prisma = {
+      unit: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'ml', name: 'Millilitre', symbol: 'mL', type: 'VOLUME', isArchived: false },
+          ...nativeUnits.slice().reverse(),
+        ]),
+        createMany: jest.fn(),
+        update: jest.fn(),
+      },
+    };
+    const service = new StocksService(prisma as any);
+
+    const units = await service.listUnits('org-1');
+
+    expect(units.map((unit) => unit.symbol)).toEqual(['kg', 'g', 'L', 'cL', 'pièce', 'caisse']);
+    expect(prisma.unit.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          organizationId: 'org-1',
+          symbol: { in: ['kg', 'g', 'L', 'cL', 'pièce', 'caisse'] },
+        }),
+      }),
+    );
+    expect(prisma.unit.createMany).not.toHaveBeenCalled();
+    expect(prisma.unit.update).not.toHaveBeenCalled();
+  });
+
+  it('blocks creation, modification and deletion of units', async () => {
+    const service = new StocksService({} as any);
+    const actor = { id: 'user-1', role: 'Administrateur' };
+
+    await expect(
+      service.createUnit('org-1', actor, { name: 'Boîte', symbol: 'boîte' }),
+    ).rejects.toThrow('ne peuvent pas être ajoutées');
+    await expect(
+      service.updateUnit('org-1', actor, 'kg', { name: 'Kilo', symbol: 'kg' }),
+    ).rejects.toThrow('ne peuvent pas être modifiées');
+    expect(() => service.archiveUnit('org-1', actor, 'kg')).toThrow(
+      'ne peuvent pas être supprimées',
     );
   });
 });

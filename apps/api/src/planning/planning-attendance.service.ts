@@ -31,7 +31,7 @@ export class PlanningAttendanceService {
         },
         include: { employee: { include: { department: true, position: true } }, department: true, position: true, site: true },
         orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
-        take: Math.min(q.pageSize ?? 500, 1000),
+        take: Math.min(q.pageSize ?? 500, 5000),
       }),
       this.prisma.planningAttendanceEntry.findMany({
         where: {
@@ -42,7 +42,7 @@ export class PlanningAttendanceService {
         },
         include: { employee: { include: { department: true, position: true } }, assignment: { include: { department: true, position: true, site: true } } },
         orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
-        take: Math.min(q.pageSize ?? 500, 1000),
+        take: Math.min(q.pageSize ?? 500, 5000),
       }),
     ]);
     const byAssignment = new Map(entries.filter(entry => entry.assignmentId).map(entry => [entry.assignmentId, entry]));

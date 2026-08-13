@@ -2,16 +2,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Archive,
-  Calculator,
   ChefHat,
   ClipboardList,
   Copy,
-  Download,
   Edit3,
   FileText,
-  History,
+  Info,
   Plus,
+  Printer,
   RefreshCw,
   Search,
   Sparkles,
@@ -33,22 +31,23 @@ import {
 } from 'lucide-react';
 import { api } from '../api/client';
 import { TechnicalSheetAssistantPanel } from './TechnicalSheetAssistantPanel';
+import {
+  TechnicalSheetPickerModal,
+  type TechnicalSheetPickerItem,
+} from './TechnicalSheetPickerModal';
 import type {
   Product,
   TechnicalSheetCategory,
   TechnicalSheetDashboard,
-  TechnicalSheetHistoryEntry,
   TechnicalSheetOnboarding,
   TechnicalSheetRecipe,
   TechnicalSheetRecipeImportStatus,
   TechnicalSheetRecipePayload,
   TechnicalSheetSalesTaxPolicy,
-  TechnicalSheetSimulation,
-  TechnicalSheetSimulationPayload,
   Unit,
 } from '../types';
 
-type TechnicalSheetsTab = 'dashboard' | 'recipes' | 'categories' | 'costs' | 'production';
+type TechnicalSheetsTab = 'dashboard' | 'recipes' | 'categories' | 'costs';
 
 type TechnicalSheetsAppProps = {
   token: string;
@@ -67,6 +66,7 @@ const statuses = [
 ];
 
 const MAX_RECIPE_IMPORT_FILES = 10;
+const TECHNICAL_SHEETS_PENDING_RECIPE_ACTION_KEY = 'toquehub.technicalSheets.pendingRecipeAction';
 
 const emptyRecipe: TechnicalSheetRecipePayload = {
   name: '',
@@ -834,7 +834,10 @@ export function TechnicalSheetsApp({
   const [onboarding, setOnboarding] = useState<TechnicalSheetOnboarding>();
   const [onboardingVisible, setOnboardingVisible] = useState(onboardingOpen);
   const [pendingFirstRecipeAction, setPendingFirstRecipeAction] = useState<'ocr' | 'manual' | null>(
-    null,
+    () => {
+      const pending = sessionStorage.getItem(TECHNICAL_SHEETS_PENDING_RECIPE_ACTION_KEY);
+      return pending === 'ocr' || pending === 'manual' ? pending : null;
+    },
   );
   const [recipes, setRecipes] = useState<TechnicalSheetRecipe[]>([]);
   const [categories, setCategories] = useState<TechnicalSheetCategory[]>([]);
@@ -847,10 +850,8 @@ export function TechnicalSheetsApp({
   const [form, setForm] = useState<TechnicalSheetRecipePayload>(emptyRecipe);
   const [categoryName, setCategoryName] = useState('');
   const [categoryDescription, setCategoryDescription] = useState('');
-  const [selectedRecipeId, setSelectedRecipeId] = useState('');
-  const [requestedPortions, setRequestedPortions] = useState(50);
-  const [simulation, setSimulation] = useState<TechnicalSheetSimulation>();
-  const [history, setHistory] = useState<TechnicalSheetHistoryEntry[]>([]);
+  const [categoryReassignmentOpen, setCategoryReassignmentOpen] = useState(false);
+  const [categoryReassignmentTotal, setCategoryReassignmentTotal] = useState(0);
   const [duplicateOpen, setDuplicateOpen] = useState<TechnicalSheetRecipe | null>(null);
   const [duplicateName, setDuplicateName] = useState('');
   const [availableProducts, setAvailableProducts] = useState<Product[]>(products);
@@ -922,6 +923,7 @@ export function TechnicalSheetsApp({
   useEffect(() => {
     if (tab !== 'recipes' || !pendingFirstRecipeAction) return undefined;
     const frame = window.requestAnimationFrame(() => {
+      sessionStorage.removeItem(TECHNICAL_SHEETS_PENDING_RECIPE_ACTION_KEY);
       if (pendingFirstRecipeAction === 'ocr') setImportOpen(true);
       else openRecipe();
       setPendingFirstRecipeAction(null);
@@ -952,23 +954,23 @@ export function TechnicalSheetsApp({
     return () => window.clearInterval(timer);
   }, [token, importStatuses.some(recipeImportWorking)]);
 
-  const selectedRecipe = useMemo(
-    () => recipes.find((recipe) => recipe.id === selectedRecipeId) ?? recipes[0],
-    [recipes, selectedRecipeId],
-  );
   const activeProducts = useMemo(
     () => availableProducts.filter((product) => !isArchived(product)),
     [availableProducts],
   );
-  const averageCost =
-    dashboard?.averageMaterialCost ??
-    (recipes.length
-      ? recipes.reduce(
-          (sum, recipe) => sum + Number(recipe.costTotal ?? recipe.totalCost ?? 0),
-          0,
-        ) / recipes.length
-      : 0);
-
+  const activeCategories = useMemo(
+    () => categories.filter((category) => !isArchived(category)),
+    [categories],
+  );
+  const recipesWithoutActiveCategory = useMemo(() => {
+    const activeCategoryIds = new Set(activeCategories.map((category) => category.id));
+    return recipes
+      .filter(
+        (recipe) =>
+          !isArchived(recipe) && (!recipe.categoryId || !activeCategoryIds.has(recipe.categoryId)),
+      )
+      .sort((left, right) => left.name.localeCompare(right.name, 'fr'));
+  }, [activeCategories, recipes]);
   function openRecipe(recipe?: TechnicalSheetRecipe) {
     setReviewingImportDocumentId(null);
     setReviewingKokkiDraftId(null);
@@ -1174,8 +1176,13 @@ export function TechnicalSheetsApp({
   }
 
   function startFirstRecipe(mode: 'ocr' | 'manual') {
-    setPendingFirstRecipeAction(mode);
     closeOnboarding();
+    queueFirstRecipeAction(mode);
+  }
+
+  function queueFirstRecipeAction(mode: 'ocr' | 'manual') {
+    sessionStorage.setItem(TECHNICAL_SHEETS_PENDING_RECIPE_ACTION_KEY, mode);
+    setPendingFirstRecipeAction(mode);
     onNavigate('recipes');
   }
 
@@ -1190,14 +1197,81 @@ export function TechnicalSheetsApp({
     await load();
   }
 
-  async function archiveRecipe(recipe: TechnicalSheetRecipe) {
+  function openCategoryReassignment() {
+    if (!activeCategories.length) {
+      setError('Créez d’abord une catégorie afin de pouvoir réaffecter les fiches techniques.');
+      onNavigate('categories');
+      return;
+    }
+    setCategoryReassignmentTotal(recipesWithoutActiveCategory.length);
+    setCategoryReassignmentOpen(true);
+  }
+
+  async function reassignRecipeCategory(recipeId: string, categoryId: string) {
+    setError(undefined);
+    const remainingBeforeSave = recipesWithoutActiveCategory.length;
+    const updated = await api.reassignTechnicalSheetRecipeCategory(token, recipeId, categoryId);
+    setRecipes((current) => current.map((recipe) => (recipe.id === recipeId ? updated : recipe)));
+    if (remainingBeforeSave === 1) {
+      setCategoryReassignmentOpen(false);
+      setSuccess('Toutes les fiches techniques ont été réaffectées à une catégorie active.');
+    }
+  }
+
+  async function deleteCategory(id: string) {
+    const category = categories.find((item) => item.id === id);
+    if (!category) return;
+    const affectedRecipes = recipes.filter(
+      (recipe) => !isArchived(recipe) && recipe.categoryId === category.id,
+    );
+    const warning = affectedRecipes.length
+      ? ` ${affectedRecipes.length} fiche${affectedRecipes.length > 1 ? 's' : ''} technique${affectedRecipes.length > 1 ? 's' : ''} devront ensuite être réaffectée${affectedRecipes.length > 1 ? 's' : ''}.`
+      : '';
+    if (!window.confirm(`Supprimer la catégorie « ${category.name} » ?${warning}`)) return;
+    try {
+      await api.archiveTechnicalSheetCategory(token, id);
+      setSuccess(
+        affectedRecipes.length
+          ? `Catégorie supprimée. ${affectedRecipes.length} fiche${affectedRecipes.length > 1 ? 's sont' : ' est'} maintenant à réaffecter.`
+          : 'Catégorie supprimée.',
+      );
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Suppression de la catégorie impossible.');
+    }
+  }
+
+  async function deleteRecipe(recipe: TechnicalSheetRecipe) {
     if (
-      !window.confirm(`Archiver « ${recipe.name} » ? L’historique et les coûts seront conservés.`)
+      !window.confirm(
+        `Supprimer définitivement « ${recipe.name} » ? Cette action effacera la fiche, ses ingrédients, ses étapes et son historique. Elle est irréversible.`,
+      )
     )
       return;
-    await api.archiveTechnicalSheetRecipe(token, recipe.id);
-    setSuccess('Fiche archivée sans suppression des données.');
-    await load();
+    setError(undefined);
+    try {
+      await api.deleteTechnicalSheetRecipe(token, recipe.id);
+      setSuccess(`La fiche « ${recipe.name} » a été supprimée définitivement.`);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Suppression de la fiche impossible.');
+    }
+  }
+
+  async function exportRecipePdf(recipe: TechnicalSheetRecipe) {
+    setError(undefined);
+    try {
+      const file = await api.exportTechnicalSheetRecipePdf(token, recipe.id);
+      const url = URL.createObjectURL(file.blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = file.filename;
+      link.click();
+      URL.revokeObjectURL(url);
+      setSuccess(`La fiche « ${recipe.name} » a été exportée en PDF.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Export de la fiche impossible.');
+    }
   }
 
   async function duplicateRecipe() {
@@ -1216,12 +1290,6 @@ export function TechnicalSheetsApp({
     await load();
   }
 
-  async function recalculate(recipe: TechnicalSheetRecipe) {
-    await api.recalculateTechnicalSheetRecipe(token, recipe.id);
-    setSuccess('Coûts recalculés depuis les prix d’achat Stocks et instantané enregistré.');
-    await load();
-  }
-
   async function updateRecipePricing(
     recipeId: string,
     payload: {
@@ -1233,34 +1301,6 @@ export function TechnicalSheetsApp({
     const updated = await api.updateTechnicalSheetRecipePricing(token, recipeId, payload);
     setRecipes((current) => current.map((recipe) => (recipe.id === recipeId ? updated : recipe)));
     return updated;
-  }
-
-  async function showHistory(recipe: TechnicalSheetRecipe) {
-    setSelectedRecipeId(recipe.id);
-    setHistory(await api.technicalSheetRecipeHistory(token, recipe.id));
-    onNavigate('recipes');
-  }
-
-  async function simulate() {
-    const recipe = selectedRecipe;
-    if (!recipe) return;
-    const payload: TechnicalSheetSimulationPayload = { recipeId: recipe.id, requestedPortions };
-    const result = await api.simulateTechnicalSheetProduction(token, payload);
-    setSimulation(result);
-    setSuccess('Simulation proportionnelle préparée. Aucun mouvement de stock déclenché.');
-  }
-
-  async function downloadSimulation(format: 'csv' | 'pdf') {
-    if (!simulation?.id) return;
-    const file = await (format === 'csv'
-      ? api.exportTechnicalSheetProductionCsv(token, simulation.id)
-      : api.exportTechnicalSheetProductionPdf(token, simulation.id));
-    const url = URL.createObjectURL(file.blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = file.filename;
-    a.click();
-    URL.revokeObjectURL(url);
   }
 
   async function submitRecipeImports() {
@@ -1349,18 +1389,40 @@ export function TechnicalSheetsApp({
       style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}
     >
       <motion.section
-        className="welcome-hero theme-emerald"
+        className="welcome-hero theme-emerald technical-sheets-dashboard-hero"
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <span className="welcome-tag">
-          <ChefHat size={14} /> Fiches Techniques
-        </span>
-        <h1 className="welcome-title">Fiches Techniques</h1>
-        <p className="welcome-desc">
-          Centralisez et maîtrisez l’ensemble de vos préparations culinaires, avec des ingrédients,
-          unités et prix d'achat directement synchronisés avec vos Stocks.
-        </p>
+        <div className="technical-sheets-dashboard-hero-copy">
+          <span className="welcome-tag">
+            <ChefHat size={14} /> Fiches Techniques
+          </span>
+          <h1 className="welcome-title">Fiches Techniques</h1>
+          <p className="welcome-desc">
+            Centralisez et maîtrisez l’ensemble de vos préparations culinaires, avec des
+            ingrédients, unités et prix d'achat directement synchronisés avec vos Stocks.
+          </p>
+        </div>
+        {tab === 'dashboard' ? (
+          <div className="technical-sheets-dashboard-hero-actions">
+            <button
+              type="button"
+              className="btn btn-secondary btn-outline"
+              disabled={loading}
+              onClick={() => setOnboardingVisible(true)}
+            >
+              <Sparkles size={16} /> Guide de configuration
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={loading}
+              onClick={() => queueFirstRecipeAction('manual')}
+            >
+              <Plus size={16} /> Ajouter une fiche technique
+            </button>
+          </div>
+        ) : null}
       </motion.section>
 
       <TechnicalSheetAssistantPanel
@@ -1397,7 +1459,6 @@ export function TechnicalSheetsApp({
             ['recipes', 'Fiches techniques'],
             ['categories', 'Catégories recettes'],
             ['costs', 'Coûts'],
-            ['production', 'Production théorique'],
           ] as const
         ).map(([value, label]) => (
           <button
@@ -1422,11 +1483,9 @@ export function TechnicalSheetsApp({
             <DashboardTab
               dashboard={dashboard}
               recipes={recipes}
-              averageCost={averageCost}
-              onStartOnboarding={() => setOnboardingVisible(true)}
+              recipesWithoutActiveCategory={recipesWithoutActiveCategory}
               onOpenRecipes={() => onNavigate('recipes')}
-              onOpenCosts={() => onNavigate('costs')}
-              loading={loading}
+              onRectifyCategories={openCategoryReassignment}
             />
           )}
           {tab === 'recipes' && (
@@ -1449,27 +1508,27 @@ export function TechnicalSheetsApp({
               onImport={() => setImportOpen(true)}
               onOpenImportedRecipe={openImportedRecipe}
               onEdit={openRecipe}
-              onArchive={archiveRecipe}
+              onDelete={deleteRecipe}
+              onExport={exportRecipePdf}
               onDuplicate={(recipe) => {
                 setDuplicateOpen(recipe);
                 setDuplicateName(`${recipe.name} – variante`);
               }}
-              onRecalculate={recalculate}
-              onHistory={showHistory}
-              selectedHistory={history}
             />
           )}
           {tab === 'categories' && (
             <ReferencesTab
               title="Catégories recettes"
               icon={<ClipboardList size={18} />}
-              items={categories}
+              items={activeCategories}
+              recipesWithoutActiveCategory={recipesWithoutActiveCategory}
               name={categoryName}
               description={categoryDescription}
               onName={setCategoryName}
               onDescription={setCategoryDescription}
               onCreate={createCategory}
-              onArchive={(id) => api.archiveTechnicalSheetCategory(token, id).then(load)}
+              onArchive={deleteCategory}
+              onRectify={openCategoryReassignment}
             />
           )}
           {tab === 'costs' && (
@@ -1478,19 +1537,6 @@ export function TechnicalSheetsApp({
               categories={categories.filter((category) => !isArchived(category))}
               salesTaxPolicy={salesTaxPolicy}
               onSavePricing={updateRecipePricing}
-            />
-          )}
-          {tab === 'production' && (
-            <ProductionTab
-              recipes={recipes}
-              selectedRecipe={selectedRecipe}
-              selectedRecipeId={selectedRecipeId}
-              portions={requestedPortions}
-              simulation={simulation}
-              onRecipe={setSelectedRecipeId}
-              onPortions={setRequestedPortions}
-              onSimulate={simulate}
-              onDownload={downloadSimulation}
             />
           )}
         </motion.div>
@@ -1525,6 +1571,23 @@ export function TechnicalSheetsApp({
         onSave={saveRecipe}
         loading={loading}
       />
+
+      <Modal
+        isOpen={categoryReassignmentOpen && Boolean(recipesWithoutActiveCategory.length)}
+        onClose={() => setCategoryReassignmentOpen(false)}
+        title="Réaffecter les catégories"
+      >
+        {recipesWithoutActiveCategory[0] ? (
+          <CategoryReassignmentPanel
+            recipe={recipesWithoutActiveCategory[0]}
+            categories={activeCategories}
+            remaining={recipesWithoutActiveCategory.length}
+            total={Math.max(categoryReassignmentTotal, recipesWithoutActiveCategory.length)}
+            onSave={reassignRecipeCategory}
+            onCancel={() => setCategoryReassignmentOpen(false)}
+          />
+        ) : null}
+      </Modal>
 
       <Modal
         isOpen={importOpen}
@@ -1623,11 +1686,6 @@ const TECHNICAL_SHEET_CATEGORY_DESCRIPTIONS: Record<string, string> = {
   'Cocktails sans alcool': 'Mocktails, jus composés et boissons sans alcool.',
   'Cafés et boissons chaudes': 'Cafés, chocolats, thés et boissons chaudes.',
   'Sirops et infusions': 'Sirops maison, infusions et bases de boissons.',
-};
-
-const TECHNICAL_SHEET_CATEGORY_PRESETS = {
-  cuisine: ['Entrées', 'Plats', 'Accompagnements', 'Sauces', 'Bases', 'Crèmes', 'Mousses', 'Desserts', 'Pâtisserie', 'Boulangerie', 'Petit-déjeuner'],
-  bar: ['Boissons', 'Cocktails', 'Cocktails sans alcool', 'Cafés et boissons chaudes', 'Sirops et infusions'],
 };
 
 function TechnicalSheetsIllustration() {
@@ -2095,9 +2153,6 @@ function TechnicalSheetsOnboardingWizard({
   const suggestions = onboarding?.suggestedCategories?.length
     ? onboarding.suggestedCategories
     : Object.keys(TECHNICAL_SHEET_CATEGORY_DESCRIPTIONS);
-  const customSelections = [...selected].filter(
-    (name) => !suggestions.some((suggestion) => suggestion.toLowerCase() === name.toLowerCase()),
-  );
   const canAddCustom =
     Boolean(customName.trim()) &&
     ![...selected, ...suggestions].some(
@@ -2119,10 +2174,6 @@ function TechnicalSheetsOnboardingWizard({
       else next.add(name);
       return next;
     });
-  }
-
-  function selectCategoryPreset(names: string[]) {
-    setSelected((current) => new Set([...current, ...names.filter((name) => suggestions.includes(name))]));
   }
 
   function addCustom() {
@@ -2415,15 +2466,6 @@ function TechnicalSheetsOnboardingWizard({
                             Cochez uniquement les familles utiles. Elles resteront modifiables
                             depuis l’onglet Catégories recettes.
                           </p>
-                          <div className="row-actions" style={{ display: 'flex', flexWrap: 'wrap', gap: '.6rem', marginBottom: '1rem' }}>
-                            <button type="button" className="btn btn-secondary" onClick={() => selectCategoryPreset(TECHNICAL_SHEET_CATEGORY_PRESETS.cuisine)}>
-                              Sélection cuisine
-                            </button>
-                            <button type="button" className="btn btn-secondary" onClick={() => selectCategoryPreset(TECHNICAL_SHEET_CATEGORY_PRESETS.bar)}>
-                              Sélection bar
-                            </button>
-                            <span className="muted" style={{ alignSelf: 'center', fontSize: '.82rem' }}>Un point de départ : vous pouvez ensuite retirer chaque catégorie inutile.</span>
-                          </div>
                           {localError ? (
                             <div className="alert-modern error" style={{ marginBottom: '1rem' }}>
                               <AlertCircle size={16} /> {localError}
@@ -2569,48 +2611,6 @@ function TechnicalSheetsOnboardingWizard({
                               Ajouter
                             </button>
                           </div>
-
-                          {customSelections.length ? (
-                            <div
-                              className="hr-catalog-tags"
-                              style={{
-                                display: 'flex',
-                                flexWrap: 'wrap',
-                                gap: '0.4rem',
-                                marginBottom: '1.25rem',
-                              }}
-                            >
-                              {customSelections.map((name) => (
-                                <span
-                                  key={name}
-                                  className="badge badge-reception"
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '0.35rem',
-                                    padding: '0.35rem 0.65rem',
-                                  }}
-                                >
-                                  {name}
-                                  <button
-                                    type="button"
-                                    className="icon-btn"
-                                    onClick={() => toggle(name)}
-                                    style={{
-                                      border: 'none',
-                                      background: 'transparent',
-                                      display: 'inline-flex',
-                                      padding: 0,
-                                      cursor: 'pointer',
-                                      color: '#ef4444',
-                                    }}
-                                  >
-                                    <X size={12} />
-                                  </button>
-                                </span>
-                              ))}
-                            </div>
-                          ) : null}
                         </div>
 
                         <div
@@ -2697,7 +2697,11 @@ function TechnicalSheetsOnboardingWizard({
                               marginTop: '2rem',
                             }}
                           >
-                            <div className="onboarding-option-card blue" onClick={onImport}>
+                            <button
+                              type="button"
+                              className="onboarding-option-card blue"
+                              onClick={onImport}
+                            >
                               <div className="onboarding-option-icon">
                                 <Upload size={18} />
                               </div>
@@ -2721,9 +2725,13 @@ function TechnicalSheetsOnboardingWizard({
                                   Ouvrir l’import existant <ArrowRight size={14} />
                                 </small>
                               </div>
-                            </div>
+                            </button>
 
-                            <div className="onboarding-option-card emerald" onClick={onManual}>
+                            <button
+                              type="button"
+                              className="onboarding-option-card emerald"
+                              onClick={onManual}
+                            >
                               <div className="onboarding-option-icon">
                                 <FileText size={18} />
                               </div>
@@ -2747,7 +2755,7 @@ function TechnicalSheetsOnboardingWizard({
                                   Créer une fiche <ArrowRight size={14} />
                                 </small>
                               </div>
-                            </div>
+                            </button>
                           </div>
                         </div>
 
@@ -2829,28 +2837,198 @@ function BlockingState({ onInstallStocks }: { onInstallStocks: () => void }) {
   );
 }
 
+function CategoryReassignmentAlert({
+  recipes,
+  onRectify,
+  compact = false,
+}: {
+  recipes: TechnicalSheetRecipe[];
+  onRectify: () => void;
+  compact?: boolean;
+}) {
+  const visibleNames = recipes.slice(0, compact ? 3 : 5).map((recipe) => recipe.name);
+  const hiddenCount = recipes.length - visibleNames.length;
+  return (
+    <motion.div
+      className={`technical-sheets-category-alert${compact ? ' compact' : ''}`}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      role="alert"
+    >
+      <div className="technical-sheets-category-alert-icon">
+        <AlertCircle size={20} />
+      </div>
+      <div className="technical-sheets-category-alert-copy">
+        <strong>
+          {recipes.length} fiche{recipes.length > 1 ? 's techniques sont' : ' technique est'} à
+          réaffecter
+        </strong>
+        <p>
+          {compact ? 'Sans catégorie active : ' : 'Ces fiches n’ont plus de catégorie active : '}
+          <span>{visibleNames.join(', ')}</span>
+          {hiddenCount > 0 ? ` et ${hiddenCount} autre${hiddenCount > 1 ? 's' : ''}` : ''}.
+        </p>
+      </div>
+      <button type="button" className="btn btn-primary btn-sm" onClick={onRectify}>
+        Rectifier
+        <ArrowRight size={15} />
+      </button>
+    </motion.div>
+  );
+}
+
+function CategoryReassignmentPanel({
+  recipe,
+  categories,
+  remaining,
+  total,
+  onSave,
+  onCancel,
+}: {
+  recipe: TechnicalSheetRecipe;
+  categories: TechnicalSheetCategory[];
+  remaining: number;
+  total: number;
+  onSave: (recipeId: string, categoryId: string) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [categoryId, setCategoryId] = useState(categories[0]?.id ?? '');
+  const [saving, setSaving] = useState(false);
+  const [localError, setLocalError] = useState<string>();
+  const currentPosition = Math.max(1, total - remaining + 1);
+
+  useEffect(() => {
+    setCategoryId(categories[0]?.id ?? '');
+    setLocalError(undefined);
+  }, [recipe.id, categories]);
+
+  async function submit() {
+    if (!categoryId) {
+      setLocalError('Choisissez une catégorie active pour continuer.');
+      return;
+    }
+    setSaving(true);
+    setLocalError(undefined);
+    try {
+      await onSave(recipe.id, categoryId);
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'Réaffectation impossible.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="technical-sheets-reassignment-panel">
+      <div
+        className="technical-sheets-reassignment-progress"
+        aria-label={`Fiche ${currentPosition} sur ${total}`}
+      >
+        <div>
+          <span>Réaffectation en cours</span>
+          <strong>
+            Fiche {currentPosition} sur {total}
+          </strong>
+        </div>
+        <div className="technical-sheets-reassignment-progress-track">
+          <span style={{ width: `${Math.min(100, (currentPosition / total) * 100)}%` }} />
+        </div>
+      </div>
+
+      <div className="technical-sheets-reassignment-recipe">
+        <div className="technical-sheets-reassignment-recipe-visual">
+          {recipe.photoUrl || recipe.photoDataUrl ? (
+            <img src={recipe.photoUrl || recipe.photoDataUrl} alt="" />
+          ) : (
+            <ChefHat size={28} />
+          )}
+        </div>
+        <div>
+          <span>Fiche technique à corriger</span>
+          <h4>{recipe.name}</h4>
+          <p>
+            Ancienne catégorie : <strong>{recipe.category?.name ?? 'aucune catégorie'}</strong>
+          </p>
+        </div>
+      </div>
+
+      <label className="technical-sheets-reassignment-select">
+        <span>Nouvelle catégorie</span>
+        <select
+          value={categoryId}
+          onChange={(event) => setCategoryId(event.target.value)}
+          autoFocus
+        >
+          <option value="">Sélectionner une catégorie</option>
+          {categories.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.name}
+            </option>
+          ))}
+        </select>
+        <small>L’enregistrement ne modifie aucune autre information de la fiche.</small>
+      </label>
+
+      {localError ? (
+        <div className="alert-modern error technical-sheets-reassignment-error">
+          <AlertCircle size={17} /> {localError}
+        </div>
+      ) : null}
+
+      <div className="technical-sheets-reassignment-actions">
+        <button type="button" className="btn btn-secondary" onClick={onCancel} disabled={saving}>
+          Terminer plus tard
+        </button>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={submit}
+          disabled={saving || !categoryId}
+        >
+          {saving ? (
+            <>
+              <RefreshCw size={16} className="spin" /> Enregistrement…
+            </>
+          ) : remaining === 1 ? (
+            <>
+              <Check size={16} /> Enregistrer et terminer
+            </>
+          ) : (
+            <>
+              Enregistrer et suivant <ArrowRight size={16} />
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function DashboardTab({
   dashboard,
   recipes,
-  averageCost,
-  onStartOnboarding,
+  recipesWithoutActiveCategory,
   onOpenRecipes,
-  onOpenCosts,
-  loading,
+  onRectifyCategories,
 }: {
   dashboard?: TechnicalSheetDashboard;
   recipes: TechnicalSheetRecipe[];
-  averageCost: number;
-  onStartOnboarding: () => void;
+  recipesWithoutActiveCategory: TechnicalSheetRecipe[];
   onOpenRecipes: () => void;
-  onOpenCosts: () => void;
-  loading: boolean;
+  onRectifyCategories: () => void;
 }) {
   const latest = dashboard?.latestRecipes ?? recipes.slice(0, 5);
   const topProducts = dashboard?.topProducts ?? [];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+      {recipesWithoutActiveCategory.length ? (
+        <CategoryReassignmentAlert
+          recipes={recipesWithoutActiveCategory}
+          onRectify={onRectifyCategories}
+        />
+      ) : null}
+
       <div className="stats-grid">
         <MetricCard
           label="Fiches techniques"
@@ -2858,13 +3036,6 @@ function DashboardTab({
           icon={<FileText size={20} />}
           tone="emerald"
           onClick={onOpenRecipes}
-        />
-        <MetricCard
-          label="Coût matière moyen"
-          value={money(averageCost)}
-          icon={<Calculator size={20} />}
-          tone="orange"
-          onClick={onOpenCosts}
         />
       </div>
 
@@ -2955,20 +3126,6 @@ function DashboardTab({
               </div>
             )}
           </div>
-          <button
-            className="btn btn-primary"
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.5rem',
-            }}
-            disabled={loading}
-            onClick={onStartOnboarding}
-          >
-            <Sparkles size={16} /> Configuration guidée Fiches Techniques
-          </button>
         </div>
       </div>
     </div>
@@ -3253,11 +3410,9 @@ function RecipesTab(props: {
   onImport: () => void;
   onOpenImportedRecipe: (status: TechnicalSheetRecipeImportStatus) => void;
   onEdit: (r: TechnicalSheetRecipe) => void;
-  onArchive: (r: TechnicalSheetRecipe) => void;
+  onDelete: (r: TechnicalSheetRecipe) => void;
+  onExport: (r: TechnicalSheetRecipe) => void;
   onDuplicate: (r: TechnicalSheetRecipe) => void;
-  onRecalculate: (r: TechnicalSheetRecipe) => void;
-  onHistory: (r: TechnicalSheetRecipe) => void;
-  selectedHistory: TechnicalSheetHistoryEntry[];
 }) {
   const hasActiveFilters = Boolean(props.search || props.categoryFilter || props.statusFilter);
   const filtered = props.recipes.filter((recipe) => {
@@ -3477,24 +3632,19 @@ function RecipesTab(props: {
                   </button>
                   <button
                     className="icon-btn"
-                    onClick={() => props.onRecalculate(recipe)}
-                    title="Recalculer coût"
+                    onClick={() => props.onExport(recipe)}
+                    title="Exporter et imprimer la fiche"
+                    aria-label={`Exporter et imprimer ${recipe.name}`}
                   >
-                    <RefreshCw size={15} />
-                  </button>
-                  <button
-                    className="icon-btn"
-                    onClick={() => props.onHistory(recipe)}
-                    title="Historique"
-                  >
-                    <History size={15} />
+                    <Printer size={15} />
                   </button>
                   <button
                     className="icon-btn danger"
-                    onClick={() => props.onArchive(recipe)}
-                    title="Archiver"
+                    onClick={() => props.onDelete(recipe)}
+                    title="Supprimer définitivement"
+                    aria-label={`Supprimer définitivement ${recipe.name}`}
                   >
-                    <Archive size={15} />
+                    <Trash2 size={15} />
                   </button>
                 </div>
               </div>
@@ -3520,34 +3670,6 @@ function RecipesTab(props: {
         </div>
       )}
 
-      {props.selectedHistory.length ? (
-        <div className="card-modern" style={{ marginTop: '1.5rem' }}>
-          <span className="card-title" style={{ display: 'block', marginBottom: '1rem' }}>
-            Historique
-          </span>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {props.selectedHistory.map((entry) => (
-              <div
-                key={entry.id}
-                style={{
-                  padding: '1rem',
-                  border: '1px solid var(--light-border)',
-                  borderRadius: '10px',
-                  background: '#f8fafc',
-                }}
-              >
-                <strong style={{ display: 'block', fontSize: '0.9rem', color: 'var(--text-main)' }}>
-                  {entry.action}
-                </strong>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  {date(entry.createdAt)} ·{' '}
-                  {entry.user?.firstName ?? entry.user?.email ?? 'Utilisateur'} · {entry.summary}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -3556,22 +3678,26 @@ function ReferencesTab({
   title,
   icon,
   items,
+  recipesWithoutActiveCategory,
   name,
   description,
   onName,
   onDescription,
   onCreate,
   onArchive,
+  onRectify,
 }: {
   title: string;
   icon: React.ReactNode;
   items: TechnicalSheetCategory[];
+  recipesWithoutActiveCategory: TechnicalSheetRecipe[];
   name: string;
   description: string;
   onName: (v: string) => void;
   onDescription: (v: string) => void;
   onCreate: () => void;
   onArchive: (id: string) => void;
+  onRectify: () => void;
 }) {
   return (
     <div className="double-panel">
@@ -3627,6 +3753,13 @@ function ReferencesTab({
         style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
       >
         <span className="card-title">Catégories actives</span>
+        {recipesWithoutActiveCategory.length ? (
+          <CategoryReassignmentAlert
+            recipes={recipesWithoutActiveCategory}
+            onRectify={onRectify}
+            compact
+          />
+        ) : null}
         <div
           style={{
             display: 'flex',
@@ -3637,41 +3770,46 @@ function ReferencesTab({
             paddingRight: '4px',
           }}
         >
-          {items.map((item) => (
-            <div
-              key={item.id}
-              className="reference-item-card"
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '1rem',
-                border: '1px solid var(--light-border)',
-                borderRadius: '12px',
-                background: 'white',
-                opacity: isArchived(item) ? 0.55 : 1,
-              }}
-            >
-              <div>
-                <strong
-                  style={{ display: 'block', fontSize: '0.92rem', color: 'var(--text-main)' }}
-                >
-                  {item.name}
-                </strong>
-                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  {item.description ?? '—'}
-                </span>
-              </div>
-              <button
-                className="icon-btn danger"
-                style={{ padding: '0.4rem' }}
-                onClick={() => onArchive(item.id)}
-                title="Archiver"
+          {items.length ? (
+            items.map((item) => (
+              <div
+                key={item.id}
+                className="reference-item-card"
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '1rem',
+                  border: '1px solid var(--light-border)',
+                  borderRadius: '12px',
+                  background: 'white',
+                }}
               >
-                <Archive size={16} />
-              </button>
+                <div>
+                  <strong
+                    style={{ display: 'block', fontSize: '0.92rem', color: 'var(--text-main)' }}
+                  >
+                    {item.name}
+                  </strong>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                    {item.description ?? '—'}
+                  </span>
+                </div>
+                <button
+                  className="icon-btn danger"
+                  style={{ padding: '0.4rem' }}
+                  onClick={() => onArchive(item.id)}
+                  title="Supprimer"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))
+          ) : (
+            <div className="technical-sheets-empty-categories">
+              Aucune catégorie active. Ajoutez-en une pour classer vos fiches techniques.
             </div>
-          ))}
+          )}
         </div>
       </div>
     </div>
@@ -4066,225 +4204,6 @@ function CostPricingRow({
   );
 }
 
-function ProductionTab({
-  recipes,
-  selectedRecipe,
-  selectedRecipeId,
-  portions,
-  simulation,
-  onRecipe,
-  onPortions,
-  onSimulate,
-  onDownload,
-}: {
-  recipes: TechnicalSheetRecipe[];
-  selectedRecipe?: TechnicalSheetRecipe;
-  selectedRecipeId: string;
-  portions: number;
-  simulation?: TechnicalSheetSimulation;
-  onRecipe: (id: string) => void;
-  onPortions: (n: number) => void;
-  onSimulate: () => void;
-  onDownload: (format: 'csv' | 'pdf') => void;
-}) {
-  return (
-    <div className="double-panel">
-      <div className="card-modern">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          <span className="card-title">Simulation proportionnelle</span>
-
-          <label
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.35rem',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-            }}
-          >
-            Sélectionner une fiche technique
-            <select
-              value={selectedRecipeId || selectedRecipe?.id || ''}
-              onChange={(e) => onRecipe(e.target.value)}
-            >
-              <option value="">Choisir une fiche...</option>
-              {recipes
-                .filter((r) => r.status !== 'ARCHIVED')
-                .map((recipe) => (
-                  <option key={recipe.id} value={recipe.id}>
-                    {recipe.name}
-                  </option>
-                ))}
-            </select>
-          </label>
-
-          <label
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.35rem',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-            }}
-          >
-            Portions demandées
-            <input
-              type="number"
-              min={1}
-              value={portions}
-              onChange={(e) => onPortions(Number(e.target.value))}
-            />
-          </label>
-
-          <button
-            className="btn btn-primary"
-            onClick={onSimulate}
-            disabled={!selectedRecipeId && !selectedRecipe?.id}
-          >
-            Simuler la production
-          </button>
-
-          <div className="alert-modern info" style={{ fontSize: '0.8rem', borderRadius: '8px' }}>
-            La simulation ne déclenche aucun mouvement de stock physique en V1.
-          </div>
-        </div>
-      </div>
-
-      <div
-        className="card-modern"
-        style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span className="card-title">Résultats de simulation</span>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button
-              className="btn btn-secondary btn-sm"
-              disabled={!simulation?.id}
-              onClick={() => onDownload('csv')}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-            >
-              <Download size={12} /> CSV
-            </button>
-            <button
-              className="btn btn-secondary btn-sm"
-              disabled={!simulation?.id}
-              onClick={() => onDownload('pdf')}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-            >
-              <Download size={12} /> PDF
-            </button>
-          </div>
-        </div>
-
-        {simulation ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            <div
-              style={{
-                padding: '1rem',
-                background: 'rgba(16, 185, 129, 0.04)',
-                borderRadius: '12px',
-                border: '1px solid rgba(16, 185, 129, 0.1)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <div>
-                <strong
-                  style={{ display: 'block', color: 'var(--text-main)', fontSize: '0.95rem' }}
-                >
-                  {simulation.recipe?.name ?? selectedRecipe?.name}
-                </strong>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  {simulation.requestedPortions} portions demandées
-                </span>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  Coût estimé
-                </span>
-                <strong style={{ fontSize: '1.1rem', color: 'var(--primary)' }}>
-                  {money(simulation.estimatedCost)}
-                </strong>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <span
-                style={{
-                  fontSize: '0.85rem',
-                  fontWeight: 700,
-                  color: 'var(--text-muted)',
-                  display: 'block',
-                  marginBottom: '0.25rem',
-                }}
-              >
-                Ingrédients requis :
-              </span>
-              {simulation.lines?.map((line) => (
-                <div
-                  key={`${line.productId}-${line.unitId}`}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '0.75rem 1rem',
-                    border: '1px solid var(--light-border)',
-                    borderRadius: '10px',
-                    background: '#f8fafc',
-                  }}
-                >
-                  <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>{line.productName}</span>
-                  <strong style={{ fontSize: '0.88rem', color: 'var(--primary)' }}>
-                    {Number(line.quantity).toFixed(3)} {line.unitSymbol} ·{' '}
-                    {money(line.estimatedCost)}
-                  </strong>
-                </div>
-              ))}
-            </div>
-
-            {simulation.allergens?.length ? (
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.5rem',
-                  marginTop: '0.5rem',
-                }}
-              >
-                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-                  Allergènes présents :
-                </span>
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  {simulation.allergens.map((allergen) => (
-                    <span
-                      key={allergen.id}
-                      className="badge badge-loss"
-                      style={{
-                        background: 'rgba(239, 68, 68, 0.08)',
-                        color: 'var(--danger)',
-                        border: '1px solid rgba(239, 68, 68, 0.15)',
-                        fontWeight: 600,
-                      }}
-                    >
-                      {allergen.icon ? `${allergen.icon} ` : ''}
-                      {allergen.name}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </div>
-        ) : (
-          <div className="alert-modern info">
-            Sélectionnez une fiche et un nombre de portions pour proportionner les ingrédients.
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function RecipeCompositionNode({
   line,
   ratio,
@@ -4434,6 +4353,23 @@ function RecipeDialog({
       recipe.outputProductId &&
       recipe.id !== editingRecipeId,
   );
+  const [subRecipePickerIndex, setSubRecipePickerIndex] = useState<number | null>(null);
+  const subRecipePickerItems = useMemo<TechnicalSheetPickerItem[]>(
+    () =>
+      subRecipeOptions.map((recipe) => ({
+        id: recipe.id,
+        name: recipe.name,
+        category: recipe.category?.name ?? 'Sans catégorie',
+        group: recipe.category?.name ?? 'Sans catégorie',
+        referenceLabel:
+          recipe.yieldMode === 'MASS'
+            ? formatMass(Number(recipe.totalMassGrams ?? 0))
+            : `${Number(recipe.referencePortions ?? 1).toLocaleString('fr-FR')} portions`,
+        durationMinutes: Number(recipe.totalTimeMinutes ?? 0) || null,
+        contextLabel: 'Préparation active',
+      })),
+    [recipes, editingRecipeId],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -4459,10 +4395,42 @@ function RecipeDialog({
     setForm({ ...form, ingredients: next });
   };
 
+  const selectSubRecipe = (index: number, technicalSheetId: string) => {
+    const line = ingredients[index];
+    const source = subRecipeOptions.find((recipe) => recipe.id === technicalSheetId);
+    patchIngredient(
+      index,
+      source
+        ? {
+            componentType: 'SUB_RECIPE',
+            sourceTechnicalSheetId: source.id,
+            productId: source.outputProductId ?? '',
+            unitId: source.yieldUnitId ?? source.outputProduct?.unitId ?? line.unitId,
+            section: line.section || source.name,
+            createProduct: false,
+          }
+        : { sourceTechnicalSheetId: '', productId: '' },
+    );
+  };
+
   const patchStep = (index: number, patch: Partial<(typeof steps)[number]>) => {
     const next = [...steps];
     next[index] = { ...next[index], ...patch };
     setForm({ ...form, steps: next });
+  };
+
+  const selectRecipeMode = (mode: 'ASSEMBLY' | 'PRODUCTION') => {
+    const production = mode === 'PRODUCTION';
+    setForm({
+      ...form,
+      mode,
+      stockPolicy: 'MAKE_TO_STOCK',
+      yieldMode: form.yieldMode ?? 'PORTIONS',
+      referencePortions: Math.max(Number(form.referencePortions || (production ? 10 : 1)), 1),
+      trackOutputStock: true,
+      createOutputProduct: true,
+      outputProductKind: production ? 'INTERMEDIATE' : 'FINISHED',
+    });
   };
 
   return (
@@ -4597,206 +4565,89 @@ function RecipeDialog({
           </div>
 
           {!form.mode ? (
-            <div
-              style={{
-                position: 'absolute',
-                inset: '72px 0 0',
-                zIndex: 20,
-                background: 'linear-gradient(135deg, #f8fafc 0%, #ecfdf5 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '2rem',
-              }}
-            >
-              <div
-                style={{
-                  width: 'min(900px, 100%)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '1.75rem',
-                  alignItems: 'center',
-                }}
-              >
-                <div style={{ textAlign: 'center', maxWidth: '620px' }}>
-                  <span
-                    style={{
-                      display: 'inline-flex',
-                      padding: '0.35rem 0.75rem',
-                      borderRadius: '999px',
-                      background: '#dcfce7',
-                      color: '#15803d',
-                      fontWeight: 800,
-                      fontSize: '0.75rem',
-                      marginBottom: '0.8rem',
-                    }}
-                  >
-                    CRÉATION GUIDÉE
+            <div className="technical-sheet-mode-overlay">
+              <section className="technical-sheet-mode-panel">
+                <header className="technical-sheet-mode-header">
+                  <span className="technical-sheet-mode-kicker">
+                    <Sparkles size={14} /> Création guidée
                   </span>
-                  <h2 style={{ margin: 0, fontSize: '2rem', color: '#0f172a' }}>
-                    Que souhaitez-vous préparer ?
-                  </h2>
-                  <p style={{ color: '#64748b', fontSize: '1rem', lineHeight: 1.6 }}>
-                    Choisissez le cas le plus proche. L’écran s’adaptera automatiquement et vous
-                    pourrez modifier ce choix plus tard.
+                  <h2>Quel résultat souhaitez-vous obtenir ?</h2>
+                  <p>
+                    Choisissez selon l’utilisation du résultat final. ToqueHub préparera ensuite les
+                    champs adaptés à votre fiche. Ce choix pourra être modifié plus tard.
                   </p>
-                </div>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                    gap: '1.25rem',
-                    width: '100%',
-                  }}
-                >
+                </header>
+
+                <div className="technical-sheet-mode-grid">
                   <button
                     type="button"
-                    onClick={() =>
-                      setForm({
-                        ...form,
-                        mode: 'ASSEMBLY',
-                        stockPolicy: 'MAKE_TO_STOCK',
-                        yieldMode: form.yieldMode ?? 'PORTIONS',
-                        referencePortions: Math.max(Number(form.referencePortions || 1), 1),
-                        trackOutputStock: true,
-                        createOutputProduct: true,
-                        outputProductKind: 'FINISHED',
-                      })
-                    }
-                    style={{
-                      border: '2px solid #dbeafe',
-                      borderRadius: '20px',
-                      background: '#fff',
-                      padding: '2rem',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      boxShadow: '0 12px 30px rgba(15, 23, 42, 0.08)',
-                    }}
+                    className="technical-sheet-mode-card final"
+                    onClick={() => selectRecipeMode('ASSEMBLY')}
                   >
-                    <div
-                      style={{
-                        width: 52,
-                        height: 52,
-                        borderRadius: 16,
-                        background: '#eff6ff',
-                        color: '#2563eb',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        marginBottom: '1rem',
-                      }}
-                    >
-                      <Utensils size={26} />
+                    <div className="technical-sheet-mode-card-top">
+                      <span className="technical-sheet-mode-icon">
+                        <Utensils size={25} />
+                      </span>
+                      <span className="technical-sheet-mode-label">Servi ou vendu directement</span>
                     </div>
-                    <strong
-                      style={{
-                        display: 'block',
-                        fontSize: '1.25rem',
-                        color: '#0f172a',
-                        marginBottom: '0.5rem',
-                      }}
-                    >
-                      Assemblage / produit fini
-                    </strong>
-                    <span
-                      style={{
-                        display: 'block',
-                        color: '#64748b',
-                        lineHeight: 1.55,
-                        minHeight: '3.2rem',
-                      }}
-                    >
-                      Croque-monsieur ou Snickers : assemblez des produits et, si besoin, des
-                      préparations déjà fabriquées.
-                    </span>
-                    <span
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.4rem',
-                        color: '#2563eb',
-                        fontWeight: 800,
-                        marginTop: '1.25rem',
-                      }}
-                    >
-                      Créer l’assemblage <ArrowRight size={16} />
+                    <strong>Plat ou produit fini</strong>
+                    <p>
+                      Choisissez cette option pour une recette terminée que vous servez ou vendez
+                      directement au client.
+                    </p>
+                    <div className="technical-sheet-mode-examples">
+                      <span>Plat</span>
+                      <span>Sandwich</span>
+                      <span>Cocktail</span>
+                      <span>Dessert</span>
+                    </div>
+                    <span className="technical-sheet-mode-action">
+                      Choisir ce type de fiche <ArrowRight size={16} />
                     </span>
                   </button>
+
                   <button
                     type="button"
-                    onClick={() =>
-                      setForm({
-                        ...form,
-                        mode: 'PRODUCTION',
-                        stockPolicy: 'MAKE_TO_STOCK',
-                        yieldMode: form.yieldMode ?? 'PORTIONS',
-                        referencePortions: Math.max(Number(form.referencePortions || 10), 1),
-                        trackOutputStock: true,
-                        createOutputProduct: true,
-                        outputProductKind: 'INTERMEDIATE',
-                      })
-                    }
-                    style={{
-                      border: '2px solid #a7f3d0',
-                      borderRadius: '20px',
-                      background: '#fff',
-                      padding: '2rem',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      boxShadow: '0 12px 30px rgba(5, 150, 105, 0.12)',
-                    }}
+                    className="technical-sheet-mode-card preparation"
+                    onClick={() => selectRecipeMode('PRODUCTION')}
                   >
-                    <div
-                      style={{
-                        width: 52,
-                        height: 52,
-                        borderRadius: 16,
-                        background: '#ecfdf5',
-                        color: '#059669',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        marginBottom: '1rem',
-                      }}
-                    >
-                      <ChefHat size={27} />
+                    <div className="technical-sheet-mode-card-top">
+                      <span className="technical-sheet-mode-icon">
+                        <ChefHat size={26} />
+                      </span>
+                      <span className="technical-sheet-mode-label">
+                        Réutilisé dans d’autres recettes
+                      </span>
                     </div>
-                    <strong
-                      style={{
-                        display: 'block',
-                        fontSize: '1.25rem',
-                        color: '#0f172a',
-                        marginBottom: '0.5rem',
-                      }}
-                    >
-                      Fabrication
-                    </strong>
-                    <span
-                      style={{
-                        display: 'block',
-                        color: '#64748b',
-                        lineHeight: 1.55,
-                        minHeight: '3.2rem',
-                      }}
-                    >
-                      Biscuit, ganache ou autre base produite en avance, à partir de produits Stocks
-                      uniquement.
-                    </span>
-                    <span
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.4rem',
-                        color: '#059669',
-                        fontWeight: 800,
-                        marginTop: '1.25rem',
-                      }}
-                    >
-                      Créer la fabrication <ArrowRight size={16} />
+                    <strong>Préparation intermédiaire</strong>
+                    <p>
+                      Choisissez cette option pour une préparation fabriquée à l’avance, stockée
+                      puis utilisée dans un ou plusieurs produits finis.
+                    </p>
+                    <div className="technical-sheet-mode-examples">
+                      <span>Sauce</span>
+                      <span>Ganache</span>
+                      <span>Pâte</span>
+                      <span>Biscuit</span>
+                    </div>
+                    <span className="technical-sheet-mode-action">
+                      Choisir ce type de fiche <ArrowRight size={16} />
                     </span>
                   </button>
                 </div>
-              </div>
+
+                <div className="technical-sheet-mode-help">
+                  <Info size={18} />
+                  <div>
+                    <strong>Vous hésitez ?</strong>
+                    <span>
+                      Si le résultat est directement présenté au client, choisissez « Plat ou
+                      produit fini ». S’il sert à fabriquer autre chose, choisissez « Préparation
+                      intermédiaire ».
+                    </span>
+                  </div>
+                </div>
+              </section>
             </div>
           ) : null}
 
@@ -5674,6 +5525,9 @@ function RecipeDialog({
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     {ingredients.map((line, index) => {
                       const selectedProduct = products.find((p) => p.id === line.productId);
+                      const selectedSubRecipe = subRecipeOptions.find(
+                        (recipe) => recipe.id === line.sourceTechnicalSheetId,
+                      );
                       const stockUnit =
                         selectedProduct?.unit ??
                         units.find((unit) => unit.id === selectedProduct?.unitId);
@@ -5729,46 +5583,40 @@ function RecipeDialog({
                                 : 'Produit Stocks'}
                               {line.componentType === 'SUB_RECIPE' ||
                               line.sourceTechnicalSheetId ? (
-                                <select
-                                  value={line.sourceTechnicalSheetId ?? ''}
-                                  onChange={(event) => {
-                                    const source = subRecipeOptions.find(
-                                      (recipe) => recipe.id === event.target.value,
-                                    );
-                                    patchIngredient(
-                                      index,
-                                      source
-                                        ? {
-                                            componentType: 'SUB_RECIPE',
-                                            sourceTechnicalSheetId: source.id,
-                                            productId: source.outputProductId ?? '',
-                                            unitId:
-                                              source.yieldUnitId ??
-                                              source.outputProduct?.unitId ??
-                                              line.unitId,
-                                            section: line.section || source.name,
-                                            createProduct: false,
-                                          }
-                                        : { sourceTechnicalSheetId: '', productId: '' },
-                                    );
-                                  }}
-                                  style={{
-                                    padding: '0.55rem 0.7rem',
-                                    border: '1px solid #86efac',
-                                    background: '#f0fdf4',
-                                    borderRadius: '8px',
-                                  }}
+                                <button
+                                  type="button"
+                                  className={
+                                    selectedSubRecipe
+                                      ? 'technical-sheet-picker-trigger selected'
+                                      : 'technical-sheet-picker-trigger'
+                                  }
+                                  onClick={() => setSubRecipePickerIndex(index)}
                                 >
-                                  <option value="">Choisir une préparation…</option>
-                                  {subRecipeOptions.map((recipe) => (
-                                    <option key={recipe.id} value={recipe.id}>
-                                      {recipe.name} · rendement{' '}
-                                      {recipe.yieldMode === 'MASS'
-                                        ? formatMass(Number(recipe.totalMassGrams ?? 0))
-                                        : `${Number(recipe.referencePortions ?? 1).toLocaleString('fr-FR')} portions`}
-                                    </option>
-                                  ))}
-                                </select>
+                                  <span className="technical-sheet-picker-trigger-icon">
+                                    <Search size={18} />
+                                  </span>
+                                  <span className="technical-sheet-picker-trigger-copy">
+                                    <strong>
+                                      {selectedSubRecipe?.name ?? 'Rechercher une préparation'}
+                                    </strong>
+                                    <small>
+                                      {selectedSubRecipe
+                                        ? `${selectedSubRecipe.category?.name ?? 'Sans catégorie'} · rendement ${
+                                            selectedSubRecipe.yieldMode === 'MASS'
+                                              ? formatMass(
+                                                  Number(selectedSubRecipe.totalMassGrams ?? 0),
+                                                )
+                                              : `${Number(
+                                                  selectedSubRecipe.referencePortions ?? 1,
+                                                ).toLocaleString('fr-FR')} portions`
+                                          }`
+                                        : `${subRecipeOptions.length} préparation(s) active(s)`}
+                                    </small>
+                                  </span>
+                                  <span className="technical-sheet-picker-trigger-action">
+                                    {selectedSubRecipe ? 'Changer' : 'Rechercher'}
+                                  </span>
+                                </button>
                               ) : line.createProduct && !line.productId ? (
                                 <div
                                   style={{
@@ -6464,6 +6312,25 @@ function RecipeDialog({
               </button>
             </div>
           </div>
+
+          <TechnicalSheetPickerModal
+            open={open && subRecipePickerIndex !== null}
+            items={subRecipePickerItems}
+            selectedSheetId={
+              subRecipePickerIndex === null
+                ? ''
+                : (ingredients[subRecipePickerIndex]?.sourceTechnicalSheetId ?? '')
+            }
+            title="Catalogue des préparations"
+            subtitle="Recherchez une fiche de fabrication active, puis choisissez-la comme sous-recette."
+            emptyMessage="Aucune préparation active ne correspond à cette recherche."
+            onClose={() => setSubRecipePickerIndex(null)}
+            onSelectSheet={(item) => {
+              if (subRecipePickerIndex === null) return;
+              selectSubRecipe(subRecipePickerIndex, item.id);
+              setSubRecipePickerIndex(null);
+            }}
+          />
         </motion.div>
       )}
     </AnimatePresence>

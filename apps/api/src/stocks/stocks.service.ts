@@ -6,14 +6,19 @@ import {
 } from '@nestjs/common';
 import {
   AuditAction,
+  DocumentStatus,
   InventoryStatus,
   Prisma,
   ProductKind,
   PurchasingDeliveryMode,
+  StockReceptionStatus,
   StockMovementType,
   TechnicalSheetHistoryAction,
   UnitType,
 } from '@prisma/client';
+import { createHash, randomUUID } from 'crypto';
+import { mkdir, writeFile } from 'fs/promises';
+import { extname, join, resolve } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
 import { AdjustProductStockDto } from './dto/adjust-product-stock.dto';
 import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
@@ -31,6 +36,10 @@ import {
   UpsertUnitConversionDto,
   UpsertUnitDto,
 } from './dto/stocks-reference.dto';
+import {
+  isStockCategoryVatRateAllowed,
+  stockCategoryVatPolicy,
+} from './stocks-category-vat-policy';
 
 const WRITE_ROLES = ['SUPER_ADMIN', 'Administrateur', 'Manager', 'Chef', 'Second', 'Magasinier'];
 const ADMIN_MANAGER_ROLES = ['SUPER_ADMIN', 'Administrateur', 'Manager', 'Chef'];
@@ -69,9 +78,30 @@ const DEFAULT_STOCK_CATEGORIES = [
   'Fruits et légumes',
   'Sans catégorie',
 ];
+const NATIVE_STOCK_UNITS = [
+  { name: 'Kilogramme', symbol: 'kg', type: UnitType.MASS },
+  { name: 'Gramme', symbol: 'g', type: UnitType.MASS },
+  { name: 'Litre', symbol: 'L', type: UnitType.VOLUME },
+  { name: 'Centilitre', symbol: 'cL', type: UnitType.VOLUME },
+  { name: 'Pièce', symbol: 'pièce', type: UnitType.COUNT },
+  { name: 'Caisse', symbol: 'caisse', type: UnitType.PACKAGE },
+] as const;
+const EQUIPMENT_DOCUMENT_UPLOAD_ROOT = resolve(
+  process.env.EQUIPMENT_DOCUMENT_UPLOAD_DIR || process.env.UPLOAD_DIR || 'uploads',
+  'equipment-documents',
+);
+const EQUIPMENT_DOCUMENT_SOURCE_TYPE = 'equipment-contract';
+const MAX_EQUIPMENT_DOCUMENTS = 8;
+const MAX_EQUIPMENT_DOCUMENT_SIZE = 20 * 1024 * 1024;
 
 type Actor = { id: string; role: string };
 type Tx = Prisma.TransactionClient;
+type EquipmentDocumentFile = {
+  originalname: string;
+  mimetype: string;
+  size: number;
+  buffer: Buffer;
+};
 
 @Injectable()
 export class StocksService {
@@ -85,6 +115,127 @@ export class StocksService {
   private assertManager(actor: Actor) {
     if (!ADMIN_MANAGER_ROLES.includes(actor.role))
       throw new ForbiddenException('Manager permissions required');
+  }
+
+  private async assertEquipmentProduct(organizationId: string, productId: string) {
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, organizationId, kind: ProductKind.EQUIPMENT, isArchived: false },
+      select: { id: true, name: true },
+    });
+    if (!product) throw new NotFoundException('Matériel introuvable');
+    return product;
+  }
+
+  private equipmentDocumentResponse(document: {
+    id: string;
+    originalName: string;
+    mimeType: string;
+    sizeBytes: number;
+    status: DocumentStatus;
+    createdAt: Date;
+    updatedAt: Date;
+  }) {
+    return {
+      id: document.id,
+      originalName: document.originalName,
+      mimeType: document.mimeType,
+      sizeBytes: document.sizeBytes,
+      status: document.status,
+      uploadedAt: document.createdAt.toISOString(),
+      updatedAt: document.updatedAt.toISOString(),
+    };
+  }
+
+  async listEquipmentDocuments(organizationId: string, productId: string) {
+    await this.assertEquipmentProduct(organizationId, productId);
+    const documents = await this.prisma.document.findMany({
+      where: {
+        organizationId,
+        sourceModule: 'stocks',
+        sourceType: EQUIPMENT_DOCUMENT_SOURCE_TYPE,
+        sourceId: productId,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return documents.map((document) => this.equipmentDocumentResponse(document));
+  }
+
+  async uploadEquipmentDocuments(
+    organizationId: string,
+    actor: Actor,
+    productId: string,
+    files: EquipmentDocumentFile[],
+  ) {
+    this.assertWrite(actor);
+    await this.assertEquipmentProduct(organizationId, productId);
+    if (!files?.length) throw new BadRequestException('Ajoutez au moins un document.');
+    if (files.length > MAX_EQUIPMENT_DOCUMENTS) {
+      throw new BadRequestException(
+        `Vous pouvez ajouter ${MAX_EQUIPMENT_DOCUMENTS} documents maximum à la fois.`,
+      );
+    }
+
+    const directory = join(EQUIPMENT_DOCUMENT_UPLOAD_ROOT, organizationId);
+    await mkdir(directory, { recursive: true });
+    const documents = [];
+    for (const file of files) {
+      const extension = extname(file.originalname).toLocaleLowerCase('fr-FR');
+      const isPdf = file.mimetype === 'application/pdf' && extension === '.pdf';
+      const isJpeg =
+        file.mimetype === 'image/jpeg' && (extension === '.jpg' || extension === '.jpeg');
+      if (!isPdf && !isJpeg) {
+        throw new BadRequestException('Seuls les documents PDF, JPG et JPEG sont acceptés.');
+      }
+      if (!file.buffer?.length || file.size > MAX_EQUIPMENT_DOCUMENT_SIZE) {
+        throw new BadRequestException('Chaque document doit peser moins de 20 Mo.');
+      }
+
+      const id = randomUUID();
+      const safeExtension = isPdf ? '.pdf' : extension === '.jpeg' ? '.jpeg' : '.jpg';
+      const internalFilename = `${id}${safeExtension}`;
+      const storagePath = join(organizationId, internalFilename);
+      await writeFile(join(EQUIPMENT_DOCUMENT_UPLOAD_ROOT, storagePath), file.buffer);
+      const document = await this.prisma.document.create({
+        data: {
+          organizationId,
+          uploadedById: actor.id,
+          internalFilename,
+          originalName: file.originalname,
+          mimeType: file.mimetype,
+          sizeBytes: file.size,
+          storagePath,
+          contentSha256: createHash('sha256').update(file.buffer).digest('hex'),
+          sourceModule: 'stocks',
+          sourceType: EQUIPMENT_DOCUMENT_SOURCE_TYPE,
+          sourceId: productId,
+          status: DocumentStatus.UPLOADED,
+        },
+      });
+      documents.push(this.equipmentDocumentResponse(document));
+    }
+    return documents;
+  }
+
+  async getEquipmentDocumentForDownload(
+    organizationId: string,
+    productId: string,
+    documentId: string,
+  ) {
+    await this.assertEquipmentProduct(organizationId, productId);
+    const document = await this.prisma.document.findFirst({
+      where: {
+        id: documentId,
+        organizationId,
+        sourceModule: 'stocks',
+        sourceType: EQUIPMENT_DOCUMENT_SOURCE_TYPE,
+        sourceId: productId,
+      },
+    });
+    if (!document) throw new NotFoundException('Document du matériel introuvable');
+    return {
+      document,
+      absolutePath: join(EQUIPMENT_DOCUMENT_UPLOAD_ROOT, document.storagePath),
+    };
   }
 
   private page(q?: ListQueryDto) {
@@ -111,26 +262,24 @@ export class StocksService {
   async installDefaults(organizationId: string, actor: Actor) {
     this.assertManager(actor);
     return this.prisma.$transaction(async (tx) => {
-      await tx.organization.update({
+      const organization = await tx.organization.update({
         where: { id: organizationId },
         data: { stocksInstalledAt: new Date() },
+        select: { regulatoryCountryCode: true },
       });
+      const defaultVatRate = stockCategoryVatPolicy(
+        organization.regulatoryCountryCode,
+      ).defaultRate;
       await tx.category.createMany({
-        data: DEFAULT_STOCK_CATEGORIES.map((name) => ({ organizationId, name })),
+        data: DEFAULT_STOCK_CATEGORIES.map((name) => ({
+          organizationId,
+          name,
+          vatRate: defaultVatRate,
+        })),
         skipDuplicates: true,
       });
       await tx.unit.createMany({
-        data: [
-          { name: 'Kilogramme', symbol: 'kg', type: UnitType.MASS },
-          { name: 'Gramme', symbol: 'g', type: UnitType.MASS },
-          { name: 'Litre', symbol: 'L', type: UnitType.VOLUME },
-          { name: 'Millilitre', symbol: 'mL', type: UnitType.VOLUME },
-          { name: 'Pièce', symbol: 'pièce', type: UnitType.COUNT },
-          { name: 'Barquette', symbol: 'barquette', type: UnitType.PACKAGE },
-          { name: 'Caisse', symbol: 'caisse', type: UnitType.PACKAGE },
-          { name: 'Carton', symbol: 'carton', type: UnitType.PACKAGE },
-          { name: 'Bac', symbol: 'bac', type: UnitType.PACKAGE },
-        ].map((unit) => ({ ...unit, organizationId })),
+        data: NATIVE_STOCK_UNITS.map((unit) => ({ ...unit, organizationId })),
         skipDuplicates: true,
       });
       const site = await tx.site.upsert({
@@ -190,8 +339,8 @@ export class StocksService {
     const pairs: Array<[string, string, string]> = [
       ['kg', 'g', '1000'],
       ['g', 'kg', '0.001'],
-      ['L', 'mL', '1000'],
-      ['mL', 'L', '0.001'],
+      ['L', 'cL', '100'],
+      ['cL', 'L', '0.01'],
     ];
     for (const [from, to, factor] of pairs) {
       if (bySymbol[from] && bySymbol[to]) {
@@ -231,17 +380,34 @@ export class StocksService {
   }
   async createCategory(organizationId: string, actor: Actor, dto: UpsertCategoryDto) {
     this.assertWrite(actor);
+    const vatRate = await this.categoryVatRateForWrite(
+      organizationId,
+      dto.vatRate,
+      dto.kind ?? ProductKind.UNSPECIFIED,
+      true,
+    );
     return this.createAudited(
       'category',
       organizationId,
       actor.id,
       AuditAction.CATEGORY_CREATED,
-      dto,
+      { ...dto, ...(vatRate == null ? {} : { vatRate }) },
     );
   }
   async updateCategory(organizationId: string, actor: Actor, id: string, dto: UpsertCategoryDto) {
     this.assertWrite(actor);
-    const item = await this.prisma.category.update({ where: { id, organizationId }, data: dto });
+    const current = await this.prisma.category.findFirst({ where: { id, organizationId } });
+    if (!current) throw new NotFoundException('Category not found');
+    const vatRate = await this.categoryVatRateForWrite(
+      organizationId,
+      dto.vatRate,
+      dto.kind ?? current.kind,
+      false,
+    );
+    const item = await this.prisma.category.update({
+      where: { id, organizationId },
+      data: { ...dto, ...(vatRate == null ? {} : { vatRate }) },
+    });
     await this.log(
       organizationId,
       actor.id,
@@ -261,7 +427,16 @@ export class StocksService {
         throw new BadRequestException('La catégorie Sans catégorie ne peut pas être supprimée.');
       }
 
-      const fallback = await this.ensureUncategorizedCategory(tx, organizationId, category.kind);
+      const organization = await tx.organization.findUnique({
+        where: { id: organizationId },
+        select: { regulatoryCountryCode: true },
+      });
+      const fallback = await this.ensureUncategorizedCategory(
+        tx,
+        organizationId,
+        category.kind,
+        stockCategoryVatPolicy(organization?.regulatoryCountryCode).defaultRate,
+      );
       const moved = await tx.product.updateMany({
         where: { organizationId, categoryId: category.id },
         data: { categoryId: fallback.id },
@@ -284,39 +459,70 @@ export class StocksService {
     });
   }
 
-  listUnits(organizationId: string, q: ListQueryDto = {}) {
-    return this.prisma.unit.findMany({
-      where: {
-        organizationId,
-        ...(q.includeArchived ? {} : { isArchived: false }),
-        OR: q.search
-          ? [
-              { name: { contains: q.search, mode: 'insensitive' } },
-              { symbol: { contains: q.search, mode: 'insensitive' } },
-            ]
-          : undefined,
-      },
+  async listUnits(organizationId: string, q: ListQueryDto = {}) {
+    const symbols = NATIVE_STOCK_UNITS.map((unit) => unit.symbol);
+    let units = await this.prisma.unit.findMany({
+      where: { organizationId, symbol: { in: [...symbols] } },
       include: { fromConversions: { include: { toUnit: true } } },
-      orderBy: { name: 'asc' },
-      ...this.page(q),
     });
-  }
-  async createUnit(organizationId: string, actor: Actor, dto: UpsertUnitDto) {
-    this.assertWrite(actor);
-    const item = await this.prisma.unit.create({
-      data: { ...dto, type: dto.type ?? UnitType.OTHER, organizationId },
+    const existingSymbols = new Set(units.map((unit) => unit.symbol));
+    const missing = NATIVE_STOCK_UNITS.filter((unit) => !existingSymbols.has(unit.symbol));
+    if (missing.length) {
+      await this.prisma.unit.createMany({
+        data: missing.map((unit) => ({ ...unit, organizationId })),
+        skipDuplicates: true,
+      });
+    }
+    const canonicalBySymbol = new Map<string, (typeof NATIVE_STOCK_UNITS)[number]>(
+      NATIVE_STOCK_UNITS.map((unit) => [unit.symbol, unit]),
+    );
+    const unitsToRestore = units.filter((unit) => {
+      const native = canonicalBySymbol.get(unit.symbol);
+      return Boolean(
+        native &&
+          (unit.isArchived || unit.name !== native.name || unit.type !== native.type),
+      );
     });
-    await this.log(organizationId, actor.id, AuditAction.UNIT_CREATED, 'Unit', item.id, item.name);
-    return item;
+    for (const unit of unitsToRestore) {
+      const native = canonicalBySymbol.get(unit.symbol)!;
+      await this.prisma.unit.update({
+        where: { id: unit.id },
+        data: {
+          name: native.name,
+          type: native.type,
+          isArchived: false,
+          archivedAt: null,
+        },
+      });
+    }
+    if (missing.length || unitsToRestore.length) {
+      units = await this.prisma.unit.findMany({
+        where: { organizationId, symbol: { in: [...symbols] }, isArchived: false },
+        include: { fromConversions: { include: { toUnit: true } } },
+      });
+    }
+    const search = q.search?.trim().toLocaleLowerCase('fr-FR');
+    const bySymbol = new Map(
+      units.filter((unit) => !unit.isArchived).map((unit) => [unit.symbol, unit]),
+    );
+    return NATIVE_STOCK_UNITS
+      .map((native) => bySymbol.get(native.symbol))
+      .filter((unit): unit is NonNullable<typeof unit> => Boolean(unit))
+      .filter(
+        (unit) =>
+          !search ||
+          unit.name.toLocaleLowerCase('fr-FR').includes(search) ||
+          unit.symbol.toLocaleLowerCase('fr-FR').includes(search),
+      );
   }
-  async updateUnit(organizationId: string, actor: Actor, id: string, dto: UpsertUnitDto) {
-    this.assertWrite(actor);
-    const item = await this.prisma.unit.update({ where: { id, organizationId }, data: dto });
-    await this.log(organizationId, actor.id, AuditAction.UNIT_UPDATED, 'Unit', item.id, item.name);
-    return item;
+  async createUnit(_organizationId: string, _actor: Actor, _dto: UpsertUnitDto) {
+    throw new BadRequestException('Les unités ToqueHub sont natives et ne peuvent pas être ajoutées.');
   }
-  archiveUnit(organizationId: string, actor: Actor, id: string) {
-    return this.archive('unit', organizationId, actor, id, AuditAction.UNIT_ARCHIVED, 'Unit');
+  async updateUnit(_organizationId: string, _actor: Actor, _id: string, _dto: UpsertUnitDto) {
+    throw new BadRequestException('Les unités ToqueHub sont natives et ne peuvent pas être modifiées.');
+  }
+  archiveUnit(_organizationId: string, _actor: Actor, _id: string) {
+    throw new BadRequestException('Les unités ToqueHub sont natives et ne peuvent pas être supprimées.');
   }
   async upsertConversion(organizationId: string, actor: Actor, dto: UpsertUnitConversionDto) {
     this.assertWrite(actor);
@@ -1436,8 +1642,8 @@ export class StocksService {
     });
   }
 
-  listInventories(organizationId: string, q: ListQueryDto = {}) {
-    return this.prisma.inventory.findMany({
+  async listInventories(organizationId: string, q: ListQueryDto = {}) {
+    const inventories = await this.prisma.inventory.findMany({
       where: {
         organizationId,
         name: q.search ? { contains: q.search, mode: 'insensitive' } : undefined,
@@ -1445,7 +1651,43 @@ export class StocksService {
       include: {
         lines: {
           where: { product: { kind: { in: STOCK_CATALOG_PRODUCT_KINDS } } },
-          include: { product: { include: { unit: true, category: true, primarySupplier: true } } },
+          include: {
+            product: {
+              include: {
+                unit: true,
+                category: true,
+                primarySupplier: true,
+                stockReceptionLines: {
+                  where: {
+                    reception: {
+                      organizationId,
+                      status: StockReceptionStatus.VALIDATED,
+                    },
+                  },
+                  orderBy: { reception: { validatedAt: 'desc' } },
+                  take: 1,
+                  select: {
+                    unitPrice: true,
+                    vatRate: true,
+                    reception: {
+                      select: {
+                        documentId: true,
+                        invoiceNumber: true,
+                        deliveryNoteNumber: true,
+                        purchaseOrderNumber: true,
+                        receiptNumber: true,
+                        documentDate: true,
+                        deliveryDate: true,
+                        supplierName: true,
+                        supplier: { select: { name: true } },
+                        document: { select: { originalName: true } },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
         site: true,
         location: true,
@@ -1454,6 +1696,43 @@ export class StocksService {
       orderBy: { inventoryDate: 'desc' },
       ...this.page(q),
     });
+
+    return inventories.map((inventory) => ({
+      ...inventory,
+      lines: inventory.lines.map((line) => {
+        const { stockReceptionLines, ...product } = line.product;
+        const source = stockReceptionLines[0];
+        const reception = source?.reception;
+        const documentLabel = reception
+          ? reception.invoiceNumber
+            ? `Facture ${reception.invoiceNumber}`
+            : reception.deliveryNoteNumber
+              ? `Bon de livraison ${reception.deliveryNoteNumber}`
+              : reception.purchaseOrderNumber
+                ? `Commande ${reception.purchaseOrderNumber}`
+                : reception.receiptNumber
+                  ? `Ticket ${reception.receiptNumber}`
+                  : reception.document?.originalName ?? 'Document sans numéro'
+          : null;
+
+        const categoryVatRate = product.category?.vatRate ?? null;
+        return {
+          ...line,
+          product,
+          financialSource: source || categoryVatRate != null
+            ? {
+                documentId: reception?.documentId ?? null,
+                documentLabel,
+                documentDate: reception?.documentDate ?? reception?.deliveryDate ?? null,
+                supplierName: reception?.supplier?.name ?? reception?.supplierName ?? null,
+                unitPriceExcludingTax: source?.unitPrice ?? null,
+                vatRate: categoryVatRate ?? source?.vatRate ?? null,
+                vatRateSource: categoryVatRate != null ? 'CATEGORY' : 'RECEPTION',
+              }
+            : null,
+        };
+      }),
+    }));
   }
 
   async updateInventoryCounts(
@@ -1757,10 +2036,31 @@ export class StocksService {
     await this.log(organizationId, userId, action, 'Category', item.id, item.name);
     return item;
   }
+  private async categoryVatRateForWrite(
+    organizationId: string,
+    requestedRate: number | undefined,
+    kind: ProductKind,
+    useDefault: boolean,
+  ) {
+    if (kind === ProductKind.EQUIPMENT) return requestedRate;
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { regulatoryCountryCode: true },
+    });
+    const policy = stockCategoryVatPolicy(organization?.regulatoryCountryCode);
+    const rate = requestedRate ?? (useDefault ? policy.defaultRate ?? undefined : undefined);
+    if (rate != null && policy.options.length && !isStockCategoryVatRateAllowed(policy, rate)) {
+      throw new BadRequestException(
+        `Le taux de TVA ${rate} % ne correspond pas au barème ${policy.countryLabel}.`,
+      );
+    }
+    return rate;
+  }
   private ensureUncategorizedCategory(
     tx: Tx,
     organizationId: string,
     kind: ProductKind = ProductKind.UNSPECIFIED,
+    vatRate: number | null = null,
   ) {
     return tx.category.upsert({
       where: {
@@ -1771,6 +2071,7 @@ export class StocksService {
         organizationId,
         name: UNCATEGORIZED_CATEGORY_NAME,
         kind,
+        vatRate,
         description:
           kind === ProductKind.EQUIPMENT
             ? 'Matériel sans famille attribuée.'

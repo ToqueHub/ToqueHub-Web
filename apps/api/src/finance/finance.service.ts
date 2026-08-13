@@ -371,6 +371,22 @@ export class FinanceService {
         metadata: { parser: 'failed', parserVersion: 1 },
       };
     }
+    const requestedSite = target.siteId
+      ? await this.prisma.site.findFirst({
+          where: { id: target.siteId, organizationId, isArchived: false },
+          select: { id: true, name: true },
+        })
+      : null;
+    if (target.siteId && !requestedSite) {
+      throw new BadRequestException(
+        'L’établissement choisi n’appartient pas à cette organisation.',
+      );
+    }
+    if (parsed.budgetPlan && !requestedSite) {
+      throw new BadRequestException(
+        'Choisissez l’établissement auquel ce budget doit être affecté.',
+      );
+    }
     const fileHash = createHash('sha256').update(file.buffer).digest('hex');
     const existing = await this.prisma.financeImportBatch.findUnique({
       where: { organizationId_fileHash: { organizationId, fileHash } },
@@ -417,9 +433,40 @@ export class FinanceService {
             where: { organizationId, importBatchId: existing.id },
           })
         : null;
+      if (parsed.budgetPlan && existingBudgetPlan && requestedSite) {
+        await this.prisma.$transaction(async (tx) => {
+          await tx.financeBudgetPlan.updateMany({
+            where: {
+              organizationId,
+              siteId: requestedSite.id,
+              isReference: true,
+              id: { not: existingBudgetPlan.id },
+            },
+            data: { isReference: false },
+          });
+          await tx.financeBudgetPlan.update({
+            where: { id: existingBudgetPlan.id },
+            data: { siteId: requestedSite.id, isReference: true },
+          });
+        });
+        return {
+          duplicate: true,
+          reprocessed: true,
+          batch: await this.prisma.financeImportBatch.findUniqueOrThrow({
+            where: { id: existing.id },
+            include: { source: { select: { id: true, name: true } } },
+          }),
+        };
+      }
       if (parsed.budgetPlan && !existingBudgetPlan) {
         await this.prisma.$transaction(async (tx) => {
-          await this.persistBudgetPlan(tx, organizationId, existing.id, parsed.budgetPlan!);
+          await this.persistBudgetPlan(
+            tx,
+            organizationId,
+            requestedSite!.id,
+            existing.id,
+            parsed.budgetPlan!,
+          );
           await tx.financeImportBatch.update({
             where: { id: existing.id },
             data: {
@@ -511,17 +558,6 @@ export class FinanceService {
         return { duplicate: true, reprocessed: true, batch: refreshed };
       }
       return { duplicate: true, reprocessed: false, batch: existing };
-    }
-    const requestedSite = target.siteId
-      ? await this.prisma.site.findFirst({
-          where: { id: target.siteId, organizationId, isArchived: false },
-          select: { id: true, name: true },
-        })
-      : null;
-    if (target.siteId && !requestedSite) {
-      throw new BadRequestException(
-        'L’établissement choisi n’appartient pas à cette organisation.',
-      );
     }
     const baseSourceName = financeSourceName(classification.provider);
     const requestedSourceName =
@@ -744,7 +780,13 @@ export class FinanceService {
         });
       }
       if (parsed.budgetPlan) {
-        await this.persistBudgetPlan(tx, organizationId, created.id, parsed.budgetPlan);
+        await this.persistBudgetPlan(
+          tx,
+          organizationId,
+          requestedSite!.id,
+          created.id,
+          parsed.budgetPlan,
+        );
         await tx.financeImportBatch.update({
           where: { id: created.id },
           data: { rowCount: parsed.budgetPlan.lines.length },
@@ -794,6 +836,46 @@ export class FinanceService {
       data: { isPrimarySales: enabled },
     });
     return { sourceId: source.id, isPrimarySales: enabled, contributesToSales: enabled };
+  }
+
+  async mapBudgetSite(
+    organizationId: string,
+    actor: AuthenticatedUser,
+    budgetId: string,
+    siteId: string,
+  ) {
+    this.policy.assertPermission(actor, 'finance.manage');
+    await this.assertInstalled(organizationId);
+    const [budget, site] = await Promise.all([
+      this.prisma.financeBudgetPlan.findFirst({
+        where: { id: budgetId, organizationId },
+        select: { id: true },
+      }),
+      this.prisma.site.findFirst({
+        where: { id: siteId, organizationId, isArchived: false },
+        select: { id: true, name: true },
+      }),
+    ]);
+    if (!budget) throw new BadRequestException('Budget introuvable.');
+    if (!site) throw new BadRequestException('Établissement introuvable.');
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.financeBudgetPlan.updateMany({
+        where: {
+          organizationId,
+          siteId,
+          isReference: true,
+          id: { not: budgetId },
+        },
+        data: { isReference: false },
+      });
+      return tx.financeBudgetPlan.update({
+        where: { id: budgetId },
+        data: { siteId, isReference: true },
+        include: { site: { select: { id: true, name: true } } },
+      });
+    });
+    return updated;
   }
 
   async mapSourceSite(
@@ -968,16 +1050,18 @@ export class FinanceService {
   private async persistBudgetPlan(
     tx: Prisma.TransactionClient,
     organizationId: string,
+    siteId: string,
     importBatchId: string,
     plan: NonNullable<ParsedFinanceImport['budgetPlan']>,
   ) {
     await tx.financeBudgetPlan.updateMany({
-      where: { organizationId, isReference: true },
+      where: { organizationId, siteId, isReference: true },
       data: { isReference: false },
     });
     const created = await tx.financeBudgetPlan.create({
       data: {
         organizationId,
+        siteId,
         importBatchId,
         name: plan.name,
         scenario: plan.scenario,

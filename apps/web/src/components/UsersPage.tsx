@@ -11,8 +11,6 @@ import {
 } from '@mui/material';
 import {
   UsersRound,
-  RefreshCw,
-  UserPlus,
   Search,
   Crown,
   Edit3,
@@ -85,8 +83,6 @@ export function UsersPage({
   permissions,
   currentUserId,
   loading,
-  onRefresh,
-  onCreate,
   onEdit,
   onDisable,
   onUpdateRolePermissions,
@@ -96,27 +92,15 @@ export function UsersPage({
   permissions: CorePermission[];
   currentUserId: string;
   loading: boolean;
-  onRefresh: () => Promise<void>;
-  onCreate: () => void;
   onEdit: (user: CoreUser) => void;
   onDisable: (user: CoreUser) => void;
   onUpdateRolePermissions: (roleKey: string, permissions: string[]) => Promise<void>;
 }) {
   const [activeSubTab, setActiveSubTab] = useState<'members' | 'permissions'>('members');
-  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+  const viewMode = 'grid' as 'table' | 'grid';
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
-  const [refreshing, setRefreshing] = useState(false);
-
-  const handleRefreshClick = async () => {
-    setRefreshing(true);
-    try {
-      await onRefresh();
-    } finally {
-      setRefreshing(false);
-    }
-  };
 
   const visibleUsers = useMemo(() => {
     return users.filter((user) => {
@@ -201,20 +185,6 @@ export function UsersPage({
                   <h3>Membres de l'organisation</h3>
                   <p>Filtrez, recherchez et effectuez des actions rapides sur les accès de l'instance.</p>
                 </div>
-                <div className="filter-actions-group">
-                  <button
-                    className="btn-modern btn-modern-secondary"
-                    onClick={handleRefreshClick}
-                    disabled={loading || refreshing}
-                  >
-                    <RefreshCw size={15} className={refreshing ? 'spin-animation' : ''} />
-                    Actualiser
-                  </button>
-                  <button className="btn-modern btn-modern-primary" onClick={onCreate}>
-                    <UserPlus size={15} />
-                    Nouveau membre
-                  </button>
-                </div>
               </div>
 
               <div className="filter-inputs-row">
@@ -253,35 +223,6 @@ export function UsersPage({
                     <option value="DISABLED">Désactivé</option>
                   </select>
 
-                  <div className="view-mode-toggle">
-                    <button
-                      type="button"
-                      className={`view-mode-btn ${viewMode === 'table' ? 'active' : ''}`}
-                      onClick={() => setViewMode('table')}
-                      title="Vue Tableau"
-                      aria-label="Vue Tableau"
-                    >
-                      <span className="view-mode-icon view-mode-icon-list" aria-hidden="true">
-                        <span />
-                        <span />
-                        <span />
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      className={`view-mode-btn ${viewMode === 'grid' ? 'active' : ''}`}
-                      onClick={() => setViewMode('grid')}
-                      title="Vue Grille"
-                      aria-label="Vue Grille"
-                    >
-                      <span className="view-mode-icon view-mode-icon-grid" aria-hidden="true">
-                        <span />
-                        <span />
-                        <span />
-                        <span />
-                      </span>
-                    </button>
-                  </div>
                 </div>
               </div>
 
@@ -297,10 +238,7 @@ export function UsersPage({
                 <div className="empty-state-modern">
                   <div className="empty-icon-wrapper">👥</div>
                   <h4>Aucun utilisateur configuré</h4>
-                  <p>Commencez par créer le premier accès de votre cuisine ToqueHub.</p>
-                  <button className="btn-modern btn-modern-primary" onClick={onCreate}>
-                    <UserPlus size={15} /> Créer un utilisateur
-                  </button>
+                  <p>Créez un collaborateur depuis l’espace RH pour lui ajouter un accès ToqueHub.</p>
                 </div>
               ) : null}
 
@@ -422,7 +360,16 @@ export function UsersPage({
                             <div className="grid-card-body">
                               <div className="grid-avatar-container">
                                 <div className="grid-avatar" style={{ background: avatarGrad }}>
-                                  {initials}
+                                  <span aria-hidden={Boolean(user.collaboratorPhotoUrl)}>{initials}</span>
+                                  {user.collaboratorPhotoUrl ? (
+                                    <img
+                                      className="grid-avatar-photo"
+                                      src={user.collaboratorPhotoUrl}
+                                      alt={`Photo de ${displayUserName(user)}`}
+                                      referrerPolicy="no-referrer"
+                                      onError={(event) => event.currentTarget.remove()}
+                                    />
+                                  ) : null}
                                 </div>
                               </div>
                               <h4 className="grid-user-fullname">{displayUserName(user)}</h4>
@@ -629,12 +576,16 @@ function RolePermissionCard({
 export function UserForm({
   user,
   roles,
+  initialValues,
+  fromHrCollaborator = false,
   onSubmitCreate,
   onSubmitUpdate,
   onClose,
 }: {
   user?: CoreUser;
   roles: CoreRole[];
+  initialValues?: { firstName: string; lastName: string; email: string };
+  fromHrCollaborator?: boolean;
   onSubmitCreate?: (payload: {
     firstName: string;
     lastName: string;
@@ -651,10 +602,10 @@ export function UserForm({
   }) => Promise<void>;
   onClose: () => void;
 }) {
-  const [firstName, setFirstName] = useState(user?.firstName ?? '');
-  const [lastName, setLastName] = useState(user?.lastName ?? '');
-  const [email, setEmail] = useState(user?.email ?? '');
-  const [role, setRole] = useState(user?.role ?? (roles[0] ? roleValue(roles[0]) : 'Utilisateur'));
+  const [firstName, setFirstName] = useState(user?.firstName ?? initialValues?.firstName ?? '');
+  const [lastName, setLastName] = useState(user?.lastName ?? initialValues?.lastName ?? '');
+  const [email, setEmail] = useState(user?.email ?? initialValues?.email ?? '');
+  const [role, setRole] = useState(user?.role ?? (fromHrCollaborator ? 'Utilisateur' : roles[0] ? roleValue(roles[0]) : 'Utilisateur'));
   const [status, setStatus] = useState<UserStatus>(user?.status ?? 'INVITED');
   const [temporaryPassword, setTemporaryPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -687,6 +638,12 @@ export function UserForm({
   return (
     <form onSubmit={handleSubmit} className="user-form-premium">
       <Box sx={{ display: 'grid', gap: '1.25rem' }}>
+        {fromHrCollaborator && !user ? (
+          <div className="alert-modern-premium alert-success">
+            <CheckCircle2 size={16} />
+            <span>La fiche collaborateur est enregistrée. Créez maintenant son compte d’accès ToqueHub ; aucune nouvelle fiche RH ne sera ajoutée.</span>
+          </div>
+        ) : null}
         {error && (
           <div className="alert-modern-premium alert-error">
             <AlertCircle size={16} />

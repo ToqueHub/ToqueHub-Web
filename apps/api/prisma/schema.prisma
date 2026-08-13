@@ -1634,6 +1634,7 @@ model Category {
   id             String      @id @default(uuid()) @db.Uuid
   name           String
   description    String?
+  vatRate        Decimal?    @db.Decimal(5, 2)
   kind           ProductKind @default(UNSPECIFIED)
   isArchived     Boolean     @default(false)
   archivedAt     DateTime?
@@ -2002,6 +2003,7 @@ model Site {
   financeDataSources           FinanceDataSource[]           @relation("FinanceDataSourceSite")
   financePosConnections        FinancePosConnection[]        @relation("FinancePosConnectionDefaultSite")
   financeFlatpayConnections    FinanceFlatpayConnection[]    @relation("FinanceFlatpayConnectionDefaultSite")
+  financeBudgetPlans           FinanceBudgetPlan[]           @relation("FinanceBudgetPlanSite")
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -2534,6 +2536,7 @@ model FinanceImportBatch {
 model FinanceBudgetPlan {
   id             String   @id @default(uuid()) @db.Uuid
   organizationId String   @db.Uuid
+  siteId         String?  @db.Uuid
   importBatchId  String?  @db.Uuid
   name           String
   scenario       String?
@@ -2547,11 +2550,14 @@ model FinanceBudgetPlan {
   updatedAt      DateTime @updatedAt
 
   organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site         Site?                   @relation("FinanceBudgetPlanSite", fields: [siteId], references: [id], onDelete: Restrict)
   importBatch  FinanceImportBatch?     @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
   lines        FinanceBudgetPlanLine[]
 
   @@index([organizationId, isReference])
+  @@index([organizationId, siteId, isReference])
   @@index([organizationId, startDate, endDate])
+  @@index([siteId])
   @@index([importBatchId])
   @@map("finance_budget_plans")
 }
@@ -3284,44 +3290,48 @@ model HrPosition {
 }
 
 model HrEmployee {
-  id                    String           @id @default(uuid()) @db.Uuid
-  organizationId        String           @db.Uuid
-  firstName             String
-  lastName              String
-  photoDataUrl          String?          @db.Text
-  email                 String?
-  phone                 String?
-  address               String?          @db.Text
-  postalCode            String?
-  city                  String?
-  country               String?
-  primaryLanguage       String?
-  secondaryLanguage     String?
-  emergencyContact      String?          @db.Text
-  birthDate             DateTime?
-  hireDate              DateTime
-  departmentId          String           @db.Uuid
-  positionId            String           @db.Uuid
-  mainSiteId            String?          @db.Uuid
-  employeeNumber        String?
-  notes                 String?          @db.Text
-  status                HrEmployeeStatus @default(ACTIVE)
-  userId                String?          @unique @db.Uuid
-  managerId             String?          @db.Uuid
-  contractType          String?
-  contractEndDate       DateTime?
-  trialEndDate          DateTime?
-  contractWeeklyMinutes Int?
-  trainingNames         String[]         @default([])
-  hourlyRate            Decimal?         @db.Decimal(10, 4)
-  currency              String?          @default("EUR")
-  rateEffectiveDate     DateTime?
-  nextReviewDate        DateTime?
-  reviewFrequency       String?
-  isArchived            Boolean          @default(false)
-  archivedAt            DateTime?
-  createdAt             DateTime         @default(now())
-  updatedAt             DateTime         @updatedAt
+  id                        String           @id @default(uuid()) @db.Uuid
+  organizationId            String           @db.Uuid
+  firstName                 String
+  lastName                  String
+  photoDataUrl              String?          @db.Text
+  email                     String?
+  phone                     String?
+  address                   String?          @db.Text
+  postalCode                String?
+  city                      String?
+  country                   String?
+  primaryLanguage           String?
+  secondaryLanguage         String?
+  emergencyContact          String?          @db.Text
+  emergencyContactFirstName String?
+  emergencyContactLastName  String?
+  emergencyContactPhone     String?
+  emergencyContactEmail     String?
+  birthDate                 DateTime?
+  hireDate                  DateTime
+  departmentId              String           @db.Uuid
+  positionId                String           @db.Uuid
+  mainSiteId                String?          @db.Uuid
+  employeeNumber            String?
+  notes                     String?          @db.Text
+  status                    HrEmployeeStatus @default(ACTIVE)
+  userId                    String?          @unique @db.Uuid
+  managerId                 String?          @db.Uuid
+  contractType              String?
+  contractEndDate           DateTime?
+  trialEndDate              DateTime?
+  contractWeeklyMinutes     Int?
+  trainingNames             String[]         @default([])
+  hourlyRate                Decimal?         @db.Decimal(10, 4)
+  currency                  String?          @default("EUR")
+  rateEffectiveDate         DateTime?
+  nextReviewDate            DateTime?
+  reviewFrequency           String?
+  isArchived                Boolean          @default(false)
+  archivedAt                DateTime?
+  createdAt                 DateTime         @default(now())
+  updatedAt                 DateTime         @updatedAt
 
   organization                  Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   department                    HrDepartment                   @relation(fields: [departmentId], references: [id], onDelete: Restrict)

@@ -379,6 +379,22 @@ export function FinanceWorkspace({ token, tab, onNavigate }: Props) {
     }
   };
 
+  const assignBudgetSite = async (budgetId: string, siteId: string) => {
+    setRefreshing(true);
+    setError(undefined);
+    try {
+      await api.mapFinanceBudgetSite(token, budgetId, siteId);
+      financeWorkspaceCache.clear();
+      await load(true, asOf, selectedSiteId);
+      const site = data?.sites.find(({ id }) => id === siteId);
+      setSuccess(`Budget attribué à ${site?.name ?? 'l’établissement sélectionné'}.`);
+    } catch (nextError) {
+      setError(messageOf(nextError, 'Impossible d’attribuer ce budget à l’établissement.'));
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   if (loading && !data) return <FinanceLoadingState tab={tab} />;
   const currency = data?.settings.defaultCurrency ?? 'EUR';
 
@@ -527,7 +543,12 @@ export function FinanceWorkspace({ token, tab, onNavigate }: Props) {
         />
       )}
       {data && tab === 'budget' && (
-        <BudgetView data={data} currency={currency} onNavigate={onNavigate} />
+        <BudgetView
+          data={data}
+          currency={currency}
+          onNavigate={onNavigate}
+          onAssignSite={(budgetId, siteId) => void assignBudgetSite(budgetId, siteId)}
+        />
       )}
       {data && tab === 'sources' && (
         <SourcesView
@@ -1373,10 +1394,12 @@ function BudgetView({
   data,
   currency,
   onNavigate,
+  onAssignSite,
 }: {
   data: FinanceBootstrap;
   currency: string;
   onNavigate: (tab: FinanceTab) => void;
+  onAssignSite: (budgetId: string, siteId: string) => void;
 }) {
   const budget = data.dashboard.budget;
   const defaultOpeningDays = budget?.targets?.days ?? 31;
@@ -1410,6 +1433,12 @@ function BudgetView({
     ['netResult', 'Résultat net'],
     ['breakEven', 'Seuil de rentabilité'],
   ] as const;
+  const targetedNetMargin =
+    budget.totals.netResult != null &&
+    budget.totals.revenue != null &&
+    budget.totals.revenue !== 0
+      ? (budget.totals.netResult / budget.totals.revenue) * 100
+      : null;
   const targets = budget.targets;
   const simulatedRevenueDay =
     targets?.revenueMonth == null ? null : targets.revenueMonth / openingDays;
@@ -1434,9 +1463,28 @@ function BudgetView({
             mois par mois, sans division arbitraire par 12.
           </p>
         </div>
-        <span className="finance-reference-badge">
-          <ShieldCheck size={16} /> Référence active
-        </span>
+        <div className="finance-budget-reference-actions">
+          <label className="finance-budget-site-control">
+            <Building2 size={16} />
+            <select
+              aria-label="Établissement du budget"
+              value={budget.siteId ?? ''}
+              onChange={(event) => onAssignSite(budget.id, event.target.value)}
+            >
+              <option value="" disabled>
+                Attribuer à un établissement
+              </option>
+              {data.sites.map((site) => (
+                <option key={site.id} value={site.id}>
+                  {site.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span className="finance-reference-badge">
+            <ShieldCheck size={16} /> Référence active
+          </span>
+        </div>
       </section>
       <section className="finance-optional-grid">
         {totals.map(([key, label]) => (
@@ -1446,8 +1494,28 @@ function BudgetView({
             </span>
             <div>
               <small>{label}</small>
-              <strong>{formatValue(budget.totals[key], 'currency', currency)}</strong>
-              <p>Total sur les 12 mois budgétés</p>
+              <div className="finance-budget-total-value">
+                <strong>{formatValue(budget.totals[key], 'currency', currency)}</strong>
+                {key === 'netResult' && targetedNetMargin != null && (
+                  <span
+                    className={`finance-budget-margin-badge ${
+                      targetedNetMargin > 0
+                        ? 'positive'
+                        : targetedNetMargin < 0
+                          ? 'negative'
+                          : 'neutral'
+                    }`}
+                    title="Résultat net budgété divisé par le chiffre d’affaires budgété"
+                  >
+                    {formatValue(targetedNetMargin, 'percentage', currency)} du CA
+                  </span>
+                )}
+              </div>
+              <p>
+                {key === 'netResult' && targetedNetMargin != null
+                  ? 'Marge nette visée après l’ensemble des charges et impôts'
+                  : 'Total sur les 12 mois budgétés'}
+              </p>
             </div>
           </article>
         ))}

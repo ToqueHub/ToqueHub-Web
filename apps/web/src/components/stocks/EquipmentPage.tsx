@@ -1,28 +1,34 @@
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
   Boxes,
   CalendarClock,
+  Download,
   ExternalLink,
+  FileText,
   Layers,
   LayoutGrid,
   MapPin,
   PackagePlus,
+  Paperclip,
   Plus,
   Search,
   Sparkles,
   TrendingUp,
+  Upload,
   WalletCards,
   Wrench,
   X,
 } from 'lucide-react';
+import { api } from '../../api/client';
 import type {
   Article,
   ArticlesResponse,
   Category,
   EquipmentAcquisitionMode,
   EquipmentCondition,
+  EquipmentDocument,
   Product,
   Site,
   Supplier,
@@ -103,6 +109,7 @@ export type EquipmentFormPayload = {
   siteId?: string;
   quantity?: number;
   previousQuantity?: number;
+  documentFiles: File[];
 };
 
 export function EquipmentPage({
@@ -317,26 +324,19 @@ export function EquipmentPage({
         </div>
         <div className="stocks-products-toolbar">
           {activeSites.length > 1 ? (
-            <label className="stocks-site-selector">
-              <span className="stocks-site-selector-icon" aria-hidden="true">
-                <MapPin size={18} />
-              </span>
-              <span className="stocks-site-selector-field">
-                <span>Site actif</span>
-                <select
-                  aria-label="Site actif"
-                  value={siteId}
-                  onChange={(event) => setSiteId(event.target.value)}
-                >
-                  <option value="">Tous les sites</option>
-                  {activeSites.map((site) => (
-                    <option key={site.id} value={site.id}>
-                      {site.name}
-                    </option>
-                  ))}
-                </select>
-              </span>
-            </label>
+            <select
+              className="stocks-toolbar-site-select"
+              aria-label="Site actif"
+              value={siteId}
+              onChange={(event) => setSiteId(event.target.value)}
+            >
+              <option value="">Tous les sites</option>
+              {activeSites.map((site) => (
+                <option key={site.id} value={site.id}>
+                  {site.name}
+                </option>
+              ))}
+            </select>
           ) : activeSites[0] ? (
             <div className="stocks-site-selector stocks-site-selector-static">
               <span className="stocks-site-selector-icon" aria-hidden="true">
@@ -593,6 +593,7 @@ export function EquipmentPage({
 }
 
 export function EquipmentForm({
+  token,
   article,
   categories,
   units,
@@ -601,6 +602,7 @@ export function EquipmentForm({
   onSubmit,
   onClose,
 }: {
+  token: string;
   article?: Article | null;
   categories: Category[];
   units: Unit[];
@@ -625,7 +627,7 @@ export function EquipmentForm({
           article.stock.quantity,
       )
     : 1;
-  const [tab, setTab] = useState<'details' | 'financing'>('details');
+  const [tab, setTab] = useState<'details' | 'financing' | 'documents'>('details');
   const [name, setName] = useState(product?.name ?? '');
   const [sku, setSku] = useState(product?.sku ?? '');
   const [description, setDescription] = useState(product?.description ?? '');
@@ -665,8 +667,41 @@ export function EquipmentForm({
   );
   const [buyoutValue, setBuyoutValue] = useState(String(numberValue(profile?.buyoutValue) || ''));
   const [notes, setNotes] = useState(profile?.notes ?? '');
+  const [documents, setDocuments] = useState<EquipmentDocument[]>([]);
+  const [documentFiles, setDocumentFiles] = useState<File[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(Boolean(product?.id));
+  const [documentsError, setDocumentsError] = useState<string>();
+  const [downloadingDocumentId, setDownloadingDocumentId] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    if (!product?.id) {
+      setDocuments([]);
+      setDocumentsLoading(false);
+      return;
+    }
+    let active = true;
+    setDocumentsLoading(true);
+    setDocumentsError(undefined);
+    api
+      .equipmentDocuments(token, product.id)
+      .then((items) => {
+        if (active) setDocuments(items);
+      })
+      .catch((err) => {
+        if (active)
+          setDocumentsError(
+            err instanceof Error ? err.message : 'Impossible de charger les documents.',
+          );
+      })
+      .finally(() => {
+        if (active) setDocumentsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [product?.id, token]);
 
   const nullable = (value: string) => value.trim() || null;
   const nullableNumber = (value: string) => (value.trim() === '' ? null : numberValue(value));
@@ -709,6 +744,7 @@ export function EquipmentForm({
         siteId: siteId || undefined,
         quantity: numberValue(quantity),
         previousQuantity: initialQuantity,
+        documentFiles,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Le matériel n’a pas pu être enregistré.');
@@ -743,6 +779,20 @@ export function EquipmentForm({
             onClick={() => setTab('financing')}
           >
             <WalletCards size={15} /> Achat et financement
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'documents'}
+            className={tab === 'documents' ? 'active' : ''}
+            onClick={() => setTab('documents')}
+          >
+            <FileText size={15} /> Documents
+            {documents.length + documentFiles.length > 0 ? (
+              <span className="equipment-document-tab-count">
+                {documents.length + documentFiles.length}
+              </span>
+            ) : null}
           </button>
         </div>
         <div className="product-sheet-form-panel">
@@ -1017,6 +1067,146 @@ export function EquipmentForm({
                 Notes
                 <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
               </label>
+            </div>
+          ) : null}
+
+          {tab === 'documents' ? (
+            <div className="equipment-documents-panel">
+              <div className="equipment-documents-heading">
+                <div>
+                  <strong>Contrats et documents du matériel</strong>
+                  <p>
+                    Ajoutez le contrat d’achat, de location ou de leasing au format PDF ou JPG.
+                  </p>
+                </div>
+                <Paperclip size={22} />
+              </div>
+
+              <label className="equipment-document-dropzone">
+                <input
+                  type="file"
+                  multiple
+                  accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg"
+                  onChange={(event) => {
+                    const selected = Array.from(event.target.files ?? []);
+                    const invalid = selected.find(
+                      (file) =>
+                        !['application/pdf', 'image/jpeg'].includes(file.type) ||
+                        file.size > 20 * 1024 * 1024,
+                    );
+                    if (invalid) {
+                      setDocumentsError(
+                        'Seuls les fichiers PDF, JPG ou JPEG de moins de 20 Mo sont acceptés.',
+                      );
+                      event.target.value = '';
+                      return;
+                    }
+                    setDocumentsError(undefined);
+                    setDocumentFiles((current) => [...current, ...selected].slice(0, 8));
+                    event.target.value = '';
+                  }}
+                />
+                <span className="equipment-document-dropzone-icon">
+                  <Upload size={22} />
+                </span>
+                <span>
+                  <strong>Ajouter un document</strong>
+                  <small>PDF, JPG ou JPEG · 20 Mo maximum par fichier</small>
+                </span>
+              </label>
+
+              {documentsError ? (
+                <div className="alert-modern error">
+                  <AlertTriangle size={16} /> {documentsError}
+                </div>
+              ) : null}
+
+              {documentsLoading ? (
+                <div className="equipment-documents-empty">Chargement des documents…</div>
+              ) : documents.length || documentFiles.length ? (
+                <div className="equipment-document-list">
+                  {documents.map((document) => (
+                    <div key={document.id} className="equipment-document-row">
+                      <span className="equipment-document-file-icon">
+                        <FileText size={18} />
+                      </span>
+                      <span className="equipment-document-copy">
+                        <strong>{document.originalName}</strong>
+                        <small>
+                          {(document.sizeBytes / 1024 / 1024).toLocaleString('fr-FR', {
+                            maximumFractionDigits: 2,
+                          })}{' '}
+                          Mo · Ajouté le {new Date(document.uploadedAt).toLocaleDateString('fr-FR')}
+                        </small>
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        disabled={downloadingDocumentId === document.id}
+                        onClick={async () => {
+                          if (!product?.id) return;
+                          setDownloadingDocumentId(document.id);
+                          setDocumentsError(undefined);
+                          try {
+                            await api.downloadEquipmentDocument(token, product.id, document);
+                          } catch (err) {
+                            setDocumentsError(
+                              err instanceof Error
+                                ? err.message
+                                : 'Impossible de télécharger le document.',
+                            );
+                          } finally {
+                            setDownloadingDocumentId(undefined);
+                          }
+                        }}
+                      >
+                        <Download size={14} />
+                        {downloadingDocumentId === document.id ? 'Téléchargement…' : 'Télécharger'}
+                      </button>
+                    </div>
+                  ))}
+                  {documentFiles.map((file, index) => (
+                    <div key={`${file.name}-${file.size}-${index}`} className="equipment-document-row pending">
+                      <span className="equipment-document-file-icon">
+                        <FileText size={18} />
+                      </span>
+                      <span className="equipment-document-copy">
+                        <strong>{file.name}</strong>
+                        <small>
+                          {(file.size / 1024 / 1024).toLocaleString('fr-FR', {
+                            maximumFractionDigits: 2,
+                          })}{' '}
+                          Mo · Sera lié à l’enregistrement
+                        </small>
+                      </span>
+                      <button
+                        type="button"
+                        className="equipment-document-remove"
+                        aria-label={`Retirer ${file.name}`}
+                        onClick={() =>
+                          setDocumentFiles((current) =>
+                            current.filter((_, fileIndex) => fileIndex !== index),
+                          )
+                        }
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="equipment-documents-empty">
+                  <FileText size={28} />
+                  <strong>Aucun document lié</strong>
+                  <span>Ajoutez ici le contrat associé à ce matériel.</span>
+                </div>
+              )}
+
+              {!product ? (
+                <div className="product-sheet-note">
+                  <Paperclip size={16} /> Le document sera envoyé après la création du matériel.
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>

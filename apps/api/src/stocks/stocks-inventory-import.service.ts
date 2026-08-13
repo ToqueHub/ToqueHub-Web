@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { AuditAction, Prisma, ProductKind, Unit, UnitType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { stockCategoryVatPolicy } from './stocks-category-vat-policy';
 import { CommitInventoryImportDto } from './dto/stocks-inventory-import.dto';
 import {
   normalizeInventoryFamilyName,
@@ -473,8 +474,17 @@ export class StocksInventoryImportService {
       return existing.id;
     }
     if (!create) return null;
+    const organization = await tx.organization.findUnique({
+      where: { id: organizationId },
+      select: { regulatoryCountryCode: true },
+    });
     const created = await tx.category.create({
-      data: { organizationId, name: name.trim(), kind: ProductKind.UNSPECIFIED },
+      data: {
+        organizationId,
+        name: name.trim(),
+        kind: ProductKind.UNSPECIFIED,
+        vatRate: stockCategoryVatPolicy(organization?.regulatoryCountryCode).defaultRate,
+      },
     });
     cache.set(key, created.id);
     return created.id;

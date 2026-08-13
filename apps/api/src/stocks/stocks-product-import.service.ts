@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, Logger } from '@ne
 import { AuditAction, Prisma, ProductKind, Unit } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { stockCategoryVatPolicy } from './stocks-category-vat-policy';
 import {
   BulkAssignProductSitesDto,
   CommitProductImportDto,
@@ -954,7 +955,17 @@ export class StocksProductImportService {
       const existing = caches.categoryCache.get(lookup);
       if (existing) categoryId = existing.id;
       else if (options.createMissingCategories) {
-        const created = await tx.category.create({ data: { organizationId, name: categoryName } });
+        const organization = await tx.organization.findUnique({
+          where: { id: organizationId },
+          select: { regulatoryCountryCode: true },
+        });
+        const created = await tx.category.create({
+          data: {
+            organizationId,
+            name: categoryName,
+            vatRate: stockCategoryVatPolicy(organization?.regulatoryCountryCode).defaultRate,
+          },
+        });
         await tx.auditLog.create({
           data: {
             organizationId,

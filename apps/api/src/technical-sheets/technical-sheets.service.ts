@@ -666,6 +666,40 @@ export class TechnicalSheetsService {
     });
   }
 
+  async reassignRecipeCategory(
+    organizationId: string,
+    actor: Actor,
+    id: string,
+    categoryId: string,
+  ) {
+    await this.assertInstalled(organizationId);
+    await this.ensureRecipe(organizationId, id);
+    const category = await this.prisma.technicalSheetCategory.findFirst({
+      where: { id: categoryId, organizationId, isArchived: false },
+    });
+    if (!category) {
+      throw new BadRequestException('Choisissez une catégorie de recette active.');
+    }
+    return this.prisma.$transaction(async (tx) => {
+      await tx.technicalSheet.update({
+        where: { id, organizationId },
+        data: { categoryId },
+      });
+      await this.history(
+        tx,
+        organizationId,
+        id,
+        actor.id,
+        TechnicalSheetHistoryAction.GENERAL_UPDATED,
+        `Catégorie réaffectée à « ${category.name} »`,
+        { categoryId, categoryName: category.name },
+      );
+      return this.serializeRecipe(
+        await tx.technicalSheet.findUnique({ where: { id }, include: this.recipeInclude(true) }),
+      );
+    });
+  }
+
   async updateRecipePricing(
     organizationId: string,
     actor: Actor,
@@ -744,6 +778,63 @@ export class TechnicalSheetsService {
       );
       return this.serializeRecipe(sheet);
     });
+  }
+
+  async deleteRecipe(organizationId: string, id: string) {
+    await this.assertInstalled(organizationId);
+    const sheet = await this.ensureRecipe(organizationId, id);
+    const [productionOrders, menuItems, menuReplacements, menuCycleItems, batches, lots] =
+      await Promise.all([
+        this.prisma.productionOrder.count({ where: { organizationId, technicalSheetId: id } }),
+        this.prisma.menuItem.count({ where: { organizationId, technicalSheetId: id } }),
+        this.prisma.menuVariantReplacement.count({
+          where: { replacementTechnicalSheetId: id, variant: { organizationId } },
+        }),
+        this.prisma.menuCycleItem.count({ where: { organizationId, technicalSheetId: id } }),
+        this.prisma.productionBatch.count({
+          where: { organizationId, recipeVersion: { technicalSheetId: id } },
+        }),
+        this.prisma.lot.count({
+          where: { organizationId, recipeVersion: { technicalSheetId: id } },
+        }),
+      ]);
+    const productionLinks = productionOrders + batches + lots;
+    const menuLinks = menuItems + menuReplacements + menuCycleItems;
+    if (productionLinks || menuLinks) {
+      const usages = [
+        productionLinks
+          ? `${productionLinks} utilisation${productionLinks > 1 ? 's' : ''} en production`
+          : '',
+        menuLinks ? `${menuLinks} utilisation${menuLinks > 1 ? 's' : ''} dans les menus` : '',
+      ].filter(Boolean);
+      throw new BadRequestException(
+        `La fiche « ${sheet.name} » ne peut pas être supprimée car elle possède ${usages.join(' et ')}. Retirez d’abord ces liens.`,
+      );
+    }
+    await this.prisma.$transaction(async (tx) => {
+      await tx.productionProfile.deleteMany({ where: { organizationId, technicalSheetId: id } });
+      await tx.technicalSheetVersion.deleteMany({ where: { organizationId, technicalSheetId: id } });
+      await tx.technicalSheet.delete({ where: { id, organizationId } });
+    });
+    return { id, deleted: true };
+  }
+
+  async exportRecipePdf(organizationId: string, actor: Actor, id: string) {
+    await this.assertInstalled(organizationId);
+    const recipe = (await this.getRecipe(organizationId, id)) as any;
+    const filename = `fiche-technique-${this.slug(recipe.name)}-${this.dateSlug()}.pdf`;
+    const body = await this.recipePdf(recipe);
+    await this.prisma.technicalSheetExport.create({
+      data: {
+        organizationId,
+        technicalSheetId: id,
+        format: TechnicalSheetExportFormat.PDF,
+        filename,
+        payload: { type: 'TECHNICAL_SHEET', recipeName: recipe.name },
+        createdById: actor.id,
+      },
+    });
+    return { filename, contentType: 'application/pdf', body };
   }
 
   async duplicateRecipe(
@@ -2280,6 +2371,196 @@ export class TechnicalSheetsService {
       ]),
     ];
     return `\ufeff${rows.map((row) => row.map((value) => `"${String(value ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n')}`;
+  }
+
+  private async recipePdf(recipe: any) {
+    const ingredients = Array.isArray(recipe.ingredients) ? recipe.ingredients : [];
+    const steps = Array.isArray(recipe.steps) ? recipe.steps : [];
+    return new Promise<Buffer>((resolve, reject) => {
+      const doc = new PDFDocument({
+        size: 'A4',
+        margin: 42,
+        info: { Title: `Fiche technique - ${recipe.name}`, Author: 'ToqueHub' },
+      });
+      const chunks: Buffer[] = [];
+      doc.on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const pageWidth = doc.page.width;
+      const contentWidth = pageWidth - 84;
+      const addPage = () => {
+        doc.addPage({ size: 'A4', margin: 42 });
+        return 48;
+      };
+      const ensureSpace = (y: number, height: number) =>
+        y + height > doc.page.height - 52 ? addPage() : y;
+
+      doc.rect(0, 0, pageWidth, 136).fill('#073f3a');
+      // Signature de marque compacte : toque blanche dessinée en vectoriel, puis nom ToqueHub.
+      doc.circle(49, 29, 5.5).fill('#ffffff');
+      doc.circle(57, 25.5, 6.5).fill('#ffffff');
+      doc.circle(65, 29, 5.5).fill('#ffffff');
+      doc.roundedRect(49, 29, 16, 11, 2).fill('#ffffff');
+      doc.rect(51, 38, 12, 2).fill('#073f3a');
+      doc.fillColor('#ffffff').fontSize(13).font('Helvetica-Bold').text('ToqueHub', 74, 24, {
+        width: 110,
+      });
+      doc
+        .fillColor('#a7f3d0')
+        .fontSize(7.5)
+        .font('Helvetica-Bold')
+        .text('FICHE TECHNIQUE', 42, 50, { characterSpacing: 0.6 });
+      const recipeTitleSize =
+        recipe.name.length > 58 ? 20 : recipe.name.length > 36 ? 24 : 28;
+      doc
+        .fillColor('#ffffff')
+        .fontSize(recipeTitleSize)
+        .font('Helvetica-Bold')
+        .text(recipe.name, 42, 73, {
+          width: contentWidth,
+          height: 48,
+          align: 'center',
+          lineGap: 1,
+        });
+
+      let y = 158;
+      const yieldLabel =
+        recipe.yieldMode === TechnicalSheetYieldMode.MASS
+          ? `${this.formatNumber(Number(recipe.totalMassGrams ?? 0) / 1000)} kg`
+          : `${this.formatNumber(recipe.referencePortions ?? 0)} portions`;
+      const summary = [
+        ['CATÉGORIE', recipe.category?.name ?? 'Sans catégorie'],
+        ['RENDEMENT', yieldLabel],
+        ['COÛT TOTAL', this.formatMoney(recipe.totalCost ?? recipe.costTotal ?? 0)],
+      ];
+      const cardWidth = (contentWidth - 20) / 3;
+      summary.forEach(([label, value], index) => {
+        const x = 42 + index * (cardWidth + 10);
+        doc.roundedRect(x, y, cardWidth, 62, 8).fillAndStroke('#f8fafc', '#dbe7e5');
+        doc.fillColor('#64748b').fontSize(7.5).font('Helvetica-Bold').text(label, x + 11, y + 11);
+        doc
+          .fillColor('#0f172a')
+          .fontSize(11)
+          .font('Helvetica-Bold')
+          .text(String(value), x + 11, y + 29, { width: cardWidth - 22, height: 24 });
+      });
+      y += 82;
+
+      if (recipe.description) {
+        doc.fillColor('#0f172a').fontSize(12).font('Helvetica-Bold').text('Description', 42, y);
+        y += 19;
+        doc
+          .fillColor('#475569')
+          .fontSize(9)
+          .font('Helvetica')
+          .text(recipe.description, 42, y, { width: contentWidth, lineGap: 2 });
+        y = doc.y + 18;
+      }
+
+      y = ensureSpace(y, 82);
+      doc.fillColor('#0f172a').fontSize(13).font('Helvetica-Bold').text('Ingrédients', 42, y);
+      y += 23;
+      const drawIngredientHeader = (top: number) => {
+        doc.roundedRect(42, top, contentWidth, 23, 5).fill('#ecfdf5');
+        doc.fillColor('#065f46').fontSize(7.5).font('Helvetica-Bold');
+        doc.text('INGRÉDIENT', 50, top + 8, { width: 245 });
+        doc.text('QUANTITÉ', 300, top + 8, { width: 95, align: 'right' });
+        doc.text('COÛT', 405, top + 8, { width: 95, align: 'right' });
+        return top + 29;
+      };
+      y = drawIngredientHeader(y);
+      if (!ingredients.length) {
+        doc.fillColor('#64748b').fontSize(9).font('Helvetica').text('Aucun ingrédient renseigné.', 50, y);
+        y += 28;
+      } else {
+        ingredients.forEach((line: any) => {
+          if (y + 27 > doc.page.height - 52) y = drawIngredientHeader(addPage());
+          const name =
+            line.sourceTechnicalSheet?.name ??
+            line.product?.name ??
+            line.productNameSnapshot ??
+            'Ingrédient';
+          const unit = line.unit?.symbol ?? line.unitSymbolSnapshot ?? '';
+          doc.fillColor('#0f172a').fontSize(8.5).font('Helvetica').text(name, 50, y, {
+            width: 245,
+            height: 18,
+          });
+          doc.text(`${this.formatNumber(line.quantity)} ${unit}`, 300, y, {
+            width: 95,
+            align: 'right',
+          });
+          doc.text(line.cost == null ? 'Non calculable' : this.formatMoney(line.cost), 405, y, {
+            width: 95,
+            align: 'right',
+          });
+          doc.moveTo(42, y + 21).lineTo(pageWidth - 42, y + 21).strokeColor('#e2e8f0').stroke();
+          y += 28;
+        });
+      }
+
+      const allergens = Array.isArray(recipe.allergens)
+        ? recipe.allergens.map((allergen: any) => allergen.name).filter(Boolean)
+        : [];
+      if (allergens.length) {
+        y = ensureSpace(y + 8, 45);
+        doc.fillColor('#92400e').fontSize(8).font('Helvetica-Bold').text('ALLERGÈNES', 42, y);
+        doc
+          .fillColor('#78350f')
+          .fontSize(9)
+          .font('Helvetica')
+          .text(allergens.join(', '), 42, y + 16, { width: contentWidth });
+        y = doc.y + 18;
+      }
+
+      y = ensureSpace(y + 8, 62);
+      doc.fillColor('#0f172a').fontSize(13).font('Helvetica-Bold').text('Étapes de préparation', 42, y);
+      y += 24;
+      if (!steps.length) {
+        doc.fillColor('#64748b').fontSize(9).font('Helvetica').text('Aucune étape renseignée.', 42, y);
+      } else {
+        steps.forEach((step: any, index: number) => {
+          const description = String(step.description ?? '');
+          const blockHeight = Math.max(48, doc.heightOfString(description, { width: contentWidth - 48 }) + 31);
+          y = ensureSpace(y, Math.min(blockHeight, 180));
+          doc.circle(55, y + 12, 12).fill('#10b981');
+          doc
+            .fillColor('#ffffff')
+            .fontSize(9)
+            .font('Helvetica-Bold')
+            .text(String(index + 1), 47, y + 8, { width: 16, align: 'center' });
+          doc
+            .fillColor('#0f172a')
+            .fontSize(10)
+            .font('Helvetica-Bold')
+            .text(step.title || `Étape ${index + 1}`, 82, y + 2, { width: contentWidth - 40 });
+          const duration = step.estimatedMinutes ?? step.estimatedTimeMinutes;
+          if (duration) {
+            doc
+              .fillColor('#64748b')
+              .fontSize(7.5)
+              .font('Helvetica-Bold')
+              .text(`${duration} min`, pageWidth - 105, y + 3, { width: 60, align: 'right' });
+          }
+          doc
+            .fillColor('#475569')
+            .fontSize(8.5)
+            .font('Helvetica')
+            .text(description || '—', 82, y + 19, { width: contentWidth - 48, lineGap: 2 });
+          y = Math.max(y + blockHeight, doc.y + 15);
+        });
+      }
+
+      doc
+        .fillColor('#94a3b8')
+        .fontSize(7.5)
+        .font('Helvetica')
+        .text(`Généré par ToqueHub le ${new Date().toLocaleDateString('fr-FR')}`, 42, doc.page.height - 38, {
+          width: contentWidth,
+          align: 'center',
+        });
+      doc.end();
+    });
   }
 
   private async simulationPdf(sim: any) {

@@ -132,6 +132,7 @@ const FinanceApp = lazy(() =>
 );
 
 import { ApiError, api } from '../api/client';
+import { formatVatRate, stockCategoryVatPolicy } from '../stock-category-vat-policy';
 import type {
   Category,
   DashboardSummary,
@@ -180,6 +181,7 @@ import type {
   HrPosition,
   HrReferencePayload,
   HrSummary,
+  ToqueHubAccountCreationPayload,
   BackupInspection,
   BackupCloudStatus,
   BackupListResponse,
@@ -193,10 +195,10 @@ import type {
   MarginSettings,
   SystemChangelogResponse,
   SystemInstanceInfo,
-  SystemUpdateOperation,
-  SystemUpdateStatus,
   OrganizationRemoteAccess,
   RemoteAccessStatus,
+  SystemUpdateOperation,
+  SystemUpdateStatus,
   FinanceBootstrap,
   WorkspaceOnboardingState,
   WorkspaceOnboardingStep,
@@ -220,6 +222,7 @@ const movementOptions: Array<[StockMovementType, string]> = [
   ['LOSS', 'Perte'],
   ['TRANSFER', 'Transfert'],
 ];
+const NATIVE_STOCK_UNIT_SYMBOLS = ['kg', 'g', 'L', 'cL', 'pièce', 'caisse'] as const;
 
 const apps = [
   {
@@ -279,10 +282,9 @@ const apps = [
     size: '2.4 Mo',
     tagline: 'Référentiel culinaire central connecté aux produits, unités et prix d’achat Stocks.',
     description:
-      'Fiches Techniques centralise vos préparations professionnelles sans créer de référentiel produit parallèle. Les lignes d’ingrédients pointent exclusivement vers les produits Stocks, les allergènes viennent des fiches produits, les coûts utilisent les prix d’achat Stocks, et la V1 couvre catégories recettes, étapes, historique, duplication, archivage, production théorique et exports PDF/CSV.\n\nDépendance stricte : le module Stocks doit être installé avant Fiches Techniques.',
-    screenshots: ['Tableau de bord', 'Fiche technique', 'Production théorique'],
-    changelog:
-      'Lancement V1 avec préchargement catégories recettes, coûts Stocks et production théorique.',
+      'Fiches Techniques centralise vos préparations professionnelles sans créer de référentiel produit parallèle. Les lignes d’ingrédients pointent exclusivement vers les produits Stocks, les allergènes viennent des fiches produits et les coûts utilisent les prix d’achat Stocks. La V1 couvre les catégories, les étapes, l’historique, la duplication et l’archivage.\n\nDépendance stricte : le module Stocks doit être installé avant Fiches Techniques.',
+    screenshots: ['Tableau de bord', 'Fiche technique', 'Coûts matières'],
+    changelog: 'Lancement V1 avec préchargement des catégories recettes et coûts Stocks.',
     version: 'v1.0.0',
     compatibility: 'ToqueHub Core v0.1.0+ + Stocks obligatoire',
     status: 'Disponible',
@@ -481,6 +483,7 @@ type ActiveTab =
   | 'planning-planning'
   | 'planning-settings'
   | 'planning-attendance'
+  | 'planning-exports'
   | 'planning-day'
   | 'planning-week'
   | 'planning-month'
@@ -493,7 +496,6 @@ type ActiveTab =
   | 'technical-sheets-recipes'
   | 'technical-sheets-categories'
   | 'technical-sheets-costs'
-  | 'technical-sheets-production'
   | 'production-dashboard'
   | 'production-orders'
   | 'production-calendar'
@@ -510,7 +512,6 @@ type ActiveTab =
   | 'menus-diets'
   | 'menus-guests'
   | 'menus-exports'
-  | 'menus-history'
   | 'haccp-dashboard'
   | 'haccp-setup'
   | 'haccp-sensors'
@@ -528,7 +529,6 @@ type ActiveTab =
   | 'purchasing-dashboard'
   | 'purchasing-orders'
   | 'purchasing-receipts'
-  | 'purchasing-history'
   | 'finance-cockpit'
   | 'finance-sales'
   | 'finance-annual'
@@ -683,7 +683,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   // Modal Visibility State
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showEquipmentCategoryModal, setShowEquipmentCategoryModal] = useState(false);
-  const [showUnitModal, setShowUnitModal] = useState(false);
   const [showProductModal, setShowProductModal] = useState(false);
   const [showEquipmentModal, setShowEquipmentModal] = useState(false);
   const [showAddImportModal, setShowAddImportModal] = useState(false);
@@ -1361,6 +1360,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         'planning-planning',
         'planning-settings',
         'planning-attendance',
+        'planning-exports',
         'planning-day',
         'planning-week',
         'planning-month',
@@ -1379,7 +1379,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         'technical-sheets-recipes',
         'technical-sheets-categories',
         'technical-sheets-costs',
-        'technical-sheets-production',
       ].includes(activeTab),
     [activeTab],
   );
@@ -1419,7 +1418,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         'menus-diets',
         'menus-guests',
         'menus-exports',
-        'menus-history',
       ].includes(activeTab),
     [activeTab],
   );
@@ -1449,7 +1447,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         'purchasing-dashboard',
         'purchasing-orders',
         'purchasing-receipts',
-        'purchasing-history',
       ].includes(activeTab),
     [activeTab],
   );
@@ -1668,6 +1665,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           { tab: 'planning-planning', label: 'Planning', icon: Calendar },
           { tab: 'planning-settings', label: 'Paramétrage', icon: Settings },
           { tab: 'planning-attendance', label: 'Émargement', icon: FileText },
+          { tab: 'planning-exports', label: 'Export', icon: Download },
         ],
       },
       {
@@ -1684,7 +1682,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           { tab: 'technical-sheets-recipes', label: 'Fiches techniques', icon: FileText },
           { tab: 'technical-sheets-categories', label: 'Catégories recettes', icon: ClipboardList },
           { tab: 'technical-sheets-costs', label: 'Coûts', icon: Calculator },
-          { tab: 'technical-sheets-production', label: 'Production théorique', icon: ChefHat },
         ],
       },
       {
@@ -1722,7 +1719,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                 { tab: 'menus-calendar' as ActiveTab, label: 'Calendrier', icon: Calendar },
                 { tab: 'menus-catalog' as ActiveTab, label: 'Clients', icon: UsersRound },
                 { tab: 'menus-exports' as ActiveTab, label: 'Documents', icon: Download },
-                { tab: 'menus-history' as ActiveTab, label: 'Historique', icon: History },
               ]
             : [
                 { tab: 'menus-dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
@@ -1764,14 +1760,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   ? [{ tab: 'menus-guests' as ActiveTab, label: 'Convives', icon: UsersRound }]
                   : []),
                 { tab: 'menus-exports', label: 'Exports & Documents', icon: Download },
-                {
-                  tab: 'menus-history',
-                  label:
-                    menuModuleSettings?.usageProfile === 'RESTAURANT_CAFE'
-                      ? 'Historique & audit'
-                      : 'Historique',
-                  icon: History,
-                },
               ],
       },
       {
@@ -1817,7 +1805,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
           { tab: 'purchasing-dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
           { tab: 'purchasing-orders', label: 'Commandes', icon: FileText },
           { tab: 'purchasing-receipts', label: 'Réceptions', icon: Package },
-          { tab: 'purchasing-history', label: 'Historique', icon: History },
         ],
       },
       {
@@ -2077,6 +2064,14 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     );
     setShowUserModal(false);
     await refreshUsers();
+  }
+
+  function openUserCreation() {
+    setShowUserModal(true);
+  }
+
+  function closeUserCreation() {
+    setShowUserModal(false);
   }
 
   async function handleUpdateUser(
@@ -2607,11 +2602,12 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     );
   }
 
-  async function handleCreateHrCollaborator(payload: HrCollaboratorPayload) {
+  async function handleCreateHrCollaborator(payload: HrCollaboratorPayload, toqueHubAccount?: ToqueHubAccountCreationPayload) {
     const collaborator = (await submit(
-      () => api.createHrCollaborator(token, payload),
-      'Collaborateur RH créé.',
+      () => api.createHrCollaborator(token, payload, toqueHubAccount),
+      toqueHubAccount ? 'Collaborateur et compte ToqueHub créés.' : 'Collaborateur RH créé.',
     )) as HrCollaborator;
+    if (toqueHubAccount) await refreshUsers();
     await refreshHr();
     return collaborator;
   }
@@ -2758,7 +2754,11 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     await refreshHr();
   }
 
-  async function handleCreateCategory(payload: { name: string; description?: string }) {
+  async function handleCreateCategory(payload: {
+    name: string;
+    description?: string;
+    vatRate?: number;
+  }) {
     await submit(() => api.createCategory(token, payload), 'Catégorie créée avec succès.');
     setShowCategoryModal(false);
   }
@@ -2773,7 +2773,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
   async function handleUpdateCategory(
     categoryId: string,
-    payload: { name: string; description?: string },
+    payload: { name: string; description?: string; vatRate: number },
   ) {
     const updated = await submit(
       () => api.updateCategory(token, categoryId, payload),
@@ -2788,16 +2788,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       'Catégorie supprimée. Les produits ont été déplacés dans “Sans catégorie”.',
     );
     setSelectedCategory(null);
-  }
-
-  async function handleCreateUnit(payload: {
-    name: string;
-    symbol: string;
-    type?: string;
-    baseFactor?: number;
-  }) {
-    await submit(() => api.createUnit(token, payload), 'Unité créée avec succès.');
-    setShowUnitModal(false);
   }
 
   async function handleCreateProduct(payload: ProductFormPayload) {
@@ -2830,6 +2820,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             quantity: nextQuantity,
             reason: editing ? 'Mise à jour de la fiche matériel' : 'Stock initial du matériel',
           });
+        }
+        if (payload.documentFiles.length) {
+          await api.uploadEquipmentDocuments(token, product.id, payload.documentFiles);
         }
         return product;
       },
@@ -3481,10 +3474,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       sortCategoriesWithUncategorizedLast(categories.filter((c) => showArchived || !isArchived(c))),
     [categories, showArchived],
   );
-  const activeUnits = useMemo(
-    () => units.filter((u) => showArchived || !isArchived(u)),
-    [units, showArchived],
-  );
   const activeSuppliers = useMemo(
     () => suppliers.filter((s) => showArchived || !isArchived(s)),
     [suppliers, showArchived],
@@ -3528,13 +3517,22 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
   const filteredUnits = useMemo(() => {
     const search = unitSearch.toLowerCase();
-    return activeUnits.filter(
-      (unit) =>
-        unit.name.toLowerCase().includes(search) ||
-        (unit.symbol ?? '').toLowerCase().includes(search) ||
-        (unit.type ?? unit.unitType ?? '').toLowerCase().includes(search),
-    );
-  }, [activeUnits, unitSearch]);
+    const nativeOrder = new Map(NATIVE_STOCK_UNIT_SYMBOLS.map((symbol, index) => [symbol, index]));
+    return units
+      .filter((unit) => nativeOrder.has(unit.symbol as (typeof NATIVE_STOCK_UNIT_SYMBOLS)[number]))
+      .filter((unit) => !isArchived(unit))
+      .filter(
+        (unit) =>
+          unit.name.toLowerCase().includes(search) ||
+          (unit.symbol ?? '').toLowerCase().includes(search) ||
+          (unit.type ?? unit.unitType ?? '').toLowerCase().includes(search),
+      )
+      .sort(
+        (left, right) =>
+          (nativeOrder.get(left.symbol as (typeof NATIVE_STOCK_UNIT_SYMBOLS)[number]) ?? 99) -
+          (nativeOrder.get(right.symbol as (typeof NATIVE_STOCK_UNIT_SYMBOLS)[number]) ?? 99),
+      );
+  }, [units, unitSearch]);
   const filteredLocations = useMemo(
     () =>
       activeLocations.filter(
@@ -3659,6 +3657,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     'planning-planning': 'Planning mensuel',
     'planning-settings': 'Paramétrage Planning',
     'planning-attendance': 'Émargement Planning',
+    'planning-exports': 'Export Planning',
     'planning-day': 'Planning journalier',
     'planning-week': 'Planning hebdomadaire',
     'planning-month': 'Planning mensuel',
@@ -3671,7 +3670,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     'technical-sheets-recipes': 'Fiches techniques',
     'technical-sheets-categories': 'Catégories recettes',
     'technical-sheets-costs': 'Coûts fiches techniques',
-    'technical-sheets-production': 'Production théorique',
     'production-dashboard': 'Production',
     'production-orders': 'Production',
     'production-calendar': 'Production',
@@ -3688,7 +3686,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     'menus-diets': 'Régimes alimentaires',
     'menus-guests': 'Convives Menus',
     'menus-exports': 'Exports Menus',
-    'menus-history': 'Historique Menus',
     'haccp-dashboard': 'HACCP',
     'haccp-setup': 'Zones & matériels HACCP',
     'haccp-sensors': 'Capteurs HACCP',
@@ -3703,7 +3700,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     'purchasing-dashboard': 'Achats',
     'purchasing-orders': 'Commandes fournisseurs',
     'purchasing-receipts': 'Réceptions Achats',
-    'purchasing-history': 'Historique Achats',
     'finance-cockpit': 'Cockpit financier',
     'finance-sales': 'Ventes & affluence',
     'finance-annual': 'Analyse annuelle',
@@ -4775,8 +4771,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   collaborators={hrCollaborators}
                   departments={hrDepartments}
                   positions={hrPositions}
+                  roles={roles}
                   users={users}
                   sites={sites}
+                  primarySiteId={session.user.primarySiteId ?? null}
                   regulatoryCountryCode={
                     dashboardSummary?.organization.regulatoryCountryCode ??
                     session.user.regulatoryCountryCode ??
@@ -4820,6 +4818,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   onCompleteServices={handleCompleteHrServices}
                   onCompletePositions={handleCompleteHrPositions}
                   onUnlockEmployees={handleUnlockHrEmployees}
+                  canCreateToqueHubAccount={isAdmin}
                 />
               )}
 
@@ -4835,14 +4834,16 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                       ? 'settings'
                       : activeTab === 'planning-attendance'
                         ? 'attendance'
-                        : activeTab === 'planning-planning' ||
-                            activeTab === 'planning-day' ||
-                            activeTab === 'planning-week' ||
-                            activeTab === 'planning-month' ||
-                            activeTab === 'planning-assignments' ||
-                            activeTab === 'planning-replacements'
-                          ? 'planning'
-                          : 'dashboard'
+                        : activeTab === 'planning-exports'
+                          ? 'exports'
+                          : activeTab === 'planning-planning' ||
+                              activeTab === 'planning-day' ||
+                              activeTab === 'planning-week' ||
+                              activeTab === 'planning-month' ||
+                              activeTab === 'planning-assignments' ||
+                              activeTab === 'planning-replacements'
+                            ? 'planning'
+                            : 'dashboard'
                   }
                   collaborators={hrCollaborators}
                   departments={hrDepartments}
@@ -4859,7 +4860,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                           ? 'planning-settings'
                           : next === 'attendance'
                             ? 'planning-attendance'
-                            : 'planning-dashboard',
+                            : next === 'exports'
+                              ? 'planning-exports'
+                              : 'planning-dashboard',
                     )
                   }
                 />
@@ -4875,9 +4878,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                         ? 'categories'
                         : activeTab === 'technical-sheets-costs'
                           ? 'costs'
-                          : activeTab === 'technical-sheets-production'
-                            ? 'production'
-                            : 'dashboard'
+                          : 'dashboard'
                   }
                   stocksInstalled={stocksInstalled}
                   products={products}
@@ -4892,9 +4893,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                           ? 'technical-sheets-categories'
                           : next === 'costs'
                             ? 'technical-sheets-costs'
-                            : next === 'production'
-                              ? 'technical-sheets-production'
-                              : 'technical-sheets-dashboard',
+                            : 'technical-sheets-dashboard',
                     )
                   }
                 />
@@ -4930,9 +4929,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                                 ? 'guests'
                                 : activeTab === 'menus-exports'
                                   ? 'exports'
-                                  : activeTab === 'menus-history'
-                                    ? 'history'
-                                    : 'dashboard'
+                                  : 'dashboard'
                   }
                   sites={activeSites}
                   canManage={canWriteHr}
@@ -4952,9 +4949,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                                   ? 'menus-guests'
                                   : next === 'exports'
                                     ? 'menus-exports'
-                                    : next === 'history'
-                                      ? 'menus-history'
-                                      : 'menus-dashboard',
+                                    : 'menus-dashboard',
                     )
                   }
                   onInstalled={(apps) => {
@@ -5018,9 +5013,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                         ? 'orders'
                         : activeTab === 'purchasing-receipts'
                           ? 'receipts'
-                          : activeTab === 'purchasing-history'
-                            ? 'history'
-                            : 'dashboard'
+                          : 'dashboard'
                     }
                     onNavigate={(next) =>
                       setActiveTab(
@@ -5028,9 +5021,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                           ? 'purchasing-orders'
                           : next === 'receipts'
                             ? 'purchasing-receipts'
-                            : next === 'history'
-                              ? 'purchasing-history'
-                              : 'purchasing-dashboard',
+                            : 'purchasing-dashboard',
                       )
                     }
                   />
@@ -5140,7 +5131,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   onTypeFilter={setDocumentsTypeFilter}
                   onDateFrom={setDocumentsDateFrom}
                   onDateTo={setDocumentsDateTo}
-                  onRefresh={() => void refreshMyDocuments()}
                   onView={async (document) => {
                     const url = await api.viewDocument(token, document.id);
                     window.open(url, '_blank', 'noopener,noreferrer');
@@ -5158,8 +5148,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   permissions={permissions}
                   currentUserId={session.user.id}
                   loading={isLoading}
-                  onRefresh={refreshUsers}
-                  onCreate={() => setShowUserModal(true)}
                   onEdit={(user) => setEditingUser(user)}
                   onDisable={handleDisableUser}
                   onUpdateRolePermissions={handleUpdateRolePermissions}
@@ -5185,7 +5173,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   movements={movements}
                   equipment={equipmentArticles}
                   ocrStatuses={ocrStatuses}
-                  readiness={stocksReadiness}
                   onCreateMovement={() => openMovementModal()}
                   onImportOcr={() => setShowAddImportModal(true)}
                   onOpenExtraction={handleOpenOcrExtraction}
@@ -5801,9 +5788,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                     units={filteredUnits}
                     search={unitSearch}
                     setSearch={setUnitSearch}
-                    showArchived={showArchived}
-                    setShowArchived={setShowArchived}
-                    onCreate={() => setShowUnitModal(true)}
                   />
                 </>
               )}
@@ -5983,7 +5967,15 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         onClose={() => setShowCategoryModal(false)}
         title="Créer une catégorie"
       >
-        <CategoryForm onSubmit={handleCreateCategory} onClose={() => setShowCategoryModal(false)} />
+        <CategoryForm
+          onSubmit={handleCreateCategory}
+          onClose={() => setShowCategoryModal(false)}
+          regulatoryCountryCode={
+            dashboardSummary?.organization.regulatoryCountryCode ??
+            session.user.regulatoryCountryCode ??
+            null
+          }
+        />
       </Modal>
 
       <Modal
@@ -5994,6 +5986,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         <CategoryForm
           onSubmit={handleCreateEquipmentCategory}
           onClose={() => setShowEquipmentCategoryModal(false)}
+          collectVatRate={false}
           namePlaceholder="ex : Cuisson, Froid, Petit matériel…"
           descriptionPlaceholder="Description de cette famille de matériel…"
         />
@@ -6005,20 +5998,16 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         onClose={() => setSelectedCategory(null)}
         onUpdate={handleUpdateCategory}
         onDelete={handleDeleteCategory}
+        regulatoryCountryCode={
+          dashboardSummary?.organization.regulatoryCountryCode ??
+          session.user.regulatoryCountryCode ??
+          null
+        }
         onOpenProducts={(categoryId) => {
           setSelectedCategory(null);
           openProductsForCategory(categoryId);
         }}
       />
-
-      {/* Unit Modal */}
-      <Modal
-        isOpen={showUnitModal}
-        onClose={() => setShowUnitModal(false)}
-        title="Créer une unité de mesure"
-      >
-        <UnitForm onSubmit={handleCreateUnit} onClose={() => setShowUnitModal(false)} />
-      </Modal>
 
       {/* Product Modal */}
       {showAddImportModal ? (
@@ -6124,6 +6113,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         size="product"
       >
         <EquipmentForm
+          token={token}
           article={selectedEquipment}
           categories={equipmentCategories}
           units={units}
@@ -6492,13 +6482,14 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
       <Modal
         isOpen={showUserModal}
-        onClose={() => setShowUserModal(false)}
+        onClose={closeUserCreation}
         title="Créer un utilisateur"
       >
         <UserForm
+          key="blank-user"
           roles={roles}
           onSubmitCreate={handleCreateUser}
-          onClose={() => setShowUserModal(false)}
+          onClose={closeUserCreation}
         />
       </Modal>
 
@@ -8608,6 +8599,8 @@ function CockpitCard({
     if (title.includes("chiffre d'affaires") || title.includes('chiffre d’affaires'))
       return <TrendingUp size={20} />;
     if (title.includes('haccp') || title.includes('conform')) return <ShieldCheck size={20} />;
+    if (title.includes('prochain événement') || title.includes('prochain evenement'))
+      return <CalendarDays size={20} />;
     if (title.includes('effectif') || title.includes('collaborat')) return <UsersRound size={20} />;
     if (title.includes('stock') || title.includes('mouvement')) return <Package size={20} />;
     if (title.includes('fiche') || title.includes('recette') || title.includes('technique')) {
@@ -8623,6 +8616,7 @@ function CockpitCard({
     const title = card.title.toLowerCase();
     if (title.includes("chiffre d'affaires") || title.includes('chiffre d’affaires')) return 'blue';
     if (title.includes('haccp') || title.includes('conform')) return 'emerald';
+    if (title.includes('prochain événement') || title.includes('prochain evenement')) return 'violet';
     if (title.includes('effectif') || title.includes('collaborat')) return 'teal';
     if (title.includes('stock') || title.includes('mouvement')) return 'emerald';
     if (title.includes('fiche') || title.includes('recette') || title.includes('technique'))
@@ -9051,7 +9045,6 @@ function MyDocumentsPage({
   onTypeFilter,
   onDateFrom,
   onDateTo,
-  onRefresh,
   onView,
   onDownload,
   onRename,
@@ -9068,12 +9061,11 @@ function MyDocumentsPage({
   onTypeFilter: (value: string) => void;
   onDateFrom: (value: string) => void;
   onDateTo: (value: string) => void;
-  onRefresh: () => void;
   onView: (document: MyDocument) => Promise<void>;
   onDownload: (document: MyDocument) => Promise<void>;
   onRename: (document: MyDocument, newName: string) => Promise<void>;
 }) {
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode] = useState<'grid' | 'list'>('grid');
   const items = data?.items ?? [];
   const summary = data?.summary;
 
@@ -9107,36 +9099,6 @@ function MyDocumentsPage({
         </div>
         <div className="welcome-hero-backdrop" />
       </motion.section>
-
-      <div className="metrics-grid">
-        <Metric
-          icon={<FileText size={20} />}
-          value={summary?.total ?? 0}
-          label="Documents"
-          tone="blue"
-        />
-        <Metric
-          icon={<UsersRound size={20} />}
-          value={summary?.suppliers.length ?? 0}
-          label="Fournisseurs"
-          tone="emerald"
-          delay={1}
-        />
-        <Metric
-          icon={<CheckCircle2 size={20} />}
-          value={summary?.ready ?? 0}
-          label="Prêts"
-          tone="emerald"
-          delay={2}
-        />
-        <Metric
-          icon={<Clock size={20} />}
-          value={summary?.processing ?? 0}
-          label="En analyse"
-          tone="purple"
-          delay={3}
-        />
-      </div>
 
       <div className="documents-toolbar-modern card-modern">
         <div className="search-input-wrapper-modern">
@@ -9194,33 +9156,6 @@ function MyDocumentsPage({
           </div>
         </div>
 
-        <div className="toolbar-actions-modern">
-          <div className="view-switcher-modern">
-            <button
-              className={`switcher-btn ${viewMode === 'grid' ? 'active' : ''}`}
-              onClick={() => setViewMode('grid')}
-              title="Vue Grille"
-            >
-              <LayoutGrid size={15} />
-            </button>
-            <button
-              className={`switcher-btn ${viewMode === 'list' ? 'active' : ''}`}
-              onClick={() => setViewMode('list')}
-              title="Vue Liste"
-            >
-              <List size={15} />
-            </button>
-          </div>
-
-          <button
-            className="btn btn-secondary-modern btn-refresh-modern"
-            onClick={onRefresh}
-            disabled={loading}
-          >
-            <RefreshCw size={14} className={loading ? 'spin' : ''} />
-            <span>{loading ? 'Chargement...' : 'Actualiser'}</span>
-          </button>
-        </div>
       </div>
 
       <div className="documents-layout">
@@ -9531,119 +9466,6 @@ function computeStocksReadiness(
     progress: Math.round((completed / 3) * 100),
     nextStep,
   };
-}
-
-function StocksSetupCard({
-  readiness,
-  products,
-  sites,
-  onStart,
-  onDismiss,
-}: {
-  readiness: StocksReadiness;
-  products: Product[];
-  sites: Site[];
-  onStart: () => void;
-  onDismiss?: () => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const activeProducts = products.filter((item) => !isArchived(item)).length;
-  const activeSites = sites.filter((item) => !isArchived(item)).length;
-  const label = readiness.flowReady
-    ? 'Configuration terminée'
-    : activeProducts === 0
-      ? 'Produits à importer ou document à analyser'
-      : 'Bon de commande à analyser';
-  const steps = [
-    { title: 'Socle auto', text: `${activeSites} site(s)`, done: readiness.foundationReady },
-    { title: 'Catalogue', text: `${activeProducts} produit(s)`, done: activeProducts > 0 },
-    { title: 'Analyse', text: 'Bon de commande, facture ou BL', done: readiness.flowReady },
-  ];
-  return (
-    <motion.section
-      className="card-modern stocks-setup-card"
-      style={{ position: 'relative' }}
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-    >
-      {onDismiss && (
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="stocks-widget-close-btn"
-          style={{
-            position: 'absolute',
-            top: '12px',
-            right: '12px',
-            background: 'transparent',
-            border: 'none',
-            color: 'var(--text-muted)',
-            cursor: 'pointer',
-            padding: '4px',
-            borderRadius: '50%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            transition: 'all 0.2s',
-            zIndex: 5,
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.color = 'var(--text-main)';
-            e.currentTarget.style.background = 'rgba(0,0,0,0.05)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.color = 'var(--text-muted)';
-            e.currentTarget.style.background = 'transparent';
-          }}
-          title="Masquer"
-        >
-          <X size={14} />
-        </button>
-      )}
-      <div className="section-header-modern">
-        <div className="section-info">
-          <span className="card-title">
-            <Sparkles size={18} /> Configuration initiale Stocks
-          </span>
-          <span className="section-tagline">{label}</span>
-        </div>
-        <div
-          className="stocks-setup-actions"
-          style={onDismiss ? { marginRight: '1.25rem' } : undefined}
-        >
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => setExpanded((value) => !value)}
-          >
-            {expanded ? 'Replier' : 'Détails'}
-          </button>
-          <button type="button" className="btn btn-primary btn-sm" onClick={onStart}>
-            {readiness.progress === 100 ? 'Revoir' : 'Continuer'}
-          </button>
-        </div>
-      </div>
-      <div className="stocks-setup-progress">
-        <div className="progress-bar-bg">
-          <div className="progress-bar-fill" style={{ width: `${readiness.progress}%` }} />
-        </div>
-        <strong>{readiness.progress}%</strong>
-      </div>
-      {expanded ? (
-        <div className="stocks-setup-step-grid">
-          {steps.map((step) => (
-            <div key={step.title} className={`stocks-setup-step ${step.done ? 'done' : 'todo'}`}>
-              {step.done ? <CheckCircle2 size={16} /> : <Clock size={16} />}
-              <div>
-                <strong>{step.title}</strong>
-                <span>{step.text}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </motion.section>
-  );
 }
 
 function StocksIllustration() {
@@ -12781,29 +12603,22 @@ function ArticlesPage({
         </div>
         <div className="stocks-products-toolbar">
           {activeSites.length > 1 ? (
-            <label className="stocks-site-selector">
-              <span className="stocks-site-selector-icon" aria-hidden="true">
-                <MapPin size={18} />
-              </span>
-              <span className="stocks-site-selector-field">
-                <span>Site actif</span>
-                <select
-                  aria-label="Site actif"
-                  value={siteId}
-                  onChange={(event) => {
-                    setSiteId(event.target.value);
-                    setSelected(null);
-                    resetPage();
-                  }}
-                >
-                  {activeSites.map((site) => (
-                    <option key={site.id} value={site.id}>
-                      {site.name}
-                    </option>
-                  ))}
-                </select>
-              </span>
-            </label>
+            <select
+              className="stocks-toolbar-site-select"
+              aria-label="Site actif"
+              value={siteId}
+              onChange={(event) => {
+                setSiteId(event.target.value);
+                setSelected(null);
+                resetPage();
+              }}
+            >
+              {activeSites.map((site) => (
+                <option key={site.id} value={site.id}>
+                  {site.name}
+                </option>
+              ))}
+            </select>
           ) : activeSites[0] ? (
             <div className="stocks-site-selector stocks-site-selector-static">
               <span className="stocks-site-selector-icon" aria-hidden="true">
@@ -12943,7 +12758,7 @@ function ArticlesPage({
             <span className="stocks-metric-value">
               {Number(result.summary.stockValue).toFixed(2)} €
             </span>
-            <span className="stocks-metric-label">Valeur stock</span>
+            <span className="stocks-metric-label">Valeur du stock</span>
           </div>
         </div>
         <div className="stocks-metric-divider"></div>
@@ -12972,7 +12787,7 @@ function ArticlesPage({
               <Search size={16} />
               <input
                 className="search-input"
-                placeholder="Rechercher un produit, SKU, fournisseur…"
+                placeholder="Rechercher un produit, GTIN / EAN, fournisseur…"
                 value={search}
                 onChange={(event) => {
                   setSearch(event.target.value);
@@ -13059,12 +12874,12 @@ function ArticlesPage({
               <thead>
                 <tr>
                   <th>Produit</th>
-                  <th>Référence</th>
+                  <th>GTIN / EAN</th>
                   <th>Fournisseur</th>
                   <th>Catégorie</th>
                   <th style={{ textAlign: 'right' }}>Stock actuel</th>
-                  <th style={{ textAlign: 'right' }}>Valeur</th>
-                  <th>Dernier mouvement</th>
+                  <th style={{ textAlign: 'right' }}>Valeur du stock</th>
+                  <th style={{ textAlign: 'right' }}>Valeur du produit</th>
                   <th>Statut</th>
                 </tr>
               </thead>
@@ -13072,7 +12887,6 @@ function ArticlesPage({
                 {items.length ? (
                   items.map((article) => {
                     const product = article.product;
-                    const movement = article.lastMovement;
                     const isSelected = selected?.product.id === product.id;
                     return (
                       <tr
@@ -13087,7 +12901,7 @@ function ArticlesPage({
                           </small>
                         </td>
                         <td style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>
-                          {product.sku || '—'}
+                          {product.gtin || '—'}
                         </td>
                         <td>{product.primarySupplier?.name || '—'}</td>
                         <td>{product.category?.name || 'Sans catégorie'}</td>
@@ -13097,12 +12911,13 @@ function ArticlesPage({
                         <td style={{ textAlign: 'right' }}>
                           {numeric(article.stock.value).toFixed(2)} €
                         </td>
-                        <td>
-                          {movement
-                            ? new Date(
-                                movement.movementDate ?? movement.createdAt,
-                              ).toLocaleDateString('fr-FR')
-                            : 'Jamais'}
+                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          {stockUnitPriceToReferencePrice(
+                            numeric(product.averagePrice),
+                            product.unit,
+                            productPreferredPriceUnit(product.unit, product.priceDisplayUnit),
+                          ).toFixed(2)}{' '}
+                          € / {productPreferredPriceUnit(product.unit, product.priceDisplayUnit)}
                         </td>
                         <td>
                           <span
@@ -13225,7 +13040,8 @@ function ArticleDrawer({
             <span className="stocks-onboarding-kicker">Produit</span>
             <h2>{product.name}</h2>
             <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-              {product.sku || 'Sans référence'} · {product.unit?.symbol || 'unité non définie'}
+              {product.gtin ? `GTIN / EAN ${product.gtin}` : 'GTIN / EAN non renseigné'} ·{' '}
+              {product.unit?.symbol || 'unité non définie'}
             </span>
           </div>
           <button className="close-panel-btn" onClick={onClose} title="Fermer le panneau">
@@ -13249,7 +13065,7 @@ function ArticleDrawer({
               <Plus size={14} /> Mouvement
             </button>
             <button className="btn btn-secondary btn-sm-premium" onClick={onEdit}>
-              <Edit3 size={14} /> Modifier la fiche
+              <Eye size={14} /> Aperçu
             </button>
           </div>
           <div className="article-drawer-section">
@@ -13361,7 +13177,6 @@ function StocksDashboardPage({
   movements,
   equipment,
   ocrStatuses,
-  readiness,
   onCreateMovement,
   onImportOcr,
   onOpenAssistant,
@@ -13379,7 +13194,6 @@ function StocksDashboardPage({
   movements: StockMovement[];
   equipment: ArticlesResponse | null;
   ocrStatuses: StocksOcrStatus[];
-  readiness: StocksReadiness;
   onCreateMovement: () => void;
   onImportOcr: () => void;
   onOpenAssistant: () => void;
@@ -13389,14 +13203,6 @@ function StocksDashboardPage({
   onStartOnboarding: () => void;
   onCreateProduct: () => void;
 }) {
-  const [hideSetupCard, setHideSetupCard] = useState(() => {
-    try {
-      return localStorage.getItem('toquehub_stocks_hide_setup_card') === 'true';
-    } catch {
-      return false;
-    }
-  });
-
   const [hideOcrStatus, setHideOcrStatus] = useState(() => {
     try {
       return localStorage.getItem('toquehub_stocks_hide_ocr_status') === 'true';
@@ -13475,21 +13281,30 @@ function StocksDashboardPage({
   return (
     <div className="stocks-dashboard-grid">
       <motion.section
-        className="welcome-hero stocks-hero"
+        className="welcome-hero stocks-hero stocks-dashboard-hero"
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35 }}
       >
-        <span className="welcome-tag">
-          <Package size={14} /> Stocks
-        </span>
-        <h1 className="welcome-title">Stocks</h1>
-        <p className="welcome-desc">
-          Vue d’ensemble du stock physique. Toute variation passe par un mouvement tracé ; le
-          catalogue produit reste indépendant des quantités.
-        </p>
-        <div className="stocks-reception-actions">
-          <button className="btn btn-primary" onClick={onImportOcr}>
+        <div className="stocks-dashboard-hero-copy">
+          <span className="welcome-tag">
+            <Package size={14} /> Stocks
+          </span>
+          <h1 className="welcome-title">Stocks</h1>
+          <p className="welcome-desc">
+            Vue d’ensemble du stock physique. Toute variation passe par un mouvement tracé ; le
+            catalogue produit reste indépendant des quantités.
+          </p>
+        </div>
+        <div className="stocks-dashboard-hero-actions">
+          <button
+            type="button"
+            className="btn btn-secondary btn-outline"
+            onClick={onStartOnboarding}
+          >
+            <Sparkles size={16} /> Guide de configuration
+          </button>
+          <button type="button" className="btn btn-primary" onClick={onImportOcr}>
             <Plus size={16} /> Ajouter / importer
           </button>
         </div>
@@ -13497,39 +13312,21 @@ function StocksDashboardPage({
 
       <StocksModuleTabs activeTab={activeTab} onNavigate={onNavigate} />
 
-      {(!hideSetupCard || (!hideOcrStatus && ocrStatuses.length > 0)) && (
+      {!hideOcrStatus && ocrStatuses.length > 0 && (
         <div className="stocks-dashboard-setup-row">
-          {!hideSetupCard && (
-            <StocksSetupCard
-              readiness={readiness}
-              products={products}
-              sites={sites}
-              onStart={onStartOnboarding}
-              onDismiss={() => {
-                setHideSetupCard(true);
-                try {
-                  localStorage.setItem('toquehub_stocks_hide_setup_card', 'true');
-                } catch (e) {
-                  console.error(e);
-                }
-              }}
-            />
-          )}
-          {!hideOcrStatus && ocrStatuses.length > 0 && (
-            <StocksOcrDashboardStatusBar
-              statuses={ocrStatuses}
-              onOpenExtraction={onOpenExtraction}
-              onImportOcr={onImportOcr}
-              onDismiss={() => {
-                setHideOcrStatus(true);
-                try {
-                  localStorage.setItem('toquehub_stocks_hide_ocr_status', 'true');
-                } catch (e) {
-                  console.error(e);
-                }
-              }}
-            />
-          )}
+          <StocksOcrDashboardStatusBar
+            statuses={ocrStatuses}
+            onOpenExtraction={onOpenExtraction}
+            onImportOcr={onImportOcr}
+            onDismiss={() => {
+              setHideOcrStatus(true);
+              try {
+                localStorage.setItem('toquehub_stocks_hide_ocr_status', 'true');
+              } catch (e) {
+                console.error(e);
+              }
+            }}
+          />
         </div>
       )}
 
@@ -15377,28 +15174,29 @@ function UnitsPage({
   units,
   search,
   setSearch,
-  showArchived,
-  setShowArchived,
-  onCreate,
 }: {
   units: Unit[];
   search: string;
   setSearch: (v: string) => void;
-  showArchived: boolean;
-  setShowArchived: (v: boolean) => void;
-  onCreate: () => void;
 }) {
   return (
-    <ReferencePage
-      title="Unités"
-      subtitle="Unités principales et conversions simples compatibles (kg/g, L/mL)."
-      search={search}
-      setSearch={setSearch}
-      showArchived={showArchived}
-      setShowArchived={setShowArchived}
-      onCreate={onCreate}
-      createLabel="Ajouter une unité"
-    >
+    <div className="card-modern">
+      <div className="section-header-modern">
+        <div className="section-info">
+          <span className="card-title">Unités</span>
+        </div>
+      </div>
+      <div className="filter-bar">
+        <div className="search-input-wrapper">
+          <Search />
+          <input
+            className="search-input"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Rechercher une unité…"
+          />
+        </div>
+      </div>
       <div className="table-wrapper">
         <table className="table-modern">
           <thead>
@@ -15406,8 +15204,6 @@ function UnitsPage({
               <th>Nom</th>
               <th>Symbole</th>
               <th>Type</th>
-              <th>Conversion</th>
-              <th>Statut</th>
             </tr>
           </thead>
           <tbody>
@@ -15418,17 +15214,18 @@ function UnitsPage({
                   <span className="badge badge-reception">{unit.symbol || '—'}</span>
                 </td>
                 <td>{unit.type ?? unit.unitType ?? 'Compatible'}</td>
-                <td>{unit.baseFactor ? `× ${unit.baseFactor}` : 'Standard'}</td>
-                <td>{isArchived(unit) ? 'Archivé' : 'Actif'}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
       {!units.length && (
-        <EmptyMini title="Aucune unité" text="Préremplissez kg, g, L, mL, pièce, carton…" />
+        <EmptyMini
+          title="Aucune unité trouvée"
+          text="Modifiez votre recherche pour afficher les unités natives."
+        />
       )}
-    </ReferencePage>
+    </div>
   );
 }
 
@@ -15766,7 +15563,15 @@ function InventoryDetailModal({
             >
               Fermer
             </button>
-            {!isLocked ? (
+            {isLocked ? (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => exportValidatedInventoryCsv(inventory)}
+              >
+                <Download size={15} /> Exporter
+              </button>
+            ) : (
               <>
                 <button
                   type="button"
@@ -15785,7 +15590,7 @@ function InventoryDetailModal({
                   {submitting ? 'Validation...' : 'Valider l’inventaire'}
                 </button>
               </>
-            ) : null}
+            )}
           </div>
         </div>
       ) : null}
@@ -15795,6 +15600,259 @@ function InventoryDetailModal({
 
 function inventoryLineKey(line: NonNullable<Inventory['lines']>[number]) {
   return `${line.productId}:${line.lotId ?? ''}`;
+}
+
+function inventoryCsvCell(value: unknown) {
+  let text = value === null || value === undefined ? '' : String(value);
+  if (typeof value === 'string' && /^[=+\-@]/.test(text)) text = `'${text}`;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function inventoryCsvNumber(value: unknown) {
+  if (value === null || value === undefined || value === '') return '';
+  const parsed = Number(value);
+  return Number.isFinite(parsed)
+    ? parsed.toLocaleString('fr-FR', { useGrouping: false, maximumFractionDigits: 6 })
+    : '';
+}
+
+function inventoryCsvMoney(value: number) {
+  return value.toLocaleString('fr-FR', {
+    useGrouping: false,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function inventoryOptionalNumber(...values: unknown[]) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === '') continue;
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+type InventoryValuationTotal = {
+  excludingTax: number;
+  tax: number;
+  includingTax: number;
+  missingVat: boolean;
+};
+
+function addInventoryValuationTotal(
+  total: InventoryValuationTotal,
+  excludingTax: number,
+  tax: number | null,
+  includingTax: number | null,
+) {
+  total.excludingTax += excludingTax;
+  if (tax === null || includingTax === null) {
+    total.missingVat = true;
+    return;
+  }
+  total.tax += tax;
+  total.includingTax += includingTax;
+}
+
+function inventoryValuationTotalRow(total: InventoryValuationTotal) {
+  return [
+    inventoryCsvMoney(total.excludingTax),
+    total.missingVat ? 'TVA à compléter' : inventoryCsvMoney(total.tax),
+    total.missingVat ? 'TVA à compléter' : inventoryCsvMoney(total.includingTax),
+  ];
+}
+
+function exportValidatedInventoryCsv(inventory: Inventory) {
+  if (inventory.status !== 'VALIDATED') return;
+  const inventoryDate = inventory.inventoryDate ?? inventory.date;
+  const dateLabel = inventoryDate
+    ? new Date(inventoryDate).toLocaleDateString('fr-FR')
+    : '';
+  const detailHeaders = [
+    'Référence',
+    'Produit',
+    'Catégorie',
+    'Unité',
+    'Quantité théorique',
+    'Quantité comptée',
+    'Écart',
+    'Prix unitaire HT (€)',
+    'TVA (%)',
+    'Valeur totale HT (€)',
+    'Montant TVA (€)',
+    'Valeur totale TTC (€)',
+  ];
+
+  const valuationLines = (inventory.lines ?? []).map((line) => {
+    const theoretical = numeric(line.theoreticalQuantity);
+    const counted = inventoryOptionalNumber(line.countedQuantity) ?? 0;
+    const variance = line.varianceQuantity ?? line.variance;
+    const unitPrice = inventoryOptionalNumber(
+      line.financialSource?.unitPriceExcludingTax,
+      line.product?.weightedAveragePrice,
+      line.product?.averagePurchasePrice,
+      line.product?.averagePrice,
+    ) ?? 0;
+    const vatRate = inventoryOptionalNumber(line.financialSource?.vatRate);
+    const excludingTax = counted * unitPrice;
+    const tax = vatRate === null ? null : excludingTax * vatRate / 100;
+    const includingTax = tax === null ? null : excludingTax + tax;
+    const documentLabel = line.financialSource?.documentLabel ?? "Sans document d'achat validé";
+    const documentDate = line.financialSource?.documentDate
+      ? new Date(line.financialSource.documentDate).toLocaleDateString('fr-FR')
+      : '';
+
+    return {
+      documentKey: line.financialSource?.documentId
+        ?? `${documentLabel}|${line.financialSource?.supplierName ?? ''}|${documentDate}`,
+      documentLabel,
+      documentDate,
+      supplierName: line.financialSource?.supplierName ?? '',
+      productName: line.product?.name ?? 'Produit supprimé',
+      vatRate,
+      excludingTax,
+      tax,
+      includingTax,
+      cells: [
+        line.product?.sku ?? line.product?.reference ?? '',
+        line.product?.name ?? 'Produit supprimé',
+        line.product?.category?.name ?? '',
+        line.product?.unit?.symbol ?? '',
+        inventoryCsvNumber(theoretical),
+        inventoryCsvNumber(counted),
+        inventoryCsvNumber(variance ?? counted - theoretical),
+        inventoryCsvMoney(unitPrice),
+        vatRate === null ? 'Non renseignée' : inventoryCsvNumber(vatRate),
+        inventoryCsvMoney(excludingTax),
+        tax === null ? '' : inventoryCsvMoney(tax),
+        includingTax === null ? '' : inventoryCsvMoney(includingTax),
+      ],
+    };
+  });
+
+  valuationLines.sort((left, right) =>
+    left.documentLabel.localeCompare(right.documentLabel, 'fr')
+    || left.productName.localeCompare(right.productName, 'fr'));
+
+  const documentGroups = new Map<string, typeof valuationLines>();
+  for (const line of valuationLines) {
+    const group = documentGroups.get(line.documentKey) ?? [];
+    group.push(line);
+    documentGroups.set(line.documentKey, group);
+  }
+
+  const rows: unknown[][] = [
+    ['INVENTAIRE', inventory.name],
+    ['Date de validation', dateLabel],
+    ['Site', inventory.site?.name ?? 'Tous sites'],
+    ['Emplacement', inventory.location?.name ?? ''],
+    [],
+  ];
+  const globalTotals: InventoryValuationTotal = {
+    excludingTax: 0,
+    tax: 0,
+    includingTax: 0,
+    missingVat: false,
+  };
+  const globalVatTotals = new Map<string, InventoryValuationTotal>();
+
+  for (const group of documentGroups.values()) {
+    const first = group[0];
+    const documentTotals: InventoryValuationTotal = {
+      excludingTax: 0,
+      tax: 0,
+      includingTax: 0,
+      missingVat: false,
+    };
+    const documentVatTotals = new Map<string, InventoryValuationTotal>();
+
+    rows.push(
+      ['DOCUMENT', first.documentLabel],
+      ['Fournisseur', first.supplierName, 'Date du document', first.documentDate],
+      detailHeaders,
+    );
+
+    for (const line of group) {
+      rows.push(line.cells);
+      addInventoryValuationTotal(
+        documentTotals,
+        line.excludingTax,
+        line.tax,
+        line.includingTax,
+      );
+      addInventoryValuationTotal(
+        globalTotals,
+        line.excludingTax,
+        line.tax,
+        line.includingTax,
+      );
+      const vatKey = line.vatRate === null ? 'TVA non renseignée' : `${inventoryCsvNumber(line.vatRate)} %`;
+      const documentVatTotal = documentVatTotals.get(vatKey) ?? {
+        excludingTax: 0,
+        tax: 0,
+        includingTax: 0,
+        missingVat: false,
+      };
+      const globalVatTotal = globalVatTotals.get(vatKey) ?? {
+        excludingTax: 0,
+        tax: 0,
+        includingTax: 0,
+        missingVat: false,
+      };
+      addInventoryValuationTotal(documentVatTotal, line.excludingTax, line.tax, line.includingTax);
+      addInventoryValuationTotal(globalVatTotal, line.excludingTax, line.tax, line.includingTax);
+      documentVatTotals.set(vatKey, documentVatTotal);
+      globalVatTotals.set(vatKey, globalVatTotal);
+    }
+
+    rows.push(
+      ['', 'SOUS-TOTAL DU DOCUMENT', '', '', '', '', '', '', '', ...inventoryValuationTotalRow(documentTotals)],
+      [],
+      ['SYNTHÈSE TVA DU DOCUMENT'],
+      ['Taux de TVA', 'Total HT (€)', 'Montant TVA (€)', 'Total TTC (€)'],
+    );
+    for (const [vatLabel, total] of documentVatTotals) {
+      rows.push([vatLabel, ...inventoryValuationTotalRow(total)]);
+    }
+    rows.push([]);
+  }
+
+  rows.push(
+    ['SYNTHÈSE GLOBALE PAR TVA'],
+    ['Taux de TVA', 'Total HT (€)', 'Montant TVA (€)', 'Total TTC (€)'],
+  );
+  for (const [vatLabel, total] of globalVatTotals) {
+    rows.push([vatLabel, ...inventoryValuationTotalRow(total)]);
+  }
+  rows.push(
+    ['TOTAL INVENTAIRE', ...inventoryValuationTotalRow(globalTotals)],
+  );
+  if (globalTotals.missingVat) {
+    rows.push([
+      'Attention',
+      'Le total TTC reste à compléter pour les produits sans TVA de catégorie ni TVA issue d’un document d’achat validé.',
+    ]);
+  }
+
+  const csv = `\uFEFF${rows
+    .map((row) => row.map(inventoryCsvCell).join(';'))
+    .join('\r\n')}\r\n`;
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  const safeName = inventory.name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/gi, '-')
+    .replace(/^-|-$/g, '')
+    .toLowerCase() || 'inventaire';
+  link.href = url;
+  link.download = `inventaire-${safeName}-${(inventoryDate ?? new Date().toISOString()).slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function formatStockNumber(value: number) {
@@ -17715,13 +17773,18 @@ function BackupRestorePage({
 
 type SettingsSubTab =
   | 'general'
+  | 'remote-access'
   | 'users'
   | 'architecture'
   | 'backups'
   | 'updates'
-  | 'remote-access'
   | 'api-keys'
   | 'core';
+const SETTINGS_VISIBILITY = {
+  githubReleases: false,
+  architecture: false,
+  diagnosticCore: false,
+} as const;
 type OrganizationSettingModal =
   | 'name'
   | 'establishmentType'
@@ -17845,9 +17908,16 @@ function SystemUpdatePanel({
   onCheck: () => void;
   onApply: () => void;
 }) {
+  const [operationExpanded, setOperationExpanded] = useState(false);
   const operationRunning = Boolean(
     operation && ['queued', 'running', 'rollback'].includes(operation.status),
   );
+  const operationStatusBadge =
+    operation?.status === 'error' || operation?.status === 'rollback'
+      ? 'badge-loss'
+      : operationRunning
+        ? 'badge-correction'
+        : 'badge-reception';
   const updaterAvailable = Boolean(status?.runtime.updaterAvailable);
 
   return (
@@ -17876,7 +17946,7 @@ function SystemUpdatePanel({
               <Download size={18} /> Version et mise à jour
             </span>
             <p className="muted" style={{ fontSize: '0.85rem', margin: 0 }}>
-              Canal stable basé sur les releases GitHub taguées.
+              État de votre installation ToqueHub.
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
@@ -17927,61 +17997,6 @@ function SystemUpdatePanel({
         <div className="settings-grid-premium">
           <div className="info-card-premium">
             <div className="info-card-premium-header">
-              <span className="info-card-premium-label">Version installée</span>
-              <span className="info-card-premium-icon">
-                <Server size={16} />
-              </span>
-            </div>
-            <div className="info-card-premium-value">
-              {status?.current.version || 'Chargement...'}
-            </div>
-            <span
-              className="badge badge-reception"
-              style={{ width: 'fit-content', marginTop: '0.65rem' }}
-            >
-              {status?.current.imageTag || 'local'}
-            </span>
-          </div>
-          <div className="info-card-premium">
-            <div className="info-card-premium-header">
-              <span className="info-card-premium-label">Dernière release stable</span>
-              <span className="info-card-premium-icon">
-                <ExternalLink size={16} />
-              </span>
-            </div>
-            <div className="info-card-premium-value">{status?.latest?.tag || 'Aucune release'}</div>
-            {status?.latest?.source ? (
-              <span
-                className="badge badge-reception"
-                style={{ width: 'fit-content', marginTop: '0.65rem' }}
-              >
-                {status.latest.source === 'release' ? 'GitHub Release' : 'Tag GitHub'}
-              </span>
-            ) : null}
-            {status?.latest?.url ? (
-              <a
-                href={status.latest.url}
-                target="_blank"
-                rel="noreferrer"
-                style={{ fontSize: '0.82rem', fontWeight: 700, color: '#047857' }}
-              >
-                Voir GitHub
-              </a>
-            ) : null}
-          </div>
-          <div className="info-card-premium">
-            <div className="info-card-premium-header">
-              <span className="info-card-premium-label">Plateforme</span>
-              <span className="info-card-premium-icon">
-                <Cpu size={16} />
-              </span>
-            </div>
-            <div className="info-card-premium-value" style={{ fontSize: '1rem' }}>
-              {status?.runtime.platform || 'Docker'}
-            </div>
-          </div>
-          <div className="info-card-premium">
-            <div className="info-card-premium-header">
               <span className="info-card-premium-label">Statut</span>
               <span className="info-card-premium-icon">
                 <ShieldCheck size={16} />
@@ -17991,86 +18006,134 @@ function SystemUpdatePanel({
               className="info-card-premium-value"
               style={{ color: status?.updateAvailable ? '#b45309' : '#047857' }}
             >
-              {status?.updateAvailable ? 'Update disponible' : 'À jour'}
+              {!status || loading
+                ? 'Vérification...'
+                : status.updateAvailable
+                  ? 'Mise à jour disponible'
+                  : 'À jour'}
             </div>
           </div>
-        </div>
-
-        <div className="settings-list" style={{ marginTop: '1.25rem' }}>
-          <div>
-            <span>Canal</span>
-            <strong>{status?.channel ?? 'stable'}</strong>
-          </div>
-          <div>
-            <span>Repo GitHub</span>
-            <strong>{status?.github.repo ?? 'ToqueHub/ToqueHub-Web'}</strong>
-          </div>
-          <div>
-            <span>Image API</span>
-            <strong>{status?.current.apiImage ?? '-'}</strong>
-          </div>
-          <div>
-            <span>Image Web</span>
-            <strong>{status?.current.webImage ?? '-'}</strong>
-          </div>
-          <div>
-            <span>Dernière vérification</span>
-            <strong>
-              {status?.checkedAt ? new Date(status.checkedAt).toLocaleString('fr-FR') : '-'}
-            </strong>
+          <div className="info-card-premium">
+            <div className="info-card-premium-header">
+              <span className="info-card-premium-label">Version installée</span>
+              <span className="info-card-premium-icon">
+                <Server size={16} />
+              </span>
+            </div>
+            <div className="info-card-premium-value">
+              {status?.current.version || 'Chargement...'}
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="card-modern" style={{ padding: '1.5rem' }}>
-        <span
-          className="card-title"
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}
-        >
-          <History size={18} /> Opération de mise à jour
-        </span>
-        <div className="settings-list">
-          <div>
-            <span>Statut</span>
-            <strong>{updateStatusLabel(operation?.status)}</strong>
-          </div>
-          <div>
-            <span>Cible</span>
-            <strong>{operation?.targetTag ?? status?.latest?.tag ?? '-'}</strong>
-          </div>
-          <div>
-            <span>Démarrée</span>
-            <strong>
-              {operation?.startedAt ? new Date(operation.startedAt).toLocaleString('fr-FR') : '-'}
-            </strong>
-          </div>
-          <div>
-            <span>Terminée</span>
-            <strong>
-              {operation?.finishedAt ? new Date(operation.finishedAt).toLocaleString('fr-FR') : '-'}
-            </strong>
-          </div>
-        </div>
-        {operation?.error ? (
-          <div className="alert-modern error" style={{ marginTop: '1rem' }}>
-            <AlertCircle size={16} /> {operation.error}
-          </div>
-        ) : null}
-        <pre
+      <div className="card-modern" style={{ padding: 0, overflow: 'hidden' }}>
+        <button
+          type="button"
+          aria-expanded={operationExpanded}
+          aria-controls="system-update-operation-details"
+          onClick={() => setOperationExpanded((expanded) => !expanded)}
           style={{
-            marginTop: '1rem',
-            maxHeight: 260,
-            overflow: 'auto',
-            background: '#0f172a',
-            color: '#e2e8f0',
-            padding: '1rem',
-            borderRadius: 12,
-            fontSize: '0.78rem',
-            lineHeight: 1.5,
+            width: '100%',
+            padding: '1.25rem 1.5rem',
+            border: 0,
+            background: 'transparent',
+            color: 'inherit',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '1rem',
+            cursor: 'pointer',
+            textAlign: 'left',
           }}
         >
-          {(operation?.logs?.length ? operation.logs : ['Aucune opération récente.']).join('\n')}
-        </pre>
+          <span
+            className="card-title"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}
+          >
+            <History size={18} /> Opération de mise à jour
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <span className={`badge ${operationStatusBadge}`}>
+              {updateStatusLabel(operation?.status)}
+            </span>
+            <ChevronDown
+              size={18}
+              aria-hidden="true"
+              style={{
+                color: 'var(--text-muted)',
+                transform: operationExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.2s ease',
+              }}
+            />
+          </span>
+        </button>
+
+        <AnimatePresence initial={false}>
+          {operationExpanded && (
+            <motion.div
+              id="system-update-operation-details"
+              key="system-update-operation-details"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2, ease: 'easeInOut' }}
+              style={{ overflow: 'hidden' }}
+            >
+              <div style={{ padding: '0 1.5rem 1.5rem' }}>
+                <div className="settings-list">
+                  <div>
+                    <span>Statut</span>
+                    <strong>{updateStatusLabel(operation?.status)}</strong>
+                  </div>
+                  <div>
+                    <span>Cible</span>
+                    <strong>{operation?.targetTag ?? status?.latest?.tag ?? '-'}</strong>
+                  </div>
+                  <div>
+                    <span>Démarrée</span>
+                    <strong>
+                      {operation?.startedAt
+                        ? new Date(operation.startedAt).toLocaleString('fr-FR')
+                        : '-'}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Terminée</span>
+                    <strong>
+                      {operation?.finishedAt
+                        ? new Date(operation.finishedAt).toLocaleString('fr-FR')
+                        : '-'}
+                    </strong>
+                  </div>
+                </div>
+                {operation?.error ? (
+                  <div className="alert-modern error" style={{ marginTop: '1rem' }}>
+                    <AlertCircle size={16} /> {operation.error}
+                  </div>
+                ) : null}
+                <pre
+                  style={{
+                    marginTop: '1rem',
+                    marginBottom: 0,
+                    maxHeight: 260,
+                    overflow: 'auto',
+                    background: '#0f172a',
+                    color: '#e2e8f0',
+                    padding: '1rem',
+                    borderRadius: 12,
+                    fontSize: '0.78rem',
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {(operation?.logs?.length ? operation.logs : ['Aucune opération récente.']).join(
+                    '\n',
+                  )}
+                </pre>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
@@ -18362,7 +18425,7 @@ function SettingsPage({
   const [githubTokenMessage, setGithubTokenMessage] = useState<string>();
   const [githubTokenError, setGithubTokenError] = useState<string>();
   const [savingGithubToken, setSavingGithubToken] = useState(false);
-  const [remoteAccess, setRemoteAccess] = useState<OrganizationRemoteAccess>({
+  const [remoteAccess] = useState<OrganizationRemoteAccess>({
     enabled: Boolean(initialRemoteAccess?.enabled),
     tailscaleHostname: initialRemoteAccess?.tailscaleHostname ?? 'toquehub',
     tailscaleUrl: initialRemoteAccess?.tailscaleUrl ?? '',
@@ -18411,6 +18474,9 @@ function SettingsPage({
   const [activeSubTab, setActiveSubTab] = useState<SettingsSubTab>(() => {
     return focusApiKeys ? 'api-keys' : 'general';
   });
+  const [settingsSectionOpen, setSettingsSectionOpen] = useState(
+    Boolean(focusApiKeys || focusSiteAddress),
+  );
   const [updateStatus, setUpdateStatus] = useState<SystemUpdateStatus | null>(null);
   const [updateOperation, setUpdateOperation] = useState<SystemUpdateOperation | null>(null);
   const [updateLoading, setUpdateLoading] = useState(false);
@@ -18434,22 +18500,6 @@ function SettingsPage({
   }, [initialGithubConfigured, initialGithubMasked]);
 
   useEffect(() => {
-    setRemoteAccess({
-      enabled: Boolean(initialRemoteAccess?.enabled),
-      tailscaleHostname: initialRemoteAccess?.tailscaleHostname ?? 'toquehub',
-      tailscaleUrl: initialRemoteAccess?.tailscaleUrl ?? '',
-      tailscaleIp: initialRemoteAccess?.tailscaleIp ?? '',
-      updatedAt: initialRemoteAccess?.updatedAt ?? null,
-    });
-  }, [
-    initialRemoteAccess?.enabled,
-    initialRemoteAccess?.tailscaleHostname,
-    initialRemoteAccess?.tailscaleUrl,
-    initialRemoteAccess?.tailscaleIp,
-    initialRemoteAccess?.updatedAt,
-  ]);
-
-  useEffect(() => {
     setRegulatoryCountryDraft(regulatoryCountryCode ?? '');
   }, [regulatoryCountryCode]);
 
@@ -18463,6 +18513,7 @@ function SettingsPage({
   useEffect(() => {
     if (focusApiKeys) {
       setActiveSubTab('api-keys');
+      setSettingsSectionOpen(true);
     }
   }, [focusApiKeys]);
 
@@ -18493,10 +18544,16 @@ function SettingsPage({
   }, [activeSubTab, isAdmin, updateStatus, updateLoading]);
 
   useEffect(() => {
-    if (activeSubTab === 'remote-access' && isAdmin && !remoteStatus && !remoteStatusLoading) {
+    if (
+      activeSubTab === 'remote-access' &&
+      settingsSectionOpen &&
+      isAdmin &&
+      !remoteStatus &&
+      !remoteStatusLoading
+    ) {
       void loadRemoteAccessStatus();
     }
-  }, [activeSubTab, isAdmin, remoteStatus, remoteStatusLoading]);
+  }, [activeSubTab, isAdmin, remoteStatus, remoteStatusLoading, settingsSectionOpen]);
 
   useEffect(() => {
     if (!updateOperation || !['queued', 'running', 'rollback'].includes(updateOperation.status))
@@ -18579,24 +18636,6 @@ function SettingsPage({
     } catch (err) {
       setRemoteAccessError(
         err instanceof Error ? err.message : 'Impossible d’activer l’accès à distance.',
-      );
-    } finally {
-      setRemoteAccessBusy(false);
-    }
-  }
-
-  async function refreshRemoteAccess() {
-    setRemoteAccessBusy(true);
-    setRemoteAccessError(undefined);
-    setRemoteAccessMessage(undefined);
-    try {
-      const status = await api.refreshRemoteAccess(token);
-      setRemoteStatus(status);
-      setRemoteAccessMessage(status.message);
-      onSettingsSaved?.();
-    } catch (err) {
-      setRemoteAccessError(
-        err instanceof Error ? err.message : 'Impossible de rafraîchir l’accès à distance.',
       );
     } finally {
       setRemoteAccessBusy(false);
@@ -18813,6 +18852,8 @@ function SettingsPage({
 
   useEffect(() => {
     if (!focusSiteAddress) return;
+    setActiveSubTab('general');
+    setSettingsSectionOpen(true);
     openSiteForm(
       primarySite,
       primarySite ? 'Modifier l’adresse du site principal' : 'Ajouter le site principal',
@@ -18877,6 +18918,7 @@ function SettingsPage({
       setSavingRegulatoryCountry(false);
     }
   }
+
   const effectiveRemoteStatus =
     remoteStatus?.status ??
     (remoteAccess.enabled && remoteAccess.tailscaleUrl ? 'active' : 'inactive');
@@ -18894,6 +18936,86 @@ function SettingsPage({
           : 'Non activé';
   const remoteStatusBadge =
     effectiveRemoteStatus === 'active' ? 'badge-reception' : 'badge-correction';
+
+  const settingsSections: Array<{
+    id: SettingsSubTab;
+    label: string;
+    description: string;
+    icon: typeof Building2;
+    gradient: string;
+  }> = [
+    {
+      id: 'general',
+      label: 'Général',
+      description: 'Identité, sites et préférences de l’établissement',
+      icon: Building2,
+      gradient: 'linear-gradient(135deg, #10b981 0%, #0f766e 100%)',
+    },
+    ...(isAdmin
+      ? [
+          {
+            id: 'remote-access' as const,
+            label: 'Accès à distance',
+            description: 'Connexion privée et sécurisée avec Tailscale',
+            icon: Wifi,
+            gradient: 'linear-gradient(135deg, #14b8a6 0%, #2563eb 100%)',
+          },
+          {
+            id: 'backups' as const,
+            label: 'Sauvegarde & Restauration',
+            description: 'Archives, sauvegardes et reprise des données',
+            icon: Archive,
+            gradient: 'linear-gradient(135deg, #8b5cf6 0%, #4f46e5 100%)',
+          },
+          {
+            id: 'updates' as const,
+            label: 'Version et mise à jour',
+            description: 'Version installée et mises à jour disponibles',
+            icon: Download,
+            gradient: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
+          },
+        ]
+      : []),
+    {
+      id: 'users',
+      label: 'Utilisateurs & Accès',
+      description: 'Comptes ToqueHub, rôles et permissions',
+      icon: UsersRound,
+      gradient: 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)',
+    },
+    ...(isAdmin && SETTINGS_VISIBILITY.architecture
+      ? [
+          {
+            id: 'architecture' as const,
+            label: 'Architecture',
+            description: 'Modules et dépendances de la plateforme',
+            icon: Workflow,
+            gradient: 'linear-gradient(135deg, #64748b 0%, #334155 100%)',
+          },
+        ]
+      : []),
+    {
+      id: 'api-keys',
+      label: 'Clés API & IA',
+      description: 'Connexions Mistral, Resend et Fennoa',
+      icon: KeyRound,
+      gradient: 'linear-gradient(135deg, #14b8a6 0%, #0891b2 100%)',
+    },
+    ...(SETTINGS_VISIBILITY.diagnosticCore
+      ? [
+          {
+            id: 'core' as const,
+            label: 'Diagnostic & Core',
+            description: 'État du serveur et de la base de données',
+            icon: Server,
+            gradient: 'linear-gradient(135deg, #475569 0%, #0f172a 100%)',
+          },
+        ]
+      : []),
+  ];
+  const activeSettingsSection =
+    settingsSections.find((section) => section.id === activeSubTab) ?? settingsSections[0];
+  const ActiveSettingsSectionIcon = activeSettingsSection?.icon ?? Settings;
 
   return (
     <div className="settings-page">
@@ -18979,116 +19101,54 @@ function SettingsPage({
         </div>
       </section>
 
-      <div className="settings-layout">
-        {/* Left Sidebar Menu */}
-        <div
-          className="card-modern"
-          style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}
-        >
-          {[
-            {
-              id: 'general' as const,
-              label: 'Général',
-              desc: 'Identité établissement',
-              icon: Building2,
-            },
-            ...(isAdmin
-              ? [
-                  {
-                    id: 'backups' as const,
-                    label: 'Sauvegarde & Restauration',
-                    desc: 'Archives et reprise',
-                    icon: Archive,
-                  },
-                ]
-              : []),
-            ...(isAdmin
-              ? [
-                  {
-                    id: 'updates' as const,
-                    label: 'Version et mise à jour',
-                    desc: 'Releases et Docker',
-                    icon: Download,
-                  },
-                ]
-              : []),
-            ...(isAdmin
-              ? [
-                  {
-                    id: 'remote-access' as const,
-                    label: 'Accès à distance',
-                    desc: 'Tailscale privé',
-                    icon: Wifi,
-                  },
-                ]
-              : []),
-            {
-              id: 'users' as const,
-              label: 'Utilisateurs & Accès',
-              desc: 'Comptes et permissions',
-              icon: UsersRound,
-            },
-            ...(isAdmin
-              ? [
-                  {
-                    id: 'architecture' as const,
-                    label: 'Architecture',
-                    desc: 'Modules et dépendances',
-                    icon: Workflow,
-                  },
-                ]
-              : []),
-            {
-              id: 'api-keys' as const,
-              label: 'Clés API & IA',
-              desc: 'Mistral & Outils OCR',
-              icon: KeyRound,
-            },
-            {
-              id: 'core' as const,
-              label: 'Diagnostic & Core',
-              desc: 'Statistiques & BDD',
-              icon: Server,
-            },
-          ].map((tabItem) => {
-            const isActive = activeSubTab === tabItem.id;
-            return (
-              <button
-                key={tabItem.id}
-                type="button"
-                onClick={() => setActiveSubTab(tabItem.id)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.75rem',
-                  padding: '0.75rem 1rem',
-                  borderRadius: '12px',
-                  color: isActive ? '#10b981' : 'var(--text-muted)',
-                  background: isActive ? 'rgba(16, 185, 129, 0.05)' : 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.2s ease-in-out',
-                  outline: 'none',
-                  borderLeft: isActive ? '3px solid #10b981' : '3px solid transparent',
-                  paddingLeft: isActive ? 'calc(1rem - 3px)' : '1rem',
-                }}
-              >
-                <tabItem.icon
-                  size={18}
-                  style={{ flexShrink: 0, color: isActive ? '#10b981' : 'var(--text-muted)' }}
-                />
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <span style={{ fontSize: '0.88rem', fontWeight: 700 }}>{tabItem.label}</span>
-                  <span className="settings-sidebar-desc">{tabItem.desc}</span>
-                </div>
-              </button>
-            );
-          })}
-        </div>
+      <div className="settings-sections-grid" aria-label="Catégories de réglages">
+        {settingsSections.map((section) => {
+          const SectionIcon = section.icon;
+          return (
+            <motion.button
+              key={section.id}
+              type="button"
+              className="settings-section-card"
+              whileHover={{ y: -6 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => {
+                setActiveSubTab(section.id);
+                setSettingsSectionOpen(true);
+              }}
+            >
+              <span className="settings-section-card-icon" style={{ background: section.gradient }}>
+                <SectionIcon size={34} />
+              </span>
+              <strong>{section.label}</strong>
+            </motion.button>
+          );
+        })}
+      </div>
 
-        {/* Right Content Panel */}
-        <div className="settings-content">
+      <Modal
+        isOpen={settingsSectionOpen}
+        onClose={() => setSettingsSectionOpen(false)}
+        size="xl"
+        overlayClassName="settings-section-modal-overlay"
+        bodyClassName="settings-section-modal-body"
+        title={
+          activeSettingsSection ? (
+            <span className="settings-section-modal-title">
+              <span
+                className="settings-section-modal-title-icon"
+                style={{ background: activeSettingsSection.gradient }}
+              >
+                <ActiveSettingsSectionIcon size={22} />
+              </span>
+              {activeSettingsSection.label}
+            </span>
+          ) : (
+            'Réglages'
+          )
+        }
+        subtitle={activeSettingsSection?.description}
+      >
+        <div className="settings-content settings-modal-content">
           {activeSubTab === 'general' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
               <div className="card-modern" style={{ padding: '1.5rem' }}>
@@ -19372,7 +19432,11 @@ function SettingsPage({
                 ) : null}
               </div>
 
-              <div className="card-modern" style={{ padding: '1.5rem' }}>
+              <div
+                className="card-modern"
+                hidden={!SETTINGS_VISIBILITY.githubReleases}
+                style={{ padding: '1.5rem' }}
+              >
                 <div
                   style={{
                     display: 'flex',
@@ -19510,41 +19574,142 @@ function SettingsPage({
                   serveur et n’est jamais réaffiché en clair.
                 </p>
               </div>
+            </div>
+          )}
 
-              <div
-                className="card-modern"
-                style={{
-                  padding: '1.5rem',
-                  background:
-                    'linear-gradient(135deg, rgba(16,185,129,0.04) 0%, rgba(59,130,246,0.04) 100%)',
-                  border: '1px solid rgba(16,185,129,0.1)',
-                }}
-              >
-                <span
-                  className="card-title"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    marginBottom: '0.5rem',
-                    color: 'var(--text-main)',
-                  }}
-                >
-                  <ChefHat size={18} /> Plateforme modulaire
+          {activeSubTab === 'remote-access' && isAdmin && (
+            <div className="card-modern settings-remote-access-card">
+              <div className="settings-remote-access-status">
+                <span className="settings-remote-access-logo">
+                  <Wifi size={28} />
                 </span>
-                <p
-                  style={{
-                    color: 'var(--text-muted)',
-                    lineHeight: 1.7,
-                    fontSize: '0.88rem',
-                    margin: 0,
-                  }}
+                <div>
+                  <strong>Tailscale</strong>
+                </div>
+                <div className="settings-remote-access-header-actions">
+                  <button
+                    type="button"
+                    className="settings-help-button"
+                    aria-label="Afficher le tutoriel Tailscale"
+                    aria-expanded={showRemoteHelp}
+                    title="Comment configurer Tailscale ?"
+                    onClick={() => setShowRemoteHelp((current) => !current)}
+                  >
+                    <HelpCircle size={18} />
+                  </button>
+                  <span className={`badge ${remoteStatusBadge}`}>
+                    {remoteStatusLoading ? 'Vérification…' : remoteStatusLabel}
+                  </span>
+                </div>
+              </div>
+
+              {showRemoteHelp ? (
+                <div className="settings-remote-access-help">
+                  <div className="settings-remote-access-help-title">
+                    <HelpCircle size={18} />
+                    <strong>Configurer l’accès à distance</strong>
+                  </div>
+                  <ol>
+                    <li>
+                      Créez un compte ou connectez-vous sur{' '}
+                      <a href="https://tailscale.com" target="_blank" rel="noreferrer">
+                        tailscale.com
+                      </a>
+                      .
+                    </li>
+                    <li>
+                      Installez Tailscale sur le téléphone, la tablette ou l’ordinateur utilisé
+                      pour accéder à ToqueHub à distance.
+                    </li>
+                    <li>
+                      Connectez cet appareil au même compte ou réseau Tailscale que votre instance
+                      ToqueHub.
+                    </li>
+                    <li>
+                      Cliquez sur <strong>Activer l’accès à distance</strong>. Si une connexion est
+                      demandée, ouvrez <strong>Se connecter à Tailscale</strong> et autorisez la
+                      machine.
+                    </li>
+                    <li>
+                      Lorsque le statut devient <strong>Actif</strong>, utilisez{' '}
+                      <strong>Ouvrir ToqueHub</strong> depuis chaque appareil connecté à votre réseau
+                      privé.
+                    </li>
+                  </ol>
+                  <span>
+                    Aucun port du routeur n’est à ouvrir : l’accès reste limité aux appareils
+                    autorisés dans votre réseau Tailscale.
+                  </span>
+                </div>
+              ) : null}
+
+              {remoteAccessError ? (
+                <div className="alert-modern error">
+                  <AlertCircle size={16} /> {remoteAccessError}
+                </div>
+              ) : null}
+              {remoteAccessMessage && effectiveRemoteStatus !== 'unavailable' ? (
+                <div
+                  className={`alert-modern ${effectiveRemoteStatus === 'active' ? 'success' : 'info'}`}
                 >
-                  L'installation ou la désactivation d'un module modifie uniquement l'interface
-                  utilisateur. Tous vos produits, fournisseurs, historiques et configurations de
-                  stock restent stockés de manière permanente et sécurisée dans la base locale
-                  souveraine.
-                </p>
+                  {effectiveRemoteStatus === 'active' ? (
+                    <CheckCircle2 size={16} />
+                  ) : (
+                    <Info size={16} />
+                  )}
+                  {remoteAccessMessage}
+                </div>
+              ) : null}
+
+              <div className="settings-remote-access-details">
+                <div>
+                  <span>Nom de l’instance</span>
+                  <strong>
+                    {remoteStatus?.hostname || remoteAccess.tailscaleHostname || 'toquehub'}
+                  </strong>
+                </div>
+                <div>
+                  <span>Adresse Tailscale</span>
+                  <strong>{remoteTailscaleIp || 'Non attribuée'}</strong>
+                </div>
+                <div className="settings-remote-access-url">
+                  <span>Adresse d’accès</span>
+                  <strong>{remoteAccessUrl || remoteMagicDnsUrl || 'Non disponible'}</strong>
+                </div>
+              </div>
+
+              <div className="settings-remote-access-actions">
+                {effectiveRemoteStatus !== 'active' ? (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => void activateRemoteAccess()}
+                    disabled={remoteAccessBusy || remoteStatusLoading}
+                  >
+                    <Wifi size={16} />
+                    {remoteAccessBusy ? 'Activation…' : 'Activer l’accès à distance'}
+                  </button>
+                ) : null}
+                {remoteLoginUrl ? (
+                  <a
+                    className="btn btn-primary"
+                    href={remoteLoginUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <ExternalLink size={16} /> Se connecter à Tailscale
+                  </a>
+                ) : null}
+                {remoteAccessUrl ? (
+                  <a
+                    className="btn btn-secondary"
+                    href={remoteAccessUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <ExternalLink size={16} /> Ouvrir ToqueHub
+                  </a>
+                ) : null}
               </div>
             </div>
           )}
@@ -19565,7 +19730,7 @@ function SettingsPage({
             />
           )}
 
-          {activeSubTab === 'remote-access' && isAdmin && (
+          {/* L’accès à distance est volontairement retiré des réglages.
             <div className="card-modern" style={{ padding: '1.5rem' }}>
               <div
                 style={{
@@ -19841,7 +20006,7 @@ function SettingsPage({
                 </button>
               </div>
             </div>
-          )}
+          */}
 
           {activeSubTab === 'users' && (
             <div className="card-modern" style={{ padding: '1.5rem' }}>
@@ -19933,7 +20098,9 @@ function SettingsPage({
             </div>
           )}
 
-          {activeSubTab === 'architecture' && isAdmin && <ArchitectureCenter session={session} />}
+          {activeSubTab === 'architecture' && isAdmin && SETTINGS_VISIBILITY.architecture && (
+            <ArchitectureCenter session={session} />
+          )}
 
           {activeSubTab === 'api-keys' && (
             <div
@@ -20494,7 +20661,7 @@ function SettingsPage({
             </div>
           )}
 
-          {activeSubTab === 'core' && (
+          {activeSubTab === 'core' && SETTINGS_VISIBILITY.diagnosticCore && (
             <div className="card-modern" style={{ padding: '1.5rem' }}>
               <span
                 className="card-title"
@@ -20587,7 +20754,7 @@ function SettingsPage({
             </div>
           )}
         </div>
-      </div>
+      </Modal>
 
       <SystemUpdateProgressModal
         isOpen={showUpdateProgressModal}
@@ -20991,8 +21158,10 @@ function ConfirmationModal({
 
 // Category Form
 interface CategoryFormProps {
-  onSubmit: (payload: { name: string; description?: string }) => Promise<void>;
+  onSubmit: (payload: { name: string; description?: string; vatRate?: number }) => Promise<void>;
   onClose: () => void;
+  regulatoryCountryCode?: string | null;
+  collectVatRate?: boolean;
   namePlaceholder?: string;
   descriptionPlaceholder?: string;
 }
@@ -21000,21 +21169,37 @@ interface CategoryFormProps {
 function CategoryForm({
   onSubmit,
   onClose,
+  regulatoryCountryCode,
+  collectVatRate = true,
   namePlaceholder = 'ex: Épicerie, Produits laitiers...',
   descriptionPlaceholder = 'Description de la catégorie...',
 }: CategoryFormProps) {
+  const vatPolicy = stockCategoryVatPolicy(regulatoryCountryCode);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [vatRate, setVatRate] = useState<number | ''>(vatPolicy.defaultRate ?? '');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
+    if (collectVatRate && vatRate === '') {
+      setError(
+        vatPolicy.options.length
+          ? 'Sélectionnez le taux de TVA de la catégorie.'
+          : 'Configurez le pays de réglementation avant de créer une catégorie.',
+      );
+      return;
+    }
     setSubmitting(true);
     setError(undefined);
     try {
-      await onSubmit({ name: name.trim(), description: description.trim() || undefined });
+      await onSubmit({
+        name: name.trim(),
+        description: description.trim() || undefined,
+        ...(collectVatRate && vatRate !== '' ? { vatRate } : {}),
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur lors de la création.');
     } finally {
@@ -21053,6 +21238,13 @@ function CategoryForm({
           style={{ resize: 'vertical' }}
         />
       </label>
+      {collectVatRate ? (
+        <CategoryVatField
+          policy={vatPolicy}
+          value={vatRate}
+          onChange={setVatRate}
+        />
+      ) : null}
       <div
         className="modal-footer"
         style={{ margin: '1.5rem -1.75rem -1.75rem', padding: '1rem 1.75rem' }}
@@ -21060,11 +21252,89 @@ function CategoryForm({
         <button type="button" className="btn btn-secondary" onClick={onClose} disabled={submitting}>
           Annuler
         </button>
-        <button type="submit" className="btn btn-primary" disabled={submitting || !name.trim()}>
+        <button
+          type="submit"
+          className="btn btn-primary"
+          disabled={submitting || !name.trim() || (collectVatRate && vatRate === '')}
+        >
           {submitting ? 'Création...' : 'Créer la catégorie'}
         </button>
       </div>
     </form>
+  );
+}
+
+function CategoryVatField({
+  policy,
+  value,
+  onChange,
+}: {
+  policy: ReturnType<typeof stockCategoryVatPolicy>;
+  value: number | '';
+  onChange: (value: number | '') => void;
+}) {
+  const selected = policy.options.find((option) => option.rate === value);
+  return (
+    <section className="category-vat-panel" aria-labelledby="category-vat-title">
+      <div className="category-vat-heading">
+        <div>
+          <strong id="category-vat-title">TVA de la catégorie *</strong>
+          <span>
+            {policy.countryLabel
+              ? `Barème applicable : ${policy.countryLabel}`
+              : 'Pays de réglementation non configuré'}
+          </span>
+        </div>
+        <span className="category-vat-country">{policy.countryCode ?? '—'}</span>
+      </div>
+      {policy.options.length ? (
+        <>
+          <label className="category-vat-select-label">
+            Taux appliqué aux produits de cette catégorie
+            <select
+              value={value}
+              onChange={(event) =>
+                onChange(event.target.value === '' ? '' : Number(event.target.value))
+              }
+              required
+            >
+              <option value="">Sélectionner un taux</option>
+              {policy.options.map((option) => (
+                <option key={option.rate} value={option.rate}>
+                  {formatVatRate(option.rate)} % — {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="category-vat-guidance">
+            {policy.options.map((option) => (
+              <button
+                type="button"
+                key={option.rate}
+                className={option.rate === value ? 'selected' : ''}
+                onClick={() => onChange(option.rate)}
+              >
+                <span>{formatVatRate(option.rate)} %</span>
+                <div>
+                  <strong>{option.label}</strong>
+                  <small>{option.description}</small>
+                </div>
+              </button>
+            ))}
+          </div>
+          {selected ? (
+            <p className="category-vat-selected-help">
+              <Info size={15} /> Les produits de cette catégorie utiliseront {formatVatRate(selected.rate)} % dans la valorisation de l’inventaire.
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <div className="alert-modern warning category-vat-warning">
+          <AlertTriangle size={16} />
+          <span>Choisissez d’abord le pays de réglementation dans les réglages généraux.</span>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -21092,6 +21362,7 @@ function sortCategoriesWithUncategorizedLast<T extends { name: string }>(categor
 function CategoryDetailModal({
   category,
   products,
+  regulatoryCountryCode,
   onClose,
   onUpdate,
   onDelete,
@@ -21099,13 +21370,21 @@ function CategoryDetailModal({
 }: {
   category: Category | null;
   products: Product[];
+  regulatoryCountryCode?: string | null;
   onClose: () => void;
-  onUpdate: (categoryId: string, payload: { name: string; description?: string }) => Promise<void>;
+  onUpdate: (
+    categoryId: string,
+    payload: { name: string; description?: string; vatRate: number },
+  ) => Promise<void>;
   onDelete: (categoryId: string) => Promise<void>;
   onOpenProducts: (categoryId: string) => void;
 }) {
+  const vatPolicy = stockCategoryVatPolicy(regulatoryCountryCode);
   const [name, setName] = useState(category?.name ?? '');
   const [description, setDescription] = useState(category?.description ?? '');
+  const [vatRate, setVatRate] = useState<number | ''>(() =>
+    category?.vatRate == null ? vatPolicy.defaultRate ?? '' : Number(category.vatRate),
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
   const linkedProducts = useMemo(
@@ -21118,18 +21397,25 @@ function CategoryDetailModal({
   useEffect(() => {
     setName(category?.name ?? '');
     setDescription(category?.description ?? '');
+    const storedRate = category?.vatRate == null ? null : Number(category.vatRate);
+    setVatRate(
+      storedRate != null && vatPolicy.options.some((option) => option.rate === storedRate)
+        ? storedRate
+        : vatPolicy.defaultRate ?? '',
+    );
     setError(undefined);
-  }, [category?.id, category?.name, category?.description]);
+  }, [category?.id, category?.name, category?.description, category?.vatRate, vatPolicy.countryCode]);
 
   async function save(event: FormEvent) {
     event.preventDefault();
-    if (!category || !name.trim()) return;
+    if (!category || !name.trim() || vatRate === '') return;
     setSubmitting(true);
     setError(undefined);
     try {
       await onUpdate(category.id, {
         name: name.trim(),
         description: description.trim() || undefined,
+        vatRate,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'La catégorie n’a pas pu être modifiée.');
@@ -21188,6 +21474,7 @@ function CategoryDetailModal({
               onChange={(event) => setDescription(event.target.value)}
             />
           </label>
+          <CategoryVatField policy={vatPolicy} value={vatRate} onChange={setVatRate} />
           <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
             <button
               type="button"
@@ -21219,119 +21506,17 @@ function CategoryDetailModal({
             >
               Fermer
             </button>
-            <button type="submit" className="btn btn-primary" disabled={submitting || !name.trim()}>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={submitting || !name.trim() || vatRate === ''}
+            >
               {submitting ? 'Enregistrement...' : 'Enregistrer'}
             </button>
           </div>
         </form>
       ) : null}
     </Modal>
-  );
-}
-
-// Unit Form
-interface UnitFormProps {
-  onSubmit: (payload: {
-    name: string;
-    symbol: string;
-    type?: string;
-    baseFactor?: number;
-  }) => Promise<void>;
-  onClose: () => void;
-}
-
-function UnitForm({ onSubmit, onClose }: UnitFormProps) {
-  const [name, setName] = useState('');
-  const [symbol, setSymbol] = useState('');
-  const [type, setType] = useState('COUNT');
-  const [baseFactor, setBaseFactor] = useState('1');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string>();
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (!name.trim() || !symbol.trim()) return;
-    setSubmitting(true);
-    setError(undefined);
-    try {
-      await onSubmit({
-        name: name.trim(),
-        symbol: symbol.trim(),
-        type,
-        baseFactor: Number(baseFactor) || 1,
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur lors de la création.');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <form
-      onSubmit={handleSubmit}
-      style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}
-    >
-      {error && (
-        <div className="alert-modern error" style={{ padding: '0.75rem 1rem' }}>
-          <AlertCircle size={16} />
-          <span>{error}</span>
-        </div>
-      )}
-      <label>
-        Nom de l'unité *
-        <input
-          placeholder="ex: Kilogramme, Litre, Boîte..."
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          required
-          autoFocus
-        />
-      </label>
-      <label>
-        Symbole *
-        <input
-          placeholder="ex: kg, L, bt..."
-          value={symbol}
-          onChange={(e) => setSymbol(e.target.value)}
-          required
-        />
-      </label>
-      <div className="form-row">
-        <label>
-          Type compatible
-          <select value={type} onChange={(e) => setType(e.target.value)}>
-            <option value="MASS">Masse (kg/g)</option>
-            <option value="VOLUME">Volume (L/mL)</option>
-            <option value="COUNT">Comptage</option>
-          </select>
-        </label>
-        <label>
-          Facteur de conversion
-          <input
-            type="number"
-            step="0.001"
-            value={baseFactor}
-            onChange={(e) => setBaseFactor(e.target.value)}
-          />
-        </label>
-      </div>
-      <div
-        className="modal-footer"
-        style={{ margin: '1.5rem -1.75rem -1.75rem', padding: '1rem 1.75rem' }}
-      >
-        <button type="button" className="btn btn-secondary" onClick={onClose} disabled={submitting}>
-          Annuler
-        </button>
-        <button
-          type="submit"
-          className="btn btn-primary"
-          disabled={submitting || !name.trim() || !symbol.trim()}
-        >
-          {submitting ? 'Création...' : "Créer l'unité"}
-        </button>
-      </div>
-    </form>
   );
 }
 

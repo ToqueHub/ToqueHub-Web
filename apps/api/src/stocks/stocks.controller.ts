@@ -85,6 +85,48 @@ export class StocksController {
   @Post('stocks/uninstall') uninstall(@CurrentUser() user: AuthenticatedUser) {
     return this.stocksService.uninstallFromInterface(this.org(user), this.actor(user));
   }
+
+  @Get('equipment/:productId/documents')
+  equipmentDocuments(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('productId') productId: string,
+  ) {
+    return this.stocksService.listEquipmentDocuments(this.org(user), productId);
+  }
+
+  @Post('equipment/:productId/documents')
+  @UseInterceptors(
+    FilesInterceptor('files', 8, { limits: { files: 8, fileSize: 20 * 1024 * 1024 } }),
+  )
+  uploadEquipmentDocuments(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('productId') productId: string,
+    @UploadedFiles() files: any[],
+  ) {
+    return this.stocksService.uploadEquipmentDocuments(
+      this.org(user),
+      this.actor(user),
+      productId,
+      files,
+    );
+  }
+
+  @Get('equipment/:productId/documents/:documentId/download')
+  async downloadEquipmentDocument(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('productId') productId: string,
+    @Param('documentId') documentId: string,
+    @Res() res: Response,
+  ) {
+    const { document, absolutePath } = await this.stocksService.getEquipmentDocumentForDownload(
+      this.org(user),
+      productId,
+      documentId,
+    );
+    res.setHeader('Content-Type', document.mimeType);
+    return res.download(absolutePath, document.originalName);
+  }
+
   @Get('stocks/dashboard') dashboard(@CurrentUser() user: AuthenticatedUser) {
     return this.stocksService.dashboard(this.org(user));
   }

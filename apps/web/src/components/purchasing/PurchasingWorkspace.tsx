@@ -9,7 +9,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   FileText,
-  History,
   MailCheck,
   PackageCheck,
   RefreshCw,
@@ -34,13 +33,12 @@ import {
   tabTitle,
 } from './components/PurchasingUi';
 import { PurchasingDashboardView } from './pages/PurchasingDashboard';
-import { HistoryView } from './pages/PurchaseHistory';
 import { OrdersView } from './pages/PurchaseOrders';
 import { OrderComposerButton } from './orders/OrderComposer';
 import { PurchasingOnboarding } from './onboarding/PurchasingOnboarding';
 import { ReceiptsView } from './receipts/ReceiptWorkspace';
 
-export type PurchasingTab = 'dashboard' | 'orders' | 'receipts' | 'history';
+export type PurchasingTab = 'dashboard' | 'orders' | 'receipts';
 
 type Props = {
   token: string;
@@ -144,7 +142,7 @@ export function PurchasingWorkspace({ token, tab, onNavigate }: Props) {
   }, [loadConfiguration]);
 
   useEffect(() => {
-    if (!bootstrap || tab === 'history') return;
+    if (!bootstrap) return;
     void loadTab(
       tab,
       tab === 'orders' ? orderPage : tab === 'receipts' ? receiptPage : undefined,
@@ -266,7 +264,6 @@ export function PurchasingWorkspace({ token, tab, onNavigate }: Props) {
             ['dashboard', 'Tableau de bord', ShoppingCart],
             ['orders', 'Commandes', FileText],
             ['receipts', 'Réceptions', PackageCheck],
-            ['history', 'Historique', History],
           ] as const
         ).map(([id, label, Icon]) => (
           <button key={id} className={tab === id ? 'active' : ''} onClick={() => onNavigate(id)}>
@@ -340,12 +337,6 @@ export function PurchasingWorkspace({ token, tab, onNavigate }: Props) {
           />
         </motion.div>
       )}
-      {tab === 'history' && (
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-          <HistoryView token={token} />
-        </motion.div>
-      )}
-
       {onboardingOpen && bootstrap && (
         <PurchasingOnboarding
           bootstrap={bootstrap}

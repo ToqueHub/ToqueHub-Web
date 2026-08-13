@@ -19,7 +19,6 @@ import {
   FileCheck,
   FileText,
   Filter,
-  History,
   Kanban,
   Layers,
   LayoutGrid,
@@ -42,6 +41,10 @@ import {
   X,
 } from 'lucide-react';
 import { api } from '../api/client';
+import {
+  TechnicalSheetPickerModal,
+  type TechnicalSheetPickerItem,
+} from './TechnicalSheetPickerModal';
 import type {
   CatererClient,
   CatererEvent,
@@ -49,7 +52,6 @@ import type {
   CatererEventStatus,
   CatererFulfillmentMode,
   CatererPrestationPayload,
-  MenuHistoryEntry,
   MenuItemPayload,
   MenuSection,
   MenuServiceType,
@@ -57,7 +59,7 @@ import type {
   TechnicalSheetRecipe,
 } from '../types';
 
-type CatererTab = 'dashboard' | 'events' | 'calendar' | 'clients' | 'documents' | 'history';
+type CatererTab = 'dashboard' | 'events' | 'calendar' | 'clients' | 'documents';
 
 const serviceOptions: Array<{ value: MenuServiceType; label: string }> = [
   { value: 'EVENT', label: 'Cocktail / événement' },
@@ -131,7 +133,6 @@ export function CatererMenusApp({
   const [events, setEvents] = useState<CatererEvent[]>([]);
   const [clients, setClients] = useState<CatererClient[]>([]);
   const [recipes, setRecipes] = useState<TechnicalSheetRecipe[]>([]);
-  const [history, setHistory] = useState<MenuHistoryEntry[]>([]);
   const [dashboard, setDashboard] = useState<{
     stats: {
       nextThirtyDays: number;
@@ -199,18 +200,15 @@ export function CatererMenusApp({
     setLoading(true);
     setError(undefined);
     try {
-      const [eventsResult, clientsResult, recipesResult, historyResult, dashboardResult] =
-        await Promise.all([
-          api.catererEvents(token),
-          api.catererClients(token),
-          api.technicalSheetRecipes(token, { pageSize: 200 }).then((result) => result.items),
-          api.menuHistory(token),
-          api.catererDashboard(token),
-        ]);
+      const [eventsResult, clientsResult, recipesResult, dashboardResult] = await Promise.all([
+        api.catererEvents(token),
+        api.catererClients(token),
+        api.technicalSheetRecipes(token, { pageSize: 200 }).then((result) => result.items),
+        api.catererDashboard(token),
+      ]);
       setEvents(eventsResult);
       setClients(clientsResult);
       setRecipes(recipesResult);
-      setHistory(historyResult);
       setDashboard(dashboardResult);
       setSelectedEventId((current) => current ?? eventsResult[0]?.id);
     } catch (caught) {
@@ -443,7 +441,6 @@ export function CatererMenusApp({
             ['events', 'Événements', <Truck key="evt" size={16} />],
             ['clients', 'Clients', <UserRound key="cli" size={16} />],
             ['documents', 'Documents', <FileText key="doc" size={16} />],
-            ['history', 'Historique', <History key="hist" size={16} />],
           ] as Array<[CatererTab, string, React.ReactNode]>
         ).map(([id, label, icon]) => (
           <button
@@ -766,55 +763,6 @@ export function CatererMenusApp({
               text="Présentation élégante sans annotations internes pour impression ou envoi PDF."
               onClick={() => download('CLIENT')}
             />
-          </div>
-        </div>
-      ) : null}
-
-      {/* TAB: HISTORY */}
-      {tab === 'history' ? (
-        <div className="caterer-card">
-          <div className="caterer-card-header">
-            <span className="caterer-card-title">
-              <History size={20} color="#10b981" /> Historique et audit Traiteur
-            </span>
-          </div>
-          <div style={{ display: 'grid', gap: '0.85rem' }}>
-            {history
-              .filter(
-                (entry) =>
-                  String(entry.context ?? entry.summary ?? '')
-                    .toLocaleLowerCase('fr')
-                    .includes('événement') || (entry as any).details?.catererEventId,
-              )
-              .map((entry) => (
-                <div
-                  key={entry.id}
-                  style={{
-                    borderLeft: '4px solid #10b981',
-                    background: '#f8fafc',
-                    padding: '0.85rem 1.1rem',
-                    borderRadius: '0 12px 12px 0',
-                  }}
-                >
-                  <strong
-                    style={{ color: 'var(--text-main)', display: 'block', fontSize: '0.9rem' }}
-                  >
-                    {entry.context ?? entry.summary ?? entry.action}
-                  </strong>
-                  <span
-                    className="muted"
-                    style={{ fontSize: '0.8rem', marginTop: '0.2rem', display: 'block' }}
-                  >
-                    {dateLabel(entry.createdAt)} · {entry.user?.email ?? 'Système'}
-                  </span>
-                </div>
-              ))}
-            {!history.length ? (
-              <Empty
-                title="Aucun historique enregistre"
-                text="Les actions sur les événements s'afficheront ici."
-              />
-            ) : null}
           </div>
         </div>
       ) : null}
@@ -1334,6 +1282,25 @@ function CompositionEditor({
 }) {
   const [recipeId, setRecipeId] = useState('');
   const [section, setSection] = useState<MenuSection>('OTHER');
+  const [recipePickerOpen, setRecipePickerOpen] = useState(false);
+  const selectedRecipe = recipes.find((recipe) => recipe.id === recipeId);
+  const recipePickerItems = useMemo<TechnicalSheetPickerItem[]>(
+    () =>
+      recipes.map((recipe) => ({
+        id: recipe.id,
+        name: recipe.name,
+        category: recipe.category?.name ?? 'Sans catégorie',
+        group: recipe.category?.name ?? 'Sans catégorie',
+        referenceLabel:
+          recipe.yieldMode === 'MASS'
+            ? `${Number(recipe.totalMassGrams ?? 0).toLocaleString('fr-FR')} g`
+            : `${Number(recipe.referencePortions ?? recipe.portions ?? 1).toLocaleString('fr-FR')} portions`,
+        durationMinutes: Number(recipe.totalTimeMinutes ?? 0) || null,
+        contextLabel:
+          recipe.mode === 'PRODUCTION' ? 'Fabrication / préparation' : 'Assemblage / produit fini',
+      })),
+    [recipes],
+  );
 
   return (
     <div style={{ display: 'grid', gap: '1rem' }}>
@@ -1341,17 +1308,37 @@ function CompositionEditor({
         className="menus-form-grid"
         style={{ background: '#f8fafc', padding: '1rem', borderRadius: 14 }}
       >
-        <label className="menus-form-span">
-          Fiche technique à ajouter
-          <select value={recipeId} onChange={(event) => setRecipeId(event.target.value)}>
-            <option value="">Sélectionner une recette…</option>
-            {recipes.map((recipe) => (
-              <option key={recipe.id} value={recipe.id}>
-                {recipe.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="menus-form-span">
+          <span style={{ display: 'block', fontSize: '.82rem', fontWeight: 700, color: '#334155' }}>
+            Fiche technique à ajouter
+          </span>
+          <button
+            type="button"
+            className={
+              selectedRecipe
+                ? 'technical-sheet-picker-trigger selected'
+                : 'technical-sheet-picker-trigger'
+            }
+            disabled={!recipes.length}
+            onClick={() => setRecipePickerOpen(true)}
+            style={{ marginTop: '.35rem' }}
+          >
+            <span className="technical-sheet-picker-trigger-icon">
+              <Search size={18} />
+            </span>
+            <span className="technical-sheet-picker-trigger-copy">
+              <strong>{selectedRecipe?.name ?? 'Rechercher une fiche technique'}</strong>
+              <small>
+                {selectedRecipe
+                  ? selectedRecipe.category?.name ?? 'Sans catégorie'
+                  : `${recipes.length} fiche(s) disponible(s)`}
+              </small>
+            </span>
+            <span className="technical-sheet-picker-trigger-action">
+              {selectedRecipe ? 'Changer' : 'Rechercher'}
+            </span>
+          </button>
+        </div>
         <label>
           Rubrique du menu
           <select
@@ -1378,6 +1365,19 @@ function CompositionEditor({
           <Plus size={15} /> Ajouter au menu
         </button>
       </div>
+
+      <TechnicalSheetPickerModal
+        open={recipePickerOpen}
+        items={recipePickerItems}
+        selectedSheetId={recipeId}
+        title="Catalogue des fiches techniques"
+        subtitle="Recherchez la recette à ajouter à cette prestation."
+        onClose={() => setRecipePickerOpen(false)}
+        onSelectSheet={(item) => {
+          setRecipeId(item.id);
+          setRecipePickerOpen(false);
+        }}
+      />
 
       <div style={{ display: 'grid', gap: '0.6rem' }}>
         {(prestation.items ?? []).map((item, index) => (

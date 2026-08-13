@@ -5,6 +5,7 @@ import { mkdir, unlink, writeFile } from 'fs/promises';
 import { basename, dirname, extname, join, resolve } from 'path';
 import { AuditAction, HrContractStatus, HrDocumentCategory, HrEmployeeStatus, HrHistoryEventType, HrOnboardingStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { UsersService } from '../users/users.service';
 import { HrListQueryDto, UpsertHrEmployeeDto, UpsertHrReferenceDto } from './dto/hr.dto';
 import { HR_CATALOG } from './hr.catalog';
 import { HrSensitiveDataCryptoService } from './hr-sensitive-data-crypto.service';
@@ -35,6 +36,7 @@ export class HrService {
   constructor(
     private readonly prisma: PrismaService,
     @Optional() private readonly sensitiveDataCrypto?: HrSensitiveDataCryptoService,
+    @Optional() private readonly usersService?: UsersService,
   ) {}
 
   private assertWrite(actor: Actor) { if (!WRITE_ROLES.includes(actor.role)) throw new ForbiddenException('RH write access is restricted to managers and administrators'); }
@@ -319,6 +321,17 @@ export class HrService {
 
   async createEmployee(organizationId: string, actor: Actor, dto: UpsertHrEmployeeDto) {
     this.assertWrite(actor);
+    this.validateEmergencyContact(dto);
+    this.validateRevaluation(dto);
+    if (dto.toqueHubAccount) {
+      if (!ADMIN_ROLES.includes(actor.role)) throw new ForbiddenException('La création d’un compte ToqueHub est réservée aux administrateurs');
+      if (dto.userId) throw new BadRequestException('Choisissez entre un compte existant et la création d’un nouveau compte ToqueHub');
+      if (!dto.firstName.trim() || !dto.lastName.trim() || !dto.email?.trim()) {
+        throw new BadRequestException('Le prénom, le nom et l’adresse e-mail sont requis pour créer le compte ToqueHub');
+      }
+      if (!this.usersService) throw new BadRequestException('Le service de création des comptes ToqueHub est indisponible');
+      await this.usersService.ensureCoreRolesAndPermissions();
+    }
     const onboarding = await this.recomputeOnboarding(organizationId);
     if (onboarding.status === HrOnboardingStatus.NOT_STARTED || onboarding.status === HrOnboardingStatus.SERVICES_IN_PROGRESS || onboarding.status === HrOnboardingStatus.SERVICES_COMPLETED) {
       throw new BadRequestException('Vous devez d’abord créer au moins un service et un poste avant de pouvoir ajouter un collaborateur.');
@@ -327,7 +340,19 @@ export class HrService {
     if (dto.email) await this.ensureEmailAvailable(organizationId, dto.email);
     if (dto.userId) await this.ensureUserAvailable(organizationId, dto.userId);
     return this.prisma.$transaction(async (tx) => {
-      const employee = await tx.hrEmployee.create({ data: this.employeeData(organizationId, dto), include: includeEmployee });
+      const createdUser = dto.toqueHubAccount
+        ? await this.usersService!.createManagedUserRecord(organizationId, {
+            firstName: dto.firstName.trim(),
+            lastName: dto.lastName.trim(),
+            email: dto.email!.trim(),
+            role: dto.toqueHubAccount.role,
+            temporaryPassword: dto.toqueHubAccount.temporaryPassword,
+          }, tx)
+        : null;
+      const employee = await tx.hrEmployee.create({
+        data: { ...this.employeeData(organizationId, dto), userId: createdUser?.id ?? this.cleanText(dto.userId) },
+        include: includeEmployee,
+      });
       if (dto.secondaryPositionIds?.length) {
         await tx.hrEmployeeSecondaryPosition.createMany({ data: dto.secondaryPositionIds.map((positionId) => ({ employeeId: employee.id, positionId })), skipDuplicates: true });
       }
@@ -337,7 +362,8 @@ export class HrService {
       await this.syncSensitiveData(tx, organizationId, employee.id, dto.personalIdentityNumber);
       await this.syncContractAndCompensation(tx, organizationId, employee.id, dto, actor.id);
       await this.history(tx, organizationId, employee.id, actor.id, HrHistoryEventType.CREATED, 'Création du collaborateur');
-      if (dto.userId) await this.history(tx, organizationId, employee.id, actor.id, HrHistoryEventType.USER_LINKED, 'Compte ToqueHub associé', { userId: dto.userId });
+      if (createdUser) await this.history(tx, organizationId, employee.id, actor.id, HrHistoryEventType.USER_LINKED, 'Compte ToqueHub créé', { userId: createdUser.id });
+      else if (dto.userId) await this.history(tx, organizationId, employee.id, actor.id, HrHistoryEventType.USER_LINKED, 'Compte ToqueHub associé', { userId: dto.userId });
       await this.recomputeOnboarding(organizationId);
       return this.serializeEmployee(await tx.hrEmployee.findFirst({ where: { id: employee.id, organizationId }, include: includeEmployee }));
     });
@@ -345,6 +371,9 @@ export class HrService {
 
   async updateEmployee(organizationId: string, actor: Actor, id: string, dto: UpsertHrEmployeeDto) {
     this.assertWrite(actor);
+    this.validateEmergencyContact(dto);
+    this.validateRevaluation(dto);
+    if (dto.toqueHubAccount) throw new BadRequestException('Un compte ToqueHub peut uniquement être créé avec une nouvelle fiche collaborateur');
     const current = await this.prisma.hrEmployee.findFirst({ where: { id, organizationId } });
     if (!current) throw new NotFoundException('Collaborateur introuvable');
     await this.validateEmployeeRefs(organizationId, dto, id);
@@ -592,6 +621,35 @@ export class HrService {
   private optionalDate(value?: string | null, label = 'Date') { if (!value) return null; const date = new Date(value); if (Number.isNaN(date.getTime())) throw new BadRequestException(`${label} invalide`); return date; }
   private cleanText(value?: string | null) { return value && value.trim() ? value : null; }
   private cleanTextList(values?: string[] | null) { return [...new Set((values ?? []).map((value) => value.trim()).filter(Boolean))]; }
+  private validateEmergencyContact(dto: UpsertHrEmployeeDto) {
+    const fields = [
+      ['le prénom', dto.emergencyContactFirstName],
+      ['le nom', dto.emergencyContactLastName],
+      ['le numéro de téléphone', dto.emergencyContactPhone],
+      ["l’adresse e-mail", dto.emergencyContactEmail],
+    ] as const;
+    if (!fields.some(([, value]) => value?.trim())) return;
+    const missing = fields.filter(([, value]) => !value?.trim()).map(([label]) => label);
+    if (missing.length) {
+      throw new BadRequestException(
+        `Contact d’urgence incomplet : renseignez ${missing.join(', ')}.`,
+      );
+    }
+  }
+  private validateRevaluation(dto: UpsertHrEmployeeDto) {
+    if (dto.revaluationEnabled !== true) return;
+    const fields = [
+      ["la date d’effet", dto.rateEffectiveDate],
+      ['la prochaine revalorisation', dto.nextReviewDate],
+      ['la fréquence de revalorisation', dto.reviewFrequency],
+    ] as const;
+    const missing = fields.filter(([, value]) => !value?.trim()).map(([label]) => label);
+    if (missing.length) {
+      throw new BadRequestException(
+        `Revalorisation incomplète : renseignez ${missing.join(', ')}.`,
+      );
+    }
+  }
   private taskPresetsJson(presets: Array<Omit<HrPositionTaskPreset, 'id'> & { id?: string }>) {
     return presets
       .map((item, index) => {
@@ -652,6 +710,10 @@ export class HrService {
       primaryLanguage: this.cleanText(dto.primaryLanguage),
       secondaryLanguage: this.cleanText(dto.secondaryLanguage),
       emergencyContact: this.cleanText(dto.emergencyContact),
+      emergencyContactFirstName: this.cleanText(dto.emergencyContactFirstName),
+      emergencyContactLastName: this.cleanText(dto.emergencyContactLastName),
+      emergencyContactPhone: this.cleanText(dto.emergencyContactPhone),
+      emergencyContactEmail: this.cleanText(dto.emergencyContactEmail)?.toLowerCase() ?? null,
       birthDate: this.optionalDate(dto.birthDate, 'Date de naissance'),
       hireDate: this.requiredDate(dto.hireDate, 'Date d\'embauche'),
       departmentId: dto.departmentId,
@@ -663,15 +725,15 @@ export class HrService {
       userId: this.cleanText(dto.userId),
       managerId: this.cleanText(dto.managerId),
       contractType: this.cleanText(dto.contractType),
-      contractEndDate: this.optionalDate(dto.contractEndDate, 'Date de fin de contrat'),
+      contractEndDate: dto.contractType === 'CDI' ? null : this.optionalDate(dto.contractEndDate, 'Date de fin de contrat'),
       trialEndDate: this.optionalDate(dto.trialEndDate, 'Date de fin de période d\'essai'),
       contractWeeklyMinutes: dto.contractWeeklyMinutes ?? null,
       trainingNames: dto.trainingNames === undefined ? undefined : this.cleanTextList(dto.trainingNames),
       hourlyRate: dto.hourlyRate != null && Number.isFinite(dto.hourlyRate) ? new Prisma.Decimal(dto.hourlyRate) : null,
       currency: this.cleanText(dto.currency),
-      rateEffectiveDate: this.optionalDate(dto.rateEffectiveDate, 'Date d\'effet'),
-      nextReviewDate: this.optionalDate(dto.nextReviewDate, 'Date de prochaine revalorisation'),
-      reviewFrequency: this.cleanText(dto.reviewFrequency),
+      rateEffectiveDate: dto.revaluationEnabled === false ? null : this.optionalDate(dto.rateEffectiveDate, 'Date d\'effet'),
+      nextReviewDate: dto.revaluationEnabled === false ? null : this.optionalDate(dto.nextReviewDate, 'Date de prochaine revalorisation'),
+      reviewFrequency: dto.revaluationEnabled === false ? null : this.cleanText(dto.reviewFrequency),
     };
   }
   private employeeUpdateData(dto: UpsertHrEmployeeDto): Prisma.HrEmployeeUncheckedUpdateInput {
@@ -688,6 +750,10 @@ export class HrService {
       primaryLanguage: this.cleanText(dto.primaryLanguage),
       secondaryLanguage: this.cleanText(dto.secondaryLanguage),
       emergencyContact: this.cleanText(dto.emergencyContact),
+      emergencyContactFirstName: this.cleanText(dto.emergencyContactFirstName),
+      emergencyContactLastName: this.cleanText(dto.emergencyContactLastName),
+      emergencyContactPhone: this.cleanText(dto.emergencyContactPhone),
+      emergencyContactEmail: this.cleanText(dto.emergencyContactEmail)?.toLowerCase() ?? null,
       birthDate: this.optionalDate(dto.birthDate, 'Date de naissance'),
       hireDate: this.requiredDate(dto.hireDate, 'Date d\'embauche'),
       departmentId: dto.departmentId,
@@ -699,15 +765,15 @@ export class HrService {
       userId: this.cleanText(dto.userId),
       managerId: this.cleanText(dto.managerId),
       contractType: this.cleanText(dto.contractType),
-      contractEndDate: this.optionalDate(dto.contractEndDate, 'Date de fin de contrat'),
+      contractEndDate: dto.contractType === 'CDI' ? null : this.optionalDate(dto.contractEndDate, 'Date de fin de contrat'),
       trialEndDate: this.optionalDate(dto.trialEndDate, 'Date de fin de période d\'essai'),
       contractWeeklyMinutes: dto.contractWeeklyMinutes ?? null,
       trainingNames: dto.trainingNames === undefined ? undefined : this.cleanTextList(dto.trainingNames),
       hourlyRate: dto.hourlyRate != null && Number.isFinite(dto.hourlyRate) ? new Prisma.Decimal(dto.hourlyRate) : null,
       currency: this.cleanText(dto.currency),
-      rateEffectiveDate: this.optionalDate(dto.rateEffectiveDate, 'Date d\'effet'),
-      nextReviewDate: this.optionalDate(dto.nextReviewDate, 'Date de prochaine revalorisation'),
-      reviewFrequency: this.cleanText(dto.reviewFrequency),
+      rateEffectiveDate: dto.revaluationEnabled === false ? null : this.optionalDate(dto.rateEffectiveDate, 'Date d\'effet'),
+      nextReviewDate: dto.revaluationEnabled === false ? null : this.optionalDate(dto.nextReviewDate, 'Date de prochaine revalorisation'),
+      reviewFrequency: dto.revaluationEnabled === false ? null : this.cleanText(dto.reviewFrequency),
     };
   }
   private async syncContractAndCompensation(tx: Tx, organizationId: string, employeeId: string, dto: UpsertHrEmployeeDto, actorId: string) {
@@ -721,7 +787,7 @@ export class HrService {
         await tx.hrEmploymentContract.updateMany({ where: { employeeId, status: HrContractStatus.ACTIVE }, data: { status: HrContractStatus.ENDED } });
         await this.history(tx, organizationId, employeeId, actorId, HrHistoryEventType.CONTRACT_ENDED, 'Clôture du contrat précédent', { contractId: lastContract.id });
       }
-      const newContract = await tx.hrEmploymentContract.create({ data: { organizationId, employeeId, contractType: dto.contractType || 'CDI', startDate: this.optionalDate(dto.rateEffectiveDate, 'Date d\'effet') ?? new Date(), endDate: this.optionalDate(dto.contractEndDate, 'Date de fin de contrat'), weeklyHours: dto.contractWeeklyMinutes ?? null, trialEndDate: this.optionalDate(dto.trialEndDate, 'Date de fin de période d\'essai'), status: HrContractStatus.ACTIVE, createdById: actorId } });
+      const newContract = await tx.hrEmploymentContract.create({ data: { organizationId, employeeId, contractType: dto.contractType || 'CDI', startDate: dto.revaluationEnabled === false ? new Date() : this.optionalDate(dto.rateEffectiveDate, 'Date d\'effet') ?? new Date(), endDate: dto.contractType === 'CDI' ? null : this.optionalDate(dto.contractEndDate, 'Date de fin de contrat'), weeklyHours: dto.contractWeeklyMinutes ?? null, trialEndDate: this.optionalDate(dto.trialEndDate, 'Date de fin de période d\'essai'), status: HrContractStatus.ACTIVE, createdById: actorId } });
       await this.history(tx, organizationId, employeeId, actorId, HrHistoryEventType.CONTRACT_CREATED, 'Création d\'un nouveau contrat', { contractId: newContract.id, contractType: dto.contractType });
     }
 
@@ -731,12 +797,14 @@ export class HrService {
         await tx.hrEmployeeCompensation.updateMany({ where: { employeeId, effectiveTo: null }, data: { effectiveTo: new Date() } });
         await this.history(tx, organizationId, employeeId, actorId, HrHistoryEventType.COMPENSATION_ENDED, 'Clôture de la rémunération précédente', { compensationId: lastCompensation.id });
       }
-      const newCompensation = await tx.hrEmployeeCompensation.create({ data: { employeeId, hourlyRate: new Prisma.Decimal(dto.hourlyRate!), currency: dto.currency || 'EUR', effectiveFrom: this.optionalDate(dto.rateEffectiveDate, 'Date d\'effet') ?? new Date(), reason: 'Modification depuis la fiche collaborateur', createdById: actorId } });
+      const newCompensation = await tx.hrEmployeeCompensation.create({ data: { employeeId, hourlyRate: new Prisma.Decimal(dto.hourlyRate!), currency: dto.currency || 'EUR', effectiveFrom: dto.revaluationEnabled === false ? new Date() : this.optionalDate(dto.rateEffectiveDate, 'Date d\'effet') ?? new Date(), reason: 'Modification depuis la fiche collaborateur', createdById: actorId } });
       await this.history(tx, organizationId, employeeId, actorId, HrHistoryEventType.COMPENSATION_CREATED, 'Nouvelle rémunération enregistrée', { compensationId: newCompensation.id, hourlyRate: dto.hourlyRate });
     }
 
-    const reviewChanged = this.isReviewChanged(dto, lastReview);
-    if (reviewChanged) {
+    if (dto.revaluationEnabled === false && lastReview) {
+      await tx.hrSalaryReview.updateMany({ where: { employeeId, status: { in: ['UPCOMING', 'DUE_SOON', 'DUE'] as any } }, data: { status: 'POSTPONED' as any } });
+      await this.history(tx, organizationId, employeeId, actorId, HrHistoryEventType.REVIEW_POSTPONED, 'Planification de revalorisation désactivée', { reviewId: lastReview.id });
+    } else if (dto.revaluationEnabled !== false && this.isReviewChanged(dto, lastReview)) {
       if (lastReview) {
         await tx.hrSalaryReview.updateMany({ where: { employeeId, status: { in: ['UPCOMING', 'DUE_SOON', 'DUE'] as any } }, data: { status: 'POSTPONED' as any } });
         await this.history(tx, organizationId, employeeId, actorId, HrHistoryEventType.REVIEW_POSTPONED, 'Revalorisation reportée', { reviewId: lastReview.id });
@@ -753,7 +821,7 @@ export class HrService {
     if (!hasData) return false;
     if (!lastContract) return true;
     const sameType = (dto.contractType || 'CDI') === lastContract.contractType;
-    const dtoEnd = this.optionalDate(dto.contractEndDate, 'Date de fin de contrat');
+    const dtoEnd = dto.contractType === 'CDI' ? null : this.optionalDate(dto.contractEndDate, 'Date de fin de contrat');
     const dtoTrial = this.optionalDate(dto.trialEndDate, 'Date de fin de période d\'essai');
     const sameEnd = (dtoEnd ? dtoEnd.toISOString().slice(0, 10) : null) === (lastContract.endDate ? lastContract.endDate.toISOString().slice(0, 10) : null);
     const sameWeekly = (dto.contractWeeklyMinutes ?? null) === (lastContract.weeklyHours ?? null);

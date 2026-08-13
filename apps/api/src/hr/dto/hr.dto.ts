@@ -1,7 +1,13 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type, Transform } from 'class-transformer';
-import { IsArray, IsBoolean, IsEmail, IsEnum, IsInt, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsEmail, IsEnum, IsInt, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { HrEmployeeStatus, OperationalTaskCategory } from '@prisma/client';
+import { CoreRoleName } from '../../users/dto/user-management.dto';
+
+export class CreateHrToqueHubAccountDto {
+  @IsEnum(CoreRoleName) role!: CoreRoleName;
+  @IsString() @MinLength(8) temporaryPassword!: string;
+}
 
 export class HrPositionTaskPresetDto {
   @IsOptional() @IsString() @MaxLength(80) id?: string;
@@ -52,6 +58,10 @@ export class UpsertHrEmployeeDto {
   @IsOptional() @IsString() @MaxLength(80) primaryLanguage?: string;
   @IsOptional() @IsString() @MaxLength(80) secondaryLanguage?: string;
   @IsOptional() @IsString() @MaxLength(1000) emergencyContact?: string;
+  @IsOptional() @IsString() @MaxLength(120) emergencyContactFirstName?: string;
+  @IsOptional() @IsString() @MaxLength(120) emergencyContactLastName?: string;
+  @IsOptional() @IsString() @MaxLength(60) emergencyContactPhone?: string;
+  @IsOptional() @IsEmail() @MaxLength(180) emergencyContactEmail?: string;
   @IsOptional() @IsString() birthDate?: string;
   @IsOptional() @IsString() @MaxLength(80) personalIdentityNumber?: string;
   @IsString() hireDate!: string;
@@ -64,6 +74,7 @@ export class UpsertHrEmployeeDto {
   @IsOptional() @IsString() @MaxLength(4000) notes?: string;
   @IsOptional() @IsEnum(HrEmployeeStatus) status?: HrEmployeeStatus;
   @IsOptional() @IsUUID() userId?: string;
+  @IsOptional() @ValidateNested() @Type(() => CreateHrToqueHubAccountDto) toqueHubAccount?: CreateHrToqueHubAccountDto;
   @IsOptional() @IsUUID() managerId?: string;
   @IsOptional() @IsString() contractType?: string;
   @IsOptional() @IsString() contractEndDate?: string;
@@ -75,4 +86,5 @@ export class UpsertHrEmployeeDto {
   @IsOptional() @IsString() rateEffectiveDate?: string;
   @IsOptional() @IsString() nextReviewDate?: string;
   @IsOptional() @IsString() reviewFrequency?: string;
+  @IsOptional() @IsBoolean() revaluationEnabled?: boolean;
 }

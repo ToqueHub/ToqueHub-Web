@@ -24,7 +24,7 @@ export class PlanningQueryDto {
 export class PlanningContextQueryDto extends PlanningQueryDto {}
 
 export class PlanningExportPdfQueryDto extends PlanningQueryDto {
-  @IsIn(['week', 'month']) mode!: 'week' | 'month';
+  @IsIn(['week', 'month', 'custom']) mode!: 'week' | 'month' | 'custom';
 }
 
 export class PlanningDayStatusQueryDto extends PlanningQueryDto {

@@ -58,6 +58,54 @@ describe('HrService permissions', () => {
   });
 });
 
+describe('HrService collaborator account creation', () => {
+  it('creates and links the ToqueHub account inside the collaborator transaction', async () => {
+    const prisma = mockPrisma();
+    const usersService = {
+      ensureCoreRolesAndPermissions: jest.fn().mockResolvedValue(undefined),
+      createManagedUserRecord: jest.fn().mockResolvedValue({ id: 'user-1' }),
+    };
+    const service = new HrService(prisma, undefined, usersService as any);
+    jest.spyOn(service as any, 'recomputeOnboarding').mockResolvedValue({ status: 'EMPLOYEES_UNLOCKED' });
+    jest.spyOn(service as any, 'validateEmployeeRefs').mockResolvedValue(undefined);
+    jest.spyOn(service as any, 'ensureEmailAvailable').mockResolvedValue(undefined);
+    prisma.hrEmployee.create.mockResolvedValue({ id: 'employee-1' });
+    prisma.hrEmployee.findFirst.mockResolvedValue({ id: 'employee-1', userId: 'user-1', sensitiveData: null });
+
+    const result = await service.createEmployee('org-1', { id: 'admin-1', role: 'ADMIN' }, {
+      firstName: 'Aino',
+      lastName: 'Korhonen',
+      email: 'aino@example.com',
+      hireDate: '2026-08-12',
+      departmentId: 'department-1',
+      positionId: 'position-1',
+      toqueHubAccount: { role: 'Utilisateur' as any, temporaryPassword: 'temporary-secret' },
+    });
+
+    expect(usersService.createManagedUserRecord).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({ firstName: 'Aino', lastName: 'Korhonen', email: 'aino@example.com', role: 'Utilisateur' }),
+      expect.any(Object),
+    );
+    expect(prisma.hrEmployee.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ userId: 'user-1' }),
+    }));
+    expect(result).toMatchObject({ id: 'employee-1', userId: 'user-1' });
+  });
+
+  it('requires the collaborator identity before creating a ToqueHub account', async () => {
+    const service = new HrService(mockPrisma(), undefined, {} as any);
+    await expect(service.createEmployee('org-1', { id: 'admin-1', role: 'ADMIN' }, {
+      firstName: 'Aino',
+      lastName: 'Korhonen',
+      hireDate: '2026-08-12',
+      departmentId: 'department-1',
+      positionId: 'position-1',
+      toqueHubAccount: { role: 'Utilisateur' as any, temporaryPassword: 'temporary-secret' },
+    })).rejects.toThrow('Le prénom, le nom et l’adresse e-mail sont requis');
+  });
+});
+
 describe('HrService onboarding explicit steps', () => {
   let service: HrService;
   let prisma: any;
@@ -235,5 +283,59 @@ describe('HrService compensation change detection', () => {
     tx.hrEmployeeCompensation.findFirst.mockResolvedValue({ hourlyRate: new Decimal('15.50'), currency: 'EUR' });
     await (service as any).syncContractAndCompensation(tx, 'org-1', 'emp-1', { hourlyRate: 15.5, currency: 'EUR' } as any, 'user-1');
     expect(tx.hrEmployeeCompensation.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('HrService contract and revaluation rules', () => {
+  let service: HrService;
+
+  beforeEach(() => {
+    service = new HrService(mockPrisma());
+  });
+
+  it('always removes the end date from a permanent contract', () => {
+    const data = (service as any).employeeData('org-1', {
+      firstName: 'Aino',
+      lastName: 'Korhonen',
+      hireDate: '2026-08-13',
+      departmentId: 'department-1',
+      positionId: 'position-1',
+      contractType: 'CDI',
+      contractEndDate: '2027-08-13',
+    });
+
+    expect(data.contractEndDate).toBeNull();
+  });
+
+  it('requires all revaluation fields only when the option is enabled', () => {
+    expect(() => (service as any).validateRevaluation({
+      revaluationEnabled: true,
+      rateEffectiveDate: '2026-08-13',
+    })).toThrow(BadRequestException);
+    expect(() => (service as any).validateRevaluation({
+      revaluationEnabled: false,
+    })).not.toThrow();
+  });
+
+  it('disables an active future review when revaluation is unchecked', async () => {
+    const tx = mockPrisma();
+    tx.hrSalaryReview.findFirst.mockResolvedValue({
+      id: 'review-1',
+      dueDate: new Date('2027-01-01'),
+      frequencyMonths: 12,
+    });
+
+    await (service as any).syncContractAndCompensation(
+      tx,
+      'org-1',
+      'employee-1',
+      { revaluationEnabled: false },
+      'user-1',
+    );
+
+    expect(tx.hrSalaryReview.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: { status: 'POSTPONED' },
+    }));
+    expect(tx.hrSalaryReview.create).not.toHaveBeenCalled();
   });
 });

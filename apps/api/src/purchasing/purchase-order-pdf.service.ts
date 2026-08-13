@@ -38,8 +38,9 @@ export class PurchaseOrderPdfService {
       for (const line of order.lines) {
         if (doc.y > 720) { doc.addPage(); header(); }
         const y = doc.y;
+        const gtin = line.product?.gtin?.trim() || '—';
         doc.font('Helvetica').fillColor('#172033').fontSize(9).text(
-          `${line.productNameSnapshot}${line.supplierReferenceSnapshot ? `\nRéf. ${line.supplierReferenceSnapshot}` : ''}`,
+          `${line.productNameSnapshot}\nGTIN / EAN : ${gtin}`,
           x,
           y,
           { width: widths[0] },

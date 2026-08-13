@@ -1,8 +1,9 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, InternalServerErrorException, NotFoundException, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { createReadStream, existsSync } from 'node:fs';
+import { createReadStream, createWriteStream, existsSync, readdirSync } from 'node:fs';
 import { access, cp, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { PrismaService } from '../prisma/prisma.service';
@@ -152,7 +153,7 @@ export class BackupsService implements OnModuleInit, OnModuleDestroy {
       await mkdir(workDir, { recursive: true });
 
       try {
-        await this.runCommand(this.pgDumpPath, ['--format=custom', '--no-owner', '--no-privileges', '--file', dumpPath, this.postgresToolDatabaseUrl()]);
+        await this.createPostgresDump(dumpPath);
         const uploadRoots = await this.copyUploadRoots(workDir);
         const dumpStat = await stat(dumpPath);
         const manifest: BackupManifest = {
@@ -299,7 +300,7 @@ export class BackupsService implements OnModuleInit, OnModuleDestroy {
         }
         await this.resetPublicSchemaForRestore();
         await this.prisma.$disconnect();
-        await this.runCommand(this.pgRestorePath, ['--exit-on-error', '--no-owner', '--no-privileges', '--dbname', this.postgresToolDatabaseUrl(), dumpPath]);
+        await this.restorePostgresDump(dumpPath);
         await this.deployPrismaMigrations();
         await this.restoreUploadRoots(extractDir, manifest);
         await this.prisma.systemSetting.upsert({
@@ -494,35 +495,71 @@ export class BackupsService implements OnModuleInit, OnModuleDestroy {
     const missing = tools.filter((tool) => keys.includes(tool.key as any) && !tool.available);
     if (missing.length) {
       throw new InternalServerErrorException(
-        `Outil système manquant: ${missing.map((tool) => tool.key).join(', ')}. Installez le client PostgreSQL ou configurez PG_DUMP_PATH/PG_RESTORE_PATH.`,
+        `Outil système manquant: ${missing.map((tool) => tool.key).join(', ')}. Relancez "npm run bienvenue" (macOS/Linux) ou "npm run welcome" (Windows) pour réparer la configuration.`,
+      );
+    }
+
+    const postgresKeys = keys.filter((key): key is 'pg_dump' | 'pg_restore' => key !== 'tar');
+    if (!postgresKeys.length) return;
+    const serverMajor = await this.postgresServerMajor();
+    if (!serverMajor) return;
+    const incompatible: string[] = [];
+    for (const key of postgresKeys) {
+      const toolPath = key === 'pg_dump' ? this.pgDumpPath : this.pgRestorePath;
+      const toolMajor = await this.postgresToolMajor(toolPath);
+      if (toolMajor && toolMajor < serverMajor) incompatible.push(`${key} ${toolMajor}`);
+    }
+    if (incompatible.length) {
+      throw new InternalServerErrorException(
+        `Outils PostgreSQL incompatibles (${incompatible.join(', ')}) avec le serveur ${serverMajor}. Relancez "npm run bienvenue" ou "npm run welcome".`,
       );
     }
   }
 
   private resolveToolPath(envVar: 'PG_DUMP_PATH' | 'PG_RESTORE_PATH' | 'TAR_PATH', command: 'pg_dump' | 'pg_restore' | 'tar') {
-    const configured = process.env[envVar];
-    if (configured) return configured;
+    const configured = process.env[envVar]?.trim();
+    if (configured && !/(?:absolute[\\/]path|replace-with|change-me)/i.test(configured)) return configured;
     if (command === 'tar') return command;
     return this.findPostgresTool(command) ?? command;
   }
 
   private findPostgresTool(command: 'pg_dump' | 'pg_restore') {
+    const versionedCellarBins = POSTGRES_TOOL_VERSIONS.flatMap((version) => [
+      ...this.versionedSubdirectories(`/opt/homebrew/Cellar/postgresql@${version}`).map((directory) => join(directory, 'bin', command)),
+      ...this.versionedSubdirectories(`/usr/local/Cellar/postgresql@${version}`).map((directory) => join(directory, 'bin', command)),
+    ]);
     const candidates = [
+      join(homedir(), '.local', 'bin', command),
+      join(homedir(), 'Applications', 'Postgres.app', 'Contents', 'Versions', 'latest', 'bin', command),
       `/Applications/Postgres.app/Contents/Versions/latest/bin/${command}`,
       `/opt/homebrew/bin/${command}`,
       `/usr/local/bin/${command}`,
       ...POSTGRES_TOOL_VERSIONS.flatMap((version) => [
         `/opt/homebrew/opt/postgresql@${version}/bin/${command}`,
         `/usr/local/opt/postgresql@${version}/bin/${command}`,
-        `/opt/homebrew/Cellar/postgresql@${version}/bin/${command}`,
-        `/usr/local/Cellar/postgresql@${version}/bin/${command}`,
+        `/usr/lib/postgresql/${version}/bin/${command}`,
       ]),
+      ...versionedCellarBins,
     ];
     return candidates.find((candidate) => existsSync(candidate));
   }
 
+  private versionedSubdirectories(directory: string) {
+    try {
+      return readdirSync(directory, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
+        .map((entry) => join(directory, entry.name));
+    } catch {
+      return [];
+    }
+  }
+
   private async commandAvailable(command: string) {
     try {
+      if (this.isDockerPostgresTool(command)) {
+        await execFileAsync('docker', ['image', 'inspect', this.dockerPostgresImage(command), '--format', '{{.Id}}'], { maxBuffer: 1024 * 1024 });
+        return true;
+      }
       if (command.includes(sep) || isAbsolute(command)) {
         await access(command);
         return true;
@@ -532,6 +569,151 @@ export class BackupsService implements OnModuleInit, OnModuleDestroy {
     } catch {
       return false;
     }
+  }
+
+  private isDockerPostgresTool(command: string) {
+    return command.startsWith('docker://');
+  }
+
+  private dockerPostgresImage(command: string) {
+    const image = command.slice('docker://'.length).trim();
+    if (!image || !/(?:^|\/)postgres:\d+/i.test(image)) {
+      throw new InternalServerErrorException(`Image PostgreSQL Docker invalide: ${command}`);
+    }
+    return image;
+  }
+
+  private async postgresServerMajor() {
+    try {
+      const rows = await this.prisma.$queryRawUnsafe<Array<{ version_number: string }>>(
+        `SELECT current_setting('server_version_num') AS version_number`,
+      );
+      const versionNumber = Number(rows[0]?.version_number);
+      return Number.isFinite(versionNumber) && versionNumber > 0 ? Math.floor(versionNumber / 10_000) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async postgresToolMajor(command: string) {
+    if (this.isDockerPostgresTool(command)) {
+      const match = this.dockerPostgresImage(command).match(/(?:^|\/)postgres:(\d+)(?:[.-]|$)/i);
+      return match ? Number(match[1]) : null;
+    }
+    try {
+      const { stdout, stderr } = await execFileAsync(command, ['--version'], { maxBuffer: 1024 * 1024 });
+      const output = `${stdout || ''} ${stderr || ''}`;
+      const match = output.match(/(?:PostgreSQL\)?\s+)(\d+)(?:\.|\s|$)/i);
+      return match ? Number(match[1]) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async createPostgresDump(dumpPath: string) {
+    const args = ['--format=custom', '--no-owner', '--no-privileges'];
+    if (this.isDockerPostgresTool(this.pgDumpPath)) {
+      await this.runDockerPostgresTool(this.pgDumpPath, 'pg_dump', [...args, this.dockerPostgresDatabaseUrl()], { outputPath: dumpPath });
+      return;
+    }
+    await this.runCommand(this.pgDumpPath, [...args, '--file', dumpPath, this.postgresToolDatabaseUrl()]);
+  }
+
+  private async restorePostgresDump(dumpPath: string) {
+    const args = ['--exit-on-error', '--no-owner', '--no-privileges', '--dbname'];
+    if (this.isDockerPostgresTool(this.pgRestorePath)) {
+      await this.runDockerPostgresTool(this.pgRestorePath, 'pg_restore', [...args, this.dockerPostgresDatabaseUrl()], { inputPath: dumpPath });
+      return;
+    }
+    await this.runCommand(this.pgRestorePath, [...args, this.postgresToolDatabaseUrl(), dumpPath]);
+  }
+
+  private dockerPostgresDatabaseUrl() {
+    const raw = this.postgresToolDatabaseUrl();
+    try {
+      const url = new URL(raw);
+      if (url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '::1') {
+        url.hostname = 'host.docker.internal';
+      }
+      return url.toString();
+    } catch {
+      return raw.replace('@localhost:', '@host.docker.internal:').replace('@127.0.0.1:', '@host.docker.internal:');
+    }
+  }
+
+  private async runDockerPostgresTool(
+    configuredPath: string,
+    tool: 'pg_dump' | 'pg_restore',
+    toolArgs: string[],
+    io: { inputPath?: string; outputPath?: string },
+  ) {
+    const image = this.dockerPostgresImage(configuredPath);
+    const dockerArgs = [
+      'run', '--rm', '-i',
+      '--add-host', 'host.docker.internal:host-gateway',
+      image,
+      tool,
+      ...toolArgs,
+    ];
+
+    await new Promise<void>((resolvePromise, rejectPromise) => {
+      const child = spawn('docker', dockerArgs, { env: process.env, stdio: ['pipe', 'pipe', 'pipe'] });
+      let stderr = '';
+      let childClosed = false;
+      let outputFinished = !io.outputPath;
+      let settled = false;
+
+      const succeedIfComplete = () => {
+        if (!settled && childClosed && outputFinished) {
+          settled = true;
+          resolvePromise();
+        }
+      };
+      const fail = (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        child.kill();
+        const message = error instanceof Error ? error.message : String(error);
+        rejectPromise(new InternalServerErrorException(`Commande système échouée: ${tool} (${message})`));
+      };
+
+      child.stderr.on('data', (chunk: Buffer) => {
+        if (stderr.length < 1024 * 1024) stderr += chunk.toString();
+      });
+      child.once('error', fail);
+
+      if (io.outputPath) {
+        const output = createWriteStream(io.outputPath);
+        output.once('error', fail);
+        output.once('finish', () => {
+          outputFinished = true;
+          succeedIfComplete();
+        });
+        child.stdout.pipe(output);
+      } else {
+        child.stdout.resume();
+      }
+
+      if (io.inputPath) {
+        const input = createReadStream(io.inputPath);
+        input.once('error', fail);
+        child.stdin.once('error', (error: NodeJS.ErrnoException) => {
+          if (error.code !== 'EPIPE') fail(error);
+        });
+        input.pipe(child.stdin);
+      } else {
+        child.stdin.end();
+      }
+
+      child.once('close', (code) => {
+        if (code !== 0) {
+          fail(new Error(stderr.trim() || `Docker s'est arrêté avec le code ${code ?? 'inconnu'}.`));
+          return;
+        }
+        childClosed = true;
+        succeedIfComplete();
+      });
+    });
   }
 
   private async runCommand(command: string, args: string[]) {
