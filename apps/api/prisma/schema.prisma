@@ -1012,6 +1012,8 @@ enum AuditAction {
   MODULE_PRODUCTION_UNINSTALLED
   MODULE_MENUS_INSTALLED
   MODULE_MENUS_UNINSTALLED
+  MODULE_CLIENTS_INSTALLED
+  MODULE_CLIENTS_UNINSTALLED
   MODULE_PURCHASING_INSTALLED
   MODULE_PURCHASING_UNINSTALLED
   MODULE_FINANCE_INSTALLED
@@ -1093,6 +1095,7 @@ model Organization {
   technicalSheetsInstalledAt    DateTime?
   productionInstalledAt         DateTime?
   menusInstalledAt              DateTime?
+  clientsInstalledAt            DateTime?
   haccpInstalledAt              DateTime?
   purchasingInstalledAt         DateTime?
   financeInstalledAt            DateTime?
@@ -1226,6 +1229,7 @@ model Organization {
   menuHistory                           MenuHistory[]
   menuProductionLinks                   MenuProductionLink[]
   catererClients                        CatererClient[]
+  catererClientInvoices                 CatererClientInvoice[]
   catererEvents                         CatererEvent[]
   catererPrestations                    CatererPrestation[]
   catererEventSequences                 CatererEventSequence[]
@@ -2378,7 +2382,8 @@ model FinanceSettings {
   defaultCurrency              String    @default("EUR") @db.Char(3)
   fiscalYearStartMonth         Int       @default(1)
   timezone                     String    @default("Europe/Helsinki")
-  dashboardKpis                String[]  @default(["average_ticket", "transactions", "contribution_margin", "cash", "fixed_costs", "break_even"])
+  dashboardKpis                String[]  @default(["result_before_depreciation", "accounting_operating_result", "net_result", "average_ticket", "transactions", "contribution_margin", "cash", "fixed_costs", "break_even"])
+  budgetSelections             Json      @default("{}")
   fennoaBaseUrl                String    @default("https://app.fennoa.com/api")
   fennoaApiVersion             String    @default("v1")
   fennoaUsername               String?
@@ -6268,26 +6273,124 @@ model MenuCycleForecast {
 }
 
 model CatererClient {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String    @db.Uuid
-  name           String
-  contactName    String?
-  email          String?
-  phone          String?
-  address        String?   @db.Text
-  notes          String?   @db.Text
-  isArchived     Boolean   @default(false)
-  archivedAt     DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id                    String    @id @default(uuid()) @db.Uuid
+  organizationId        String    @db.Uuid
+  name                  String
+  name2                 String?
+  contactName           String?
+  email                 String?
+  phone                 String?
+  fax                   String?
+  website               String?
+  address               String?   @db.Text
+  postalCode            String?
+  city                  String?
+  countryCode           String?
+  businessId            String?
+  vatNumber             String?
+  accountTypeId         Int?
+  accountCode           String?
+  customerNumber        String?
+  customerGroupIds      Int[]     @default([])
+  eInvoiceAddress       String?
+  eInvoiceOperatorId    String?
+  eInvoiceUnitNumber    Int?
+  invoiceDeliveryMethod String?
+  localeId              Int?
+  localeCode            String?
+  paymentTermId         Int?
+  auxiliaryNameId       Int?
+  salesPriceListId      Int?
+  salesTaxClassId       Int?
+  invoiceIncludesVat    Boolean?
+  factoringPartnerId    Int?
+  autoReminderOverride  Boolean?
+  autoReminderEnabled   Boolean?
+  autoReminderCount     Int?
+  autoReminderInterval  Int?
+  autoReminderLastStep  Int?
+  ourReference          String?
+  yourReference         String?
+  shippingName          String?
+  shippingName2         String?
+  shippingAddress       String?   @db.Text
+  shippingPostalCode    String?
+  shippingCity          String?
+  shippingCountryCode   String?
+  shippingCountryId     Int?
+  currencyId            Int?
+  salesIsRefused        Boolean?
+  fennoaId              Int?
+  fennoaOwnerUserId     Int?
+  fennoaDescription     String?   @db.Text
+  fennoaTitle           String?
+  fennoaModifiedAt      DateTime?
+  fennoaSyncedAt        DateTime?
+  fennoaPayload         Json?
+  source                String    @default("MANUAL")
+  notes                 String?   @db.Text
+  isArchived            Boolean   @default(false)
+  archivedAt            DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
-  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   events       CatererEvent[]
+  invoices     CatererClientInvoice[]
 
   @@unique([organizationId, name])
+  @@unique([organizationId, fennoaId])
+  @@index([organizationId, customerNumber])
+  @@index([organizationId, businessId])
+  @@index([organizationId, vatNumber])
   @@index([organizationId])
   @@index([isArchived])
   @@map("caterer_clients")
+}
+
+model CatererClientInvoice {
+  id                  String    @id @default(uuid()) @db.Uuid
+  organizationId      String    @db.Uuid
+  clientId            String?   @db.Uuid
+  fennoaId            Int
+  invoiceNumber       String?
+  invoiceTypeId       Int?
+  status              String?
+  customerFennoaId    Int?
+  customerName        String?
+  invoiceDate         DateTime?
+  dueDate             DateTime?
+  createdInFennoaAt   DateTime?
+  totalNet            Decimal   @default(0) @db.Decimal(14, 4)
+  totalGross          Decimal   @default(0) @db.Decimal(14, 4)
+  totalVat            Decimal   @default(0) @db.Decimal(14, 4)
+  totalPaid           Decimal   @default(0) @db.Decimal(14, 4)
+  totalDue            Decimal   @default(0) @db.Decimal(14, 4)
+  currencyCode        String?
+  bankingReference    String?
+  ourReference        String?
+  yourReference       String?
+  deliveryMethod      String?
+  deliveryTerms       String?
+  orderIdentifier     String?
+  agreementIdentifier String?
+  notesInternal       String?   @db.Text
+  invoiceRows         Json?
+  payments            Json?
+  deliveries          Json?
+  fennoaPayload       Json?
+  fennoaSyncedAt      DateTime
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       CatererClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, fennoaId])
+  @@index([organizationId, invoiceDate])
+  @@index([clientId, invoiceDate])
+  @@index([customerFennoaId])
+  @@map("caterer_client_invoices")
 }
 
 model CatererEventSequence {

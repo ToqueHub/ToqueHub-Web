@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   AlertCircle,
   ArrowLeft,
+  BadgeEuro,
   Building,
+  Building2,
   CalendarDays,
   Check as CheckIcon,
   CheckCircle2,
@@ -14,17 +16,20 @@ import {
   Circle,
   Clock,
   ClipboardCheck,
+  CreditCard,
   Download,
   Eye,
   FileCheck,
   FileText,
   Filter,
+  History,
   Kanban,
   Layers,
   LayoutGrid,
   List,
   Mail,
   MapPin,
+  MapPinned,
   PackageCheck,
   Pencil,
   Phone,
@@ -47,6 +52,7 @@ import {
 } from './TechnicalSheetPickerModal';
 import type {
   CatererClient,
+  CatererClientInput,
   CatererEvent,
   CatererEventPayload,
   CatererEventStatus,
@@ -59,7 +65,7 @@ import type {
   TechnicalSheetRecipe,
 } from '../types';
 
-type CatererTab = 'dashboard' | 'events' | 'calendar' | 'clients' | 'documents';
+type CatererTab = 'dashboard' | 'events' | 'calendar' | 'documents';
 
 const serviceOptions: Array<{ value: MenuServiceType; label: string }> = [
   { value: 'EVENT', label: 'Cocktail / événement' },
@@ -109,6 +115,81 @@ const emptyEvent = (siteId = ''): CatererEventPayload => {
     prestations: [emptyPrestation(start)],
   };
 };
+
+const emptyClient = (): CatererClientInput => ({
+  name: '',
+  name2: '',
+  contactName: '',
+  email: '',
+  phone: '',
+  fax: '',
+  website: '',
+  address: '',
+  postalCode: '',
+  city: '',
+  countryCode: 'FI',
+  businessId: '',
+  vatNumber: '',
+  accountTypeId: 1,
+  accountCode: '',
+  customerNumber: '',
+  eInvoiceAddress: '',
+  eInvoiceOperatorId: '',
+  eInvoiceUnitNumber: undefined,
+  invoiceDeliveryMethod: '',
+  localeCode: 'FI',
+  paymentTermId: undefined,
+  salesPriceListId: undefined,
+  salesTaxClassId: 1,
+  invoiceIncludesVat: false,
+  factoringPartnerId: undefined,
+  ourReference: '',
+  yourReference: '',
+  shippingName: '',
+  shippingName2: '',
+  shippingAddress: '',
+  shippingPostalCode: '',
+  shippingCity: '',
+  shippingCountryCode: 'FI',
+  autoReminderOverride: false,
+  autoReminderEnabled: false,
+  autoReminderInterval: undefined,
+  autoReminderLastStep: undefined,
+  salesIsRefused: false,
+  notes: '',
+  isArchived: false,
+});
+
+function clientMoney(value: number | null | undefined, currency = 'EUR') {
+  return new Intl.NumberFormat('fr-FR', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 2,
+  }).format(Number(value ?? 0));
+}
+
+function clientDate(value: string | null | undefined) {
+  return value ? new Date(value).toLocaleDateString('fr-FR') : '—';
+}
+
+function clientRecords(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value)
+    ? value.filter(
+        (item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object',
+      )
+    : [];
+}
+
+function clientRecordText(row: Record<string, unknown>, ...keys: string[]) {
+  const value = keys.map((key) => row[key]).find((item) => item !== undefined && item !== null);
+  return value == null || value === '' ? '—' : String(value);
+}
+
+function clientRecordAmount(row: Record<string, unknown>, ...keys: string[]) {
+  const value = keys.map((key) => row[key]).find((item) => item !== undefined && item !== null);
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
 export function CatererMenusApp({
   token,
@@ -163,15 +244,6 @@ export function CatererMenusApp({
   const [form, setForm] = useState<CatererEventPayload>(() => emptyEvent(sites[0]?.id));
   const [selectedEventId, setSelectedEventId] = useState<string>();
   const [detailModalEvent, setDetailModalEvent] = useState<CatererEvent | null>(null);
-  const [clientForm, setClientForm] = useState({
-    name: '',
-    contactName: '',
-    email: '',
-    phone: '',
-    address: '',
-    notes: '',
-  });
-
   const [fulfillmentFilter, setFulfillmentFilter] = useState<string>('');
   const selectedEvent = events.find((item) => item.id === selectedEventId) ?? events[0];
   const filteredEvents = useMemo(() => {
@@ -284,16 +356,6 @@ export function CatererMenusApp({
       },
       editingId ? 'Événement actualisé.' : 'Événement créé.',
     );
-  }
-
-  async function createClient(event: React.FormEvent) {
-    event.preventDefault();
-    await run(async () => {
-      const saved = await api.createCatererClient(token, clientForm);
-      setClientForm({ name: '', contactName: '', email: '', phone: '', address: '', notes: '' });
-      setForm((current) => ({ ...current, clientId: saved.id }));
-      await refresh();
-    }, 'Client ajouté au répertoire.');
   }
 
   async function changeStatus(event: CatererEvent, status: CatererEventStatus) {
@@ -439,7 +501,7 @@ export function CatererMenusApp({
           [
             ['dashboard', 'Tableau de bord', <CalendarDays key="dash" size={16} />],
             ['events', 'Événements', <Truck key="evt" size={16} />],
-            ['clients', 'Clients', <UserRound key="cli" size={16} />],
+            ['calendar', 'Calendrier', <CalendarDays key="cal" size={16} />],
             ['documents', 'Documents', <FileText key="doc" size={16} />],
           ] as Array<[CatererTab, string, React.ReactNode]>
         ).map(([id, label, icon]) => (
@@ -579,139 +641,6 @@ export function CatererMenusApp({
         />
       ) : null}
 
-      {/* TAB: CLIENTS */}
-      {tab === 'clients' ? (
-        <div
-          className="double-panel"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
-            gap: '1.25rem',
-          }}
-        >
-          <div className="caterer-card">
-            <div className="caterer-card-header">
-              <span className="caterer-card-title">
-                <UserRound size={20} color="#10b981" /> Répertoire clients
-              </span>
-            </div>
-            <div style={{ display: 'grid', gap: '0.85rem' }}>
-              {clients.map((client) => (
-                <div key={client.id} className="caterer-client-card">
-                  <div className="caterer-client-avatar">
-                    {(client.name[0] ?? 'C').toUpperCase()}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <strong style={{ color: 'var(--text-main)', fontSize: '0.95rem' }}>
-                      {client.name}
-                    </strong>
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        gap: '0.75rem',
-                        marginTop: '0.35rem',
-                        fontSize: '0.8rem',
-                        color: '#64748b',
-                      }}
-                    >
-                      {client.contactName ? (
-                        <span>
-                          <UserRound size={13} style={{ display: 'inline', marginRight: 4 }} />
-                          {client.contactName}
-                        </span>
-                      ) : null}
-                      {client.phone ? (
-                        <span>
-                          <Phone size={13} style={{ display: 'inline', marginRight: 4 }} />
-                          {client.phone}
-                        </span>
-                      ) : null}
-                      {client.email ? (
-                        <span>
-                          <Mail size={13} style={{ display: 'inline', marginRight: 4 }} />
-                          {client.email}
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {!clients.length ? (
-                <Empty
-                  title="Aucun client"
-                  text="Ajoutez votre premier client Traiteur pour commencer."
-                />
-              ) : null}
-            </div>
-          </div>
-
-          <div className="caterer-card">
-            <div className="caterer-card-header">
-              <span className="caterer-card-title">
-                <Plus size={20} color="#10b981" /> Nouveau client
-              </span>
-            </div>
-            <form className="menus-form-grid" onSubmit={createClient}>
-              <label className="menus-form-span">
-                Nom / raison sociale *
-                <input
-                  required
-                  value={clientForm.name}
-                  onChange={(event) => setClientForm({ ...clientForm, name: event.target.value })}
-                  placeholder="Ex: Groupe Horizon, Mariage Dupont…"
-                />
-              </label>
-              <label>
-                Contact principal
-                <input
-                  value={clientForm.contactName}
-                  onChange={(event) =>
-                    setClientForm({ ...clientForm, contactName: event.target.value })
-                  }
-                  placeholder="Jean Dupont"
-                />
-              </label>
-              <label>
-                Téléphone
-                <input
-                  value={clientForm.phone}
-                  onChange={(event) => setClientForm({ ...clientForm, phone: event.target.value })}
-                  placeholder="+33 6 12 34 56 78"
-                />
-              </label>
-              <label className="menus-form-span">
-                E-mail
-                <input
-                  type="email"
-                  value={clientForm.email}
-                  onChange={(event) => setClientForm({ ...clientForm, email: event.target.value })}
-                  placeholder="contact@exemple.com"
-                />
-              </label>
-              <label className="menus-form-span">
-                Adresse de facturation / siège
-                <textarea
-                  rows={2}
-                  value={clientForm.address}
-                  onChange={(event) =>
-                    setClientForm({ ...clientForm, address: event.target.value })
-                  }
-                  placeholder="12 rue de la Paix, 75002 Paris"
-                />
-              </label>
-              <button
-                className="btn btn-primary menus-form-span"
-                disabled={!canManage || saving}
-                style={{ borderRadius: 12, padding: '0.75rem' }}
-              >
-                {saving ? 'Enregistrement…' : 'Enregistrer le client'}
-              </button>
-            </form>
-          </div>
-        </div>
-      ) : null}
-
       {/* TAB: DOCUMENTS */}
       {tab === 'documents' ? (
         <div className="caterer-card">
@@ -796,6 +725,918 @@ export function CatererMenusApp({
         ) : null}
       </AnimatePresence>
     </div>
+  );
+}
+
+export function ClientsApp({ token, canManage }: { token: string; canManage: boolean }) {
+  const [clients, setClients] = useState<CatererClient[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string>();
+  const [success, setSuccess] = useState<string>();
+  const [clientForm, setClientForm] = useState<CatererClientInput>(() => emptyClient());
+  const [clientModalOpen, setClientModalOpen] = useState(false);
+  const [editingClient, setEditingClient] = useState<CatererClient | null>(null);
+
+  const refreshClients = async () => {
+    setLoading(true);
+    setError(undefined);
+    try {
+      setClients(await api.catererClients(token));
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Chargement des clients impossible.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void refreshClients();
+  }, [token]);
+
+  const startCreateClient = () => {
+    setEditingClient(null);
+    setClientForm(emptyClient());
+    setClientModalOpen(true);
+  };
+
+  const startEditClient = (client: CatererClient) => {
+    setEditingClient(client);
+    const form = emptyClient();
+    for (const key of Object.keys(form) as Array<keyof CatererClientInput>) {
+      const value = client[key];
+      if (value !== undefined && value !== null) (form as Record<string, unknown>)[key] = value;
+    }
+    setClientForm(form);
+    setClientModalOpen(true);
+  };
+
+  const saveClient = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    setError(undefined);
+    setSuccess(undefined);
+    try {
+      if (editingClient) await api.updateCatererClient(token, editingClient.id, clientForm);
+      else await api.createCatererClient(token, clientForm);
+      setSuccess(editingClient ? 'Fiche client actualisée.' : 'Client ajouté au répertoire.');
+      setClientModalOpen(false);
+      setEditingClient(null);
+      setClientForm(emptyClient());
+      await refreshClients();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Enregistrement du client impossible.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="caterer-app clients-module-app">
+      <motion.section
+        className="welcome-hero stocks-hero hr-hero clients-module-hero"
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35 }}
+      >
+        <div>
+          <span className="welcome-tag">
+            <UsersRound size={14} /> ToqueHub Clients
+          </span>
+          <h1 className="welcome-title">Clients</h1>
+          <p className="welcome-desc">
+            Centralisez les coordonnées, informations de facturation, factures, paiements et
+            encours de tous vos clients dans un répertoire unique.
+          </p>
+        </div>
+        <div className="hr-hero-actions">
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={!canManage || loading}
+            onClick={startCreateClient}
+          >
+            <Plus size={16} /> Nouveau client
+          </button>
+        </div>
+      </motion.section>
+
+      <AnimatePresence mode="wait">
+        {error ? (
+          <motion.div
+            className="menus-alert critical"
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+          >
+            <AlertCircle size={18} />
+            {error}
+          </motion.div>
+        ) : null}
+        {success ? (
+          <motion.div
+            className="menus-alert success"
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+          >
+            <CheckCircle2 size={18} />
+            {success}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <div className="caterer-card caterer-client-directory">
+        <div className="caterer-card-header caterer-client-directory-header">
+          <div>
+            <span className="caterer-card-title">
+              <UserRound size={20} color="#10b981" /> Répertoire clients
+            </span>
+            <p className="muted">Fiches clients centralisées, avec factures et encours.</p>
+          </div>
+        </div>
+        <div className="caterer-client-grid" aria-busy={loading}>
+          {clients.map((client) => (
+            <article key={client.id} className="caterer-client-card caterer-client-card-rich">
+              <div className="caterer-client-card-main">
+                <div className="caterer-client-avatar">{(client.name[0] ?? 'C').toUpperCase()}</div>
+                <div className="caterer-client-identity">
+                  <div>
+                    <strong>{client.name}</strong>
+                    {client.source?.includes('FENNOA') ? (
+                      <span className="caterer-client-source">Synchronisé</span>
+                    ) : (
+                      <span className="caterer-client-source manual">Manuel</span>
+                    )}
+                  </div>
+                  <small>
+                    {[client.customerNumber, client.businessId, client.city]
+                      .filter(Boolean)
+                      .join(' · ') || 'Informations commerciales à compléter'}
+                  </small>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary caterer-client-edit"
+                  onClick={() => startEditClient(client)}
+                  aria-label={`Modifier ${client.name}`}
+                >
+                  <Pencil size={15} />
+                </button>
+              </div>
+              <div className="caterer-client-contact-row">
+                {client.contactName ? (
+                  <span>
+                    <UserRound size={13} />
+                    {client.contactName}
+                  </span>
+                ) : null}
+                {client.phone ? (
+                  <span>
+                    <Phone size={13} />
+                    {client.phone}
+                  </span>
+                ) : null}
+                {client.email ? (
+                  <span>
+                    <Mail size={13} />
+                    {client.email}
+                  </span>
+                ) : null}
+              </div>
+              <div className="caterer-client-finance-row">
+                <span>
+                  <small>Factures</small>
+                  <strong>{client.invoiceSummary?.count ?? 0}</strong>
+                </span>
+                <span>
+                  <small>CA facturé HT</small>
+                  <strong>{clientMoney(client.invoiceSummary?.totalNet)}</strong>
+                </span>
+                <span className={(client.invoiceSummary?.totalDue ?? 0) > 0 ? 'attention' : ''}>
+                  <small>À encaisser</small>
+                  <strong>{clientMoney(client.invoiceSummary?.totalDue)}</strong>
+                </span>
+              </div>
+            </article>
+          ))}
+          {!loading && !clients.length ? (
+            <Empty
+              title="Aucun client"
+              text="Ajoutez votre premier client ou synchronisez votre logiciel comptable."
+            />
+          ) : null}
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {clientModalOpen ? (
+          <CatererClientModal
+            client={editingClient}
+            form={clientForm}
+            saving={saving}
+            canManage={canManage}
+            onForm={setClientForm}
+            onSubmit={saveClient}
+            onClose={() => {
+              setClientModalOpen(false);
+              setEditingClient(null);
+            }}
+          />
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function CatererClientModal({
+  client,
+  form,
+  saving,
+  canManage,
+  onForm,
+  onSubmit,
+  onClose,
+}: {
+  client: CatererClient | null;
+  form: CatererClientInput;
+  saving: boolean;
+  canManage: boolean;
+  onForm: (form: CatererClientInput) => void;
+  onSubmit: (event: React.FormEvent) => void;
+  onClose: () => void;
+}) {
+  const [activeTab, setActiveTab] = useState<'identity' | 'billing' | 'delivery' | 'history'>(
+    'identity',
+  );
+  const set = <K extends keyof CatererClientInput>(key: K, value: CatererClientInput[K]) =>
+    onForm({ ...form, [key]: value });
+  const tabs = [
+    { id: 'identity' as const, label: 'Identité & contact', icon: UserRound },
+    { id: 'billing' as const, label: 'Facturation', icon: CreditCard },
+    { id: 'delivery' as const, label: 'Livraison', icon: MapPinned },
+    { id: 'history' as const, label: 'Historique comptable', icon: History },
+  ];
+  const invoices = client?.invoices ?? [];
+  return (
+    <div className="modal-overlay">
+      <motion.form
+        className="modal-card hr-modal hr-collaborator-modal caterer-client-modal"
+        onSubmit={onSubmit}
+        initial={{ opacity: 0, scale: 0.98 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.98 }}
+      >
+        <div className="modal-header hr-modal-sticky">
+          <div>
+            <h2>{client ? 'Modifier le client' : 'Nouveau client'}</h2>
+            <p className="muted">
+              Coordonnées, paramètres de facturation et historique commercial dans une seule fiche.
+            </p>
+          </div>
+          <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Fermer">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="hr-collaborator-tabs">
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                className={activeTab === tab.id ? 'active' : ''}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                <Icon size={16} />
+                <span>{tab.label}</span>
+                {tab.id === 'history' && invoices.length ? (
+                  <span className="caterer-client-tab-count">{invoices.length}</span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+        {client?.source?.includes('FENNOA') ? (
+          <div className="caterer-client-sync-banner">
+            <CheckCircle2 size={18} />
+            <span>
+              Fiche reliée à la comptabilité
+              {client.customerNumber ? ` · client ${client.customerNumber}` : ''}. Les informations
+              comptables seront actualisées à chaque synchronisation.
+            </span>
+            <small>Dernière mise à jour : {clientDate(client.fennoaSyncedAt)}</small>
+          </div>
+        ) : null}
+        <div className="hr-collaborator-body">
+          {activeTab === 'identity' ? (
+            <section className="hr-tab-panel">
+              <div>
+                <h3>
+                  <Building2 size={18} /> Identité du client
+                </h3>
+              </div>
+              <div className="hr-form-grid">
+                <ClientField label="Nom / raison sociale" required className="span-2">
+                  <input
+                    required
+                    value={form.name}
+                    onChange={(event) => set('name', event.target.value)}
+                  />
+                </ClientField>
+                <ClientField label="Complément de nom">
+                  <input
+                    value={form.name2 ?? ''}
+                    onChange={(event) => set('name2', event.target.value)}
+                  />
+                </ClientField>
+                <ClientField label="Contact principal">
+                  <input
+                    value={form.contactName ?? ''}
+                    onChange={(event) => set('contactName', event.target.value)}
+                  />
+                </ClientField>
+                <ClientField label="E-mail">
+                  <input
+                    type="email"
+                    value={form.email ?? ''}
+                    onChange={(event) => set('email', event.target.value)}
+                  />
+                </ClientField>
+                <ClientField label="Téléphone">
+                  <input
+                    value={form.phone ?? ''}
+                    onChange={(event) => set('phone', event.target.value)}
+                  />
+                </ClientField>
+                <ClientField label="Fax">
+                  <input
+                    value={form.fax ?? ''}
+                    onChange={(event) => set('fax', event.target.value)}
+                  />
+                </ClientField>
+                <ClientField label="Site internet">
+                  <input
+                    value={form.website ?? ''}
+                    onChange={(event) => set('website', event.target.value)}
+                    placeholder="https://"
+                  />
+                </ClientField>
+                <ClientField label="Adresse" className="span-2">
+                  <textarea
+                    rows={2}
+                    value={form.address ?? ''}
+                    onChange={(event) => set('address', event.target.value)}
+                  />
+                </ClientField>
+                <ClientField label="Code postal">
+                  <input
+                    value={form.postalCode ?? ''}
+                    onChange={(event) => set('postalCode', event.target.value)}
+                  />
+                </ClientField>
+                <ClientField label="Ville">
+                  <input
+                    value={form.city ?? ''}
+                    onChange={(event) => set('city', event.target.value)}
+                  />
+                </ClientField>
+                <ClientField label="Pays">
+                  <input
+                    maxLength={8}
+                    value={form.countryCode ?? ''}
+                    onChange={(event) => set('countryCode', event.target.value.toUpperCase())}
+                    placeholder="FI"
+                  />
+                </ClientField>
+                <ClientField label="Business ID">
+                  <input
+                    value={form.businessId ?? ''}
+                    onChange={(event) => set('businessId', event.target.value)}
+                  />
+                </ClientField>
+                <ClientField label="Numéro de TVA">
+                  <input
+                    value={form.vatNumber ?? ''}
+                    onChange={(event) => set('vatNumber', event.target.value)}
+                  />
+                </ClientField>
+                <ClientField label="Type de client">
+                  <select
+                    value={form.accountTypeId ?? 1}
+                    onChange={(event) => set('accountTypeId', Number(event.target.value))}
+                  >
+                    <option value={1}>Entreprise</option>
+                    <option value={2}>Particulier</option>
+                  </select>
+                </ClientField>
+                <ClientField label="Notes internes" className="span-2">
+                  <textarea
+                    rows={3}
+                    value={form.notes ?? ''}
+                    onChange={(event) => set('notes', event.target.value)}
+                  />
+                </ClientField>
+              </div>
+            </section>
+          ) : null}
+
+          {activeTab === 'billing' ? (
+            <section className="hr-tab-panel">
+              <div>
+                <h3>
+                  <BadgeEuro size={18} /> Paramètres de facturation
+                </h3>
+                <p className="muted">
+                  Ces valeurs peuvent être complétées automatiquement par votre logiciel
+                  comptable.
+                </p>
+              </div>
+              <div className="hr-form-grid">
+                <ClientField label="Numéro client comptable">
+                  <input
+                    value={form.customerNumber ?? ''}
+                    onChange={(event) => set('customerNumber', event.target.value)}
+                  />
+                </ClientField>
+                <ClientField label="Compte clients">
+                  <input
+                    value={form.accountCode ?? ''}
+                    onChange={(event) => set('accountCode', event.target.value)}
+                    placeholder="1703"
+                  />
+                </ClientField>
+                <ClientField label="Mode d’envoi">
+                  <select
+                    value={form.invoiceDeliveryMethod ?? ''}
+                    onChange={(event) => set('invoiceDeliveryMethod', event.target.value)}
+                  >
+                    <option value="">—</option>
+                    <option value="email">E-mail</option>
+                    <option value="finvoice">E-invoice</option>
+                    <option value="postal">Postal</option>
+                    <option value="consumerfinvoice">E-invoice particulier</option>
+                    <option value="manual">Manuel</option>
+                  </select>
+                </ClientField>
+                <ClientField label="Adresse e-invoice / e-mail" className="span-2">
+                  <input
+                    value={form.eInvoiceAddress ?? ''}
+                    onChange={(event) => set('eInvoiceAddress', event.target.value)}
+                  />
+                </ClientField>
+                <ClientField label="Opérateur e-invoice">
+                  <input
+                    value={form.eInvoiceOperatorId ?? ''}
+                    onChange={(event) => set('eInvoiceOperatorId', event.target.value)}
+                  />
+                </ClientField>
+                <ClientField label="Unité e-invoice">
+                  <input
+                    type="number"
+                    min="0"
+                    value={form.eInvoiceUnitNumber ?? ''}
+                    onChange={(event) =>
+                      set(
+                        'eInvoiceUnitNumber',
+                        event.target.value ? Number(event.target.value) : undefined,
+                      )
+                    }
+                  />
+                </ClientField>
+                <ClientField label="Langue des factures">
+                  <select
+                    value={form.localeCode ?? ''}
+                    onChange={(event) => set('localeCode', event.target.value)}
+                  >
+                    <option value="FI">Finnois</option>
+                    <option value="EN">Anglais</option>
+                    <option value="SV">Suédois</option>
+                    <option value="FR">Français</option>
+                  </select>
+                </ClientField>
+                <ClientField label="Condition de paiement (ID source)">
+                  <input
+                    type="number"
+                    min="0"
+                    value={form.paymentTermId ?? ''}
+                    onChange={(event) =>
+                      set(
+                        'paymentTermId',
+                        event.target.value ? Number(event.target.value) : undefined,
+                      )
+                    }
+                  />
+                </ClientField>
+                <ClientField label="Classe de TVA (ID source)">
+                  <input
+                    type="number"
+                    min="0"
+                    value={form.salesTaxClassId ?? ''}
+                    onChange={(event) =>
+                      set(
+                        'salesTaxClassId',
+                        event.target.value ? Number(event.target.value) : undefined,
+                      )
+                    }
+                  />
+                </ClientField>
+                <ClientField label="Liste de prix (ID source)">
+                  <input
+                    type="number"
+                    min="0"
+                    value={form.salesPriceListId ?? ''}
+                    onChange={(event) =>
+                      set(
+                        'salesPriceListId',
+                        event.target.value ? Number(event.target.value) : undefined,
+                      )
+                    }
+                  />
+                </ClientField>
+                <ClientField label="Partenaire d’affacturage (ID)">
+                  <input
+                    type="number"
+                    min="0"
+                    value={form.factoringPartnerId ?? ''}
+                    onChange={(event) =>
+                      set(
+                        'factoringPartnerId',
+                        event.target.value ? Number(event.target.value) : undefined,
+                      )
+                    }
+                  />
+                </ClientField>
+                <ClientField label="Notre référence">
+                  <input
+                    value={form.ourReference ?? ''}
+                    onChange={(event) => set('ourReference', event.target.value)}
+                  />
+                </ClientField>
+                <ClientField label="Référence client">
+                  <input
+                    value={form.yourReference ?? ''}
+                    onChange={(event) => set('yourReference', event.target.value)}
+                  />
+                </ClientField>
+                <div className="span-2 caterer-client-switches">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(form.invoiceIncludesVat)}
+                      onChange={(event) => set('invoiceIncludesVat', event.target.checked)}
+                    />{' '}
+                    Prix saisis TTC
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(form.autoReminderOverride)}
+                      onChange={(event) => set('autoReminderOverride', event.target.checked)}
+                    />{' '}
+                    Paramètres de relance spécifiques
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(form.autoReminderEnabled)}
+                      onChange={(event) => set('autoReminderEnabled', event.target.checked)}
+                    />{' '}
+                    Relances automatiques
+                  </label>
+                  <label className="danger">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(form.salesIsRefused)}
+                      onChange={(event) => set('salesIsRefused', event.target.checked)}
+                    />{' '}
+                    Ventes bloquées
+                  </label>
+                </div>
+                <ClientField label="Intervalle de relance (jours)">
+                  <input
+                    type="number"
+                    min="0"
+                    value={form.autoReminderInterval ?? ''}
+                    onChange={(event) =>
+                      set(
+                        'autoReminderInterval',
+                        event.target.value ? Number(event.target.value) : undefined,
+                      )
+                    }
+                  />
+                </ClientField>
+                <ClientField label="Dernière étape de relance">
+                  <input
+                    type="number"
+                    min="0"
+                    value={form.autoReminderLastStep ?? ''}
+                    onChange={(event) =>
+                      set(
+                        'autoReminderLastStep',
+                        event.target.value ? Number(event.target.value) : undefined,
+                      )
+                    }
+                  />
+                </ClientField>
+                {client?.source?.includes('FENNOA') ? (
+                  <div className="span-2 caterer-client-fennoa-details">
+                    <strong>Données techniques synchronisées</strong>
+                    <dl>
+                      <div>
+                        <dt>ID externe</dt>
+                        <dd>{client.fennoaId ?? '—'}</dd>
+                      </div>
+                      <div>
+                        <dt>Groupes client</dt>
+                        <dd>{client.customerGroupIds?.join(', ') || '—'}</dd>
+                      </div>
+                      <div>
+                        <dt>Devise (ID)</dt>
+                        <dd>{client.currencyId ?? '—'}</dd>
+                      </div>
+                      <div>
+                        <dt>Propriétaire source</dt>
+                        <dd>{client.fennoaOwnerUserId ?? '—'}</dd>
+                      </div>
+                      <div>
+                        <dt>Relances envoyées</dt>
+                        <dd>{client.autoReminderCount ?? '—'}</dd>
+                      </div>
+                      <div>
+                        <dt>Libellé source</dt>
+                        <dd>{client.fennoaTitle || '—'}</dd>
+                      </div>
+                    </dl>
+                    {client.fennoaDescription ? <p>{client.fennoaDescription}</p> : null}
+                  </div>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
+
+          {activeTab === 'delivery' ? (
+            <section className="hr-tab-panel">
+              <div>
+                <h3>
+                  <MapPinned size={18} /> Adresse de livraison
+                </h3>
+                <p className="muted">
+                  Conservez une adresse logistique distincte du siège et de la facturation.
+                </p>
+              </div>
+              <div className="hr-form-grid">
+                <ClientField label="Nom de livraison">
+                  <input
+                    value={form.shippingName ?? ''}
+                    onChange={(event) => set('shippingName', event.target.value)}
+                  />
+                </ClientField>
+                <ClientField label="Complément">
+                  <input
+                    value={form.shippingName2 ?? ''}
+                    onChange={(event) => set('shippingName2', event.target.value)}
+                  />
+                </ClientField>
+                <ClientField label="Adresse" className="span-2">
+                  <textarea
+                    rows={3}
+                    value={form.shippingAddress ?? ''}
+                    onChange={(event) => set('shippingAddress', event.target.value)}
+                  />
+                </ClientField>
+                <ClientField label="Code postal">
+                  <input
+                    value={form.shippingPostalCode ?? ''}
+                    onChange={(event) => set('shippingPostalCode', event.target.value)}
+                  />
+                </ClientField>
+                <ClientField label="Ville">
+                  <input
+                    value={form.shippingCity ?? ''}
+                    onChange={(event) => set('shippingCity', event.target.value)}
+                  />
+                </ClientField>
+                <ClientField label="Pays">
+                  <input
+                    maxLength={8}
+                    value={form.shippingCountryCode ?? ''}
+                    onChange={(event) =>
+                      set('shippingCountryCode', event.target.value.toUpperCase())
+                    }
+                  />
+                </ClientField>
+              </div>
+            </section>
+          ) : null}
+
+          {activeTab === 'history' ? (
+            <section className="hr-tab-panel caterer-client-history">
+              <div>
+                <h3>
+                  <History size={18} /> Factures et paiements
+                </h3>
+                <p className="muted">
+                  Historique en lecture seule, actualisé lors de la synchronisation comptable.
+                </p>
+              </div>
+              <div className="caterer-client-history-summary">
+                <span>
+                  <small>Factures</small>
+                  <strong>{client?.invoiceSummary?.count ?? 0}</strong>
+                </span>
+                <span>
+                  <small>Total HT</small>
+                  <strong>{clientMoney(client?.invoiceSummary?.totalNet)}</strong>
+                </span>
+                <span>
+                  <small>Encaissé</small>
+                  <strong>{clientMoney(client?.invoiceSummary?.totalPaid)}</strong>
+                </span>
+                <span className={(client?.invoiceSummary?.totalDue ?? 0) > 0 ? 'attention' : ''}>
+                  <small>Reste dû</small>
+                  <strong>{clientMoney(client?.invoiceSummary?.totalDue)}</strong>
+                </span>
+              </div>
+              {invoices.length ? (
+                <div className="caterer-client-invoice-table-wrap">
+                  <table className="caterer-client-invoice-table">
+                    <thead>
+                      <tr>
+                        <th>Facture</th>
+                        <th>Date</th>
+                        <th>Échéance</th>
+                        <th>HT</th>
+                        <th>Payé</th>
+                        <th>Reste dû</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {invoices.map((invoice) => {
+                        const rows = clientRecords(invoice.invoiceRows);
+                        const payments = clientRecords(invoice.payments);
+                        const deliveries = clientRecords(invoice.deliveries);
+                        return (
+                          <Fragment key={invoice.id}>
+                            <tr>
+                              <td>
+                                <strong>
+                                  {invoice.invoiceTypeId === 2 ? 'Avoir' : 'Facture'}{' '}
+                                  {invoice.invoiceNumber || `#${invoice.fennoaId}`}
+                                </strong>
+                                <small>{invoice.deliveryMethod || invoice.status || ''}</small>
+                              </td>
+                              <td>{clientDate(invoice.invoiceDate)}</td>
+                              <td>{clientDate(invoice.dueDate)}</td>
+                              <td>
+                                {clientMoney(invoice.totalNet, invoice.currencyCode || 'EUR')}
+                              </td>
+                              <td>
+                                {clientMoney(invoice.totalPaid, invoice.currencyCode || 'EUR')}
+                              </td>
+                              <td className={invoice.totalDue > 0 ? 'attention' : ''}>
+                                {clientMoney(invoice.totalDue, invoice.currencyCode || 'EUR')}
+                              </td>
+                            </tr>
+                            <tr className="caterer-client-invoice-detail-row">
+                              <td colSpan={6}>
+                                <details>
+                                  <summary>
+                                    Détails · {rows.length} ligne(s) · {payments.length} paiement(s)
+                                    · {deliveries.length} envoi(s)
+                                  </summary>
+                                  <div className="caterer-client-invoice-details">
+                                    <section>
+                                      <strong>Lignes facturées</strong>
+                                      {rows.length ? (
+                                        rows.map((row, index) => (
+                                          <p key={index}>
+                                            <span>
+                                              {clientRecordText(row, 'name', 'description', 'code')}
+                                              <small>
+                                                {clientRecordText(row, 'quantity')} ×{' '}
+                                                {clientRecordText(row, 'unit')}
+                                              </small>
+                                            </span>
+                                            <b>
+                                              {clientMoney(
+                                                clientRecordAmount(row, 'total_net', 'totalNet'),
+                                                invoice.currencyCode || 'EUR',
+                                              )}
+                                            </b>
+                                          </p>
+                                        ))
+                                      ) : (
+                                        <em>Aucune ligne détaillée renvoyée.</em>
+                                      )}
+                                    </section>
+                                    <section>
+                                      <strong>Paiements</strong>
+                                      {payments.length ? (
+                                        payments.map((payment, index) => (
+                                          <p key={index}>
+                                            <span>
+                                              {clientRecordText(
+                                                payment,
+                                                'payment_date',
+                                                'date',
+                                                'created',
+                                              )}
+                                              <small>
+                                                {clientRecordText(payment, 'description')}
+                                              </small>
+                                            </span>
+                                            <b>
+                                              {clientMoney(
+                                                clientRecordAmount(payment, 'sum', 'amount'),
+                                                invoice.currencyCode || 'EUR',
+                                              )}
+                                            </b>
+                                          </p>
+                                        ))
+                                      ) : (
+                                        <em>Aucun paiement détaillé.</em>
+                                      )}
+                                    </section>
+                                    <section>
+                                      <strong>Envois</strong>
+                                      {deliveries.length ? (
+                                        deliveries.map((delivery, index) => (
+                                          <p key={index}>
+                                            <span>
+                                              {clientRecordText(delivery, 'address')}
+                                              <small>
+                                                {clientRecordText(delivery, 'bic', 'sent_message')}
+                                              </small>
+                                            </span>
+                                            <b>{clientRecordText(delivery, 'sent', 'queued')}</b>
+                                          </p>
+                                        ))
+                                      ) : (
+                                        <em>Aucun envoi détaillé.</em>
+                                      )}
+                                    </section>
+                                  </div>
+                                </details>
+                              </td>
+                            </tr>
+                          </Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <Empty
+                  title="Aucune facture synchronisée"
+                  text="Les factures apparaîtront après la prochaine synchronisation comptable disposant des droits Clients et Ventes."
+                />
+              )}
+            </section>
+          ) : null}
+        </div>
+        <div className="modal-actions hr-modal-footer">
+          <span className="muted">
+            {client?.source?.includes('FENNOA')
+              ? 'Les données synchronisées pourront être réactualisées.'
+              : 'Fiche gérée manuellement.'}
+          </span>
+          <div className="row-actions">
+            <button type="button" className="btn btn-secondary" onClick={onClose}>
+              Annuler
+            </button>
+            <button
+              className="btn btn-primary"
+              disabled={!canManage || saving || !form.name.trim()}
+            >
+              {saving ? 'Enregistrement…' : 'Enregistrer le client'}
+            </button>
+          </div>
+        </div>
+      </motion.form>
+    </div>
+  );
+}
+
+function ClientField({
+  label,
+  required,
+  className,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className={`hr-field-container ${className ?? ''}`.trim()}>
+      <span className="hr-field-label">
+        {label}
+        {required ? <span className="hr-required-dot">*</span> : null}
+      </span>
+      <span className="hr-field-wrapper">{children}</span>
+    </label>
   );
 }
 
@@ -1330,7 +2171,7 @@ function CompositionEditor({
               <strong>{selectedRecipe?.name ?? 'Rechercher une fiche technique'}</strong>
               <small>
                 {selectedRecipe
-                  ? selectedRecipe.category?.name ?? 'Sans catégorie'
+                  ? (selectedRecipe.category?.name ?? 'Sans catégorie')
                   : `${recipes.length} fiche(s) disponible(s)`}
               </small>
             </span>
@@ -1596,7 +2437,10 @@ function EventTable({
 }
 
 function FulfillmentBadge({ mode }: { mode: CatererFulfillmentMode }) {
-  const configs: Record<CatererFulfillmentMode, { label: string; icon: React.ComponentType<{ size?: number }>; color: string; bg: string }> = {
+  const configs: Record<
+    CatererFulfillmentMode,
+    { label: string; icon: React.ComponentType<{ size?: number }>; color: string; bg: string }
+  > = {
     DELIVERY: { label: 'Livraison', icon: Truck, color: '#1d4ed8', bg: '#dbeafe' },
     PICKUP: { label: 'Retrait', icon: ShoppingBag, color: '#d97706', bg: '#fef3c7' },
     ON_SITE: { label: 'Sur site', icon: Utensils, color: '#059669', bg: '#d1fae5' },
@@ -1604,7 +2448,19 @@ function FulfillmentBadge({ mode }: { mode: CatererFulfillmentMode }) {
   const config = configs[mode] ?? configs.DELIVERY;
   const Icon = config.icon;
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.3rem', padding: '.2rem .55rem', borderRadius: '999px', background: config.bg, color: config.color, fontSize: '.72rem', fontWeight: 800 }}>
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '.3rem',
+        padding: '.2rem .55rem',
+        borderRadius: '999px',
+        background: config.bg,
+        color: config.color,
+        fontSize: '.72rem',
+        fontWeight: 800,
+      }}
+    >
       <Icon size={12} /> {config.label}
     </span>
   );
@@ -1621,21 +2477,67 @@ function EventDetail({
 }) {
   return (
     <div className="caterer-card" style={{ borderLeft: '4px solid #10b981', padding: '1.35rem' }}>
-      <div className="caterer-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
+      <div
+        className="caterer-card-header"
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          flexWrap: 'wrap',
+          gap: '1rem',
+          borderBottom: '1px solid #f1f5f9',
+          paddingBottom: '1rem',
+        }}
+      >
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem', marginBottom: '.3rem' }}>
-            <span style={{ fontSize: '.8rem', fontWeight: 850, color: '#10b981', letterSpacing: '.05em' }}>{event.reference}</span>
+          <div
+            style={{ display: 'flex', alignItems: 'center', gap: '.5rem', marginBottom: '.3rem' }}
+          >
+            <span
+              style={{
+                fontSize: '.8rem',
+                fontWeight: 850,
+                color: '#10b981',
+                letterSpacing: '.05em',
+              }}
+            >
+              {event.reference}
+            </span>
             <StatusBadge status={event.status} />
             <ProductionBadge state={event.productionState} />
             <FulfillmentBadge mode={event.fulfillmentMode} />
           </div>
-          <h2 style={{ margin: '0 0 .3rem', fontSize: '1.35rem', fontWeight: 800, color: '#0f172a' }}>
+          <h2
+            style={{ margin: '0 0 .3rem', fontSize: '1.35rem', fontWeight: 800, color: '#0f172a' }}
+          >
             {event.name}
           </h2>
-          <div style={{ color: '#64748b', fontSize: '.86rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-            <span><UserRound size={14} style={{ display: 'inline', marginRight: 4 }} /> Client : <strong>{event.clientSnapshot?.name ?? event.client?.name ?? 'À renseigner'}</strong></span>
-            {event.productionSite && <span><Building size={14} style={{ display: 'inline', marginRight: 4 }} /> Site : {event.productionSite.name}</span>}
-            {event.venueName && <span><MapPin size={14} style={{ display: 'inline', marginRight: 4 }} /> Lieu : {event.venueName}</span>}
+          <div
+            style={{
+              color: '#64748b',
+              fontSize: '.86rem',
+              display: 'flex',
+              gap: '1rem',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+            }}
+          >
+            <span>
+              <UserRound size={14} style={{ display: 'inline', marginRight: 4 }} /> Client :{' '}
+              <strong>{event.clientSnapshot?.name ?? event.client?.name ?? 'À renseigner'}</strong>
+            </span>
+            {event.productionSite && (
+              <span>
+                <Building size={14} style={{ display: 'inline', marginRight: 4 }} /> Site :{' '}
+                {event.productionSite.name}
+              </span>
+            )}
+            {event.venueName && (
+              <span>
+                <MapPin size={14} style={{ display: 'inline', marginRight: 4 }} /> Lieu :{' '}
+                {event.venueName}
+              </span>
+            )}
           </div>
         </div>
 
@@ -1647,31 +2549,64 @@ function EventDetail({
               onClick={() => onGenerateProduction(event)}
             >
               <ChefHat size={16} />
-              {event.productionState === 'NOT_GENERATED' || event.productionState === 'DIRTY' ? 'Planifier dans Fabrication' : 'Voir la production'}
+              {event.productionState === 'NOT_GENERATED' || event.productionState === 'DIRTY'
+                ? 'Planifier dans Fabrication'
+                : 'Voir la production'}
             </button>
           )}
-          <button
-            type="button"
-            style={calendarSecondaryButtonStyle}
-            onClick={() => onEdit(event)}
-          >
+          <button type="button" style={calendarSecondaryButtonStyle} onClick={() => onEdit(event)}>
             <Pencil size={15} /> Modifier le dossier
           </button>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', marginTop: '1.25rem' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+          gap: '1rem',
+          marginTop: '1.25rem',
+        }}
+      >
         {event.prestations.map((prestation) => (
-          <div key={prestation.id} className="caterer-prestation-card" style={{ padding: '1rem', borderRadius: '16px', border: '1px solid #e2e8f0', background: '#ffffff' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '.35rem' }}>
+          <div
+            key={prestation.id}
+            className="caterer-prestation-card"
+            style={{
+              padding: '1rem',
+              borderRadius: '16px',
+              border: '1px solid #e2e8f0',
+              background: '#ffffff',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '.35rem',
+              }}
+            >
               <strong style={{ color: '#0f172a', fontSize: '1rem', fontWeight: 800 }}>
                 {prestation.name}
               </strong>
-              <span style={{ fontSize: '.78rem', fontWeight: 850, color: '#047857', background: '#ecfdf5', padding: '.2rem .55rem', borderRadius: '8px' }}>
+              <span
+                style={{
+                  fontSize: '.78rem',
+                  fontWeight: 850,
+                  color: '#047857',
+                  background: '#ecfdf5',
+                  padding: '.2rem .55rem',
+                  borderRadius: '8px',
+                }}
+              >
                 {prestation.expectedGuests} convives
               </span>
             </div>
-            <div className="muted" style={{ fontSize: '.8rem', display: 'flex', alignItems: 'center', gap: '.35rem' }}>
+            <div
+              className="muted"
+              style={{ fontSize: '.8rem', display: 'flex', alignItems: 'center', gap: '.35rem' }}
+            >
               <Clock size={13} color="#94a3b8" /> Service : {dateLabel(prestation.serviceAt)}
             </div>
 
@@ -1690,7 +2625,9 @@ function EventDetail({
                   }}
                 >
                   {item.technicalSheet?.name ?? item.product?.name ?? 'Article'} ·{' '}
-                  {item.portionsOverride ?? Number(prestation.expectedGuests) * Number(item.servingQuantity ?? 1)} port.
+                  {item.portionsOverride ??
+                    Number(prestation.expectedGuests) * Number(item.servingQuantity ?? 1)}{' '}
+                  port.
                 </span>
               ))}
             </div>
@@ -1942,7 +2879,9 @@ function CatererEventsView({
   const confirmedCount = activeEvents.filter((ev) => ev.status === 'CONFIRMED').length;
   const draftCount = activeEvents.filter((ev) => ev.status === 'DRAFT').length;
   const totalGuests = activeEvents.reduce((sum, ev) => sum + Number(ev.totalGuests || 0), 0);
-  const prodToGenerate = activeEvents.filter((ev) => ev.productionState === 'NOT_GENERATED' || ev.productionState === 'DIRTY').length;
+  const prodToGenerate = activeEvents.filter(
+    (ev) => ev.productionState === 'NOT_GENERATED' || ev.productionState === 'DIRTY',
+  ).length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '.8rem', minWidth: 0 }}>
@@ -1954,7 +2893,17 @@ function CatererEventsView({
         style={{ padding: '.9rem 1.15rem' }}
       >
         <div className="production-hero-glow" />
-        <div style={{ position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1.2rem' }}>
+        <div
+          style={{
+            position: 'relative',
+            zIndex: 1,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '1.2rem',
+          }}
+        >
           <div>
             <div className="production-hero-badge">
               <Truck size={13} /> GESTION DES PRESTATIONS & RECEPTIONS
@@ -1966,64 +2915,115 @@ function CatererEventsView({
               Organisez vos réceptions, puis planifiez leurs recettes dans le module Fabrication.
             </p>
           </div>
-          <button
-            type="button"
-            className="production-btn-primary"
-            onClick={onCreateEvent}
-          >
+          <button type="button" className="production-btn-primary" onClick={onCreateEvent}>
             <Plus size={18} /> Nouvel Événement
           </button>
         </div>
       </motion.div>
 
       {/* ─── BARRE DE MÉTRIQUES ─── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '.55rem' }}>
-        <div className="production-metric-card" style={{ cursor: 'pointer', padding: '.65rem .75rem', border: !statusFilter ? '2px solid #10b981' : undefined }} onClick={() => onStatusFilter('')}>
-          <div className="production-metric-icon-wrap" style={{ background: '#f1f5f9', color: '#0f172a' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+          gap: '.55rem',
+        }}
+      >
+        <div
+          className="production-metric-card"
+          style={{
+            cursor: 'pointer',
+            padding: '.65rem .75rem',
+            border: !statusFilter ? '2px solid #10b981' : undefined,
+          }}
+          onClick={() => onStatusFilter('')}
+        >
+          <div
+            className="production-metric-icon-wrap"
+            style={{ background: '#f1f5f9', color: '#0f172a' }}
+          >
             <Truck size={18} />
           </div>
           <div>
-            <div className="production-metric-val" style={{ color: '#0f172a' }}>{activeEvents.length}</div>
+            <div className="production-metric-val" style={{ color: '#0f172a' }}>
+              {activeEvents.length}
+            </div>
             <div className="production-metric-lbl">Dossiers actifs</div>
           </div>
         </div>
 
-        <div className="production-metric-card" style={{ cursor: 'pointer', padding: '.65rem .75rem', border: statusFilter === 'CONFIRMED' ? '2px solid #10b981' : undefined }} onClick={() => onStatusFilter(statusFilter === 'CONFIRMED' ? '' : 'CONFIRMED')}>
-          <div className="production-metric-icon-wrap" style={{ background: '#ecfdf5', color: '#10b981' }}>
+        <div
+          className="production-metric-card"
+          style={{
+            cursor: 'pointer',
+            padding: '.65rem .75rem',
+            border: statusFilter === 'CONFIRMED' ? '2px solid #10b981' : undefined,
+          }}
+          onClick={() => onStatusFilter(statusFilter === 'CONFIRMED' ? '' : 'CONFIRMED')}
+        >
+          <div
+            className="production-metric-icon-wrap"
+            style={{ background: '#ecfdf5', color: '#10b981' }}
+          >
             <CheckCircle2 size={18} />
           </div>
           <div>
-            <div className="production-metric-val" style={{ color: '#047857' }}>{confirmedCount}</div>
+            <div className="production-metric-val" style={{ color: '#047857' }}>
+              {confirmedCount}
+            </div>
             <div className="production-metric-lbl">Confirmés</div>
           </div>
         </div>
 
-        <div className="production-metric-card" style={{ cursor: 'pointer', padding: '.65rem .75rem', border: statusFilter === 'DRAFT' ? '2px solid #f59e0b' : undefined }} onClick={() => onStatusFilter(statusFilter === 'DRAFT' ? '' : 'DRAFT')}>
-          <div className="production-metric-icon-wrap" style={{ background: '#fffbeb', color: '#f59e0b' }}>
+        <div
+          className="production-metric-card"
+          style={{
+            cursor: 'pointer',
+            padding: '.65rem .75rem',
+            border: statusFilter === 'DRAFT' ? '2px solid #f59e0b' : undefined,
+          }}
+          onClick={() => onStatusFilter(statusFilter === 'DRAFT' ? '' : 'DRAFT')}
+        >
+          <div
+            className="production-metric-icon-wrap"
+            style={{ background: '#fffbeb', color: '#f59e0b' }}
+          >
             <Clock size={18} />
           </div>
           <div>
-            <div className="production-metric-val" style={{ color: '#b45309' }}>{draftCount}</div>
+            <div className="production-metric-val" style={{ color: '#b45309' }}>
+              {draftCount}
+            </div>
             <div className="production-metric-lbl">Brouillons / Devis</div>
           </div>
         </div>
 
         <div className="production-metric-card" style={{ padding: '.65rem .75rem' }}>
-          <div className="production-metric-icon-wrap" style={{ background: '#ede9fe', color: '#7c3aed' }}>
+          <div
+            className="production-metric-icon-wrap"
+            style={{ background: '#ede9fe', color: '#7c3aed' }}
+          >
             <UsersRound size={18} />
           </div>
           <div>
-            <div className="production-metric-val" style={{ color: '#6d28d9' }}>{totalGuests.toLocaleString('fr-FR')}</div>
+            <div className="production-metric-val" style={{ color: '#6d28d9' }}>
+              {totalGuests.toLocaleString('fr-FR')}
+            </div>
             <div className="production-metric-lbl">Convives total</div>
           </div>
         </div>
 
         <div className="production-metric-card" style={{ padding: '.65rem .75rem' }}>
-          <div className="production-metric-icon-wrap" style={{ background: '#ffedd5', color: '#c2410c' }}>
+          <div
+            className="production-metric-icon-wrap"
+            style={{ background: '#ffedd5', color: '#c2410c' }}
+          >
             <ChefHat size={18} />
           </div>
           <div>
-            <div className="production-metric-val" style={{ color: '#c2410c' }}>{prodToGenerate}</div>
+            <div className="production-metric-val" style={{ color: '#c2410c' }}>
+              {prodToGenerate}
+            </div>
             <div className="production-metric-lbl">À fabriquer</div>
           </div>
         </div>
@@ -2066,7 +3066,11 @@ function CatererEventsView({
               <option value="COMPLETED">Terminé</option>
               <option value="CANCELLED">Annulé</option>
             </select>
-            <ChevronDown size={14} color="#64748b" style={{ position: 'absolute', right: '10px', pointerEvents: 'none' }} />
+            <ChevronDown
+              size={14}
+              color="#64748b"
+              style={{ position: 'absolute', right: '10px', pointerEvents: 'none' }}
+            />
           </div>
 
           {/* Select Fulfillment */}
@@ -2082,7 +3086,11 @@ function CatererEventsView({
               <option value="ON_SITE">Sur site</option>
               <option value="PICKUP">Retrait</option>
             </select>
-            <ChevronDown size={14} color="#64748b" style={{ position: 'absolute', right: '10px', pointerEvents: 'none' }} />
+            <ChevronDown
+              size={14}
+              color="#64748b"
+              style={{ position: 'absolute', right: '10px', pointerEvents: 'none' }}
+            />
           </div>
         </div>
 
@@ -2113,12 +3121,25 @@ function CatererEventsView({
       </div>
 
       {/* ─── CONTENU VUES ─── */}
-      <div className="production-panel" style={{ padding: viewMode === 'kanban' ? '1rem' : 0, overflow: 'hidden' }}>
+      <div
+        className="production-panel"
+        style={{ padding: viewMode === 'kanban' ? '1rem' : 0, overflow: 'hidden' }}
+      >
         {!events.length ? (
-          <div style={{ minHeight: 280, display: 'grid', placeItems: 'center', textAlign: 'center', padding: '3rem 1.5rem' }}>
+          <div
+            style={{
+              minHeight: 280,
+              display: 'grid',
+              placeItems: 'center',
+              textAlign: 'center',
+              padding: '3rem 1.5rem',
+            }}
+          >
             <div style={{ maxWidth: 400 }}>
               <Truck size={36} color="#94a3b8" />
-              <h3 style={{ margin: '.8rem 0 .3rem', fontSize: '1.2rem', fontWeight: 800 }}>Aucun dossier événementiel trouvé</h3>
+              <h3 style={{ margin: '.8rem 0 .3rem', fontSize: '1.2rem', fontWeight: 800 }}>
+                Aucun dossier événementiel trouvé
+              </h3>
               <p className="muted" style={{ margin: 0, fontSize: '.9rem' }}>
                 Créez un dossier pour commencer à planifier vos prestations, menus et fabrications.
               </p>
@@ -2160,9 +3181,25 @@ function CatererEventsView({
                       onClick={() => onSelectEvent(event)}
                     >
                       <td>
-                        <strong style={{ color: '#10b981', fontSize: '.92rem' }}>{event.reference}</strong>
-                        <div style={{ fontWeight: 750, color: '#0f172a', fontSize: '.88rem', marginTop: '.1rem' }}>
-                          {event.name} {event.needsReview ? <span style={{ color: '#b45309', fontSize: '.75rem' }}>· À vérifier</span> : ''}
+                        <strong style={{ color: '#10b981', fontSize: '.92rem' }}>
+                          {event.reference}
+                        </strong>
+                        <div
+                          style={{
+                            fontWeight: 750,
+                            color: '#0f172a',
+                            fontSize: '.88rem',
+                            marginTop: '.1rem',
+                          }}
+                        >
+                          {event.name}{' '}
+                          {event.needsReview ? (
+                            <span style={{ color: '#b45309', fontSize: '.75rem' }}>
+                              · À vérifier
+                            </span>
+                          ) : (
+                            ''
+                          )}
                         </div>
                       </td>
                       <td>
@@ -2172,15 +3209,28 @@ function CatererEventsView({
                       </td>
                       <td>
                         <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '.86rem' }}>
-                          {event.clientSnapshot?.name ?? event.client?.name ?? 'Client à renseigner'}
+                          {event.clientSnapshot?.name ??
+                            event.client?.name ??
+                            'Client à renseigner'}
                         </span>
-                        {event.venueName && <div className="muted" style={{ fontSize: '.76rem' }}>{event.venueName}</div>}
+                        {event.venueName && (
+                          <div className="muted" style={{ fontSize: '.76rem' }}>
+                            {event.venueName}
+                          </div>
+                        )}
                       </td>
                       <td>
-                        <span style={{ fontWeight: 800, fontSize: '.88rem' }}>{event.prestations.length}</span> <span className="muted" style={{ fontSize: '.78rem' }}>prestation(s)</span>
+                        <span style={{ fontWeight: 800, fontSize: '.88rem' }}>
+                          {event.prestations.length}
+                        </span>{' '}
+                        <span className="muted" style={{ fontSize: '.78rem' }}>
+                          prestation(s)
+                        </span>
                       </td>
                       <td>
-                        <strong style={{ fontSize: '.95rem', color: '#0f172a' }}>{event.totalGuests}</strong>
+                        <strong style={{ fontSize: '.95rem', color: '#0f172a' }}>
+                          {event.totalGuests}
+                        </strong>
                       </td>
                       <td>
                         <FulfillmentBadge mode={event.fulfillmentMode} />
@@ -2192,17 +3242,34 @@ function CatererEventsView({
                         <ProductionBadge state={event.productionState} />
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', gap: '.35rem', justifyContent: 'flex-end' }}>
+                        <div
+                          style={{
+                            display: 'inline-flex',
+                            gap: '.35rem',
+                            justifyContent: 'flex-end',
+                          }}
+                        >
                           {event.status === 'CONFIRMED' && (
                             <button
                               type="button"
                               className="production-btn-primary"
                               disabled={saving}
-                              style={{ minHeight: '34px', padding: '.35rem .75rem', fontSize: '.78rem', borderRadius: '10px' }}
-                              onClick={(e) => { e.stopPropagation(); onGenerateProduction(event); }}
+                              style={{
+                                minHeight: '34px',
+                                padding: '.35rem .75rem',
+                                fontSize: '.78rem',
+                                borderRadius: '10px',
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onGenerateProduction(event);
+                              }}
                             >
                               <ChefHat size={14} />
-                              {event.productionState === 'NOT_GENERATED' || event.productionState === 'DIRTY' ? 'Planifier' : 'Voir prod'}
+                              {event.productionState === 'NOT_GENERATED' ||
+                              event.productionState === 'DIRTY'
+                                ? 'Planifier'
+                                : 'Voir prod'}
                             </button>
                           )}
 
@@ -2211,8 +3278,16 @@ function CatererEventsView({
                               type="button"
                               className="production-btn-primary"
                               disabled={saving}
-                              style={{ minHeight: '34px', padding: '.35rem .75rem', fontSize: '.78rem', borderRadius: '10px' }}
-                              onClick={(e) => { e.stopPropagation(); onStatusChange(event, 'CONFIRMED'); }}
+                              style={{
+                                minHeight: '34px',
+                                padding: '.35rem .75rem',
+                                fontSize: '.78rem',
+                                borderRadius: '10px',
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onStatusChange(event, 'CONFIRMED');
+                              }}
                             >
                               <CheckIcon size={14} /> Confirmer
                             </button>
@@ -2220,8 +3295,16 @@ function CatererEventsView({
 
                           <button
                             type="button"
-                            style={{ ...calendarSecondaryButtonStyle, minHeight: '34px', padding: '.35rem .65rem', fontSize: '.78rem' }}
-                            onClick={(e) => { e.stopPropagation(); onEditEvent(event); }}
+                            style={{
+                              ...calendarSecondaryButtonStyle,
+                              minHeight: '34px',
+                              padding: '.35rem .65rem',
+                              fontSize: '.78rem',
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onEditEvent(event);
+                            }}
                           >
                             <Pencil size={13} />
                           </button>
@@ -2235,53 +3318,155 @@ function CatererEventsView({
           </div>
         ) : viewMode === 'grid' ? (
           /* ─── VUE GRILLE MODERNISÉE ─── */
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.1rem', padding: '1.25rem' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+              gap: '1.1rem',
+              padding: '1.25rem',
+            }}
+          >
             {events.map((event) => {
               const isSelected = selectedEvent?.id === event.id;
               return (
                 <div
                   key={event.id}
                   className="fabrication-campaign-card"
-                  style={{ cursor: 'pointer', border: isSelected ? '2px solid #10b981' : undefined }}
+                  style={{
+                    cursor: 'pointer',
+                    border: isSelected ? '2px solid #10b981' : undefined,
+                  }}
                   onClick={() => onSelectEvent(event)}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '.4rem', alignItems: 'center', marginBottom: '.65rem' }}>
-                    <span style={{ fontSize: '.78rem', fontWeight: 850, color: '#10b981' }}>{event.reference}</span>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: '.4rem',
+                      alignItems: 'center',
+                      marginBottom: '.65rem',
+                    }}
+                  >
+                    <span style={{ fontSize: '.78rem', fontWeight: 850, color: '#10b981' }}>
+                      {event.reference}
+                    </span>
                     <div style={{ display: 'flex', gap: '.3rem' }}>
                       <FulfillmentBadge mode={event.fulfillmentMode} />
                       <StatusBadge status={event.status} />
                     </div>
                   </div>
 
-                  <h3 style={{ margin: '0 0 .3rem', fontSize: '1.08rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.3 }}>
+                  <h3
+                    style={{
+                      margin: '0 0 .3rem',
+                      fontSize: '1.08rem',
+                      fontWeight: 800,
+                      color: '#0f172a',
+                      lineHeight: 1.3,
+                    }}
+                  >
                     {event.name}
                   </h3>
 
-                  <div style={{ color: '#64748b', fontSize: '.82rem', marginBottom: '.8rem', display: 'flex', alignItems: 'center', gap: '.35rem' }}>
-                    <UserRound size={14} /> {event.clientSnapshot?.name ?? event.client?.name ?? 'Client non renseigné'}
+                  <div
+                    style={{
+                      color: '#64748b',
+                      fontSize: '.82rem',
+                      marginBottom: '.8rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '.35rem',
+                    }}
+                  >
+                    <UserRound size={14} />{' '}
+                    {event.clientSnapshot?.name ?? event.client?.name ?? 'Client non renseigné'}
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.6rem', padding: '.75rem', background: '#f8fafc', borderRadius: '13px', marginBottom: '1rem', border: '1px solid #f1f5f9' }}>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: '.6rem',
+                      padding: '.75rem',
+                      background: '#f8fafc',
+                      borderRadius: '13px',
+                      marginBottom: '1rem',
+                      border: '1px solid #f1f5f9',
+                    }}
+                  >
                     <div>
-                      <div style={{ fontSize: '.7rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Convives</div>
-                      <div style={{ fontSize: '1.05rem', fontWeight: 850, color: '#0f172a', marginTop: '.1rem' }}>
-                        {event.totalGuests} <span style={{ fontSize: '.78rem', color: '#64748b', fontWeight: 600 }}>personnes</span>
+                      <div
+                        style={{
+                          fontSize: '.7rem',
+                          color: '#64748b',
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        Convives
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '1.05rem',
+                          fontWeight: 850,
+                          color: '#0f172a',
+                          marginTop: '.1rem',
+                        }}
+                      >
+                        {event.totalGuests}{' '}
+                        <span style={{ fontSize: '.78rem', color: '#64748b', fontWeight: 600 }}>
+                          personnes
+                        </span>
                       </div>
                     </div>
                     <div>
-                      <div style={{ fontSize: '.7rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Date & Heure</div>
-                      <div style={{ fontSize: '.84rem', fontWeight: 750, color: '#334155', marginTop: '.1rem' }}>
+                      <div
+                        style={{
+                          fontSize: '.7rem',
+                          color: '#64748b',
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        Date & Heure
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '.84rem',
+                          fontWeight: 750,
+                          color: '#334155',
+                          marginTop: '.1rem',
+                        }}
+                      >
                         {dateLabel(event.startsAt)}
                       </div>
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '.5rem', marginTop: 'auto', paddingTop: '.65rem', borderTop: '1px solid #f1f5f9' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '.5rem',
+                      marginTop: 'auto',
+                      paddingTop: '.65rem',
+                      borderTop: '1px solid #f1f5f9',
+                    }}
+                  >
                     <ProductionBadge state={event.productionState} />
                     <button
                       type="button"
-                      style={{ ...calendarSecondaryButtonStyle, minHeight: '34px', padding: '.35rem .75rem', fontSize: '.78rem' }}
-                      onClick={(e) => { e.stopPropagation(); onEditEvent(event); }}
+                      style={{
+                        ...calendarSecondaryButtonStyle,
+                        minHeight: '34px',
+                        padding: '.35rem .75rem',
+                        fontSize: '.78rem',
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEditEvent(event);
+                      }}
                     >
                       <Pencil size={13} /> Modifier
                     </button>
@@ -2292,25 +3477,78 @@ function CatererEventsView({
           </div>
         ) : (
           /* ─── VUE KANBAN PAR STATUT ─── */
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: '1rem', padding: '1rem' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))',
+              gap: '1rem',
+              padding: '1rem',
+            }}
+          >
             {[
               { title: 'Brouillons & Devis', statuses: ['DRAFT'], color: '#b45309', bg: '#fffbeb' },
-              { title: 'Confirmés & En Production', statuses: ['CONFIRMED'], color: '#047857', bg: '#ecfdf5' },
-              { title: 'Terminés & Annulés', statuses: ['COMPLETED', 'CANCELLED'], color: '#475569', bg: '#f1f5f9' },
+              {
+                title: 'Confirmés & En Production',
+                statuses: ['CONFIRMED'],
+                color: '#047857',
+                bg: '#ecfdf5',
+              },
+              {
+                title: 'Terminés & Annulés',
+                statuses: ['COMPLETED', 'CANCELLED'],
+                color: '#475569',
+                bg: '#f1f5f9',
+              },
             ].map((col) => {
               const colEvents = events.filter((ev) => col.statuses.includes(ev.status));
               return (
-                <div key={col.title} style={{ background: '#f8fafc', borderRadius: '18px', border: '1px solid #e2e8f0', padding: '.9rem', display: 'flex', flexDirection: 'column', gap: '.75rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '.6rem', borderBottom: '1px solid #e2e8f0' }}>
+                <div
+                  key={col.title}
+                  style={{
+                    background: '#f8fafc',
+                    borderRadius: '18px',
+                    border: '1px solid #e2e8f0',
+                    padding: '.9rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '.75rem',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      paddingBottom: '.6rem',
+                      borderBottom: '1px solid #e2e8f0',
+                    }}
+                  >
                     <strong style={{ fontSize: '.92rem', color: '#0f172a' }}>{col.title}</strong>
-                    <span style={{ background: col.bg, color: col.color, borderRadius: '999px', padding: '.2rem .6rem', fontSize: '.75rem', fontWeight: 850 }}>
+                    <span
+                      style={{
+                        background: col.bg,
+                        color: col.color,
+                        borderRadius: '999px',
+                        padding: '.2rem .6rem',
+                        fontSize: '.75rem',
+                        fontWeight: 850,
+                      }}
+                    >
                       {colEvents.length}
                     </span>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '.65rem', flex: 1 }}>
                     {!colEvents.length ? (
-                      <div style={{ textAlign: 'center', padding: '2rem 1rem', color: '#94a3b8', fontSize: '.82rem', fontWeight: 650 }}>
+                      <div
+                        style={{
+                          textAlign: 'center',
+                          padding: '2rem 1rem',
+                          color: '#94a3b8',
+                          fontSize: '.82rem',
+                          fontWeight: 650,
+                        }}
+                      >
                         Aucun dossier dans cette colonne
                       </div>
                     ) : (
@@ -2321,21 +3559,52 @@ function CatererEventsView({
                           style={{ padding: '.9rem', cursor: 'pointer' }}
                           onClick={() => onSelectEvent(event)}
                         >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '.4rem', alignItems: 'center' }}>
-                            <span style={{ fontSize: '.72rem', fontWeight: 850, color: '#10b981' }}>{event.reference}</span>
+                          <div
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              gap: '.4rem',
+                              alignItems: 'center',
+                            }}
+                          >
+                            <span style={{ fontSize: '.72rem', fontWeight: 850, color: '#10b981' }}>
+                              {event.reference}
+                            </span>
                             <FulfillmentBadge mode={event.fulfillmentMode} />
                           </div>
 
-                          <strong style={{ display: 'block', margin: '.35rem 0 .2rem', fontSize: '.92rem', color: '#0f172a' }}>
+                          <strong
+                            style={{
+                              display: 'block',
+                              margin: '.35rem 0 .2rem',
+                              fontSize: '.92rem',
+                              color: '#0f172a',
+                            }}
+                          >
                             {event.name}
                           </strong>
 
-                          <div style={{ fontSize: '.76rem', color: '#64748b', marginBottom: '.4rem' }}>
+                          <div
+                            style={{ fontSize: '.76rem', color: '#64748b', marginBottom: '.4rem' }}
+                          >
                             {event.clientSnapshot?.name ?? event.client?.name ?? 'Client'}
                           </div>
 
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '.78rem', color: '#475569', marginTop: '.5rem', paddingTop: '.5rem', borderTop: '1px solid #f1f5f9' }}>
-                            <span><strong>{event.totalGuests}</strong> convives</span>
+                          <div
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              fontSize: '.78rem',
+                              color: '#475569',
+                              marginTop: '.5rem',
+                              paddingTop: '.5rem',
+                              borderTop: '1px solid #f1f5f9',
+                            }}
+                          >
+                            <span>
+                              <strong>{event.totalGuests}</strong> convives
+                            </span>
                             <ProductionBadge state={event.productionState} />
                           </div>
                         </div>
@@ -2348,7 +3617,6 @@ function CatererEventsView({
           </div>
         )}
       </div>
-
     </div>
   );
 }
@@ -2676,7 +3944,8 @@ function CatererCalendarView({
       if (fulfillmentFilter && ev.fulfillmentMode !== fulfillmentFilter) return false;
       const needle = search.trim().toLowerCase();
       if (!needle) return true;
-      const haystack = `${ev.reference} ${ev.name} ${ev.clientSnapshot?.name ?? ev.client?.name ?? ''} ${ev.venueName ?? ''}`.toLowerCase();
+      const haystack =
+        `${ev.reference} ${ev.name} ${ev.clientSnapshot?.name ?? ev.client?.name ?? ''} ${ev.venueName ?? ''}`.toLowerCase();
       return haystack.includes(needle);
     });
   }, [activeEvents, statusFilter, fulfillmentFilter, search]);
@@ -2688,7 +3957,12 @@ function CatererCalendarView({
   const onSiteCount = filteredEvents.filter((ev) => ev.fulfillmentMode === 'ON_SITE').length;
 
   const calendarDays = useMemo(() => {
-    const cells: Array<{ dayNum?: number; dateStr?: string; isToday?: boolean; isCurrentMonth?: boolean }> = [];
+    const cells: Array<{
+      dayNum?: number;
+      dateStr?: string;
+      isToday?: boolean;
+      isCurrentMonth?: boolean;
+    }> = [];
     const prevMonthDays = new Date(year, month, 0).getDate();
     for (let i = firstDayWeekday - 1; i >= 0; i--) {
       const d = prevMonthDays - i;
@@ -2723,7 +3997,11 @@ function CatererCalendarView({
         date: d,
         dateStr,
         isToday: dateStr === todayStr,
-        label: new Intl.DateTimeFormat('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }).format(d),
+        label: new Intl.DateTimeFormat('fr-FR', {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+        }).format(d),
       };
     });
   }, [currentDate, todayStr]);
@@ -2738,74 +4016,112 @@ function CatererCalendarView({
         style={{ padding: '1.5rem 1.8rem', display: embedded ? 'none' : undefined }}
       >
         <div className="production-hero-glow" />
-        <div style={{ position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1.2rem' }}>
+        <div
+          style={{
+            position: 'relative',
+            zIndex: 1,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '1.2rem',
+          }}
+        >
           <div>
             <div className="production-hero-badge">
               <CalendarDays size={13} /> PLANIFICATION & EVENT TRAITEUR
             </div>
             <h2 className="production-hero-title">Calendrier Traiteur</h2>
             <p className="production-hero-desc">
-              Visualisez, organisez et suivez toutes vos réceptions, livraisons et événements traiteur en temps réel.
+              Visualisez, organisez et suivez toutes vos réceptions, livraisons et événements
+              traiteur en temps réel.
             </p>
           </div>
-          <button
-            type="button"
-            className="production-btn-primary"
-            onClick={() => onCreateEvent()}
-          >
+          <button type="button" className="production-btn-primary" onClick={() => onCreateEvent()}>
             <Plus size={18} /> Nouvel Événement
           </button>
         </div>
       </motion.div>
 
       {/* ─── BARRE DE MÉTRIQUES DU CALENDRIER ─── */}
-      <div style={{ display: embedded ? 'none' : 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '.8rem' }}>
+      <div
+        style={{
+          display: embedded ? 'none' : 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+          gap: '.8rem',
+        }}
+      >
         <div className="production-metric-card">
-          <div className="production-metric-icon-wrap" style={{ background: '#ecfdf5', color: '#10b981' }}>
+          <div
+            className="production-metric-icon-wrap"
+            style={{ background: '#ecfdf5', color: '#10b981' }}
+          >
             <CalendarDays size={18} />
           </div>
           <div>
-            <div className="production-metric-val" style={{ color: '#047857' }}>{confirmedCount}</div>
+            <div className="production-metric-val" style={{ color: '#047857' }}>
+              {confirmedCount}
+            </div>
             <div className="production-metric-lbl">Confirmés</div>
           </div>
         </div>
 
         <div className="production-metric-card">
-          <div className="production-metric-icon-wrap" style={{ background: '#fffbeb', color: '#f59e0b' }}>
+          <div
+            className="production-metric-icon-wrap"
+            style={{ background: '#fffbeb', color: '#f59e0b' }}
+          >
             <Clock size={18} />
           </div>
           <div>
-            <div className="production-metric-val" style={{ color: '#b45309' }}>{draftCount}</div>
+            <div className="production-metric-val" style={{ color: '#b45309' }}>
+              {draftCount}
+            </div>
             <div className="production-metric-lbl">Brouillons</div>
           </div>
         </div>
 
         <div className="production-metric-card">
-          <div className="production-metric-icon-wrap" style={{ background: '#ede9fe', color: '#7c3aed' }}>
+          <div
+            className="production-metric-icon-wrap"
+            style={{ background: '#ede9fe', color: '#7c3aed' }}
+          >
             <UsersRound size={18} />
           </div>
           <div>
-            <div className="production-metric-val" style={{ color: '#6d28d9' }}>{totalGuests.toLocaleString('fr-FR')}</div>
+            <div className="production-metric-val" style={{ color: '#6d28d9' }}>
+              {totalGuests.toLocaleString('fr-FR')}
+            </div>
             <div className="production-metric-lbl">Convives total</div>
           </div>
         </div>
 
         <div className="production-metric-card">
-          <div className="production-metric-icon-wrap" style={{ background: '#dbeafe', color: '#2563eb' }}>
+          <div
+            className="production-metric-icon-wrap"
+            style={{ background: '#dbeafe', color: '#2563eb' }}
+          >
             <Truck size={18} />
           </div>
           <div>
-            <div className="production-metric-val" style={{ color: '#1d4ed8' }}>{deliveryCount}</div>
+            <div className="production-metric-val" style={{ color: '#1d4ed8' }}>
+              {deliveryCount}
+            </div>
             <div className="production-metric-lbl">Livraisons</div>
           </div>
         </div>
 
         <div className="production-metric-card">
-          <div className="production-metric-icon-wrap" style={{ background: '#f0fdf4', color: '#059669' }}>
+          <div
+            className="production-metric-icon-wrap"
+            style={{ background: '#f0fdf4', color: '#059669' }}
+          >
             <Utensils size={18} />
           </div>
           <div>
-            <div className="production-metric-val" style={{ color: '#059669' }}>{onSiteCount}</div>
+            <div className="production-metric-val" style={{ color: '#059669' }}>
+              {onSiteCount}
+            </div>
             <div className="production-metric-lbl">Sur site</div>
           </div>
         </div>
@@ -2824,11 +4140,7 @@ function CatererCalendarView({
             >
               <ChevronLeft size={18} />
             </button>
-            <button
-              type="button"
-              style={calendarSecondaryButtonStyle}
-              onClick={handleToday}
-            >
+            <button type="button" style={calendarSecondaryButtonStyle} onClick={handleToday}>
               Aujourd’hui
             </button>
             <button
@@ -2839,7 +4151,14 @@ function CatererCalendarView({
             >
               <ChevronRight size={18} />
             </button>
-            <strong style={{ fontSize: '1.05rem', color: '#0f172a', marginLeft: '.4rem', textTransform: 'capitalize' }}>
+            <strong
+              style={{
+                fontSize: '1.05rem',
+                color: '#0f172a',
+                marginLeft: '.4rem',
+                textTransform: 'capitalize',
+              }}
+            >
               {monthLabel}
             </strong>
           </div>
@@ -2877,7 +4196,11 @@ function CatererCalendarView({
               <option value="DRAFT">Brouillon</option>
               <option value="COMPLETED">Terminé</option>
             </select>
-            <ChevronDown size={14} color="#64748b" style={{ position: 'absolute', right: '10px', pointerEvents: 'none' }} />
+            <ChevronDown
+              size={14}
+              color="#64748b"
+              style={{ position: 'absolute', right: '10px', pointerEvents: 'none' }}
+            />
           </div>
         </div>
 
@@ -2928,8 +4251,17 @@ function CatererCalendarView({
                 onClick={() => cell.dateStr && setSelectedDay(cell.dateStr)}
                 style={{ cursor: cell.dateStr ? 'pointer' : 'default' }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '.35rem' }}>
-                  <span className={`caterer-calendar-date-number${cell.isToday ? ' today-pill' : ''}`}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '.35rem',
+                  }}
+                >
+                  <span
+                    className={`caterer-calendar-date-number${cell.isToday ? ' today-pill' : ''}`}
+                  >
                     {cell.dayNum}
                   </span>
                   {cell.isCurrentMonth && cell.dateStr && (
@@ -2947,10 +4279,28 @@ function CatererCalendarView({
                   )}
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '.3rem', overflowY: 'auto', maxHeight: '110px' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '.3rem',
+                    overflowY: 'auto',
+                    maxHeight: '110px',
+                  }}
+                >
                   {dayEvents.map((ev) => {
-                    const statusColor = ev.status === 'CONFIRMED' ? '#10b981' : ev.status === 'DRAFT' ? '#f59e0b' : '#64748b';
-                    const statusBg = ev.status === 'CONFIRMED' ? '#ecfdf5' : ev.status === 'DRAFT' ? '#fffbeb' : '#f1f5f9';
+                    const statusColor =
+                      ev.status === 'CONFIRMED'
+                        ? '#10b981'
+                        : ev.status === 'DRAFT'
+                          ? '#f59e0b'
+                          : '#64748b';
+                    const statusBg =
+                      ev.status === 'CONFIRMED'
+                        ? '#ecfdf5'
+                        : ev.status === 'DRAFT'
+                          ? '#fffbeb'
+                          : '#f1f5f9';
 
                     return (
                       <div
@@ -2962,10 +4312,28 @@ function CatererCalendarView({
                           if (cell.dateStr) setSelectedDay(cell.dateStr);
                         }}
                       >
-                        <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '.78rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <div
+                          style={{
+                            fontWeight: 800,
+                            color: '#0f172a',
+                            fontSize: '.78rem',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                        >
                           {ev.name}
                         </div>
-                        <div style={{ fontSize: '.7rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '.3rem', marginTop: '.1rem' }}>
+                        <div
+                          style={{
+                            fontSize: '.7rem',
+                            color: '#475569',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '.3rem',
+                            marginTop: '.1rem',
+                          }}
+                        >
                           <span>{ev.clientSnapshot?.name ?? ev.client?.name ?? 'Client'}</span>
                           <span>•</span>
                           <strong>{ev.totalGuests}p</strong>
@@ -2982,9 +4350,18 @@ function CatererCalendarView({
 
       {/* ─── VUE SEMAINE (COLONNES PAR JOUR) ─── */}
       {viewMode === 'week' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(180px, 1fr))', gap: '.75rem', overflowX: 'auto' }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(7, minmax(180px, 1fr))',
+            gap: '.75rem',
+            overflowX: 'auto',
+          }}
+        >
           {weekDays.map((wd) => {
-            const dayEvents = filteredEvents.filter((ev) => ev.startsAt && ev.startsAt.startsWith(wd.dateStr));
+            const dayEvents = filteredEvents.filter(
+              (ev) => ev.startsAt && ev.startsAt.startsWith(wd.dateStr),
+            );
             return (
               <div
                 key={wd.dateStr}
@@ -3001,8 +4378,22 @@ function CatererCalendarView({
                   cursor: 'pointer',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '.5rem', borderBottom: '1px solid #e2e8f0' }}>
-                  <strong style={{ fontSize: '.9rem', color: wd.isToday ? '#047857' : '#0f172a', textTransform: 'capitalize' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    paddingBottom: '.5rem',
+                    borderBottom: '1px solid #e2e8f0',
+                  }}
+                >
+                  <strong
+                    style={{
+                      fontSize: '.9rem',
+                      color: wd.isToday ? '#047857' : '#0f172a',
+                      textTransform: 'capitalize',
+                    }}
+                  >
                     {wd.label}
                   </strong>
                   <button
@@ -3020,7 +4411,14 @@ function CatererCalendarView({
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '.6rem', flex: 1 }}>
                   {!dayEvents.length ? (
-                    <div style={{ color: '#94a3b8', fontSize: '.78rem', textAlign: 'center', marginTop: '2rem' }}>
+                    <div
+                      style={{
+                        color: '#94a3b8',
+                        fontSize: '.78rem',
+                        textAlign: 'center',
+                        marginTop: '2rem',
+                      }}
+                    >
                       Aucune prestation
                     </div>
                   ) : (
@@ -3034,14 +4432,33 @@ function CatererCalendarView({
                           setSelectedDay(wd.dateStr);
                         }}
                       >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '.3rem' }}>
-                          <span style={{ fontSize: '.7rem', fontWeight: 850, color: '#10b981' }}>{ev.reference}</span>
-                          <span style={{ fontSize: '.68rem', fontWeight: 800, color: '#475569', background: '#f1f5f9', padding: '.15rem .45rem', borderRadius: '6px' }}>
+                        <div
+                          style={{ display: 'flex', justifyContent: 'space-between', gap: '.3rem' }}
+                        >
+                          <span style={{ fontSize: '.7rem', fontWeight: 850, color: '#10b981' }}>
+                            {ev.reference}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: '.68rem',
+                              fontWeight: 800,
+                              color: '#475569',
+                              background: '#f1f5f9',
+                              padding: '.15rem .45rem',
+                              borderRadius: '6px',
+                            }}
+                          >
                             {ev.totalGuests} convives
                           </span>
                         </div>
-                        <strong style={{ fontSize: '.86rem', color: '#0f172a', margin: '.3rem 0 .15rem' }}>{ev.name}</strong>
-                        <div style={{ fontSize: '.74rem', color: '#64748b' }}>{ev.clientSnapshot?.name ?? ev.client?.name ?? 'Client'}</div>
+                        <strong
+                          style={{ fontSize: '.86rem', color: '#0f172a', margin: '.3rem 0 .15rem' }}
+                        >
+                          {ev.name}
+                        </strong>
+                        <div style={{ fontSize: '.74rem', color: '#64748b' }}>
+                          {ev.clientSnapshot?.name ?? ev.client?.name ?? 'Client'}
+                        </div>
                       </div>
                     ))
                   )}
@@ -3059,8 +4476,15 @@ function CatererCalendarView({
             <div className="caterer-card" style={{ padding: '3rem 1.5rem', textAlign: 'center' }}>
               <Clock size={36} color="#94a3b8" />
               <h3 style={{ margin: '.8rem 0 .3rem' }}>Aucun événement au calendrier</h3>
-              <p className="muted">Ajustez vos filtres ou créez votre premier événement Traiteur.</p>
-              <button type="button" className="production-btn-primary" style={{ marginTop: '1rem' }} onClick={() => onCreateEvent()}>
+              <p className="muted">
+                Ajustez vos filtres ou créez votre premier événement Traiteur.
+              </p>
+              <button
+                type="button"
+                className="production-btn-primary"
+                style={{ marginTop: '1rem' }}
+                onClick={() => onCreateEvent()}
+              >
                 <Plus size={16} /> Créer un événement
               </button>
             </div>
@@ -3072,11 +4496,32 @@ function CatererCalendarView({
                 style={{ cursor: 'pointer', padding: '1.1rem 1.25rem' }}
                 onClick={() => onSelectEvent(ev.id)}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: '1rem',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                  }}
+                >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <div style={{ textAlign: 'center', padding: '.6rem .85rem', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '14px', color: '#047857' }}>
-                      <div style={{ fontSize: '.72rem', fontWeight: 800, textTransform: 'uppercase' }}>
-                        {ev.startsAt ? new Date(ev.startsAt).toLocaleDateString('fr-FR', { month: 'short' }) : 'Date'}
+                    <div
+                      style={{
+                        textAlign: 'center',
+                        padding: '.6rem .85rem',
+                        background: '#ecfdf5',
+                        border: '1px solid #a7f3d0',
+                        borderRadius: '14px',
+                        color: '#047857',
+                      }}
+                    >
+                      <div
+                        style={{ fontSize: '.72rem', fontWeight: 800, textTransform: 'uppercase' }}
+                      >
+                        {ev.startsAt
+                          ? new Date(ev.startsAt).toLocaleDateString('fr-FR', { month: 'short' })
+                          : 'Date'}
                       </div>
                       <div style={{ fontSize: '1.25rem', fontWeight: 850, lineHeight: 1 }}>
                         {ev.startsAt ? new Date(ev.startsAt).getDate() : '—'}
@@ -3084,17 +4529,50 @@ function CatererCalendarView({
                     </div>
 
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem', marginBottom: '.2rem' }}>
-                        <span style={{ fontSize: '.75rem', fontWeight: 850, color: '#10b981' }}>{ev.reference}</span>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '.5rem',
+                          marginBottom: '.2rem',
+                        }}
+                      >
+                        <span style={{ fontSize: '.75rem', fontWeight: 850, color: '#10b981' }}>
+                          {ev.reference}
+                        </span>
                         <StatusBadge status={ev.status} />
                         <ProductionBadge state={ev.productionState} />
                       </div>
                       <strong style={{ fontSize: '1.05rem', color: '#0f172a' }}>{ev.name}</strong>
-                      <div style={{ color: '#64748b', fontSize: '.84rem', marginTop: '.2rem', display: 'flex', gap: '.8rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                        <span><UserRound size={13} style={{ display: 'inline', marginRight: 4 }} /> {ev.clientSnapshot?.name ?? ev.client?.name ?? 'Client non renseigné'}</span>
-                        {ev.venueName && <span><MapPin size={13} style={{ display: 'inline', marginRight: 4 }} /> {ev.venueName}</span>}
-                        <span><UsersRound size={13} style={{ display: 'inline', marginRight: 4 }} /> {ev.totalGuests} convives</span>
-                        <span><Layers size={13} style={{ display: 'inline', marginRight: 4 }} /> {ev.prestations.length} prestation(s)</span>
+                      <div
+                        style={{
+                          color: '#64748b',
+                          fontSize: '.84rem',
+                          marginTop: '.2rem',
+                          display: 'flex',
+                          gap: '.8rem',
+                          flexWrap: 'wrap',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <span>
+                          <UserRound size={13} style={{ display: 'inline', marginRight: 4 }} />{' '}
+                          {ev.clientSnapshot?.name ?? ev.client?.name ?? 'Client non renseigné'}
+                        </span>
+                        {ev.venueName && (
+                          <span>
+                            <MapPin size={13} style={{ display: 'inline', marginRight: 4 }} />{' '}
+                            {ev.venueName}
+                          </span>
+                        )}
+                        <span>
+                          <UsersRound size={13} style={{ display: 'inline', marginRight: 4 }} />{' '}
+                          {ev.totalGuests} convives
+                        </span>
+                        <span>
+                          <Layers size={13} style={{ display: 'inline', marginRight: 4 }} />{' '}
+                          {ev.prestations.length} prestation(s)
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -3103,7 +4581,10 @@ function CatererCalendarView({
                     <button
                       type="button"
                       style={calendarSecondaryButtonStyle}
-                      onClick={(e) => { e.stopPropagation(); onEditEvent(ev); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEditEvent(ev);
+                      }}
                     >
                       <Pencil size={15} /> Modifier
                     </button>
@@ -3230,10 +4711,26 @@ function CatererDaySummaryModal({
               <CalendarDays size={23} />
             </div>
             <div style={{ minWidth: 0 }}>
-              <div style={{ color: '#047857', fontSize: '.74rem', fontWeight: 850, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+              <div
+                style={{
+                  color: '#047857',
+                  fontSize: '.74rem',
+                  fontWeight: 850,
+                  letterSpacing: '.06em',
+                  textTransform: 'uppercase',
+                }}
+              >
                 Récapitulatif de la journée
               </div>
-              <h3 style={{ margin: '.2rem 0 0', color: '#0f172a', fontSize: '1.16rem', fontWeight: 850, textTransform: 'capitalize' }}>
+              <h3
+                style={{
+                  margin: '.2rem 0 0',
+                  color: '#0f172a',
+                  fontSize: '1.16rem',
+                  fontWeight: 850,
+                  textTransform: 'capitalize',
+                }}
+              >
                 {fullDateLabel}
               </h3>
               <div style={{ marginTop: '.25rem', color: '#64748b', fontSize: '.82rem' }}>
@@ -3300,10 +4797,22 @@ function CatererDaySummaryModal({
                 <CalendarDays size={24} />
               </div>
               <strong style={{ display: 'block', color: '#0f172a' }}>Journée disponible</strong>
-              <span style={{ display: 'block', marginTop: '.3rem', color: '#64748b', fontSize: '.84rem' }}>
+              <span
+                style={{
+                  display: 'block',
+                  marginTop: '.3rem',
+                  color: '#64748b',
+                  fontSize: '.84rem',
+                }}
+              >
                 Vous pouvez créer un événement directement à cette date.
               </span>
-              <button type="button" className="production-btn-primary" onClick={onCreate} style={{ marginTop: '1rem' }}>
+              <button
+                type="button"
+                className="production-btn-primary"
+                onClick={onCreate}
+                style={{ marginTop: '1rem' }}
+              >
                 <Plus size={16} /> Nouvel événement
               </button>
             </div>
@@ -3353,20 +4862,61 @@ function CatererDaySummaryModal({
                     </div>
 
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '.4rem', flexWrap: 'wrap', marginBottom: '.25rem' }}>
-                        <span style={{ color: '#059669', fontSize: '.72rem', fontWeight: 850 }}>{event.reference}</span>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '.4rem',
+                          flexWrap: 'wrap',
+                          marginBottom: '.25rem',
+                        }}
+                      >
+                        <span style={{ color: '#059669', fontSize: '.72rem', fontWeight: 850 }}>
+                          {event.reference}
+                        </span>
                         <StatusBadge status={event.status} />
                         <ProductionBadge state={event.productionState} />
                         <FulfillmentBadge mode={event.fulfillmentMode} />
                       </div>
-                      <strong style={{ display: 'block', color: '#0f172a', fontSize: '.96rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <strong
+                        style={{
+                          display: 'block',
+                          color: '#0f172a',
+                          fontSize: '.96rem',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
                         {event.name}
                       </strong>
-                      <div style={{ display: 'flex', gap: '.7rem', flexWrap: 'wrap', marginTop: '.32rem', color: '#64748b', fontSize: '.76rem' }}>
-                        <span><UserRound size={12} style={{ display: 'inline', marginRight: 3 }} />{event.clientSnapshot?.name ?? event.client?.name ?? 'Client'}</span>
-                        <span><UsersRound size={12} style={{ display: 'inline', marginRight: 3 }} />{event.totalGuests} convives</span>
-                        <span><Layers size={12} style={{ display: 'inline', marginRight: 3 }} />{event.prestations.length} prestation(s)</span>
-                        {event.venueName && <span><MapPin size={12} style={{ display: 'inline', marginRight: 3 }} />{event.venueName}</span>}
+                      <div
+                        style={{
+                          display: 'flex',
+                          gap: '.7rem',
+                          flexWrap: 'wrap',
+                          marginTop: '.32rem',
+                          color: '#64748b',
+                          fontSize: '.76rem',
+                        }}
+                      >
+                        <span>
+                          <UserRound size={12} style={{ display: 'inline', marginRight: 3 }} />
+                          {event.clientSnapshot?.name ?? event.client?.name ?? 'Client'}
+                        </span>
+                        <span>
+                          <UsersRound size={12} style={{ display: 'inline', marginRight: 3 }} />
+                          {event.totalGuests} convives
+                        </span>
+                        <span>
+                          <Layers size={12} style={{ display: 'inline', marginRight: 3 }} />
+                          {event.prestations.length} prestation(s)
+                        </span>
+                        {event.venueName && (
+                          <span>
+                            <MapPin size={12} style={{ display: 'inline', marginRight: 3 }} />
+                            {event.venueName}
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -3419,15 +4969,22 @@ function CatererEventDetailModal({
   onStatusChange: (event: CatererEvent, status: CatererEventStatus) => void;
   saving: boolean;
 }) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'prestations' | 'recipes' | 'logistics'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'prestations' | 'recipes' | 'logistics'>(
+    'overview',
+  );
 
   const aggregatedRecipes = useMemo(() => {
-    const map = new Map<string, { id: string; name: string; portions: number; prestations: string[] }>();
+    const map = new Map<
+      string,
+      { id: string; name: string; portions: number; prestations: string[] }
+    >();
     event.prestations.forEach((p) => {
       p.menu.items?.forEach((item) => {
-        const id = item.technicalSheetId ?? item.productId ?? item.id ?? item.technicalSheet?.name ?? 'item';
+        const id =
+          item.technicalSheetId ?? item.productId ?? item.id ?? item.technicalSheet?.name ?? 'item';
         const name = item.technicalSheet?.name ?? item.product?.name ?? 'Article sans nom';
-        const qty = item.portionsOverride ?? Number(p.expectedGuests) * Number(item.servingQuantity ?? 1);
+        const qty =
+          item.portionsOverride ?? Number(p.expectedGuests) * Number(item.servingQuantity ?? 1);
         const existing = map.get(id);
         if (existing) {
           existing.portions += qty;
@@ -3484,10 +5041,34 @@ function CatererEventDetailModal({
             borderTop: '4px solid #10b981',
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              gap: '1rem',
+            }}
+          >
             <div style={{ minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem', marginBottom: '.4rem' }}>
-                <span style={{ fontSize: '.78rem', fontWeight: 850, color: '#047857', background: 'rgba(255, 255, 255, 0.9)', border: '1px solid #a7f3d0', padding: '.2rem .6rem', borderRadius: '8px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '.5rem',
+                  marginBottom: '.4rem',
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: '.78rem',
+                    fontWeight: 850,
+                    color: '#047857',
+                    background: 'rgba(255, 255, 255, 0.9)',
+                    border: '1px solid #a7f3d0',
+                    padding: '.2rem .6rem',
+                    borderRadius: '8px',
+                  }}
+                >
                   {event.reference}
                 </span>
                 <StatusBadge status={event.status} />
@@ -3499,10 +5080,29 @@ function CatererEventDetailModal({
                 {event.name}
               </h2>
 
-              <div style={{ color: '#475569', fontSize: '.84rem', marginTop: '.4rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                <span><CalendarDays size={14} style={{ display: 'inline', marginRight: 4 }} /> {dateLabel(event.startsAt)}</span>
-                <span><UserRound size={14} style={{ display: 'inline', marginRight: 4 }} /> {event.clientSnapshot?.name ?? event.client?.name ?? 'Client non renseigné'}</span>
-                <span><UsersRound size={14} style={{ display: 'inline', marginRight: 4 }} /> {event.totalGuests} convives</span>
+              <div
+                style={{
+                  color: '#475569',
+                  fontSize: '.84rem',
+                  marginTop: '.4rem',
+                  display: 'flex',
+                  gap: '1rem',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                }}
+              >
+                <span>
+                  <CalendarDays size={14} style={{ display: 'inline', marginRight: 4 }} />{' '}
+                  {dateLabel(event.startsAt)}
+                </span>
+                <span>
+                  <UserRound size={14} style={{ display: 'inline', marginRight: 4 }} />{' '}
+                  {event.clientSnapshot?.name ?? event.client?.name ?? 'Client non renseigné'}
+                </span>
+                <span>
+                  <UsersRound size={14} style={{ display: 'inline', marginRight: 4 }} />{' '}
+                  {event.totalGuests} convives
+                </span>
               </div>
             </div>
 
@@ -3526,11 +5126,28 @@ function CatererEventDetailModal({
           </div>
 
           {/* ONGLET NATIVE */}
-          <div style={{ display: 'flex', gap: '0.4rem', marginTop: '1.2rem', borderBottom: '1px solid #dbeafe', overflowX: 'auto', flexWrap: 'nowrap' }}>
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.4rem',
+              marginTop: '1.2rem',
+              borderBottom: '1px solid #dbeafe',
+              overflowX: 'auto',
+              flexWrap: 'nowrap',
+            }}
+          >
             {[
               { key: 'overview', label: 'Aperçu Général', icon: Eye },
-              { key: 'prestations', label: `Prestations (${event.prestations.length})`, icon: Layers },
-              { key: 'recipes', label: `Articles & Recettes (${aggregatedRecipes.length})`, icon: ChefHat },
+              {
+                key: 'prestations',
+                label: `Prestations (${event.prestations.length})`,
+                icon: Layers,
+              },
+              {
+                key: 'recipes',
+                label: `Articles & Recettes (${aggregatedRecipes.length})`,
+                icon: ChefHat,
+              },
               { key: 'logistics', label: 'Lieu & Logistique', icon: MapPin },
             ].map((t) => {
               const Icon = t.icon;
@@ -3579,49 +5196,180 @@ function CatererEventDetailModal({
         >
           {activeTab === 'overview' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '.85rem' }}>
-                <div style={{ padding: '1rem', background: '#f8fafc', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-                  <div style={{ fontSize: '.75rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Nombre de convives</div>
-                  <div style={{ fontSize: '1.35rem', fontWeight: 850, color: '#0f172a', marginTop: '.2rem' }}>
-                    {event.totalGuests} <span style={{ fontSize: '.84rem', color: '#64748b', fontWeight: 600 }}>personnes</span>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                  gap: '.85rem',
+                }}
+              >
+                <div
+                  style={{
+                    padding: '1rem',
+                    background: '#f8fafc',
+                    borderRadius: '16px',
+                    border: '1px solid #e2e8f0',
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: '.75rem',
+                      color: '#64748b',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    Nombre de convives
+                  </div>
+                  <div
+                    style={{
+                      fontSize: '1.35rem',
+                      fontWeight: 850,
+                      color: '#0f172a',
+                      marginTop: '.2rem',
+                    }}
+                  >
+                    {event.totalGuests}{' '}
+                    <span style={{ fontSize: '.84rem', color: '#64748b', fontWeight: 600 }}>
+                      personnes
+                    </span>
                   </div>
                 </div>
 
-                <div style={{ padding: '1rem', background: '#f8fafc', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-                  <div style={{ fontSize: '.75rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Date de l'événement</div>
-                  <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', marginTop: '.2rem' }}>
+                <div
+                  style={{
+                    padding: '1rem',
+                    background: '#f8fafc',
+                    borderRadius: '16px',
+                    border: '1px solid #e2e8f0',
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: '.75rem',
+                      color: '#64748b',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    Date de l'événement
+                  </div>
+                  <div
+                    style={{
+                      fontSize: '1.05rem',
+                      fontWeight: 800,
+                      color: '#0f172a',
+                      marginTop: '.2rem',
+                    }}
+                  >
                     {dateLabel(event.startsAt)}
                   </div>
                 </div>
 
-                <div style={{ padding: '1rem', background: '#f8fafc', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-                  <div style={{ fontSize: '.75rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Prestations répertoriées</div>
-                  <div style={{ fontSize: '1.35rem', fontWeight: 850, color: '#047857', marginTop: '.2rem' }}>
-                    {event.prestations.length} <span style={{ fontSize: '.84rem', color: '#64748b', fontWeight: 600 }}>service(s)</span>
+                <div
+                  style={{
+                    padding: '1rem',
+                    background: '#f8fafc',
+                    borderRadius: '16px',
+                    border: '1px solid #e2e8f0',
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: '.75rem',
+                      color: '#64748b',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    Prestations répertoriées
+                  </div>
+                  <div
+                    style={{
+                      fontSize: '1.35rem',
+                      fontWeight: 850,
+                      color: '#047857',
+                      marginTop: '.2rem',
+                    }}
+                  >
+                    {event.prestations.length}{' '}
+                    <span style={{ fontSize: '.84rem', color: '#64748b', fontWeight: 600 }}>
+                      service(s)
+                    </span>
                   </div>
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
-                <div style={{ padding: '1.1rem', background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-                  <strong style={{ fontSize: '.92rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '.4rem', marginBottom: '.65rem' }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                  gap: '1rem',
+                }}
+              >
+                <div
+                  style={{
+                    padding: '1.1rem',
+                    background: '#ffffff',
+                    borderRadius: '16px',
+                    border: '1px solid #e2e8f0',
+                  }}
+                >
+                  <strong
+                    style={{
+                      fontSize: '.92rem',
+                      color: '#0f172a',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '.4rem',
+                      marginBottom: '.65rem',
+                    }}
+                  >
                     <UserRound size={16} color="#10b981" /> Informations Client
                   </strong>
                   <div style={{ fontSize: '.88rem', fontWeight: 800, color: '#0f172a' }}>
                     {event.clientSnapshot?.name ?? event.client?.name ?? 'Non spécifié'}
                   </div>
-                  {event.clientSnapshot?.email && <div style={{ fontSize: '.8rem', color: '#64748b', marginTop: '.2rem' }}>✉️ {event.clientSnapshot.email}</div>}
-                  {event.clientSnapshot?.phone && <div style={{ fontSize: '.8rem', color: '#64748b', marginTop: '.15rem' }}>📞 {event.clientSnapshot.phone}</div>}
+                  {event.clientSnapshot?.email && (
+                    <div style={{ fontSize: '.8rem', color: '#64748b', marginTop: '.2rem' }}>
+                      ✉️ {event.clientSnapshot.email}
+                    </div>
+                  )}
+                  {event.clientSnapshot?.phone && (
+                    <div style={{ fontSize: '.8rem', color: '#64748b', marginTop: '.15rem' }}>
+                      📞 {event.clientSnapshot.phone}
+                    </div>
+                  )}
                 </div>
 
-                <div style={{ padding: '1.1rem', background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-                  <strong style={{ fontSize: '.92rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '.4rem', marginBottom: '.65rem' }}>
+                <div
+                  style={{
+                    padding: '1.1rem',
+                    background: '#ffffff',
+                    borderRadius: '16px',
+                    border: '1px solid #e2e8f0',
+                  }}
+                >
+                  <strong
+                    style={{
+                      fontSize: '.92rem',
+                      color: '#0f172a',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '.4rem',
+                      marginBottom: '.65rem',
+                    }}
+                  >
                     <MapPin size={16} color="#10b981" /> Lieu & Distribution
                   </strong>
                   <div style={{ fontSize: '.88rem', fontWeight: 800, color: '#0f172a' }}>
                     {event.venueName || 'Lieu non renseigné'}
                   </div>
-                  {event.address && <div style={{ fontSize: '.8rem', color: '#64748b', marginTop: '.2rem' }}>📍 {event.address}</div>}
+                  {event.address && (
+                    <div style={{ fontSize: '.8rem', color: '#64748b', marginTop: '.2rem' }}>
+                      📍 {event.address}
+                    </div>
+                  )}
                   <div style={{ marginTop: '.4rem' }}>
                     <FulfillmentBadge mode={event.fulfillmentMode} />
                   </div>
@@ -3629,9 +5377,27 @@ function CatererEventDetailModal({
               </div>
 
               {event.notes && (
-                <div style={{ padding: '1rem', background: '#fffbeb', borderRadius: '14px', border: '1px solid #fde68a' }}>
-                  <strong style={{ fontSize: '.85rem', color: '#b45309', display: 'block', marginBottom: '.25rem' }}>Consignes / Notes du dossier</strong>
-                  <p style={{ margin: 0, fontSize: '.84rem', color: '#78350f', lineHeight: 1.5 }}>{event.notes}</p>
+                <div
+                  style={{
+                    padding: '1rem',
+                    background: '#fffbeb',
+                    borderRadius: '14px',
+                    border: '1px solid #fde68a',
+                  }}
+                >
+                  <strong
+                    style={{
+                      fontSize: '.85rem',
+                      color: '#b45309',
+                      display: 'block',
+                      marginBottom: '.25rem',
+                    }}
+                  >
+                    Consignes / Notes du dossier
+                  </strong>
+                  <p style={{ margin: 0, fontSize: '.84rem', color: '#78350f', lineHeight: 1.5 }}>
+                    {event.notes}
+                  </p>
                 </div>
               )}
             </div>
@@ -3640,23 +5406,73 @@ function CatererEventDetailModal({
           {activeTab === 'prestations' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {event.prestations.map((prestation) => (
-                <div key={prestation.id} style={{ padding: '1.1rem', borderRadius: '16px', border: '1px solid #e2e8f0', background: '#ffffff' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '.5rem' }}>
+                <div
+                  key={prestation.id}
+                  style={{
+                    padding: '1.1rem',
+                    borderRadius: '16px',
+                    border: '1px solid #e2e8f0',
+                    background: '#ffffff',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '.5rem',
+                    }}
+                  >
                     <strong style={{ fontSize: '1.05rem', color: '#0f172a', fontWeight: 800 }}>
                       {prestation.name}
                     </strong>
-                    <span style={{ fontSize: '.82rem', fontWeight: 850, color: '#047857', background: '#ecfdf5', padding: '.25rem .65rem', borderRadius: '8px' }}>
+                    <span
+                      style={{
+                        fontSize: '.82rem',
+                        fontWeight: 850,
+                        color: '#047857',
+                        background: '#ecfdf5',
+                        padding: '.25rem .65rem',
+                        borderRadius: '8px',
+                      }}
+                    >
                       {prestation.expectedGuests} convives
                     </span>
                   </div>
 
-                  <div style={{ fontSize: '.8rem', color: '#64748b', display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '.85rem' }}>
-                    {prestation.readyAt && <span>⏱️ Prêt à : <strong>{dateLabel(prestation.readyAt)}</strong></span>}
-                    {prestation.serviceAt && <span>🍽️ Service à : <strong>{dateLabel(prestation.serviceAt)}</strong></span>}
+                  <div
+                    style={{
+                      fontSize: '.8rem',
+                      color: '#64748b',
+                      display: 'flex',
+                      gap: '1rem',
+                      flexWrap: 'wrap',
+                      marginBottom: '.85rem',
+                    }}
+                  >
+                    {prestation.readyAt && (
+                      <span>
+                        ⏱️ Prêt à : <strong>{dateLabel(prestation.readyAt)}</strong>
+                      </span>
+                    )}
+                    {prestation.serviceAt && (
+                      <span>
+                        🍽️ Service à : <strong>{dateLabel(prestation.serviceAt)}</strong>
+                      </span>
+                    )}
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '.4rem' }}>
-                    <div style={{ fontSize: '.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Composition du menu :</div>
+                    <div
+                      style={{
+                        fontSize: '.75rem',
+                        fontWeight: 800,
+                        color: '#64748b',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      Composition du menu :
+                    </div>
                     <div style={{ display: 'flex', gap: '.45rem', flexWrap: 'wrap' }}>
                       {prestation.menu.items?.map((item, index) => (
                         <span
@@ -3672,7 +5488,12 @@ function CatererEventDetailModal({
                           }}
                         >
                           {item.technicalSheet?.name ?? item.product?.name ?? 'Article'} ·{' '}
-                          <strong>{item.portionsOverride ?? Number(prestation.expectedGuests) * Number(item.servingQuantity ?? 1)} portions</strong>
+                          <strong>
+                            {item.portionsOverride ??
+                              Number(prestation.expectedGuests) *
+                                Number(item.servingQuantity ?? 1)}{' '}
+                            portions
+                          </strong>
                         </span>
                       ))}
                     </div>
@@ -3685,7 +5506,8 @@ function CatererEventDetailModal({
           {activeTab === 'recipes' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '.75rem' }}>
               <div style={{ fontSize: '.85rem', color: '#64748b' }}>
-                Liste consolidée de tous les articles et fiches techniques nécessaires pour cet événement traiteur :
+                Liste consolidée de tous les articles et fiches techniques nécessaires pour cet
+                événement traiteur :
               </div>
               <div style={{ overflowX: 'auto', borderRadius: '14px' }}>
                 <table className="table-modern" style={{ width: '100%', minWidth: '650px' }}>
@@ -3700,17 +5522,37 @@ function CatererEventDetailModal({
                     {aggregatedRecipes.map((recipe) => (
                       <tr key={recipe.id}>
                         <td>
-                          <strong style={{ color: '#0f172a', fontSize: '.9rem' }}>{recipe.name}</strong>
+                          <strong style={{ color: '#0f172a', fontSize: '.9rem' }}>
+                            {recipe.name}
+                          </strong>
                         </td>
                         <td>
-                          <span style={{ fontSize: '.95rem', fontWeight: 850, color: '#10b981', background: '#ecfdf5', padding: '.2rem .6rem', borderRadius: '8px' }}>
+                          <span
+                            style={{
+                              fontSize: '.95rem',
+                              fontWeight: 850,
+                              color: '#10b981',
+                              background: '#ecfdf5',
+                              padding: '.2rem .6rem',
+                              borderRadius: '8px',
+                            }}
+                          >
                             {recipe.portions} portions
                           </span>
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: '.3rem', flexWrap: 'wrap' }}>
                             {recipe.prestations.map((p) => (
-                              <span key={p} style={{ fontSize: '.75rem', background: '#f1f5f9', color: '#475569', padding: '.15rem .45rem', borderRadius: '6px' }}>
+                              <span
+                                key={p}
+                                style={{
+                                  fontSize: '.75rem',
+                                  background: '#f1f5f9',
+                                  color: '#475569',
+                                  padding: '.15rem .45rem',
+                                  borderRadius: '6px',
+                                }}
+                              >
                                 {p}
                               </span>
                             ))}
@@ -3726,17 +5568,50 @@ function CatererEventDetailModal({
 
           {activeTab === 'logistics' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div style={{ padding: '1.1rem', background: '#f8fafc', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-                <strong style={{ fontSize: '.95rem', color: '#0f172a', display: 'block', marginBottom: '.5rem' }}>Site de Production Attribué</strong>
+              <div
+                style={{
+                  padding: '1.1rem',
+                  background: '#f8fafc',
+                  borderRadius: '16px',
+                  border: '1px solid #e2e8f0',
+                }}
+              >
+                <strong
+                  style={{
+                    fontSize: '.95rem',
+                    color: '#0f172a',
+                    display: 'block',
+                    marginBottom: '.5rem',
+                  }}
+                >
+                  Site de Production Attribué
+                </strong>
                 <div style={{ fontSize: '.9rem', fontWeight: 800, color: '#10b981' }}>
                   {event.productionSite?.name ?? 'Site non attribué'}
                 </div>
               </div>
 
-              <div style={{ padding: '1.1rem', background: '#f8fafc', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-                <strong style={{ fontSize: '.95rem', color: '#0f172a', display: 'block', marginBottom: '.5rem' }}>Consignes d'accès & Livraison</strong>
+              <div
+                style={{
+                  padding: '1.1rem',
+                  background: '#f8fafc',
+                  borderRadius: '16px',
+                  border: '1px solid #e2e8f0',
+                }}
+              >
+                <strong
+                  style={{
+                    fontSize: '.95rem',
+                    color: '#0f172a',
+                    display: 'block',
+                    marginBottom: '.5rem',
+                  }}
+                >
+                  Consignes d'accès & Livraison
+                </strong>
                 <p style={{ margin: 0, fontSize: '.86rem', color: '#475569', lineHeight: 1.5 }}>
-                  {event.accessNotes || 'Aucune consigne d’accès spécifique mentionnée pour cette livraison.'}
+                  {event.accessNotes ||
+                    'Aucune consigne d’accès spécifique mentionnée pour cette livraison.'}
                 </p>
               </div>
             </div>
@@ -3744,7 +5619,19 @@ function CatererEventDetailModal({
         </div>
 
         {/* FOOTER DES ACTIONS RAPIDES */}
-        <div style={{ padding: '1.1rem 1.6rem', borderTop: '1px solid #e2e8f0', background: '#ffffff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', flexShrink: 0 }}>
+        <div
+          style={{
+            padding: '1.1rem 1.6rem',
+            borderTop: '1px solid #e2e8f0',
+            background: '#ffffff',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '1rem',
+            flexShrink: 0,
+          }}
+        >
           <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap' }}>
             {event.status === 'CONFIRMED' && (
               <button
@@ -3756,7 +5643,9 @@ function CatererEventDetailModal({
                 }}
               >
                 <ChefHat size={16} />
-                {event.productionState === 'NOT_GENERATED' || event.productionState === 'DIRTY' ? 'Planifier dans Fabrication' : 'Voir les productions'}
+                {event.productionState === 'NOT_GENERATED' || event.productionState === 'DIRTY'
+                  ? 'Planifier dans Fabrication'
+                  : 'Voir les productions'}
               </button>
             )}
 
@@ -3783,11 +5672,7 @@ function CatererEventDetailModal({
             </button>
           </div>
 
-          <button
-            type="button"
-            style={calendarSecondaryButtonStyle}
-            onClick={onClose}
-          >
+          <button type="button" style={calendarSecondaryButtonStyle} onClick={onClose}>
             Fermer
           </button>
         </div>

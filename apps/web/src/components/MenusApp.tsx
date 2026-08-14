@@ -758,11 +758,9 @@ export function MenusApp({
         ? 'events'
         : tab === 'calendar'
           ? 'calendar'
-          : tab === 'catalog'
-            ? 'clients'
-            : tab === 'exports'
-              ? 'documents'
-              : 'dashboard';
+          : tab === 'exports'
+            ? 'documents'
+            : 'dashboard';
     return (
       <CatererMenusApp
         token={token}
@@ -773,11 +771,9 @@ export function MenusApp({
           onNavigate(
             next === 'events'
               ? 'menus'
-              : next === 'clients'
-                ? 'catalog'
-                : next === 'documents'
-                  ? 'exports'
-                  : next,
+              : next === 'documents'
+                ? 'exports'
+                : next,
           )
         }
         onProfileSettings={() => setShowProfileSettings(true)}

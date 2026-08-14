@@ -7,6 +7,7 @@ import {
   IsEnum,
   IsIn,
   IsNotEmpty,
+  IsObject,
   IsOptional,
   IsString,
   IsUrl,
@@ -224,9 +225,44 @@ export class UpdateFinanceAccountDto {
 
 export class UpdateFinancePreferencesDto {
   @IsArray()
-  @ArrayMaxSize(10)
+  @ArrayMaxSize(16)
   @IsString({ each: true })
   dashboardKpis!: string[];
+}
+
+export class UpdateFinanceBudgetReferenceDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(240)
+  budgetId!: string;
+
+  @IsDateString()
+  asOf!: string;
+
+  @IsOptional()
+  @IsUUID()
+  siteId?: string;
+}
+
+export class SuggestFinanceBudgetDto {
+  @IsDateString()
+  asOf!: string;
+
+  @IsUUID()
+  siteId!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1200)
+  guidance?: string;
+}
+
+export class AcceptFinanceBudgetSuggestionDto {
+  @IsUUID()
+  siteId!: string;
+
+  @IsObject()
+  proposal!: Record<string, unknown>;
 }
 
 export class FinanceAiAnalysisDto {

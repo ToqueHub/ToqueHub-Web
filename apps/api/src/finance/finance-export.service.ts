@@ -983,9 +983,10 @@ export class FinanceExportService {
   }
 
   private executiveBullets(data: BootstrapData, period: DashboardPeriod, currency: string) {
-    const metric = (id: string) => period.core.find((item) => item.id === id);
+    const metric = (id: string) =>
+      [...period.core, ...period.optional].find((item) => item.id === id);
     const revenue = metric('revenue');
-    const result = metric('operating_result');
+    const result = metric('accounting_operating_result');
     const bullets = [data.dashboard.health.summary];
     if (revenue?.value != null) {
       bullets.push(
@@ -996,7 +997,7 @@ export class FinanceExportService {
     }
     if (result?.value != null) {
       bullets.push(
-        `Le résultat d’exploitation est de ${formatMoney(result.value, currency)} (${result.value >= 0 ? 'activité rentable sur la période' : 'perte d’exploitation à corriger'}).`,
+        `Le résultat d’exploitation comptable est de ${formatMoney(result.value, currency)} (${result.value >= 0 ? 'activité rentable sur la période' : 'perte d’exploitation à corriger'}).`,
       );
     }
     bullets.push(

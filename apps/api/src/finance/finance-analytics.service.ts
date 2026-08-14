@@ -26,6 +26,7 @@ type DashboardMetric = {
   targetLabel?: string;
   displayable: boolean;
   availabilityReason?: string | null;
+  revenuePercent?: number | null;
 };
 
 type DashboardPeriodContext = {
@@ -40,6 +41,72 @@ type DashboardPeriodContext = {
   fixedCostAllocationDays?: number;
 };
 
+type FinanceAggregateOptions = {
+  revenuePolicy?: 'operational' | 'accounting';
+  finnishChart?: boolean;
+};
+
+type FinanceLedgerRevenueRow = {
+  entryDate: Date;
+  accountCode: string;
+  debit: Prisma.Decimal | number;
+  credit: Prisma.Decimal | number;
+  description?: string | null;
+  series?: string | null;
+  entryType?: number | null;
+  sourceEntityId?: string | null;
+};
+
+type FinanceSalesRevenueRow = {
+  saleDate: Date;
+  netAmount: Prisma.Decimal | number;
+  grossAmount: Prisma.Decimal | number;
+  vatAmount: Prisma.Decimal | number;
+  transactionCount: number;
+  paymentMethod?: string | null;
+  source?: { provider?: string | null } | null;
+};
+
+export type FinanceRevenueBreakdown = {
+  selectedCashRegisterRevenue: number;
+  selectedAccountingRevenue: number;
+  accountingInvoiceRevenue: number;
+  accountingFallbackRevenue: number;
+  accountingAdjustmentRevenue: number;
+  accountingOverlappingRevenue: number;
+  accountingOtherRevenue: number;
+};
+
+type FennoaBudgetLineInput = {
+  accountingPeriodExternalId: number;
+  externalBudgetId: number | null;
+  budgetName: string | null;
+  accountCode: string;
+  month: number;
+  amount: Prisma.Decimal | number;
+};
+
+type BudgetMetricLine = {
+  metric: string;
+  label: string;
+  periodStart: Date;
+  amount: Prisma.Decimal;
+};
+
+type FinanceBudgetCandidate = {
+  id: string;
+  siteId: string | null;
+  site: { id: string; name: string } | null;
+  name: string;
+  scenario: string | null;
+  currency: string;
+  startDate: Date;
+  endDate: Date;
+  source: string;
+  isReference: boolean;
+  lines: BudgetMetricLine[];
+};
+
 export type FinanceSiteDataScopeMode =
   | 'consolidated'
   | 'direct'
@@ -52,6 +119,147 @@ export function selectFinanceBudgetPlan<T extends { siteId?: string | null }>(
 ) {
   if (!siteId) return plans[0] ?? null;
   return plans.find((plan) => plan.siteId === siteId) ?? plans.find((plan) => !plan.siteId) ?? null;
+}
+
+export function listFennoaBudgets(
+  lines: FennoaBudgetLineInput[],
+  accountingPeriodExternalId: number | null,
+) {
+  if (accountingPeriodExternalId == null) return [];
+  const groups = new Map<
+    string,
+    {
+      externalBudgetId: number | null;
+      name: string;
+      lines: FennoaBudgetLineInput[];
+    }
+  >();
+  for (const line of lines) {
+    if (line.accountingPeriodExternalId !== accountingPeriodExternalId) continue;
+    const name = line.budgetName?.trim() || 'Budget Fennoa';
+    const key = `${line.externalBudgetId ?? 'sans-id'}:${name}`;
+    const group = groups.get(key) ?? {
+      externalBudgetId: line.externalBudgetId,
+      name,
+      lines: [],
+    };
+    group.lines.push(line);
+    groups.set(key, group);
+  }
+  return [...groups.values()].sort(
+    (left, right) => (right.externalBudgetId ?? -1) - (left.externalBudgetId ?? -1),
+  );
+}
+
+export function selectFennoaBudget(
+  lines: FennoaBudgetLineInput[],
+  accountingPeriodExternalId: number | null,
+) {
+  return listFennoaBudgets(lines, accountingPeriodExternalId)[0] ?? null;
+}
+
+export function financeBudgetSelectionKey(from: Date, to: Date, siteId?: string) {
+  return `${siteId || 'consolidated'}:${from.toISOString().slice(0, 10)}:${to
+    .toISOString()
+    .slice(0, 10)}`;
+}
+
+export function fennoaBudgetMetricLines(
+  lines: FennoaBudgetLineInput[],
+  fiscalStart: Date,
+): BudgetMetricLine[] {
+  const months = new Map<
+    number,
+    {
+      turnover: number;
+      otherOperatingIncome: number;
+      materialPurchases: number;
+      payroll: number;
+      depreciation: number;
+      otherOpex: number;
+      financial: number;
+      taxes: number;
+    }
+  >();
+  for (const line of lines) {
+    if (line.month < 1 || line.month > 12) continue;
+    const account = Number.parseInt(line.accountCode.replace(/\D/g, '').slice(0, 4), 10);
+    if (!Number.isFinite(account)) continue;
+    const month = months.get(line.month) ?? {
+      turnover: 0,
+      otherOperatingIncome: 0,
+      materialPurchases: 0,
+      payroll: 0,
+      depreciation: 0,
+      otherOpex: 0,
+      financial: 0,
+      taxes: 0,
+    };
+    const amount = numeric(line.amount);
+    if (account >= 3000 && account <= 3899) month.turnover += amount;
+    else if (account >= 3900 && account <= 3999) month.otherOperatingIncome += amount;
+    else if (account >= 4000 && account <= 4999) month.materialPurchases += amount;
+    else if (account >= 5000 && account <= 6799) month.payroll += amount;
+    else if (account >= 6800 && account <= 6899) month.depreciation += amount;
+    else if (account >= 6900 && account <= 8999) month.otherOpex += amount;
+    else if (account >= 9000 && account <= 9799) month.financial += amount;
+    else if (account >= 9800 && account <= 9999) month.taxes += amount;
+    months.set(line.month, month);
+  }
+
+  const definitions = [
+    ['revenue', "Chiffre d'affaires"],
+    ['other_operating_income', "Autres produits d'exploitation"],
+    ['material_purchases', 'Achats / matières'],
+    ['payroll', 'Masse salariale'],
+    ['depreciation', 'Amortissements'],
+    ['other_opex', "Autres charges d'exploitation"],
+    ['operating_expenses', "Charges d'exploitation"],
+    ['result_before_depreciation', 'Résultat avant amortissements'],
+    ['operating_result', "Résultat d'exploitation"],
+    ['financial_result', 'Résultat financier'],
+    ['taxes', 'Impôts'],
+    ['net_result', 'Résultat net'],
+  ] as const;
+
+  return [...months.entries()]
+    .sort(([left], [right]) => left - right)
+    .flatMap(([monthNumber, month]) => {
+      const materialPurchases = -month.materialPurchases;
+      const payroll = -month.payroll;
+      const depreciation = -month.depreciation;
+      const otherOpexWithoutDepreciation = -month.otherOpex;
+      const otherOpex = depreciation + otherOpexWithoutDepreciation;
+      const operatingExpenses = materialPurchases + payroll + otherOpex;
+      const operatingIncome = month.turnover + month.otherOperatingIncome;
+      const resultBeforeDepreciation =
+        operatingIncome - materialPurchases - payroll - otherOpexWithoutDepreciation;
+      const operatingResult = operatingIncome - operatingExpenses;
+      const netResult = operatingResult + month.financial + month.taxes;
+      const values: Record<(typeof definitions)[number][0], number> = {
+        revenue: month.turnover,
+        other_operating_income: month.otherOperatingIncome,
+        material_purchases: materialPurchases,
+        payroll,
+        depreciation,
+        other_opex: otherOpex,
+        operating_expenses: operatingExpenses,
+        result_before_depreciation: resultBeforeDepreciation,
+        operating_result: operatingResult,
+        financial_result: month.financial,
+        taxes: -month.taxes,
+        net_result: netResult,
+      };
+      const periodStart = new Date(
+        Date.UTC(fiscalStart.getUTCFullYear(), fiscalStart.getUTCMonth() + monthNumber - 1, 1),
+      );
+      return definitions.map(([metric, label]) => ({
+        metric,
+        label,
+        periodStart,
+        amount: new Prisma.Decimal(round(values[metric])),
+      }));
+    });
 }
 
 export function allocateMonthlyBudgetPerCalendarDay(
@@ -113,6 +321,24 @@ export function resolveFinanceSiteDataScope(input: {
 }
 
 const OPTIONAL_KPIS = [
+  {
+    id: 'result_before_depreciation',
+    label: 'Résultat avant amortissements',
+    unit: 'currency',
+    help: 'Résultat comptable de l’activité avant les dotations aux amortissements.',
+  },
+  {
+    id: 'accounting_operating_result',
+    label: 'Résultat d’exploitation comptable',
+    unit: 'currency',
+    help: 'Produits d’exploitation diminués de toutes les charges d’exploitation, amortissements inclus.',
+  },
+  {
+    id: 'net_result',
+    label: 'Résultat net',
+    unit: 'currency',
+    help: 'Résultat final après amortissements, résultat financier et impôts.',
+  },
   {
     id: 'average_ticket',
     label: 'Ticket moyen',
@@ -176,6 +402,9 @@ const OPTIONAL_KPIS = [
 ] as const;
 
 const DEFAULT_KPI_IDS = [
+  'result_before_depreciation',
+  'accounting_operating_result',
+  'net_result',
   'average_ticket',
   'transactions',
   'cash',
@@ -184,6 +413,23 @@ const DEFAULT_KPI_IDS = [
   'break_even_week',
   'break_even_month',
 ];
+
+const REVENUE_PERCENT_KPI_IDS = new Set([
+  'revenue',
+  'operating_expenses',
+  'payroll',
+  'result_before_depreciation',
+  'accounting_operating_result',
+  'net_result',
+  'contribution_margin',
+  'fixed_costs',
+]);
+
+export function revenuePercentOf(id: string, value: number | null, revenue: number | null) {
+  if (!REVENUE_PERCENT_KPI_IDS.has(id) || value == null || revenue == null || revenue === 0)
+    return null;
+  return round((value / revenue) * 100, 1);
+}
 
 function utcDateKey(value: Date) {
   return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, '0')}-${String(value.getUTCDate()).padStart(2, '0')}`;
@@ -227,7 +473,7 @@ function countProfiledDays(from: Date, to: Date, weekdays: Set<number>) {
   return Math.max(1, count);
 }
 
-function countMonths(from: Date, to: Date) {
+export function countMonths(from: Date, to: Date) {
   return Math.max(
     1,
     (to.getUTCFullYear() - from.getUTCFullYear()) * 12 + to.getUTCMonth() - from.getUTCMonth() + 1,
@@ -235,8 +481,15 @@ function countMonths(from: Date, to: Date) {
 }
 
 function metricIsDisplayable(id: string, value: number | null) {
-  if (value == null || !Number.isFinite(value) || value === 0) return false;
+  if (value == null || !Number.isFinite(value)) return false;
   const absolute = Math.abs(value);
+  if (
+    id === 'result_before_depreciation' ||
+    id === 'accounting_operating_result' ||
+    id === 'net_result'
+  )
+    return absolute <= 1_000_000_000_000;
+  if (value === 0) return false;
   if (id === 'average_ticket') return value > 0 && value <= 10_000;
   if (id === 'transactions') return value > 0 && value <= 100_000_000;
   if (id === 'contribution_margin_rate') return absolute <= 1_000;
@@ -369,6 +622,50 @@ function numeric(value: Prisma.Decimal | number | null | undefined) {
   return value == null ? 0 : Number(value);
 }
 
+export function resolveFinanceStatementCategory(
+  code: string,
+  storedCategory: FinanceAccountCategory,
+  countryCode?: string | null,
+) {
+  if (String(countryCode ?? '').toUpperCase() !== 'FI') return storedCategory;
+  const accountNumber = Number.parseInt(code.replace(/\D/g, '').slice(0, 4), 10);
+  if (accountNumber >= 1900 && accountNumber <= 1999) return FinanceAccountCategory.CASH;
+  if (accountNumber >= 3000 && accountNumber <= 3999) return FinanceAccountCategory.REVENUE;
+  if (accountNumber >= 4000 && accountNumber <= 4999)
+    return FinanceAccountCategory.MATERIAL_PURCHASES;
+  if (accountNumber >= 5000 && accountNumber <= 6799) return FinanceAccountCategory.PAYROLL;
+  if (accountNumber >= 6800 && accountNumber <= 8999) return FinanceAccountCategory.OTHER_OPEX;
+  if (accountNumber >= 9000 && accountNumber <= 9799) return FinanceAccountCategory.FINANCIAL;
+  if (accountNumber >= 9800 && accountNumber <= 9999) return FinanceAccountCategory.TAX;
+  return storedCategory;
+}
+
+export function deriveAccountingResults(input: {
+  accountingRevenue: number | null;
+  otherOperatingIncome?: number | null;
+  operatingExpenses: number | null;
+  depreciation: number | null;
+  financialExpenses: number | null;
+  taxes: number | null;
+}) {
+  if (input.accountingRevenue == null || input.operatingExpenses == null) {
+    return {
+      resultBeforeDepreciation: null,
+      accountingOperatingResult: null,
+      netResult: null,
+    };
+  }
+  const accountingOperatingResult =
+    input.accountingRevenue + numeric(input.otherOperatingIncome) - input.operatingExpenses;
+  return {
+    resultBeforeDepreciation: round(accountingOperatingResult + numeric(input.depreciation)),
+    accountingOperatingResult: round(accountingOperatingResult),
+    netResult: round(
+      accountingOperatingResult - numeric(input.financialExpenses) - numeric(input.taxes),
+    ),
+  };
+}
+
 function sameOrBeforeMonth(left: Date, right: Date) {
   return startOfMonth(left) <= startOfMonth(right);
 }
@@ -381,6 +678,144 @@ function formatComparisonDate(value: Date) {
     year: 'numeric',
     timeZone: 'UTC',
   });
+}
+
+function normalizedRevenueText(value: string | null | undefined) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeRevenueChannel(value: string | null | undefined) {
+  const normalized = normalizedRevenueText(value).replace(/[\s_-]+/g, '');
+  if (!normalized || normalized === 'generic' || normalized === 'fennoa') return null;
+  if (normalized.includes('flatpay')) return 'FLATPAY';
+  if (
+    normalized.includes('paypal') ||
+    normalized.includes('zettle') ||
+    normalized.includes('izettle')
+  )
+    return 'PAYPAL_POS';
+  if (normalized.includes('loyverse') || normalized.includes('loysverse')) return 'LOYVERSE';
+  if (normalized.includes('sumup')) return 'SUMUP';
+  if (normalized.includes('stripe')) return 'STRIPE';
+  if (normalized.includes('square')) return 'SQUARE';
+  return null;
+}
+
+export function classifyAccountingRevenueEntry(
+  entry: Pick<FinanceLedgerRevenueRow, 'description' | 'series' | 'entryType' | 'sourceEntityId'>,
+): {
+  kind: 'invoice' | 'pos_summary' | 'adjustment' | 'other';
+  channel: string | null;
+} {
+  const series = normalizedRevenueText(entry.series).replace(/[\s_-]+/g, '');
+  const description = normalizedRevenueText(entry.description);
+  const sourceEntity = normalizedRevenueText(entry.sourceEntityId);
+  const invoiceSeries = new Set(['in', 'inv', 'invoice', 'salesinvoice', 'si', 'ar']);
+  if (
+    invoiceSeries.has(series) ||
+    /\b(invoice|facture|sales invoice|myyntilasku|lasku)\b/.test(description) ||
+    /\b(invoice|salesinvoice)\b/.test(sourceEntity)
+  ) {
+    return { kind: 'invoice', channel: null };
+  }
+  if (
+    /tasmaytys|selvittamaton|reconciliation|rapprochement|adjustment|ajustement|rounding|arrondi|maksutapaero|payment method difference/.test(
+      description,
+    )
+  ) {
+    return { kind: 'adjustment', channel: null };
+  }
+  const channel = normalizeRevenueChannel(description);
+  if (channel) return { kind: 'pos_summary', channel };
+  return { kind: 'other', channel: null };
+}
+
+export function selectHybridFinanceRevenueForMonth({
+  sales,
+  accountingRows,
+  periodEnd,
+  accountingLockedThrough,
+}: {
+  sales: FinanceSalesRevenueRow[];
+  accountingRows: FinanceLedgerRevenueRow[];
+  periodEnd: Date;
+  accountingLockedThrough: Date | null;
+}): { value: number | null; basis: RevenueBasis; breakdown: FinanceRevenueBreakdown } {
+  const directRevenue = sales.reduce((sum, item) => sum + numeric(item.netAmount), 0);
+  const hasCashRegisterData = sales.some(
+    (item) =>
+      item.transactionCount !== 0 ||
+      numeric(item.netAmount) !== 0 ||
+      numeric(item.grossAmount) !== 0 ||
+      numeric(item.vatAmount) !== 0,
+  );
+  const accountingRevenue = accountingRows.reduce(
+    (sum, entry) => sum + numeric(entry.credit) - numeric(entry.debit),
+    0,
+  );
+  const hasAccountingData = accountingRows.length > 0;
+  const emptyBreakdown: FinanceRevenueBreakdown = {
+    selectedCashRegisterRevenue: 0,
+    selectedAccountingRevenue: 0,
+    accountingInvoiceRevenue: 0,
+    accountingFallbackRevenue: 0,
+    accountingAdjustmentRevenue: 0,
+    accountingOverlappingRevenue: 0,
+    accountingOtherRevenue: 0,
+  };
+  const accountingIsClosed = Boolean(
+    accountingLockedThrough && endOfUtcDay(accountingLockedThrough) >= periodEnd,
+  );
+  if (accountingIsClosed && hasAccountingData) {
+    return {
+      value: round(accountingRevenue),
+      basis: 'accounting',
+      breakdown: { ...emptyBreakdown, selectedAccountingRevenue: round(accountingRevenue) },
+    };
+  }
+  if (!hasCashRegisterData) {
+    if (!hasAccountingData) return { value: null, basis: 'unavailable', breakdown: emptyBreakdown };
+    return {
+      value: round(accountingRevenue),
+      basis: 'accounting',
+      breakdown: { ...emptyBreakdown, selectedAccountingRevenue: round(accountingRevenue) },
+    };
+  }
+
+  const directChannels = new Set<string>();
+  for (const sale of sales) {
+    const channel = normalizeRevenueChannel(sale.source?.provider ?? sale.paymentMethod);
+    if (channel) directChannels.add(channel);
+  }
+  const breakdown = accountingRows.reduce<FinanceRevenueBreakdown>(
+    (totals, entry) => {
+      const amount = numeric(entry.credit) - numeric(entry.debit);
+      const classification = classifyAccountingRevenueEntry(entry);
+      if (classification.kind === 'invoice') totals.accountingInvoiceRevenue += amount;
+      else if (classification.kind === 'adjustment') totals.accountingAdjustmentRevenue += amount;
+      else if (classification.kind === 'pos_summary' && classification.channel) {
+        if (directChannels.has(classification.channel))
+          totals.accountingOverlappingRevenue += amount;
+        else totals.accountingFallbackRevenue += amount;
+      } else totals.accountingOtherRevenue += amount;
+      return totals;
+    },
+    { ...emptyBreakdown, selectedCashRegisterRevenue: directRevenue },
+  );
+  const accountingAdditions =
+    breakdown.accountingInvoiceRevenue + breakdown.accountingFallbackRevenue;
+  const basis: RevenueBasis = accountingAdditions !== 0 ? 'mixed' : 'cash_register';
+  return {
+    value: round(directRevenue + accountingAdditions),
+    basis,
+    breakdown: Object.fromEntries(
+      Object.entries(breakdown).map(([key, value]) => [key, round(value)]),
+    ) as FinanceRevenueBreakdown,
+  };
 }
 
 export function selectFinanceRevenue({
@@ -448,6 +883,82 @@ export function resolveFinancePeriod(
   return { preset, from, to, label: labels[preset] ?? 'Période sélectionnée' };
 }
 
+type FinanceAccountingPeriodRange = {
+  externalId: number;
+  startDate: Date;
+  endDate: Date;
+};
+
+export function resolveFinanceFiscalPeriod(
+  periods: FinanceAccountingPeriodRange[],
+  asOf: Date,
+  fiscalYearStartMonth: number,
+) {
+  const selectedDay = startOfUtcDay(asOf);
+  const accountingPeriod = periods
+    .map((period) => ({
+      ...period,
+      startDate: startOfUtcDay(period.startDate),
+      endDate: endOfUtcDay(period.endDate),
+    }))
+    .filter(({ startDate, endDate }) => startDate <= selectedDay && endDate >= selectedDay)
+    .sort((left, right) => right.startDate.getTime() - left.startDate.getTime())[0];
+  if (accountingPeriod) {
+    return {
+      ...accountingPeriod,
+      source: 'accounting_period' as const,
+    };
+  }
+
+  const fiscalStartMonth = Math.min(12, Math.max(1, fiscalYearStartMonth)) - 1;
+  const fiscalStartYear =
+    asOf.getUTCMonth() < fiscalStartMonth ? asOf.getUTCFullYear() - 1 : asOf.getUTCFullYear();
+  const startDate = new Date(Date.UTC(fiscalStartYear, fiscalStartMonth, 1));
+  return {
+    externalId: null,
+    startDate,
+    endDate: new Date(
+      Date.UTC(startDate.getUTCFullYear() + 1, startDate.getUTCMonth(), 0, 23, 59, 59, 999),
+    ),
+    source: 'settings' as const,
+  };
+}
+
+export function alignFinanceAccountingPeriods(
+  periods: FinanceAccountingPeriodRange[],
+  selected: ReturnType<typeof resolveFinanceFiscalPeriod>,
+  actualTo: Date,
+  limit = 4,
+) {
+  if (selected.source !== 'accounting_period') return [];
+  const elapsedDays = Math.max(
+    0,
+    Math.floor(
+      (startOfUtcDay(actualTo).getTime() - startOfUtcDay(selected.startDate).getTime()) /
+        86_400_000,
+    ),
+  );
+  return periods
+    .map((period) => ({
+      ...period,
+      startDate: startOfUtcDay(period.startDate),
+      endDate: endOfUtcDay(period.endDate),
+    }))
+    .filter(({ startDate }) => startDate <= selected.startDate)
+    .sort((left, right) => right.startDate.getTime() - left.startDate.getTime())
+    .slice(0, limit)
+    .map((period) => ({
+      ...period,
+      from: period.startDate,
+      to: new Date(
+        Math.min(
+          period.endDate.getTime(),
+          endOfUtcDay(shiftDays(period.startDate, elapsedDays)).getTime(),
+        ),
+      ),
+    }));
+}
+
 @Injectable()
 export class FinanceAnalyticsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -458,29 +969,39 @@ export class FinanceAnalyticsService {
     fiscalYearStartMonth: number,
   ) {
     const now = new Date();
-    const [accounts, sources, settings, budgetPlans, organization] = await Promise.all([
-      this.prisma.financeAccount.findMany({ where: { organizationId } }),
-      this.prisma.financeDataSource.findMany({ where: { organizationId } }),
-      this.prisma.financeSettings.findUnique({ where: { organizationId } }),
-      this.prisma.financeBudgetPlan.findMany({
-        where: { organizationId, isReference: true },
-        include: {
-          lines: { orderBy: { periodStart: 'asc' } },
-          site: { select: { id: true, name: true } },
-          importBatch: {
-            select: { source: { select: { siteId: true } } },
+    const [accounts, sources, settings, budgetPlans, fennoaBudgetLines, organization, periods] =
+      await Promise.all([
+        this.prisma.financeAccount.findMany({ where: { organizationId } }),
+        this.prisma.financeDataSource.findMany({ where: { organizationId } }),
+        this.prisma.financeSettings.findUnique({ where: { organizationId } }),
+        this.prisma.financeBudgetPlan.findMany({
+          where: { organizationId },
+          include: {
+            lines: { orderBy: { periodStart: 'asc' } },
+            site: { select: { id: true, name: true } },
+            importBatch: {
+              select: { source: { select: { siteId: true } } },
+            },
           },
-        },
-        orderBy: { updatedAt: 'desc' },
-      }),
-      this.prisma.organization.findUnique({
-        where: { id: organizationId },
-        select: { mistralApiKey: true },
-      }),
-    ]);
-    // Un budget est une trajectoire d'établissement. Les anciennes lignes sans site restent
-    // lisibles pendant la migration, mais ne prennent jamais le pas sur une affectation directe.
-    const budgetPlan = selectFinanceBudgetPlan(budgetPlans, query.siteId);
+          orderBy: { updatedAt: 'desc' },
+        }),
+        this.prisma.financeBudgetLine.findMany({
+          where: { organizationId },
+          orderBy: [
+            { accountingPeriodExternalId: 'asc' },
+            { externalBudgetId: 'desc' },
+            { month: 'asc' },
+          ],
+        }),
+        this.prisma.organization.findUnique({
+          where: { id: organizationId },
+          select: { mistralApiKey: true, regulatoryCountryCode: true },
+        }),
+        this.prisma.financeAccountingPeriod.findMany({
+          where: { organizationId },
+          orderBy: { startDate: 'asc' },
+        }),
+      ]);
     const scopedSources = query.siteId
       ? sources.filter(({ siteId }) => siteId === query.siteId)
       : sources;
@@ -523,36 +1044,94 @@ export class FinanceAnalyticsService {
       latestCoverage,
       now,
     });
-    const fiscalStartMonth =
-      budgetPlan?.startDate.getUTCMonth() ?? Math.min(12, Math.max(1, fiscalYearStartMonth)) - 1;
-    const fiscalStartYear =
-      budgetPlan && asOf >= budgetPlan.startDate && asOf <= budgetPlan.endDate
-        ? budgetPlan.startDate.getUTCFullYear()
-        : asOf.getUTCMonth() < fiscalStartMonth
-          ? asOf.getUTCFullYear() - 1
-          : asOf.getUTCFullYear();
-    const fiscalStart =
-      budgetPlan && asOf >= budgetPlan.startDate && asOf <= budgetPlan.endDate
-        ? startOfMonth(budgetPlan.startDate)
-        : new Date(Date.UTC(fiscalStartYear, fiscalStartMonth, 1));
-    const fiscalEnd =
-      budgetPlan && fiscalStart.getTime() === startOfMonth(budgetPlan.startDate).getTime()
-        ? budgetPlan.endDate
-        : new Date(
-            Date.UTC(
-              fiscalStart.getUTCFullYear() + 1,
-              fiscalStart.getUTCMonth(),
-              0,
-              23,
-              59,
-              59,
-              999,
-            ),
-          );
+    const fiscalPeriod = resolveFinanceFiscalPeriod(periods, asOf, fiscalYearStartMonth);
+    const fiscalStart = fiscalPeriod.startDate;
+    const fiscalEnd = fiscalPeriod.endDate;
+    const fennoaSource = sources.find(({ provider }) => provider === 'FENNOA');
+    const configuredSalesSiteIds = [
+      ...new Set(
+        sources
+          .filter(({ sourceType }) => sourceType !== 'ACCOUNTING_API')
+          .map(({ siteId }) => siteId)
+          .filter((siteId): siteId is string => Boolean(siteId)),
+      ),
+    ];
+    const globalBudgetCanFollowSelectedSite = Boolean(
+      query.siteId &&
+      configuredSalesSiteIds.length === 1 &&
+      configuredSalesSiteIds[0] === query.siteId,
+    );
+    const budgetCandidates: FinanceBudgetCandidate[] = [
+      ...listFennoaBudgets(fennoaBudgetLines, fiscalPeriod.externalId)
+        .filter(
+          () =>
+            !query.siteId ||
+            globalBudgetCanFollowSelectedSite ||
+            fennoaSource?.siteId === query.siteId,
+        )
+        .map((budget) => ({
+          id: `fennoa:${fiscalPeriod.externalId}:${budget.externalBudgetId ?? 'sans-id'}`,
+          siteId: fennoaSource?.siteId ?? null,
+          site: null,
+          name: budget.name,
+          scenario: 'Fennoa',
+          currency: settings?.defaultCurrency ?? 'EUR',
+          startDate: fiscalStart,
+          endDate: fiscalEnd,
+          source: 'FENNOA',
+          isReference: false,
+          lines: fennoaBudgetMetricLines(budget.lines, fiscalStart),
+        })),
+      ...budgetPlans
+        .filter(({ startDate, endDate, siteId }) => {
+          if (startDate > fiscalEnd || endDate < fiscalStart) return false;
+          if (query.siteId)
+            return siteId === query.siteId || (!siteId && globalBudgetCanFollowSelectedSite);
+          if (configuredSalesSiteIds.length > 1) return siteId == null;
+          return !siteId || siteId === configuredSalesSiteIds[0];
+        })
+        .map((budget) => ({
+          id: budget.id,
+          siteId: budget.siteId,
+          site: budget.site,
+          name: budget.name,
+          scenario: budget.scenario,
+          currency: budget.currency,
+          startDate: budget.startDate,
+          endDate: budget.endDate,
+          source: budget.source,
+          isReference: budget.isReference,
+          lines: budget.lines,
+        })),
+    ];
+    const selectionKey = financeBudgetSelectionKey(fiscalStart, fiscalEnd, query.siteId);
+    const storedSelections =
+      settings?.budgetSelections &&
+      typeof settings.budgetSelections === 'object' &&
+      !Array.isArray(settings.budgetSelections)
+        ? (settings.budgetSelections as Record<string, unknown>)
+        : {};
+    const selectedBudgetId =
+      typeof storedSelections[selectionKey] === 'string' ? storedSelections[selectionKey] : null;
+    const budgetPlan =
+      budgetCandidates.find(({ id }) => id === selectedBudgetId) ??
+      budgetCandidates.find(({ isReference, source }) => isReference && source !== 'FENNOA') ??
+      budgetCandidates[0] ??
+      null;
     const annualBudgetTo = endOfMonth(asOf) > fiscalEnd ? fiscalEnd : endOfMonth(asOf);
     const annualActualTo = asOf > fiscalEnd ? fiscalEnd : asOf;
-    const readFrom = shiftYear(fiscalStart, -3);
-    const [allLedger, importedSales, periods, activeSalesSources] = await Promise.all([
+    const alignedAccountingPeriods = alignFinanceAccountingPeriods(
+      periods,
+      fiscalPeriod,
+      annualActualTo,
+    );
+    const fallbackReadFrom = shiftYear(fiscalStart, -3);
+    const earliestComparisonStart = alignedAccountingPeriods.at(-1)?.startDate;
+    const readFrom =
+      earliestComparisonStart && earliestComparisonStart < fallbackReadFrom
+        ? earliestComparisonStart
+        : fallbackReadFrom;
+    const [allLedger, importedSales, activeSalesSources] = await Promise.all([
       this.prisma.financeLedgerEntry.findMany({
         where: {
           organizationId,
@@ -570,7 +1149,6 @@ export class FinanceAnalyticsService {
         include: { source: { select: { isPrimaryPos: true, provider: true, siteId: true } } },
         orderBy: { saleDate: 'asc' },
       }),
-      this.prisma.financeAccountingPeriod.findMany({ where: { organizationId } }),
       this.prisma.financeDataSource.findMany({
         where: {
           organizationId,
@@ -593,22 +1171,32 @@ export class FinanceAnalyticsService {
           .filter((siteId): siteId is string => Boolean(siteId)),
       ),
     ];
+    const ledgerSourceIds = new Set(allLedger.map(({ sourceId }) => sourceId));
     const directAccountingSourceIds = query.siteId
       ? sources
           .filter(
-            ({ siteId, sourceType }) => siteId === query.siteId && sourceType === 'ACCOUNTING_API',
+            ({ id, siteId, sourceType }) =>
+              siteId === query.siteId &&
+              (sourceType === 'ACCOUNTING_API' || ledgerSourceIds.has(id)),
           )
           .map(({ id }) => id)
-      : sources.filter(({ sourceType }) => sourceType === 'ACCOUNTING_API').map(({ id }) => id);
+      : sources
+          .filter(
+            ({ id, sourceType }) => sourceType === 'ACCOUNTING_API' || ledgerSourceIds.has(id),
+          )
+          .map(({ id }) => id);
     const globalAccountingSourceIds = sources
-      .filter(({ siteId, sourceType }) => !siteId && sourceType === 'ACCOUNTING_API')
+      .filter(
+        ({ id, siteId, sourceType }) =>
+          !siteId && (sourceType === 'ACCOUNTING_API' || ledgerSourceIds.has(id)),
+      )
       .map(({ id }) => id);
     const dataScope = resolveFinanceSiteDataScope({
       siteId: query.siteId,
       activeSalesSiteIds,
       directAccountingSourceIds,
       globalAccountingSourceIds,
-      budgetSiteId: budgetPlan?.siteId ?? budgetPlan?.importBatch?.source?.siteId,
+      budgetSiteId: budgetPlan?.siteId,
       hasBudget: Boolean(budgetPlan),
     });
     const accountingSourceIdSet = new Set(dataScope.accountingSourceIds);
@@ -627,7 +1215,18 @@ export class FinanceAnalyticsService {
         .sort((left, right) => left.getTime() - right.getTime())[0];
     }
     const sales = deduplicateCrossSourceSales(importedSales).rows;
-    const categoryByCode = new Map(accounts.map(({ code, category }) => [code, category]));
+    const statementCountryCode = sources.some(({ provider }) => provider === 'FENNOA')
+      ? 'FI'
+      : organization?.regulatoryCountryCode;
+    const categoryByCode = new Map(
+      accounts.map(({ code, category, categoryOverride }) => [
+        code,
+        categoryOverride
+          ? category
+          : resolveFinanceStatementCategory(code, category, statementCountryCode),
+      ]),
+    );
+    const statementOptions = { finnishChart: statementCountryCode === 'FI' };
     const accountingLockedThrough = this.accountingLockedThrough(periods);
     const cash =
       query.siteId && dataScope.accountingMode === 'unavailable'
@@ -645,14 +1244,17 @@ export class FinanceAnalyticsService {
       fiscalStart,
       annualActualTo,
       accountingLockedThrough,
+      statementOptions,
     );
+    const previousAccountingPeriod = alignedAccountingPeriods[1];
     const annualPrevious = this.aggregate(
       ledger,
       sales,
       categoryByCode,
-      shiftYear(fiscalStart, -1),
-      shiftYear(annualActualTo, -1),
+      previousAccountingPeriod?.from ?? shiftYear(fiscalStart, -1),
+      previousAccountingPeriod?.to ?? shiftYear(annualActualTo, -1),
       accountingLockedThrough,
+      { ...statementOptions, revenuePolicy: 'accounting' },
     );
     const monthStart = startOfMonth(asOf);
     const monthEnd = endOfMonth(asOf);
@@ -665,6 +1267,7 @@ export class FinanceAnalyticsService {
       monthStart,
       monthlyActualTo,
       accountingLockedThrough,
+      statementOptions,
     );
     const monthlyPrevious = this.aggregate(
       ledger,
@@ -673,6 +1276,7 @@ export class FinanceAnalyticsService {
       shiftYear(monthStart, -1),
       shiftYear(monthlyActualTo, -1),
       accountingLockedThrough,
+      statementOptions,
     );
     const dailyActual = this.aggregate(
       ledger,
@@ -681,6 +1285,7 @@ export class FinanceAnalyticsService {
       startOfUtcDay(asOf),
       endOfUtcDay(asOf),
       accountingLockedThrough,
+      statementOptions,
     );
     const dailyPrevious = this.aggregate(
       ledger,
@@ -689,8 +1294,13 @@ export class FinanceAnalyticsService {
       shiftYear(startOfUtcDay(asOf), -1),
       shiftYear(endOfUtcDay(asOf), -1),
       accountingLockedThrough,
+      statementOptions,
     );
-    const budgetLines = dataScope.includeBudget ? (budgetPlan?.lines ?? []) : [];
+    const budgetMatchesFiscalPeriod = Boolean(
+      budgetPlan && budgetPlan.startDate <= fiscalEnd && budgetPlan.endDate >= fiscalStart,
+    );
+    const budgetLines =
+      dataScope.includeBudget && budgetMatchesFiscalPeriod ? (budgetPlan?.lines ?? []) : [];
     const annualBudget = this.budgetAggregate(budgetLines, fiscalStart, annualBudgetTo);
     const monthlyBudget = this.budgetAggregate(budgetLines, monthStart, monthEnd);
     const weekdayProfile = activeWeekdayProfile(sales);
@@ -771,12 +1381,13 @@ export class FinanceAnalyticsService {
     );
     const series = this.monthlySeries(
       fiscalStart,
-      budgetPlan?.endDate ?? fiscalEnd,
+      fiscalEnd,
       ledger,
       sales,
       categoryByCode,
       budgetLines,
       accountingLockedThrough,
+      statementOptions,
     );
     const dailySeries = this.dailySeries(
       monthStart,
@@ -790,30 +1401,49 @@ export class FinanceAnalyticsService {
         .length,
     );
     const totalMonths = series.length || 12;
-    const health = this.health(annual.core);
+    const health = this.health([...annual.core, ...annual.optional]);
     const selectedKpis = settings?.dashboardKpis?.length ? settings.dashboardKpis : DEFAULT_KPI_IDS;
     const period = resolveFinancePeriod(query, fiscalYearStartMonth, asOf);
     const legacyMetrics = [...annual.core, ...annual.optional].map((metric) =>
       this.legacyMetric(metric, asOf, provisional),
     );
+    const annualComparisonRanges = alignedAccountingPeriods.length
+      ? alignedAccountingPeriods.map((accountingPeriod, index) => {
+          const startYear = accountingPeriod.startDate.getUTCFullYear();
+          const endYear = accountingPeriod.endDate.getUTCFullYear();
+          const exactPeriod = `${accountingPeriod.startDate.toLocaleDateString('fr-FR', { timeZone: 'UTC' })} → ${accountingPeriod.endDate.toLocaleDateString('fr-FR', { timeZone: 'UTC' })}`;
+          return {
+            id: index === 0 ? 'current' : `period_${accountingPeriod.externalId}`,
+            label: startYear === endYear ? String(startYear) : `${startYear}–${endYear}`,
+            detail:
+              index === 0
+                ? `Exercice Fennoa sélectionné · ${exactPeriod}`
+                : `Même avancement · exercice Fennoa ${exactPeriod}`,
+            from: accountingPeriod.from,
+            to: accountingPeriod.to,
+            isCurrent: index === 0,
+          };
+        })
+      : Array.from({ length: 4 }, (_, offset) => {
+          const from = shiftYear(fiscalStart, -offset);
+          const to = shiftYear(annualActualTo, -offset);
+          return {
+            id: offset === 0 ? 'current' : `n_${offset}`,
+            label: `${from.getUTCFullYear()}–${from.getUTCFullYear() + 1}`,
+            detail: offset === 0 ? 'Exercice en cours' : `Même avancement · N-${offset}`,
+            from,
+            to,
+            isCurrent: offset === 0,
+          };
+        });
     const annualComparison = this.historicalComparison(
       'annual',
-      Array.from({ length: 4 }, (_, offset) => {
-        const from = shiftYear(fiscalStart, -offset);
-        const to = shiftYear(annualActualTo, -offset);
-        return {
-          id: offset === 0 ? 'current' : `n_${offset}`,
-          label: `${from.getUTCFullYear()}–${from.getUTCFullYear() + 1}`,
-          detail: offset === 0 ? 'Exercice en cours' : `Même avancement · N-${offset}`,
-          from,
-          to,
-          isCurrent: offset === 0,
-        };
-      }),
+      annualComparisonRanges,
       ledger,
       sales,
       categoryByCode,
       accountingLockedThrough,
+      statementOptions,
     );
     const monthlyComparison = this.historicalComparison(
       'monthly',
@@ -863,6 +1493,7 @@ export class FinanceAnalyticsService {
       sales,
       categoryByCode,
       accountingLockedThrough,
+      statementOptions,
     );
     const dailyComparison = this.historicalComparison(
       'daily',
@@ -904,6 +1535,7 @@ export class FinanceAnalyticsService {
       sales,
       categoryByCode,
       accountingLockedThrough,
+      statementOptions,
     );
     return {
       period: { preset: period.preset, label: period.label, from: fiscalStart, to: annualActualTo },
@@ -922,6 +1554,11 @@ export class FinanceAnalyticsService {
           payroll: monthlyActual.payroll,
           otherExpenses: monthlyActual.otherOpex,
           operatingResult: monthlyActual.operatingResult,
+          resultBeforeDepreciation: monthlyActual.resultBeforeDepreciation,
+          accountingOperatingResult: monthlyActual.accountingOperatingResult,
+          depreciation: monthlyActual.depreciation,
+          financialExpenses: monthlyActual.financialExpenses,
+          netResult: monthlyActual.netResult,
           payrollRatio: monthlyActual.revenue
             ? round((numeric(monthlyActual.payroll) / monthlyActual.revenue) * 100, 1)
             : null,
@@ -957,9 +1594,9 @@ export class FinanceAnalyticsService {
             annualActual.operatingExpenses != null,
           ),
           budgetCoverageLabel: dataScope.includeBudget
-            ? budgetPlan
+            ? budgetPlan && budgetMatchesFiscalPeriod
               ? `${elapsedMonths} mois comparés aux ${elapsedMonths} mêmes mois budgétés`
-              : 'Aucun budget de référence'
+              : `Aucun budget pour l’exercice ${fiscalStart.getUTCFullYear()}–${fiscalEnd.getUTCFullYear()}`
             : 'Budget non affecté à cet établissement',
         },
         health,
@@ -973,7 +1610,7 @@ export class FinanceAnalyticsService {
           ...annual,
           from: fiscalStart,
           to: annualActualTo,
-          label: `Cumul de l’exercice · ${elapsedMonths}/${totalMonths} mois`,
+          label: `Exercice comptable · ${elapsedMonths}/${totalMonths} mois`,
           series,
           comparison: annualComparison,
         },
@@ -1012,14 +1649,28 @@ export class FinanceAnalyticsService {
                 name: budgetPlan.name,
                 scenario: budgetPlan.scenario,
                 currency: budgetPlan.currency,
+                source: budgetPlan.source,
                 startDate: budgetPlan.startDate,
                 endDate: budgetPlan.endDate,
-                isReference: budgetPlan.isReference,
+                isReference: true,
                 totals: this.budgetAggregate(budgetLines, budgetPlan.startDate, budgetPlan.endDate),
                 targets: this.budgetTargets(budgetLines, asOf),
                 series,
               }
             : null,
+        budgetOptions: budgetCandidates.map((candidate) => ({
+          id: candidate.id,
+          siteId: candidate.siteId,
+          site: candidate.site,
+          name: candidate.name,
+          scenario: candidate.scenario,
+          currency: candidate.currency,
+          source: candidate.source,
+          startDate: candidate.startDate,
+          endDate: candidate.endDate,
+          selected: candidate.id === budgetPlan?.id,
+          totals: this.budgetAggregate(candidate.lines, candidate.startDate, candidate.endDate),
+        })),
         preferences: { selected: selectedKpis, available: OPTIONAL_KPIS },
         mistral: { configured: Boolean(organization?.mistralApiKey) },
       },
@@ -1031,23 +1682,13 @@ export class FinanceAnalyticsService {
   }
 
   private aggregate(
-    ledger: Array<{
-      entryDate: Date;
-      accountCode: string;
-      debit: Prisma.Decimal;
-      credit: Prisma.Decimal;
-    }>,
-    sales: Array<{
-      saleDate: Date;
-      netAmount: Prisma.Decimal;
-      grossAmount: Prisma.Decimal;
-      vatAmount: Prisma.Decimal;
-      transactionCount: number;
-    }>,
+    ledger: FinanceLedgerRevenueRow[],
+    sales: FinanceSalesRevenueRow[],
     categories: Map<string, FinanceAccountCategory>,
     from: Date,
     to: Date,
     accountingLockedThrough: Date | null,
+    options: FinanceAggregateOptions = {},
   ) {
     const selectedLedger = ledger.filter(({ entryDate }) => entryDate >= from && entryDate <= to);
     const selectedSales = sales.filter(({ saleDate }) => saleDate >= from && saleDate <= to);
@@ -1064,7 +1705,28 @@ export class FinanceAnalyticsService {
         (categories.get(accountCode) ?? FinanceAccountCategory.OTHER) ===
         FinanceAccountCategory.REVENUE,
     );
-    const ledgerRevenue = buckets.get(FinanceAccountCategory.REVENUE) ?? 0;
+    const otherOperatingIncomeRows = options.finnishChart
+      ? ledgerRevenueRows.filter(({ accountCode }) => {
+          const accountNumber = Number.parseInt(accountCode.replace(/\D/g, '').slice(0, 4), 10);
+          return accountNumber >= 3900 && accountNumber <= 3999;
+        })
+      : [];
+    const otherOperatingIncomeCodes = new Set(
+      otherOperatingIncomeRows.map(({ accountCode }) => accountCode),
+    );
+    const ledgerTurnoverRows = ledgerRevenueRows.filter(
+      ({ accountCode }) => !otherOperatingIncomeCodes.has(accountCode),
+    );
+    const accountingRevenue = ledgerTurnoverRows.length
+      ? ledgerTurnoverRows.reduce(
+          (sum, entry) => sum + numeric(entry.credit) - numeric(entry.debit),
+          0,
+        )
+      : null;
+    const otherOperatingIncome = otherOperatingIncomeRows.reduce(
+      (sum, entry) => sum + numeric(entry.credit) - numeric(entry.debit),
+      0,
+    );
     const salesNet = selectedSales.reduce((sum, item) => sum + numeric(item.netAmount), 0);
     const salesGross = selectedSales.reduce((sum, item) => sum + numeric(item.grossAmount), 0);
     const salesVat = selectedSales.reduce((sum, item) => sum + numeric(item.vatAmount), 0);
@@ -1077,34 +1739,20 @@ export class FinanceAnalyticsService {
         numeric(item.vatAmount) !== 0,
     );
     const hasLedger = selectedLedger.length > 0;
-    const revenueSelections: Array<{
-      value: number | null;
-      basis: Exclude<RevenueBasis, 'mixed'>;
-    }> = [];
+    const revenueSelections: Array<ReturnType<typeof selectHybridFinanceRevenueForMonth>> = [];
     let cursor = from;
     while (cursor <= to) {
       const sliceEnd = new Date(Math.min(endOfMonth(cursor).getTime(), to.getTime()));
-      const sliceLedgerRevenueRows = ledgerRevenueRows.filter(
+      const sliceLedgerRevenueRows = ledgerTurnoverRows.filter(
         ({ entryDate }) => entryDate >= cursor && entryDate <= sliceEnd,
       );
       const sliceSales = selectedSales.filter(
         ({ saleDate }) => saleDate >= cursor && saleDate <= sliceEnd,
       );
       revenueSelections.push(
-        selectFinanceRevenue({
-          cashRegisterRevenue: sliceSales.reduce((sum, item) => sum + numeric(item.netAmount), 0),
-          accountingRevenue: sliceLedgerRevenueRows.reduce(
-            (sum, entry) => sum + numeric(entry.credit) - numeric(entry.debit),
-            0,
-          ),
-          hasCashRegisterData: sliceSales.some(
-            (item) =>
-              item.transactionCount !== 0 ||
-              numeric(item.netAmount) !== 0 ||
-              numeric(item.grossAmount) !== 0 ||
-              numeric(item.vatAmount) !== 0,
-          ),
-          hasAccountingData: sliceLedgerRevenueRows.length > 0,
+        selectHybridFinanceRevenueForMonth({
+          sales: sliceSales,
+          accountingRows: sliceLedgerRevenueRows,
           periodEnd: sliceEnd,
           accountingLockedThrough,
         }),
@@ -1114,16 +1762,54 @@ export class FinanceAnalyticsService {
     const selectedRevenue = revenueSelections.filter(
       (selection): selection is typeof selection & { value: number } => selection.value != null,
     );
-    const revenue = selectedRevenue.length
+    const operationalRevenue = selectedRevenue.length
       ? selectedRevenue.reduce((sum, selection) => sum + selection.value, 0)
       : null;
     const selectedBases = new Set(
       selectedRevenue.map(({ basis }) => basis).filter((basis) => basis !== 'unavailable'),
     );
-    const revenueBasis: RevenueBasis =
+    const operationalRevenueBasis: RevenueBasis =
       selectedBases.size > 1
         ? 'mixed'
         : (([...selectedBases][0] as RevenueBasis | undefined) ?? 'unavailable');
+    const revenue = options.revenuePolicy === 'accounting' ? accountingRevenue : operationalRevenue;
+    const revenueBasis: RevenueBasis =
+      options.revenuePolicy === 'accounting'
+        ? accountingRevenue == null
+          ? 'unavailable'
+          : 'accounting'
+        : operationalRevenueBasis;
+    const operationalRevenueBreakdown = revenueSelections.reduce<FinanceRevenueBreakdown>(
+      (totals, selection) => {
+        for (const key of Object.keys(totals) as Array<keyof FinanceRevenueBreakdown>) {
+          totals[key] += selection.breakdown[key];
+        }
+        return totals;
+      },
+      {
+        selectedCashRegisterRevenue: 0,
+        selectedAccountingRevenue: 0,
+        accountingInvoiceRevenue: 0,
+        accountingFallbackRevenue: 0,
+        accountingAdjustmentRevenue: 0,
+        accountingOverlappingRevenue: 0,
+        accountingOtherRevenue: 0,
+      },
+    );
+    const revenueBreakdown: FinanceRevenueBreakdown =
+      options.revenuePolicy === 'accounting'
+        ? {
+            selectedCashRegisterRevenue: 0,
+            selectedAccountingRevenue: round(numeric(accountingRevenue)),
+            accountingInvoiceRevenue: 0,
+            accountingFallbackRevenue: 0,
+            accountingAdjustmentRevenue: 0,
+            accountingOverlappingRevenue: 0,
+            accountingOtherRevenue: 0,
+          }
+        : (Object.fromEntries(
+            Object.entries(operationalRevenueBreakdown).map(([key, value]) => [key, round(value)]),
+          ) as FinanceRevenueBreakdown);
     const materialPurchases = hasLedger
       ? (buckets.get(FinanceAccountCategory.MATERIAL_PURCHASES) ?? 0)
       : null;
@@ -1132,8 +1818,34 @@ export class FinanceAnalyticsService {
     const operatingExpenses = hasLedger
       ? numeric(materialPurchases) + numeric(payroll) + numeric(otherOpex)
       : null;
+    const selectedOperatingIncome =
+      revenue == null
+        ? null
+        : revenue + (options.revenuePolicy === 'accounting' ? otherOperatingIncome : 0);
     const operatingResult =
-      revenue != null && operatingExpenses != null ? revenue - operatingExpenses : null;
+      selectedOperatingIncome != null && operatingExpenses != null
+        ? selectedOperatingIncome - operatingExpenses
+        : null;
+    const depreciation = hasLedger
+      ? selectedLedger
+          .filter(({ accountCode }) => {
+            const accountNumber = Number.parseInt(accountCode.replace(/\D/g, '').slice(0, 4), 10);
+            return accountNumber >= 6800 && accountNumber <= 6899;
+          })
+          .reduce((sum, entry) => sum + numeric(entry.debit) - numeric(entry.credit), 0)
+      : null;
+    const financialExpenses = hasLedger
+      ? (buckets.get(FinanceAccountCategory.FINANCIAL) ?? 0)
+      : null;
+    const taxes = hasLedger ? (buckets.get(FinanceAccountCategory.TAX) ?? 0) : null;
+    const accountingResults = deriveAccountingResults({
+      accountingRevenue,
+      otherOperatingIncome,
+      operatingExpenses,
+      depreciation,
+      financialExpenses,
+      taxes,
+    });
     const contributionMargin =
       revenue != null && materialPurchases != null ? revenue - materialPurchases : null;
     const contributionMarginRate =
@@ -1155,6 +1867,11 @@ export class FinanceAnalyticsService {
       otherOpex: otherOpex == null ? null : round(otherOpex),
       operatingExpenses: operatingExpenses == null ? null : round(operatingExpenses),
       operatingResult: operatingResult == null ? null : round(operatingResult),
+      otherOperatingIncome: round(otherOperatingIncome),
+      depreciation: depreciation == null ? null : round(depreciation),
+      financialExpenses: financialExpenses == null ? null : round(financialExpenses),
+      taxes: taxes == null ? null : round(taxes),
+      ...accountingResults,
       contributionMargin: contributionMargin == null ? null : round(contributionMargin),
       contributionMarginRate:
         contributionMarginRate == null ? null : round(contributionMarginRate, 1),
@@ -1166,15 +1883,23 @@ export class FinanceAnalyticsService {
       transactions,
       averageTicket: transactions ? round(salesGross / transactions) : null,
       cashRegisterRevenue: hasCashRegisterData ? round(salesNet) : null,
-      accountingRevenue: ledgerRevenueRows.length ? round(ledgerRevenue) : null,
+      accountingRevenue: accountingRevenue == null ? null : round(accountingRevenue),
       revenueDifference:
-        hasCashRegisterData && ledgerRevenueRows.length ? round(ledgerRevenue - salesNet) : null,
+        hasCashRegisterData && accountingRevenue != null
+          ? round(accountingRevenue - salesNet)
+          : null,
       revenueBasis,
+      revenueBreakdown,
       metricSources: {
         revenue: revenueBasis,
         operating_expenses: operatingExpenses == null ? 'unavailable' : 'accounting',
         payroll: payroll == null ? 'unavailable' : 'accounting',
         operating_result: blendedSource(operatingResult),
+        result_before_depreciation:
+          accountingResults.resultBeforeDepreciation == null ? 'unavailable' : 'accounting',
+        accounting_operating_result:
+          accountingResults.accountingOperatingResult == null ? 'unavailable' : 'accounting',
+        net_result: accountingResults.netResult == null ? 'unavailable' : 'accounting',
         transactions: hasCashRegisterData ? 'cash_register' : 'unavailable',
         average_ticket: hasCashRegisterData ? 'cash_register' : 'unavailable',
         contribution_margin: blendedSource(contributionMargin),
@@ -1196,11 +1921,16 @@ export class FinanceAnalyticsService {
     const get = (metric: string) => (totals.has(metric) ? round(totals.get(metric)!) : null);
     return {
       revenue: get('revenue'),
+      otherOperatingIncome: get('other_operating_income'),
       materialPurchases: get('material_purchases'),
       payroll: get('payroll'),
+      depreciation: get('depreciation'),
       otherOpex: get('other_opex'),
       operatingExpenses: get('operating_expenses'),
+      resultBeforeDepreciation: get('result_before_depreciation'),
       operatingResult: get('operating_result'),
+      financialResult: get('financial_result'),
+      taxes: get('taxes'),
       netResult: get('net_result'),
       breakEven: get('break_even'),
     };
@@ -1300,17 +2030,6 @@ export class FinanceAnalyticsService {
         'Salaires et charges employeur affectés à la période.',
         provisional,
       ),
-      this.comparisonMetric(
-        'operating_result',
-        'Résultat d’exploitation',
-        actual.operatingResult,
-        budget.operatingResult,
-        previous.operatingResult,
-        false,
-        'currency',
-        'Ce que l’activité gagne ou perd avant finance et impôts.',
-        provisional,
-      ),
     ];
     const transactionPacing = computeBudgetTransactionPacing({
       budgetRevenue: context.budgetRevenue,
@@ -1323,6 +2042,39 @@ export class FinanceAnalyticsService {
       observedMonths: context.observedMonths,
     });
     const optional: DashboardMetric[] = [
+      this.comparisonMetric(
+        'result_before_depreciation',
+        'Résultat avant amortissements',
+        actual.resultBeforeDepreciation,
+        budget.resultBeforeDepreciation,
+        previous.resultBeforeDepreciation,
+        false,
+        'currency',
+        'Résultat comptable de l’activité avant les dotations aux amortissements.',
+        provisional,
+      ),
+      this.comparisonMetric(
+        'accounting_operating_result',
+        'Résultat d’exploitation comptable',
+        actual.accountingOperatingResult,
+        budget.operatingResult,
+        previous.accountingOperatingResult,
+        false,
+        'currency',
+        'Produits d’exploitation diminués de toutes les charges d’exploitation, amortissements inclus.',
+        provisional,
+      ),
+      this.comparisonMetric(
+        'net_result',
+        'Résultat net',
+        actual.netResult,
+        budget.netResult,
+        previous.netResult,
+        false,
+        'currency',
+        'Résultat final après amortissements, résultat financier et impôts.',
+        provisional,
+      ),
       this.simpleMetric(
         'average_ticket',
         'Ticket moyen',
@@ -1406,13 +2158,19 @@ export class FinanceAnalyticsService {
         'Transactions mensuelles nécessaires pour atteindre le chiffre d’affaires prévu au budget.',
       ),
     ];
+    const withRevenuePercent = (metric: DashboardMetric): DashboardMetric => ({
+      ...metric,
+      revenuePercent: revenuePercentOf(metric.id, metric.value, actual.revenue),
+    });
     return {
       kind,
-      core,
+      core: core.map(withRevenuePercent),
       optional:
         kind === 'daily'
-          ? optional.filter(({ id }) => id !== 'break_even_week' && id !== 'break_even_month')
-          : optional,
+          ? optional
+              .filter(({ id }) => id !== 'break_even_week' && id !== 'break_even_month')
+              .map(withRevenuePercent)
+          : optional.map(withRevenuePercent),
       status: provisional ? 'provisional' : 'ready',
     };
   }
@@ -1537,6 +2295,7 @@ export class FinanceAnalyticsService {
     sales: Parameters<FinanceAnalyticsService['aggregate']>[1],
     categories: Map<string, FinanceAccountCategory>,
     accountingLockedThrough: Date | null,
+    options: FinanceAggregateOptions = {},
   ) {
     return {
       modeLabel:
@@ -1553,6 +2312,7 @@ export class FinanceAnalyticsService {
           range.from,
           range.to,
           accountingLockedThrough,
+          options,
         );
         return {
           ...range,
@@ -1581,6 +2341,7 @@ export class FinanceAnalyticsService {
     categories: Map<string, FinanceAccountCategory>,
     budgetLines: Array<{ metric: string; periodStart: Date; amount: Prisma.Decimal }>,
     accountingLockedThrough: Date | null,
+    options: FinanceAggregateOptions = {},
   ) {
     const result = [];
     let cursor = startOfMonth(start);
@@ -1588,15 +2349,18 @@ export class FinanceAnalyticsService {
     let cumulativeBudget = 0;
     while (cursor <= endOfMonth(end)) {
       const monthEnd = endOfMonth(cursor);
+      const periodFrom = cursor < start ? start : cursor;
+      const periodTo = monthEnd > end ? end : monthEnd;
       const actual = this.aggregate(
         ledger,
         sales,
         categories,
-        cursor,
-        monthEnd,
+        periodFrom,
+        periodTo,
         accountingLockedThrough,
+        options,
       );
-      const budget = this.budgetAggregate(budgetLines, cursor, monthEnd);
+      const budget = this.budgetAggregate(budgetLines, periodFrom, periodTo);
       cumulativeActual += actual.revenue ?? 0;
       cumulativeBudget += budget.revenue ?? 0;
       result.push({
@@ -1688,8 +2452,14 @@ export class FinanceAnalyticsService {
 
   private health(core: DashboardMetric[]) {
     const revenue = core.find(({ id }) => id === 'revenue');
-    const result = core.find(({ id }) => id === 'operating_result');
-    if (core.some(({ value }) => value == null))
+    const result = core.find(({ id }) => id === 'accounting_operating_result');
+    const requiredIds = new Set([
+      'revenue',
+      'operating_expenses',
+      'payroll',
+      'accounting_operating_result',
+    ]);
+    if (core.some(({ id, value }) => requiredIds.has(id) && value == null))
       return {
         level: 'unknown',
         label: 'Lecture incomplète',
@@ -1753,6 +2523,7 @@ export class FinanceAnalyticsService {
       difference: actual.revenueDifference,
       selectedRevenue: actual.revenue,
       basis: actual.revenueBasis,
+      breakdown: actual.revenueBreakdown,
       status:
         actual.revenueDifference == null
           ? ('partial' as const)

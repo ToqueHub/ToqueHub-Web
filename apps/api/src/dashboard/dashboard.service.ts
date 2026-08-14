@@ -25,6 +25,7 @@ type AppId =
   | 'technical-sheets'
   | 'production'
   | 'menus'
+  | 'clients'
   | 'haccp'
   | 'purchasing'
   | 'quality'
@@ -71,6 +72,7 @@ type OrganizationInstallState = {
   technicalSheetsInstalledAt: Date | null;
   productionInstalledAt: Date | null;
   menusInstalledAt: Date | null;
+  clientsInstalledAt: Date | null;
   haccpInstalledAt: Date | null;
   purchasingInstalledAt: Date | null;
   financeInstalledAt: Date | null;
@@ -95,6 +97,7 @@ const APP_PERMISSIONS: Partial<Record<AppId, string>> = {
   'technical-sheets': 'technical-sheets.read',
   production: 'production.read',
   menus: 'menus.read',
+  clients: 'menus.read',
   haccp: 'haccp.read',
   purchasing: 'purchasing.read',
   finance: 'finance.read',
@@ -108,6 +111,7 @@ const INSTALL_FIELDS: Partial<Record<AppId, keyof OrganizationInstallState>> = {
   'technical-sheets': 'technicalSheetsInstalledAt',
   production: 'productionInstalledAt',
   menus: 'menusInstalledAt',
+  clients: 'clientsInstalledAt',
   haccp: 'haccpInstalledAt',
   purchasing: 'purchasingInstalledAt',
   finance: 'financeInstalledAt',

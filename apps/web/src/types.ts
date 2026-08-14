@@ -2519,6 +2519,7 @@ export interface FinanceDashboardMetric {
   targetLabel?: string;
   displayable: boolean;
   availabilityReason?: string | null;
+  revenuePercent?: number | null;
 }
 
 export interface FinanceDashboardPeriod {
@@ -2585,6 +2586,15 @@ export interface FinanceRevenueReconciliation {
   selectedRevenue: number | null;
   basis: 'cash_register' | 'accounting' | 'mixed' | 'unavailable';
   status: 'matched' | 'attention' | 'partial';
+  breakdown: {
+    selectedCashRegisterRevenue: number;
+    selectedAccountingRevenue: number;
+    accountingInvoiceRevenue: number;
+    accountingFallbackRevenue: number;
+    accountingAdjustmentRevenue: number;
+    accountingOverlappingRevenue: number;
+    accountingOtherRevenue: number;
+  };
 }
 
 export interface FinanceDataSource {
@@ -2704,6 +2714,11 @@ export interface FinanceBootstrap {
       payroll: number;
       otherExpenses: number;
       operatingResult: number | null;
+      resultBeforeDepreciation: number | null;
+      accountingOperatingResult: number | null;
+      depreciation: number | null;
+      financialExpenses: number | null;
+      netResult: number | null;
       payrollRatio: number | null;
       purchaseRatio: number | null;
     };
@@ -2741,6 +2756,19 @@ export interface FinanceBootstrap {
     annual: FinanceDashboardPeriod;
     monthly: FinanceDashboardPeriod;
     daily: FinanceDashboardPeriod;
+    budgetOptions: Array<{
+      id: string;
+      siteId: string | null;
+      site: { id: string; name: string } | null;
+      name: string;
+      scenario?: string | null;
+      currency: string;
+      source: string;
+      startDate: string;
+      endDate: string;
+      selected: boolean;
+      totals: Record<string, number | null>;
+    }>;
     budget: null | {
       id: string;
       siteId: string | null;
@@ -2748,6 +2776,7 @@ export interface FinanceBootstrap {
       name: string;
       scenario?: string | null;
       currency: string;
+      source: string;
       startDate: string;
       endDate: string;
       isReference: boolean;
@@ -2794,6 +2823,78 @@ export interface FinanceBootstrap {
     sourceCount: number;
     pendingReviewCount: number;
     lastUpdatedAt: string | null;
+  };
+}
+
+export interface FinanceBudgetSuggestionMonth {
+  month: number;
+  periodStart: string;
+  revenue: number;
+  otherOperatingIncome: number;
+  materialPurchases: number;
+  payroll: number;
+  depreciation: number;
+  otherOpex: number;
+  financialResult: number;
+  taxes: number;
+  operatingExpenses: number;
+  resultBeforeDepreciation: number;
+  operatingResult: number;
+  netResult: number;
+  rationale: string;
+}
+
+export interface FinanceBudgetSuggestion {
+  proposal: {
+    name: string;
+    summary: string;
+    confidence: 'low' | 'medium' | 'high';
+    assumptions: string[];
+    startDate: string;
+    endDate: string;
+    currency: string;
+    months: FinanceBudgetSuggestionMonth[];
+    totals: Record<string, number>;
+  };
+  history: {
+    periods: number;
+    months: number;
+    from: string;
+    to: string;
+    periodDetails: Array<{
+      startDate: string;
+      endDate: string;
+      months: number;
+      expectedMonths: number;
+      complete: boolean;
+    }>;
+  };
+  reference: {
+    startDate: string;
+    endDate: string;
+    months: number;
+    expectedMonths: number;
+    complete: boolean;
+    totals: Record<string, number>;
+    ratios: {
+      operatingExpenses: number | null;
+      materialPurchases: number | null;
+      payroll: number | null;
+      netMargin: number | null;
+    };
+  };
+  assessment: {
+    canAccept: boolean;
+    confidence: 'low' | 'medium' | 'high';
+    checks: Array<{
+      id: string;
+      severity: 'pass' | 'warning' | 'blocking';
+      label: string;
+      detail: string;
+      proposed: number | null;
+      reference: number | null;
+      unit: 'percentage' | 'percentage_points' | 'count';
+    }>;
   };
 }
 
@@ -2973,6 +3074,9 @@ export interface FennoaSyncResult {
   periodsCount?: number;
   ledgerRowsCount?: number;
   budgetRowsCount?: number;
+  customersCount?: number;
+  salesInvoicesCount?: number;
+  warnings?: string[];
   periodsSyncedCount?: number;
   full?: boolean;
   automaticFullBackfill?: boolean;
@@ -3372,14 +3476,136 @@ export interface MenuDispatch {
 export interface CatererClient {
   id: string;
   name: string;
+  name2?: string | null;
   contactName?: string | null;
   email?: string | null;
   phone?: string | null;
+  fax?: string | null;
+  website?: string | null;
   address?: string | null;
+  postalCode?: string | null;
+  city?: string | null;
+  countryCode?: string | null;
+  businessId?: string | null;
+  vatNumber?: string | null;
+  accountTypeId?: number | null;
+  accountCode?: string | null;
+  customerNumber?: string | null;
+  customerGroupIds?: number[];
+  eInvoiceAddress?: string | null;
+  eInvoiceOperatorId?: string | null;
+  eInvoiceUnitNumber?: number | null;
+  invoiceDeliveryMethod?: string | null;
+  localeId?: number | null;
+  localeCode?: string | null;
+  paymentTermId?: number | null;
+  auxiliaryNameId?: number | null;
+  salesPriceListId?: number | null;
+  salesTaxClassId?: number | null;
+  invoiceIncludesVat?: boolean | null;
+  factoringPartnerId?: number | null;
+  autoReminderOverride?: boolean | null;
+  autoReminderEnabled?: boolean | null;
+  autoReminderCount?: number | null;
+  autoReminderInterval?: number | null;
+  autoReminderLastStep?: number | null;
+  ourReference?: string | null;
+  yourReference?: string | null;
+  shippingName?: string | null;
+  shippingName2?: string | null;
+  shippingAddress?: string | null;
+  shippingPostalCode?: string | null;
+  shippingCity?: string | null;
+  shippingCountryCode?: string | null;
+  shippingCountryId?: number | null;
+  currencyId?: number | null;
+  salesIsRefused?: boolean | null;
+  fennoaId?: number | null;
+  fennoaOwnerUserId?: number | null;
+  fennoaDescription?: string | null;
+  fennoaTitle?: string | null;
+  fennoaModifiedAt?: string | null;
+  fennoaSyncedAt?: string | null;
+  source?: 'MANUAL' | 'FENNOA' | 'MANUAL_AND_FENNOA' | string;
   notes?: string | null;
   isArchived?: boolean;
   archivedAt?: string | null;
+  invoices?: CatererClientInvoice[];
+  invoiceSummary?: {
+    count: number;
+    totalNet: number;
+    totalGross: number;
+    totalPaid: number;
+    totalDue: number;
+    lastInvoiceDate?: string | null;
+  };
 }
+
+export interface CatererClientInvoice {
+  id: string;
+  fennoaId: number;
+  invoiceNumber?: string | null;
+  invoiceTypeId?: number | null;
+  status?: string | null;
+  invoiceDate?: string | null;
+  dueDate?: string | null;
+  totalNet: number;
+  totalGross: number;
+  totalVat: number;
+  totalPaid: number;
+  totalDue: number;
+  currencyCode?: string | null;
+  deliveryMethod?: string | null;
+  invoiceRows?: unknown;
+  payments?: unknown;
+  deliveries?: unknown;
+  fennoaSyncedAt?: string | null;
+}
+
+export type CatererClientInput = Pick<
+  CatererClient,
+  | 'name'
+  | 'name2'
+  | 'contactName'
+  | 'email'
+  | 'phone'
+  | 'fax'
+  | 'website'
+  | 'address'
+  | 'postalCode'
+  | 'city'
+  | 'countryCode'
+  | 'businessId'
+  | 'vatNumber'
+  | 'accountTypeId'
+  | 'accountCode'
+  | 'customerNumber'
+  | 'eInvoiceAddress'
+  | 'eInvoiceOperatorId'
+  | 'eInvoiceUnitNumber'
+  | 'invoiceDeliveryMethod'
+  | 'localeCode'
+  | 'paymentTermId'
+  | 'salesPriceListId'
+  | 'salesTaxClassId'
+  | 'invoiceIncludesVat'
+  | 'factoringPartnerId'
+  | 'ourReference'
+  | 'yourReference'
+  | 'shippingName'
+  | 'shippingName2'
+  | 'shippingAddress'
+  | 'shippingPostalCode'
+  | 'shippingCity'
+  | 'shippingCountryCode'
+  | 'autoReminderOverride'
+  | 'autoReminderEnabled'
+  | 'autoReminderInterval'
+  | 'autoReminderLastStep'
+  | 'salesIsRefused'
+  | 'notes'
+  | 'isArchived'
+>;
 
 export type CatererEventStatus = 'DRAFT' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
 export type CatererFulfillmentMode = 'DELIVERY' | 'PICKUP' | 'ON_SITE';

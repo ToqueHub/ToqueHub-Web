@@ -1,11 +1,229 @@
+import { FinanceAccountCategory } from '@prisma/client';
 import {
+  alignFinanceAccountingPeriods,
   allocateMonthlyBudgetPerCalendarDay,
+  countMonths,
   computeBudgetTransactionPacing,
+  deriveAccountingResults,
+  fennoaBudgetMetricLines,
+  listFennoaBudgets,
   resolveFinanceAsOfDate,
+  resolveFinanceFiscalPeriod,
   resolveFinanceSiteDataScope,
+  resolveFinanceStatementCategory,
   resolveMonthlyActualTo,
+  revenuePercentOf,
   selectFinanceBudgetPlan,
+  selectFennoaBudget,
 } from './finance-analytics.service';
+
+describe('Finance KPI revenue percentages', () => {
+  it('calculates comparable financial KPIs against revenue from the same period', () => {
+    expect(revenuePercentOf('revenue', 331_166.28, 331_166.28)).toBe(100);
+    expect(revenuePercentOf('operating_expenses', 311_309.31, 331_166.28)).toBe(94);
+    expect(revenuePercentOf('net_result', 15_361.86, 331_166.28)).toBe(4.6);
+    expect(revenuePercentOf('net_result', -5_000, 100_000)).toBe(-5);
+  });
+
+  it('does not create a CA ratio for non-comparable KPIs or a zero revenue period', () => {
+    expect(revenuePercentOf('average_ticket', 26, 331_166.28)).toBeNull();
+    expect(revenuePercentOf('cash', 7_094, 331_166.28)).toBeNull();
+    expect(revenuePercentOf('payroll', 10_000, 0)).toBeNull();
+  });
+});
+
+describe('Finance accounting periods', () => {
+  const periods = [
+    {
+      externalId: 1,
+      startDate: new Date('2022-12-20T00:00:00.000Z'),
+      endDate: new Date('2024-05-31T00:00:00.000Z'),
+    },
+    {
+      externalId: 2,
+      startDate: new Date('2024-06-01T00:00:00.000Z'),
+      endDate: new Date('2025-05-31T00:00:00.000Z'),
+    },
+    {
+      externalId: 3,
+      startDate: new Date('2025-06-01T00:00:00.000Z'),
+      endDate: new Date('2026-05-31T00:00:00.000Z'),
+    },
+  ];
+
+  it('selects the Fennoa period containing the requested closing day', () => {
+    const selected = resolveFinanceFiscalPeriod(periods, new Date('2026-05-31T23:59:59.999Z'), 1);
+
+    expect(selected).toMatchObject({
+      externalId: 3,
+      source: 'accounting_period',
+      startDate: new Date('2025-06-01T00:00:00.000Z'),
+      endDate: new Date('2026-05-31T23:59:59.999Z'),
+    });
+    expect(countMonths(selected.startDate, selected.endDate)).toBe(12);
+  });
+
+  it('keeps an exceptional first accounting period at its actual 18-month duration', () => {
+    const selected = resolveFinanceFiscalPeriod(periods, new Date('2025-05-31T23:59:59.999Z'), 1);
+
+    expect(selected.externalId).toBe(2);
+    expect(countMonths(selected.startDate, selected.endDate)).toBe(12);
+
+    const firstPeriod = resolveFinanceFiscalPeriod(
+      periods,
+      new Date('2024-05-31T23:59:59.999Z'),
+      1,
+    );
+    expect(firstPeriod.externalId).toBe(1);
+    expect(firstPeriod.startDate).toEqual(new Date('2022-12-20T00:00:00.000Z'));
+    expect(countMonths(firstPeriod.startDate, firstPeriod.endDate)).toBe(18);
+  });
+
+  it('aligns prior Fennoa periods by elapsed accounting months', () => {
+    const selected = resolveFinanceFiscalPeriod(periods, new Date('2026-05-31T23:59:59.999Z'), 1);
+    const aligned = alignFinanceAccountingPeriods(
+      periods,
+      selected,
+      new Date('2026-05-31T23:59:59.999Z'),
+    );
+
+    expect(aligned.map(({ externalId, from, to }) => ({ externalId, from, to }))).toEqual([
+      {
+        externalId: 3,
+        from: new Date('2025-06-01T00:00:00.000Z'),
+        to: new Date('2026-05-31T23:59:59.999Z'),
+      },
+      {
+        externalId: 2,
+        from: new Date('2024-06-01T00:00:00.000Z'),
+        to: new Date('2025-05-31T23:59:59.999Z'),
+      },
+      {
+        externalId: 1,
+        from: new Date('2022-12-20T00:00:00.000Z'),
+        to: new Date('2023-12-19T23:59:59.999Z'),
+      },
+    ]);
+  });
+
+  it('falls back to the configured 12-month fiscal year outside known Fennoa periods', () => {
+    const selected = resolveFinanceFiscalPeriod([], new Date('2026-03-15T12:00:00.000Z'), 6);
+
+    expect(selected).toMatchObject({
+      externalId: null,
+      source: 'settings',
+      startDate: new Date('2025-06-01T00:00:00.000Z'),
+      endDate: new Date('2026-05-31T23:59:59.999Z'),
+    });
+  });
+});
+
+describe('Finance accounting result lines', () => {
+  it('reconciles the Fennoa operating and net results without using cash-register revenue', () => {
+    expect(
+      deriveAccountingResults({
+        accountingRevenue: 331_166.28,
+        otherOperatingIncome: 995.4,
+        operatingExpenses: 311_309.31,
+        depreciation: 15_711.72,
+        financialExpenses: 5_490.51,
+        taxes: 0,
+      }),
+    ).toEqual({
+      resultBeforeDepreciation: 36_564.09,
+      accountingOperatingResult: 20_852.37,
+      netResult: 15_361.86,
+    });
+  });
+
+  it('applies the Finnish chart of accounts while preserving other countries', () => {
+    expect(resolveFinanceStatementCategory('6100', FinanceAccountCategory.OTHER_OPEX, 'FI')).toBe(
+      FinanceAccountCategory.PAYROLL,
+    );
+    expect(resolveFinanceStatementCategory('6500', FinanceAccountCategory.OTHER_OPEX, 'FI')).toBe(
+      FinanceAccountCategory.PAYROLL,
+    );
+    expect(resolveFinanceStatementCategory('8300', FinanceAccountCategory.FINANCIAL, 'FI')).toBe(
+      FinanceAccountCategory.OTHER_OPEX,
+    );
+    expect(resolveFinanceStatementCategory('9250', FinanceAccountCategory.TAX, 'FI')).toBe(
+      FinanceAccountCategory.FINANCIAL,
+    );
+    expect(resolveFinanceStatementCategory('8300', FinanceAccountCategory.FINANCIAL, 'FR')).toBe(
+      FinanceAccountCategory.FINANCIAL,
+    );
+  });
+});
+
+describe('Fennoa accounting budget', () => {
+  const row = (
+    externalBudgetId: number,
+    budgetName: string,
+    accountCode: string,
+    amount: number,
+    month = 1,
+    accountingPeriodExternalId = 3,
+  ) => ({
+    accountingPeriodExternalId,
+    externalBudgetId,
+    budgetName,
+    accountCode,
+    month,
+    amount,
+  });
+
+  it('selects the latest Fennoa budget for the selected accounting period', () => {
+    const rows = [
+        row(5, 'Budjetti 2026', '3000', 334_165),
+        row(8, 'Päivitetty budjetti 2026', '3000', 327_140.68),
+        row(9, 'Budget 2027', '3000', 342_000, 1, 4),
+      ];
+    const selected = selectFennoaBudget(rows, 3);
+
+    expect(selected).toMatchObject({
+      externalBudgetId: 8,
+      name: 'Päivitetty budjetti 2026',
+    });
+    expect(selected?.lines).toHaveLength(1);
+    expect(listFennoaBudgets(rows, 3).map(({ externalBudgetId }) => externalBudgetId)).toEqual([
+      8, 5,
+    ]);
+  });
+
+  it('converts the updated Fennoa budget accounts into comparable annual KPIs', () => {
+    const metricLines = fennoaBudgetMetricLines(
+      [
+        row(8, 'Päivitetty budjetti 2026', '3000', 327_140.68),
+        row(8, 'Päivitetty budjetti 2026', '3990', 250.8),
+        row(8, 'Päivitetty budjetti 2026', '4000', -88_825.48),
+        row(8, 'Päivitetty budjetti 2026', '5000', -101_458.18),
+        row(8, 'Päivitetty budjetti 2026', '6800', -8_906.88),
+        row(8, 'Päivitetty budjetti 2026', '7000', -102_003.07),
+        row(8, 'Päivitetty budjetti 2026', '9550', -5_555.35),
+        row(8, 'Päivitetty budjetti 2026', '9900', -4_432.54),
+      ],
+      new Date('2025-06-01T00:00:00.000Z'),
+    );
+    const totals = Object.fromEntries(
+      metricLines.map(({ metric, amount, periodStart }) => [
+        metric,
+        { amount: Number(amount), periodStart },
+      ]),
+    );
+
+    expect(totals).toMatchObject({
+      revenue: { amount: 327_140.68 },
+      material_purchases: { amount: 88_825.48 },
+      payroll: { amount: 101_458.18 },
+      depreciation: { amount: 8_906.88 },
+      operating_expenses: { amount: 301_193.61 },
+      result_before_depreciation: { amount: 35_104.75 },
+      operating_result: { amount: 26_197.87 },
+      net_result: { amount: 16_209.98 },
+    });
+    expect(totals.revenue.periodStart).toEqual(new Date('2025-06-01T00:00:00.000Z'));
+  });
+});
 
 describe('Finance automatic reference date', () => {
   const now = new Date('2026-08-07T21:55:00.000Z');

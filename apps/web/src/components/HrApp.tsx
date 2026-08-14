@@ -417,7 +417,7 @@ function HrDashboard({
         return <HrMetric key={stat.label} icon={<Icon size={20} />} value={stat.value} label={stat.label} tone={stat.tone} delay={index + 1} onClick={stat.target ? () => onNavigate(stat.target!) : undefined} />;
       })}
     </div>
-    <div className="double-panel">
+    <div className="double-panel hr-dashboard-panels">
       <motion.div
         className="card-modern widget-card-modern hr-dashboard-widget"
         initial={{ opacity: 0, y: 15 }}

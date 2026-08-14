@@ -114,6 +114,7 @@ import { PlanningApp } from './PlanningApp';
 import { TechnicalSheetsApp } from './TechnicalSheetsApp';
 import { ProductionApp } from './ProductionApp';
 import { MenusApp } from './MenusApp';
+import { ClientsApp } from './CatererMenusApp';
 import { HaccpApp } from './HaccpApp';
 import { StockAssistantPanel } from './StockAssistantPanel';
 import { Modal } from './ui/Modal';
@@ -446,6 +447,27 @@ const apps = [
     compatibility: 'ToqueHub Core v0.1.0+ · Dépendances culinaires installées automatiquement',
     status: 'Disponible',
   },
+  {
+    id: 'clients',
+    icon: UsersRound,
+    title: 'Clients',
+    category: 'Relation client & facturation',
+    price: 'Gratuit',
+    gradient: 'linear-gradient(135deg, #0f766e 0%, #10b981 100%)',
+    developer: 'ToqueHub Core',
+    rating: 'Nouveau',
+    ratingCount: 'V1',
+    ageLimit: '3+',
+    size: '1.2 Mo',
+    tagline: 'Centralisez vos clients, leurs coordonnées, factures, paiements et encours.',
+    description:
+      'Clients devient le référentiel commercial commun de ToqueHub. Les fiches peuvent être créées manuellement ou enrichies par un logiciel comptable connecté, sans dépendre du module Traiteur.\n\nFonctionnalités clés :\n- Coordonnées, informations légales et adresses de livraison.\n- Paramètres de facturation et de relance.\n- Historique des factures, paiements, envois et encours.\n- Synchronisation avec les sources comptables compatibles.',
+    screenshots: ['Répertoire clients', 'Fiche client', 'Historique comptable'],
+    changelog: 'Création du module autonome Clients à partir du référentiel Traiteur existant.',
+    version: 'v1.0.0',
+    compatibility: 'ToqueHub Core v0.1.0+ · logiciel comptable optionnel',
+    status: 'Disponible',
+  },
 ];
 
 type ActiveTab =
@@ -512,6 +534,7 @@ type ActiveTab =
   | 'menus-diets'
   | 'menus-guests'
   | 'menus-exports'
+  | 'clients-directory'
   | 'haccp-dashboard'
   | 'haccp-setup'
   | 'haccp-sensors'
@@ -570,6 +593,7 @@ type Confirmation =
   | 'uninstall-technical-sheets'
   | 'uninstall-production'
   | 'uninstall-menus'
+  | 'uninstall-clients'
   | 'uninstall-purchasing'
   | 'uninstall-finance'
   | null;
@@ -646,6 +670,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const [planningMenuExpanded, setPlanningMenuExpanded] = useState(() => false);
   const [productionMenuExpanded, setProductionMenuExpanded] = useState(() => false);
   const [menusMenuExpanded, setMenusMenuExpanded] = useState(() => false);
+  const [clientsMenuExpanded, setClientsMenuExpanded] = useState(() => false);
   const [haccpMenuExpanded, setHaccpMenuExpanded] = useState(() => false);
   const [purchasingMenuExpanded, setPurchasingMenuExpanded] = useState(() => false);
   const [financeMenuExpanded, setFinanceMenuExpanded] = useState(() => false);
@@ -1312,6 +1337,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   const technicalSheetsInstalled = installedApps.includes('technical-sheets');
   const productionInstalled = installedApps.includes('production');
   const menusInstalled = installedApps.includes('menus');
+  const clientsInstalled = installedApps.includes('clients');
   const haccpInstalled = installedApps.includes('haccp');
   const purchasingInstalled = installedApps.includes('purchasing');
   const financeInstalled = installedApps.includes('finance');
@@ -1421,6 +1447,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       ].includes(activeTab),
     [activeTab],
   );
+  const isClientsTab = activeTab === 'clients-directory';
   const isHaccpTab = useMemo(
     () =>
       [
@@ -1477,6 +1504,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       setMenusMenuExpanded(true);
     }
   }, [isMenusTab]);
+
+  useEffect(() => {
+    if (isClientsTab) setClientsMenuExpanded(true);
+  }, [isClientsTab]);
 
   useEffect(() => {
     if (isHaccpTab) {
@@ -1717,7 +1748,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                 },
                 { tab: 'menus-list' as ActiveTab, label: 'Événements', icon: ClipboardList },
                 { tab: 'menus-calendar' as ActiveTab, label: 'Calendrier', icon: Calendar },
-                { tab: 'menus-catalog' as ActiveTab, label: 'Clients', icon: UsersRound },
                 { tab: 'menus-exports' as ActiveTab, label: 'Documents', icon: Download },
               ]
             : [
@@ -1761,6 +1791,17 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   : []),
                 { tab: 'menus-exports', label: 'Exports & Documents', icon: Download },
               ],
+      },
+      {
+        id: 'clients',
+        title: 'Clients',
+        icon: UsersRound,
+        installed: clientsInstalled,
+        expanded: clientsMenuExpanded,
+        setExpanded: setClientsMenuExpanded,
+        isActive: isClientsTab,
+        defaultTab: 'clients-directory',
+        submenu: [{ tab: 'clients-directory', label: 'Répertoire clients', icon: UsersRound }],
       },
       {
         id: 'haccp',
@@ -1864,6 +1905,9 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
       menusMenuExpanded,
       isMenusTab,
       menuModuleSettings,
+      clientsInstalled,
+      clientsMenuExpanded,
+      isClientsTab,
       haccpInstalled,
       haccpMenuExpanded,
       isHaccpTab,
@@ -2379,6 +2423,29 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     }
   }
 
+  async function uninstallClients() {
+    setAppActionLoading(true);
+    setError(undefined);
+    setSuccess(undefined);
+    try {
+      const summary = await api.uninstallClients(token);
+      setDashboardSummary((prev) => ({ ...prev, ...summary }) as DashboardSummary);
+      setInstalledApps(
+        summary.installedApplications ?? installedApps.filter((app) => app !== 'clients'),
+      );
+      if (isClientsTab) setActiveTab('applications');
+      setSuccess(
+        'L’application Clients a été retirée de la navigation. Les fiches, factures et historiques sont conservés.',
+      );
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Suppression de Clients impossible.');
+    } finally {
+      setAppActionLoading(false);
+      setConfirmation(null);
+    }
+  }
+
   async function uninstallPurchasing() {
     setAppActionLoading(true);
     setError(undefined);
@@ -2433,6 +2500,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         'technical-sheets',
         'production',
         'menus',
+        'clients',
         'haccp',
         'purchasing',
         'finance',
@@ -2480,13 +2548,15 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                     ? await api.installProduction(token)
                     : appId === 'menus'
                       ? await api.installMenus(token)
-                      : appId === 'haccp'
-                        ? await api.installHaccp(token)
-                        : appId === 'purchasing'
-                          ? await api.installPurchasing(token)
-                          : appId === 'finance'
-                            ? await api.installFinance(token)
-                            : await api.installStocks(token);
+                      : appId === 'clients'
+                        ? await api.installClients(token)
+                        : appId === 'haccp'
+                          ? await api.installHaccp(token)
+                          : appId === 'purchasing'
+                            ? await api.installPurchasing(token)
+                            : appId === 'finance'
+                              ? await api.installFinance(token)
+                              : await api.installStocks(token);
         setDashboardSummary((prev) => ({ ...prev, ...summary }) as DashboardSummary);
         setInstalledApps(
           summary.installedApplications ?? Array.from(new Set([...installedApps, appId])),
@@ -2504,13 +2574,15 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                     ? 'L’application Production a été installée. Les ordres peuvent être créés depuis les fiches techniques sans dupliquer les référentiels.'
                     : appId === 'menus'
                       ? 'L’application Menus a été installée. Planification, cycles, convives et génération Production sont disponibles.'
-                      : appId === 'haccp'
-                        ? 'L’application HACCP a été installée. Dashboard conformité, contrôles et rapports sont disponibles.'
-                        : appId === 'purchasing'
-                          ? 'L’application Achats a été installée. La configuration guidée est prête.'
-                          : appId === 'finance'
-                            ? 'L’application Finance a été installée. Connectez Fennoa ou importez vos rapports de caisse pour commencer.'
-                            : 'L’application Stocks a été installée avec succès. Le référentiel de base est prêt : importez vos produits ou analysez un document.',
+                      : appId === 'clients'
+                        ? 'L’application Clients a été installée. Le répertoire, les fiches et les historiques de facturation sont disponibles.'
+                        : appId === 'haccp'
+                          ? 'L’application HACCP a été installée. Dashboard conformité, contrôles et rapports sont disponibles.'
+                          : appId === 'purchasing'
+                            ? 'L’application Achats a été installée. La configuration guidée est prête.'
+                            : appId === 'finance'
+                              ? 'L’application Finance a été installée. Connectez Fennoa ou importez vos rapports de caisse pour commencer.'
+                              : 'L’application Stocks a été installée avec succès. Le référentiel de base est prêt : importez vos produits ou analysez un document.',
         );
         if (appId === 'stocks') {
           setActiveTab('stocks-dashboard');
@@ -2525,6 +2597,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         }
         if (appId === 'production') setActiveTab('production-dashboard');
         if (appId === 'menus') setActiveTab('menus-dashboard');
+        if (appId === 'clients') setActiveTab('clients-directory');
         if (appId === 'haccp') setActiveTab('haccp-dashboard');
         if (appId === 'purchasing') setActiveTab('purchasing-dashboard');
         if (appId === 'finance') setActiveTab('finance-cockpit');
@@ -3686,6 +3759,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     'menus-diets': 'Régimes alimentaires',
     'menus-guests': 'Convives Menus',
     'menus-exports': 'Exports Menus',
+    'clients-directory': 'Clients',
     'haccp-dashboard': 'HACCP',
     'haccp-setup': 'Zones & matériels HACCP',
     'haccp-sensors': 'Capteurs HACCP',
@@ -4718,11 +4792,13 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                               ? 'uninstall-production'
                               : appId === 'menus'
                                 ? 'uninstall-menus'
-                                : appId === 'purchasing'
-                                  ? 'uninstall-purchasing'
-                                  : appId === 'finance'
-                                    ? 'uninstall-finance'
-                                    : 'uninstall-stocks',
+                                : appId === 'clients'
+                                  ? 'uninstall-clients'
+                                  : appId === 'purchasing'
+                                    ? 'uninstall-purchasing'
+                                    : appId === 'finance'
+                                      ? 'uninstall-finance'
+                                      : 'uninstall-stocks',
                     )
                   }
                 />
@@ -4964,6 +5040,10 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                     setActiveTab('production-dashboard');
                   }}
                 />
+              )}
+
+              {isClientsTab && clientsInstalled && (
+                <ClientsApp token={token} canManage={canWriteHr} />
               )}
 
               {isHaccpTab && haccpInstalled && (
@@ -6543,6 +6623,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                 setActiveTab('technical-sheets-dashboard');
               if (selectedStoreApp.id === 'production') setActiveTab('production-dashboard');
               if (selectedStoreApp.id === 'menus') setActiveTab('menus-dashboard');
+              if (selectedStoreApp.id === 'clients') setActiveTab('clients-directory');
               if (selectedStoreApp.id === 'planning') setActiveTab('planning-dashboard');
               if (selectedStoreApp.id === 'purchasing') setActiveTab('purchasing-dashboard');
               if (selectedStoreApp.id === 'finance') setActiveTab('finance-cockpit');
@@ -6550,6 +6631,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             }}
             onUninstall={() => {
               if (selectedStoreApp.id === 'menus') setConfirmation('uninstall-menus');
+              else if (selectedStoreApp.id === 'clients') setConfirmation('uninstall-clients');
               else if (selectedStoreApp.id === 'production')
                 setConfirmation('uninstall-production');
               else if (selectedStoreApp.id === 'technical-sheets')
@@ -6856,6 +6938,17 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
         loading={appActionLoading}
         onCancel={() => setConfirmation(null)}
         onConfirm={uninstallMenus}
+      />
+
+      <ConfirmationModal
+        isOpen={confirmation === 'uninstall-clients'}
+        title="Supprimer l’application Clients ?"
+        text="L’entrée disparaîtra de la navigation, mais les fiches clients, factures, paiements et historiques seront conservés pour une réactivation ultérieure."
+        confirmLabel="Supprimer"
+        danger
+        loading={appActionLoading}
+        onCancel={() => setConfirmation(null)}
+        onConfirm={uninstallClients}
       />
 
       <ConfirmationModal
@@ -8997,6 +9090,7 @@ function DashboardWidgetCard({
 
 function widgetIcon(module?: string) {
   const moduleKey = String(module ?? 'core').toLowerCase();
+  if (moduleKey.includes('client')) return UsersRound;
   if (moduleKey.includes('stock')) return Package;
   if (moduleKey.includes('production')) return Factory;
   if (moduleKey.includes('menu')) return Utensils;
@@ -9010,6 +9104,7 @@ function widgetIcon(module?: string) {
 
 function widgetTone(module?: string) {
   const moduleKey = String(module ?? 'core').toLowerCase();
+  if (moduleKey.includes('client')) return 'emerald';
   if (moduleKey.includes('production') || moduleKey.includes('technical')) return 'orange';
   if (moduleKey.includes('planning') || moduleKey.includes('rnm')) return 'blue';
   if (moduleKey.includes('menu')) return 'purple';
@@ -9019,6 +9114,7 @@ function widgetTone(module?: string) {
 
 function moduleTargetTab(module?: string): ActiveTab | undefined {
   const moduleKey = String(module ?? 'core').toLowerCase();
+  if (moduleKey.includes('client')) return 'clients-directory';
   if (moduleKey.includes('stock')) return 'stocks-dashboard';
   if (moduleKey.includes('production')) return 'production-dashboard';
   if (moduleKey.includes('menu')) return 'menus-dashboard';

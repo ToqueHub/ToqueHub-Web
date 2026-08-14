@@ -69,6 +69,15 @@ const MODULE_DEFINITIONS = [
     labels: ['menu', 'cycle', 'diet', 'guest', 'variant'],
   },
   {
+    id: 'clients',
+    name: 'Clients',
+    installedField: 'clientsInstalledAt',
+    description: 'Référentiel clients, coordonnées, paramètres de facturation et historique comptable.',
+    dependencies: ['Core'],
+    patterns: [/^CatererClient/],
+    labels: ['client', 'customer', 'invoice', 'billing', 'payment'],
+  },
+  {
     id: 'haccp',
     name: 'HACCP',
     installedField: 'haccpInstalledAt',

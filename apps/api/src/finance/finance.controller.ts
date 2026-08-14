@@ -24,6 +24,7 @@ import {
   ConfigureFennoaDto,
   ConfigureFlatpayDto,
   ConfigurePosApiDto,
+  AcceptFinanceBudgetSuggestionDto,
   FinanceAiAnalysisDto,
   FinanceBootstrapQueryDto,
   FinanceExportQueryDto,
@@ -33,7 +34,9 @@ import {
   SetSalesSourceInclusionDto,
   SyncFennoaDto,
   SyncPosApiDto,
+  SuggestFinanceBudgetDto,
   UpdateFinanceAccountDto,
+  UpdateFinanceBudgetReferenceDto,
   UpdateFinancePreferencesDto,
 } from './dto/finance.dto';
 import { FennoaSyncService } from './fennoa-sync.service';
@@ -223,6 +226,30 @@ export class FinanceController {
     @Body() dto: MapFinanceSourceSiteDto,
   ) {
     return this.finance.mapBudgetSite(this.org(user), user, id, dto.siteId);
+  }
+
+  @Patch('budgets/reference')
+  selectBudgetReference(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateFinanceBudgetReferenceDto,
+  ) {
+    return this.finance.selectBudgetReference(this.org(user), user, dto);
+  }
+
+  @Post('budgets/suggestions')
+  suggestBudget(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: SuggestFinanceBudgetDto,
+  ) {
+    return this.financeAi.suggestBudget(this.org(user), user, dto);
+  }
+
+  @Post('budgets/suggestions/accept')
+  acceptBudgetSuggestion(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: AcceptFinanceBudgetSuggestionDto,
+  ) {
+    return this.financeAi.acceptBudgetSuggestion(this.org(user), user, dto);
   }
 
   @Get('accounts')

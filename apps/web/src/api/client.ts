@@ -149,6 +149,7 @@ import type {
   MenuStatus,
   MenuUsageProfile,
   CatererClient,
+  CatererClientInput,
   CatererEvent,
   CatererEventPayload,
   CatererEventStatus,
@@ -182,6 +183,7 @@ import type {
   PurchaseOrderPayload,
   PurchaseReceiptPayload,
   FinanceBootstrap,
+  FinanceBudgetSuggestion,
   FinanceSalesInsights,
   ConfigureFlatpayPayload,
   ConfigurePosApiPayload,
@@ -661,6 +663,20 @@ export const api = {
       token,
     );
   },
+  installClients(token: string) {
+    return request<DashboardSummary | { installed: boolean; installedApplications: string[] }>(
+      '/menus/clients/install',
+      { method: 'POST' },
+      token,
+    );
+  },
+  uninstallClients(token: string) {
+    return request<DashboardSummary | { installed: boolean; installedApplications: string[] }>(
+      '/menus/clients/uninstall',
+      { method: 'POST' },
+      token,
+    );
+  },
   installHaccp(token: string) {
     return request<DashboardSummary>('/auth/apps/haccp/install', { method: 'POST' }, token);
   },
@@ -869,6 +885,36 @@ export const api = {
     return request<FinanceBootstrap['dashboard']['budget']>(
       `/finance/budgets/${budgetId}/site`,
       { method: 'PATCH', body: JSON.stringify({ siteId }) },
+      token,
+    );
+  },
+  selectFinanceBudgetReference(
+    token: string,
+    payload: { budgetId: string; asOf: string; siteId?: string },
+  ) {
+    return request<{ selected: boolean; budgetId: string; name: string }>(
+      '/finance/budgets/reference',
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      token,
+    );
+  },
+  suggestFinanceBudget(
+    token: string,
+    payload: { asOf: string; siteId: string; guidance?: string },
+  ) {
+    return request<FinanceBudgetSuggestion>(
+      '/finance/budgets/suggestions',
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    );
+  },
+  acceptFinanceBudgetSuggestion(
+    token: string,
+    payload: { siteId: string; proposal: FinanceBudgetSuggestion['proposal'] },
+  ) {
+    return request<{ accepted: boolean; budgetId: string; name: string }>(
+      '/finance/budgets/suggestions/accept',
+      { method: 'POST', body: JSON.stringify(payload) },
       token,
     );
   },
@@ -1609,14 +1655,14 @@ export const api = {
       token,
     );
   },
-  createCatererClient(token: string, payload: Omit<CatererClient, 'id'>) {
+  createCatererClient(token: string, payload: CatererClientInput) {
     return request<CatererClient>(
       '/menus/caterer/clients',
       { method: 'POST', body: JSON.stringify(payload) },
       token,
     );
   },
-  updateCatererClient(token: string, id: string, payload: Omit<CatererClient, 'id'>) {
+  updateCatererClient(token: string, id: string, payload: CatererClientInput) {
     return request<CatererClient>(
       `/menus/caterer/clients/${id}`,
       { method: 'PATCH', body: JSON.stringify(payload) },
@@ -3425,11 +3471,7 @@ export const api = {
     if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
     return response.json() as Promise<EquipmentDocument[]>;
   },
-  async downloadEquipmentDocument(
-    token: string,
-    productId: string,
-    document: EquipmentDocument,
-  ) {
+  async downloadEquipmentDocument(token: string, productId: string, document: EquipmentDocument) {
     const response = await fetch(
       `${API_URL}/api/equipment/${encodeURIComponent(productId)}/documents/${encodeURIComponent(document.id)}/download`,
       { headers: { Authorization: `Bearer ${token}` } },

@@ -1,6 +1,37 @@
 import { Type, Transform } from 'class-transformer';
-import { IsArray, IsBoolean, IsDateString, IsEnum, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
-import { CatererEventStatus, CatererFulfillmentMode, MenuActivity, MenuCatalogType, MenuDispatchStatus, MenuExportAudience, MenuExportFormat, MenuGuestGroupType, MenuHistoryAction, MenuKind, MenuProductionGenerationMode, MenuSectionType, MenuServiceType, MenuStatus, MenuUsageProfile, MenuVariantMode } from '@prisma/client';
+import {
+  IsArray,
+  IsBoolean,
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+  ValidateNested,
+} from 'class-validator';
+import {
+  CatererEventStatus,
+  CatererFulfillmentMode,
+  MenuActivity,
+  MenuCatalogType,
+  MenuDispatchStatus,
+  MenuExportAudience,
+  MenuExportFormat,
+  MenuGuestGroupType,
+  MenuHistoryAction,
+  MenuKind,
+  MenuProductionGenerationMode,
+  MenuSectionType,
+  MenuServiceType,
+  MenuStatus,
+  MenuUsageProfile,
+  MenuVariantMode,
+} from '@prisma/client';
 
 export class MenuQueryDto {
   @IsOptional() @IsString() search?: string;
@@ -28,7 +59,10 @@ export class MenuItemDto {
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0.001) servingQuantity?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) targetReadyQuantity?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) lowStockThreshold?: number;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() availabilityEnabled?: boolean;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  availabilityEnabled?: boolean;
   @IsOptional() @IsString() @MaxLength(2000) notes?: string;
 }
 
@@ -43,20 +77,48 @@ export class UpsertMenuDto {
   @IsOptional() @IsString() @MaxLength(4000) description?: string;
   @IsOptional() @IsString() activeFrom?: string;
   @IsOptional() @IsString() activeUntil?: string;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() isPrimary?: boolean;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  isPrimary?: boolean;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) expectedGuests?: number;
-  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => MenuItemDto) items?: MenuItemDto[];
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => MenuItemDto)
+  items?: MenuItemDto[];
 }
 
 export class UpdateMenuSettingsDto {
   @IsEnum(MenuUsageProfile) usageProfile!: MenuUsageProfile;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() catalogEnabled?: boolean;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() scheduledMenusEnabled?: boolean;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() eventsEnabled?: boolean;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() cyclesEnabled?: boolean;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() dietsEnabled?: boolean;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() guestForecastsEnabled?: boolean;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() targetStockEnabled?: boolean;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  catalogEnabled?: boolean;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  scheduledMenusEnabled?: boolean;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  eventsEnabled?: boolean;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  cyclesEnabled?: boolean;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  dietsEnabled?: boolean;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  guestForecastsEnabled?: boolean;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  targetStockEnabled?: boolean;
 }
 
 export class UpsertMenuCategoryDto {
@@ -95,20 +157,30 @@ export class UpsertMenuVariantDto {
   @IsString() @MaxLength(160) name!: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) expectedGuests?: number;
   @IsOptional() @IsString() @MaxLength(2000) notes?: string;
-  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => VariantReplacementDto) replacements?: VariantReplacementDto[];
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => VariantReplacementDto)
+  replacements?: VariantReplacementDto[];
 }
 
 export class UpsertDietDto {
   @IsString() @MaxLength(120) name!: string;
   @IsOptional() @IsString() @MaxLength(2000) description?: string;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() isArchived?: boolean;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  isArchived?: boolean;
 }
 
 export class UpsertGuestGroupDto {
   @IsString() @MaxLength(120) name!: string;
   @IsEnum(MenuGuestGroupType) type!: MenuGuestGroupType;
   @IsOptional() @IsString() @MaxLength(2000) description?: string;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() isArchived?: boolean;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  isArchived?: boolean;
 }
 
 export class GuestForecastDto {
@@ -121,7 +193,10 @@ export class GuestForecastDto {
 }
 
 export class UpdateGuestForecastsDto {
-  @IsArray() @ValidateNested({ each: true }) @Type(() => GuestForecastDto) forecasts!: GuestForecastDto[];
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => GuestForecastDto)
+  forecasts!: GuestForecastDto[];
 }
 
 export class CycleItemDto {
@@ -153,8 +228,16 @@ export class UpsertCycleDto {
   @IsOptional() @IsString() @MaxLength(4000) description?: string;
   @Type(() => Number) @IsInt() @Min(1) @Max(52) durationWeeks!: number;
   @IsOptional() @IsUUID() siteId?: string;
-  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => CycleItemDto) items?: CycleItemDto[];
-  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => CycleForecastDto) forecasts?: CycleForecastDto[];
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CycleItemDto)
+  items?: CycleItemDto[];
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CycleForecastDto)
+  forecasts?: CycleForecastDto[];
 }
 
 export class ReplicateCycleDto {
@@ -166,17 +249,69 @@ export class ReplicateCycleDto {
 
 export class CatererClientQueryDto {
   @IsOptional() @IsString() search?: string;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() includeArchived?: boolean;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  includeArchived?: boolean;
 }
 
 export class UpsertCatererClientDto {
   @IsString() @MaxLength(160) name!: string;
+  @IsOptional() @IsString() @MaxLength(160) name2?: string;
   @IsOptional() @IsString() @MaxLength(160) contactName?: string;
   @IsOptional() @IsString() @MaxLength(200) email?: string;
   @IsOptional() @IsString() @MaxLength(60) phone?: string;
+  @IsOptional() @IsString() @MaxLength(60) fax?: string;
+  @IsOptional() @IsString() @MaxLength(300) website?: string;
   @IsOptional() @IsString() @MaxLength(4000) address?: string;
+  @IsOptional() @IsString() @MaxLength(30) postalCode?: string;
+  @IsOptional() @IsString() @MaxLength(120) city?: string;
+  @IsOptional() @IsString() @MaxLength(8) countryCode?: string;
+  @IsOptional() @IsString() @MaxLength(80) businessId?: string;
+  @IsOptional() @IsString() @MaxLength(80) vatNumber?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) accountTypeId?: number;
+  @IsOptional() @IsString() @MaxLength(30) accountCode?: string;
+  @IsOptional() @IsString() @MaxLength(80) customerNumber?: string;
+  @IsOptional() @IsString() @MaxLength(300) eInvoiceAddress?: string;
+  @IsOptional() @IsString() @MaxLength(120) eInvoiceOperatorId?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) eInvoiceUnitNumber?: number;
+  @IsOptional() @IsString() @MaxLength(60) invoiceDeliveryMethod?: string;
+  @IsOptional() @IsString() @MaxLength(8) localeCode?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) paymentTermId?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) salesPriceListId?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) salesTaxClassId?: number;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  invoiceIncludesVat?: boolean;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) factoringPartnerId?: number;
+  @IsOptional() @IsString() @MaxLength(160) ourReference?: string;
+  @IsOptional() @IsString() @MaxLength(160) yourReference?: string;
+  @IsOptional() @IsString() @MaxLength(160) shippingName?: string;
+  @IsOptional() @IsString() @MaxLength(160) shippingName2?: string;
+  @IsOptional() @IsString() @MaxLength(4000) shippingAddress?: string;
+  @IsOptional() @IsString() @MaxLength(30) shippingPostalCode?: string;
+  @IsOptional() @IsString() @MaxLength(120) shippingCity?: string;
+  @IsOptional() @IsString() @MaxLength(8) shippingCountryCode?: string;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  autoReminderOverride?: boolean;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  autoReminderEnabled?: boolean;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) autoReminderInterval?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) autoReminderLastStep?: number;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  salesIsRefused?: boolean;
   @IsOptional() @IsString() @MaxLength(4000) notes?: string;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() isArchived?: boolean;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  isArchived?: boolean;
 }
 
 export class CatererPrestationDto {
@@ -189,7 +324,11 @@ export class CatererPrestationDto {
   @Type(() => Number) @IsInt() @Min(0) expectedGuests!: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) position?: number;
   @IsOptional() @IsString() @MaxLength(2000) notes?: string;
-  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => MenuItemDto) items?: MenuItemDto[];
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => MenuItemDto)
+  items?: MenuItemDto[];
 }
 
 export class UpsertCatererEventDto {
@@ -203,7 +342,11 @@ export class UpsertCatererEventDto {
   @IsOptional() @IsString() @MaxLength(4000) accessNotes?: string;
   @IsEnum(CatererFulfillmentMode) fulfillmentMode!: CatererFulfillmentMode;
   @IsOptional() @IsString() @MaxLength(4000) notes?: string;
-  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => CatererPrestationDto) prestations?: CatererPrestationDto[];
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CatererPrestationDto)
+  prestations?: CatererPrestationDto[];
 }
 
 export class CatererEventQueryDto {
@@ -220,7 +363,10 @@ export class UpdateCatererEventStatusDto {
 
 export class GenerateCatererEventProductionsDto {
   @IsOptional() @IsEnum(MenuProductionGenerationMode) mode?: MenuProductionGenerationMode;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() force?: boolean;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  force?: boolean;
   @IsOptional() @IsUUID() serviceId?: string;
 }
 
@@ -257,8 +403,16 @@ export class GenerateMenuProductionLineDto {
   @Type(() => Number) @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) portions!: number;
   @IsOptional() @IsDateString() productionDate?: string;
   @IsOptional() @IsString() @MaxLength(8) plannedTime?: string;
-  @IsOptional() @Type(() => Number) @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) targetPortions?: number;
-  @IsOptional() @Type(() => Number) @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) openingCarryOverPortions?: number;
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  targetPortions?: number;
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  openingCarryOverPortions?: number;
 }
 
 export class PlanCatalogProductionDayLineDto {
@@ -284,11 +438,18 @@ export class UpdateMenuDispatchStatusDto {
 
 export class GenerateProductionsDto {
   @IsEnum(MenuProductionGenerationMode) mode!: MenuProductionGenerationMode;
-  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() force?: boolean;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  force?: boolean;
   @IsOptional() @IsString() @MaxLength(8) plannedTime?: string;
   @IsOptional() @IsDateString() neededAt?: string;
   @IsOptional() @IsUUID() serviceId?: string;
-  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => GenerateMenuProductionLineDto) lines?: GenerateMenuProductionLineDto[];
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => GenerateMenuProductionLineDto)
+  lines?: GenerateMenuProductionLineDto[];
 }
 
 export class PrepareMenuExportDto {

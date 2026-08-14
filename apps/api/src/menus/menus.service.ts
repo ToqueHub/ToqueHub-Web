@@ -51,7 +51,7 @@ export class MenusService {
 
   async install(organizationId: string, actor: Actor) {
     this.assertManager(actor);
-    const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { stocksInstalledAt: true, rnmPricesInstalledAt: true, hrInstalledAt: true, planningInstalledAt: true, technicalSheetsInstalledAt: true, productionInstalledAt: true, menusInstalledAt: true } });
+    const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { stocksInstalledAt: true, rnmPricesInstalledAt: true, hrInstalledAt: true, planningInstalledAt: true, technicalSheetsInstalledAt: true, productionInstalledAt: true, menusInstalledAt: true, clientsInstalledAt: true, haccpInstalledAt: true, purchasingInstalledAt: true, financeInstalledAt: true } });
     if (!org) throw new NotFoundException('Organisation introuvable.');
     const installedAt = new Date();
     const installStocks = !org.stocksInstalledAt;
@@ -155,12 +155,36 @@ export class MenusService {
 
   async uninstall(organizationId: string, actor: Actor) {
     this.assertManager(actor);
-    const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { stocksInstalledAt: true, rnmPricesInstalledAt: true, hrInstalledAt: true, planningInstalledAt: true, technicalSheetsInstalledAt: true, productionInstalledAt: true } });
+    const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { stocksInstalledAt: true, rnmPricesInstalledAt: true, hrInstalledAt: true, planningInstalledAt: true, technicalSheetsInstalledAt: true, productionInstalledAt: true, clientsInstalledAt: true, haccpInstalledAt: true, purchasingInstalledAt: true, financeInstalledAt: true } });
     await this.prisma.$transaction(async (tx) => {
       await tx.organization.update({ where: { id: organizationId }, data: { menusInstalledAt: null } });
       await tx.auditLog.create({ data: { organizationId, userId: actor.id, action: AuditAction.MODULE_MENUS_UNINSTALLED, entityType: 'Module', entityId: 'menus', entityName: 'Menus' } });
     });
     return { installed: false, installedApplications: this.installedApps({ ...org, menusInstalledAt: null }) };
+  }
+
+  async installClients(organizationId: string, actor: Actor) {
+    this.assertManager(actor);
+    const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
+    if (!org) throw new NotFoundException('Organisation introuvable.');
+    if (!org.clientsInstalledAt) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.organization.update({ where: { id: organizationId }, data: { clientsInstalledAt: new Date() } });
+        await tx.auditLog.create({ data: { organizationId, userId: actor.id, action: AuditAction.MODULE_CLIENTS_INSTALLED, entityType: 'Module', entityId: 'clients', entityName: 'Clients' } });
+      });
+    }
+    return { installed: true, installedApplications: this.installedApps({ ...org, clientsInstalledAt: org.clientsInstalledAt ?? new Date() }) };
+  }
+
+  async uninstallClients(organizationId: string, actor: Actor) {
+    this.assertManager(actor);
+    const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
+    if (!org) throw new NotFoundException('Organisation introuvable.');
+    await this.prisma.$transaction(async (tx) => {
+      await tx.organization.update({ where: { id: organizationId }, data: { clientsInstalledAt: null } });
+      await tx.auditLog.create({ data: { organizationId, userId: actor.id, action: AuditAction.MODULE_CLIENTS_UNINSTALLED, entityType: 'Module', entityId: 'clients', entityName: 'Clients' } });
+    });
+    return { installed: false, installedApplications: this.installedApps({ ...org, clientsInstalledAt: null }) };
   }
 
   async dashboard(organizationId: string, activity?: string) {
@@ -1394,5 +1418,5 @@ export class MenusService {
   private async recalculateProductionOrderTx(tx: any, organizationId: string, orderId: string) { const order = await tx.productionOrder.findFirst({ where: { id: orderId, organizationId }, include: { technicalSheet: { include: { ingredients: { include: { product: { include: { unit: true, primarySupplier: true, stocks: true } }, unit: true } } } } } }); if (!order) return; await tx.productionMaterialRequirement.deleteMany({ where: { orderId } }); const factor = new Prisma.Decimal(order.plannedPortions).div(order.technicalSheet.referencePortions || 1); let estimatedCost = new Prisma.Decimal(0); for (const ing of order.technicalSheet.ingredients) { const required = new Prisma.Decimal(ing.quantity).mul(factor); const available = ing.product.stocks.reduce((s, st) => s.add(st.quantity), new Prisma.Decimal(0)); const status = ing.product.isArchived ? ProductionMaterialStatus.PRODUCT_ARCHIVED : available.isZero() ? ProductionMaterialStatus.STOCK_UNKNOWN : available.lt(required) ? ProductionMaterialStatus.INSUFFICIENT_STOCK : available.sub(required).lte(ing.product.minimumStock) ? ProductionMaterialStatus.POTENTIAL_SHORTAGE : ProductionMaterialStatus.OK; const cost = ing.cost == null ? null : new Prisma.Decimal(ing.cost).mul(factor); if (cost) estimatedCost = estimatedCost.add(cost); await tx.productionMaterialRequirement.create({ data: { organizationId, orderId, technicalSheetIngredientId: ing.id, productId: ing.productId, unitId: ing.unitId, supplierId: ing.product.primarySupplierId, requiredQuantity: required, stockAvailable: available, varianceQuantity: available.sub(required), status, estimatedCost: cost, productNameSnapshot: ing.product.name, unitSymbolSnapshot: ing.unit.symbol, supplierNameSnapshot: ing.product.primarySupplier?.name, details: { source: 'MENUS', sourceMenuOrderId: orderId } } }); } await tx.productionOrder.update({ where: { id: orderId }, data: { estimatedCost } }); }
   private async nextProductionNumber(tx: any, org: string) { const year = new Date().getFullYear(); const count = await tx.productionOrder.count({ where: { organizationId: org, number: { startsWith: `OP-${year}-` } } }); return `OP-${year}-${String(count + 1).padStart(4, '0')}`; }
   private history(tx: any, organizationId: string, menuId: string | null, cycleId: string | null, actorUserId: string | null, action: any, summary: string, details?: any) { return tx.menuHistory.create({ data: { organizationId, menuId, cycleId, actorUserId, action, summary, details } }); }
-  private installedApps(org: any) { return [...(org?.stocksInstalledAt ? ['stocks'] : []), ...(org?.rnmPricesInstalledAt ? ['rnm-prices'] : []), ...(org?.hrInstalledAt ? ['hr'] : []), ...(org?.planningInstalledAt ? ['planning'] : []), ...(org?.technicalSheetsInstalledAt ? ['technical-sheets'] : []), ...(org?.productionInstalledAt ? ['production'] : []), ...(org?.menusInstalledAt ? ['menus'] : [])]; }
+  private installedApps(org: any) { return [...(org?.stocksInstalledAt ? ['stocks'] : []), ...(org?.rnmPricesInstalledAt ? ['rnm-prices'] : []), ...(org?.hrInstalledAt ? ['hr'] : []), ...(org?.planningInstalledAt ? ['planning'] : []), ...(org?.technicalSheetsInstalledAt ? ['technical-sheets'] : []), ...(org?.productionInstalledAt ? ['production'] : []), ...(org?.menusInstalledAt ? ['menus'] : []), ...(org?.clientsInstalledAt ? ['clients'] : []), ...(org?.haccpInstalledAt ? ['haccp'] : []), ...(org?.purchasingInstalledAt ? ['purchasing'] : []), ...(org?.financeInstalledAt ? ['finance'] : [])]; }
 }

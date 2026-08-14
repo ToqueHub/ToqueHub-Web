@@ -23,6 +23,8 @@ export class MenusController {
 
   @Post('install') install(@CurrentUser() user: AuthenticatedUser) { return this.service.install(this.org(user), this.actor(user)); }
   @Post('uninstall') uninstall(@CurrentUser() user: AuthenticatedUser) { return this.service.uninstall(this.org(user), this.actor(user)); }
+  @Post('clients/install') installClients(@CurrentUser() user: AuthenticatedUser) { return this.service.installClients(this.org(user), this.actor(user)); }
+  @Post('clients/uninstall') uninstallClients(@CurrentUser() user: AuthenticatedUser) { return this.service.uninstallClients(this.org(user), this.actor(user)); }
   @Get('dashboard') dashboard(@CurrentUser() user: AuthenticatedUser, @Query('activity') activity?: string) { return this.service.dashboard(this.org(user), activity); }
   @Get('settings') settings(@CurrentUser() user: AuthenticatedUser) { return this.service.settings(this.org(user)); }
   @Patch('settings') updateSettings(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateMenuSettingsDto) { return this.service.updateSettings(this.org(user), this.actor(user), dto); }

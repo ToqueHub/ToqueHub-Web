@@ -34,6 +34,7 @@ describe('AuthService workspace onboarding', () => {
       technicalSheetsInstalledAt: null,
       productionInstalledAt: null,
       menusInstalledAt: null,
+      clientsInstalledAt: null,
       haccpInstalledAt: null,
       purchasingInstalledAt: null,
     };

@@ -31,6 +31,7 @@ import {
 import { api } from '../../api/client';
 import type {
   FinanceAiAnalysis,
+  FinanceBudgetSuggestion,
   FinanceBootstrap,
   FinanceDashboardMetric,
   FinanceDashboardPeriod,
@@ -59,6 +60,12 @@ export type FinanceTab =
 
 type Props = { token: string; tab: FinanceTab; onNavigate: (tab: FinanceTab) => void };
 type HistoryMetricId = keyof FinanceDashboardPeriod['comparison']['periods'][number]['metrics'];
+
+const ACCOUNTING_RESULT_KPI_IDS = new Set([
+  'result_before_depreciation',
+  'accounting_operating_result',
+  'net_result',
+]);
 
 const HISTORY_METRICS: Array<{
   id: HistoryMetricId;
@@ -179,6 +186,7 @@ function formatDate(value?: string | null, withTime = false) {
     month: 'short',
     year: 'numeric',
     ...(withTime ? { hour: '2-digit', minute: '2-digit' } : {}),
+    timeZone: withTime ? 'Europe/Helsinki' : 'UTC',
   }).format(new Date(value));
 }
 
@@ -209,6 +217,11 @@ function formatValue(value: number | null | undefined, unit: string, currency: s
       maximumFractionDigits: 0,
     }).format(value);
   return value.toLocaleString('fr-FR', { maximumFractionDigits: 1 });
+}
+
+function percentOfRevenue(value: number | null | undefined, revenue: number | null | undefined) {
+  if (value == null || revenue == null || revenue === 0) return null;
+  return (value / revenue) * 100;
 }
 
 function flatpayConnectionForSite(
@@ -245,6 +258,7 @@ export function FinanceWorkspace({ token, tab, onNavigate }: Props) {
   const [error, setError] = useState<string>();
   const [success, setSuccess] = useState<string>();
   const [sourceBusy, setSourceBusy] = useState<string>();
+  const [budgetImportOpen, setBudgetImportOpen] = useState(false);
 
   const load = useCallback(
     async (silent = false, selectedDate?: string, siteId = selectedSiteId) => {
@@ -356,12 +370,18 @@ export function FinanceWorkspace({ token, tab, onNavigate }: Props) {
 
   const syncFennoa = async () => {
     setSourceBusy('fennoa');
+    setError(undefined);
     try {
       const result = await api.syncFennoa(token);
       await load(true);
       setSuccess(
-        `Fennoa synchronisé${result.full ? ' · historique complet' : ''} · ${result.periodsSyncedCount ?? 1} exercice(s) · ${result.ledgerRowsCount ?? 0} écriture(s) · ${result.budgetRowsCount ?? 0} ligne(s) de budget.`,
+        `Fennoa synchronisé${result.full ? ' · historique complet' : ''} · ${result.periodsSyncedCount ?? 1} exercice(s) · ${result.ledgerRowsCount ?? 0} écriture(s) · ${result.budgetRowsCount ?? 0} ligne(s) de budget · ${result.customersCount ?? 0} client(s) · ${result.salesInvoicesCount ?? 0} facture(s).`,
       );
+      if (result.warnings?.length) {
+        setError(
+          `La comptabilité a été synchronisée, mais certaines données commerciales n’ont pas pu être lues : ${result.warnings.join(' · ')}`,
+        );
+      }
     } catch (nextError) {
       setError(messageOf(nextError, 'La synchronisation Fennoa a échoué.'));
     } finally {
@@ -390,6 +410,25 @@ export function FinanceWorkspace({ token, tab, onNavigate }: Props) {
       setSuccess(`Budget attribué à ${site?.name ?? 'l’établissement sélectionné'}.`);
     } catch (nextError) {
       setError(messageOf(nextError, 'Impossible d’attribuer ce budget à l’établissement.'));
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const selectBudgetReference = async (budgetId: string) => {
+    setRefreshing(true);
+    setError(undefined);
+    try {
+      const result = await api.selectFinanceBudgetReference(token, {
+        budgetId,
+        asOf,
+        ...(selectedSiteId ? { siteId: selectedSiteId } : {}),
+      });
+      financeWorkspaceCache.clear();
+      await load(true, asOf, selectedSiteId);
+      setSuccess(`${result.name} est maintenant le budget de référence de cet exercice.`);
+    } catch (nextError) {
+      setError(messageOf(nextError, 'Impossible de sélectionner ce budget.'));
     } finally {
       setRefreshing(false);
     }
@@ -434,6 +473,13 @@ export function FinanceWorkspace({ token, tab, onNavigate }: Props) {
               ))}
             </select>
           </label>
+          <button
+            type="button"
+            className="btn btn-secondary finance-budget-import-trigger"
+            onClick={() => setBudgetImportOpen(true)}
+          >
+            <UploadCloud size={17} /> Importer un budget
+          </button>
           <label className="finance-period-control">
             <span>Situation au</span>
             <input
@@ -546,7 +592,8 @@ export function FinanceWorkspace({ token, tab, onNavigate }: Props) {
         <BudgetView
           data={data}
           currency={currency}
-          onNavigate={onNavigate}
+          onImport={() => setBudgetImportOpen(true)}
+          onSelectReference={(budgetId) => void selectBudgetReference(budgetId)}
           onAssignSite={(budgetId, siteId) => void assignBudgetSite(budgetId, siteId)}
         />
       )}
@@ -565,6 +612,25 @@ export function FinanceWorkspace({ token, tab, onNavigate }: Props) {
           selectedSiteId={selectedSiteId || undefined}
         />
       )}
+      {data && budgetImportOpen ? (
+        <BudgetImportModal
+          token={token}
+          data={data}
+          asOf={asOf}
+          initialSiteId={selectedSiteId || data.sites[0]?.id}
+          uploading={uploading}
+          onClose={() => setBudgetImportOpen(false)}
+          onManualImport={async (files, siteId) => {
+            if (await importFiles(files, siteId)) setBudgetImportOpen(false);
+          }}
+          onAccepted={async (name) => {
+            financeWorkspaceCache.clear();
+            await load(true, asOf, selectedSiteId);
+            setBudgetImportOpen(false);
+            setSuccess(`${name} a été enregistré et sélectionné comme budget de référence.`);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -581,10 +647,7 @@ function FinanceLoadingState({ tab }: { tab: FinanceTab }) {
     return () => globalThis.clearInterval(interval);
   }, []);
 
-  const progressPercent = Math.min(
-    ((stepIndex + 1) / FINANCE_LOADING_STEPS.length) * 100,
-    100,
-  );
+  const progressPercent = Math.min(((stepIndex + 1) / FINANCE_LOADING_STEPS.length) * 100, 100);
 
   return (
     <div
@@ -689,7 +752,9 @@ function Cockpit({
         {(['annual', 'monthly', 'daily'] as const).map((kind) => {
           const period = data.dashboard[kind];
           const revenue = period.core.find(({ id }) => id === 'revenue');
-          const result = period.core.find(({ id }) => id === 'operating_result');
+          const result = [...period.core, ...period.optional].find(
+            ({ id }) => id === 'accounting_operating_result',
+          );
           const labels = { annual: 'Annuel', monthly: 'Mensuel', daily: 'Journalier' };
           return (
             <article className="finance-period-overview" key={kind}>
@@ -700,11 +765,13 @@ function Cockpit({
               <div>
                 <p>Chiffre d’affaires</p>
                 <strong>{formatValue(revenue?.value, 'currency', currency)}</strong>
+                <RevenuePercentBadge value={revenue?.revenuePercent} />
                 <Variance metric={revenue} currency={currency} />
               </div>
               <div>
-                <p>Résultat d’exploitation</p>
+                <p>Résultat d’exploitation comptable</p>
                 <strong>{formatValue(result?.value, 'currency', currency)}</strong>
+                <RevenuePercentBadge value={result?.revenuePercent} />
                 <Variance metric={result} currency={currency} />
               </div>
               <button onClick={() => onNavigate(kind)}>
@@ -778,13 +845,18 @@ function PeriodView({
   const availableOptions = data.dashboard.preferences.available.filter(({ id }) =>
     optionalById.has(id),
   );
+  const resultKpis = period.optional.filter(
+    ({ id, displayable }) =>
+      ACCOUNTING_RESULT_KPI_IDS.has(id) && selected.includes(id) && displayable,
+  );
   const optional = period.optional.filter(
-    ({ id, displayable }) => selected.includes(id) && displayable,
+    ({ id, displayable }) =>
+      !ACCOUNTING_RESULT_KPI_IDS.has(id) && selected.includes(id) && displayable,
   );
   const reconciliation = data.dashboard.reconciliation[period.kind];
   const periodExplanation =
     period.kind === 'annual'
-      ? `Réalisé du ${formatDate(period.from)} au ${formatDate(period.to)} · budget cumulé sur les ${data.dashboard.context.elapsedMonths} mois engagés.`
+      ? `Réalisé du ${formatDate(period.from)} au ${formatDate(period.to)} · ${data.dashboard.context.budgetCoverageLabel}.`
       : period.kind === 'monthly'
         ? `Réalisé du ${formatDate(period.from)} au ${formatDate(period.to)} · objectif budgétaire du mois complet.`
         : `Journée du ${formatDate(period.from)} · objectif budgétaire journalier.`;
@@ -814,7 +886,7 @@ function PeriodView({
         <section className="finance-panel finance-customizer">
           <PanelHeader
             title="Mes indicateurs"
-            subtitle="Les quatre indicateurs essentiels restent visibles ; les données nulles, absentes ou incohérentes sont masquées automatiquement"
+            subtitle="Choisissez les KPI à afficher ; les données absentes ou incohérentes sont masquées automatiquement"
             icon={Settings2}
           />
           <div>
@@ -860,13 +932,35 @@ function PeriodView({
       )}
       <section className="finance-core-grid">
         {period.core.map((metric) => (
-          <CoreMetricCard key={metric.id} metric={metric} currency={currency} />
+          <CoreMetricCard
+            key={metric.id}
+            metric={metric}
+            currency={currency}
+            showRevenuePercent={period.kind !== 'daily'}
+          />
         ))}
       </section>
+      {resultKpis.length > 0 && (
+        <section className="finance-result-kpi-grid" aria-label="Résultats comptables">
+          {resultKpis.map((metric) => (
+            <CoreMetricCard
+              key={metric.id}
+              metric={metric}
+              currency={currency}
+              showRevenuePercent={period.kind !== 'daily'}
+            />
+          ))}
+        </section>
+      )}
       {optional.length > 0 && (
         <section className="finance-optional-grid">
           {optional.map((metric) => (
-            <OptionalMetricCard key={metric.id} metric={metric} currency={currency} />
+            <OptionalMetricCard
+              key={metric.id}
+              metric={metric}
+              currency={currency}
+              showRevenuePercent={period.kind !== 'daily'}
+            />
           ))}
         </section>
       )}
@@ -920,8 +1014,8 @@ function RevenueReconciliationPanel({
 }) {
   const basisLabels = {
     cash_register: 'Caisse · période ouverte',
-    accounting: 'Fennoa · période clôturée',
-    mixed: 'Clôturé Fennoa + provisoire caisse',
+    accounting: 'Comptabilité · période clôturée',
+    mixed: 'Caisse + compléments comptables',
     unavailable: 'Données indisponibles',
   } as const;
   const statusLabels = {
@@ -931,12 +1025,33 @@ function RevenueReconciliationPanel({
   } as const;
   const explanation =
     reconciliation.basis === 'cash_register'
-      ? 'La période est ouverte : le CA consolidé de toutes les caisses incluses est retenu. Fennoa reste visible comme contrôle comptable.'
+      ? 'La période est ouverte : le CA consolidé de toutes les caisses incluses est retenu. La comptabilité reste visible comme contrôle.'
       : reconciliation.basis === 'accounting'
-        ? 'La période est clôturée : le CA comptabilisé dans Fennoa devient la valeur de référence.'
+        ? 'La période est clôturée : le CA comptabilisé devient la valeur de référence.'
         : reconciliation.basis === 'mixed'
-          ? 'Le cumul associe les mois clôturés dans Fennoa et les mois encore ouverts issus des caisses.'
+          ? 'Le CA combine les mois clôturés, la caisse des mois ouverts, les factures clients et les canaux comptables absents des flux de caisse.'
           : 'Aucune source ne fournit encore de chiffre d’affaires exploitable sur cette période.';
+  const breakdownItems = [
+    {
+      label: 'Caisse temps réel retenue',
+      value: reconciliation.breakdown.selectedCashRegisterRevenue,
+    },
+    {
+      label: 'Mois clôturés comptabilité',
+      value: reconciliation.breakdown.selectedAccountingRevenue,
+    },
+    {
+      label: 'Factures clients ajoutées',
+      value: reconciliation.breakdown.accountingInvoiceRevenue,
+    },
+    {
+      label: 'Canaux manquants ajoutés',
+      value: reconciliation.breakdown.accountingFallbackRevenue,
+    },
+  ].filter(({ value }) => Math.abs(value) >= 0.005);
+  const pendingAccountingRevenue =
+    reconciliation.breakdown.accountingAdjustmentRevenue +
+    reconciliation.breakdown.accountingOtherRevenue;
   return (
     <section className="finance-panel finance-reconciliation">
       <div className="finance-reconciliation-heading">
@@ -953,15 +1068,15 @@ function RevenueReconciliationPanel({
         <div>
           <span>CA caisse HT</span>
           <strong>{formatValue(reconciliation.cashRegisterRevenue, 'currency', currency)}</strong>
-          <small>FlatPay + PayPal + Loyverse inclus</small>
+          <small>Toutes les caisses connectées incluses</small>
         </div>
         <div>
-          <span>CA Fennoa</span>
+          <span>CA comptabilité</span>
           <strong>{formatValue(reconciliation.accountingRevenue, 'currency', currency)}</strong>
           <small>Écritures comptables disponibles</small>
         </div>
         <div>
-          <span>Écart Fennoa − caisse</span>
+          <span>Écart comptabilité − caisse</span>
           <strong>{formatValue(reconciliation.difference, 'currency', currency)}</strong>
           <small>
             {reconciliation.difference == null
@@ -975,11 +1090,32 @@ function RevenueReconciliationPanel({
           <small>{basisLabels[reconciliation.basis]}</small>
         </div>
       </div>
+      {breakdownItems.length > 0 && (
+        <div className="finance-reconciliation-breakdown">
+          <span className="finance-reconciliation-breakdown-title">Composition du CA retenu</span>
+          <div>
+            {breakdownItems.map((item) => (
+              <span key={item.label}>
+                <small>{item.label}</small>
+                <strong>{formatValue(item.value, 'currency', currency)}</strong>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
       <p className="finance-reconciliation-note">
         <ShieldCheck size={16} />
         <span>
           {explanation}
-          {lockedThrough ? ` Fennoa est clôturé jusqu’au ${formatDate(lockedThrough)}.` : ''}
+          {lockedThrough
+            ? ` La comptabilité est clôturée jusqu’au ${formatDate(lockedThrough)}.`
+            : ''}
+          {Math.abs(reconciliation.breakdown.accountingOverlappingRevenue) >= 0.005
+            ? ` ${formatValue(reconciliation.breakdown.accountingOverlappingRevenue, 'currency', currency)} de synthèses comptables ne sont pas ajoutés car déjà couverts par la caisse.`
+            : ''}
+          {Math.abs(pendingAccountingRevenue) >= 0.005
+            ? ` ${formatValue(pendingAccountingRevenue, 'currency', currency)} d’écritures de rapprochement ou non classées restent en attente de la clôture.`
+            : ''}
         </span>
       </p>
     </section>
@@ -1095,9 +1231,11 @@ function HistoricalComparisonPanel({
 function CoreMetricCard({
   metric,
   currency,
+  showRevenuePercent = true,
 }: {
   metric: FinanceDashboardMetric;
   currency: string;
+  showRevenuePercent?: boolean;
 }) {
   return (
     <article
@@ -1114,6 +1252,7 @@ function CoreMetricCard({
         </small>
       </header>
       <strong>{formatValue(metric.value, metric.unit, currency)}</strong>
+      {showRevenuePercent ? <RevenuePercentBadge value={metric.revenuePercent} /> : null}
       <dl>
         <div>
           <dt>Budget période</dt>
@@ -1138,9 +1277,11 @@ function CoreMetricCard({
 function OptionalMetricCard({
   metric,
   currency,
+  showRevenuePercent = true,
 }: {
   metric: FinanceDashboardMetric;
   currency: string;
+  showRevenuePercent?: boolean;
 }) {
   return (
     <article className="finance-optional-card">
@@ -1150,6 +1291,7 @@ function OptionalMetricCard({
       <div>
         <small>{metric.label}</small>
         <strong>{formatValue(metric.value, metric.unit, currency)}</strong>
+        {showRevenuePercent ? <RevenuePercentBadge value={metric.revenuePercent} /> : null}
         {metric.targetLabel && (
           <span className="finance-metric-primary-label">{metric.targetLabel}</span>
         )}
@@ -1176,6 +1318,15 @@ function OptionalMetricCard({
         <p>{metric.help}</p>
       </div>
     </article>
+  );
+}
+
+function RevenuePercentBadge({ value }: { value?: number | null }) {
+  if (value == null || !Number.isFinite(value)) return null;
+  return (
+    <span className={`finance-revenue-percent ${value < 0 ? 'negative' : ''}`}>
+      {formatValue(value, 'percentage', 'EUR')} du CA
+    </span>
   );
 }
 
@@ -1393,15 +1544,18 @@ function PeriodTable({ period, currency }: { period: FinanceDashboardPeriod; cur
 function BudgetView({
   data,
   currency,
-  onNavigate,
+  onImport,
+  onSelectReference,
   onAssignSite,
 }: {
   data: FinanceBootstrap;
   currency: string;
-  onNavigate: (tab: FinanceTab) => void;
+  onImport: () => void;
+  onSelectReference: (budgetId: string) => void;
   onAssignSite: (budgetId: string, siteId: string) => void;
 }) {
   const budget = data.dashboard.budget;
+  const isFennoaBudget = budget?.source === 'FENNOA';
   const defaultOpeningDays = budget?.targets?.days ?? 31;
   const [openingDays, setOpeningDays] = useState(defaultOpeningDays);
   useEffect(
@@ -1416,10 +1570,7 @@ function BudgetView({
             title="Aucun budget de référence"
             text="Importez votre fichier budgétaire. ToqueHub reconnaît le budget mensuel et compare chaque mois au réel correspondant."
           />
-          <button
-            className="btn btn-primary finance-centered-action"
-            onClick={() => onNavigate('sources')}
-          >
+          <button className="btn btn-primary finance-centered-action" onClick={onImport}>
             <UploadCloud size={16} /> Importer un budget
           </button>
         </section>
@@ -1434,9 +1585,7 @@ function BudgetView({
     ['breakEven', 'Seuil de rentabilité'],
   ] as const;
   const targetedNetMargin =
-    budget.totals.netResult != null &&
-    budget.totals.revenue != null &&
-    budget.totals.revenue !== 0
+    budget.totals.netResult != null && budget.totals.revenue != null && budget.totals.revenue !== 0
       ? (budget.totals.netResult / budget.totals.revenue) * 100
       : null;
   const targets = budget.targets;
@@ -1456,7 +1605,11 @@ function BudgetView({
     >
       <section className="finance-period-title">
         <div>
-          <span>Budget de référence · scénario {budget.scenario ?? 'non renseigné'}</span>
+          <span>
+            {isFennoaBudget
+              ? 'Budget de référence · synchronisé depuis Fennoa'
+              : `Budget de référence · scénario ${budget.scenario ?? 'non renseigné'}`}
+          </span>
           <h2>{budget.name}</h2>
           <p>
             Du {formatDate(budget.startDate)} au {formatDate(budget.endDate)} · comparaison au réel
@@ -1464,26 +1617,67 @@ function BudgetView({
           </p>
         </div>
         <div className="finance-budget-reference-actions">
-          <label className="finance-budget-site-control">
-            <Building2 size={16} />
-            <select
-              aria-label="Établissement du budget"
-              value={budget.siteId ?? ''}
-              onChange={(event) => onAssignSite(budget.id, event.target.value)}
-            >
-              <option value="" disabled>
-                Attribuer à un établissement
-              </option>
-              {data.sites.map((site) => (
-                <option key={site.id} value={site.id}>
-                  {site.name}
+          {!isFennoaBudget ? (
+            <label className="finance-budget-site-control">
+              <Building2 size={16} />
+              <select
+                aria-label="Établissement du budget"
+                value={budget.siteId ?? ''}
+                onChange={(event) => onAssignSite(budget.id, event.target.value)}
+              >
+                <option value="" disabled>
+                  Attribuer à un établissement
                 </option>
-              ))}
-            </select>
-          </label>
+                {data.sites.map((site) => (
+                  <option key={site.id} value={site.id}>
+                    {site.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <span className="finance-reference-badge">
-            <ShieldCheck size={16} /> Référence active
+            <ShieldCheck size={16} />{' '}
+            {isFennoaBudget ? 'Fennoa · Référence active' : 'Référence active'}
           </span>
+        </div>
+      </section>
+      <section className="finance-budget-choice-panel">
+        <div className="finance-budget-choice-heading">
+          <div>
+            <span>Budgets disponibles pour cet exercice</span>
+            <strong>
+              {data.dashboard.budgetOptions.length} version
+              {data.dashboard.budgetOptions.length > 1 ? 's' : ''}
+            </strong>
+          </div>
+          <button type="button" className="btn btn-secondary" onClick={onImport}>
+            <Plus size={16} /> Ajouter un budget
+          </button>
+        </div>
+        <div className="finance-budget-choice-grid">
+          {data.dashboard.budgetOptions.map((option) => (
+            <button
+              type="button"
+              key={option.id}
+              className={`finance-budget-choice ${option.selected ? 'active' : ''}`}
+              onClick={() => !option.selected && onSelectReference(option.id)}
+            >
+              <span>
+                {option.source === 'FENNOA'
+                  ? 'Fennoa'
+                  : option.source === 'MISTRAL_SUGGESTION'
+                    ? 'Mistral'
+                    : 'Import manuel'}
+              </span>
+              <strong>{option.name}</strong>
+              <small>
+                CA {formatValue(option.totals.revenue, 'currency', currency)} · Résultat net{' '}
+                {formatValue(option.totals.netResult, 'currency', currency)}
+              </small>
+              <em>{option.selected ? 'Référence utilisée' : 'Utiliser cette version'}</em>
+            </button>
+          ))}
         </div>
       </section>
       <section className="finance-optional-grid">
@@ -2335,9 +2529,21 @@ const SALES_EXPORT_OPTIONS: Array<{
   description: string;
 }> = [
   { id: 'daily', title: 'Journée', description: 'Ventes, heures, produits et effectif du jour.' },
-  { id: 'monthly', title: 'Mois', description: 'Évolution quotidienne et analyse commerciale du mois.' },
-  { id: 'annual', title: 'Année', description: 'Saisonnalité, comparaisons, produits et catégories.' },
-  { id: 'custom', title: 'Période libre', description: 'Choisissez précisément les dates à analyser.' },
+  {
+    id: 'monthly',
+    title: 'Mois',
+    description: 'Évolution quotidienne et analyse commerciale du mois.',
+  },
+  {
+    id: 'annual',
+    title: 'Année',
+    description: 'Saisonnalité, comparaisons, produits et catégories.',
+  },
+  {
+    id: 'custom',
+    title: 'Période libre',
+    description: 'Choisissez précisément les dates à analyser.',
+  },
 ];
 
 function FinanceExportModal({
@@ -2427,25 +2633,30 @@ function FinanceExportModal({
           </div>
 
           <div className="finance-export-choice-grid">
-            {(family === 'finance' ? FINANCE_EXPORT_OPTIONS : SALES_EXPORT_OPTIONS).map((option) => {
-              const selected = family === 'finance' ? report === option.id : salesPeriod === option.id;
-              return (
-                <button
-                  type="button"
-                  key={option.id}
-                  className={selected ? 'selected' : ''}
-                  onClick={() => {
-                    if (family === 'finance')
-                      setReport(option.id as Exclude<FinanceExportReport, 'sales'>);
-                    else setSalesPeriod(option.id as FinanceSalesExportPeriod);
-                  }}
-                >
-                  <span>{selected ? <CheckCircle2 size={17} /> : <FileSpreadsheet size={17} />}</span>
-                  <strong>{option.title}</strong>
-                  <small>{option.description}</small>
-                </button>
-              );
-            })}
+            {(family === 'finance' ? FINANCE_EXPORT_OPTIONS : SALES_EXPORT_OPTIONS).map(
+              (option) => {
+                const selected =
+                  family === 'finance' ? report === option.id : salesPeriod === option.id;
+                return (
+                  <button
+                    type="button"
+                    key={option.id}
+                    className={selected ? 'selected' : ''}
+                    onClick={() => {
+                      if (family === 'finance')
+                        setReport(option.id as Exclude<FinanceExportReport, 'sales'>);
+                      else setSalesPeriod(option.id as FinanceSalesExportPeriod);
+                    }}
+                  >
+                    <span>
+                      {selected ? <CheckCircle2 size={17} /> : <FileSpreadsheet size={17} />}
+                    </span>
+                    <strong>{option.title}</strong>
+                    <small>{option.description}</small>
+                  </button>
+                );
+              },
+            )}
           </div>
 
           <div className="finance-export-fields">
@@ -2473,7 +2684,11 @@ function FinanceExportModal({
               <>
                 <label className="finance-import-site-select">
                   <span>Du</span>
-                  <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
+                  <input
+                    type="date"
+                    value={from}
+                    onChange={(event) => setFrom(event.target.value)}
+                  />
                 </label>
                 <label className="finance-import-site-select">
                   <span>Au</span>
@@ -2503,10 +2718,550 @@ function FinanceExportModal({
           <button type="button" className="btn btn-secondary" disabled={busy} onClick={onClose}>
             Annuler
           </button>
-          <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void generate()}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={busy}
+            onClick={() => void generate()}
+          >
             {busy ? <LoaderCircle size={16} className="spin" /> : <Download size={16} />}
             {busy ? 'Génération en cours…' : 'Générer le PDF'}
           </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function BudgetImportModal({
+  token,
+  data,
+  asOf,
+  initialSiteId,
+  uploading,
+  onClose,
+  onManualImport,
+  onAccepted,
+}: {
+  token: string;
+  data: FinanceBootstrap;
+  asOf: string;
+  initialSiteId?: string;
+  uploading: boolean;
+  onClose: () => void;
+  onManualImport: (files: File[], siteId: string) => Promise<void>;
+  onAccepted: (name: string) => Promise<void>;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [mode, setMode] = useState<'choice' | 'manual' | 'mistral'>('choice');
+  const [siteId, setSiteId] = useState(initialSiteId ?? data.sites[0]?.id ?? '');
+  const [file, setFile] = useState<File>();
+  const [guidance, setGuidance] = useState('');
+  const [suggestion, setSuggestion] = useState<FinanceBudgetSuggestion>();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const disabled = uploading || busy;
+  const generate = async () => {
+    if (!siteId) return;
+    setBusy(true);
+    setError(undefined);
+    try {
+      setSuggestion(
+        await api.suggestFinanceBudget(token, {
+          siteId,
+          asOf,
+          ...(guidance.trim() ? { guidance: guidance.trim() } : {}),
+        }),
+      );
+    } catch (reason) {
+      setError(messageOf(reason, 'Mistral n’a pas pu produire de proposition exploitable.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const accept = async () => {
+    if (!siteId || !suggestion || !suggestion.assessment.canAccept) return;
+    setBusy(true);
+    setError(undefined);
+    try {
+      const result = await api.acceptFinanceBudgetSuggestion(token, {
+        siteId,
+        proposal: suggestion.proposal,
+      });
+      await onAccepted(result.name);
+    } catch (reason) {
+      setError(messageOf(reason, 'La proposition n’a pas pu être enregistrée.'));
+      setBusy(false);
+    }
+  };
+  return (
+    <div
+      className="finance-settings-modal-overlay"
+      role="presentation"
+      onMouseDown={() => !disabled && onClose()}
+    >
+      <section
+        className="finance-import-modal finance-budget-import-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="finance-budget-import-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="finance-provider-details-header">
+          <div>
+            <span>Budget & trajectoire</span>
+            <h2 id="finance-budget-import-title">Ajouter un budget</h2>
+            <p>
+              Les budgets Fennoa existants restent disponibles. Vous choisirez ensuite la version
+              utilisée comme référence.
+            </p>
+          </div>
+          <button type="button" disabled={disabled} onClick={onClose} aria-label="Fermer">
+            <X size={20} />
+          </button>
+        </header>
+        <div className="finance-import-modal-body">
+          <label className="finance-import-site-select">
+            <span>Établissement concerné</span>
+            <select
+              value={siteId}
+              disabled={disabled || Boolean(suggestion)}
+              onChange={(event) => setSiteId(event.target.value)}
+            >
+              {data.sites.map((site) => (
+                <option key={site.id} value={site.id}>
+                  {site.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {mode === 'choice' ? (
+            <div className="finance-budget-import-choices">
+              <button type="button" onClick={() => setMode('manual')}>
+                <span>
+                  <FileSpreadsheet size={24} />
+                </span>
+                <strong>Importer manuellement</strong>
+                <p>Ajouter un fichier Excel contenant les 12 mois et les indicateurs du budget.</p>
+                <ChevronRight size={18} />
+              </button>
+              <button
+                type="button"
+                disabled={!data.dashboard.mistral.configured}
+                onClick={() => setMode('mistral')}
+              >
+                <span>
+                  <BrainCircuit size={24} />
+                </span>
+                <strong>Proposition de Mistral</strong>
+                <p>
+                  Construire une trajectoire à partir de vos exercices comptables historiques, puis
+                  la contrôler avant validation.
+                </p>
+                <ChevronRight size={18} />
+              </button>
+              {!data.dashboard.mistral.configured ? (
+                <p className="finance-import-note warning">
+                  <AlertTriangle size={15} /> Configurez la clé Mistral dans Organisation → Général
+                  pour activer la proposition assistée.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {mode === 'manual' ? (
+            <div className="finance-budget-manual-flow">
+              <button
+                type="button"
+                className="finance-modal-back"
+                onClick={() => setMode('choice')}
+              >
+                ← Choisir une autre méthode
+              </button>
+              <div className="finance-dropzone">
+                <span>
+                  <FileSpreadsheet size={27} />
+                </span>
+                <div>
+                  <strong>{file?.name ?? 'Sélectionnez votre budget Excel'}</strong>
+                  <p>Classeur XLSX avec une feuille « Budget mensuel » · 20 Mo maximum.</p>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={uploading}
+                  onClick={() => inputRef.current?.click()}
+                >
+                  Choisir
+                </button>
+                <input
+                  ref={inputRef}
+                  type="file"
+                  hidden
+                  accept=".xlsx"
+                  onChange={(event) => setFile(event.target.files?.[0])}
+                />
+              </div>
+              <p className="finance-import-note">
+                <ShieldCheck size={15} /> L’import crée une nouvelle version et ne supprime aucun
+                budget Fennoa ou manuel existant.
+              </p>
+            </div>
+          ) : null}
+
+          {mode === 'mistral' && !suggestion ? (
+            <div className="finance-budget-mistral-flow">
+              <button
+                type="button"
+                className="finance-modal-back"
+                onClick={() => setMode('choice')}
+              >
+                ← Choisir une autre méthode
+              </button>
+              <div className="finance-budget-ai-explanation">
+                <Sparkles size={22} />
+                <div>
+                  <strong>Proposition contrôlée, jamais appliquée automatiquement</strong>
+                  <p>
+                    Mistral étudie jusqu’à trois exercices antérieurs. ToqueHub recalcule ensuite
+                    les charges et les résultats avant de vous présenter les 12 mois.
+                  </p>
+                </div>
+              </div>
+              <label className="finance-import-site-select">
+                <span>Hypothèses ou objectifs facultatifs</span>
+                <textarea
+                  value={guidance}
+                  maxLength={1200}
+                  rows={4}
+                  placeholder="Ex. ouverture 6 jours sur 7, recrutement en septembre, objectif de croissance prudent…"
+                  onChange={(event) => setGuidance(event.target.value)}
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {mode === 'mistral' && suggestion ? (
+            <div className="finance-budget-suggestion-preview">
+              <div className="finance-budget-suggestion-summary">
+                <div>
+                  <span>Proposition Mistral · confiance {suggestion.proposal.confidence}</span>
+                  <h3>{suggestion.proposal.name}</h3>
+                  <p>{suggestion.proposal.summary}</p>
+                </div>
+                <small>
+                  {suggestion.history.months} mois analysés · {suggestion.history.periods}{' '}
+                  exercice(s)
+                </small>
+              </div>
+              {suggestion.proposal.assumptions.length ? (
+                <ul>
+                  {suggestion.proposal.assumptions.map((assumption) => (
+                    <li key={assumption}>{assumption}</li>
+                  ))}
+                </ul>
+              ) : null}
+              <section
+                className={`finance-budget-assessment ${
+                  suggestion.assessment.canAccept ? 'accepted' : 'blocked'
+                }`}
+              >
+                <header>
+                  {suggestion.assessment.canAccept ? (
+                    <ShieldCheck size={20} />
+                  ) : (
+                    <AlertTriangle size={20} />
+                  )}
+                  <div>
+                    <strong>
+                      {suggestion.assessment.canAccept
+                        ? 'Contrôles métier réussis'
+                        : 'Validation bloquée par ToqueHub'}
+                    </strong>
+                    <p>
+                      Comparaison automatique avec le dernier exercice comptable au même périmètre.
+                    </p>
+                  </div>
+                </header>
+                <div className="finance-budget-assessment-checks">
+                  {suggestion.assessment.checks.map((check) => (
+                    <div className={check.severity} key={check.id}>
+                      {check.severity === 'pass' ? (
+                        <CheckCircle2 size={16} />
+                      ) : (
+                        <AlertTriangle size={16} />
+                      )}
+                      <span>
+                        <strong>{check.label}</strong>
+                        <small>{check.detail}</small>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+              <details className="finance-budget-history-details">
+                <summary>
+                  Exercices réellement utilisés · {suggestion.history.months} mois comptables
+                </summary>
+                <div>
+                  {suggestion.history.periodDetails.map((period) => (
+                    <span key={`${period.startDate}-${period.endDate}`}>
+                      <strong>
+                        {formatDate(period.startDate)} → {formatDate(period.endDate)}
+                      </strong>
+                      <small>
+                        {period.months}/{period.expectedMonths} mois ·{' '}
+                        {period.complete ? 'complet' : 'couverture partielle'}
+                      </small>
+                    </span>
+                  ))}
+                </div>
+              </details>
+              <div className="finance-budget-preview-totals">
+                <div>
+                  <span>Chiffre d’affaires</span>
+                  <strong>
+                    {formatValue(
+                      suggestion.proposal.totals.revenue,
+                      'currency',
+                      suggestion.proposal.currency,
+                    )}
+                  </strong>
+                  <small>
+                    Référence :{' '}
+                    {formatValue(
+                      suggestion.reference.totals.revenue,
+                      'currency',
+                      suggestion.proposal.currency,
+                    )}
+                  </small>
+                </div>
+                <div>
+                  <span>Charges</span>
+                  <strong>
+                    {formatValue(
+                      suggestion.proposal.totals.operatingExpenses,
+                      'currency',
+                      suggestion.proposal.currency,
+                    )}
+                  </strong>
+                  <small>
+                    {formatValue(
+                      percentOfRevenue(
+                        suggestion.proposal.totals.operatingExpenses,
+                        suggestion.proposal.totals.revenue,
+                      ),
+                      'percentage',
+                      suggestion.proposal.currency,
+                    )}{' '}
+                    du CA · référence{' '}
+                    {formatValue(
+                      suggestion.reference.ratios.operatingExpenses,
+                      'percentage',
+                      suggestion.proposal.currency,
+                    )}
+                  </small>
+                </div>
+                <div>
+                  <span>Résultat d’exploitation</span>
+                  <strong>
+                    {formatValue(
+                      suggestion.proposal.totals.operatingResult,
+                      'currency',
+                      suggestion.proposal.currency,
+                    )}
+                  </strong>
+                  <small>
+                    {formatValue(
+                      percentOfRevenue(
+                        suggestion.proposal.totals.operatingResult,
+                        suggestion.proposal.totals.revenue,
+                      ),
+                      'percentage',
+                      suggestion.proposal.currency,
+                    )}{' '}
+                    du CA
+                  </small>
+                </div>
+                <div>
+                  <span>Résultat net</span>
+                  <strong>
+                    {formatValue(
+                      suggestion.proposal.totals.netResult,
+                      'currency',
+                      suggestion.proposal.currency,
+                    )}
+                  </strong>
+                  <small>
+                    {formatValue(
+                      percentOfRevenue(
+                        suggestion.proposal.totals.netResult,
+                        suggestion.proposal.totals.revenue,
+                      ),
+                      'percentage',
+                      suggestion.proposal.currency,
+                    )}{' '}
+                    du CA · référence{' '}
+                    {formatValue(
+                      suggestion.reference.ratios.netMargin,
+                      'percentage',
+                      suggestion.proposal.currency,
+                    )}
+                  </small>
+                </div>
+              </div>
+              <div className="finance-budget-reconciliation">
+                <strong>Réconciliation des résultats</strong>
+                <span>
+                  {formatValue(
+                    suggestion.proposal.totals.revenue,
+                    'currency',
+                    suggestion.proposal.currency,
+                  )}{' '}
+                  de CA
+                  {' + '}
+                  {formatValue(
+                    suggestion.proposal.totals.otherOperatingIncome,
+                    'currency',
+                    suggestion.proposal.currency,
+                  )}{' '}
+                  d’autres produits
+                  {' − '}
+                  {formatValue(
+                    suggestion.proposal.totals.operatingExpenses,
+                    'currency',
+                    suggestion.proposal.currency,
+                  )}{' '}
+                  de charges
+                  {' = '}
+                  {formatValue(
+                    suggestion.proposal.totals.operatingResult,
+                    'currency',
+                    suggestion.proposal.currency,
+                  )}{' '}
+                  de résultat d’exploitation
+                </span>
+                <span>
+                  {formatValue(
+                    suggestion.proposal.totals.operatingResult,
+                    'currency',
+                    suggestion.proposal.currency,
+                  )}
+                  {' + '}
+                  {formatValue(
+                    suggestion.proposal.totals.financialResult,
+                    'currency',
+                    suggestion.proposal.currency,
+                  )}{' '}
+                  de résultat financier
+                  {' − '}
+                  {formatValue(
+                    suggestion.proposal.totals.taxes,
+                    'currency',
+                    suggestion.proposal.currency,
+                  )}{' '}
+                  d’impôts
+                  {' = '}
+                  {formatValue(
+                    suggestion.proposal.totals.netResult,
+                    'currency',
+                    suggestion.proposal.currency,
+                  )}{' '}
+                  de résultat net
+                </span>
+              </div>
+              <div className="finance-budget-preview-table-wrap">
+                <table className="finance-budget-preview-table">
+                  <thead>
+                    <tr>
+                      <th>Mois</th>
+                      <th>CA</th>
+                      <th>Charges</th>
+                      <th>Résultat net</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {suggestion.proposal.months.map((month) => (
+                      <tr key={month.month}>
+                        <td>{formatDate(month.periodStart)}</td>
+                        <td>
+                          {formatValue(month.revenue, 'currency', suggestion.proposal.currency)}
+                        </td>
+                        <td>
+                          {formatValue(
+                            month.operatingExpenses,
+                            'currency',
+                            suggestion.proposal.currency,
+                          )}
+                        </td>
+                        <td>
+                          {formatValue(month.netResult, 'currency', suggestion.proposal.currency)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+          {error ? (
+            <div className="alert-modern error">
+              <AlertCircle size={16} /> {error}
+            </div>
+          ) : null}
+        </div>
+        <footer className="finance-settings-modal-footer">
+          <button type="button" className="btn btn-secondary" disabled={disabled} onClick={onClose}>
+            Annuler
+          </button>
+          {mode === 'manual' ? (
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={uploading || !file || !siteId}
+              onClick={() => file && void onManualImport([file], siteId)}
+            >
+              {uploading ? <LoaderCircle size={16} className="spin" /> : <UploadCloud size={16} />}
+              {uploading ? 'Import en cours…' : 'Importer ce budget'}
+            </button>
+          ) : null}
+          {mode === 'mistral' && !suggestion ? (
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={busy || !siteId}
+              onClick={() => void generate()}
+            >
+              {busy ? <LoaderCircle size={16} className="spin" /> : <Sparkles size={16} />}
+              {busy ? 'Analyse des exercices…' : 'Générer la proposition'}
+            </button>
+          ) : null}
+          {mode === 'mistral' && suggestion ? (
+            <>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={busy}
+                onClick={() => setSuggestion(undefined)}
+              >
+                Régénérer
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={busy || !suggestion.assessment.canAccept}
+                onClick={() => void accept()}
+              >
+                {busy ? <LoaderCircle size={16} className="spin" /> : <CheckCircle2 size={16} />}
+                {busy
+                  ? 'Enregistrement…'
+                  : suggestion.assessment.canAccept
+                    ? 'Valider et utiliser ce budget'
+                    : 'Budget incohérent — validation bloquée'}
+              </button>
+            </>
+          ) : null}
         </footer>
       </section>
     </div>

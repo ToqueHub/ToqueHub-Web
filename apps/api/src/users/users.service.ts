@@ -298,6 +298,7 @@ export class UsersService {
           ...(user.organization.technicalSheetsInstalledAt ? ['technical-sheets'] : []),
           ...(user.organization.productionInstalledAt ? ['production'] : []),
           ...(user.organization.menusInstalledAt ? ['menus'] : []),
+          ...(user.organization.clientsInstalledAt ? ['clients'] : []),
         ] : [],
         role: user.role.name,
         permissions: user.role.permissions.map((rp) => rp.permission.key).sort(),

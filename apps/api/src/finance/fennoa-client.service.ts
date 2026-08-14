@@ -71,6 +71,23 @@ export class FennoaClientService {
     );
   }
 
+  customers(credentials: FennoaCredentials, modifiedAfter?: string) {
+    const query = modifiedAfter ? `?modifiedAfter=${encodeURIComponent(modifiedAfter)}` : '';
+    return this.requestArray(credentials, `customer_api/${query}`);
+  }
+
+  async salesInvoices(credentials: FennoaCredentials) {
+    const rows: unknown[] = [];
+    const pageSize = 200;
+    for (let page = 1; page <= 2000; page += 1) {
+      const response = await this.request(credentials, `sales_api/?page=${page}`);
+      const pageRows = this.asArray(unwrapFennoaData(response));
+      rows.push(...pageRows);
+      if (pageRows.length < pageSize) break;
+    }
+    return rows;
+  }
+
   async ledger(credentials: FennoaCredentials, start: string, end: string) {
     const rows: unknown[] = [];
     const limit = 500;
@@ -104,7 +121,19 @@ export class FennoaClientService {
   private asArray(value: unknown): unknown[] {
     if (Array.isArray(value)) return value;
     if (value && typeof value === 'object') {
-      for (const key of ['rows', 'items', 'accounts', 'periods', 'budgets', 'ledger']) {
+      for (const key of [
+        'rows',
+        'items',
+        'accounts',
+        'periods',
+        'budgets',
+        'ledger',
+        'customers',
+        'Customer',
+        'salesInvoices',
+        'SalesInvoices',
+        'invoices',
+      ]) {
         const candidate = (value as Record<string, unknown>)[key];
         if (Array.isArray(candidate)) return candidate;
       }

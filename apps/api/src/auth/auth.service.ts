@@ -636,6 +636,7 @@ export class AuthService {
       ...(currentUser.organization.technicalSheetsInstalledAt ? ['technical-sheets'] : []),
       ...(currentUser.organization.productionInstalledAt ? ['production'] : []),
       ...(currentUser.organization.menusInstalledAt ? ['menus'] : []),
+      ...(currentUser.organization.clientsInstalledAt ? ['clients'] : []),
       ...(currentUser.organization.haccpInstalledAt ? ['haccp'] : []),
       ...(currentUser.organization.purchasingInstalledAt ? ['purchasing'] : []),
       ...(currentUser.organization.financeInstalledAt ? ['finance'] : []),
@@ -909,6 +910,7 @@ export class AuthService {
       technicalSheetsInstalledAt?: Date | null;
       productionInstalledAt?: Date | null;
       menusInstalledAt?: Date | null;
+      clientsInstalledAt?: Date | null;
       haccpInstalledAt?: Date | null;
       purchasingInstalledAt?: Date | null;
       financeInstalledAt?: Date | null;
@@ -953,6 +955,7 @@ export class AuthService {
         ...(user.organization?.technicalSheetsInstalledAt ? ['technical-sheets'] : []),
         ...(user.organization?.productionInstalledAt ? ['production'] : []),
         ...(user.organization?.menusInstalledAt ? ['menus'] : []),
+        ...(user.organization?.clientsInstalledAt ? ['clients'] : []),
         ...(user.organization?.haccpInstalledAt ? ['haccp'] : []),
         ...(user.organization?.purchasingInstalledAt ? ['purchasing'] : []),
         ...(user.organization?.financeInstalledAt ? ['finance'] : []),
@@ -1001,6 +1004,7 @@ export class AuthService {
       technicalSheetsInstalledAt?: Date | null;
       productionInstalledAt?: Date | null;
       menusInstalledAt?: Date | null;
+      clientsInstalledAt?: Date | null;
       purchasingInstalledAt?: Date | null;
       financeInstalledAt?: Date | null;
       mistralApiKey?: string | null;

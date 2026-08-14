@@ -13753,16 +13753,65 @@ input:checked + .slider-round:before {
 }
 
 .hr-metrics-grid {
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  margin-bottom: 1.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 240px));
+  justify-content: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.hr-metrics-grid .metric-card-modern {
+  min-height: 0;
+  gap: 0.75rem;
+  padding: 1.05rem 1.15rem;
+  border-radius: 16px;
+}
+
+.hr-metrics-grid .metric-header {
+  justify-content: flex-start;
+}
+
+.hr-metrics-grid .metric-badge-trend {
+  display: none;
+}
+
+.hr-metrics-grid .metric-icon-wrapper-modern {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+}
+
+.hr-metrics-grid .metric-value-modern {
+  font-size: 1.7rem;
+}
+
+.hr-metrics-grid .metric-label-modern {
+  font-size: 0.78rem;
+}
+
+.hr-dashboard-panels {
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.9fr);
+  align-items: start;
+  gap: 1.25rem;
 }
 
 .hr-dashboard-widget {
-  min-height: 100%;
+  min-height: 0;
 }
 
 .hr-dashboard-widget .card-title-container {
   margin-bottom: 1.25rem;
+}
+
+@media (max-width: 1100px) {
+  .hr-dashboard-panels {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .hr-metrics-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Filters and Search Bar */
@@ -38276,6 +38325,374 @@ input:checked + .slider-round:before {
   font-weight: 700;
   font-size: 0.95rem;
   flex-shrink: 0;
+}
+
+.caterer-client-directory-header {
+  align-items: flex-start;
+}
+
+.caterer-client-directory-header p {
+  margin: 0.35rem 0 0;
+}
+
+.caterer-client-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 0.9rem;
+}
+
+.caterer-client-card-rich {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.caterer-client-card-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.8rem;
+}
+
+.caterer-client-identity {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 0.22rem;
+}
+
+.caterer-client-identity > div {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.caterer-client-identity strong {
+  color: var(--text-main);
+  font-size: 0.96rem;
+}
+
+.caterer-client-identity small {
+  overflow: hidden;
+  color: #64748b;
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.caterer-client-source {
+  display: inline-flex;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.caterer-client-source.manual {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.caterer-client-edit {
+  flex: 0 0 auto;
+  min-width: 36px;
+  padding: 0.45rem;
+}
+
+.caterer-client-contact-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.9rem;
+  color: #64748b;
+  font-size: 0.74rem;
+}
+
+.caterer-client-contact-row span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.caterer-client-finance-row,
+.caterer-client-history-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid #e7edf4;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.caterer-client-finance-row > span,
+.caterer-client-history-summary > span {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+  padding: 0.62rem;
+  border-right: 1px solid #e7edf4;
+}
+
+.caterer-client-finance-row > span:last-child,
+.caterer-client-history-summary > span:last-child {
+  border-right: 0;
+}
+
+.caterer-client-finance-row small,
+.caterer-client-history-summary small {
+  color: #64748b;
+  font-size: 0.59rem;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.caterer-client-finance-row strong,
+.caterer-client-history-summary strong {
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.caterer-client-finance-row .attention strong,
+.caterer-client-history-summary .attention strong,
+.caterer-client-invoice-table .attention {
+  color: #b45309;
+}
+
+.caterer-client-modal {
+  max-width: 1120px !important;
+}
+
+.caterer-client-tab-count {
+  min-width: 20px;
+  padding: 0.1rem 0.35rem;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #047857;
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.caterer-client-sync-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 2rem;
+  border-bottom: 1px solid #a7f3d0;
+  background: #ecfdf5;
+  color: #065f46;
+  font-size: 0.75rem;
+}
+
+.caterer-client-sync-banner span {
+  flex: 1;
+}
+
+.caterer-client-sync-banner small {
+  color: #047857;
+  white-space: nowrap;
+}
+
+.caterer-client-switches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+
+.caterer-client-switches label {
+  flex-direction: row;
+  align-items: center;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid #dbe4ee;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.caterer-client-switches label.danger {
+  color: #b91c1c;
+}
+
+.caterer-client-fennoa-details {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.9rem;
+  border: 1px solid #bae6fd;
+  border-radius: 12px;
+  background: #f0f9ff;
+}
+
+.caterer-client-fennoa-details > strong {
+  color: #075985;
+  font-size: 0.78rem;
+}
+
+.caterer-client-fennoa-details dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin: 0;
+}
+
+.caterer-client-fennoa-details dl > div {
+  display: grid;
+  gap: 0.12rem;
+}
+
+.caterer-client-fennoa-details dt {
+  color: #64748b;
+  font-size: 0.62rem;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.caterer-client-fennoa-details dd,
+.caterer-client-fennoa-details p {
+  margin: 0;
+  color: #0f172a;
+  font-size: 0.74rem;
+}
+
+.caterer-client-history-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.caterer-client-invoice-table-wrap {
+  overflow: auto;
+  border: 1px solid #e7edf4;
+  border-radius: 14px;
+}
+
+.caterer-client-invoice-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.76rem;
+}
+
+.caterer-client-invoice-table th,
+.caterer-client-invoice-table td {
+  padding: 0.7rem 0.8rem;
+  border-bottom: 1px solid #eef2f7;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.caterer-client-invoice-table th {
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+}
+
+.caterer-client-invoice-table th:first-child,
+.caterer-client-invoice-table td:first-child {
+  text-align: left;
+}
+
+.caterer-client-invoice-table td:first-child {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.caterer-client-invoice-table td:first-child small {
+  color: #64748b;
+  font-size: 0.65rem;
+}
+
+.caterer-client-invoice-table .caterer-client-invoice-detail-row > td {
+  padding: 0 0.8rem 0.65rem;
+  background: #fbfdff;
+  text-align: left;
+  white-space: normal;
+}
+
+.caterer-client-invoice-detail-row details {
+  border: 1px solid #e7edf4;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.caterer-client-invoice-detail-row summary {
+  padding: 0.55rem 0.7rem;
+  color: #475569;
+  cursor: pointer;
+  font-size: 0.68rem;
+  font-weight: 750;
+}
+
+.caterer-client-invoice-details {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+  padding: 0 0.7rem 0.7rem;
+}
+
+.caterer-client-invoice-details section {
+  display: grid;
+  align-content: start;
+  gap: 0.4rem;
+  min-width: 0;
+  padding: 0.65rem;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.caterer-client-invoice-details section > strong {
+  color: #334155;
+  font-size: 0.68rem;
+}
+
+.caterer-client-invoice-details p {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0;
+  color: #334155;
+  font-size: 0.68rem;
+}
+
+.caterer-client-invoice-details p span {
+  display: grid;
+  min-width: 0;
+}
+
+.caterer-client-invoice-details p small,
+.caterer-client-invoice-details em {
+  color: #64748b;
+  font-size: 0.62rem;
+  font-style: normal;
+}
+
+.caterer-client-invoice-details p b {
+  flex: 0 0 auto;
+  font-size: 0.66rem;
+}
+
+@media (max-width: 760px) {
+  .caterer-client-grid {
+    grid-template-columns: 1fr;
+  }
+  .caterer-client-directory-header,
+  .caterer-client-sync-banner {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .caterer-client-history-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .caterer-client-fennoa-details dl,
+  .caterer-client-invoice-details {
+    grid-template-columns: 1fr;
+  }
+  .caterer-client-history-summary > span:nth-child(2) {
+    border-right: 0;
+  }
+  .caterer-client-sync-banner small {
+    white-space: normal;
+  }
 }
 
 .caterer-doc-card {

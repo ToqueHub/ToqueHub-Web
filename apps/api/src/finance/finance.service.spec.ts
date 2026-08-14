@@ -4,13 +4,20 @@ import {
   flattenFennoaBudgetRows,
   buildFennoaSyncRanges,
   inferFinanceAccountCategory,
+  normalizeFennoaCustomer,
   normalizeFennoaLedgerRow,
   normalizeFennoaLockingPeriods,
   normalizeFennoaPeriod,
+  normalizeFennoaSalesInvoice,
   shouldRunFullFennoaSync,
 } from './fennoa-sync.service';
 import { normalizeFennoaBaseUrl, unwrapFennoaData } from './fennoa-client.service';
-import { resolveFinancePeriod, selectFinanceRevenue } from './finance-analytics.service';
+import {
+  classifyAccountingRevenueEntry,
+  resolveFinancePeriod,
+  selectFinanceRevenue,
+  selectHybridFinanceRevenueForMonth,
+} from './finance-analytics.service';
 import { FinanceImportParserService } from './finance-import-parser.service';
 import {
   flatpayPeriodFromFileName,
@@ -176,6 +183,84 @@ describe('priorité caisse / comptabilité', () => {
         hasAccountingData: false,
       }),
     ).toEqual({ value: null, basis: 'unavailable' });
+  });
+});
+
+describe('CA hybride caisse + comptabilité', () => {
+  const periodEnd = new Date('2026-07-31T23:59:59.999Z');
+  const entryDate = new Date('2026-07-31T12:00:00.000Z');
+  const accountingRow = (amount: number, description: string, series = 'GL') => ({
+    entryDate,
+    accountCode: '3000',
+    debit: amount < 0 ? Math.abs(amount) : 0,
+    credit: amount > 0 ? amount : 0,
+    description,
+    series,
+  });
+  const sales = [
+    {
+      saleDate: entryDate,
+      netAmount: 72_179.81,
+      grossAmount: 90_000,
+      vatAmount: 17_820.19,
+      transactionCount: 1_000,
+      source: { provider: FinanceProvider.FLATPAY },
+    },
+  ];
+  const accountingRows = [
+    accountingRow(71_919.41, 'Myynti 7/2026 KESKEN - Flatpay'),
+    accountingRow(1_447.07, 'Myynti 7/2026 KESKEN - PayPal'),
+    accountingRow(308.2, 'Lenja Oy', 'IN'),
+    accountingRow(199.5, 'Lenja Oy', 'IN'),
+    accountingRow(166.3, 'Rukan Camp Oy', 'IN'),
+    accountingRow(103.7, 'Koillismaan Osuuskauppa', 'IN'),
+    accountingRow(-20.61, 'Kortti- ja käteisten täsmäytys'),
+  ];
+
+  it('reconnaît les factures, les synthèses de caisse et les rapprochements', () => {
+    expect(classifyAccountingRevenueEntry(accountingRows[0])).toEqual({
+      kind: 'pos_summary',
+      channel: 'FLATPAY',
+    });
+    expect(classifyAccountingRevenueEntry(accountingRows[2])).toEqual({
+      kind: 'invoice',
+      channel: null,
+    });
+    expect(classifyAccountingRevenueEntry(accountingRows.at(-1)!)).toEqual({
+      kind: 'adjustment',
+      channel: null,
+    });
+  });
+
+  it('complète un mois ouvert sans doubler la caisse déjà connectée', () => {
+    const result = selectHybridFinanceRevenueForMonth({
+      sales,
+      accountingRows,
+      periodEnd,
+      accountingLockedThrough: new Date('2026-06-30T23:59:59.999Z'),
+    });
+    expect(result.value).toBe(74_404.58);
+    expect(result.basis).toBe('mixed');
+    expect(result.breakdown).toMatchObject({
+      selectedCashRegisterRevenue: 72_179.81,
+      accountingInvoiceRevenue: 777.7,
+      accountingFallbackRevenue: 1_447.07,
+      accountingAdjustmentRevenue: -20.61,
+      accountingOverlappingRevenue: 71_919.41,
+    });
+  });
+
+  it('bascule sur le total comptable complet dès que le mois est clôturé', () => {
+    const result = selectHybridFinanceRevenueForMonth({
+      sales,
+      accountingRows,
+      periodEnd,
+      accountingLockedThrough: periodEnd,
+    });
+    expect(result.value).toBe(74_123.57);
+    expect(result.basis).toBe('accounting');
+    expect(result.breakdown.selectedAccountingRevenue).toBe(74_123.57);
+    expect(result.breakdown.selectedCashRegisterRevenue).toBe(0);
   });
 });
 
@@ -432,8 +517,12 @@ describe('normalisation Finance', () => {
     ['3000', FinanceAccountCategory.REVENUE],
     ['4010', FinanceAccountCategory.MATERIAL_PURCHASES],
     ['5000', FinanceAccountCategory.PAYROLL],
+    ['6100', FinanceAccountCategory.PAYROLL],
+    ['6500', FinanceAccountCategory.PAYROLL],
     ['1910', FinanceAccountCategory.CASH],
     ['7500', FinanceAccountCategory.OTHER_OPEX],
+    ['8300', FinanceAccountCategory.OTHER_OPEX],
+    ['9250', FinanceAccountCategory.FINANCIAL],
   ])('mappe le compte %s', (code, category) => {
     expect(inferFinanceAccountCategory(code)).toBe(category);
   });
@@ -477,6 +566,76 @@ describe('normalisation Finance', () => {
     });
     expect(ledger?.openingBalance?.toNumber()).toBe(10);
     expect(ledger?.closingBalance?.toNumber()).toBe(135.5);
+  });
+
+  it('normalise une fiche client Fennoa sans conserver son identifiant personnel', () => {
+    const customer = normalizeFennoaCustomer({
+      id: 50,
+      customer_no: 'F100',
+      name: 'Partner Oy',
+      contact_person: 'Anna Example',
+      email: 'anna@example.fi',
+      phone: '+358401234567',
+      business_id: '1234567-8',
+      vat_number: 'FI12345678',
+      identity_number: '010190-1234',
+      account_type_id: 1,
+      account_code: '1703',
+      customer_group_ids: [4, 8],
+      einvoice_address: '00371234567',
+      sales_invoice_delivery_method: 'finvoice',
+      auto_reminder_override: 1,
+      auto_reminder_interval: 12,
+      modified: '2026-08-14 12:00:00',
+    });
+    expect(customer).toMatchObject({
+      fennoaId: 50,
+      customerNumber: 'F100',
+      name: 'Partner Oy',
+      contactName: 'Anna Example',
+      businessId: '1234567-8',
+      vatNumber: 'FI12345678',
+      accountTypeId: 1,
+      accountCode: '1703',
+      customerGroupIds: [4, 8],
+      eInvoiceAddress: '00371234567',
+      invoiceDeliveryMethod: 'finvoice',
+      autoReminderOverride: true,
+      autoReminderInterval: 12,
+    });
+    expect(JSON.stringify(customer?.fennoaPayload)).not.toContain('010190-1234');
+  });
+
+  it('normalise les montants, lignes et paiements d’une facture client Fennoa', () => {
+    const invoice = normalizeFennoaSalesInvoice({
+      SalesInvoice: {
+        id: 100,
+        invoice_no: 1001,
+        customer_id: 50,
+        name: 'Partner Oy',
+        invoice_date: '2026-07-31',
+        due_date: '2026-08-14',
+        total_net: 100,
+        total_gross: 114,
+        total_vat: 14,
+        total_paid: 50,
+        total_due: 64,
+      },
+      Currency: { code: 'EUR' },
+      SalesInvoiceRow: [{ name: 'Buffet', quantity: 10 }],
+      SalesInvoicePayment: [{ sum: 50, payment_date: '2026-08-05' }],
+      identity_number: 'do-not-store',
+    });
+    expect(invoice).toMatchObject({
+      fennoaId: 100,
+      invoiceNumber: '1001',
+      customerFennoaId: 50,
+      customerName: 'Partner Oy',
+      currencyCode: 'EUR',
+    });
+    expect(invoice?.totalNet.toNumber()).toBe(100);
+    expect(invoice?.totalDue.toNumber()).toBe(64);
+    expect(JSON.stringify(invoice?.fennoaPayload)).not.toContain('do-not-store');
   });
 
   it('déplie les budgets et dates de verrouillage Fennoa v1', () => {

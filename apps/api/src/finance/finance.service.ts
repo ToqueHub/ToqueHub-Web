@@ -16,9 +16,13 @@ import { extname, join, resolve } from 'node:path';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { PrismaService } from '../prisma/prisma.service';
 import { FinancePolicy } from './finance.policy';
-import type { FinanceBootstrapQueryDto } from './dto/finance.dto';
-import type { UpdateFinanceAccountDto, UpdateFinancePreferencesDto } from './dto/finance.dto';
-import { FinanceAnalyticsService } from './finance-analytics.service';
+import type {
+  FinanceBootstrapQueryDto,
+  UpdateFinanceAccountDto,
+  UpdateFinanceBudgetReferenceDto,
+  UpdateFinancePreferencesDto,
+} from './dto/finance.dto';
+import { FinanceAnalyticsService, financeBudgetSelectionKey } from './finance-analytics.service';
 import {
   FinanceImportParserService,
   type ParsedFinanceImport,
@@ -878,6 +882,61 @@ export class FinanceService {
     return updated;
   }
 
+  async selectBudgetReference(
+    organizationId: string,
+    actor: AuthenticatedUser,
+    dto: UpdateFinanceBudgetReferenceDto,
+  ) {
+    this.policy.assertPermission(actor, 'finance.budget');
+    await this.assertInstalled(organizationId);
+    const settings = await this.prisma.financeSettings.findUnique({ where: { organizationId } });
+    const analytics = await this.analytics.build(
+      organizationId,
+      { to: dto.asOf, ...(dto.siteId ? { siteId: dto.siteId } : {}) },
+      settings?.fiscalYearStartMonth ?? 1,
+    );
+    const candidate = analytics.dashboard.budgetOptions.find(({ id }) => id === dto.budgetId);
+    if (!candidate) {
+      throw new BadRequestException(
+        'Ce budget ne couvre pas cet exercice ou ce périmètre d’établissement.',
+      );
+    }
+    const key = financeBudgetSelectionKey(
+      analytics.dashboard.context.fiscalStart,
+      analytics.dashboard.context.fiscalEnd,
+      dto.siteId,
+    );
+    const consolidatedKey = financeBudgetSelectionKey(
+      analytics.dashboard.context.fiscalStart,
+      analytics.dashboard.context.fiscalEnd,
+    );
+    const candidateSiteKey = candidate.siteId
+      ? financeBudgetSelectionKey(
+          analytics.dashboard.context.fiscalStart,
+          analytics.dashboard.context.fiscalEnd,
+          candidate.siteId,
+        )
+      : null;
+    const current =
+      settings?.budgetSelections &&
+      typeof settings.budgetSelections === 'object' &&
+      !Array.isArray(settings.budgetSelections)
+        ? (settings.budgetSelections as Record<string, unknown>)
+        : {};
+    await this.prisma.financeSettings.update({
+      where: { organizationId },
+      data: {
+        budgetSelections: {
+          ...current,
+          [key]: candidate.id,
+          [consolidatedKey]: candidate.id,
+          ...(candidateSiteKey ? { [candidateSiteKey]: candidate.id } : {}),
+        } as Prisma.InputJsonObject,
+      },
+    });
+    return { selected: true, budgetId: candidate.id, name: candidate.name };
+  }
+
   async mapSourceSite(
     organizationId: string,
     actor: AuthenticatedUser,
@@ -1018,6 +1077,9 @@ export class FinanceService {
   ) {
     this.policy.assertPermission(actor, 'finance.read');
     const allowed = new Set([
+      'result_before_depreciation',
+      'accounting_operating_result',
+      'net_result',
       'average_ticket',
       'transactions',
       'contribution_margin',
