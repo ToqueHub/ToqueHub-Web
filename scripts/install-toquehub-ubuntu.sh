@@ -342,6 +342,7 @@ configure_toquehub() {
   set_env_if_placeholder POSTGRES_PASSWORD "$(secret)"
   set_env_if_placeholder JWT_SECRET "$(secret)"
   set_env_if_placeholder BACKUP_CLOUD_ENCRYPTION_KEY "$(secret)"
+  set_env_if_placeholder PURCHASING_RESEND_ENCRYPTION_KEY "$(secret)"
   set_env_if_placeholder PURCHASING_EMAIL_ENCRYPTION_KEY "$(secret)"
   set_env_if_placeholder HR_SENSITIVE_DATA_ENCRYPTION_KEY "$(secret)"
   set_env_if_placeholder TOQUEHUB_UPDATER_SECRET "$(secret)"

@@ -1,20 +1,178 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PlanningAssignmentStatus, PlanningAttendanceStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { PlanningAttendanceQueryDto, UpsertPlanningAttendanceDto, ValidatePlanningAttendanceDto } from './dto/planning.dto';
+import { PlanningAttendanceQueryDto, SubmitMyPlanningAttendanceDto, UpsertPlanningAttendanceDto, ValidatePlanningAttendanceDto } from './dto/planning.dto';
 import { calculatePlanningAssignmentMinutes } from './planning-time';
+import { assertPlanningRead, assertPlanningWrite, type PlanningActor as Actor } from './planning-access';
 
-type Actor = { id: string; role: string };
 type Period = { start: Date; end: Date };
-
-const WRITE_ROLES = ['SUPER_ADMIN', 'Administrateur', 'ADMIN', 'Manager', 'MANAGER', 'Chef', 'Responsable'];
 
 @Injectable()
 export class PlanningAttendanceService {
   constructor(private readonly prisma: PrismaService) {}
 
   private assertWrite(actor: Actor) {
-    if (!WRITE_ROLES.includes(actor.role)) throw new ForbiddenException('Planning write access is restricted to managers and administrators');
+    assertPlanningWrite(actor);
+  }
+
+  async mySchedule(organizationId: string, actor: Actor, q: PlanningAttendanceQueryDto = {}) {
+    const employeeId = this.requireEmployee(actor);
+    const period = this.period(q);
+    const [employee, assignments, entries, publicationEvents] = await Promise.all([
+      this.prisma.hrEmployee.findFirst({
+        where: { id: employeeId, organizationId, isArchived: false },
+        include: { department: true, position: true, mainSite: true },
+      }),
+      this.prisma.planningAssignment.findMany({
+        where: {
+          organizationId,
+          employeeId,
+          date: { gte: period.start, lte: period.end },
+          status: { notIn: [PlanningAssignmentStatus.CANCELLED, PlanningAssignmentStatus.REPLACED] },
+        },
+        include: { department: true, position: true, site: true },
+        orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
+        take: Math.min(q.pageSize ?? 200, 200),
+      }),
+      this.prisma.planningAttendanceEntry.findMany({
+        where: { organizationId, employeeId, date: { gte: period.start, lte: period.end } },
+        orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
+        take: Math.min(q.pageSize ?? 200, 200),
+      }),
+      this.publicationEvents(organizationId),
+    ]);
+    if (!employee) throw new ForbiddenException('Le compte connecté doit être lié à un collaborateur RH actif');
+
+    const entriesByAssignment = new Map(entries.filter(entry => entry.assignmentId).map(entry => [entry.assignmentId!, entry]));
+    const serverNow = new Date();
+    const rows = assignments.flatMap(assignment => {
+      const attendance = entriesByAssignment.get(assignment.id);
+      const publicationStatus = this.publicationStatus(publicationEvents, assignment);
+      const persistedHistory = Boolean(attendance && (attendance.declaredStartTime || attendance.status !== PlanningAttendanceStatus.DRAFT));
+      if (!this.isPublished(publicationStatus) && !persistedHistory) return [];
+      return [this.selfRow(assignment, attendance, publicationStatus, serverNow)];
+    });
+
+    return {
+      employee: {
+        id: employee.id,
+        firstName: employee.firstName,
+        lastName: employee.lastName,
+        departmentName: employee.department?.name ?? null,
+        positionName: employee.position?.name ?? null,
+        siteName: employee.mainSite?.name ?? null,
+      },
+      serverNow,
+      period: { startDate: this.iso(period.start), endDate: this.iso(period.end) },
+      rows,
+    };
+  }
+
+  async checkIn(organizationId: string, actor: Actor, assignmentId: string) {
+    const assignment = await this.selfAssignment(organizationId, actor, assignmentId);
+    const existing = await this.findAssignmentEntry(organizationId, assignmentId);
+    if (existing?.declaredStartTime || existing && this.isEmployeeLocked(existing.status)) {
+      return this.selfResultRow(organizationId, actor, assignment);
+    }
+    await this.assertPublishedAssignment(organizationId, assignment);
+    const now = new Date();
+    if (this.iso(assignment.date) !== this.iso(now)) throw new BadRequestException("Le pointage d'arrivée est autorisé uniquement le jour du créneau");
+    const planned = calculatePlanningAssignmentMinutes(assignment);
+    const metadata = this.mobileMetadata(existing?.metadata, { rawCheckInAt: now.toISOString() });
+    await this.prisma.planningAttendanceEntry.upsert({
+      where: { organizationId_assignmentId: { organizationId, assignmentId } },
+      create: {
+        organizationId,
+        assignmentId,
+        employeeId: assignment.employeeId,
+        date: this.day(assignment.date),
+        plannedStartTime: assignment.startTime,
+        plannedEndTime: assignment.endTime,
+        plannedMinutes: planned.plannedMinutes,
+        declaredStartTime: now,
+        status: PlanningAttendanceStatus.DRAFT,
+        source: 'MOBILE',
+        metadata,
+      },
+      update: { declaredStartTime: now, metadata },
+    });
+    return this.selfResultRow(organizationId, actor, assignment);
+  }
+
+  async checkOut(organizationId: string, actor: Actor, assignmentId: string) {
+    const assignment = await this.selfAssignment(organizationId, actor, assignmentId);
+    const existing = await this.findAssignmentEntry(organizationId, assignmentId);
+    if (!existing?.declaredStartTime) throw new BadRequestException("Pointez d'abord votre arrivée");
+    if (existing.declaredEndTime || this.isEmployeeLocked(existing.status)) return this.selfResultRow(organizationId, actor, assignment);
+    await this.assertPublishedAssignment(organizationId, assignment);
+    const now = new Date();
+    const isShiftDay = this.iso(assignment.date) === this.iso(now);
+    const isOvernightEndDay = this.iso(assignment.endTime) === this.iso(now) && this.iso(assignment.endTime) !== this.iso(assignment.date);
+    if (!isShiftDay && !isOvernightEndDay) throw new BadRequestException('Le pointage de départ est hors de la période autorisée');
+    const declaredMinutes = this.netMinutes(existing.declaredStartTime, now, assignment.breakMinutes);
+    const metadata = this.mobileMetadata(existing.metadata, { rawCheckOutAt: now.toISOString() });
+    await this.prisma.planningAttendanceEntry.update({
+      where: { id: existing.id, organizationId },
+      data: { declaredEndTime: now, declaredMinutes, varianceMinutes: declaredMinutes - existing.plannedMinutes, metadata },
+    });
+    return this.selfResultRow(organizationId, actor, assignment);
+  }
+
+  async submitMine(organizationId: string, actor: Actor, assignmentId: string, dto: SubmitMyPlanningAttendanceDto) {
+    const assignment = await this.selfAssignment(organizationId, actor, assignmentId);
+    const existing = await this.findAssignmentEntry(organizationId, assignmentId);
+    if (existing && this.isEmployeeLocked(existing.status)) throw new ForbiddenException("Cet émargement est verrouillé et doit être corrigé par un manager");
+    await this.assertPublishedAssignment(organizationId, assignment);
+    const age = this.calendarDayDifference(assignment.date, new Date());
+    if (age < 0) throw new BadRequestException("Un créneau futur ne peut pas être émargé");
+    if (age > 7) throw new BadRequestException("Le délai de rattrapage de 7 jours est dépassé");
+    const { start, end } = this.declaredPair(assignment.date, dto.declaredStartTime, dto.declaredEndTime);
+    const declaredMinutes = this.netMinutes(start, end, assignment.breakMinutes);
+    const planned = calculatePlanningAssignmentMinutes(assignment);
+    const now = new Date();
+    const metadata = this.mobileMetadata(existing?.metadata, {
+      submittedAt: now.toISOString(),
+      submittedStartTime: start.toISOString(),
+      submittedEndTime: end.toISOString(),
+      correctedStart: Boolean(existing?.declaredStartTime && +existing.declaredStartTime !== +start),
+      correctedEnd: Boolean(existing?.declaredEndTime && +existing.declaredEndTime !== +end),
+    });
+    await this.prisma.planningAttendanceEntry.upsert({
+      where: { organizationId_assignmentId: { organizationId, assignmentId } },
+      create: {
+        organizationId,
+        assignmentId,
+        employeeId: assignment.employeeId,
+        date: this.day(assignment.date),
+        plannedStartTime: assignment.startTime,
+        plannedEndTime: assignment.endTime,
+        plannedMinutes: planned.plannedMinutes,
+        declaredStartTime: start,
+        declaredEndTime: end,
+        declaredMinutes,
+        varianceMinutes: declaredMinutes - planned.plannedMinutes,
+        status: PlanningAttendanceStatus.SIGNED,
+        signedAt: now,
+        signedById: actor.id,
+        source: 'MOBILE',
+        metadata,
+      },
+      update: {
+        plannedStartTime: assignment.startTime,
+        plannedEndTime: assignment.endTime,
+        plannedMinutes: planned.plannedMinutes,
+        declaredStartTime: start,
+        declaredEndTime: end,
+        declaredMinutes,
+        varianceMinutes: declaredMinutes - planned.plannedMinutes,
+        status: PlanningAttendanceStatus.SIGNED,
+        signedAt: now,
+        signedById: actor.id,
+        source: 'MOBILE',
+        metadata,
+      },
+    });
+    return this.selfResultRow(organizationId, actor, assignment);
   }
 
   async list(organizationId: string, q: PlanningAttendanceQueryDto = {}) {
@@ -106,6 +264,158 @@ export class PlanningAttendanceService {
         metadata: this.mergeMetadata(existing.metadata, dto.metadata),
       },
     });
+  }
+
+  private requireEmployee(actor: Actor) {
+    assertPlanningRead(actor);
+    if (!actor.employeeId) throw new ForbiddenException('Le compte connecté doit être lié à un collaborateur RH');
+    return actor.employeeId;
+  }
+
+  private async selfAssignment(organizationId: string, actor: Actor, assignmentId: string) {
+    const employeeId = this.requireEmployee(actor);
+    const assignment = await this.prisma.planningAssignment.findFirst({
+      where: {
+        id: assignmentId,
+        organizationId,
+        employeeId,
+        status: { notIn: [PlanningAssignmentStatus.CANCELLED, PlanningAssignmentStatus.REPLACED] },
+      },
+      include: { department: true, position: true, site: true },
+    });
+    if (!assignment) throw new NotFoundException('Créneau personnel introuvable');
+    return assignment;
+  }
+
+  private findAssignmentEntry(organizationId: string, assignmentId: string) {
+    return this.prisma.planningAttendanceEntry.findFirst({ where: { organizationId, assignmentId } });
+  }
+
+  private async publicationEvents(organizationId: string) {
+    return this.prisma.planningHistory.findMany({
+      where: { organizationId, entityType: 'PlanningPeriod', isArchived: false },
+      select: { createdAt: true, newValue: true },
+      orderBy: { createdAt: 'asc' },
+      take: 2000,
+    });
+  }
+
+  private publicationStatus(events: Array<{ createdAt: Date; newValue: unknown }>, assignment: { date: Date; siteId?: string | null }) {
+    let status = 'DRAFT';
+    for (const event of events) {
+      const value = this.asObject(event.newValue);
+      const period = this.asObject(value.period);
+      if (!period.startDate || !period.endDate) continue;
+      const start = this.day(this.parseDate(String(period.startDate)));
+      const end = this.endDay(this.parseDate(String(period.endDate)));
+      const periodSiteId = period.siteId ? String(period.siteId) : null;
+      if (assignment.date < start || assignment.date > end) continue;
+      if (periodSiteId && periodSiteId !== assignment.siteId) continue;
+      status = String(value.eventType ?? value.status ?? 'DRAFT').toUpperCase();
+    }
+    return status;
+  }
+
+  private isPublished(status: string) {
+    return status === 'PUBLISHED' || status === 'LOCKED';
+  }
+
+  private async assertPublishedAssignment(organizationId: string, assignment: { date: Date; siteId?: string | null }) {
+    const status = this.publicationStatus(await this.publicationEvents(organizationId), assignment);
+    if (!this.isPublished(status)) throw new ForbiddenException("Ce créneau n'appartient pas à un planning actuellement publié");
+    return status;
+  }
+
+  private async selfResultRow(organizationId: string, actor: Actor, assignment: { id: string; date: Date }) {
+    const result = await this.mySchedule(organizationId, actor, { startDate: this.iso(assignment.date), endDate: this.iso(assignment.date) });
+    const row = result.rows.find(item => item.assignmentId === assignment.id);
+    if (!row) throw new NotFoundException('Créneau personnel introuvable');
+    return row;
+  }
+
+  private selfRow(assignment: any, attendance: any | undefined, publicationStatus: string, serverNow: Date) {
+    const calculated = calculatePlanningAssignmentMinutes(assignment);
+    const status = attendance?.status ?? PlanningAttendanceStatus.DRAFT;
+    const employeeLocked = this.isEmployeeLocked(status);
+    const isPublished = this.isPublished(publicationStatus);
+    const ageDays = this.calendarDayDifference(assignment.date, serverNow);
+    const isToday = ageDays === 0;
+    const isOvernightEndDay = this.iso(assignment.endTime) === this.iso(serverNow) && this.iso(assignment.endTime) !== this.iso(assignment.date);
+    const hasStart = Boolean(attendance?.declaredStartTime);
+    const hasEnd = Boolean(attendance?.declaredEndTime);
+    const withinCatchup = ageDays >= 0 && ageDays <= 7;
+    const manualWindowOpen = ageDays > 0 || (isToday && serverNow >= assignment.endTime);
+    return {
+      assignmentId: assignment.id,
+      date: this.iso(assignment.date),
+      startTime: assignment.startTime,
+      endTime: assignment.endTime,
+      breakMinutes: assignment.breakMinutes,
+      plannedMinutes: attendance?.plannedMinutes ?? calculated.plannedMinutes,
+      departmentName: assignment.department?.name ?? null,
+      positionName: assignment.position?.name ?? null,
+      siteName: assignment.site?.name ?? null,
+      assignmentStatus: assignment.status,
+      publicationStatus,
+      attendance: {
+        id: attendance?.id ?? null,
+        status,
+        statusLabel: this.statusLabel(status),
+        declaredStartTime: attendance?.declaredStartTime ?? null,
+        declaredEndTime: attendance?.declaredEndTime ?? null,
+        declaredMinutes: attendance?.declaredMinutes ?? null,
+        validatedStartTime: attendance?.validatedStartTime ?? null,
+        validatedEndTime: attendance?.validatedEndTime ?? null,
+        validatedMinutes: attendance?.validatedMinutes ?? null,
+        varianceMinutes: attendance?.varianceMinutes ?? null,
+        signedAt: attendance?.signedAt ?? null,
+        validatedAt: attendance?.validatedAt ?? null,
+      },
+      actions: {
+        canCheckIn: isPublished && isToday && !employeeLocked && !hasStart,
+        canCheckOut: isPublished && (isToday || isOvernightEndDay) && !employeeLocked && hasStart && !hasEnd,
+        canSubmit: isPublished && withinCatchup && !employeeLocked && hasStart && hasEnd,
+        canManualCatchUp: isPublished && withinCatchup && manualWindowOpen && !employeeLocked,
+      },
+    };
+  }
+
+  private isEmployeeLocked(status: PlanningAttendanceStatus | string) {
+    return new Set<string>([
+      PlanningAttendanceStatus.SIGNED,
+      PlanningAttendanceStatus.SUBMITTED,
+      PlanningAttendanceStatus.VALIDATED,
+      PlanningAttendanceStatus.REJECTED,
+    ]).has(String(status));
+  }
+
+  private declaredPair(assignmentDate: Date, startValue: string, endValue: string) {
+    const start = this.parseTime(this.iso(assignmentDate), startValue);
+    const end = this.parseTime(this.iso(assignmentDate), endValue);
+    if (this.iso(start) !== this.iso(assignmentDate)) throw new BadRequestException("L'heure d'arrivée doit correspondre au jour du créneau");
+    if (end <= start) end.setDate(end.getDate() + 1);
+    const grossMinutes = Math.round((+end - +start) / 60000);
+    if (grossMinutes <= 0 || grossMinutes > 24 * 60) throw new BadRequestException("La durée déclarée doit être comprise entre 1 minute et 24 heures");
+    if (end > new Date()) throw new BadRequestException("Une heure de départ future ne peut pas être déclarée");
+    return { start, end };
+  }
+
+  private netMinutes(start: Date, end: Date, breakMinutes = 0) {
+    const gross = this.minutesBetween(start, end);
+    if (gross == null) return 0;
+    return Math.max(0, gross - Math.max(0, breakMinutes));
+  }
+
+  private calendarDayDifference(from: Date, to: Date) {
+    const fromUtc = Date.UTC(from.getFullYear(), from.getMonth(), from.getDate());
+    const toUtc = Date.UTC(to.getFullYear(), to.getMonth(), to.getDate());
+    return Math.round((toUtc - fromUtc) / 86400000);
+  }
+
+  private mobileMetadata(existing: unknown, next: Record<string, unknown>): Prisma.InputJsonValue {
+    const root = this.asObject(existing);
+    const mobileAttendance = { ...this.asObject(root.mobileAttendance), ...next };
+    return { ...root, mobileAttendance } as Prisma.InputJsonObject;
   }
 
   private async payload(organizationId: string, actor: Actor, dto: UpsertPlanningAttendanceDto, existing?: any): Promise<Prisma.PlanningAttendanceEntryUncheckedCreateInput> {

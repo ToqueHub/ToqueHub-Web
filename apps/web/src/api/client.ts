@@ -4444,8 +4444,15 @@ export const api = {
   backups(token: string) {
     return request<BackupListResponse>('/backups', {}, token);
   },
-  createBackup(token: string) {
-    return request<BackupSummary>('/backups', { method: 'POST' }, token);
+  createBackup(token: string, name?: string) {
+    return request<BackupSummary>(
+      '/backups',
+      {
+        method: 'POST',
+        body: name?.trim() ? JSON.stringify({ name: name.trim() }) : undefined,
+      },
+      token,
+    );
   },
   backupSchedule(token: string) {
     return request<BackupSchedule>('/backups/schedule', {}, token);

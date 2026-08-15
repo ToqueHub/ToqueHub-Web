@@ -367,7 +367,11 @@ export class AuthService {
   async getCurrentSession(user: AuthenticatedUser) {
     const currentUser = await this.prisma.user.findUnique({
       where: { id: user.id },
-      include: { role: true, organization: true },
+      include: {
+        role: { include: { permissions: { include: { permission: true } } } },
+        organization: true,
+        hrEmployee: { select: { id: true } },
+      },
     });
 
     if (!currentUser) throw new UnauthorizedException('Invalid session');
@@ -888,6 +892,7 @@ export class AuthService {
     lastName: string | null;
     organizationId: string | null;
     role: { name: string; permissions?: Array<{ permission: Pick<Permission, 'key'> }> };
+    hrEmployee?: { id: string } | null;
     status?: UserStatus;
     isActive?: boolean;
     isPrimaryAdmin?: boolean;
@@ -934,6 +939,7 @@ export class AuthService {
       firstName: user.firstName,
       lastName: user.lastName,
       organizationId: user.organizationId,
+      employeeId: user.hrEmployee?.id ?? null,
       organizationName: user.organization?.name ?? null,
       organizationType: user.organization?.establishmentType ?? null,
       hrCountryCode: user.organization?.hrCountryCode ?? null,

@@ -6,6 +6,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AcceptReplacementDto, ApplyPlanningRotationDto, ApplyPlanningTemplateDto, GeneratePlanningDto, MovePlanningAssignmentDto, PlanningAttendanceQueryDto, PlanningContextQueryDto, PlanningDayStatusQueryDto, PlanningExportPdfQueryDto, PlanningPeriodActionDto, PlanningQueryDto, PlanningRotationPreviewDto, PrepareExportDto, SetEmployeePlanningTemplatesDto, SetEmployeeSkillsDto, UpsertDayPlanningAssignmentDto, UpsertDayPresetDto, UpsertHrAbsenceDto, UpsertHrSkillDto, UpsertPlanningAssignmentDto, UpsertPlanningAttendanceDto, UpsertPlanningCodeDictionaryDto, UpsertPlanningDayStatusDto, UpsertPlanningNeedDto, UpsertPlanningPolicyProfileDto, UpsertPlanningTemplateDto, UpsertWeeklyRotationDto, ValidatePlanningAttendanceDto } from './dto/planning.dto';
 import { PlanningAttendanceService } from './planning-attendance.service';
+import { PlanningWriteGuard } from './planning-access';
 import { PlanningCodeDictionaryService } from './planning-code-dictionary.service';
 import { PlanningDayStatusService } from './planning-day-status.service';
 import { PlanningPolicyService } from './planning-policy.service';
@@ -13,7 +14,7 @@ import { PlanningService } from './planning.service';
 
 @ApiTags('planning')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PlanningWriteGuard)
 @Controller('planning')
 export class PlanningController {
   constructor(
@@ -24,7 +25,7 @@ export class PlanningController {
     private readonly attendanceService: PlanningAttendanceService,
   ) {}
   private org(user: AuthenticatedUser) { if (!user.organizationId) throw new BadRequestException('Organization setup is required before using Planning endpoints'); return user.organizationId; }
-  private actor(user: AuthenticatedUser) { return { id: user.id, role: user.role }; }
+  private actor(user: AuthenticatedUser) { return { id: user.id, role: user.role, permissions: user.permissions, employeeId: user.employeeId }; }
 
   @Get('bootstrap') bootstrap(@CurrentUser() user: AuthenticatedUser, @Query() q: PlanningContextQueryDto) { return this.planningService.bootstrap(this.org(user), q); }
   @Get('context') context(@CurrentUser() user: AuthenticatedUser, @Query() q: PlanningContextQueryDto) { return this.planningService.context(this.org(user), q); }

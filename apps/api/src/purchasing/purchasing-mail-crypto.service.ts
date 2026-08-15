@@ -25,7 +25,12 @@ export class PurchasingMailCryptoService {
   private encryptionKey() {
     if (this.key) return this.key;
     const raw = process.env.PURCHASING_EMAIL_ENCRYPTION_KEY?.trim() || process.env.PURCHASING_RESEND_ENCRYPTION_KEY?.trim();
-    if (!raw || raw.length < 32)
+    if (
+      !raw ||
+      raw.length < 32 ||
+      raw.startsWith('replace-with-') ||
+      raw.startsWith('change-me-')
+    )
       throw new BadRequestException('PURCHASING_EMAIL_ENCRYPTION_KEY (32 caractères minimum) est requis pour connecter une messagerie.');
     this.key = createHash('sha256').update(raw).digest();
     return this.key;

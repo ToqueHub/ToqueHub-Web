@@ -126,6 +126,17 @@ set_env() {
   chmod 0600 "$ENV_FILE"
 }
 
+set_env_if_placeholder() {
+  local key="$1"
+  local value="$2"
+  local current
+  current="$(grep -E "^${key}=" "$ENV_FILE" | tail -1 | cut -d= -f2- || true)"
+
+  if [[ -z "$current" || "$current" == replace-with-* || "$current" == change-me-* ]]; then
+    set_env "$key" "$value"
+  fi
+}
+
 configure_tailscale() {
   set -a
   # shellcheck disable=SC1090
@@ -273,15 +284,14 @@ if [[ ! -f "$ENV_FILE" ]]; then
   chmod 0600 "$ENV_FILE"
 fi
 
-if grep -q 'replace-with-generated-secret' "$ENV_FILE"; then
-  set_env POSTGRES_PASSWORD "$(secret)"
-  set_env JWT_SECRET "$(secret)"
-  set_env BACKUP_CLOUD_ENCRYPTION_KEY "$(secret)"
-  set_env PURCHASING_EMAIL_ENCRYPTION_KEY "$(secret)"
-  set_env HR_SENSITIVE_DATA_ENCRYPTION_KEY "$(secret)"
-  set_env TOQUEHUB_UPDATER_SECRET "$(secret)"
-  set_env TOQUEHUB_REMOTE_AGENT_SECRET "$(secret)"
-fi
+set_env_if_placeholder POSTGRES_PASSWORD "$(secret)"
+set_env_if_placeholder JWT_SECRET "$(secret)"
+set_env_if_placeholder BACKUP_CLOUD_ENCRYPTION_KEY "$(secret)"
+set_env_if_placeholder PURCHASING_RESEND_ENCRYPTION_KEY "$(secret)"
+set_env_if_placeholder PURCHASING_EMAIL_ENCRYPTION_KEY "$(secret)"
+set_env_if_placeholder HR_SENSITIVE_DATA_ENCRYPTION_KEY "$(secret)"
+set_env_if_placeholder TOQUEHUB_UPDATER_SECRET "$(secret)"
+set_env_if_placeholder TOQUEHUB_REMOTE_AGENT_SECRET "$(secret)"
 
 configure_local_hostname
 configure_tailscale

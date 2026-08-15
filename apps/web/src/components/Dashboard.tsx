@@ -16860,6 +16860,43 @@ function normalizeRestorePhrase(value: string) {
   return value.trim().replace(/\s+/g, ' ').toUpperCase();
 }
 
+function GoogleDriveLogo({ size = 24 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 87.3 78"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0 }}
+    >
+      <path
+        d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z"
+        fill="#0066da"
+      />
+      <path
+        d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44c-.8 1.4-1.2 2.95-1.2 4.5h27.5z"
+        fill="#00ac47"
+      />
+      <path
+        d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.5l5.85 10.15z"
+        fill="#ea4335"
+      />
+      <path
+        d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z"
+        fill="#00832d"
+      />
+      <path
+        d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z"
+        fill="#2684fc"
+      />
+      <path
+        d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z"
+        fill="#ffba00"
+      />
+    </svg>
+  );
+}
+
 function BackupRestorePage({
   token,
   onRestoreComplete,
@@ -16883,6 +16920,10 @@ function BackupRestorePage({
   const [busy, setBusy] = useState(false);
   const [cloudHelpOpen, setCloudHelpOpen] = useState(false);
   const [editingCloudConfig, setEditingCloudConfig] = useState(false);
+
+  // Modal création de sauvegarde avec nom
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [customBackupName, setCustomBackupName] = useState('');
 
   async function load() {
     setError(undefined);
@@ -16946,6 +16987,17 @@ function BackupRestorePage({
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleCreateBackupSubmit(e?: React.FormEvent) {
+    if (e) e.preventDefault();
+    const nameToSend = customBackupName.trim();
+    setCreateModalOpen(false);
+    await run(
+      () => api.createBackup(token, nameToSend || undefined),
+      nameToSend ? `Sauvegarde "${nameToSend}" créée avec succès.` : 'Sauvegarde créée avec succès.',
+    );
+    setCustomBackupName('');
   }
 
   async function inspectFile(file?: File) {
@@ -17030,40 +17082,55 @@ function BackupRestorePage({
       : 'Non connecté';
   const showCloudConfigForm = !googleDriveConnected || editingCloudConfig;
 
+  const weekdays = [
+    { label: 'Dim', full: 'Dimanche', value: 0 },
+    { label: 'Lun', full: 'Lundi', value: 1 },
+    { label: 'Mar', full: 'Mardi', value: 2 },
+    { label: 'Mer', full: 'Mercredi', value: 3 },
+    { label: 'Jeu', full: 'Jeudi', value: 4 },
+    { label: 'Ven', full: 'Vendredi', value: 5 },
+    { label: 'Sam', full: 'Samedi', value: 6 },
+  ];
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      {/* Hero Header */}
       <section
         className="welcome-hero settings-hero"
         style={{
           background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
           border: '1px solid rgba(255,255,255,0.06)',
+          borderRadius: '20px',
+          padding: '1.75rem',
         }}
       >
         <div className="settings-hero-grid">
           <div className="settings-hero-left">
             <span className="sovereign-badge-glow">
-              <span className="status-indicator-dot green"></span> Continuité d’activité
+              <span className="status-indicator-dot green"></span> Continuité d’activité & Résilience
             </span>
             <h1
               style={{
                 color: 'white',
-                margin: '0.5rem 0 0.25rem 0',
+                margin: '0.6rem 0 0.35rem 0',
                 fontSize: '2rem',
                 fontWeight: 800,
+                letterSpacing: '-0.02em',
               }}
             >
-              Sauvegarde & restauration
+              Sauvegarde & Restauration
             </h1>
             <p
               style={{
                 color: 'rgba(255,255,255,0.72)',
                 margin: 0,
                 fontSize: '0.92rem',
-                lineHeight: 1.5,
+                lineHeight: 1.6,
+                maxWidth: '620px',
               }}
             >
-              Archive complète de l’instance: base PostgreSQL, documents métier et manifeste
-              technique, sans secrets applicatifs.
+              Gestion complète de vos données : sauvegardes manuelles nommées, automatisation
+              programmée, réplication Cloud Google Drive et reprise après sinistre.
             </p>
           </div>
           <div className="glass-terminal">
@@ -17085,7 +17152,7 @@ function BackupRestorePage({
               <div className="glass-terminal-row">
                 <span className="label">OPÉRATION :</span>
                 <span className="value" style={{ color: state?.operation ? '#f97316' : '#10b981' }}>
-                  {state?.operation ?? 'AUCUNE'}
+                  {state?.operation ?? 'EN ATTENTE'}
                 </span>
               </div>
             </div>
@@ -17093,71 +17160,129 @@ function BackupRestorePage({
         </div>
       </section>
 
+      {/* Messages / Alertes */}
       {error ? (
-        <div className="alert-modern error">
-          <AlertCircle size={16} /> {error}
+        <div className="alert-modern error" style={{ borderRadius: '14px' }}>
+          <AlertCircle size={18} /> {error}
         </div>
       ) : null}
       {message ? (
-        <div className="alert-modern success">
-          <CheckCircle2 size={16} /> {message}
+        <div className="alert-modern success" style={{ borderRadius: '14px' }}>
+          <CheckCircle2 size={18} /> {message}
         </div>
       ) : null}
 
-      <div className="card-modern" style={{ padding: '1.25rem' }}>
-        <div className="section-header-modern">
+      {/* 1. Sauvegardes Locales */}
+      <div className="card-modern" style={{ padding: '1.5rem', borderRadius: '18px' }}>
+        <div className="section-header-modern" style={{ marginBottom: '1.25rem' }}>
           <div className="section-info">
-            <span className="card-title">
-              <Archive size={18} /> Sauvegardes locales
+            <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '1.15rem' }}>
+              <Archive size={20} style={{ color: '#8b5cf6' }} /> Sauvegardes locales
             </span>
             <span className="section-tagline">
-              Les archives sont conservées côté serveur et téléchargeables.
+              Archives complètes stockées sur le serveur ToqueHub, téléchargeables à tout moment.
             </span>
           </div>
           <button
             className="btn btn-primary"
             disabled={busy || Boolean(state?.operation)}
-            onClick={() => void run(() => api.createBackup(token), 'Sauvegarde créée.')}
+            onClick={() => {
+              setCustomBackupName('');
+              setCreateModalOpen(true);
+            }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              padding: '0.65rem 1.25rem',
+              borderRadius: '12px',
+              fontWeight: 650,
+              boxShadow: '0 4px 14px rgba(139, 92, 246, 0.25)',
+            }}
           >
-            <Archive size={16} /> Créer une sauvegarde
+            <Plus size={17} /> Créer une sauvegarde
           </button>
         </div>
+
         <div className="table-wrapper">
           <table className="table-modern">
             <thead>
               <tr>
-                <th>Archive</th>
-                <th>Date</th>
-                <th>Contenu</th>
+                <th style={{ minWidth: '220px' }}>Libellé & Archive</th>
+                <th>Type & Date</th>
+                <th>Contenu inclus</th>
                 <th>Taille</th>
-                <th>Actions</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {(state?.backups ?? []).map((backup) => (
                 <tr key={backup.id}>
                   <td>
-                    <strong>{backup.filename}</strong>
-                    <br />
-                    <small>{backup.mode === 'scheduled' ? 'Automatique' : 'Manuelle'}</small>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                      <strong style={{ fontSize: '0.95rem', color: 'var(--text-main)' }}>
+                        {backup.name || backup.filename}
+                      </strong>
+                      {backup.name ? (
+                        <span
+                          className="muted"
+                          style={{
+                            fontSize: '0.76rem',
+                            fontFamily: 'SFMono-Regular, Consolas, monospace',
+                            color: '#64748b',
+                          }}
+                        >
+                          {backup.filename}
+                        </span>
+                      ) : null}
+                    </div>
                   </td>
                   <td>
-                    {backup.createdAt ? new Date(backup.createdAt).toLocaleString('fr-FR') : '—'}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                      <span
+                        className={`badge ${
+                          backup.mode === 'scheduled' ? 'badge-primary' : 'badge-reception'
+                        }`}
+                        style={{ width: 'fit-content', fontSize: '0.72rem' }}
+                      >
+                        {backup.mode === 'scheduled' ? 'Automatique' : 'Manuelle'}
+                      </span>
+                      <small style={{ color: '#64748b' }}>
+                        {backup.createdAt ? new Date(backup.createdAt).toLocaleString('fr-FR') : '—'}
+                      </small>
+                    </div>
                   </td>
                   <td>
-                    {backup.manifest
-                      ? `${backup.manifest.files.totalFileCount} fichier(s), PostgreSQL ${formatBytes(backup.manifest.database.sizeBytes)}`
-                      : 'Manifeste indisponible'}
+                    <span style={{ fontSize: '0.86rem', color: '#475569' }}>
+                      {backup.manifest
+                        ? `${backup.manifest.files.totalFileCount} fichier(s) · Base ${formatBytes(
+                            backup.manifest.database.sizeBytes,
+                          )}`
+                        : 'Manifeste standard'}
+                    </span>
                   </td>
-                  <td>{formatBytes(backup.sizeBytes)}</td>
                   <td>
-                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <span
+                      style={{
+                        fontWeight: 700,
+                        fontSize: '0.88rem',
+                        fontFamily: 'monospace',
+                        color: 'var(--text-main)',
+                      }}
+                    >
+                      {formatBytes(backup.sizeBytes)}
+                    </span>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: '0.45rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                       <button
                         className="btn btn-secondary btn-sm"
                         disabled={busy}
                         onClick={() => void api.downloadBackup(token, backup)}
+                        title="Télécharger l'archive .tar.gz"
+                        style={{ borderRadius: '8px' }}
                       >
-                        <Download size={14} /> Télécharger
+                        <Download size={13} /> Télécharger
                       </button>
                       <button
                         className="btn btn-secondary btn-sm"
@@ -17171,10 +17296,11 @@ function BackupRestorePage({
                         title={
                           googleDriveConnected
                             ? 'Envoyer cette archive vers Google Drive'
-                            : 'Connectez Google Drive avant l’envoi'
+                            : 'Connectez Google Drive pour activer la synchronisation'
                         }
+                        style={{ borderRadius: '8px' }}
                       >
-                        <UploadCloud size={14} /> Envoyer vers GDrive
+                        <UploadCloud size={13} /> Google Drive
                       </button>
                       <button
                         className="btn btn-outline-danger btn-sm"
@@ -17184,8 +17310,10 @@ function BackupRestorePage({
                           setInspection(null);
                           setConfirmationPhrase('');
                         }}
+                        title="Restaurer cette version"
+                        style={{ borderRadius: '8px' }}
                       >
-                        <RotateCw size={14} /> Restaurer
+                        <RotateCw size={13} /> Restaurer
                       </button>
                     </div>
                   </td>
@@ -17196,104 +17324,580 @@ function BackupRestorePage({
         </div>
         {!state?.backups?.length ? (
           <EmptyMini
-            title="Aucune sauvegarde"
-            text="Créez une première archive complète de l’instance."
+            title="Aucune sauvegarde locale"
+            text="Créez votre première archive complète en cliquant sur le bouton ci-dessus."
           />
         ) : null}
       </div>
 
+      {/* 2. Planification Automatique (Positionnée au-dessus de Google Drive) */}
       <div
         className="card-modern"
         style={{
-          padding: '1.25rem',
-          ...(googleDriveConnected && !editingCloudConfig
-            ? { background: '#f8fafc', borderColor: 'rgba(16,185,129,0.24)' }
-            : {}),
+          padding: '1.6rem',
+          borderRadius: '18px',
+          background: schedule?.enabled
+            ? 'linear-gradient(180deg, rgba(248, 250, 252, 0.95) 0%, #ffffff 100%)'
+            : '#ffffff',
+          border: schedule?.enabled
+            ? '1px solid rgba(139, 92, 246, 0.28)'
+            : '1px solid var(--light-border)',
+          boxShadow: schedule?.enabled ? '0 10px 30px rgba(139, 92, 246, 0.05)' : undefined,
         }}
       >
-        <div className="section-header-modern">
-          <div className="section-info">
-            <span className="card-title">
-              <Cloud size={18} /> Sauvegarde Cloud
-              <button
-                type="button"
-                onClick={() => setCloudHelpOpen(true)}
-                title="Tutoriel sauvegarde cloud"
-                aria-label="Ouvrir le tutoriel sauvegarde cloud"
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '1rem',
+            paddingBottom: '1.25rem',
+            borderBottom: '1px solid rgba(226, 232, 240, 0.8)',
+            marginBottom: '1.5rem',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+            <span
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: '14px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: schedule?.enabled
+                  ? 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)'
+                  : 'rgba(100, 116, 139, 0.1)',
+                color: schedule?.enabled ? 'white' : '#64748b',
+                boxShadow: schedule?.enabled
+                  ? '0 6px 16px rgba(139, 92, 246, 0.3)'
+                  : 'none',
+              }}
+            >
+              <Clock size={22} />
+            </span>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <span style={{ fontSize: '1.18rem', fontWeight: 750, color: 'var(--text-main)' }}>
+                  Planification automatique des sauvegardes
+                </span>
+                <span
+                  className={`badge ${schedule?.enabled ? 'badge-reception' : 'badge-stock'}`}
+                  style={{ fontSize: '0.75rem', padding: '0.2rem 0.65rem' }}
+                >
+                  {schedule?.enabled ? 'ACTIVÉE' : 'DÉSACTIVÉE'}
+                </span>
+              </div>
+              <span className="section-tagline" style={{ display: 'block', marginTop: '0.2rem' }}>
+                ToqueHub déclenche des sauvegardes régulières sans intervention manuelle.
+              </span>
+            </div>
+          </div>
+
+          {/* Toggle Principal Switch */}
+          {schedule ? (
+            <button
+              type="button"
+              onClick={() =>
+                setSchedule((cur) => (cur ? { ...cur, enabled: !cur.enabled } : cur))
+              }
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.65rem',
+                padding: '0.55rem 1.1rem',
+                borderRadius: '999px',
+                border: schedule.enabled
+                  ? '1px solid rgba(16, 185, 129, 0.35)'
+                  : '1px solid rgba(203, 213, 225, 0.8)',
+                background: schedule.enabled ? 'rgba(16, 185, 129, 0.1)' : '#f1f5f9',
+                color: schedule.enabled ? '#047857' : '#475569',
+                fontWeight: 700,
+                fontSize: '0.88rem',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              <span
                 style={{
-                  width: 28,
-                  height: 28,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderRadius: '999px',
-                  border: '1px solid rgba(100, 116, 139, 0.18)',
-                  background: 'rgba(248, 250, 252, 0.92)',
-                  color: '#64748b',
-                  cursor: 'pointer',
-                  marginLeft: '0.35rem',
-                  boxShadow: '0 6px 14px rgba(15, 23, 42, 0.06)',
+                  width: 10,
+                  height: 10,
+                  borderRadius: '50%',
+                  background: schedule.enabled ? '#10b981' : '#94a3b8',
+                  boxShadow: schedule.enabled ? '0 0 8px #10b981' : 'none',
+                }}
+              />
+              {schedule.enabled ? 'Sauvegarde programmée active' : 'Cliquer pour activer'}
+            </button>
+          ) : null}
+        </div>
+
+        {schedule ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.4rem' }}>
+            {/* Grid des réglages modernes */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                gap: '1.25rem',
+              }}
+            >
+              {/* Carte Fréquence */}
+              <div
+                style={{
+                  padding: '1.15rem',
+                  borderRadius: '14px',
+                  background: '#f8fafc',
+                  border: '1px solid rgba(226, 232, 240, 0.9)',
                 }}
               >
-                <HelpCircle size={16} />
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '0.82rem',
+                    fontWeight: 750,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    color: '#64748b',
+                    marginBottom: '0.75rem',
+                  }}
+                >
+                  Fréquence d'exécution
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSchedule((cur) => (cur ? { ...cur, frequency: 'daily' } : cur))
+                    }
+                    style={{
+                      padding: '0.75rem 0.6rem',
+                      borderRadius: '10px',
+                      border:
+                        schedule.frequency === 'daily'
+                          ? '2px solid #8b5cf6'
+                          : '1px solid rgba(203, 213, 225, 0.7)',
+                      background: schedule.frequency === 'daily' ? 'rgba(139, 92, 246, 0.08)' : '#ffffff',
+                      color: schedule.frequency === 'daily' ? '#6d28d9' : '#334155',
+                      fontWeight: 700,
+                      fontSize: '0.88rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <span>Quotidienne</span>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 500, color: '#64748b' }}>
+                      Tous les jours
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSchedule((cur) => (cur ? { ...cur, frequency: 'weekly' } : cur))
+                    }
+                    style={{
+                      padding: '0.75rem 0.6rem',
+                      borderRadius: '10px',
+                      border:
+                        schedule.frequency === 'weekly'
+                          ? '2px solid #8b5cf6'
+                          : '1px solid rgba(203, 213, 225, 0.7)',
+                      background: schedule.frequency === 'weekly' ? 'rgba(139, 92, 246, 0.08)' : '#ffffff',
+                      color: schedule.frequency === 'weekly' ? '#6d28d9' : '#334155',
+                      fontWeight: 700,
+                      fontSize: '0.88rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <span>Hebdomadaire</span>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 500, color: '#64748b' }}>
+                      1 fois par semaine
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Carte Heure */}
+              <div
+                style={{
+                  padding: '1.15rem',
+                  borderRadius: '14px',
+                  background: '#f8fafc',
+                  border: '1px solid rgba(226, 232, 240, 0.9)',
+                }}
+              >
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '0.82rem',
+                    fontWeight: 750,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    color: '#64748b',
+                    marginBottom: '0.75rem',
+                  }}
+                >
+                  Heure de déclenchement
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <input
+                    type="time"
+                    value={schedule.time}
+                    onChange={(event) =>
+                      setSchedule((current) =>
+                        current ? { ...current, time: event.target.value } : current,
+                      )
+                    }
+                    style={{
+                      padding: '0.65rem 0.9rem',
+                      borderRadius: '10px',
+                      border: '1px solid #cbd5e1',
+                      background: '#ffffff',
+                      fontSize: '1.05rem',
+                      fontWeight: 700,
+                      color: 'var(--text-main)',
+                      width: '140px',
+                    }}
+                  />
+                  <span style={{ fontSize: '0.78rem', color: '#64748b', lineHeight: 1.4 }}>
+                    Heure creuse recommandée (ex : 03:00) pour ne pas impacter le service.
+                  </span>
+                </div>
+              </div>
+
+              {/* Carte Rétention */}
+              <div
+                style={{
+                  padding: '1.15rem',
+                  borderRadius: '14px',
+                  background: '#f8fafc',
+                  border: '1px solid rgba(226, 232, 240, 0.9)',
+                }}
+              >
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '0.82rem',
+                    fontWeight: 750,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    color: '#64748b',
+                    marginBottom: '0.75rem',
+                  }}
+                >
+                  Conservation / Rétention
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={schedule.retentionDays}
+                    onChange={(event) =>
+                      setSchedule((current) =>
+                        current
+                          ? { ...current, retentionDays: Math.max(1, Number(event.target.value) || 1) }
+                          : current,
+                      )
+                    }
+                    style={{
+                      padding: '0.65rem 0.8rem',
+                      borderRadius: '10px',
+                      border: '1px solid #cbd5e1',
+                      background: '#ffffff',
+                      fontSize: '1rem',
+                      fontWeight: 700,
+                      color: 'var(--text-main)',
+                      width: '85px',
+                    }}
+                  />
+                  <span style={{ fontWeight: 650, fontSize: '0.9rem', color: 'var(--text-main)' }}>
+                    jours
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.6rem', flexWrap: 'wrap' }}>
+                  {[7, 14, 30, 60, 90].map((days) => (
+                    <button
+                      key={days}
+                      type="button"
+                      onClick={() =>
+                        setSchedule((cur) => (cur ? { ...cur, retentionDays: days } : cur))
+                      }
+                      style={{
+                        padding: '0.2rem 0.55rem',
+                        borderRadius: '6px',
+                        fontSize: '0.72rem',
+                        fontWeight: 650,
+                        border: '1px solid rgba(203, 213, 225, 0.8)',
+                        background:
+                          schedule.retentionDays === days
+                            ? 'rgba(139, 92, 246, 0.15)'
+                            : '#ffffff',
+                        color: schedule.retentionDays === days ? '#6d28d9' : '#64748b',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {days}j
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Sélecteur de jour de la semaine (si hebdomadaire) */}
+            {schedule.frequency === 'weekly' ? (
+              <div
+                style={{
+                  padding: '1.15rem',
+                  borderRadius: '14px',
+                  background: '#f8fafc',
+                  border: '1px solid rgba(226, 232, 240, 0.9)',
+                }}
+              >
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '0.82rem',
+                    fontWeight: 750,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    color: '#64748b',
+                    marginBottom: '0.75rem',
+                  }}
+                >
+                  Jour de la semaine pour la sauvegarde hebdomadaire
+                </label>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  {weekdays.map((day) => {
+                    const isSelected = schedule.weekday === day.value;
+                    return (
+                      <button
+                        key={day.value}
+                        type="button"
+                        onClick={() =>
+                          setSchedule((current) =>
+                            current ? { ...current, weekday: day.value } : current,
+                          )
+                        }
+                        style={{
+                          padding: '0.65rem 1rem',
+                          borderRadius: '10px',
+                          border: isSelected
+                            ? '2px solid #8b5cf6'
+                            : '1px solid rgba(203, 213, 225, 0.8)',
+                          background: isSelected ? 'rgba(139, 92, 246, 0.12)' : '#ffffff',
+                          color: isSelected ? '#6d28d9' : '#334155',
+                          fontWeight: isSelected ? 750 : 600,
+                          fontSize: '0.88rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <span>{day.full}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
+            {/* Footer d'enregistrement */}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '1rem',
+                paddingTop: '0.5rem',
+              }}
+            >
+              <div style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                Dernière exécution automatique :{' '}
+                <strong>
+                  {schedule.lastRunAt ? new Date(schedule.lastRunAt).toLocaleString('fr-FR') : 'Aucune'}
+                </strong>
+              </div>
+              <button
+                className="btn btn-primary"
+                disabled={busy}
+                onClick={() => void saveSchedule()}
+                style={{
+                  padding: '0.65rem 1.4rem',
+                  borderRadius: '10px',
+                  fontWeight: 700,
+                }}
+              >
+                <CheckCircle2 size={16} /> Enregistrer la planification
               </button>
-            </span>
-            <span className="section-tagline">
-              Réplication automatique des archives locales vers Google Drive.
-            </span>
+            </div>
           </div>
+        ) : (
+          <p className="muted">Chargement de la planification...</p>
+        )}
+      </div>
+
+      {/* 3. Sauvegarde Cloud Google Drive */}
+      <div
+        className="card-modern"
+        style={{
+          padding: '1.6rem',
+          borderRadius: '18px',
+          background:
+            googleDriveConnected && !editingCloudConfig
+              ? 'linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%)'
+              : '#ffffff',
+          border:
+            googleDriveConnected && !editingCloudConfig
+              ? '1px solid rgba(16, 185, 129, 0.3)'
+              : '1px solid var(--light-border)',
+          boxShadow:
+            googleDriveConnected && !editingCloudConfig
+              ? '0 10px 30px rgba(16, 185, 129, 0.05)'
+              : undefined,
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '1rem',
+            marginBottom: '1.25rem',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+            <span
+              style={{
+                width: 46,
+                height: 46,
+                borderRadius: '14px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'rgba(248, 250, 252, 0.95)',
+                border: '1px solid rgba(226, 232, 240, 0.8)',
+                boxShadow: '0 4px 12px rgba(15, 23, 42, 0.04)',
+              }}
+            >
+              <GoogleDriveLogo size={28} />
+            </span>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ fontSize: '1.18rem', fontWeight: 750, color: 'var(--text-main)' }}>
+                  Sauvegarde Cloud Google Drive
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCloudHelpOpen(true)}
+                  title="Tutoriel pas-à-pas de configuration Google Cloud"
+                  aria-label="Ouvrir le tutoriel sauvegarde cloud"
+                  style={{
+                    width: 26,
+                    height: 26,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: '999px',
+                    border: '1px solid rgba(100, 116, 139, 0.2)',
+                    background: '#f8fafc',
+                    color: '#64748b',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 6px rgba(15, 23, 42, 0.05)',
+                  }}
+                >
+                  <HelpCircle size={14} />
+                </button>
+              </div>
+              <span className="section-tagline" style={{ display: 'block', marginTop: '0.2rem' }}>
+                Réplication et synchronisation automatique hors-site de vos sauvegardes ToqueHub.
+              </span>
+            </div>
+          </div>
+
           <span
-            className={`badge ${googleDriveConnected ? 'badge-reception' : googleDrive?.status === 'ERROR' ? 'badge-correction' : 'badge-stock'}`}
+            className={`badge ${
+              googleDriveConnected
+                ? 'badge-reception'
+                : googleDrive?.status === 'ERROR'
+                  ? 'badge-correction'
+                  : 'badge-stock'
+            }`}
+            style={{ fontSize: '0.78rem', padding: '0.25rem 0.75rem' }}
           >
             {googleDriveStatusLabel}
           </span>
         </div>
 
         {!cloudStatus?.encryptionConfigured ? (
-          <div className="alert-modern error" style={{ marginBottom: '1rem' }}>
-            <AlertCircle size={16} /> BACKUP_CLOUD_ENCRYPTION_KEY doit être configuré côté serveur
-            pour activer Google Drive.
+          <div className="alert-modern error" style={{ marginBottom: '1rem', borderRadius: '12px' }}>
+            <AlertCircle size={16} /> La variable serveur <code>BACKUP_CLOUD_ENCRYPTION_KEY</code> doit
+            être configurée pour chiffrer et synchroniser les archives vers Google Drive.
           </div>
         ) : null}
         {googleDrive?.lastError ? (
-          <div className="alert-modern error" style={{ marginBottom: '1rem' }}>
-            <AlertCircle size={16} /> {googleDrive.lastError}
+          <div className="alert-modern error" style={{ marginBottom: '1rem', borderRadius: '12px' }}>
+            <AlertCircle size={16} /> Erreur Drive : {googleDrive.lastError}
           </div>
         ) : null}
 
-        <div className="settings-grid-premium" style={{ marginBottom: '1rem' }}>
-          <div className="info-card-premium">
+        {/* Info stats cards */}
+        <div
+          className="settings-grid-premium"
+          style={{ marginBottom: '1.25rem', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}
+        >
+          <div className="info-card-premium" style={{ borderRadius: '14px' }}>
             <div className="info-card-premium-header">
               <span className="info-card-premium-label">Compte Google</span>
               <span className="info-card-premium-icon">
-                <Cloud size={16} />
+                <GoogleDriveLogo size={16} />
               </span>
             </div>
-            <div className="info-card-premium-value">
+            <div
+              className="info-card-premium-value"
+              style={{ fontSize: '0.92rem', overflowWrap: 'anywhere' }}
+            >
               {googleDrive?.accountEmail ?? 'Non connecté'}
             </div>
           </div>
-          <div className="info-card-premium">
+
+          <div className="info-card-premium" style={{ borderRadius: '14px' }}>
             <div className="info-card-premium-header">
               <span className="info-card-premium-label">Dernière synchronisation</span>
               <span className="info-card-premium-icon">
                 <Clock size={16} />
               </span>
             </div>
-            <div className="info-card-premium-value">
+            <div className="info-card-premium-value" style={{ fontSize: '0.92rem' }}>
               {googleDrive?.lastSyncAt
                 ? new Date(googleDrive.lastSyncAt).toLocaleString('fr-FR')
                 : 'Jamais'}
             </div>
           </div>
-          <div className="info-card-premium">
+
+          <div className="info-card-premium" style={{ borderRadius: '14px' }}>
             <div className="info-card-premium-header">
-              <span className="info-card-premium-label">Dernier test</span>
+              <span className="info-card-premium-label">Dernier test connexion</span>
               <span className="info-card-premium-icon">
                 <ShieldCheck size={16} />
               </span>
             </div>
-            <div className="info-card-premium-value">
+            <div className="info-card-premium-value" style={{ fontSize: '0.92rem' }}>
               {googleDrive?.lastTestAt
                 ? new Date(googleDrive.lastTestAt).toLocaleString('fr-FR')
                 : 'Jamais'}
@@ -17308,38 +17912,38 @@ function BackupRestorePage({
               alignItems: 'center',
               justifyContent: 'space-between',
               gap: '1rem',
-              padding: '1rem',
+              padding: '1.15rem 1.35rem',
               borderRadius: '16px',
-              background: 'rgba(16,185,129,0.08)',
-              border: '1px solid rgba(16,185,129,0.18)',
+              background: 'rgba(16, 185, 129, 0.09)',
+              border: '1px solid rgba(16, 185, 129, 0.22)',
               flexWrap: 'wrap',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', minWidth: 0 }}>
               <span
                 style={{
-                  width: 42,
-                  height: 42,
+                  width: 44,
+                  height: 44,
                   borderRadius: '14px',
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   background: 'white',
                   color: '#059669',
-                  boxShadow: '0 8px 18px rgba(15,23,42,0.06)',
+                  boxShadow: '0 6px 16px rgba(16, 185, 129, 0.15)',
                 }}
               >
-                <ShieldCheck size={20} />
+                <ShieldCheck size={22} />
               </span>
               <div style={{ minWidth: 0 }}>
-                <strong style={{ display: 'block', color: '#065f46' }}>
-                  Compte configuré et en ligne
+                <strong style={{ display: 'block', color: '#065f46', fontSize: '0.98rem' }}>
+                  Google Drive connecté et actif
                 </strong>
                 <span
                   className="muted"
                   style={{ display: 'block', fontSize: '0.84rem', overflowWrap: 'anywhere' }}
                 >
-                  {googleDrive?.accountEmail ?? 'Google Drive connecté'} · sauvegarde cloud active
+                  {googleDrive?.accountEmail ?? 'Compte vérifié'} · Sauvegarde cloud opérationnelle
                 </span>
               </div>
             </div>
@@ -17348,30 +17952,40 @@ function BackupRestorePage({
                 className="btn btn-secondary"
                 disabled={busy}
                 onClick={() => setEditingCloudConfig(true)}
+                style={{ borderRadius: '10px' }}
               >
-                <Edit3 size={16} /> Modifier
+                <Edit3 size={15} /> Modifier OAuth
               </button>
               <button
                 className="btn btn-secondary"
                 disabled={busy || !googleDriveConnected}
                 onClick={() => void testGoogleDrive()}
+                style={{ borderRadius: '10px' }}
               >
-                <ShieldCheck size={16} /> Tester
+                <ShieldCheck size={15} /> Tester
               </button>
               <button
                 className="btn btn-outline-danger"
                 disabled={busy || !googleDriveConfigured}
                 onClick={() => void disconnectGoogleDrive()}
+                style={{ borderRadius: '10px' }}
               >
-                <RotateCw size={16} /> Déconnecter
+                <RotateCw size={15} /> Déconnecter
               </button>
             </div>
           </div>
         ) : (
-          <>
+          <div
+            style={{
+              padding: '1.25rem',
+              borderRadius: '16px',
+              background: '#f8fafc',
+              border: '1px solid rgba(226, 232, 240, 0.9)',
+            }}
+          >
             <div className="settings-grid-premium">
               <label>
-                Client ID Google
+                Client ID Google Cloud
                 <input
                   value={cloudForm.clientId}
                   onChange={(event) =>
@@ -17379,40 +17993,63 @@ function BackupRestorePage({
                   }
                   placeholder="xxxxx.apps.googleusercontent.com"
                   disabled={busy || (googleDriveConnected && !showCloudConfigForm)}
+                  style={{ borderRadius: '10px' }}
                 />
               </label>
               <label>
-                Client secret Google
+                Client Secret Google Cloud
                 <input
                   type="password"
                   value={cloudForm.clientSecret}
                   onChange={(event) =>
                     setCloudForm((current) => ({ ...current, clientSecret: event.target.value }))
                   }
-                  placeholder={googleDriveConfigured ? 'Laisser vide pour conserver' : 'GOCSPX-...'}
+                  placeholder={googleDriveConfigured ? '•••••••••••••••• (Laisser vide pour conserver)' : 'GOCSPX-...'}
                   disabled={busy || (googleDriveConnected && !showCloudConfigForm)}
+                  style={{ borderRadius: '10px' }}
                 />
               </label>
               <label>
-                URI de redirection
-                <input
-                  value={cloudForm.redirectUri}
-                  onChange={(event) =>
-                    setCloudForm((current) => ({ ...current, redirectUri: event.target.value }))
-                  }
-                  disabled={busy || (googleDriveConnected && !showCloudConfigForm)}
-                />
+                URI de redirection ToqueHub
+                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                  <input
+                    value={cloudForm.redirectUri}
+                    onChange={(event) =>
+                      setCloudForm((current) => ({ ...current, redirectUri: event.target.value }))
+                    }
+                    disabled={busy || (googleDriveConnected && !showCloudConfigForm)}
+                    style={{ borderRadius: '10px' }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={copyCloudRedirectUri}
+                    title="Copier l'URI"
+                    style={{ borderRadius: '10px', padding: '0 0.85rem' }}
+                  >
+                    <ClipboardList size={15} />
+                  </button>
+                </div>
               </label>
             </div>
 
-            <div className="alert-modern info" style={{ marginTop: '1rem', background: '#f8fafc' }}>
+            <div
+              className="alert-modern info"
+              style={{
+                marginTop: '1rem',
+                background: '#ffffff',
+                border: '1px solid rgba(226, 232, 240, 0.9)',
+                borderRadius: '12px',
+              }}
+            >
               <Info size={16} />
               <span>
-                À ajouter dans Google Cloud Console: <code>{cloudForm.redirectUri}</code>
+                À renseigner dans la Google Cloud Console (Identifiants &gt; URIs de redirection autorisés) :{' '}
+                <code style={{ userSelect: 'all' }}>{cloudForm.redirectUri}</code>
               </span>
             </div>
 
-            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem', flexWrap: 'wrap' }}>
               <button
                 className="btn btn-secondary"
                 disabled={
@@ -17422,6 +18059,7 @@ function BackupRestorePage({
                   !cloudForm.redirectUri.trim()
                 }
                 onClick={() => void saveGoogleDriveConfig()}
+                style={{ borderRadius: '10px' }}
               >
                 <KeyRound size={16} /> Enregistrer OAuth
               </button>
@@ -17429,37 +18067,273 @@ function BackupRestorePage({
                 className="btn btn-primary"
                 disabled={busy || !googleDriveConfigured}
                 onClick={() => void connectGoogleDrive()}
+                style={{ borderRadius: '10px' }}
               >
-                <ExternalLink size={16} /> Connecter Google Drive
+                <ExternalLink size={16} /> Autoriser Google Drive
               </button>
               <button
                 className="btn btn-secondary"
                 disabled={busy || !googleDriveConnected}
                 onClick={() => void testGoogleDrive()}
+                style={{ borderRadius: '10px' }}
               >
                 <ShieldCheck size={16} /> Tester
               </button>
-              <button
-                className="btn btn-outline-danger"
-                disabled={busy || !googleDriveConfigured}
-                onClick={() => void disconnectGoogleDrive()}
-              >
-                <RotateCw size={16} /> Déconnecter
-              </button>
+              {googleDriveConfigured ? (
+                <button
+                  className="btn btn-outline-danger"
+                  disabled={busy}
+                  onClick={() => void disconnectGoogleDrive()}
+                  style={{ borderRadius: '10px' }}
+                >
+                  <RotateCw size={16} /> Déconnecter
+                </button>
+              ) : null}
               {editingCloudConfig ? (
                 <button
                   className="btn btn-secondary"
                   disabled={busy}
                   onClick={() => setEditingCloudConfig(false)}
+                  style={{ borderRadius: '10px' }}
                 >
                   Annuler
                 </button>
               ) : null}
             </div>
-          </>
+          </div>
         )}
       </div>
 
+      {/* 4. Import & Restauration Destructive */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+          gap: '1.25rem',
+        }}
+      >
+        <div className="card-modern" style={{ padding: '1.5rem', borderRadius: '18px' }}>
+          <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Download size={18} style={{ transform: 'rotate(180deg)', color: '#0ea5e9' }} /> Importer
+            une archive
+          </span>
+          <p className="muted" style={{ fontSize: '0.86rem', marginTop: '0.35rem' }}>
+            Chargez un fichier <code>.tar.gz</code> issu d'une instance ToqueHub pour inspecter son
+            manifeste et le restaurer.
+          </p>
+          <input
+            type="file"
+            accept=".gz,.tgz,.tar.gz,application/gzip"
+            disabled={busy}
+            onChange={(event) => void inspectFile(event.target.files?.[0])}
+            style={{ marginTop: '0.5rem', borderRadius: '10px' }}
+          />
+          {inspection ? (
+            <div
+              className="alert-modern info"
+              style={{
+                marginTop: '1rem',
+                background: '#f8fafc',
+                borderRadius: '12px',
+                border: '1px solid rgba(226, 232, 240, 0.9)',
+              }}
+            >
+              <Info size={16} />
+              <div>
+                <strong>{inspection.manifest.name || inspection.filename}</strong>
+                {inspection.manifest.name ? (
+                  <span style={{ display: 'block', fontSize: '0.75rem', fontFamily: 'monospace', color: '#64748b' }}>
+                    {inspection.filename}
+                  </span>
+                ) : null}
+                <span style={{ fontSize: '0.82rem', color: '#475569', display: 'block', marginTop: '0.2rem' }}>
+                  Créée le {new Date(inspection.manifest.createdAt).toLocaleString('fr-FR')} ·{' '}
+                  {inspection.manifest.files.totalFileCount} fichier(s) ·{' '}
+                  {formatBytes(inspection.sizeBytes)}
+                </span>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div
+          className="card-modern"
+          style={{
+            padding: '1.5rem',
+            borderRadius: '18px',
+            borderColor: selectedBackup || inspection ? 'rgba(239, 68, 68, 0.4)' : undefined,
+            background: selectedBackup || inspection ? 'rgba(254, 242, 242, 0.4)' : undefined,
+          }}
+        >
+          <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#dc2626' }}>
+            <ShieldCheck size={18} /> Restauration destructive
+          </span>
+          <p className="muted" style={{ fontSize: '0.86rem', marginTop: '0.35rem' }}>
+            La restauration écrase la base PostgreSQL et les fichiers média. Saisissez exactement{' '}
+            <strong style={{ color: '#dc2626' }}>{RESTORE_CONFIRMATION_PHRASE}</strong> pour
+            déverrouiller.
+          </p>
+          <input
+            placeholder={RESTORE_CONFIRMATION_PHRASE}
+            value={confirmationPhrase}
+            onChange={(event) => setConfirmationPhrase(event.target.value)}
+            disabled={busy || (!selectedBackup && !inspection)}
+            style={{
+              marginTop: '0.5rem',
+              borderRadius: '10px',
+              borderColor:
+                normalizedConfirmationPhrase === RESTORE_CONFIRMATION_PHRASE ? '#10b981' : undefined,
+            }}
+          />
+          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+            <button
+              className="btn btn-danger"
+              disabled={busy || !localRestoreReady}
+              onClick={() =>
+                selectedBackup &&
+                void run(
+                  () => api.restoreBackup(token, selectedBackup.id, normalizedConfirmationPhrase),
+                  'Restauration terminée.',
+                  true,
+                )
+              }
+              style={{ borderRadius: '10px' }}
+            >
+              Restaurer la sauvegarde locale
+            </button>
+            <button
+              className="btn btn-danger"
+              disabled={busy || !uploadRestoreReady}
+              onClick={() =>
+                inspection &&
+                void run(
+                  () =>
+                    api.restoreBackupUpload(
+                      token,
+                      inspection.uploadId,
+                      normalizedConfirmationPhrase,
+                    ),
+                  'Restauration terminée.',
+                  true,
+                )
+              }
+              style={{ borderRadius: '10px' }}
+            >
+              Restaurer l’archive importée
+            </button>
+          </div>
+          {selectedBackup ? (
+            <p className="muted" style={{ marginTop: '0.75rem', fontSize: '0.82rem' }}>
+              Cible sélectionnée : <strong>{selectedBackup.name || selectedBackup.filename}</strong>
+            </p>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Modal Nouvelle Sauvegarde avec Libellé / Nom */}
+      <Modal
+        isOpen={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        title="Créer une nouvelle sauvegarde"
+        size="md"
+      >
+        <form onSubmit={handleCreateBackupSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <div
+            style={{
+              padding: '1rem',
+              borderRadius: '14px',
+              background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(99, 102, 241, 0.04) 100%)',
+              border: '1px solid rgba(139, 92, 246, 0.18)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.8rem',
+            }}
+          >
+            <span
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: '10px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: '#8b5cf6',
+                color: 'white',
+              }}
+            >
+              <Archive size={20} />
+            </span>
+            <div>
+              <strong style={{ display: 'block', color: 'var(--text-main)', fontSize: '0.92rem' }}>
+                Archive complète de l’instance
+              </strong>
+              <span style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                Base PostgreSQL, documents métier et manifeste technique.
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontWeight: 650, fontSize: '0.88rem', marginBottom: '0.4rem' }}>
+              Nom / Libellé de la sauvegarde (optionnel)
+            </label>
+            <input
+              type="text"
+              placeholder="Ex : Avant inventaire mensuel, Pré-mise à jour carte, ..."
+              value={customBackupName}
+              onChange={(e) => setCustomBackupName(e.target.value)}
+              autoFocus
+              style={{
+                width: '100%',
+                padding: '0.75rem 0.9rem',
+                borderRadius: '10px',
+                border: '1px solid #cbd5e1',
+                fontSize: '0.95rem',
+              }}
+            />
+            <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.78rem', color: '#64748b' }}>
+              Si laissé vide, la date et l’heure actuelles serviront d’identifiant.
+            </span>
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '0.75rem',
+              marginTop: '0.5rem',
+            }}
+          >
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setCreateModalOpen(false)}
+              disabled={busy}
+              style={{ borderRadius: '10px' }}
+            >
+              Annuler
+            </button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={busy}
+              style={{
+                borderRadius: '10px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.65rem 1.3rem',
+                fontWeight: 700,
+              }}
+            >
+              {busy ? <RotateCw size={16} className="spin" /> : <Archive size={16} />}
+              {busy ? 'Création en cours...' : 'Lancer la sauvegarde'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Modal Tutoriel Google Drive */}
       <Modal
         isOpen={cloudHelpOpen}
         onClose={() => setCloudHelpOpen(false)}
@@ -17487,7 +18361,7 @@ function BackupRestorePage({
                 letterSpacing: '0.06em',
               }}
             >
-              <Cloud size={15} /> Connexion Google Drive
+              <GoogleDriveLogo size={16} /> Connexion Google Drive
             </span>
             <h3
               style={{
@@ -17668,201 +18542,6 @@ function BackupRestorePage({
           </div>
         </div>
       </Modal>
-
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1.1fr) minmax(320px, 0.9fr)',
-          gap: '1rem',
-        }}
-      >
-        <div className="card-modern" style={{ padding: '1.25rem' }}>
-          <span className="card-title">
-            <Download size={18} style={{ transform: 'rotate(180deg)' }} /> Importer une sauvegarde
-          </span>
-          <p className="muted">
-            Importez une archive `.tar.gz`, inspectez son manifeste, puis confirmez la restauration.
-          </p>
-          <input
-            type="file"
-            accept=".gz,.tgz,.tar.gz,application/gzip"
-            disabled={busy}
-            onChange={(event) => void inspectFile(event.target.files?.[0])}
-          />
-          {inspection ? (
-            <div className="alert-modern info" style={{ marginTop: '1rem', background: '#f8fafc' }}>
-              <Info size={16} />
-              <div>
-                <strong>{inspection.filename}</strong>
-                <br />
-                <span>
-                  Créée le {new Date(inspection.manifest.createdAt).toLocaleString('fr-FR')} ·{' '}
-                  {inspection.manifest.files.totalFileCount} fichier(s) ·{' '}
-                  {formatBytes(inspection.sizeBytes)}
-                </span>
-              </div>
-            </div>
-          ) : null}
-        </div>
-
-        <div
-          className="card-modern"
-          style={{
-            padding: '1.25rem',
-            borderColor: selectedBackup || inspection ? 'rgba(239,68,68,0.35)' : undefined,
-          }}
-        >
-          <span className="card-title">
-            <ShieldCheck size={18} /> Restauration destructive
-          </span>
-          <p className="muted">
-            La restauration remplace la base et les fichiers uploadés. Saisissez la phrase exacte
-            pour déverrouiller l’action.
-          </p>
-          <input
-            placeholder={RESTORE_CONFIRMATION_PHRASE}
-            value={confirmationPhrase}
-            onChange={(event) => setConfirmationPhrase(event.target.value)}
-            disabled={busy || (!selectedBackup && !inspection)}
-          />
-          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
-            <button
-              className="btn btn-danger"
-              disabled={busy || !localRestoreReady}
-              onClick={() =>
-                selectedBackup &&
-                void run(
-                  () => api.restoreBackup(token, selectedBackup.id, normalizedConfirmationPhrase),
-                  'Restauration terminée.',
-                  true,
-                )
-              }
-            >
-              Restaurer la sauvegarde locale
-            </button>
-            <button
-              className="btn btn-danger"
-              disabled={busy || !uploadRestoreReady}
-              onClick={() =>
-                inspection &&
-                void run(
-                  () =>
-                    api.restoreBackupUpload(
-                      token,
-                      inspection.uploadId,
-                      normalizedConfirmationPhrase,
-                    ),
-                  'Restauration terminée.',
-                  true,
-                )
-              }
-            >
-              Restaurer l’archive importée
-            </button>
-          </div>
-          {selectedBackup ? (
-            <p className="muted" style={{ marginTop: '0.75rem' }}>
-              Cible locale: {selectedBackup.filename}
-            </p>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="card-modern" style={{ padding: '1.25rem' }}>
-        <span className="card-title">
-          <Clock size={18} /> Planification simple
-        </span>
-        {schedule ? (
-          <div className="settings-grid-premium" style={{ marginTop: '1rem' }}>
-            <label>
-              Statut
-              <select
-                value={schedule.enabled ? 'on' : 'off'}
-                onChange={(event) =>
-                  setSchedule((current) =>
-                    current ? { ...current, enabled: event.target.value === 'on' } : current,
-                  )
-                }
-              >
-                <option value="off">Désactivée</option>
-                <option value="on">Activée</option>
-              </select>
-            </label>
-            <label>
-              Fréquence
-              <select
-                value={schedule.frequency}
-                onChange={(event) =>
-                  setSchedule((current) =>
-                    current
-                      ? { ...current, frequency: event.target.value as 'daily' | 'weekly' }
-                      : current,
-                  )
-                }
-              >
-                <option value="daily">Quotidienne</option>
-                <option value="weekly">Hebdomadaire</option>
-              </select>
-            </label>
-            <label>
-              Heure
-              <input
-                type="time"
-                value={schedule.time}
-                onChange={(event) =>
-                  setSchedule((current) =>
-                    current ? { ...current, time: event.target.value } : current,
-                  )
-                }
-              />
-            </label>
-            <label>
-              Jour
-              <select
-                value={schedule.weekday}
-                disabled={schedule.frequency !== 'weekly'}
-                onChange={(event) =>
-                  setSchedule((current) =>
-                    current ? { ...current, weekday: Number(event.target.value) } : current,
-                  )
-                }
-              >
-                {['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'].map(
-                  (day, index) => (
-                    <option key={day} value={index}>
-                      {day}
-                    </option>
-                  ),
-                )}
-              </select>
-            </label>
-            <label>
-              Rétention jours
-              <input
-                type="number"
-                min={1}
-                value={schedule.retentionDays}
-                onChange={(event) =>
-                  setSchedule((current) =>
-                    current ? { ...current, retentionDays: Number(event.target.value) } : current,
-                  )
-                }
-              />
-            </label>
-            <div style={{ display: 'flex', alignItems: 'end' }}>
-              <button
-                className="btn btn-primary"
-                disabled={busy}
-                onClick={() => void saveSchedule()}
-              >
-                Enregistrer
-              </button>
-            </div>
-          </div>
-        ) : (
-          <p className="muted">Chargement de la planification...</p>
-        )}
-      </div>
     </div>
   );
 }
