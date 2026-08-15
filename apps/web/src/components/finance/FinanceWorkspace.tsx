@@ -1013,8 +1013,8 @@ function RevenueReconciliationPanel({
   currency: string;
 }) {
   const basisLabels = {
-    cash_register: 'Caisse · période ouverte',
-    accounting: 'Comptabilité · période clôturée',
+    cash_register: 'Caisses consolidées',
+    accounting: 'Comptabilité · référence',
     mixed: 'Caisse + compléments comptables',
     unavailable: 'Données indisponibles',
   } as const;
@@ -1025,11 +1025,11 @@ function RevenueReconciliationPanel({
   } as const;
   const explanation =
     reconciliation.basis === 'cash_register'
-      ? 'La période est ouverte : le CA consolidé de toutes les caisses incluses est retenu. La comptabilité reste visible comme contrôle.'
+      ? 'Le CA consolidé de toutes les caisses incluses est retenu. La comptabilité reste visible comme contrôle.'
       : reconciliation.basis === 'accounting'
-        ? 'La période est clôturée : le CA comptabilisé devient la valeur de référence.'
+        ? 'La période est couverte par la comptabilité : son CA devient la valeur de référence et contrôle les données de caisse.'
         : reconciliation.basis === 'mixed'
-          ? 'Le CA combine les mois clôturés, la caisse des mois ouverts, les factures clients et les canaux comptables absents des flux de caisse.'
+          ? 'Le CA courant combine les caisses dédupliquées et les écritures comptables disponibles ; chaque mois couvert est rapproché sur le total comptable.'
           : 'Aucune source ne fournit encore de chiffre d’affaires exploitable sur cette période.';
   const breakdownItems = [
     {
@@ -1037,7 +1037,7 @@ function RevenueReconciliationPanel({
       value: reconciliation.breakdown.selectedCashRegisterRevenue,
     },
     {
-      label: 'Mois clôturés comptabilité',
+      label: 'CA comptable de référence',
       value: reconciliation.breakdown.selectedAccountingRevenue,
     },
     {
@@ -1114,7 +1114,7 @@ function RevenueReconciliationPanel({
             ? ` ${formatValue(reconciliation.breakdown.accountingOverlappingRevenue, 'currency', currency)} de synthèses comptables ne sont pas ajoutés car déjà couverts par la caisse.`
             : ''}
           {Math.abs(pendingAccountingRevenue) >= 0.005
-            ? ` ${formatValue(pendingAccountingRevenue, 'currency', currency)} d’écritures de rapprochement ou non classées restent en attente de la clôture.`
+            ? ` ${formatValue(pendingAccountingRevenue, 'currency', currency)} d’écritures de rapprochement ou non classées restent visibles pour contrôle, sans être ajoutées au CA.`
             : ''}
         </span>
       </p>
@@ -1136,8 +1136,8 @@ function HistoricalComparisonPanel({
   const current = comparison.periods.find(({ isCurrent }) => isCurrent);
   const basisLabels = {
     cash_register: 'Caisses consolidées',
-    accounting: 'Fennoa',
-    mixed: 'Caisses + Fennoa',
+    accounting: 'Comptabilité',
+    mixed: 'Caisses + comptabilité',
     unavailable: 'Sans donnée',
   } as const;
   const visibleMetrics = HISTORY_METRICS.filter(({ id }) => selected.includes(id));

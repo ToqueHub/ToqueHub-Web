@@ -1,10 +1,17 @@
 import { MistralClientService } from './mistral-client.service';
+import { postMistralOcr } from './mistral-ocr-transport';
+
+jest.mock('./mistral-ocr-transport', () => ({
+  DEFAULT_MISTRAL_OCR_TIMEOUT_MS: 120_000,
+  postMistralOcr: jest.fn(),
+}));
 
 describe('MistralClientService OCR markdown', () => {
   const originalFetch = global.fetch;
 
   afterEach(() => {
     global.fetch = originalFetch;
+    jest.mocked(postMistralOcr).mockReset();
     jest.restoreAllMocks();
   });
 
@@ -12,8 +19,9 @@ describe('MistralClientService OCR markdown', () => {
     const prisma = {
       organization: { findUnique: jest.fn().mockResolvedValue({ mistralApiKey: 'test-key' }) },
     };
-    global.fetch = jest.fn().mockResolvedValue({
+    jest.mocked(postMistralOcr).mockResolvedValue({
       ok: true,
+      status: 200,
       json: async () => ({
         pages: [
           {
@@ -25,7 +33,7 @@ describe('MistralClientService OCR markdown', () => {
           },
         ],
       }),
-    }) as any;
+    });
 
     const result = await new MistralClientService(prisma as any).ocrMarkdown('org-1', {
       buffer: Buffer.from('pdf'),
@@ -35,6 +43,38 @@ describe('MistralClientService OCR markdown', () => {
 
     expect(result.markdown).toContain('| Water | 720 g |');
     expect(result.markdown).not.toContain('[tbl-0.md](tbl-0.md)');
+    expect(postMistralOcr).toHaveBeenCalledWith(
+      'test-key',
+      expect.objectContaining({ model: 'mistral-ocr-latest' }),
+      120_000,
+    );
+  });
+
+  it('retries OCR without annotations after a provider validation error', async () => {
+    const prisma = {
+      organization: { findUnique: jest.fn().mockResolvedValue({ mistralApiKey: 'test-key' }) },
+    };
+    jest
+      .mocked(postMistralOcr)
+      .mockResolvedValueOnce({ ok: false, status: 422, json: async () => ({}) })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ pages: [{ markdown: 'Document lisible' }] }),
+      });
+
+    const result = await new MistralClientService(prisma as any).ocrMarkdown('org-1', {
+      buffer: Buffer.from('pdf'),
+      mimeType: 'application/pdf',
+      withAnnotation: true,
+    });
+
+    expect(result.markdown).toBe('Document lisible');
+    expect(postMistralOcr).toHaveBeenCalledTimes(2);
+    expect(jest.mocked(postMistralOcr).mock.calls[0][1]).toEqual(
+      expect.objectContaining({ table_format: 'markdown' }),
+    );
+    expect(jest.mocked(postMistralOcr).mock.calls[1][1]).not.toHaveProperty('table_format');
   });
 
   it('retries in JSON mode when Mistral rejects a strict schema', async () => {

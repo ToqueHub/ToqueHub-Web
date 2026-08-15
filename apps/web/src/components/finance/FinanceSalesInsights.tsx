@@ -90,10 +90,8 @@ function rangeFor(
   }
   if (preset === 'month') {
     const selectedMonth = safeReference.slice(0, 7);
-    const [year, month] = selectedMonth.split('-').map(Number);
     const from = `${selectedMonth}-01`;
-    const monthEnd = iso(new Date(year, month, 0, 12));
-    return { from, to: monthEnd };
+    return { from, to: safeReference };
   }
   const to = new Date(`${safeReference}T12:00:00`);
   if (preset === 'day') return { from: iso(to), to: iso(to) };

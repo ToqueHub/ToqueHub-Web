@@ -1,6 +1,7 @@
 import { FinanceProvider } from '@prisma/client';
 import {
   deduplicateCrossSourceSales,
+  isTechnicalProductLabel,
   resolveContributingSalesSourceIds,
 } from './finance-sales-dedupe';
 
@@ -40,13 +41,60 @@ describe('deduplicateCrossSourceSales', () => {
     expect(result.rows).toEqual([expect.objectContaining({ sourceId: 'loyverse-api' })]);
   });
 
-  it('additionne FlatPay, Loyverse et PayPal lorsqu’ils sont utilisés simultanément', () => {
+  it('fusionne deux fournisseurs lorsque leurs séries de tickets se correspondent', () => {
+    const result = deduplicateCrossSourceSales([
+      ...[0, 1, 2].flatMap((index) => [
+        {
+          ...shared,
+          saleDate: new Date(saleDate.getTime() + index * 60_000),
+          grossAmount: index === 2 ? -5 : 20 + index,
+          netAmount: 17 + index,
+          vatAmount: 3,
+          transactionCount: index === 2 ? 0 : 1,
+          metadata: { receiptNumber: `loyverse-${index}` },
+          sourceId: 'loyverse',
+          source: { provider: FinanceProvider.LOYVERSE, siteId: 'site-a' },
+        },
+        {
+          ...shared,
+          saleDate: new Date(saleDate.getTime() + index * 60_000 + 3 * 3_600_000 + 4_000),
+          grossAmount: index === 2 ? -5 : 20 + index,
+          transactionCount: index === 2 ? 0 : 1,
+          metadata: { receiptNumber: `paypal-${index}` },
+          sourceId: 'paypal',
+          source: { provider: FinanceProvider.PAYPAL_POS, siteId: 'site-a' },
+        },
+      ]),
+    ]);
+
+    expect(result.duplicateCandidates).toBe(3);
+    expect(result.rows).toHaveLength(3);
+    expect(result.rows.every(({ sourceId }) => sourceId === 'loyverse')).toBe(true);
+  });
+
+  it('conserve une opération isolée provenant d’un autre fournisseur', () => {
     const result = deduplicateCrossSourceSales([
       {
         ...shared,
-        sourceId: 'flatpay',
-        source: { provider: FinanceProvider.FLATPAY, siteId: 'site-a' },
+        sourceId: 'loyverse',
+        source: { provider: FinanceProvider.LOYVERSE, siteId: 'site-a' },
       },
+      {
+        ...shared,
+        saleDate: new Date(saleDate.getTime() + 4 * 60_000),
+        grossAmount: 50,
+        paymentMethod: 'Gift card',
+        sourceId: 'paypal',
+        source: { provider: FinanceProvider.PAYPAL_POS, siteId: 'site-a' },
+      },
+    ]);
+
+    expect(result.duplicateCandidates).toBe(0);
+    expect(result.rows).toHaveLength(2);
+  });
+
+  it('ne retire pas une simple coïncidence entre deux caisses indépendantes', () => {
+    const result = deduplicateCrossSourceSales([
       {
         ...shared,
         sourceId: 'loyverse',
@@ -60,7 +108,29 @@ describe('deduplicateCrossSourceSales', () => {
     ]);
 
     expect(result.duplicateCandidates).toBe(0);
-    expect(result.rows).toHaveLength(3);
+    expect(result.rows).toHaveLength(2);
+  });
+
+  it('ne confond pas une ligne produit avec un ticket de caisse', () => {
+    const result = deduplicateCrossSourceSales([
+      {
+        ...shared,
+        transactionCount: 0,
+        isRevenueRecord: false,
+        sourceId: 'loyverse',
+        source: { provider: FinanceProvider.LOYVERSE, siteId: 'site-a' },
+      },
+      {
+        ...shared,
+        transactionCount: 0,
+        isRevenueRecord: false,
+        sourceId: 'paypal',
+        source: { provider: FinanceProvider.PAYPAL_POS, siteId: 'site-a' },
+      },
+    ]);
+
+    expect(result.duplicateCandidates).toBe(0);
+    expect(result.rows).toHaveLength(2);
   });
 
   it('conserve le même numéro de ticket lorsqu’il vient de deux sites distincts', () => {
@@ -91,6 +161,22 @@ describe('deduplicateCrossSourceSales', () => {
     expect(result.duplicateCandidates).toBe(0);
     expect(result.rows).toHaveLength(2);
   });
+});
+
+describe('isTechnicalProductLabel', () => {
+  it.each(['34441', '# 34441', '3-7848', 'Ticket 34441', 'transaction:ab12-90'])(
+    'reconnaît %s comme une référence technique',
+    (label) => expect(isTechnicalProductLabel(label)).toBe(true),
+  );
+
+  it('reconnaît un identifiant exact fourni par la source', () => {
+    expect(isTechnicalProductLabel('ABCD-9087', ['ABCD-9087'])).toBe(true);
+  });
+
+  it.each(['Cappuccino', '7Up', 'Croque Monsieur 3 fromages'])(
+    'conserve %s comme un vrai produit',
+    (label) => expect(isTechnicalProductLabel(label)).toBe(false),
+  );
 });
 
 describe('resolveContributingSalesSourceIds', () => {

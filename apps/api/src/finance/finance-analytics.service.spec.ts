@@ -2,10 +2,12 @@ import { FinanceAccountCategory } from '@prisma/client';
 import {
   alignFinanceAccountingPeriods,
   allocateMonthlyBudgetPerCalendarDay,
+  buildFinanceMonthlyComparisonRanges,
   countMonths,
   computeBudgetTransactionPacing,
   deriveAccountingResults,
   fennoaBudgetMetricLines,
+  hasAccountingTruthForMonth,
   listFennoaBudgets,
   resolveFinanceAsOfDate,
   resolveFinanceFiscalPeriod,
@@ -118,6 +120,77 @@ describe('Finance accounting periods', () => {
   });
 });
 
+describe('Finance monthly comparison periods', () => {
+  it('keeps prior years at the same stage but shows the previous month in full', () => {
+    const ranges = buildFinanceMonthlyComparisonRanges(
+      new Date('2026-08-01T00:00:00.000Z'),
+      new Date('2026-08-15T23:59:59.999Z'),
+      false,
+    );
+
+    expect(ranges.map(({ id, detail, from, to }) => ({ id, detail, from, to }))).toEqual([
+      {
+        id: 'current',
+        detail: 'Mois en cours à date',
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-15T23:59:59.999Z'),
+      },
+      {
+        id: 'n_1',
+        detail: 'Même mois à date · N-1',
+        from: new Date('2025-08-01T00:00:00.000Z'),
+        to: new Date('2025-08-15T23:59:59.999Z'),
+      },
+      {
+        id: 'n_2',
+        detail: 'Même mois à date · N-2',
+        from: new Date('2024-08-01T00:00:00.000Z'),
+        to: new Date('2024-08-15T23:59:59.999Z'),
+      },
+      {
+        id: 'm_1',
+        detail: 'Mois précédent complet',
+        from: new Date('2026-07-01T00:00:00.000Z'),
+        to: new Date('2026-07-31T23:59:59.999Z'),
+      },
+    ]);
+  });
+});
+
+describe('Finance accounting revenue coverage', () => {
+  const monthEnd = new Date('2026-07-31T23:59:59.999Z');
+
+  it('does not apply a global lock when the selected scope has no accounting revenue rows', () => {
+    expect(
+      hasAccountingTruthForMonth({
+        periodEnd: monthEnd,
+        accountingLockedThrough: monthEnd,
+        accountingCoverageThrough: null,
+        hasAccountingRevenueRows: false,
+      }),
+    ).toBe(false);
+  });
+
+  it('accepts a covered zero-revenue month and a locked month containing revenue entries', () => {
+    expect(
+      hasAccountingTruthForMonth({
+        periodEnd: monthEnd,
+        accountingLockedThrough: null,
+        accountingCoverageThrough: monthEnd,
+        hasAccountingRevenueRows: false,
+      }),
+    ).toBe(true);
+    expect(
+      hasAccountingTruthForMonth({
+        periodEnd: monthEnd,
+        accountingLockedThrough: monthEnd,
+        accountingCoverageThrough: null,
+        hasAccountingRevenueRows: true,
+      }),
+    ).toBe(true);
+  });
+});
+
 describe('Finance accounting result lines', () => {
   it('reconciles the Fennoa operating and net results without using cash-register revenue', () => {
     expect(
@@ -174,10 +247,10 @@ describe('Fennoa accounting budget', () => {
 
   it('selects the latest Fennoa budget for the selected accounting period', () => {
     const rows = [
-        row(5, 'Budjetti 2026', '3000', 334_165),
-        row(8, 'Päivitetty budjetti 2026', '3000', 327_140.68),
-        row(9, 'Budget 2027', '3000', 342_000, 1, 4),
-      ];
+      row(5, 'Budjetti 2026', '3000', 334_165),
+      row(8, 'Päivitetty budjetti 2026', '3000', 327_140.68),
+      row(9, 'Budget 2027', '3000', 342_000, 1, 4),
+    ];
     const selected = selectFennoaBudget(rows, 3);
 
     expect(selected).toMatchObject({

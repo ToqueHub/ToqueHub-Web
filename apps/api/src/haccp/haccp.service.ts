@@ -8,6 +8,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import PDFDocument from 'pdfkit';
 import { ProductionIngredientTraceabilityService } from '../production/production-ingredient-traceability.service';
+import { postMistralOcr } from '../mistral/mistral-ocr-transport';
 
 type Actor = { id: string; role: string };
 
@@ -745,26 +746,19 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
     if (!apiKey) return this.ok({ productName: null, lotNumber: null, barcode: null, confidence: 0, rawText: '', provider: 'manual', message: 'OCR non configuré' });
     const mimeType = image.match(/^data:([^;]+);base64,/)?.[1] || 'image/jpeg';
     const dataUrl = image.startsWith('data:') ? image : `data:${mimeType};base64,${image}`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), Number(process.env.OCR_TIMEOUT_MS ?? 60_000));
-    try {
-      const response = await fetch('https://api.mistral.ai/v1/ocr', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: process.env.OCR_MISTRAL_MODEL || 'mistral-ocr-latest',
-          document: { type: 'image_url', image_url: dataUrl },
-          include_image_base64: false,
-        }),
-        signal: controller.signal,
-      });
-      const json: any = await response.json().catch(() => ({}));
-      if (!response.ok) throw new BadRequestException('Image HACCP illisible ou OCR indisponible');
-      const rawText = (Array.isArray(json.pages) ? json.pages.map((page: any) => page.markdown || page.text).filter(Boolean).join('\n') : json.markdown || json.text || '').trim();
-      return this.ok({ ...this.extractTraceabilityFromText(rawText), rawText, provider: 'mistral', confidence: rawText ? 0.72 : 0.1 });
-    } finally {
-      clearTimeout(timeout);
-    }
+    const response = await postMistralOcr(
+      apiKey,
+      {
+        model: process.env.OCR_MISTRAL_MODEL || 'mistral-ocr-latest',
+        document: { type: 'image_url', image_url: dataUrl },
+        include_image_base64: false,
+      },
+      Number(process.env.OCR_TIMEOUT_MS ?? 120_000),
+    );
+    const json: any = await response.json().catch(() => ({}));
+    if (!response.ok) throw new BadRequestException('Image HACCP illisible ou OCR indisponible');
+    const rawText = (Array.isArray(json.pages) ? json.pages.map((page: any) => page.markdown || page.text).filter(Boolean).join('\n') : json.markdown || json.text || '').trim();
+    return this.ok({ ...this.extractTraceabilityFromText(rawText), rawText, provider: 'mistral', confidence: rawText ? 0.72 : 0.1 });
   }
 
   private async resolveMistralApiKey(organizationId: string) {

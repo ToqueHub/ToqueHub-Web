@@ -44,6 +44,7 @@ type DashboardPeriodContext = {
 type FinanceAggregateOptions = {
   revenuePolicy?: 'operational' | 'accounting';
   finnishChart?: boolean;
+  accountingCoverageThrough?: Date | null;
 };
 
 type FinanceLedgerRevenueRow = {
@@ -609,6 +610,53 @@ function shiftMonth(value: Date, offset: number) {
   );
 }
 
+export function buildFinanceMonthlyComparisonRanges(
+  monthStart: Date,
+  monthlyActualTo: Date,
+  monthlyIsComplete: boolean,
+) {
+  return [
+    {
+      id: 'current',
+      label: monthStart.toLocaleDateString('fr-FR', {
+        month: 'short',
+        year: 'numeric',
+        timeZone: 'UTC',
+      }),
+      detail: monthlyIsComplete ? 'Mois complet' : 'Mois en cours à date',
+      from: monthStart,
+      to: monthlyActualTo,
+      isCurrent: true,
+    },
+    ...[1, 2].map((offset) => ({
+      id: `n_${offset}`,
+      label: shiftYear(monthStart, -offset).toLocaleDateString('fr-FR', {
+        month: 'short',
+        year: 'numeric',
+        timeZone: 'UTC',
+      }),
+      detail: monthlyIsComplete
+        ? `Même mois complet · N-${offset}`
+        : `Même mois à date · N-${offset}`,
+      from: shiftYear(monthStart, -offset),
+      to: shiftYear(monthlyActualTo, -offset),
+      isCurrent: false,
+    })),
+    {
+      id: 'm_1',
+      label: shiftMonth(monthStart, -1).toLocaleDateString('fr-FR', {
+        month: 'short',
+        year: 'numeric',
+        timeZone: 'UTC',
+      }),
+      detail: 'Mois précédent complet',
+      from: shiftMonth(monthStart, -1),
+      to: endOfMonth(shiftMonth(monthStart, -1)),
+      isCurrent: false,
+    },
+  ];
+}
+
 function shiftDays(value: Date, offset: number) {
   return new Date(value.getTime() + offset * 86_400_000);
 }
@@ -717,6 +765,7 @@ export function classifyAccountingRevenueEntry(
   const invoiceSeries = new Set(['in', 'inv', 'invoice', 'salesinvoice', 'si', 'ar']);
   if (
     invoiceSeries.has(series) ||
+    /^\d+\s*-\s*\S+/.test(description) ||
     /\b(invoice|facture|sales invoice|myyntilasku|lasku)\b/.test(description) ||
     /\b(invoice|salesinvoice)\b/.test(sourceEntity)
   ) {
@@ -737,8 +786,8 @@ export function classifyAccountingRevenueEntry(
 export function selectHybridFinanceRevenueForMonth({
   sales,
   accountingRows,
-  periodEnd,
-  accountingLockedThrough,
+  periodEnd: _periodEnd,
+  accountingLockedThrough: _accountingLockedThrough,
 }: {
   sales: FinanceSalesRevenueRow[];
   accountingRows: FinanceLedgerRevenueRow[];
@@ -767,16 +816,9 @@ export function selectHybridFinanceRevenueForMonth({
     accountingOverlappingRevenue: 0,
     accountingOtherRevenue: 0,
   };
-  const accountingIsClosed = Boolean(
-    accountingLockedThrough && endOfUtcDay(accountingLockedThrough) >= periodEnd,
-  );
-  if (accountingIsClosed && hasAccountingData) {
-    return {
-      value: round(accountingRevenue),
-      basis: 'accounting',
-      breakdown: { ...emptyBreakdown, selectedAccountingRevenue: round(accountingRevenue) },
-    };
-  }
+  // Une clôture rend les écritures immuables, mais ne garantit pas que tous les encaissements de
+  // caisse y ont été intégrés. Dès que les tickets existent, ils restent donc la base opérationnelle
+  // et seules les factures ou les caisses absentes sont ajoutées depuis la comptabilité.
   if (!hasCashRegisterData) {
     if (!hasAccountingData) return { value: null, basis: 'unavailable', breakdown: emptyBreakdown };
     return {
@@ -816,6 +858,78 @@ export function selectHybridFinanceRevenueForMonth({
       Object.entries(breakdown).map(([key, value]) => [key, round(value)]),
     ) as FinanceRevenueBreakdown,
   };
+}
+
+type FinanceRevenueSelection = ReturnType<typeof selectHybridFinanceRevenueForMonth>;
+
+export function applyAccountingRevenueControl({
+  partial,
+  fullMonth,
+  accountingRevenue,
+  accountingTruthAvailable,
+  coversFullMonth,
+}: {
+  partial: FinanceRevenueSelection;
+  fullMonth: FinanceRevenueSelection;
+  accountingRevenue: number | null;
+  accountingTruthAvailable: boolean;
+  coversFullMonth: boolean;
+}): FinanceRevenueSelection {
+  if (!accountingTruthAvailable || accountingRevenue == null) return partial;
+  const emptyBreakdown: FinanceRevenueBreakdown = {
+    selectedCashRegisterRevenue: 0,
+    selectedAccountingRevenue: 0,
+    accountingInvoiceRevenue: 0,
+    accountingFallbackRevenue: 0,
+    accountingAdjustmentRevenue: 0,
+    accountingOverlappingRevenue: 0,
+    accountingOtherRevenue: 0,
+  };
+  if (coversFullMonth) {
+    return {
+      value: round(accountingRevenue),
+      basis: 'accounting',
+      breakdown: {
+        ...emptyBreakdown,
+        selectedAccountingRevenue: round(accountingRevenue),
+      },
+    };
+  }
+
+  const fullMonthValue = fullMonth.value;
+  if (fullMonthValue == null || Math.abs(fullMonthValue) < 0.005) return partial;
+  const controlledValue = round((numeric(partial.value) / fullMonthValue) * accountingRevenue);
+  const scale =
+    partial.value == null || Math.abs(partial.value) < 0.005 ? 0 : controlledValue / partial.value;
+  return {
+    value: controlledValue,
+    basis: 'mixed',
+    breakdown: Object.fromEntries(
+      Object.entries(partial.breakdown).map(([key, value]) => [key, round(value * scale)]),
+    ) as FinanceRevenueBreakdown,
+  };
+}
+
+export function hasAccountingTruthForMonth({
+  periodEnd,
+  accountingLockedThrough,
+  accountingCoverageThrough,
+  hasAccountingRevenueRows,
+}: {
+  periodEnd: Date;
+  accountingLockedThrough: Date | null;
+  accountingCoverageThrough?: Date | null;
+  hasAccountingRevenueRows: boolean;
+}) {
+  const coverageIsComplete = Boolean(
+    accountingCoverageThrough && endOfUtcDay(accountingCoverageThrough) >= periodEnd,
+  );
+  const lockedMonthHasRevenueEntries = Boolean(
+    hasAccountingRevenueRows &&
+    accountingLockedThrough &&
+    endOfUtcDay(accountingLockedThrough) >= periodEnd,
+  );
+  return coverageIsComplete || lockedMonthHasRevenueEntries;
 }
 
 export function selectFinanceRevenue({
@@ -1218,6 +1332,19 @@ export class FinanceAnalyticsService {
     const statementCountryCode = sources.some(({ provider }) => provider === 'FENNOA')
       ? 'FI'
       : organization?.regulatoryCountryCode;
+    const selectedAccountingSourceIds = query.siteId
+      ? dataScope.accountingSourceIds
+      : directAccountingSourceIds;
+    const selectedAccountingSources = sources.filter(({ id }) =>
+      selectedAccountingSourceIds.includes(id),
+    );
+    const accountingCoverageThrough =
+      selectedAccountingSources.length > 0 &&
+      selectedAccountingSources.every(({ coverageEnd }) => Boolean(coverageEnd))
+        ? selectedAccountingSources
+            .map(({ coverageEnd }) => coverageEnd!)
+            .sort((left, right) => left.getTime() - right.getTime())[0]
+        : null;
     const categoryByCode = new Map(
       accounts.map(({ code, category, categoryOverride }) => [
         code,
@@ -1226,7 +1353,10 @@ export class FinanceAnalyticsService {
           : resolveFinanceStatementCategory(code, category, statementCountryCode),
       ]),
     );
-    const statementOptions = { finnishChart: statementCountryCode === 'FI' };
+    const statementOptions = {
+      finnishChart: statementCountryCode === 'FI',
+      accountingCoverageThrough,
+    };
     const accountingLockedThrough = this.accountingLockedThrough(periods);
     const cash =
       query.siteId && dataScope.accountingMode === 'unavailable'
@@ -1254,7 +1384,7 @@ export class FinanceAnalyticsService {
       previousAccountingPeriod?.from ?? shiftYear(fiscalStart, -1),
       previousAccountingPeriod?.to ?? shiftYear(annualActualTo, -1),
       accountingLockedThrough,
-      { ...statementOptions, revenuePolicy: 'accounting' },
+      statementOptions,
     );
     const monthStart = startOfMonth(asOf);
     const monthEnd = endOfMonth(asOf);
@@ -1417,8 +1547,8 @@ export class FinanceAnalyticsService {
             label: startYear === endYear ? String(startYear) : `${startYear}–${endYear}`,
             detail:
               index === 0
-                ? `Exercice Fennoa sélectionné · ${exactPeriod}`
-                : `Même avancement · exercice Fennoa ${exactPeriod}`,
+                ? `Exercice comptable sélectionné · ${exactPeriod}`
+                : `Même avancement · exercice comptable ${exactPeriod}`,
             from: accountingPeriod.from,
             to: accountingPeriod.to,
             isCurrent: index === 0,
@@ -1447,48 +1577,7 @@ export class FinanceAnalyticsService {
     );
     const monthlyComparison = this.historicalComparison(
       'monthly',
-      [
-        {
-          id: 'current',
-          label: monthStart.toLocaleDateString('fr-FR', {
-            month: 'short',
-            year: 'numeric',
-            timeZone: 'UTC',
-          }),
-          detail: monthlyIsComplete ? 'Mois complet' : 'Mois en cours à date',
-          from: monthStart,
-          to: monthlyActualTo,
-          isCurrent: true,
-        },
-        ...[1, 2].map((offset) => ({
-          id: `n_${offset}`,
-          label: shiftYear(monthStart, -offset).toLocaleDateString('fr-FR', {
-            month: 'short',
-            year: 'numeric',
-            timeZone: 'UTC',
-          }),
-          detail: monthlyIsComplete
-            ? `Même mois complet · N-${offset}`
-            : `Même mois à date · N-${offset}`,
-          from: shiftYear(monthStart, -offset),
-          to: shiftYear(monthlyActualTo, -offset),
-          isCurrent: false,
-        })),
-        {
-          id: 'm_1',
-          label: shiftMonth(monthStart, -1).toLocaleDateString('fr-FR', {
-            month: 'short',
-            year: 'numeric',
-            timeZone: 'UTC',
-          }),
-          detail: monthlyIsComplete
-            ? 'Mois précédent complet'
-            : 'Mois précédent au même nombre de jours',
-          from: shiftMonth(monthStart, -1),
-          to: shiftMonth(monthlyActualTo, -1),
-          isCurrent: false,
-        },
-      ],
+      buildFinanceMonthlyComparisonRanges(monthStart, monthlyActualTo, monthlyIsComplete),
       ledger,
       sales,
       categoryByCode,
@@ -1700,22 +1789,27 @@ export class FinanceAnalyticsService {
         category === FinanceAccountCategory.REVENUE ? -debitMinusCredit : debitMinusCredit;
       buckets.set(category, (buckets.get(category) ?? 0) + signed);
     }
-    const ledgerRevenueRows = selectedLedger.filter(
+    const allLedgerRevenueRows = ledger.filter(
       ({ accountCode }) =>
         (categories.get(accountCode) ?? FinanceAccountCategory.OTHER) ===
         FinanceAccountCategory.REVENUE,
     );
-    const otherOperatingIncomeRows = options.finnishChart
-      ? ledgerRevenueRows.filter(({ accountCode }) => {
-          const accountNumber = Number.parseInt(accountCode.replace(/\D/g, '').slice(0, 4), 10);
-          return accountNumber >= 3900 && accountNumber <= 3999;
-        })
-      : [];
-    const otherOperatingIncomeCodes = new Set(
-      otherOperatingIncomeRows.map(({ accountCode }) => accountCode),
+    const ledgerRevenueRows = allLedgerRevenueRows.filter(
+      ({ entryDate }) => entryDate >= from && entryDate <= to,
     );
+    const isOtherOperatingIncomeAccount = ({ accountCode }: { accountCode: string }) => {
+      if (!options.finnishChart) return false;
+      const accountNumber = Number.parseInt(accountCode.replace(/\D/g, '').slice(0, 4), 10);
+      return accountNumber >= 3900 && accountNumber <= 3999;
+    };
+    const otherOperatingIncomeRows = options.finnishChart
+      ? ledgerRevenueRows.filter(isOtherOperatingIncomeAccount)
+      : [];
     const ledgerTurnoverRows = ledgerRevenueRows.filter(
-      ({ accountCode }) => !otherOperatingIncomeCodes.has(accountCode),
+      (entry) => !isOtherOperatingIncomeAccount(entry),
+    );
+    const allLedgerTurnoverRows = allLedgerRevenueRows.filter(
+      (entry) => !isOtherOperatingIncomeAccount(entry),
     );
     const accountingRevenue = ledgerTurnoverRows.length
       ? ledgerTurnoverRows.reduce(
@@ -1742,19 +1836,53 @@ export class FinanceAnalyticsService {
     const revenueSelections: Array<ReturnType<typeof selectHybridFinanceRevenueForMonth>> = [];
     let cursor = from;
     while (cursor <= to) {
-      const sliceEnd = new Date(Math.min(endOfMonth(cursor).getTime(), to.getTime()));
+      const fullMonthStart = startOfMonth(cursor);
+      const fullMonthEnd = endOfMonth(cursor);
+      const sliceEnd = new Date(Math.min(fullMonthEnd.getTime(), to.getTime()));
       const sliceLedgerRevenueRows = ledgerTurnoverRows.filter(
         ({ entryDate }) => entryDate >= cursor && entryDate <= sliceEnd,
       );
       const sliceSales = selectedSales.filter(
         ({ saleDate }) => saleDate >= cursor && saleDate <= sliceEnd,
       );
+      const fullMonthLedgerRevenueRows = allLedgerTurnoverRows.filter(
+        ({ entryDate }) => entryDate >= fullMonthStart && entryDate <= fullMonthEnd,
+      );
+      const fullMonthSales = sales.filter(
+        ({ saleDate }) => saleDate >= fullMonthStart && saleDate <= fullMonthEnd,
+      );
+      const partialSelection = selectHybridFinanceRevenueForMonth({
+        sales: sliceSales,
+        accountingRows: sliceLedgerRevenueRows,
+        periodEnd: sliceEnd,
+        accountingLockedThrough,
+      });
+      const fullMonthSelection = selectHybridFinanceRevenueForMonth({
+        sales: fullMonthSales,
+        accountingRows: fullMonthLedgerRevenueRows,
+        periodEnd: fullMonthEnd,
+        accountingLockedThrough,
+      });
+      const accountingTruthAvailable = hasAccountingTruthForMonth({
+        periodEnd: fullMonthEnd,
+        accountingLockedThrough,
+        accountingCoverageThrough: options.accountingCoverageThrough,
+        hasAccountingRevenueRows: fullMonthLedgerRevenueRows.length > 0,
+      });
+      const fullMonthAccountingRevenue =
+        accountingTruthAvailable || fullMonthLedgerRevenueRows.length
+          ? fullMonthLedgerRevenueRows.reduce(
+              (sum, entry) => sum + numeric(entry.credit) - numeric(entry.debit),
+              0,
+            )
+          : null;
       revenueSelections.push(
-        selectHybridFinanceRevenueForMonth({
-          sales: sliceSales,
-          accountingRows: sliceLedgerRevenueRows,
-          periodEnd: sliceEnd,
-          accountingLockedThrough,
+        applyAccountingRevenueControl({
+          partial: partialSelection,
+          fullMonth: fullMonthSelection,
+          accountingRevenue: fullMonthAccountingRevenue,
+          accountingTruthAvailable,
+          coversFullMonth: cursor <= fullMonthStart && sliceEnd >= fullMonthEnd,
         }),
       );
       cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1));
@@ -1818,10 +1946,7 @@ export class FinanceAnalyticsService {
     const operatingExpenses = hasLedger
       ? numeric(materialPurchases) + numeric(payroll) + numeric(otherOpex)
       : null;
-    const selectedOperatingIncome =
-      revenue == null
-        ? null
-        : revenue + (options.revenuePolicy === 'accounting' ? otherOperatingIncome : 0);
+    const selectedOperatingIncome = revenue == null ? null : revenue + otherOperatingIncome;
     const operatingResult =
       selectedOperatingIncome != null && operatingExpenses != null
         ? selectedOperatingIncome - operatingExpenses
@@ -2302,7 +2427,7 @@ export class FinanceAnalyticsService {
         kind === 'annual'
           ? 'Exercices comparés au même stade'
           : kind === 'monthly'
-            ? 'Mois comparés au même nombre de jours'
+            ? 'Comparaison mensuelle sur les périodes indiquées'
             : 'Jours de semaine équivalents',
       periods: ranges.map((range) => {
         const actual = this.aggregate(

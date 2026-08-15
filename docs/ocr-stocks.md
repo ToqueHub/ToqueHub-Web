@@ -9,7 +9,7 @@ Variables backend :
 - `OCR_MISTRAL_MODEL` : `mistral-ocr-latest` par défaut.
 - `OCR_MAX_FILE_MB` : `20` par défaut.
 - `OCR_MAX_FILES` : `8` par défaut.
-- `OCR_TIMEOUT_MS` : `60000` par défaut.
+- `OCR_TIMEOUT_MS` : `120000` par défaut.
 - `OCR_MISTRAL_DOCUMENT_ANNOTATION` : `true` par défaut. Mettre `false` pour désactiver l’annotation structurée Mistral OCR et revenir au flux OCR + analyse IA séparée.
 - `STOCKS_OCR_UPLOAD_DIR` ou `UPLOAD_DIR` : stockage local des originaux.
 

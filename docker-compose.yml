@@ -70,6 +70,7 @@ services:
       HR_UPLOAD_DIR: /app/data/uploads/hr
       STOCKS_OCR_UPLOAD_DIR: /app/data/uploads/stocks-ocr
       HACCP_UPLOAD_DIR: /app/data/uploads/haccp
+      OCR_TIMEOUT_MS: ${OCR_TIMEOUT_MS:-120000}
       MQTT_URL: mqtt://mosquitto:1883
       MQTT_USERNAME: ${MQTT_USERNAME:-}
       MQTT_PASSWORD: ${MQTT_PASSWORD:-}

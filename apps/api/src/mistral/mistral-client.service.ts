@@ -1,5 +1,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  DEFAULT_MISTRAL_OCR_TIMEOUT_MS,
+  postMistralOcr,
+} from './mistral-ocr-transport';
 
 type MistralOcrInput = {
   buffer: Buffer;
@@ -23,32 +27,26 @@ export class MistralClientService {
     const isPdf = mimeType === 'application/pdf';
     const dataUrl = `data:${mimeType};base64,${input.buffer.toString('base64')}`;
     const started = Date.now();
-    const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      input.timeoutMs ?? Number(process.env.OCR_TIMEOUT_MS ?? 60_000),
-    );
+    const timeoutMs =
+      input.timeoutMs ??
+      Number(process.env.OCR_TIMEOUT_MS ?? DEFAULT_MISTRAL_OCR_TIMEOUT_MS);
     try {
-      let response = await fetch('https://api.mistral.ai/v1/ocr', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(this.ocrRequestBody(model, isPdf, dataUrl, input)),
-        signal: controller.signal,
-      });
+      let response = await postMistralOcr(
+        apiKey,
+        this.ocrRequestBody(model, isPdf, dataUrl, input),
+        timeoutMs,
+      );
       let json: any = await response.json().catch(() => ({}));
       if (
         !response.ok &&
         input.withAnnotation &&
         (response.status === 400 || response.status === 422)
       ) {
-        response = await fetch('https://api.mistral.ai/v1/ocr', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify(
-            this.ocrRequestBody(model, isPdf, dataUrl, { ...input, withAnnotation: false }),
-          ),
-          signal: controller.signal,
-        });
+        response = await postMistralOcr(
+          apiKey,
+          this.ocrRequestBody(model, isPdf, dataUrl, { ...input, withAnnotation: false }),
+          timeoutMs,
+        );
         json = await response.json().catch(() => ({}));
       }
       if (!response.ok)
@@ -67,11 +65,13 @@ export class MistralClientService {
       };
     } catch (error: any) {
       if (error instanceof BadRequestException) throw error;
+      const cause = error?.cause || error;
+      const causeDetails = [cause?.code, cause?.message]
+        .filter(Boolean)
+        .join(': ');
       throw new BadRequestException(
-        `OCR Mistral indisponible: ${error?.message || 'erreur réseau'}`,
+        `OCR Mistral indisponible: ${causeDetails || error?.message || 'erreur réseau'}`,
       );
-    } finally {
-      clearTimeout(timeout);
     }
   }
 

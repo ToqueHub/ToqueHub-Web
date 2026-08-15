@@ -43,6 +43,7 @@ const OCR_MODEL = process.env.OCR_MISTRAL_MODEL || 'mistral-ocr-latest';
 const OCR_AI_MODEL = process.env.OCR_MISTRAL_AI_MODEL || 'mistral-large-latest';
 const OCR_PROVIDER = process.env.OCR_PROVIDER || 'mistral';
 const OCR_DOCUMENT_ANNOTATION_ENABLED = process.env.OCR_MISTRAL_DOCUMENT_ANNOTATION !== 'false';
+const OCR_TIMEOUT_MS = Number(process.env.OCR_TIMEOUT_MS ?? 120_000);
 const STOCKS_OCR_UPLOAD_ROOT = resolve(
   process.env.STOCKS_OCR_UPLOAD_DIR || process.env.UPLOAD_DIR || 'uploads',
   'stocks-ocr',
@@ -2074,84 +2075,21 @@ export class StocksOcrService {
     kind?: ProductKind,
   ) {
     if (OCR_PROVIDER !== 'mistral') throw new BadRequestException('Provider OCR non configuré');
-    const apiKey = await this.resolveMistralApiKey(organizationId);
-    if (!apiKey) throw new BadRequestException('Configuration OCR absente');
-    const started = Date.now();
     const buffer = await readFile(join(STOCKS_OCR_UPLOAD_ROOT, document.storagePath));
     const mimeType = this.mimeForDocument(document.mimeType, document.storagePath);
-    const isPdf = mimeType === 'application/pdf';
-    const dataUrl = `data:${mimeType};base64,${buffer.toString('base64')}`;
-    const body = this.mistralOcrRequestBody(isPdf, dataUrl, true, kind);
-    const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      Number(process.env.OCR_TIMEOUT_MS ?? 60_000),
-    );
-    try {
-      let response = await fetch('https://api.mistral.ai/v1/ocr', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-      let json: any = await response.json().catch(() => ({}));
-      if (!response.ok && this.canRetryBaseOcr(response.status)) {
-        this.logger.warn(
-          `OCR Mistral enrichi refusé document=${document.id} status=${response.status}, nouvel essai sans annotation.`,
-        );
-        response = await fetch('https://api.mistral.ai/v1/ocr', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify(this.mistralOcrRequestBody(isPdf, dataUrl, false, kind)),
-          signal: controller.signal,
-        });
-        json = await response.json().catch(() => ({}));
-      }
-      if (!response.ok)
-        throw new BadRequestException(
-          'Le document n’a pas pu être analysé. Vérifiez qu’il est lisible et réessayez.',
-        );
-      const pages = Array.isArray((json as any).pages) ? (json as any).pages : [];
-      return {
-        rawJson: json,
-        markdown: pages
-          .map((page: any) => page.markdown)
-          .filter(Boolean)
-          .join('\n\n'),
-        pageCount: pages.length || (json as any).usage_info?.pages_processed || null,
-        durationMs: Date.now() - started,
-      };
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
-
-  private mistralOcrRequestBody(
-    isPdf: boolean,
-    dataUrl: string,
-    withAnnotation: boolean,
-    kind?: ProductKind,
-  ) {
-    const body: any = {
+    return this.mistralClient.ocrMarkdown(organizationId, {
+      buffer,
+      mimeType,
       model: OCR_MODEL,
-      document: isPdf
-        ? { type: 'document_url', document_url: dataUrl }
-        : { type: 'image_url', image_url: dataUrl },
-      include_image_base64: false,
-    };
-    if (withAnnotation) {
-      body.table_format = 'markdown';
-      body.confidence_scores_granularity = 'page';
-    }
-    if (withAnnotation && OCR_DOCUMENT_ANNOTATION_ENABLED) {
-      body.document_annotation_prompt = this.invoiceUnderstandingInstructions(kind);
-      body.document_annotation_format = this.aiResponseFormat('toquehub_stock_ocr_annotation');
-    }
-    return body;
-  }
-
-  private canRetryBaseOcr(status: number) {
-    return status === 400 || status === 422;
+      timeoutMs: OCR_TIMEOUT_MS,
+      withAnnotation: true,
+      documentAnnotationPrompt: OCR_DOCUMENT_ANNOTATION_ENABLED
+        ? this.invoiceUnderstandingInstructions(kind)
+        : undefined,
+      documentAnnotationFormat: OCR_DOCUMENT_ANNOTATION_ENABLED
+        ? this.aiResponseFormat('toquehub_stock_ocr_annotation')
+        : undefined,
+    });
   }
 
   private async extractBusinessData(

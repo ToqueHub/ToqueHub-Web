@@ -13,6 +13,7 @@ import {
 } from './fennoa-sync.service';
 import { normalizeFennoaBaseUrl, unwrapFennoaData } from './fennoa-client.service';
 import {
+  applyAccountingRevenueControl,
   classifyAccountingRevenueEntry,
   resolveFinancePeriod,
   selectFinanceRevenue,
@@ -109,23 +110,30 @@ describe('consolidation multi-caisses', () => {
     ).toBe(false);
   });
 
-  it('additionne deux fournisseurs distincts même si leurs tickets se ressemblent', () => {
+  it('fusionne deux fournisseurs distincts lorsque plusieurs tickets sont simultanés', () => {
     const saleDate = new Date('2026-08-03T12:34:56.000Z');
-    const shared = { saleDate, grossAmount: 12.5, transactionCount: 1, paymentMethod: 'Card' };
+    const shared = { transactionCount: 1, paymentMethod: 'Card' };
     const result = deduplicateCrossSourceSales([
-      {
-        ...shared,
-        sourceId: 'paypal',
-        source: { provider: FinanceProvider.PAYPAL_POS, siteId: 'site-a', isPrimaryPos: false },
-      },
-      {
-        ...shared,
-        sourceId: 'flatpay',
-        source: { provider: FinanceProvider.FLATPAY, siteId: 'site-a', isPrimaryPos: true },
-      },
+      ...[0, 1, 2].flatMap((index) => [
+        {
+          ...shared,
+          saleDate: new Date(saleDate.getTime() + index * 60_000),
+          grossAmount: 12.5 + index,
+          sourceId: 'paypal',
+          source: { provider: FinanceProvider.PAYPAL_POS, siteId: 'site-a', isPrimaryPos: false },
+        },
+        {
+          ...shared,
+          saleDate: new Date(saleDate.getTime() + index * 60_000 + 2_000),
+          grossAmount: 12.5 + index,
+          sourceId: 'flatpay',
+          source: { provider: FinanceProvider.FLATPAY, siteId: 'site-a', isPrimaryPos: true },
+        },
+      ]),
     ]);
-    expect(result.duplicateCandidates).toBe(0);
-    expect(result.rows).toHaveLength(2);
+    expect(result.duplicateCandidates).toBe(3);
+    expect(result.rows).toHaveLength(3);
+    expect(result.rows.every(({ sourceId }) => sourceId === 'flatpay')).toBe(true);
   });
 
   it('ne fusionne jamais deux tickets similaires issus de la même caisse', () => {
@@ -156,7 +164,7 @@ describe('priorité caisse / comptabilité', () => {
     });
   });
 
-  it('retient Fennoa lorsque la période est clôturée', () => {
+  it('retient la comptabilité comme vérité lorsque la période est clôturée', () => {
     expect(
       selectFinanceRevenue({
         ...openPeriod,
@@ -230,6 +238,10 @@ describe('CA hybride caisse + comptabilité', () => {
       kind: 'adjustment',
       channel: null,
     });
+    expect(classifyAccountingRevenueEntry(accountingRow(-238.67, '1135 - Client Oy'))).toEqual({
+      kind: 'invoice',
+      channel: null,
+    });
   });
 
   it('complète un mois ouvert sans doubler la caisse déjà connectée', () => {
@@ -250,17 +262,91 @@ describe('CA hybride caisse + comptabilité', () => {
     });
   });
 
-  it('bascule sur le total comptable complet dès que le mois est clôturé', () => {
+  it('prépare la base opérationnelle avant le contrôle comptable', () => {
     const result = selectHybridFinanceRevenueForMonth({
       sales,
       accountingRows,
       periodEnd,
       accountingLockedThrough: periodEnd,
     });
-    expect(result.value).toBe(74_123.57);
-    expect(result.basis).toBe('accounting');
-    expect(result.breakdown.selectedAccountingRevenue).toBe(74_123.57);
-    expect(result.breakdown.selectedCashRegisterRevenue).toBe(0);
+    expect(result.value).toBe(74_404.58);
+    expect(result.basis).toBe('mixed');
+    expect(result.breakdown.selectedAccountingRevenue).toBe(0);
+    expect(result.breakdown.selectedCashRegisterRevenue).toBe(72_179.81);
+  });
+});
+
+describe('contrôle du CA par la comptabilité', () => {
+  const selection = (value: number, cash: number, invoices: number) => ({
+    value,
+    basis: 'mixed' as const,
+    breakdown: {
+      selectedCashRegisterRevenue: cash,
+      selectedAccountingRevenue: 0,
+      accountingInvoiceRevenue: invoices,
+      accountingFallbackRevenue: 0,
+      accountingAdjustmentRevenue: 0,
+      accountingOverlappingRevenue: 0,
+      accountingOtherRevenue: 0,
+    },
+  });
+
+  it('impose le total comptable exact à un mois complet couvert', () => {
+    const result = applyAccountingRevenueControl({
+      partial: selection(74_404.58, 72_179.81, 2_224.77),
+      fullMonth: selection(74_404.58, 72_179.81, 2_224.77),
+      accountingRevenue: 74_123.57,
+      accountingTruthAvailable: true,
+      coversFullMonth: true,
+    });
+
+    expect(result).toMatchObject({
+      value: 74_123.57,
+      basis: 'accounting',
+      breakdown: { selectedAccountingRevenue: 74_123.57 },
+    });
+  });
+
+  it('répartit un mois historique partiel sans perdre le contrôle total', () => {
+    const result = applyAccountingRevenueControl({
+      partial: selection(50, 40, 10),
+      fullMonth: selection(100, 80, 20),
+      accountingRevenue: 90,
+      accountingTruthAvailable: true,
+      coversFullMonth: false,
+    });
+
+    expect(result).toEqual(selection(45, 36, 9));
+  });
+
+  it('laisse le mois courant à la caisse tant que la comptabilité ne le couvre pas', () => {
+    const operational = selection(50, 40, 10);
+    expect(
+      applyAccountingRevenueControl({
+        partial: operational,
+        fullMonth: selection(100, 80, 20),
+        accountingRevenue: 90,
+        accountingTruthAvailable: false,
+        coversFullMonth: false,
+      }),
+    ).toBe(operational);
+  });
+
+  it('retient zéro lorsqu’un mois comptable couvert ne contient aucun produit', () => {
+    const unavailable = {
+      ...selection(0, 0, 0),
+      value: null,
+      basis: 'unavailable' as const,
+    };
+    expect(
+      applyAccountingRevenueControl({
+        partial: unavailable,
+        fullMonth: unavailable,
+        accountingRevenue: 0,
+        accountingTruthAvailable: true,
+        coversFullMonth: true,
+      }),
+    ).toMatchObject({ value: 0, basis: 'accounting' });
   });
 });
 

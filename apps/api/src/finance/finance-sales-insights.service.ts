@@ -3,6 +3,7 @@ import { FinanceImportStatus, FinanceReportKind, FinanceSourceType, Prisma } fro
 import { PrismaService } from '../prisma/prisma.service';
 import {
   deduplicateCrossSourceSales,
+  isTechnicalProductLabel,
   resolveContributingSalesSourceIds,
 } from './finance-sales-dedupe';
 
@@ -716,7 +717,18 @@ export class FinanceSalesInsightsService {
       const details = metadata(row);
       if (details.recordType && details.recordType !== 'product_snapshot') continue;
       const name = String(details.product ?? '').trim();
-      if (!name || isSummaryProduct(name)) continue;
+      if (
+        !name ||
+        isSummaryProduct(name) ||
+        isTechnicalProductLabel(name, [
+          details.receiptNumber,
+          details.purchaseId,
+          details.purchaseNumber,
+          details.transactionId,
+          details.externalId,
+        ])
+      )
+        continue;
       const category = row.productCategory?.trim() || 'Non classé';
       const key = productKey(name, category);
       const item = products.get(key) ?? {
