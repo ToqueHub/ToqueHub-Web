@@ -11,6 +11,8 @@ export interface DiscoveryInfo {
   hasOrganization: boolean;
   webUrl: string;
   recommendedUrl: string;
+  localUrl: string;
+  remoteUrl?: string;
 }
 
 export interface DiscoveryTxtRecords {

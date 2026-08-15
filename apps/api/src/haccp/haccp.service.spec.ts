@@ -13,6 +13,7 @@ function createPrismaMock() {
       create: jest.fn(),
       update: jest.fn(),
     },
+    product: { findFirst: jest.fn() },
     haccpTemperatureEquipment: { findMany: jest.fn() },
     haccpTemperatureReading: { findMany: jest.fn() },
     haccpTraceability: { findMany: jest.fn() },
@@ -71,6 +72,20 @@ describe('HaccpService', () => {
 
     expect(prisma.haccpProduct.create).toHaveBeenCalledWith({ data: expect.objectContaining({ organizationId: orgId, createdById: actor.id, name: 'Soupe' }) });
     expect(response.data).toMatchObject({ _id: 'p2', user: actor.id, unit: 'L' });
+  });
+
+  it('links a Stocks product to the HACCP catalogue when selected by the mobile app', async () => {
+    const prisma = createPrismaMock();
+    prisma.product.findFirst.mockResolvedValue({ id: 'stock-1', organizationId: orgId, name: 'Velouté', description: 'Fait maison', unit: { symbol: 'L' } });
+    prisma.haccpProduct.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+    prisma.haccpProduct.create.mockImplementation(async ({ data }: any) => ({ id: 'haccp-1', ...data, createdAt: new Date(), updatedAt: new Date() }));
+    const service = new HaccpService(prisma);
+
+    const response = await service.createProduct(orgId, actor, { name: 'Velouté', type: 'Produit Stocks', sourceProductId: 'stock-1' });
+
+    expect(prisma.product.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ id: 'stock-1', organizationId: orgId }) }));
+    expect(prisma.haccpProduct.create).toHaveBeenCalledWith({ data: expect.objectContaining({ sourceProductId: 'stock-1', name: 'Velouté', unit: 'L' }) });
+    expect(response.data).toMatchObject({ _id: 'haccp-1', sourceProductId: 'stock-1' });
   });
 
   it('reuses an active cleaning session instead of creating a duplicate', async () => {

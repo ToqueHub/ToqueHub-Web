@@ -47,6 +47,7 @@ export class DiscoveryService implements OnApplicationBootstrap, OnApplicationSh
     ]);
     const instanceName = this.config.get<string>('TOQUEHUB_DISCOVERY_NAME')?.trim() || organizationName || FALLBACK_INSTANCE_NAME;
     const webUrl = this.resolveWebUrl();
+    const remoteUrl = await this.resolveRemoteUrl();
 
     return {
       instanceId,
@@ -60,7 +61,9 @@ export class DiscoveryService implements OnApplicationBootstrap, OnApplicationSh
       hasAdmin: initialization.hasAdmin,
       hasOrganization: initialization.hasOrganization,
       webUrl,
-      recommendedUrl: webUrl,
+      recommendedUrl: remoteUrl || webUrl,
+      localUrl: webUrl,
+      ...(remoteUrl ? { remoteUrl } : {}),
     };
   }
 
@@ -178,6 +181,30 @@ export class DiscoveryService implements OnApplicationBootstrap, OnApplicationSh
     const localHostname = this.config.get<string>('TOQUEHUB_LOCAL_HOSTNAME')?.trim() || 'toquehub-pi';
     const port = this.resolvePort();
     return `http://${localHostname}.local${port === 80 ? '' : `:${port}`}`;
+  }
+
+  private async resolveRemoteUrl() {
+    const configured = this.config.get<string>('TOQUEHUB_REMOTE_ACCESS_URL')?.trim();
+    const dnsName = this.config.get<string>('TOQUEHUB_TAILSCALE_DNS_NAME')?.trim().replace(/\.$/, '');
+    const ip = this.config.get<string>('TOQUEHUB_TAILSCALE_IP')?.trim();
+    const port = this.resolvePort();
+    if (configured?.toLowerCase().startsWith('https://')) return configured.replace(/\/+$/, '');
+    // Prefer the private Tailscale IP for mobile HTTP. A fully-qualified *.ts.net
+    // hostname is subject to ATS on iOS unless the server is exposed over HTTPS.
+    const envHost = ip || (configured ? undefined : dnsName);
+    if (envHost) return `http://${envHost}${port === 80 ? '' : `:${port}`}`;
+    if (configured) return configured.replace(/\/+$/, '');
+
+    const organization = await this.prisma.organization.findFirst({
+      where: { tailscaleEnabled: true },
+      orderBy: { tailscaleUpdatedAt: 'desc' },
+      select: { tailscaleUrl: true, tailscaleIp: true },
+    }).catch(() => null);
+    if (organization?.tailscaleIp?.trim()) {
+      return `http://${organization.tailscaleIp.trim()}${port === 80 ? '' : `:${port}`}`;
+    }
+    if (organization?.tailscaleUrl?.trim()) return organization.tailscaleUrl.trim().replace(/\/+$/, '');
+    return undefined;
   }
 
   private resolveVersion() {

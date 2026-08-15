@@ -125,10 +125,15 @@ export class OrganizationApiKeySecretService {
 
   private encryptionKey(required: boolean): Buffer | null {
     const configured = this.config.get<string>('PURCHASING_RESEND_ENCRYPTION_KEY')?.trim();
-    if (!configured) {
+    const invalid =
+      !configured ||
+      configured.length < 32 ||
+      configured.startsWith('replace-with-') ||
+      configured.startsWith('change-me-');
+    if (invalid) {
       if (required)
         throw new ServiceUnavailableException(
-          'La clé serveur PURCHASING_RESEND_ENCRYPTION_KEY doit être configurée avant d’enregistrer Resend.',
+          'Une clé serveur aléatoire PURCHASING_RESEND_ENCRYPTION_KEY (32 caractères minimum) doit être configurée avant d’enregistrer Resend.',
         );
       return null;
     }

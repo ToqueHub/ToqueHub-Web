@@ -1,12 +1,10 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { HrAbsenceStatus, PlanningAssignmentStatus, PlanningDayStatusSourceType, PlanningVisibilityLevel, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PlanningDayStatusQueryDto, UpsertPlanningDayStatusDto } from './dto/planning.dto';
+import { assertPlanningWrite, type PlanningActor as Actor } from './planning-access';
 
-type Actor = { id: string; role: string };
 type Period = { start: Date; end: Date };
-
-const WRITE_ROLES = ['SUPER_ADMIN', 'Administrateur', 'ADMIN', 'Manager', 'MANAGER', 'Chef', 'Responsable'];
 const BUSINESS_STATUS_LABELS: Record<string, string> = {
   work: 'Travail',
   rest: 'Repos',
@@ -22,7 +20,7 @@ export class PlanningDayStatusService {
   constructor(private readonly prisma: PrismaService) {}
 
   private assertWrite(actor: Actor) {
-    if (!WRITE_ROLES.includes(actor.role)) throw new ForbiddenException('Planning write access is restricted to managers and administrators');
+    assertPlanningWrite(actor);
   }
 
   async list(organizationId: string, q: PlanningDayStatusQueryDto = {}) {

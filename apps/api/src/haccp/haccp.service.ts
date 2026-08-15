@@ -799,7 +799,41 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async createProduct(organizationId: string, actor: Actor, dto: any) {
-    const item = await this.prisma.haccpProduct.create({ data: { organizationId, createdById: actor.id, ...this.syncData(dto), name: dto.name, type: dto.type, dlc: dto.dlc ? this.parseDate(dto.dlc) : null, dlcDays: dto.dlcDays, description: dto.description, price: dto.price, quantity: dto.quantity, unit: dto.unit } });
+    let sourceProduct: any = null;
+    if (dto.sourceProductId) {
+      sourceProduct = await this.prisma.product.findFirst({
+        where: { id: dto.sourceProductId, organizationId, isArchived: false },
+        include: { unit: true },
+      });
+      if (!sourceProduct) throw new BadRequestException('Produit Stocks introuvable');
+
+      const linked = await this.prisma.haccpProduct.findFirst({
+        where: { organizationId, sourceProductId: sourceProduct.id, deletedAt: null },
+      });
+      if (linked) return this.ok(this.serializeProduct(linked));
+
+      const sameName = await this.prisma.haccpProduct.findFirst({
+        where: {
+          organizationId,
+          sourceProductId: null,
+          deletedAt: null,
+          name: { equals: sourceProduct.name, mode: 'insensitive' },
+        },
+      });
+      if (sameName) {
+        const linkedByName = await this.prisma.haccpProduct.update({
+          where: { id: sameName.id },
+          data: {
+            sourceProductId: sourceProduct.id,
+            unit: sameName.unit ?? sourceProduct.unit?.symbol,
+            syncVersion: { increment: 1 },
+          },
+        });
+        return this.ok(this.serializeProduct(linkedByName));
+      }
+    }
+
+    const item = await this.prisma.haccpProduct.create({ data: { organizationId, createdById: actor.id, ...this.syncData(dto), sourceProductId: sourceProduct?.id, name: sourceProduct?.name ?? dto.name, type: dto.type, dlc: dto.dlc ? this.parseDate(dto.dlc) : null, dlcDays: dto.dlcDays, description: dto.description ?? sourceProduct?.description, price: dto.price, quantity: dto.quantity, unit: dto.unit ?? sourceProduct?.unit?.symbol } });
     return this.ok(this.serializeProduct(item));
   }
 

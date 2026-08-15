@@ -41,8 +41,25 @@ describe('DiscoveryService', () => {
       organization: 'Cuisine Centrale',
       apiVersion: 1,
       supportsMobile: true,
+      localUrl: 'http://toquehub-pi.local:3000',
     }));
     expect(prisma.systemSetting.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('advertises distinct local and Tailscale URLs to mobile clients', async () => {
+    const { service } = createService({
+      TOQUEHUB_WEB_URL: 'http://toquehub.local:8080',
+      TOQUEHUB_TAILSCALE_DNS_NAME: 'toquehub.example.ts.net.',
+      TOQUEHUB_TAILSCALE_IP: '100.101.102.103',
+      TOQUEHUB_REMOTE_ACCESS_URL: 'http://toquehub.example.ts.net:8080',
+      TOQUEHUB_HTTP_PORT: '8080',
+    });
+
+    await expect(service.getDiscoveryInfo()).resolves.toEqual(expect.objectContaining({
+      localUrl: 'http://toquehub.local:8080',
+      remoteUrl: 'http://100.101.102.103:8080',
+      recommendedUrl: 'http://100.101.102.103:8080',
+    }));
   });
 
   it('publishes _toquehub._tcp with TXT records', async () => {

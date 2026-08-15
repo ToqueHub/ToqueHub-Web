@@ -27,6 +27,11 @@ export class PlanningExportPdfQueryDto extends PlanningQueryDto {
   @IsIn(['week', 'month', 'custom']) mode!: 'week' | 'month' | 'custom';
 }
 
+export class MyPlanningExportPdfQueryDto {
+  @IsIn(['week', 'month']) mode!: 'week' | 'month';
+  @IsString() startDate!: string;
+}
+
 export class PlanningDayStatusQueryDto extends PlanningQueryDto {
   @IsOptional() @IsString() statusCode?: string;
   @IsOptional() @IsEnum(PlanningDayStatusSourceType) sourceType?: PlanningDayStatusSourceType;
@@ -111,6 +116,11 @@ export class ValidatePlanningAttendanceDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) validatedMinutes?: number;
   @IsOptional() @IsEnum(PlanningAttendanceStatus) status?: PlanningAttendanceStatus;
   @IsOptional() metadata?: unknown;
+}
+
+export class SubmitMyPlanningAttendanceDto {
+  @IsString() declaredStartTime!: string;
+  @IsString() declaredEndTime!: string;
 }
 
 export class UpsertPlanningCodeDictionaryDto {

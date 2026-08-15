@@ -1,18 +1,16 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PlanningTimeUnit, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpsertPlanningPolicyProfileDto } from './dto/planning.dto';
+import { assertPlanningWrite, type PlanningActor as Actor } from './planning-access';
 
-type Actor = { id: string; role: string };
-
-const WRITE_ROLES = ['SUPER_ADMIN', 'Administrateur', 'ADMIN', 'Manager', 'MANAGER', 'Chef', 'Responsable'];
 
 @Injectable()
 export class PlanningPolicyService {
   constructor(private readonly prisma: PrismaService) {}
 
   private assertWrite(actor: Actor) {
-    if (!WRITE_ROLES.includes(actor.role)) throw new ForbiddenException('Planning write access is restricted to managers and administrators');
+    assertPlanningWrite(actor);
   }
 
   async list(organizationId: string) {

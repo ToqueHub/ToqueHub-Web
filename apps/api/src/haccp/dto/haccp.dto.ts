@@ -83,6 +83,7 @@ export class AnalyzeImageDto {
 export class HaccpProductDto {
   @IsString() @IsNotEmpty() name!: string;
   @IsString() @IsNotEmpty() type!: string;
+  @IsOptional() @IsString() sourceProductId?: string;
   @IsOptional() @IsString() dlc?: string;
   @Transform(toNumber) @IsOptional() @IsInt() @Min(0) dlcDays?: number;
   @IsOptional() @IsString() description?: string;

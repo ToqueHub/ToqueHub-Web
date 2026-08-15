@@ -201,6 +201,7 @@ export interface SystemUpdateApplyResult {
 export interface BackupManifest {
   format: 'toquehub-backup';
   version: number;
+  name?: string | null;
   createdAt: string;
   createdBy: string | null;
   mode: 'manual' | 'scheduled';
@@ -229,6 +230,7 @@ export interface BackupManifest {
 export interface BackupSummary {
   id: string;
   filename: string;
+  name?: string | null;
   createdAt: string | null;
   sizeBytes: number;
   mode?: 'manual' | 'scheduled';

@@ -53,12 +53,46 @@ log() {
   printf '\n==> %s\n' "$1"
 }
 
+secret() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex 32
+  else
+    node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('hex'))"
+  fi
+}
+
+set_env_if_placeholder() {
+  local key="$1"
+  local value="$2"
+  local current
+  local tmp
+  current="$(grep -E "^${key}=" .env | tail -1 | cut -d= -f2- || true)"
+  current="${current#\"}"
+  current="${current%\"}"
+
+  if [[ -n "$current" && "$current" != replace-with-* && "$current" != change-me-* ]]; then
+    return
+  fi
+
+  tmp="$(mktemp)"
+  if grep -q "^${key}=" .env; then
+    awk -v key="$key" -v value="$value" '$0 ~ "^" key "=" { print key "=\"" value "\""; next } { print }' .env > "$tmp"
+  else
+    cp .env "$tmp"
+    printf '%s="%s"\n' "$key" "$value" >> "$tmp"
+  fi
+  mv "$tmp" .env
+}
+
 if [[ ! -f .env ]]; then
   log "Creating .env from .env.example"
   cp .env.example .env
 else
   log ".env already exists, keeping it"
 fi
+
+set_env_if_placeholder PURCHASING_RESEND_ENCRYPTION_KEY "$(secret)"
+set_env_if_placeholder PURCHASING_EMAIL_ENCRYPTION_KEY "$(secret)"
 
 log "Installing npm dependencies"
 npm install

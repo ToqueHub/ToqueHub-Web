@@ -30,7 +30,7 @@ describe('OrganizationApiKeySecretService', () => {
         findUnique: jest.fn().mockImplementation(() => Promise.resolve(organizationRecord)),
       },
     };
-    const config = { get: jest.fn().mockReturnValue('dedicated-server-key') };
+    const config = { get: jest.fn().mockReturnValue('dedicated-server-key-with-at-least-32-characters') };
     const secrets = new OrganizationApiKeySecretService(
       prisma as unknown as PrismaService,
       config as unknown as ConfigService,
@@ -71,5 +71,18 @@ describe('OrganizationApiKeySecretService', () => {
 
     expect(await secrets.getResendSecret('org-1')).toBe('re_legacy-secret');
     expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects a public installation placeholder when saving a Resend key', async () => {
+    const secrets = new OrganizationApiKeySecretService(
+      { $transaction: jest.fn() } as unknown as PrismaService,
+      {
+        get: jest.fn().mockReturnValue('replace-with-a-dedicated-random-secret'),
+      } as unknown as ConfigService,
+    );
+
+    await expect(secrets.setResendSecret('org-1', 're_secret')).rejects.toThrow(
+      'PURCHASING_RESEND_ENCRYPTION_KEY',
+    );
   });
 });

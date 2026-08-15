@@ -1,16 +1,16 @@
-import { BadRequestException, ForbiddenException, GoneException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, GoneException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { HrAbsenceStatus, HrEmployeeStatus, PlanningAssignmentOrigin, PlanningAssignmentStatus, PlanningConflictSeverity, PlanningHistoryAction, PlanningNotificationStatus, PlanningReplacementStatus, Prisma } from '@prisma/client';
 import PDFDocument from 'pdfkit';
 import { HrTimeAccountService } from '../hr/time-accounts/hr-time-account.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { AcceptReplacementDto, ApplyPlanningRotationDto, ApplyPlanningTemplateDto, GeneratePlanningDto, MovePlanningAssignmentDto, PlanningAttendanceQueryDto, PlanningContextQueryDto, PlanningExportPdfQueryDto, PlanningPeriodActionDto, PlanningQueryDto, PlanningRotationPreviewDto, PrepareExportDto, SetEmployeePlanningTemplatesDto, UpsertDayPlanningAssignmentDto, UpsertDayPresetDto, UpsertHrAbsenceDto, UpsertHrSkillDto, UpsertPlanningAssignmentDto, UpsertPlanningNeedDto, UpsertPlanningTemplateDto, UpsertWeeklyRotationDto } from './dto/planning.dto';
+import { AcceptReplacementDto, ApplyPlanningRotationDto, ApplyPlanningTemplateDto, GeneratePlanningDto, MovePlanningAssignmentDto, MyPlanningExportPdfQueryDto, PlanningAttendanceQueryDto, PlanningContextQueryDto, PlanningExportPdfQueryDto, PlanningPeriodActionDto, PlanningQueryDto, PlanningRotationPreviewDto, PrepareExportDto, SetEmployeePlanningTemplatesDto, UpsertDayPlanningAssignmentDto, UpsertDayPresetDto, UpsertHrAbsenceDto, UpsertHrSkillDto, UpsertPlanningAssignmentDto, UpsertPlanningNeedDto, UpsertPlanningTemplateDto, UpsertWeeklyRotationDto } from './dto/planning.dto';
 import { PlanningCodeDictionaryService } from './planning-code-dictionary.service';
 import { PlanningDayStatusService } from './planning-day-status.service';
 import { PlanningAttendanceService } from './planning-attendance.service';
 import { PlanningPolicyService } from './planning-policy.service';
 import { plannedMinutes } from './planning-time';
+import { assertPlanningWrite, type PlanningActor as Actor } from './planning-access';
 
-type Actor = { id: string; role: string };
 type Period = { start: Date; end: Date; month: number; year: number; days: string[] };
 type AnyEmployee = Record<string, any>;
 type AnyAssignment = Record<string, any>;
@@ -19,12 +19,12 @@ type PlanningTemplateKind = 'DAY_PRESET' | 'WEEKLY_ROTATION';
 type PlanningPeriodStatus = 'DRAFT' | 'CONTROLLED' | 'PUBLISHED' | 'MODIFIED_AFTER_PUBLICATION' | 'LOCKED';
 type PlanningPeriodEventType = 'CONTROLLED' | 'PUBLISHED' | 'MODIFIED_AFTER_PUBLICATION' | 'LOCKED';
 type PlanningPdfInput = { title: string; organizationName: string; mode: 'week' | 'month' | 'custom'; period: Period; assignments: AnyAssignment[] };
+type PersonalPlanningPdfInput = { organizationName: string; employee: { firstName: string; lastName: string; departmentName?: string | null; positionName?: string | null; siteName?: string | null }; period: Period; assignments: AnyAssignment[] };
 type PlanningPdfRow = { employeeName: string; departmentName: string; assignmentsByDate: Map<string, AnyAssignment[]> };
 type PlanningPdfPage = { days: string[]; rows: PlanningPdfRow[]; rowHeights: number[] };
 type AttendanceExportRow = Record<string, any>;
 type AttendanceExportEmployee = { employeeId: string; employeeName: string; departmentName: string; positionName: string; siteName: string; rows: AttendanceExportRow[] };
 
-const WRITE_ROLES = ['SUPER_ADMIN', 'Administrateur', 'ADMIN', 'Manager', 'MANAGER', 'Chef', 'Responsable'];
 const NEED_SEASONS: Record<string, string> = { basse: 'Basse', normale: 'Normale', haute: 'Haute', 'evenement-brunch': 'Événement / brunch' };
 const NEED_TIME_SLOTS: Record<string, string> = { journee: 'Journée', matin: 'Matin', midi: 'Midi', soir: 'Soir', fermeture: 'Fermeture', personnalise: 'Personnalisé' };
 const WEEK_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -48,7 +48,7 @@ export class PlanningService {
     @Optional() private readonly attendanceService?: PlanningAttendanceService,
   ) {}
 
-  private assertWrite(actor: Actor) { if (!WRITE_ROLES.includes(actor.role)) throw new ForbiddenException('Planning write access is restricted to managers and administrators'); }
+  private assertWrite(actor: Actor) { assertPlanningWrite(actor); }
   private page(q?: PlanningQueryDto) { const take = Math.min(q?.pageSize ?? 100, 200); return { take, skip: ((q?.page ?? 1) - 1) * take }; }
   private day(d = new Date()) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
   private endDay(d = new Date()) { const x = new Date(d); x.setHours(23, 59, 59, 999); return x; }
@@ -226,6 +226,35 @@ export class PlanningService {
       assignments,
     });
     return { buffer, filename: `planning-${this.iso(period.start)}-${this.iso(period.end)}.pdf` };
+  }
+
+  async exportMyPlanningPdf(organizationId: string, actor: Actor, q: MyPlanningExportPdfQueryDto) {
+    if (!this.attendanceService) throw new BadRequestException('Le service de planning personnel est indisponible.');
+    const period = this.exportPeriod('month', { mode: 'month', startDate: q.startDate });
+    const schedule = await this.attendanceService.mySchedule(organizationId, actor, {
+      startDate: this.iso(period.start),
+      endDate: this.iso(period.end),
+      pageSize: 200,
+    });
+    const assignmentIds = schedule.rows.map(row => row.assignmentId);
+    const [organization, assignments] = await Promise.all([
+      this.prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } }),
+      assignmentIds.length
+        ? this.prisma.planningAssignment.findMany({
+          where: { organizationId, employeeId: schedule.employee.id, id: { in: assignmentIds } },
+          include: ASSIGNMENT_INCLUDE,
+          orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
+          take: 200,
+        })
+        : Promise.resolve([]),
+    ]);
+    const buffer = await this.buildPersonalMonthlyPlanningPdf({
+      organizationName: organization?.name ?? 'ToqueHub',
+      employee: schedule.employee,
+      period,
+      assignments,
+    });
+    return { buffer, filename: `mon-planning-${this.iso(period.start)}-${this.iso(period.end)}.pdf` };
   }
 
   async exportAttendancePdf(organizationId: string, q: PlanningAttendanceQueryDto) {
@@ -1039,6 +1068,107 @@ export class PlanningService {
       this.drawPlanningPdf(doc, input);
       doc.end();
     });
+  }
+  private async buildPersonalMonthlyPlanningPdf(input: PersonalPlanningPdfInput) {
+    return new Promise<Buffer>((resolve, reject) => {
+      const employeeName = `${input.employee.firstName} ${input.employee.lastName}`.trim() || 'Collaborateur';
+      const monthLabel = input.period.start.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+      const doc = new PDFDocument({
+        size: 'A4',
+        layout: 'landscape',
+        margin: 24,
+        bufferPages: false,
+        info: {
+          Title: `Mon planning - ${monthLabel}`,
+          Author: 'ToqueHub',
+          Creator: 'ToqueHub',
+          Subject: `Planning mensuel de ${employeeName}`,
+          Keywords: 'planning, collaborateur, horaires, mois',
+        },
+      });
+      const chunks: Buffer[] = [];
+      doc.on('data', chunk => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+      this.drawPersonalMonthlyPlanningPdf(doc, input);
+      doc.end();
+    });
+  }
+  private drawPersonalMonthlyPlanningPdf(doc: PDFKit.PDFDocument, input: PersonalPlanningPdfInput) {
+    const left = doc.page.margins.left;
+    const right = doc.page.width - doc.page.margins.right;
+    const width = right - left;
+    const employeeName = `${input.employee.firstName} ${input.employee.lastName}`.trim() || 'Collaborateur';
+    const employeeMeta = [input.employee.positionName, input.employee.departmentName, input.employee.siteName].filter(Boolean).join(' · ');
+    const monthLabel = input.period.start.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    const titleMonth = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
+    const totalMinutes = input.assignments.reduce((sum, assignment) => sum + plannedMinutes(assignment), 0);
+
+    doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(20).text('Mon planning', left, 25, { width: width * 0.45 });
+    doc.fillColor('#0f766e').font('Helvetica-Bold').fontSize(14).text(employeeName, left, 51, { width: width * 0.58 });
+    doc.fillColor('#64748b').font('Helvetica').fontSize(8).text(employeeMeta || 'Collaborateur', left, 70, { width: width * 0.62 });
+    doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(17).text(titleMonth, right - 260, 28, { width: 260, align: 'right' });
+    doc.fillColor('#64748b').font('Helvetica').fontSize(8).text(`${input.organizationName} · ${input.assignments.length} créneau${input.assignments.length > 1 ? 'x' : ''} · ${this.formatPdfMinutes(totalMinutes)} nettes`, right - 330, 55, { width: 330, align: 'right' });
+
+    const weekdays = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+    const headerY = 94;
+    const weekdayHeight = 24;
+    const footerY = doc.page.height - doc.page.margins.bottom - 14;
+    const cellWidth = width / 7;
+    const gridStart = this.weekStart(input.period.start);
+    const gridEnd = this.addDays(this.weekStart(input.period.end), 6);
+    const gridDays: Date[] = [];
+    for (let cursor = new Date(gridStart); cursor <= gridEnd; cursor = this.addDays(cursor, 1)) gridDays.push(cursor);
+    const weekCount = Math.max(1, gridDays.length / 7);
+    const cellHeight = (footerY - headerY - weekdayHeight - 8) / weekCount;
+    const assignmentsByDate = new Map<string, AnyAssignment[]>();
+    input.assignments.forEach(assignment => {
+      const date = this.assignmentDateIso(assignment);
+      const list = assignmentsByDate.get(date) ?? [];
+      list.push(assignment);
+      list.sort((a, b) => this.timeLabel(a.startTime).localeCompare(this.timeLabel(b.startTime)));
+      assignmentsByDate.set(date, list);
+    });
+
+    weekdays.forEach((weekday, index) => {
+      const x = left + index * cellWidth;
+      doc.fillColor(index >= 5 ? '#fff7ed' : '#ecfdf5').rect(x, headerY, cellWidth, weekdayHeight).fill();
+      doc.strokeColor('#b8d9cd').lineWidth(0.6).rect(x, headerY, cellWidth, weekdayHeight).stroke();
+      doc.fillColor('#334155').font('Helvetica-Bold').fontSize(8).text(weekday, x + 4, headerY + 8, { width: cellWidth - 8, align: 'center' });
+    });
+
+    gridDays.forEach((date, index) => {
+      const column = index % 7;
+      const row = Math.floor(index / 7);
+      const x = left + column * cellWidth;
+      const y = headerY + weekdayHeight + row * cellHeight;
+      const dateIso = this.iso(date);
+      const inMonth = date >= input.period.start && date <= input.period.end;
+      const assignments = inMonth ? assignmentsByDate.get(dateIso) ?? [] : [];
+      doc.fillColor(!inMonth ? '#f8fafc' : column >= 5 ? '#fffaf3' : '#ffffff').rect(x, y, cellWidth, cellHeight).fill();
+      doc.strokeColor('#dbe4ee').lineWidth(0.5).rect(x, y, cellWidth, cellHeight).stroke();
+      if (!inMonth) return;
+      doc.fillColor(assignments.length ? '#0f766e' : '#64748b').font('Helvetica-Bold').fontSize(8).text(String(date.getDate()), x + 6, y + 5, { width: 18 });
+      if (!assignments.length) return;
+      const assignmentHeight = 17;
+      const availableLines = Math.max(1, Math.floor((cellHeight - 22) / assignmentHeight));
+      const visibleAssignments = assignments.slice(0, availableLines);
+      visibleAssignments.forEach((assignment, assignmentIndex) => {
+        const pause = Number(assignment.breakMinutes ?? 0) ? ` · P${assignment.breakMinutes}` : '';
+        const label = assignment.position?.name ?? assignment.department?.name ?? assignment.site?.name ?? 'Créneau';
+        const site = assignment.site?.name ? ` · ${assignment.site.name}` : '';
+        const blockY = y + 20 + assignmentIndex * assignmentHeight;
+        doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(6.5).text(`${this.timeLabel(assignment.startTime)}–${this.timeLabel(assignment.endTime)}${pause}`, x + 6, blockY, { width: cellWidth - 12, height: 8, ellipsis: true });
+        doc.fillColor('#64748b').font('Helvetica').fontSize(5.5).text(`${label}${site}`, x + 6, blockY + 8, { width: cellWidth - 12, height: 7, ellipsis: true });
+      });
+      if (assignments.length > visibleAssignments.length) {
+        doc.fillColor('#0f766e').font('Helvetica-Bold').fontSize(5.8).text(`+${assignments.length - visibleAssignments.length} autre${assignments.length - visibleAssignments.length > 1 ? 's' : ''}`, x + 6, y + cellHeight - 10, { width: cellWidth - 12, align: 'right' });
+      }
+    });
+
+    doc.strokeColor('#e2e8f0').lineWidth(0.4).moveTo(left, footerY - 4).lineTo(right, footerY - 4).stroke();
+    doc.fillColor('#64748b').font('Helvetica').fontSize(6.2).text('P = pause prévue déduite · Les durées correspondent aux heures planifiées nettes.', left, footerY, { width: width * 0.65 });
+    doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} · ToqueHub`, right - 210, footerY, { width: 210, align: 'right' });
   }
   private drawPlanningPdf(doc: PDFKit.PDFDocument, input: PlanningPdfInput) {
     const weeks = this.exportWeeks(input.period);

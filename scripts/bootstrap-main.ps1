@@ -34,6 +34,36 @@ PostgreSQL:
 '@ | Write-Host
 }
 
+function New-RandomSecret {
+  $Bytes = New-Object byte[] 32
+  $Generator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+  try {
+    $Generator.GetBytes($Bytes)
+  } finally {
+    $Generator.Dispose()
+  }
+  return (($Bytes | ForEach-Object { $_.ToString('x2') }) -join '')
+}
+
+function Set-EnvIfPlaceholder([string]$Key, [string]$Value) {
+  $Lines = @(Get-Content '.env')
+  $Pattern = '^' + [regex]::Escape($Key) + '='
+  $Existing = $Lines | Where-Object { $_ -match $Pattern } | Select-Object -Last 1
+  $Current = if ($null -eq $Existing) { '' } else { ($Existing -replace $Pattern, '').Trim('"') }
+
+  if ($Current -and $Current -notlike 'replace-with-*' -and $Current -notlike 'change-me-*') {
+    return
+  }
+
+  $Replacement = "$Key=`"$Value`""
+  if ($null -eq $Existing) {
+    $Lines += $Replacement
+  } else {
+    $Lines = @($Lines | ForEach-Object { if ($_ -match $Pattern) { $Replacement } else { $_ } })
+  }
+  Set-Content -Path '.env' -Value $Lines -Encoding utf8
+}
+
 foreach ($Arg in $args) {
   switch ($Arg) {
     '--no-db-setup' { $RunDbSetup = $false; continue }
@@ -256,6 +286,9 @@ if (-not (Test-Path '.env')) {
 } else {
   Write-Step '.env already exists, keeping it'
 }
+
+Set-EnvIfPlaceholder 'PURCHASING_RESEND_ENCRYPTION_KEY' (New-RandomSecret)
+Set-EnvIfPlaceholder 'PURCHASING_EMAIL_ENCRYPTION_KEY' (New-RandomSecret)
 
 Write-Step 'Installing npm dependencies'
 Invoke-Checked 'npm' @('install')

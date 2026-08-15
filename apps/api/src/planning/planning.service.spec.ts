@@ -113,6 +113,39 @@ describe('PlanningService day assignments', () => {
   });
 });
 
+describe('PlanningService personal PDF export', () => {
+  it('generates a PDF from only the assignments exposed by the personal schedule', async () => {
+    const prisma = mockPrisma();
+    prisma.organization.findUnique.mockResolvedValue({ name: 'Restaurant test' });
+    prisma.planningAssignment.findMany.mockResolvedValue([{
+      id: 'assignment-visible', employeeId: 'employee-1', date: new Date(2026, 7, 11),
+      startTime: new Date(2026, 7, 11, 8), endTime: new Date(2026, 7, 11, 16), breakMinutes: 30,
+      employee: { id: 'employee-1', firstName: 'Jean', lastName: 'Dupont' },
+      department: { name: 'Cuisine' }, position: { name: 'Cuisinier' }, site: { name: 'Paris' },
+    }]);
+    const attendanceService = {
+      mySchedule: jest.fn().mockResolvedValue({
+        employee: { id: 'employee-1', firstName: 'Jean', lastName: 'Dupont', departmentName: 'Cuisine', positionName: 'Cuisinier', siteName: 'Paris' },
+        rows: [{ assignmentId: 'assignment-visible' }],
+      }),
+    };
+    const service = new PlanningService(prisma, undefined, undefined, undefined, undefined, attendanceService as any);
+
+    const result = await service.exportMyPlanningPdf('org-1', {
+      id: 'user-1', role: 'Utilisateur', permissions: ['planning.read'], employeeId: 'employee-1',
+    }, { mode: 'week', startDate: '2026-08-11' });
+
+    expect(attendanceService.mySchedule).toHaveBeenCalledWith('org-1', expect.objectContaining({ employeeId: 'employee-1' }), expect.objectContaining({ startDate: '2026-08-01', endDate: '2026-08-31' }));
+    expect(prisma.planningAssignment.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { organizationId: 'org-1', employeeId: 'employee-1', id: { in: ['assignment-visible'] } },
+    }));
+    expect(result.filename).toBe('mon-planning-2026-08-01-2026-08-31.pdf');
+    expect(result.buffer.subarray(0, 4).toString()).toBe('%PDF');
+    const pdf = await ReadablePdfDocument.load(result.buffer);
+    expect(pdf.getPageCount()).toBe(1);
+  });
+});
+
 describe('PlanningService operational needs', () => {
   it('normalizes legacy and API need metadata behind backend helpers', () => {
     const service = new PlanningService(mockPrisma());
