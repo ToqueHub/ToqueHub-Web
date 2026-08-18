@@ -658,7 +658,7 @@ toquehub restart
 | `npm run privacy:check`        | Analyse tous les fichiers versionnés ou candidats.            |
 | `npm run privacy:check:staged` | Analyse uniquement le contenu préparé pour le commit.         |
 
-> `prisma:reset` et toute restauration remplacent des données locales. Vérifiez toujours la cible et la sauvegarde disponible avant de les lancer.
+> `prisma:reset` et toute restauration remplacent des données locales. Vérifiez toujours la cible et la sauvegarde disponible avant de les lancer
 
 ## Documentation
 
