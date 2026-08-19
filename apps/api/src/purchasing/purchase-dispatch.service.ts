@@ -93,7 +93,7 @@ export class PurchaseDispatchService {
           idempotencyKey: input.idempotencyKey,
           status: PurchaseDispatchStatus.SENDING,
           recipient: input.recipient,
-          subject: `Commande ${input.orderNumber}`,
+          subject: `Purchase order ${input.orderNumber}`,
           snapshot: input.snapshot,
           provider: input.provider as any,
           senderEmail: input.senderEmail ?? null,

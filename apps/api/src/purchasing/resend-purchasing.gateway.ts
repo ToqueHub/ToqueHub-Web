@@ -40,7 +40,7 @@ export class ResendPurchasingGateway implements PurchasingEmailTransport {
   ) {
     if (!settings.fromEmail)
       throw new BadRequestException('L’adresse d’envoi Resend n’est pas configurée.');
-    const subject = `Commande ${order.number} — ${order.organization?.name ?? 'ToqueHub'}`;
+    const subject = `Purchase order ${order.number} — ${order.organization?.name ?? 'ToqueHub'}`;
     const fromName = this.safeHeader(
       settings.fromName?.trim() || order.organization?.name || 'ToqueHub',
     );
@@ -101,17 +101,17 @@ export class ResendPurchasingGateway implements PurchasingEmailTransport {
 
   private textBody(order: PurchaseOrderEmailDocument) {
     return [
-      'Bonjour,',
+      'Hello,',
       '',
-      `Veuillez trouver en pièce jointe notre commande ${order.number}.`,
+      `Please find our purchase order ${order.number} attached.`,
       order.expectedDeliveryDate
-        ? `Date de livraison souhaitée : ${new Date(order.expectedDeliveryDate).toLocaleDateString('fr-FR')}.`
-        : 'Livraison souhaitée au plus tôt.',
+        ? `Requested delivery date: ${new Date(order.expectedDeliveryDate).toLocaleDateString('en-GB')}.`
+        : 'Delivery requested as soon as possible.',
       order.supplierMessage || '',
       '',
-      `Total TTC : ${Number(order.totalIncludingTax).toFixed(2)} ${order.currency}`,
+      `Total including tax: ${Number(order.totalIncludingTax).toFixed(2)} ${order.currency}`,
       '',
-      'Cordialement,',
+      'Kind regards,',
       order.organization?.name || 'ToqueHub',
     ]
       .filter((line, index, all) => line || all[index - 1] !== '')

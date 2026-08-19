@@ -1,3 +1,4 @@
+import { activeLocale } from '../i18n/runtime';
 import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, ArrowLeft, Building2, CalendarDays, CheckCircle2, ChefHat, Factory, FileText, PackageCheck, Plus, RefreshCw, Settings, Truck, UsersRound, X } from 'lucide-react';
 import { api } from '../api/client';
@@ -170,7 +171,7 @@ function DispatchTable({ dispatches, saving, onStatus }: { dispatches: MenuDispa
 function Metric({ icon, value, label }: { icon: React.ReactNode; value: number; label: string }) { return <div className="card-modern" style={{ padding: '1rem' }}><span style={{ color: '#b45309' }}>{icon}</span><strong style={{ display: 'block', fontSize: '1.7rem', marginTop: '.4rem' }}>{value}</strong><span className="muted">{label}</span></div>; }
 function Document({ title, text, onClick }: { title: string; text: string; onClick: () => void }) { return <div style={{ border: '1px solid #e2e8f0', borderRadius: 14, padding: '1rem' }}><FileText color="#b45309" /><strong style={{ display: 'block', marginTop: '.5rem' }}>{title}</strong><p className="muted">{text}</p><button className="btn btn-secondary" onClick={onClick}>Télécharger le PDF</button></div>; }
 function Empty({ title, text }: { title: string; text: string }) { return <div style={{ textAlign: 'center', padding: '2rem' }}><PackageCheck color="#94a3b8" /><strong style={{ display: 'block', marginTop: '.5rem' }}>{title}</strong><span className="muted">{text}</span></div>; }
-function dateLabel(value?: string | null) { return value ? new Date(value).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '—'; }
+function dateLabel(value?: string | null) { return value ? new Date(value).toLocaleString(activeLocale(), { dateStyle: 'short', timeStyle: 'short' }) : '—'; }
 function sameDay(value?: string | null) { if (!value) return false; return new Date(value).toDateString() === new Date().toDateString(); }
 function sameWeek(value?: string | null) { if (!value) return false; const now = new Date(); const start = new Date(now); start.setDate(now.getDate() - ((now.getDay() + 6) % 7)); start.setHours(0,0,0,0); const end = new Date(start); end.setDate(end.getDate()+7); const date = new Date(value); return date >= start && date < end; }
 function messageOf(error: unknown) { if (error && typeof error === 'object' && 'message' in error) return String(error.message); return 'Action Cuisine centrale impossible.'; }

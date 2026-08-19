@@ -1,3 +1,4 @@
+import { activeLocale } from '../../../i18n/runtime';
 import { useState, type ReactNode } from 'react';
 import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, ShoppingCart } from 'lucide-react';
 import { Modal } from '../../ui/Modal';
@@ -294,16 +295,16 @@ export function tabTitle(tab: 'dashboard' | 'orders' | 'receipts') {
 }
 
 export function money(value: number | string | null | undefined, currency = 'EUR') {
-  return new Intl.NumberFormat('fr-FR', { style: 'currency', currency }).format(Number(value ?? 0));
+  return new Intl.NumberFormat(activeLocale(), { style: 'currency', currency }).format(Number(value ?? 0));
 }
 
 export function dateLabel(value?: string | null) {
   if (!value) return 'Non planifiée';
-  return new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium' }).format(new Date(value));
+  return new Intl.DateTimeFormat(activeLocale(), { dateStyle: 'medium' }).format(new Date(value));
 }
 
 export function dateTimeLabel(value: string) {
-  return new Intl.DateTimeFormat('fr-FR', {
+  return new Intl.DateTimeFormat(activeLocale(), {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));

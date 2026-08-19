@@ -1,3 +1,4 @@
+import { activeLocale } from '../i18n/runtime';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -161,7 +162,7 @@ const emptyClient = (): CatererClientInput => ({
 });
 
 function clientMoney(value: number | null | undefined, currency = 'EUR') {
-  return new Intl.NumberFormat('fr-FR', {
+  return new Intl.NumberFormat(activeLocale(), {
     style: 'currency',
     currency,
     maximumFractionDigits: 2,
@@ -169,7 +170,7 @@ function clientMoney(value: number | null | undefined, currency = 'EUR') {
 }
 
 function clientDate(value: string | null | undefined) {
-  return value ? new Date(value).toLocaleDateString('fr-FR') : '—';
+  return value ? new Date(value).toLocaleDateString(activeLocale()) : '—';
 }
 
 function clientRecords(value: unknown): Array<Record<string, unknown>> {
@@ -2134,8 +2135,8 @@ function CompositionEditor({
         group: recipe.category?.name ?? 'Sans catégorie',
         referenceLabel:
           recipe.yieldMode === 'MASS'
-            ? `${Number(recipe.totalMassGrams ?? 0).toLocaleString('fr-FR')} g`
-            : `${Number(recipe.referencePortions ?? recipe.portions ?? 1).toLocaleString('fr-FR')} portions`,
+            ? `${Number(recipe.totalMassGrams ?? 0).toLocaleString(activeLocale())} g`
+            : `${Number(recipe.referencePortions ?? recipe.portions ?? 1).toLocaleString(activeLocale())} portions`,
         durationMinutes: Number(recipe.totalTimeMinutes ?? 0) || null,
         contextLabel:
           recipe.mode === 'PRODUCTION' ? 'Fabrication / préparation' : 'Assemblage / produit fini',
@@ -2656,7 +2657,7 @@ function CatererDashboardCalendar({
   });
   const year = currentMonth.getFullYear();
   const month = currentMonth.getMonth();
-  const monthLabel = new Intl.DateTimeFormat('fr-FR', {
+  const monthLabel = new Intl.DateTimeFormat(activeLocale(), {
     month: 'long',
     year: 'numeric',
   })
@@ -3007,7 +3008,7 @@ function CatererEventsView({
           </div>
           <div>
             <div className="production-metric-val" style={{ color: '#6d28d9' }}>
-              {totalGuests.toLocaleString('fr-FR')}
+              {totalGuests.toLocaleString(activeLocale())}
             </div>
             <div className="production-metric-lbl">Convives total</div>
           </div>
@@ -3835,7 +3836,7 @@ function localInput(value?: string | Date | null) {
 
 function dateLabel(value?: string | null) {
   return value
-    ? new Date(value).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
+    ? new Date(value).toLocaleString(activeLocale(), { dateStyle: 'short', timeStyle: 'short' })
     : '—';
 }
 
@@ -3920,7 +3921,7 @@ function CatererCalendarView({
   };
 
   const monthLabel = useMemo(() => {
-    return new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' })
+    return new Intl.DateTimeFormat(activeLocale(), { month: 'long', year: 'numeric' })
       .format(currentDate)
       .replace(/^./, (str) => str.toUpperCase());
   }, [currentDate]);
@@ -3997,7 +3998,7 @@ function CatererCalendarView({
         date: d,
         dateStr,
         isToday: dateStr === todayStr,
-        label: new Intl.DateTimeFormat('fr-FR', {
+        label: new Intl.DateTimeFormat(activeLocale(), {
           weekday: 'short',
           day: 'numeric',
           month: 'short',
@@ -4090,7 +4091,7 @@ function CatererCalendarView({
           </div>
           <div>
             <div className="production-metric-val" style={{ color: '#6d28d9' }}>
-              {totalGuests.toLocaleString('fr-FR')}
+              {totalGuests.toLocaleString(activeLocale())}
             </div>
             <div className="production-metric-lbl">Convives total</div>
           </div>
@@ -4520,7 +4521,7 @@ function CatererCalendarView({
                         style={{ fontSize: '.72rem', fontWeight: 800, textTransform: 'uppercase' }}
                       >
                         {ev.startsAt
-                          ? new Date(ev.startsAt).toLocaleDateString('fr-FR', { month: 'short' })
+                          ? new Date(ev.startsAt).toLocaleDateString(activeLocale(), { month: 'short' })
                           : 'Date'}
                       </div>
                       <div style={{ fontSize: '1.25rem', fontWeight: 850, lineHeight: 1 }}>
@@ -4637,7 +4638,7 @@ function CatererDaySummaryModal({
   onSelect: (event: CatererEvent) => void;
 }) {
   const selectedDate = new Date(`${date}T12:00:00`);
-  const fullDateLabel = new Intl.DateTimeFormat('fr-FR', {
+  const fullDateLabel = new Intl.DateTimeFormat(activeLocale(), {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
@@ -4820,7 +4821,7 @@ function CatererDaySummaryModal({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '.7rem' }}>
               {sortedEvents.map((event) => {
                 const startTime = event.startsAt
-                  ? new Date(event.startsAt).toLocaleTimeString('fr-FR', {
+                  ? new Date(event.startsAt).toLocaleTimeString(activeLocale(), {
                       hour: '2-digit',
                       minute: '2-digit',
                     })

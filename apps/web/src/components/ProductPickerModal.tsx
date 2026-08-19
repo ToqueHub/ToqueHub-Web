@@ -1,3 +1,4 @@
+import { activeLocale } from '../i18n/runtime';
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Boxes, Search, X } from 'lucide-react';
@@ -18,12 +19,12 @@ function normalize(value?: string | null) {
   return (value ?? '')
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
-    .toLocaleLowerCase('fr-FR')
+    .toLocaleLowerCase(activeLocale())
     .trim();
 }
 
 function money(value?: number | string | null) {
-  return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(
+  return new Intl.NumberFormat(activeLocale(), { style: 'currency', currency: 'EUR' }).format(
     Number(value ?? 0),
   );
 }

@@ -1,3 +1,4 @@
+import { activeLocale } from '../../i18n/runtime';
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
@@ -105,7 +106,7 @@ function rangeFor(
 
 function money(value: number | null | undefined, currency: string) {
   if (value == null) return '—';
-  return new Intl.NumberFormat('fr-FR', {
+  return new Intl.NumberFormat(activeLocale(), {
     style: 'currency',
     currency,
     maximumFractionDigits: 0,
@@ -113,7 +114,7 @@ function money(value: number | null | undefined, currency: string) {
 }
 
 function number(value: number | null | undefined) {
-  return value == null ? '—' : value.toLocaleString('fr-FR', { maximumFractionDigits: 1 });
+  return value == null ? '—' : value.toLocaleString(activeLocale(), { maximumFractionDigits: 1 });
 }
 
 function niceAxis(maximum: number): AxisScale {
@@ -143,10 +144,10 @@ function niceAxis(maximum: number): AxisScale {
 
 function axisValue(value: number, metric: ActivityMetric, currency: string) {
   if (metric === 'transactions') {
-    return value.toLocaleString('fr-FR', { maximumFractionDigits: 0 });
+    return value.toLocaleString(activeLocale(), { maximumFractionDigits: 0 });
   }
   return (
-    new Intl.NumberFormat('fr-FR', {
+    new Intl.NumberFormat(activeLocale(), {
       notation: 'compact',
       maximumFractionDigits: 1,
     }).format(value) + ` ${currency === 'EUR' ? '€' : currency}`
@@ -154,14 +155,14 @@ function axisValue(value: number, metric: ActivityMetric, currency: string) {
 }
 
 function dateLabel(value: string) {
-  return new Date(value).toLocaleDateString('fr-FR', { timeZone: 'UTC' });
+  return new Date(value).toLocaleDateString(activeLocale(), { timeZone: 'UTC' });
 }
 
 function comparable(value: string) {
   return value
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .toLocaleLowerCase('fr-FR');
+    .toLocaleLowerCase(activeLocale());
 }
 
 function variation(value: number | null) {
@@ -169,7 +170,7 @@ function variation(value: number | null) {
   return (
     <span className={value >= 0 ? 'positive' : 'negative'}>
       {value >= 0 ? '+' : ''}
-      {value.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %
+      {value.toLocaleString(activeLocale(), { maximumFractionDigits: 1 })} %
     </span>
   );
 }
@@ -455,7 +456,7 @@ export function FinanceSalesInsightsView({ token, currency, asOf, siteId }: Prop
         </div>
         <ChartFrame
           scale={hourlyAxis}
-          formatTick={(tick) => `${tick.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`}
+          formatTick={(tick) => `${tick.toLocaleString(activeLocale(), { maximumFractionDigits: 1 })} %`}
           axisLabel="Pourcentage du total de la période"
         >
           <div className="finance-hour-bars">
@@ -464,7 +465,7 @@ export function FinanceSalesInsightsView({ token, currency, asOf, siteId }: Prop
                 key={item.hour}
                 className="finance-chart-point"
                 tabIndex={0}
-                aria-label={`${item.label} · ${share.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} % du total · ${item.transactions} tickets · ${money(item.revenue, currency)}`}
+                aria-label={`${item.label} · ${share.toLocaleString(activeLocale(), { maximumFractionDigits: 1 })} % du total · ${item.transactions} tickets · ${money(item.revenue, currency)}`}
               >
                 <span
                   className="finance-chart-bar"
@@ -473,7 +474,7 @@ export function FinanceSalesInsightsView({ token, currency, asOf, siteId }: Prop
                   }}
                 />
                 <span className="finance-chart-tooltip" role="tooltip">
-                  {item.label} · {share.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} % du
+                  {item.label} · {share.toLocaleString(activeLocale(), { maximumFractionDigits: 1 })} % du
                   total · {item.transactions} tickets · {money(item.revenue, currency)}
                 </span>
                 <small>{String(item.hour).padStart(2, '0')}h</small>
@@ -516,11 +517,11 @@ export function FinanceSalesInsightsView({ token, currency, asOf, siteId }: Prop
                   }}
                 />
                 <span className="finance-chart-tooltip" role="tooltip">
-                  {new Date(`${item.date}T12:00:00`).toLocaleDateString('fr-FR')} ·{' '}
+                  {new Date(`${item.date}T12:00:00`).toLocaleDateString(activeLocale())} ·{' '}
                   {item.transactions} tickets · {money(item.revenue, currency)}
                 </span>
                 <small>
-                  {new Date(`${item.date}T12:00:00`).toLocaleDateString('fr-FR', {
+                  {new Date(`${item.date}T12:00:00`).toLocaleDateString(activeLocale(), {
                     day: '2-digit',
                     month: '2-digit',
                   })}
@@ -681,7 +682,7 @@ export function FinanceSalesInsightsView({ token, currency, asOf, siteId }: Prop
                     ? '—'
                     : `${money(product.margin, currency)} · ${number(product.marginRate)} %`}
                 </span>
-                <span>{product.sharePercent.toLocaleString('fr-FR')} %</span>
+                <span>{product.sharePercent.toLocaleString(activeLocale())} %</span>
                 <span>{variation(product.quantityVariationPercent)}</span>
               </div>
             ))}
@@ -735,7 +736,7 @@ export function FinanceSalesInsightsView({ token, currency, asOf, siteId }: Prop
         <dl>
           <div>
             <dt>Tickets analysés</dt>
-            <dd>{data.quality.transactionRows.toLocaleString('fr-FR')}</dd>
+            <dd>{data.quality.transactionRows.toLocaleString(activeLocale())}</dd>
           </div>
           <div>
             <dt>Doublons inter-caisses écartés</dt>

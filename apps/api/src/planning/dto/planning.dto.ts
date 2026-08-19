@@ -25,11 +25,13 @@ export class PlanningContextQueryDto extends PlanningQueryDto {}
 
 export class PlanningExportPdfQueryDto extends PlanningQueryDto {
   @IsIn(['week', 'month', 'custom']) mode!: 'week' | 'month' | 'custom';
+  @IsOptional() @IsIn(['fr', 'en']) lang?: 'fr' | 'en';
 }
 
 export class MyPlanningExportPdfQueryDto {
   @IsIn(['week', 'month']) mode!: 'week' | 'month';
   @IsString() startDate!: string;
+  @IsOptional() @IsIn(['fr', 'en']) lang?: 'fr' | 'en';
 }
 
 export class PlanningDayStatusQueryDto extends PlanningQueryDto {
@@ -93,6 +95,7 @@ export class PlanningAttendanceQueryDto {
   @IsOptional() @IsUUID() siteId?: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) pageSize?: number;
   @IsOptional() @IsEnum(PlanningAttendanceStatus) status?: PlanningAttendanceStatus;
+  @IsOptional() @IsIn(['fr', 'en']) lang?: 'fr' | 'en';
 }
 
 export class UpsertPlanningAttendanceDto {

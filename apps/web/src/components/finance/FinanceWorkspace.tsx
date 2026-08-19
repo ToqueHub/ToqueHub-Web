@@ -1,3 +1,5 @@
+import { activeLocale } from '../../i18n/runtime';
+import { translateText } from '../../i18n/translate';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
@@ -181,13 +183,32 @@ function messageOf(error: unknown, fallback: string) {
 
 function formatDate(value?: string | null, withTime = false) {
   if (!value) return 'Non disponible';
-  return new Intl.DateTimeFormat('fr-FR', {
+  return new Intl.DateTimeFormat(activeLocale(), {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
     ...(withTime ? { hour: '2-digit', minute: '2-digit' } : {}),
     timeZone: withTime ? 'Europe/Helsinki' : 'UTC',
   }).format(new Date(value));
+}
+
+function formatMonthLabel(value?: string | null, includeYear = false) {
+  if (!value) return '';
+  return new Intl.DateTimeFormat(activeLocale(), {
+    month: 'short',
+    ...(includeYear ? { year: 'numeric' } : {}),
+    timeZone: 'UTC',
+  }).format(new Date(value));
+}
+
+function formatFinancePeriodTitle(period: FinanceDashboardPeriod) {
+  if (period.kind === 'annual') {
+    return new Intl.DateTimeFormat(activeLocale(), { year: 'numeric', timeZone: 'UTC' }).format(
+      new Date(period.from),
+    );
+  }
+  if (period.kind === 'monthly') return formatMonthLabel(period.from, true);
+  return formatDate(period.from);
 }
 
 function formatCoverage(start?: string | null, end?: string | null) {
@@ -209,14 +230,14 @@ function formatCoverage(start?: string | null, end?: string | null) {
 function formatValue(value: number | null | undefined, unit: string, currency: string) {
   if (value == null) return '—';
   if (unit === 'percentage')
-    return `${value.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`;
+    return `${value.toLocaleString(activeLocale(), { maximumFractionDigits: 1 })} %`;
   if (unit === 'currency')
-    return new Intl.NumberFormat('fr-FR', {
+    return new Intl.NumberFormat(activeLocale(), {
       style: 'currency',
       currency,
       maximumFractionDigits: 0,
     }).format(value);
-  return value.toLocaleString('fr-FR', { maximumFractionDigits: 1 });
+  return value.toLocaleString(activeLocale(), { maximumFractionDigits: 1 });
 }
 
 function percentOfRevenue(value: number | null | undefined, revenue: number | null | undefined) {
@@ -875,7 +896,7 @@ function PeriodView({
           <span>
             {period.status === 'provisional' ? 'Données provisoires' : 'Période consolidée'}
           </span>
-          <h2>{period.label}</h2>
+          <h2>{formatFinancePeriodTitle(period)}</h2>
           <p>{periodExplanation}</p>
         </div>
         <button className="btn btn-secondary" onClick={() => setCustomizing((value) => !value)}>
@@ -908,11 +929,11 @@ function PeriodView({
                     }
                   />
                   <span>
-                    <strong>{item.label}</strong>
+                    <strong>{translateText(item.label)}</strong>
                     <small>
                       {displayable
-                        ? item.help
-                        : metric?.availabilityReason || 'Donnée indisponible.'}
+                        ? translateText(item.help)
+                        : translateText(metric?.availabilityReason || 'Donnée indisponible.')}
                     </small>
                   </span>
                 </label>
@@ -1096,7 +1117,7 @@ function RevenueReconciliationPanel({
           <div>
             {breakdownItems.map((item) => (
               <span key={item.label}>
-                <small>{item.label}</small>
+                <small>{translateText(item.label)}</small>
                 <strong>{formatValue(item.value, 'currency', currency)}</strong>
               </span>
             ))}
@@ -1212,7 +1233,7 @@ function HistoricalComparisonPanel({
                       ? basisLabels[period.sources[metric.id]]
                       : delta == null
                         ? 'Comparaison indisponible'
-                        : `Actuel ${delta > 0 ? '+' : ''}${delta.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`}
+                        : `Actuel ${delta > 0 ? '+' : ''}${delta.toLocaleString(activeLocale(), { maximumFractionDigits: 1 })} %`}
                   </small>
                 </span>
               );
@@ -1424,7 +1445,11 @@ function ComparisonChart({
                     title={`Budget ${formatValue(budget, 'currency', currency)}`}
                   />
                 </div>
-                <small>{item.label}</small>
+                <small>
+                  {item.periodStart
+                    ? formatMonthLabel(item.periodStart)
+                    : translateText(item.label ?? '')}
+                </small>
               </div>
             );
           })}
@@ -1524,7 +1549,13 @@ function PeriodTable({ period, currency }: { period: FinanceDashboardPeriod; cur
           const budget = item.budgetRevenue ?? null;
           return (
             <div key={item.periodStart ?? item.date}>
-              <span>{item.label ?? formatDate(item.date)}</span>
+              <span>
+                {item.periodStart
+                  ? formatMonthLabel(item.periodStart, period.kind === 'annual')
+                  : item.label
+                    ? translateText(item.label)
+                    : formatDate(item.date)}
+              </span>
               <span>{formatValue(actual, 'currency', currency)}</span>
               <span>{formatValue(budget, 'currency', currency)}</span>
               <span>
@@ -1926,7 +1957,11 @@ function BudgetView({
           </div>
           {budget.series.map((item) => (
             <div key={item.periodStart}>
-              <span>{item.label}</span>
+              <span>
+                {item.periodStart
+                  ? formatMonthLabel(item.periodStart, true)
+                  : translateText(item.label ?? '')}
+              </span>
               <span>{formatValue(item.budgetRevenue, 'currency', currency)}</span>
               <span>{formatValue(item.actualRevenue, 'currency', currency)}</span>
               <span>{formatValue(item.budgetResult, 'currency', currency)}</span>
@@ -4157,7 +4192,7 @@ function ImportHistory({ imports }: { imports: FinanceImportBatch[] }) {
               <span>
                 <strong>{batch.fileName}</strong>
                 <small>
-                  {(batch.fileSize / 1024).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} Ko
+                  {(batch.fileSize / 1024).toLocaleString(activeLocale(), { maximumFractionDigits: 0 })} Ko
                 </small>
               </span>
               <span>{batch.source?.name ?? PROVIDER_LABELS[batch.provider]}</span>

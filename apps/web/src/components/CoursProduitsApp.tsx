@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { activeLocale } from '../i18n/runtime';
 import { useMemo, useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -147,13 +148,13 @@ function productId(product: Pick<RnmProduct, 'id' | 'code'>) {
 
 function formatPrice(value?: number | null, unit?: string | null) {
   if (value === undefined || value === null || Number.isNaN(Number(value))) return '—';
-  return `${Number(value).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} €${unit ? ` / ${unit}` : ''}`;
+  return `${Number(value).toLocaleString(activeLocale(), { maximumFractionDigits: 2 })} €${unit ? ` / ${unit}` : ''}`;
 }
 
 function formatDate(value?: string | null) {
   if (!value) return '—';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('fr-FR');
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(activeLocale());
 }
 
 function DataState({ loading, error, empty, emptyText, onRetry }: { loading?: boolean; error?: unknown; empty?: boolean; emptyText?: string; onRetry?: () => void }) {
@@ -206,7 +207,7 @@ function EmptyState({ text }: { text: string }) {
 
 function formatVariation(value?: number | null, options: { sign?: boolean } = {}) {
   if (value === undefined || value === null || Number.isNaN(Number(value))) return 'stable';
-  const rounded = Number(value).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const rounded = Number(value).toLocaleString(activeLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   return `${options.sign && value > 0 ? '+' : ''}${rounded}%`;
 }
 
@@ -960,7 +961,7 @@ export function CoursProduitsApp({ token, initialTab = 'dashboard', initialProdu
                   {/* Aligned Metrics Grid */}
                   <div className="metrics-grid">
                     <Metric icon={<Layers size={20} />} value={products.length} label="Produits suivis" tone="orange" />
-                    <Metric icon={<Scale size={20} />} value={(products.length * 15).toLocaleString('fr-FR')} label="Cotations actives" tone="blue" />
+                    <Metric icon={<Scale size={20} />} value={(products.length * 15).toLocaleString(activeLocale())} label="Cotations actives" tone="blue" />
                     <Metric icon={<RefreshCw size={20} />} value={formatDate(dashboardStats?.latestQuotationDate || products[0]?.lastQuotationDate)} label="Dernière cotation" tone="purple" />
                     <Metric icon={<Sparkles size={20} />} value={allSectors.length} label="Secteurs actifs" tone="emerald" />
                   </div>

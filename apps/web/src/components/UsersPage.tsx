@@ -1,3 +1,4 @@
+import { activeLocale } from '../i18n/runtime';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -58,7 +59,7 @@ function statusLabel(status?: string) {
 
 function formatLastLogin(value?: string | null) {
   if (!value) return 'Jamais connecté';
-  return new Date(value).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
+  return new Date(value).toLocaleString(activeLocale(), { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 function normalizePermission(permission: CorePermission | string): CorePermission {

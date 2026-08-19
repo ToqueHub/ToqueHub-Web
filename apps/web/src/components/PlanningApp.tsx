@@ -1,3 +1,4 @@
+import { activeLocale } from '../i18n/runtime';
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -2169,7 +2170,7 @@ function PlanningExportsSettings({ token, selectedDate, siteFilter, serviceFilte
         siteId: siteFilter || undefined,
         departmentId: serviceFilter || undefined,
       });
-      const label = parseLocalDate(`${attendanceMonth}-01`).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+      const label = parseLocalDate(`${attendanceMonth}-01`).toLocaleDateString(activeLocale(), { month: 'long', year: 'numeric' });
       setMessage(`Feuilles d’émargement générées pour ${label}.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Impossible de générer les feuilles d’émargement.");
@@ -2844,11 +2845,11 @@ function groupCollaboratorsByPosition(collaborators: HrCollaborator[]) {
     .sort((a, b) => comparePositionTitles(a.positionName, b.positionName));
 }
 function compareCollaboratorsByLastName(a: HrCollaborator, b: HrCollaborator) {
-  const lastName = String(a.lastName ?? '').localeCompare(String(b.lastName ?? ''), 'fr-FR', { sensitivity: 'base' });
+  const lastName = String(a.lastName ?? '').localeCompare(String(b.lastName ?? ''), activeLocale(), { sensitivity: 'base' });
   if (lastName !== 0) return lastName;
-  const firstName = String(a.firstName ?? '').localeCompare(String(b.firstName ?? ''), 'fr-FR', { sensitivity: 'base' });
+  const firstName = String(a.firstName ?? '').localeCompare(String(b.firstName ?? ''), activeLocale(), { sensitivity: 'base' });
   if (firstName !== 0) return firstName;
-  return collaboratorName(a).localeCompare(collaboratorName(b), 'fr-FR', { sensitivity: 'base' });
+  return collaboratorName(a).localeCompare(collaboratorName(b), activeLocale(), { sensitivity: 'base' });
 }
 function comparePositionTitles(a: string, b: string) {
   const missing = 'Poste non renseigné';
@@ -2886,9 +2887,9 @@ function isSecondSunday(value: string) { const date = new Date(`${value.slice(0,
 function formatPeriod(start?: string | null, end?: string | null) { return end && normalizePlanningDate(end) !== normalizePlanningDate(start) ? `${formatShort(start)} - ${formatShort(end)}` : formatShort(start); }
 function todayIso() { return localDateIso(new Date()); }
 function sameDay(a?: string | null, b?: string | null) { const dayA = normalizePlanningDate(a); const dayB = normalizePlanningDate(b); return Boolean(dayA && dayB && dayA === dayB); }
-function formatShort(value?: string | null) { if (!value) return '--'; return parseLocalDate(value).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }); }
-function formatAttendanceDate(value?: string | null) { if (!value) return '--'; return parseLocalDate(value).toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long' }); }
-function monthLabel(value: string) { return parseLocalDate(value).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }); }
+function formatShort(value?: string | null) { if (!value) return '--'; return parseLocalDate(value).toLocaleDateString(activeLocale(), { day: '2-digit', month: '2-digit' }); }
+function formatAttendanceDate(value?: string | null) { if (!value) return '--'; return parseLocalDate(value).toLocaleDateString(activeLocale(), { weekday: 'long', day: '2-digit', month: 'long' }); }
+function monthLabel(value: string) { return parseLocalDate(value).toLocaleDateString(activeLocale(), { month: 'long', year: 'numeric' }); }
 function addDays(value: string, days: number) { const date = parseLocalDate(value); date.setDate(date.getDate() + days); return localDateIso(date); }
 function weekStart(value: string) { const date = parseLocalDate(value); const day = date.getDay() || 7; date.setDate(date.getDate() - day + 1); return localDateIso(date); }
 function weekEnd(value: string) { return addDays(weekStart(value), 6); }
@@ -2935,7 +2936,7 @@ function timeLabel(value?: string | null) {
   const raw = String(value);
   if (/^\d{2}:\d{2}/.test(raw)) return raw.slice(0, 5);
   const date = new Date(raw);
-  if (!Number.isNaN(date.getTime())) return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  if (!Number.isNaN(date.getTime())) return date.toLocaleTimeString(activeLocale(), { hour: '2-digit', minute: '2-digit' });
   return raw.slice(0, 5);
 }
 function groupAssignmentsForDay(assignments: PlanningAssignment[]) {

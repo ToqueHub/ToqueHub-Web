@@ -1,3 +1,4 @@
+import { activeLocale } from '../../i18n/runtime';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
@@ -54,7 +55,7 @@ function numberValue(value: unknown) {
 }
 
 function currency(value: unknown) {
-  return numberValue(value).toLocaleString('fr-FR', {
+  return numberValue(value).toLocaleString(activeLocale(), {
     style: 'currency',
     currency: 'EUR',
     maximumFractionDigits: 2,
@@ -64,7 +65,7 @@ function currency(value: unknown) {
 function shortDate(value?: string | null) {
   if (!value) return '—';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('fr-FR');
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString(activeLocale());
 }
 
 function equipmentQuantity(article: Article, siteId: string) {
@@ -167,7 +168,7 @@ export function EquipmentPage({
   }, [data.items, now, siteId]);
 
   const filtered = useMemo(() => {
-    const normalizedSearch = search.trim().toLocaleLowerCase('fr-FR');
+    const normalizedSearch = search.trim().toLocaleLowerCase(activeLocale());
     return data.items.filter((article) => {
       const product = article.product;
       const profile = product.equipmentProfile;
@@ -182,7 +183,7 @@ export function EquipmentPage({
           product.category?.name,
         ]
           .filter(Boolean)
-          .some((value) => String(value).toLocaleLowerCase('fr-FR').includes(normalizedSearch))
+          .some((value) => String(value).toLocaleLowerCase(activeLocale()).includes(normalizedSearch))
       )
         return false;
       if (categoryId && product.categoryId !== categoryId) return false;
@@ -387,7 +388,7 @@ export function EquipmentPage({
           </div>
           <div className="metric-text-wrapper">
             <span className="stocks-metric-value">
-              {equipmentStats.quantity.toLocaleString('fr-FR')}
+              {equipmentStats.quantity.toLocaleString(activeLocale())}
             </span>
             <span className="stocks-metric-label">En parc</span>
           </div>
@@ -550,7 +551,7 @@ export function EquipmentPage({
                         <td>{product.primarySupplier?.name || '—'}</td>
                         <td>{product.category?.name || 'Sans catégorie'}</td>
                         <td style={{ textAlign: 'right', fontWeight: 750 }}>
-                          {equipmentQuantity(article, siteId).toLocaleString('fr-FR')}{' '}
+                          {equipmentQuantity(article, siteId).toLocaleString(activeLocale())}{' '}
                           {product.unit?.symbol ?? ''}
                         </td>
                         <td style={{ textAlign: 'right' }}>
@@ -614,7 +615,7 @@ export function EquipmentForm({
   const product = article?.product;
   const profile = product?.equipmentProfile;
   const pieceUnit = units.find(
-    (unit) => unit.type === 'COUNT' || unit.symbol.toLocaleLowerCase('fr-FR').includes('pièce'),
+    (unit) => unit.type === 'COUNT' || unit.symbol.toLocaleLowerCase(activeLocale()).includes('pièce'),
   );
   const defaultSiteId =
     article?.stockBySite.find((site) => site.siteId)?.siteId ??
@@ -1133,10 +1134,10 @@ export function EquipmentForm({
                       <span className="equipment-document-copy">
                         <strong>{document.originalName}</strong>
                         <small>
-                          {(document.sizeBytes / 1024 / 1024).toLocaleString('fr-FR', {
+                          {(document.sizeBytes / 1024 / 1024).toLocaleString(activeLocale(), {
                             maximumFractionDigits: 2,
                           })}{' '}
-                          Mo · Ajouté le {new Date(document.uploadedAt).toLocaleDateString('fr-FR')}
+                          Mo · Ajouté le {new Date(document.uploadedAt).toLocaleDateString(activeLocale())}
                         </small>
                       </span>
                       <button
@@ -1173,7 +1174,7 @@ export function EquipmentForm({
                       <span className="equipment-document-copy">
                         <strong>{file.name}</strong>
                         <small>
-                          {(file.size / 1024 / 1024).toLocaleString('fr-FR', {
+                          {(file.size / 1024 / 1024).toLocaleString(activeLocale(), {
                             maximumFractionDigits: 2,
                           })}{' '}
                           Mo · Sera lié à l’enregistrement

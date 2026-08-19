@@ -10,6 +10,16 @@ type Actor = {
   permissions: string[];
   employeeId?: string | null;
 };
+type ExportLanguage = 'fr' | 'en';
+type OperationalPdfInput = {
+  title: string;
+  organizationName: string;
+  serviceName: string;
+  siteName: string | null;
+  day: string;
+  tasks: any[];
+  language: ExportLanguage;
+};
 
 @Injectable()
 export class ProductionOperationalExportService {
@@ -65,7 +75,8 @@ export class ProductionOperationalExportService {
     if (!department) throw new NotFoundException('Service introuvable.');
     if (query.siteId && !site) throw new NotFoundException('Site introuvable.');
 
-    const title = `Planning opérationnel · ${department.name}`;
+    const language: ExportLanguage = query.lang === 'en' ? 'en' : 'fr';
+    const title = `${language === 'en' ? 'Operational schedule' : 'Planning opérationnel'} · ${department.name}`;
     const buffer = await this.buildPdf({
       title,
       organizationName: organization?.name ?? 'ToqueHub',
@@ -73,22 +84,16 @@ export class ProductionOperationalExportService {
       siteName: site?.name ?? null,
       day,
       tasks,
+      language,
     });
     const slug = this.slug(`${department.name}-${site?.name ?? 'tous-sites'}`);
     return {
       buffer,
-      filename: `planning-production-${day}-${slug}.pdf`,
+      filename: `${language === 'en' ? 'production-schedule' : 'planning-production'}-${day}-${slug}.pdf`,
     };
   }
 
-  private buildPdf(input: {
-    title: string;
-    organizationName: string;
-    serviceName: string;
-    siteName: string | null;
-    day: string;
-    tasks: any[];
-  }) {
+  private buildPdf(input: OperationalPdfInput) {
     return new Promise<Buffer>((resolve, reject) => {
       const doc = new PDFDocument({
         size: 'A4',
@@ -110,14 +115,7 @@ export class ProductionOperationalExportService {
 
   private drawPdf(
     doc: PDFKit.PDFDocument,
-    input: {
-      title: string;
-      organizationName: string;
-      serviceName: string;
-      siteName: string | null;
-      day: string;
-      tasks: any[];
-    },
+    input: OperationalPdfInput,
   ) {
     const tasks = [...input.tasks].sort(
       (left, right) =>
@@ -144,13 +142,13 @@ export class ProductionOperationalExportService {
         .fillColor('#475569')
         .font('Helvetica-Bold')
         .fontSize(10)
-        .text('Aucune tâche pour ce service et cette journée.', doc.page.margins.left + 14, y + 42);
+        .text(input.language === 'en' ? 'No tasks for this department and date.' : 'Aucune tâche pour ce service et cette journée.', doc.page.margins.left + 14, y + 42);
       return;
     }
 
     for (const task of tasks) {
-      const team = this.taskTeam(task);
-      const recipe = this.taskRecipe(task);
+      const team = this.taskTeam(task, input.language);
+      const recipe = this.taskRecipe(task, input.language);
       const rowHeight = Math.max(
         34,
         this.textHeight(doc, String(task.title ?? ''), 208, 7.4) + 12,
@@ -160,26 +158,20 @@ export class ProductionOperationalExportService {
       if (y + rowHeight > doc.page.height - doc.page.margins.bottom - 16) {
         startPage();
       }
-      this.drawTaskRow(doc, task, y, rowHeight, team, recipe);
+      this.drawTaskRow(doc, task, y, rowHeight, team, recipe, input.language);
       y += rowHeight;
     }
   }
 
   private drawHeader(
     doc: PDFKit.PDFDocument,
-    input: {
-      title: string;
-      organizationName: string;
-      serviceName: string;
-      siteName: string | null;
-      day: string;
-      tasks: any[];
-    },
+    input: OperationalPdfInput,
     pageNumber: number,
   ) {
     const left = doc.page.margins.left;
     const width = doc.page.width - left - doc.page.margins.right;
-    const date = new Intl.DateTimeFormat('fr-FR', {
+    const locale = input.language === 'en' ? 'en-GB' : 'fr-FR';
+    const date = new Intl.DateTimeFormat(locale, {
       weekday: 'long',
       day: 'numeric',
       month: 'long',
@@ -197,7 +189,7 @@ export class ProductionOperationalExportService {
       .font('Helvetica')
       .fontSize(8)
       .text(
-        `${input.organizationName} · ${date}${input.siteName ? ` · ${input.siteName}` : ''} · ${input.tasks.length} tâche(s)`,
+        `${input.organizationName} · ${date}${input.siteName ? ` · ${input.siteName}` : ''} · ${input.tasks.length} ${input.language === 'en' ? 'task(s)' : 'tâche(s)'}`,
         left,
         46,
         { width: width * 0.78 },
@@ -211,7 +203,7 @@ export class ProductionOperationalExportService {
       });
 
     const tableY = 72;
-    const columns = this.columns(left);
+    const columns = this.columns(left, input.language);
     doc
       .rect(left, tableY, width, 24)
       .fillAndStroke('#e7f8f1', '#b8d8cd');
@@ -235,10 +227,11 @@ export class ProductionOperationalExportService {
     height: number,
     team: string,
     recipe: string,
+    language: ExportLanguage,
   ) {
     const left = doc.page.margins.left;
     const width = doc.page.width - left - doc.page.margins.right;
-    const columns = this.columns(left);
+    const columns = this.columns(left, language);
     doc.rect(left, y, width, height).fillAndStroke('#ffffff', '#dbe4ee');
     columns.slice(1).forEach((column) => {
       doc
@@ -250,16 +243,16 @@ export class ProductionOperationalExportService {
     });
 
     const values = [
-      this.timeRange(task.startsAt, task.endsAt),
+      this.timeRange(task.startsAt, task.endsAt, language),
       team,
       String(task.title ?? ''),
       recipe,
       task.quantity == null
         ? '—'
-        : `${Number(task.quantity).toLocaleString('fr-FR', {
+        : `${Number(task.quantity).toLocaleString(language === 'en' ? 'en-GB' : 'fr-FR', {
             maximumFractionDigits: 3,
           })} ${task.unitLabel ?? ''}`.trim(),
-      this.statusLabel(task.status),
+      this.statusLabel(task.status, language),
       task.site?.name ?? '—',
     ];
     columns.forEach((column, index) => {
@@ -276,8 +269,16 @@ export class ProductionOperationalExportService {
     });
   }
 
-  private columns(left: number) {
-    const definitions = [
+  private columns(left: number, language: ExportLanguage) {
+    const definitions = language === 'en' ? [
+      { label: 'Time', width: 58, align: 'center' as const },
+      { label: 'Employee(s)', width: 126 },
+      { label: 'Task', width: 216 },
+      { label: 'Recipe / batch', width: 146 },
+      { label: 'Quantity', width: 72, align: 'center' as const },
+      { label: 'Status', width: 78, align: 'center' as const },
+      { label: 'Site', width: 97 },
+    ] : [
       { label: 'Heure', width: 58, align: 'center' as const },
       { label: 'Collaborateur(s)', width: 126 },
       { label: 'Tâche', width: 216 },
@@ -294,7 +295,7 @@ export class ProductionOperationalExportService {
     });
   }
 
-  private taskTeam(task: any) {
+  private taskTeam(task: any, language: ExportLanguage) {
     const people = [
       ...(task.assignments ?? []).map((assignment: any) => assignment.employee),
       ...(task.assignments?.length ? [] : [task.assignedEmployee]),
@@ -305,14 +306,14 @@ export class ProductionOperationalExportService {
           (employee: any) =>
             [employee.firstName, employee.lastName].filter(Boolean).join(' ').trim() ||
             employee.email ||
-            'Collaborateur',
+            language === 'en' ? 'Employee' : 'Collaborateur',
         ),
       ),
     ];
-    return names.length ? names.join(', ') : 'À affecter';
+    return names.length ? names.join(', ') : language === 'en' ? 'Unassigned' : 'À affecter';
   }
 
-  private taskRecipe(task: any) {
+  private taskRecipe(task: any, language: ExportLanguage) {
     const parts = [
       task.technicalSheet?.name,
       task.productionBatch?.reference,
@@ -321,25 +322,30 @@ export class ProductionOperationalExportService {
         ? task.productionOperation.title
         : null,
     ].filter(Boolean);
-    return parts.length ? parts.join(' · ') : task.source === 'MANUAL' ? 'Tâche manuelle' : '—';
+    return parts.length ? parts.join(' · ') : task.source === 'MANUAL' ? language === 'en' ? 'Manual task' : 'Tâche manuelle' : '—';
   }
 
-  private timeRange(start: string | Date, end: string | Date) {
+  private timeRange(start: string | Date, end: string | Date, language: ExportLanguage) {
     const format = (value: string | Date) =>
-      new Intl.DateTimeFormat('fr-FR', {
+      new Intl.DateTimeFormat(language === 'en' ? 'en-GB' : 'fr-FR', {
         hour: '2-digit',
         minute: '2-digit',
       }).format(new Date(value));
     return `${format(start)}\n${format(end)}`;
   }
 
-  private statusLabel(status: string) {
-    return {
+  private statusLabel(status: string, language: ExportLanguage) {
+    return (language === 'en' ? {
+      TODO: 'To do',
+      IN_PROGRESS: 'In progress',
+      COMPLETED: 'Completed',
+      CANCELLED: 'Cancelled',
+    } : {
       TODO: 'À faire',
       IN_PROGRESS: 'En cours',
       COMPLETED: 'Terminée',
       CANCELLED: 'Annulée',
-    }[status] ?? status;
+    })[status] ?? status;
   }
 
   private statusColor(status: string) {

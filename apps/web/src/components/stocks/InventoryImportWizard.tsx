@@ -1,3 +1,4 @@
+import { activeLocale } from '../../i18n/runtime';
 import { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
@@ -891,14 +892,14 @@ function InventoryProductMatcher({
 }
 
 function formatMoney(value: number) {
-  return `${Number(value).toLocaleString('fr-FR', {
+  return `${Number(value).toLocaleString(activeLocale(), {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })} €`;
 }
 
 function formatQuantity(value: number) {
-  return Number(value).toLocaleString('fr-FR', { maximumFractionDigits: 3 });
+  return Number(value).toLocaleString(activeLocale(), { maximumFractionDigits: 3 });
 }
 
 function todayInputValue() {

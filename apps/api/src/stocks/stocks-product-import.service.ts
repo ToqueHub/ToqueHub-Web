@@ -384,6 +384,43 @@ const TEMPLATE_HEADERS = [
   'instructions_conservation',
   'instructions_preparation',
 ];
+const TEMPLATE_HEADERS_EN = [
+  'name',
+  'unit',
+  'sku',
+  'gtin',
+  'supplier',
+  'category',
+  'purchase_price_excl_tax',
+  'minimum_stock',
+  'description',
+  'origin',
+  'packaging',
+  'units_per_package',
+  'unit_weight_g',
+  'net_weight_g',
+  'ingredients',
+  'allergens',
+  'possible_traces',
+  'dietary_tags',
+  'energy_kj',
+  'energy_kcal',
+  'fat_g',
+  'saturated_fat_g',
+  'carbohydrates_g',
+  'sugars_g',
+  'fiber_g',
+  'protein_g',
+  'salt_g',
+  'storage_type',
+  'shelf_life_after_opening',
+  'storage_instructions',
+  'preparation_instructions',
+];
+IMPORT_FIELDS.forEach((field, index) => {
+  const header = TEMPLATE_HEADERS_EN[index];
+  if (header && !FIELD_ALIASES[field].includes(header)) FIELD_ALIASES[field].push(header);
+});
 
 @Injectable()
 export class StocksProductImportService {
@@ -483,8 +520,8 @@ export class StocksProductImportService {
     };
   }
 
-  templateCsv() {
-    const sample = [
+  templateCsv(language: 'fr' | 'en' = 'fr') {
+    const sampleFr = [
       'Fazer Aito Vispi 1L',
       'L',
       '22027142',
@@ -517,7 +554,42 @@ export class StocksProductImportService {
       '+2°C à +8°C',
       'À fouetter avant utilisation',
     ];
-    return `${TEMPLATE_HEADERS.join(';')}\n${sample.map(csvEscape).join(';')}\n`;
+    const sampleEn = [
+      'Fazer Aito Whipping 1L',
+      'L',
+      '22027142',
+      '6410222011298',
+      'Kespro',
+      'Dairy products',
+      '2.45',
+      '6',
+      'Plant-based whipping preparation',
+      'Sweden',
+      'Case 6 x 1 L',
+      '6',
+      '1000',
+      '6000',
+      'Water, vegetable oils, sugar',
+      'Soy',
+      'Tree nuts',
+      'Vegan|Gluten-free',
+      '1200',
+      '287',
+      '28',
+      '25',
+      '8',
+      '4',
+      '0.5',
+      '1',
+      '0.2',
+      'Chilled',
+      '5 days',
+      '+2°C to +8°C',
+      'Whip before use',
+    ];
+    const headers = language === 'en' ? TEMPLATE_HEADERS_EN : TEMPLATE_HEADERS;
+    const sample = language === 'en' ? sampleEn : sampleFr;
+    return `${headers.join(';')}\n${sample.map(csvEscape).join(';')}\n`;
   }
 
   /** Reuse the exact CSV import validation pipeline for manually entered or OCR catalog rows. */
@@ -562,51 +634,22 @@ export class StocksProductImportService {
   }
 
   /** Serializes reviewed creator rows with the same header order as the official template. */
-  creatorCsv(rows: Array<{ fields?: Record<string, unknown>; selected?: boolean }>) {
-    const fieldsByHeader: Record<string, ProductImportField> = {
-      nom: 'name',
-      unite: 'unit',
-      sku: 'sku',
-      gtin: 'gtin',
-      fournisseur: 'supplier',
-      categorie: 'category',
-      prix_achat_ht: 'averagePrice',
-      seuil_minimum: 'minimumStock',
-      description: 'description',
-      origine: 'originCountry',
-      conditionnement: 'packageLabel',
-      unites_par_colis: 'unitsPerPackage',
-      poids_unitaire_g: 'unitWeightGrams',
-      poids_net_g: 'netWeightGrams',
-      ingredients: 'ingredients',
-      allergenes: 'allergensPresent',
-      traces_possibles: 'possibleTraces',
-      tags_alimentaires: 'dietaryTags',
-      energie_kj: 'energyKj',
-      energie_kcal: 'energyKcal',
-      matieres_grasses_g: 'fatGrams',
-      acides_gras_satures_g: 'saturatedFatGrams',
-      glucides_g: 'carbohydratesGrams',
-      sucres_g: 'sugarsGrams',
-      fibres_g: 'fiberGrams',
-      proteines_g: 'proteinGrams',
-      sel_g: 'saltGrams',
-      type_conservation: 'storageType',
-      duree_apres_ouverture: 'shelfLifeAfterOpening',
-      instructions_conservation: 'storageInstructions',
-      instructions_preparation: 'preparationInstructions',
-    };
+  creatorCsv(
+    rows: Array<{ fields?: Record<string, unknown>; selected?: boolean }>,
+    language: 'fr' | 'en' = 'fr',
+  ) {
+    const headers = language === 'en' ? TEMPLATE_HEADERS_EN : TEMPLATE_HEADERS;
     const data = rows
       .filter((row) => row.selected !== false)
       .map((row) =>
-        TEMPLATE_HEADERS.map((header) => {
-          const value = row.fields?.[fieldsByHeader[header]];
+        headers.map((_, index) => {
+          const value = row.fields?.[IMPORT_FIELDS[index]];
           return csvEscape(
             Array.isArray(value) ? value.join('|') : value == null ? '' : String(value),
           );
         }).join(';'),
       );
-    return `\uFEFF${TEMPLATE_HEADERS.join(';')}\n${data.join('\n')}${data.length ? '\n' : ''}`;
+    return `\uFEFF${headers.join(';')}\n${data.join('\n')}${data.length ? '\n' : ''}`;
   }
 
   async analyzeProductImport(organizationId: string, actor: Actor, file: UploadedFile) {

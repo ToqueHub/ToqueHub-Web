@@ -1,3 +1,4 @@
+import { activeLocale } from '../i18n/runtime';
 import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { io, Socket } from 'socket.io-client';
@@ -1788,7 +1789,7 @@ function ProductionFlowModal({
     ? new Date(selectedYear, selectedMonthNumber, 0).getDate()
     : 31;
   const selectedDay = Number(selectedDate.slice(8, 10)) || 1;
-  const selectedDateLabel = new Date(`${selectedDate}T12:00:00`).toLocaleDateString('fr-FR', {
+  const selectedDateLabel = new Date(`${selectedDate}T12:00:00`).toLocaleDateString(activeLocale(), {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
@@ -1875,7 +1876,7 @@ function ProductionFlowModal({
 
   const time = (value?: string | null) =>
     value
-      ? new Date(value).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+      ? new Date(value).toLocaleTimeString(activeLocale(), { hour: '2-digit', minute: '2-digit' })
       : '—';
 
   return (
@@ -1938,9 +1939,9 @@ function ProductionFlowModal({
                       key={dateKey}
                       className={selectedDate === dateKey ? 'active' : ''}
                       onClick={() => setSelectedDate(dateKey)}
-                      title={date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                      title={date.toLocaleDateString(activeLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}
                     >
-                      <small>{date.toLocaleDateString('fr-FR', { weekday: 'short' }).slice(0, 2)}</small>
+                      <small>{date.toLocaleDateString(activeLocale(), { weekday: 'short' }).slice(0, 2)}</small>
                       <strong>{day}</strong>
                     </button>
                   );
@@ -1955,7 +1956,7 @@ function ProductionFlowModal({
               icon={<ClipboardList size={19} />}
               label="Planifiées"
               value={visibleFlow?.summary.planned ?? 0}
-              detail={enableDateNavigation ? `Fabrications du ${new Date(`${selectedDate}T12:00:00`).toLocaleDateString('fr-FR')}` : 'Fabrications prévues aujourd’hui'}
+              detail={enableDateNavigation ? `Fabrications du ${new Date(`${selectedDate}T12:00:00`).toLocaleDateString(activeLocale())}` : 'Fabrications prévues aujourd’hui'}
               tone="blue"
             />
             <LiveKpi
@@ -2080,7 +2081,7 @@ function ProductionFlowModal({
                             <div>
                               <strong>{ingredient.name}</strong>
                               <small>
-                                {Number(ingredient.quantity).toLocaleString('fr-FR', {
+                                {Number(ingredient.quantity).toLocaleString(activeLocale(), {
                                   maximumFractionDigits: 3,
                                 })}{' '}
                                 {ingredient.unit}
@@ -2186,7 +2187,7 @@ function TraceabilityHistoryModal({
   const visibleDays = new Set(visibleRows.map((row) => localDateKey(row.date)).filter(Boolean)).size;
   const selectedDateLabel = selectedDate === 'all'
     ? 'Toutes les dates'
-    : new Date(`${selectedDate}T12:00:00`).toLocaleDateString('fr-FR', {
+    : new Date(`${selectedDate}T12:00:00`).toLocaleDateString(activeLocale(), {
         weekday: 'long',
         day: 'numeric',
         month: 'long',
@@ -2294,8 +2295,8 @@ function TraceabilityHistoryModal({
                       className={selectedDate === dateKey ? 'active' : ''}
                       onClick={() => selectDate(dateKey)}
                     >
-                      <span><strong>{date.toLocaleDateString('fr-FR', { day: '2-digit' })}</strong><small>{date.toLocaleDateString('fr-FR', { month: 'short' })}</small></span>
-                      <span>{date.toLocaleDateString('fr-FR', { weekday: 'long' })}</span>
+                      <span><strong>{date.toLocaleDateString(activeLocale(), { day: '2-digit' })}</strong><small>{date.toLocaleDateString(activeLocale(), { month: 'short' })}</small></span>
+                      <span>{date.toLocaleDateString(activeLocale(), { weekday: 'long' })}</span>
                       <em>{count}</em>
                     </button>
                   );
@@ -2341,10 +2342,10 @@ function TraceabilityHistoryModal({
                             <small>Lot {String(row.lotNumber || 'non renseigné')}</small>
                             <em>
                               {Number.isFinite(date.getTime())
-                                ? date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
+                                ? date.toLocaleDateString(activeLocale(), { day: '2-digit', month: 'short', year: 'numeric' })
                                 : 'Date inconnue'}
                               {' · '}
-                              {Number.isFinite(date.getTime()) ? date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                              {Number.isFinite(date.getTime()) ? date.toLocaleTimeString(activeLocale(), { hour: '2-digit', minute: '2-digit' }) : '—'}
                             </em>
                           </span>
                           <ChevronRight size={16} />
@@ -2365,8 +2366,8 @@ function TraceabilityHistoryModal({
                         <div className="haccp-trace-detail-meta">
                           <span><small>Lot fournisseur</small><strong>{String(selectedRow.lotNumber || 'Non renseigné')}</strong></span>
                           <span><small>Code-barres</small><strong>{String(selectedRow.barcode || 'Non renseigné')}</strong></span>
-                          <span><small>Date</small><strong>{new Date(String(selectedRow.date)).toLocaleDateString('fr-FR')}</strong></span>
-                          <span><small>Heure</small><strong>{new Date(String(selectedRow.date)).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</strong></span>
+                          <span><small>Date</small><strong>{new Date(String(selectedRow.date)).toLocaleDateString(activeLocale())}</strong></span>
+                          <span><small>Heure</small><strong>{new Date(String(selectedRow.date)).toLocaleTimeString(activeLocale(), { hour: '2-digit', minute: '2-digit' })}</strong></span>
                         </div>
                         {tracePhotoUrl(selectedRow) ? (
                           <a className="haccp-trace-photo" href={tracePhotoUrl(selectedRow)} target="_blank" rel="noreferrer">
@@ -2436,7 +2437,7 @@ function ReceptionHistoryModal({
     return !normalizedQuery || JSON.stringify(row).toLowerCase().includes(normalizedQuery);
   });
   const todayKey = dateKey(new Date());
-  const selectedDateLabel = selectedDate === 'all' ? 'Toutes les dates' : new Date(`${selectedDate}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const selectedDateLabel = selectedDate === 'all' ? 'Toutes les dates' : new Date(`${selectedDate}T12:00:00`).toLocaleDateString(activeLocale(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const statusLabel = (value: unknown) => ({ CONFORMING: 'Conforme', PARTIAL: 'Partielle', REJECTED: 'Refusée', UNCONTROLLED: 'Contrôle non renseigné' })[String(value)] ?? 'Contrôle non renseigné';
   const statusTone = (value: unknown) => value === 'CONFORMING' ? 'complete' : value === 'REJECTED' || value === 'PARTIAL' ? 'warning' : 'warning';
   const allLines = (row: HaccpItem) => Array.isArray(row.lines) ? row.lines : [];
@@ -2473,14 +2474,14 @@ function ReceptionHistoryModal({
               <label className="haccp-trace-date-picker"><span>Date précise</span><input type="date" value={selectedDate === 'all' ? '' : selectedDate} onChange={(event) => { setSelectedDate(event.target.value || 'all'); setSelectedRow(null); }} /></label>
               <div className="haccp-trace-recent-days"><span>Jours avec réceptions</span>{dates.slice(0, 8).map((key) => {
                 const date = new Date(`${key}T12:00:00`); const count = rows.filter((row) => dateKey(receptionDate(row)) === key).length;
-                return <button type="button" key={key} className={selectedDate === key ? 'active' : ''} onClick={() => { setSelectedDate(key); setSelectedRow(null); }}><span><strong>{date.toLocaleDateString('fr-FR', { day: '2-digit' })}</strong><small>{date.toLocaleDateString('fr-FR', { month: 'short' })}</small></span><span>{date.toLocaleDateString('fr-FR', { weekday: 'long' })}</span><em>{count}</em></button>;
+                return <button type="button" key={key} className={selectedDate === key ? 'active' : ''} onClick={() => { setSelectedDate(key); setSelectedRow(null); }}><span><strong>{date.toLocaleDateString(activeLocale(), { day: '2-digit' })}</strong><small>{date.toLocaleDateString(activeLocale(), { month: 'short' })}</small></span><span>{date.toLocaleDateString(activeLocale(), { weekday: 'long' })}</span><em>{count}</em></button>;
               })}{!dates.length ? <p>Aucune réception enregistrée.</p> : null}</div>
             </aside>
             <section className="haccp-trace-results">
               <div className="haccp-trace-results-head"><div><span>Période sélectionnée</span><h3>{selectedDateLabel}</h3><p>{visibleRows.length} réception{visibleRows.length > 1 ? 's' : ''} trouvée{visibleRows.length > 1 ? 's' : ''}</p></div><div className="haccp-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Fournisseur, BL, produit…" />{query ? <button type="button" onClick={() => setQuery('')} aria-label="Effacer"><X size={14} /></button> : null}</div></div>
               {visibleRows.length ? <div className="haccp-trace-results-grid"><div className="haccp-trace-list">{visibleRows.map((row, index) => {
                 const selected = haccpItemId(selectedRow) === haccpItemId(row) && Boolean(haccpItemId(row)); const date = new Date(String(receptionDate(row)));
-                return <button type="button" key={haccpItemId(row) || `${receptionDate(row)}-${index}`} className={selected ? 'selected' : ''} onClick={() => setSelectedRow(row)}><span className={`haccp-trace-row-icon ${statusTone(row.controlStatus)}`}>{row.controlStatus === 'CONFORMING' ? <ShieldCheck size={18} /> : <AlertTriangle size={18} />}</span><span className="haccp-trace-row-copy"><strong>{String(row.supplier || 'Fournisseur non renseigné')}</strong><small>{String(row.deliveryNoteNumber || 'BL non renseigné')} · {statusLabel(row.controlStatus)}</small><em>{Number.isFinite(date.getTime()) ? date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Date inconnue'} · {allLines(row).length} ligne{allLines(row).length > 1 ? 's' : ''}</em></span><ChevronRight size={16} /></button>;
+                return <button type="button" key={haccpItemId(row) || `${receptionDate(row)}-${index}`} className={selected ? 'selected' : ''} onClick={() => setSelectedRow(row)}><span className={`haccp-trace-row-icon ${statusTone(row.controlStatus)}`}>{row.controlStatus === 'CONFORMING' ? <ShieldCheck size={18} /> : <AlertTriangle size={18} />}</span><span className="haccp-trace-row-copy"><strong>{String(row.supplier || 'Fournisseur non renseigné')}</strong><small>{String(row.deliveryNoteNumber || 'BL non renseigné')} · {statusLabel(row.controlStatus)}</small><em>{Number.isFinite(date.getTime()) ? date.toLocaleDateString(activeLocale(), { day: '2-digit', month: 'short', year: 'numeric' }) : 'Date inconnue'} · {allLines(row).length} ligne{allLines(row).length > 1 ? 's' : ''}</em></span><ChevronRight size={16} /></button>;
               })}</div><div className="haccp-trace-detail">{selectedRow ? <><div className="haccp-trace-detail-head"><div><span>Contrôle de réception</span><h3>{String(selectedRow.supplier || 'Fournisseur non renseigné')}</h3></div><span className={statusTone(selectedRow.controlStatus)}>{statusLabel(selectedRow.controlStatus)}</span></div><div className="haccp-trace-detail-meta"><span><small>Bon de livraison</small><strong>{String(selectedRow.deliveryNoteNumber || 'Non renseigné')}</strong></span><span><small>Température</small><strong>{selectedRow.deliveryTemperature == null ? 'Non renseignée' : `${selectedRow.deliveryTemperature} °C`}</strong></span><span><small>Commande</small><strong>{String(selectedRow.purchaseOrderNumber || 'Réception libre')}</strong></span><span><small>Emplacement</small><strong>{String(selectedRow.location?.name || selectedRow.site?.name || 'Non renseigné')}</strong></span></div><div className="haccp-trace-detail-meta">{allLines(selectedRow).map((line: HaccpItem, index: number) => <span key={`${line.id ?? index}`}><small>{String(line.product?.name || line.label || line.ocrLabel || 'Produit')}</small><strong>Livré {String(line.deliveredQuantity ?? line.quantity ?? '—')} · Accepté {String(line.acceptedQuantity ?? line.quantity ?? '—')}</strong></span>)}</div>{selectedRow.controlNotes ? <p className="muted">{String(selectedRow.controlNotes)}</p> : null}</> : <div className="production-flow-placeholder"><Truck size={32} /><strong>Sélectionnez une réception</strong><p>Le contrôle, le BL et les quantités apparaîtront ici.</p></div>}</div></div> : <div className="haccp-trace-empty"><CalendarDays size={34} /><strong>Aucune réception pour cette sélection</strong><p>Choisissez une autre journée ou revenez à toutes les dates.</p><button type="button" onClick={() => setSelectedDate('all')}>Voir tout l’historique</button></div>}
             </section>
           </div>
@@ -2514,7 +2515,7 @@ function haccpFreshness(value: unknown) {
   if (minutes < 60) return `Il y a ${minutes} min`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `Il y a ${hours} h`;
-  return new Date(time).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+  return new Date(time).toLocaleDateString(activeLocale(), { day: '2-digit', month: 'short' });
 }
 
 function HaccpLiveOperationsModal({
@@ -2806,9 +2807,9 @@ function ProcessLiveWidget({
       {session ? (
         <>
           <div className="haccp-process-temperature-flow">
-            <span><small>Départ</small><strong>{startTemperature == null ? '—' : `${startTemperature.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}°C`}</strong></span>
+            <span><small>Départ</small><strong>{startTemperature == null ? '—' : `${startTemperature.toLocaleString(activeLocale(), { maximumFractionDigits: 1 })}°C`}</strong></span>
             <span className="haccp-process-flow-line"><ArrowRight size={15} /></span>
-            <span><small>{completed ? 'Fin' : 'En attente'}</small><strong>{endTemperature == null ? '—' : `${endTemperature.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}°C`}</strong></span>
+            <span><small>{completed ? 'Fin' : 'En attente'}</small><strong>{endTemperature == null ? '—' : `${endTemperature.toLocaleString(activeLocale(), { maximumFractionDigits: 1 })}°C`}</strong></span>
           </div>
           <div className="haccp-widget-meta">
             <span><small>Cible finale</small><strong>{rangeLabel}</strong></span>
@@ -2869,7 +2870,7 @@ function TemperatureLiveWidget({
         <div><h4>{equipment.name || 'Enceinte'}</h4><p>{formatTemperatureTypeLabel(String(equipment.type ?? ''))}</p></div>
       </div>
       <div className="haccp-temperature-reading">
-        <strong>{hasValue ? value.toLocaleString('fr-FR', { maximumFractionDigits: 1 }) : '—'}<small>{hasValue ? '°C' : ''}</small></strong>
+        <strong>{hasValue ? value.toLocaleString(activeLocale(), { maximumFractionDigits: 1 }) : '—'}<small>{hasValue ? '°C' : ''}</small></strong>
         <span><em>{useSensor ? 'Capteur IoT' : hasValue ? 'Relevé terrain' : 'Aucune donnée'}</em><b>{haccpFreshness(measuredAt)}</b></span>
       </div>
       <div className="haccp-widget-meta">
@@ -3176,7 +3177,7 @@ function DashboardView({
           <span className="haccp-command-kicker"><ShieldCheck size={15} /> Pilotage du jour</span>
           <h2>Votre maîtrise sanitaire, en un coup d’œil.</h2>
           <p>
-            {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+            {new Date().toLocaleDateString(activeLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}
             {' · '}
             {coveredModules}/{dashboard.modules.length} domaines couverts aujourd’hui.
           </p>
@@ -3622,9 +3623,9 @@ function OilOperationsModal({
                       <strong>{String(row.equipment?.name || 'Équipement huile')}</strong>
                       <small>{actionLabel(row.action)} · {methodLabel(row.testMethod)}</small>
                       <em>
-                        {Number.isFinite(date.getTime()) ? date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Date inconnue'}
+                        {Number.isFinite(date.getTime()) ? date.toLocaleDateString(activeLocale(), { day: '2-digit', month: 'short', year: 'numeric' }) : 'Date inconnue'}
                         {' · '}
-                        {Number.isFinite(date.getTime()) ? date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                        {Number.isFinite(date.getTime()) ? date.toLocaleTimeString(activeLocale(), { hour: '2-digit', minute: '2-digit' }) : '—'}
                       </em>
                     </span>
                     <ChevronRight size={16} />
@@ -3639,7 +3640,7 @@ function OilOperationsModal({
               {selected ? (
                 <>
                   <div className="haccp-oil-detail-head">
-                    <div><span>Contrôle mobile</span><h3>{String(selected.equipment?.name || 'Équipement huile')}</h3><p>{sessionDate(selected).toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short' })}</p></div>
+                    <div><span>Contrôle mobile</span><h3>{String(selected.equipment?.name || 'Équipement huile')}</h3><p>{sessionDate(selected).toLocaleString(activeLocale(), { dateStyle: 'long', timeStyle: 'short' })}</p></div>
                     <span className={`haccp-oil-action-badge ${String(selected.action || '')}`}>{actionLabel(selected.action)}</span>
                   </div>
 
@@ -4562,7 +4563,7 @@ function ReportsArchiveView({
   onDelete: (item: HaccpItem) => void;
   onBack: () => void;
 }) {
-  const query = searchQuery.trim().toLocaleLowerCase('fr-FR');
+  const query = searchQuery.trim().toLocaleLowerCase(activeLocale());
   const filteredRows = useMemo(
     () => rows.filter((row) => {
       if (!query) return true;
@@ -4573,7 +4574,7 @@ function ReportsArchiveView({
         date.year,
         row.status === 'completed' ? 'terminé pdf' : String(row.status ?? ''),
         String(row.summary?.totalActivities ?? ''),
-      ].join(' ').toLocaleLowerCase('fr-FR').includes(query);
+      ].join(' ').toLocaleLowerCase(activeLocale()).includes(query);
     }),
     [query, rows],
   );
@@ -4785,7 +4786,7 @@ function reportDateMeta(value: unknown) {
     };
   }
   const timeZone = 'Europe/Paris';
-  const parts = new Intl.DateTimeFormat('fr-FR', {
+  const parts = new Intl.DateTimeFormat(activeLocale(), {
     timeZone,
     year: 'numeric',
     month: '2-digit',
@@ -4797,11 +4798,11 @@ function reportDateMeta(value: unknown) {
   return {
     year,
     monthKey: `${year}-${month}`,
-    monthLabel: new Intl.DateTimeFormat('fr-FR', { timeZone, month: 'long' }).format(date),
-    dayLabel: new Intl.DateTimeFormat('fr-FR', { timeZone, day: 'numeric', month: 'long', year: 'numeric' }).format(date),
-    shortLabel: new Intl.DateTimeFormat('fr-FR', { timeZone, day: '2-digit', month: '2-digit', year: 'numeric' }).format(date),
+    monthLabel: new Intl.DateTimeFormat(activeLocale(), { timeZone, month: 'long' }).format(date),
+    dayLabel: new Intl.DateTimeFormat(activeLocale(), { timeZone, day: 'numeric', month: 'long', year: 'numeric' }).format(date),
+    shortLabel: new Intl.DateTimeFormat(activeLocale(), { timeZone, day: '2-digit', month: '2-digit', year: 'numeric' }).format(date),
     dayNumber: part('day'),
-    weekday: new Intl.DateTimeFormat('fr-FR', { timeZone, weekday: 'short' }).format(date).replace('.', ''),
+    weekday: new Intl.DateTimeFormat(activeLocale(), { timeZone, weekday: 'short' }).format(date).replace('.', ''),
   };
 }
 
@@ -4809,7 +4810,7 @@ function formatReportGeneration(value: unknown) {
   if (!value) return 'automatiquement';
   const date = new Date(String(value));
   if (Number.isNaN(date.getTime())) return 'automatiquement';
-  return `à ${new Intl.DateTimeFormat('fr-FR', {
+  return `à ${new Intl.DateTimeFormat(activeLocale(), {
     timeZone: 'Europe/Paris',
     hour: '2-digit',
     minute: '2-digit',
@@ -4820,7 +4821,7 @@ function formatFileSize(value: unknown) {
   const bytes = Number(value ?? 0);
   if (!Number.isFinite(bytes) || bytes <= 0) return '—';
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} Ko`;
-  return `${(bytes / (1024 * 1024)).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} Mo`;
+  return `${(bytes / (1024 * 1024)).toLocaleString(activeLocale(), { maximumFractionDigits: 1 })} Mo`;
 }
 
 function SectionView({ section, rows, products, searchQuery, setSearchQuery, processType, onProcessType, onCreate, onDelete, onAnalyzeImage, onDownloadReport, onBack }: {
@@ -5039,7 +5040,7 @@ function CleaningChecklistView({
                       <strong className="haccp-equipment-title">{surface.surfaceName}</strong>
                       <span className="haccp-equipment-desc">
                         {surface.zoneName} • {frequencyLabel(surface.frequency ?? 'daily')}
-                        {surface.lastCleaned ? ` • Dernier nettoyage ${new Date(surface.lastCleaned).toLocaleDateString('fr-FR')}` : ''}
+                        {surface.lastCleaned ? ` • Dernier nettoyage ${new Date(surface.lastCleaned).toLocaleDateString(activeLocale())}` : ''}
                       </span>
                     </div>
                   </div>
@@ -5243,7 +5244,7 @@ function TemperatureAlertsView({
                     <div>
                       <strong className="haccp-equipment-title">{alert.title ?? 'Alerte température'}</strong>
                       <span className="haccp-equipment-desc">
-                        {alert.message ?? 'Alerte capteur ouverte'} • {alert.detectedAt ? new Date(alert.detectedAt).toLocaleString('fr-FR') : '-'}
+                        {alert.message ?? 'Alerte capteur ouverte'} • {alert.detectedAt ? new Date(alert.detectedAt).toLocaleString(activeLocale()) : '-'}
                       </span>
                     </div>
                   </div>
@@ -5289,7 +5290,7 @@ function TemperatureAlertsView({
                       </span>
                     </div>
                     <span className="haccp-equipment-desc">
-                      {sensorDisplayName(sensor)} • {thresholdLabel} • Dernier relevé {sensor.lastSeenAt ? new Date(sensor.lastSeenAt).toLocaleString('fr-FR') : '-'}
+                      {sensorDisplayName(sensor)} • {thresholdLabel} • Dernier relevé {sensor.lastSeenAt ? new Date(sensor.lastSeenAt).toLocaleString(activeLocale()) : '-'}
                     </span>
                   </div>
                 </div>
@@ -5491,7 +5492,7 @@ function SensorHistoryModal({
               </div>
               <span className="label">Dernière Temp.</span>
               <strong className="value">{latest ? `${Number(latest.temperature).toFixed(1)}°C` : '-'}</strong>
-              <span className="detail">{latest ? new Date(latest.measuredAt).toLocaleString('fr-FR') : 'Aucun relevé'}</span>
+              <span className="detail">{latest ? new Date(latest.measuredAt).toLocaleString(activeLocale()) : 'Aucun relevé'}</span>
             </div>
 
             {/* KPI 2: Relevés Chargés */}
@@ -5582,7 +5583,7 @@ function SensorHistoryModal({
                       return (
                         <tr key={reading.id ?? reading.measuredAt}>
                           <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                            {new Date(reading.measuredAt).toLocaleString('fr-FR')}
+                            {new Date(reading.measuredAt).toLocaleString(activeLocale())}
                           </td>
                           <td>
                             <span className={`haccp-status-pill ${pillClass}`} style={{ fontSize: '0.85rem', padding: '0.25rem 0.65rem', fontWeight: 700 }}>
@@ -5679,8 +5680,8 @@ function TemperatureLineChart({ readings, threshold }: { readings: HaccpSensorRe
   const yMax = threshold ? yFor(threshold.max) : null;
   const yMin = threshold ? yFor(threshold.min) : null;
 
-  const firstDate = readings[0] ? new Date(readings[0].measuredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '';
-  const lastDate = readings.at(-1) ? new Date(readings.at(-1)!.measuredAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '';
+  const firstDate = readings[0] ? new Date(readings[0].measuredAt).toLocaleTimeString(activeLocale(), { hour: '2-digit', minute: '2-digit' }) : '';
+  const lastDate = readings.at(-1) ? new Date(readings.at(-1)!.measuredAt).toLocaleTimeString(activeLocale(), { hour: '2-digit', minute: '2-digit' }) : '';
 
   const gridSteps = 4;
   const gridValues = Array.from({ length: gridSteps + 1 }, (_, i) => min + (i * (max - min)) / gridSteps);
@@ -7844,7 +7845,7 @@ function formatCell(row: HaccpItem, column: string, section?: HaccpTab) {
     return Array.isArray(target) ? target.length : 0;
   }
   if (column === 'temperature' || column.includes('Temperature')) return value != null ? `${Number(value)}°C` : '-';
-  if (column.toLowerCase().includes('date') || column.endsWith('At')) return value ? new Date(value).toLocaleString('fr-FR') : '-';
+  if (column.toLowerCase().includes('date') || column.endsWith('At')) return value ? new Date(value).toLocaleString(activeLocale()) : '-';
   if (section === 'reports' && column === 'status') return value === 'completed' ? 'Terminé' : value ?? '-';
   if (section === 'production' && column === 'source') return <span className={`badge-pill ${value === 'planning' ? 'badge-purple' : 'badge-emerald'}`}>{value === 'planning' ? 'Planning' : 'Manuel'}</span>;
   if (section === 'production' && column === 'status') {
@@ -7852,7 +7853,7 @@ function formatCell(row: HaccpItem, column: string, section?: HaccpTab) {
     return <span className={`badge-pill ${value === 'termine' ? 'badge-emerald' : value === 'annule' ? 'badge-red' : 'badge-blue'}`}>{statusLabel}</span>;
   }
   if (section === 'production' && column === 'conservationState') return ({ AMBIENT: 'Ambiant', CHILLED: 'Réfrigéré', FROZEN: 'Congelé', COOLING: 'Refroidissement' } as Record<string, string>)[String(value)] ?? value ?? '-';
-  if (typeof value === 'number') return value.toLocaleString('fr-FR');
+  if (typeof value === 'number') return value.toLocaleString(activeLocale());
   return value ?? '-';
 }
 
@@ -7891,7 +7892,7 @@ function buildLocalTemperatureAlertData(sensors: HaccpSensor[]): HaccpTemperatur
         severity: 'WARNING',
         status: 'OPEN',
         title: 'Capteur hors ligne',
-        message: `${sensorDisplayName(sensor)} ne remonte plus de relevé depuis ${sensor.lastSeenAt ? new Date(sensor.lastSeenAt).toLocaleString('fr-FR') : 'un moment'}.`,
+        message: `${sensorDisplayName(sensor)} ne remonte plus de relevé depuis ${sensor.lastSeenAt ? new Date(sensor.lastSeenAt).toLocaleString(activeLocale()) : 'un moment'}.`,
         detectedAt,
         sensor,
         payload: { lastSeenAt: sensor.lastSeenAt ?? null },

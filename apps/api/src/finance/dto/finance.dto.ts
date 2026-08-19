@@ -75,6 +75,10 @@ export class FinanceExportQueryDto {
   @IsOptional()
   @IsUUID()
   siteId?: string;
+
+  @IsOptional()
+  @IsIn(['fr', 'en'])
+  lang?: 'fr' | 'en';
 }
 
 export class SetSalesSourceInclusionDto {

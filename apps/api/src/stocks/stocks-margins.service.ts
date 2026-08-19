@@ -191,23 +191,23 @@ export class StocksMarginsService {
     return this.prisma.marginReport.findMany({ where: { organizationId }, orderBy: { createdAt: 'desc' }, take: 50 });
   }
 
-  async reportCsv(organizationId: string, reportId: string) {
+  async reportCsv(organizationId: string, reportId: string, language: 'fr' | 'en' = 'fr') {
     const report = await this.prisma.marginReport.findFirst({ where: { id: reportId, organizationId } });
     if (!report) throw new NotFoundException('Rapport Marges introuvable');
     const insights = Array.isArray(report.insights) ? report.insights : [];
     const metrics = (report.metrics ?? {}) as Record<string, unknown>;
     const rows = [
       ['Type', report.type],
-      ['Titre', report.title],
-      ['Début période', report.periodStart?.toISOString?.() ?? ''],
-      ['Fin période', report.periodEnd?.toISOString?.() ?? ''],
-      ['Créé le', report.createdAt.toISOString()],
-      ['Résumé', report.summary],
+      [language === 'en' ? 'Title' : 'Titre', report.title],
+      [language === 'en' ? 'Period start' : 'Début période', report.periodStart?.toISOString?.() ?? ''],
+      [language === 'en' ? 'Period end' : 'Fin période', report.periodEnd?.toISOString?.() ?? ''],
+      [language === 'en' ? 'Created on' : 'Créé le', report.createdAt.toISOString()],
+      [language === 'en' ? 'Summary' : 'Résumé', report.summary],
       [],
-      ['Indicateur', 'Valeur'],
+      language === 'en' ? ['Indicator', 'Value'] : ['Indicateur', 'Valeur'],
       ...Object.entries(metrics).map(([key, value]) => [key, String(value ?? '')]),
       [],
-      ['Insights'],
+      [language === 'en' ? 'Insights' : 'Analyses'],
       ...insights.map((item) => [String(item)]),
     ];
     return rows.map((row) => row.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');

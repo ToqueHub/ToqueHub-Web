@@ -1,3 +1,4 @@
+import { activeLocale } from '../i18n/runtime';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -2227,8 +2228,8 @@ function minDate(a: Date, b: Date) { return a < b ? a : b; }
 function maxDate(a: Date, b: Date) { return a > b ? a : b; }
 function inclusiveDays(start: Date, end: Date) { return Math.floor((startOfDay(end).getTime() - startOfDay(start).getTime()) / 86_400_000) + 1; }
 function roundLeaveDays(value: number) { return Math.round(value * 10) / 10; }
-function formatLeaveNumber(value: number) { return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 }).format(value); }
-function formatShortDate(value: Date) { return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(value); }
+function formatLeaveNumber(value: number) { return new Intl.NumberFormat(activeLocale(), { maximumFractionDigits: 1 }).format(value); }
+function formatShortDate(value: Date) { return new Intl.DateTimeFormat(activeLocale(), { day: '2-digit', month: '2-digit', year: 'numeric' }).format(value); }
 function jobDescriptionSummary(description?: string | null) {
   if (!description?.trim()) return '';
   const missionIndex = description.indexOf('Mission generale');
@@ -2382,7 +2383,7 @@ function formatLocation(collaborator: Pick<HrCollaborator, 'postalCode' | 'city'
   return location;
 }
 function hasText(value?: string | null): value is string { return Boolean(value?.trim()); }
-function formatDate(value?: string | null) { if (!value) return '—'; return new Intl.DateTimeFormat('fr-FR').format(new Date(value)); }
+function formatDate(value?: string | null) { if (!value) return '—'; return new Intl.DateTimeFormat(activeLocale()).format(new Date(value)); }
 function dateValue(value?: string | null) { return value ? new Date(value).getTime() : 0; }
 function toInputDate(value?: string | null) { return value ? new Date(value).toISOString().slice(0, 10) : ''; }
 function cleanLegacyHrNotes(value?: string | null) { return value && /Documents PDF a joindre|Documents PDF à joindre|Formations:/i.test(value) ? '' : value ?? ''; }

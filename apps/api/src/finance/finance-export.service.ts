@@ -21,6 +21,11 @@ type OrganizationIdentity = {
 
 type ExportResult = { buffer: Buffer; filename: string };
 type SalesPeriod = 'daily' | 'monthly' | 'annual' | 'custom';
+type ExportLanguage = 'fr' | 'en';
+
+function text(language: ExportLanguage, french: string, english: string) {
+  return language === 'en' ? english : french;
+}
 
 const COLORS = {
   navy: '#071426',
@@ -100,11 +105,15 @@ function slug(value: string) {
     .slice(0, 70);
 }
 
-function formatDate(value: string | Date | null | undefined, withTime = false) {
-  if (!value) return 'Non disponible';
+function formatDate(
+  value: string | Date | null | undefined,
+  withTime = false,
+  language: ExportLanguage = 'fr',
+) {
+  if (!value) return text(language, 'Non disponible', 'Not available');
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return cleanText(value);
-  return new Intl.DateTimeFormat('fr-FR', {
+  return new Intl.DateTimeFormat(language === 'en' ? 'en-GB' : 'fr-FR', {
     day: '2-digit',
     month: 'long',
     year: 'numeric',
@@ -113,12 +122,15 @@ function formatDate(value: string | Date | null | undefined, withTime = false) {
   }).format(date);
 }
 
-function formatCalendarDate(value: string | Date | null | undefined) {
-  if (!value) return 'Non disponible';
+function formatCalendarDate(
+  value: string | Date | null | undefined,
+  language: ExportLanguage = 'fr',
+) {
+  if (!value) return text(language, 'Non disponible', 'Not available');
   const key = value instanceof Date ? dateKey(value) : String(value).slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return formatDate(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return formatDate(value, false, language);
   const date = new Date(`${key}T12:00:00.000Z`);
-  return new Intl.DateTimeFormat('fr-FR', {
+  return new Intl.DateTimeFormat(language === 'en' ? 'en-GB' : 'fr-FR', {
     day: '2-digit',
     month: 'long',
     year: 'numeric',
@@ -126,37 +138,65 @@ function formatCalendarDate(value: string | Date | null | undefined) {
   }).format(date);
 }
 
-function formatNumber(value: number | null | undefined, digits = 0) {
+function formatNumber(
+  value: number | null | undefined,
+  digits = 0,
+  language: ExportLanguage = 'fr',
+) {
   if (value == null || !Number.isFinite(value)) return '-';
-  return new Intl.NumberFormat('fr-FR', {
+  return new Intl.NumberFormat(language === 'en' ? 'en-GB' : 'fr-FR', {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   }).format(value);
 }
 
-function formatMoney(value: number | null | undefined, currency = 'EUR') {
+function formatMoney(
+  value: number | null | undefined,
+  currency = 'EUR',
+  language: ExportLanguage = 'fr',
+) {
   if (value == null || !Number.isFinite(value)) return '-';
-  return new Intl.NumberFormat('fr-FR', {
+  return new Intl.NumberFormat(language === 'en' ? 'en-GB' : 'fr-FR', {
     style: 'currency',
     currency,
     maximumFractionDigits: 0,
   }).format(value);
 }
 
-function formatPercent(value: number | null | undefined, signed = false) {
+function formatPercent(
+  value: number | null | undefined,
+  signed = false,
+  language: ExportLanguage = 'fr',
+) {
   if (value == null || !Number.isFinite(value)) return '-';
-  return `${signed && value > 0 ? '+' : ''}${formatNumber(value, 1)} %`;
+  return `${signed && value > 0 ? '+' : ''}${formatNumber(value, 1, language)} %`;
 }
 
-function metricValue(metric: DashboardMetric, currency: string) {
+function metricValue(
+  metric: DashboardMetric,
+  currency: string,
+  language: ExportLanguage = 'fr',
+) {
   if (metric.value == null) return '-';
-  if (metric.unit === 'currency') return formatMoney(metric.value, currency);
-  if (metric.unit === 'percentage') return formatPercent(metric.value);
-  return formatNumber(metric.value, metric.id === 'transactions' ? 0 : 1);
+  if (metric.unit === 'currency') return formatMoney(metric.value, currency, language);
+  if (metric.unit === 'percentage') return formatPercent(metric.value, false, language);
+  return formatNumber(metric.value, metric.id === 'transactions' ? 0 : 1, language);
 }
 
-function rangeLabel(from: string | Date, to: string | Date) {
-  return `Du ${formatCalendarDate(from)} au ${formatCalendarDate(to)}`;
+function rangeLabel(from: string | Date, to: string | Date, language: ExportLanguage = 'fr') {
+  return language === 'en'
+    ? `From ${formatCalendarDate(from, language)} to ${formatCalendarDate(to, language)}`
+    : `Du ${formatCalendarDate(from, language)} au ${formatCalendarDate(to, language)}`;
+}
+
+function monthLabel(value: string | Date, language: ExportLanguage, includeYear = false) {
+  const date = value instanceof Date ? value : new Date(`${String(value).slice(0, 10)}T12:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return cleanText(value);
+  return new Intl.DateTimeFormat(language === 'en' ? 'en-GB' : 'fr-FR', {
+    month: 'long',
+    ...(includeYear ? { year: 'numeric' } : {}),
+    timeZone: 'UTC',
+  }).format(date);
 }
 
 function dataUrlBuffer(value: string | null | undefined) {
@@ -182,6 +222,7 @@ class FinancePdf {
     private readonly organization: OrganizationIdentity,
     private readonly siteLabel: string,
     private readonly currency: string,
+    private readonly language: ExportLanguage = 'fr',
   ) {
     this.logo = dataUrlBuffer(organization.logoDataUrl);
     this.doc = new PDFDocument({
@@ -192,7 +233,11 @@ class FinancePdf {
       info: {
         Title: `ToqueHub Finance - ${organization.name}`,
         Author: 'ToqueHub',
-        Subject: 'Rapport financier et opérationnel',
+        Subject: text(
+          this.language,
+          'Rapport financier et opérationnel',
+          'Financial and operational report',
+        ),
       },
     });
     this.doc.on('data', (chunk: Buffer) => this.chunks.push(chunk));
@@ -231,9 +276,14 @@ class FinancePdf {
       .fillColor(COLORS.emerald)
       .font('Helvetica-Bold')
       .fontSize(8)
-      .text('TOQUEHUB - PILOTAGE FINANCIER', textX, cover ? 31 : 22, {
+      .text(
+        text(this.language, 'TOQUEHUB - PILOTAGE FINANCIER', 'TOQUEHUB - FINANCIAL MANAGEMENT'),
+        textX,
+        cover ? 31 : 22,
+        {
         characterSpacing: 1,
-      });
+        },
+      );
     if (cover) {
       this.doc
         .fillColor(COLORS.white)
@@ -507,9 +557,10 @@ class FinancePdf {
 
   private compactMoney(value: number) {
     const absolute = Math.abs(value);
-    if (absolute >= 1_000_000) return `${formatNumber(value / 1_000_000, 1)} M`;
-    if (absolute >= 1_000) return `${formatNumber(value / 1_000, 0)} k`;
-    return formatNumber(value, 0);
+    if (absolute >= 1_000_000)
+      return `${formatNumber(value / 1_000_000, 1, this.language)} M`;
+    if (absolute >= 1_000) return `${formatNumber(value / 1_000, 0, this.language)} k`;
+    return formatNumber(value, 0, this.language);
   }
 
   table(title: string, headers: string[], rows: string[][], fractions?: number[]) {
@@ -614,12 +665,14 @@ class FinancePdf {
         .font('Helvetica')
         .fontSize(6.5)
         .text(
-          `Généré par ToqueHub le ${formatDate(new Date(), true)} - Données à contrôler avec les pièces sources.`,
+          this.language === 'en'
+            ? `Generated by ToqueHub on ${formatDate(new Date(), true, this.language)} - Data must be checked against source documents.`
+            : `Généré par ToqueHub le ${formatDate(new Date(), true, this.language)} - Données à contrôler avec les pièces sources.`,
           MARGIN,
           PAGE_HEIGHT - 26,
           { width: 410 },
         );
-      this.doc.text(`Page ${index + 1} / ${range.count}`, PAGE_WIDTH - 100, PAGE_HEIGHT - 26, {
+      this.doc.text(`${text(this.language, 'Page', 'Page')} ${index + 1} / ${range.count}`, PAGE_WIDTH - 100, PAGE_HEIGHT - 26, {
         width: 62,
         align: 'right',
       });
@@ -646,6 +699,7 @@ export class FinanceExportService {
     query: FinanceExportQueryDto,
   ): Promise<ExportResult> {
     await this.finance.assertReadable(organizationId, actor);
+    const language: ExportLanguage = query.lang === 'en' ? 'en' : 'fr';
     const organization = await this.prisma.organization.findUnique({
       where: { id: organizationId },
       select: { name: true, logoDataUrl: true, mainSiteName: true },
@@ -670,20 +724,39 @@ export class FinanceExportService {
           : data.dashboard.annual;
     const title =
       query.report === 'executive_annual'
-        ? 'Analyse annuelle exécutive'
+        ? text(language, 'Analyse annuelle exécutive', 'Annual executive analysis')
         : query.report === 'annual'
-          ? 'Rapport financier annuel'
+          ? text(language, 'Rapport financier annuel', 'Annual financial report')
           : query.report === 'monthly'
-            ? 'Rapport financier mensuel'
-            : 'Rapport financier journalier';
-    const siteLabel = data.scope.site?.name ?? 'Consolidation de tous les établissements';
-    const pdf = new FinancePdf(organization, siteLabel, data.settings.defaultCurrency);
+            ? text(language, 'Rapport financier mensuel', 'Monthly financial report')
+            : text(language, 'Rapport financier journalier', 'Daily financial report');
+    const siteLabel =
+      data.scope.site?.name ??
+      text(
+        language,
+        'Consolidation de tous les établissements',
+        'All locations consolidated',
+      );
+    const pdf = new FinancePdf(
+      organization,
+      siteLabel,
+      data.settings.defaultCurrency,
+      language,
+    );
+    const selectedLabel =
+      language === 'fr'
+        ? selected.label
+        : selected.kind === 'annual'
+          ? `Fiscal year ${new Date(selected.from).getUTCFullYear()}`
+          : selected.kind === 'monthly'
+            ? monthLabel(selected.from, language, true)
+            : formatCalendarDate(selected.from, language);
     pdf.start(
       title,
-      selected.label,
-      `${rangeLabel(selected.from, selected.to)} - Situation au ${formatCalendarDate(data.dashboard.context.asOf)}`,
+      selectedLabel,
+      `${rangeLabel(selected.from, selected.to, language)} - ${text(language, 'Situation au', 'As of')} ${formatCalendarDate(data.dashboard.context.asOf, language)}`,
     );
-    this.renderFinancial(pdf, data, selected, query.report === 'executive_annual');
+    this.renderFinancial(pdf, data, selected, query.report === 'executive_annual', language);
     const buffer = await pdf.finish();
     return {
       buffer,
@@ -696,6 +769,7 @@ export class FinanceExportService {
     organization: OrganizationIdentity,
     query: FinanceExportQueryDto,
   ): Promise<ExportResult> {
+    const language: ExportLanguage = query.lang === 'en' ? 'en' : 'fr';
     const period = (query.period ?? 'monthly') as SalesPeriod;
     const asOf = parseDate(query.asOf ?? query.to);
     let from: Date;
@@ -738,20 +812,26 @@ export class FinanceExportService {
       }),
     ]);
     if (query.siteId && !site) throw new BadRequestException('Établissement introuvable.');
-    const siteLabel = site?.name ?? 'Consolidation de tous les établissements';
+    const siteLabel =
+      site?.name ??
+      text(
+        language,
+        'Consolidation de tous les établissements',
+        'All locations consolidated',
+      );
     const currency = settings?.defaultCurrency ?? 'EUR';
-    const pdf = new FinancePdf(organization, siteLabel, currency);
-    const label = rangeLabel(data.period.from, data.period.to);
+    const pdf = new FinancePdf(organization, siteLabel, currency, language);
+    const label = rangeLabel(data.period.from, data.period.to, language);
     pdf.start(
-      'Ventes & affluence',
+      text(language, 'Ventes & affluence', 'Sales & footfall'),
       label,
-      `${data.period.days} jour(s) - Données opérationnelles consolidées`,
+      `${data.period.days} ${text(language, 'jour(s)', 'day(s)')} - ${text(language, 'Données opérationnelles consolidées', 'Consolidated operational data')}`,
     );
-    this.renderSales(pdf, data, currency);
+    this.renderSales(pdf, data, currency, language);
     const buffer = await pdf.finish();
     return {
       buffer,
-      filename: `ventes-affluence-${period}-${slug(siteLabel)}-${dateKey(from)}-${dateKey(to)}.pdf`,
+      filename: `${language === 'en' ? 'sales-footfall' : 'ventes-affluence'}-${period}-${slug(siteLabel)}-${dateKey(from)}-${dateKey(to)}.pdf`,
     };
   }
 
@@ -760,33 +840,45 @@ export class FinanceExportService {
     data: BootstrapData,
     period: DashboardPeriod,
     executive: boolean,
+    language: ExportLanguage,
   ) {
     const currency = data.settings.defaultCurrency;
+    const money = (value: number | null | undefined) => formatMoney(value, currency, language);
+    const number = (value: number | null | undefined, digits = 0) =>
+      formatNumber(value, digits, language);
+    const percent = (value: number | null | undefined, signed = false) =>
+      formatPercent(value, signed, language);
+    const date = (value: string | Date | null | undefined, withTime = false) =>
+      formatDate(value, withTime, language);
     pdf.summaryBanner(
       data.dashboard.health.level,
       data.dashboard.health.label,
       data.dashboard.health.summary,
     );
     pdf.section(
-      'Indicateurs essentiels',
-      'Réel, objectif budgétaire, écart et comparaison historique au même stade.',
+      text(language, 'Indicateurs essentiels', 'Key indicators'),
+      text(
+        language,
+        'Réel, objectif budgétaire, écart et comparaison historique au même stade.',
+        'Actuals, budget target, variance and historical comparison at the same point.',
+      ),
     );
     pdf.cards(
       period.core.map((metric) => ({
         label: metric.label,
-        value: metricValue(metric, currency),
+        value: metricValue(metric, currency, language),
         detail:
           metric.budget == null
-            ? metric.availabilityReason || 'Budget non disponible'
-            : `Budget ${formatMoney(metric.budget, currency)} - Écart ${formatMoney(metric.variance, currency)} (${formatPercent(metric.variancePercent, true)})`,
+            ? metric.availabilityReason || text(language, 'Budget non disponible', 'Budget unavailable')
+            : `${text(language, 'Budget', 'Budget')} ${money(metric.budget)} - ${text(language, 'Écart', 'Variance')} ${money(metric.variance)} (${percent(metric.variancePercent, true)})`,
         tone: metric.favorable == null ? 'default' : metric.favorable ? 'good' : 'critical',
       })),
       2,
     );
 
     if (executive) {
-      pdf.section('Lecture en 30 secondes');
-      pdf.bullets(this.executiveBullets(data, period, currency));
+      pdf.section(text(language, 'Lecture en 30 secondes', '30-second overview'));
+      pdf.bullets(this.executiveBullets(data, period, currency, language));
     }
 
     const visibleOptional = period.optional.filter(
@@ -794,8 +886,12 @@ export class FinanceExportService {
     );
     if (visibleOptional.length) {
       pdf.section(
-        'Repères de pilotage',
-        'Indicateurs complémentaires disponibles pour cette période.',
+        text(language, 'Repères de pilotage', 'Management indicators'),
+        text(
+          language,
+          'Indicateurs complémentaires disponibles pour cette période.',
+          'Additional indicators available for this period.',
+        ),
       );
       pdf.cards(
         visibleOptional.map((metric) => ({
@@ -803,7 +899,7 @@ export class FinanceExportService {
           value: metricValue(metric, currency),
           detail:
             metric.actualValue != null
-              ? `${metric.targetLabel || 'Objectif'} ${metricValue({ ...metric, value: metric.value }, currency)} - ${metric.actualLabel || 'Réalisé'} ${formatNumber(metric.actualValue, 1)}`
+              ? `${metric.targetLabel || text(language, 'Objectif', 'Target')} ${metricValue({ ...metric, value: metric.value }, currency, language)} - ${metric.actualLabel || text(language, 'Réalisé', 'Actual')} ${number(metric.actualValue, 1)}`
               : metric.help,
         })),
         3,
@@ -821,33 +917,39 @@ export class FinanceExportService {
       revenue?: number;
       transactions?: number;
     }>;
-    const labels = series.map(
-      (item) => item.label ?? item.date?.slice(5) ?? item.periodStart?.slice(5, 7) ?? '',
+    const labels = series.map((item) =>
+      language === 'en' && item.periodStart
+        ? monthLabel(item.periodStart, language)
+        : (item.label ?? item.date?.slice(5) ?? item.periodStart?.slice(5, 7) ?? ''),
     );
     const actualRevenue = series.map((item) => item.actualRevenue ?? item.revenue ?? 0);
     const budgetRevenue = series.map((item) => item.budgetRevenue ?? 0);
     if (labels.length && actualRevenue.some((value) => value !== 0)) {
-      pdf.chart('Chiffre d’affaires réel vs budget', labels, [
-        { label: 'Réel', values: actualRevenue, color: COLORS.emerald },
+      pdf.chart(text(language, 'Chiffre d’affaires réel vs budget', 'Actual revenue vs budget'), labels, [
+        { label: text(language, 'Réel', 'Actual'), values: actualRevenue, color: COLORS.emerald },
         { label: 'Budget', values: budgetRevenue, color: COLORS.blue },
       ]);
     }
 
     if (series.length) {
       const rows = series.map((item) => [
-        item.label ?? formatDate(item.date ?? item.periodStart),
-        formatMoney(item.actualRevenue ?? item.revenue, currency),
-        formatMoney(item.budgetRevenue, currency),
-        formatMoney(item.actualResult, currency),
-        formatMoney(item.budgetResult, currency),
+        language === 'en' && item.periodStart
+          ? monthLabel(item.periodStart, language, true)
+          : (item.label ?? date(item.date ?? item.periodStart)),
+        money(item.actualRevenue ?? item.revenue),
+        money(item.budgetRevenue),
+        money(item.actualResult),
+        money(item.budgetResult),
       ]);
       pdf.table(
         period.kind === 'annual'
-          ? 'Trajectoire mois par mois'
+          ? text(language, 'Trajectoire mois par mois', 'Month-by-month trend')
           : period.kind === 'monthly'
-            ? 'Activité jour par jour'
-            : 'Détail de la journée',
-        ['Période', 'CA réel', 'CA budget', 'Résultat réel', 'Résultat budget'],
+            ? text(language, 'Activité jour par jour', 'Daily activity')
+            : text(language, 'Détail de la journée', 'Daily breakdown'),
+        language === 'en'
+          ? ['Period', 'Actual revenue', 'Budget revenue', 'Actual result', 'Budget result']
+          : ['Période', 'CA réel', 'CA budget', 'Résultat réel', 'Résultat budget'],
         rows,
         [1.5, 1, 1, 1, 1],
       );
@@ -855,15 +957,17 @@ export class FinanceExportService {
 
     const comparisonRows = period.comparison.periods.map((item) => [
       `${item.label}\n${item.detail}`,
-      formatMoney(item.metrics.revenue, currency),
-      formatMoney(item.metrics.operating_expenses, currency),
-      formatMoney(item.metrics.payroll, currency),
-      formatMoney(item.metrics.operating_result, currency),
-      item.metrics.transactions == null ? '-' : formatNumber(item.metrics.transactions),
+      money(item.metrics.revenue),
+      money(item.metrics.operating_expenses),
+      money(item.metrics.payroll),
+      money(item.metrics.operating_result),
+      item.metrics.transactions == null ? '-' : number(item.metrics.transactions),
     ]);
     pdf.table(
-      'Comparaisons historiques',
-      ['Période', 'CA', 'Charges', 'Masse salariale', 'Résultat', 'Transactions'],
+      text(language, 'Comparaisons historiques', 'Historical comparisons'),
+      language === 'en'
+        ? ['Period', 'Revenue', 'Expenses', 'Payroll', 'Result', 'Transactions']
+        : ['Période', 'CA', 'Charges', 'Masse salariale', 'Résultat', 'Transactions'],
       comparisonRows,
       [1.55, 0.9, 0.9, 0.95, 0.9, 0.8],
     );
@@ -874,17 +978,17 @@ export class FinanceExportService {
         : period.kind === 'monthly'
           ? data.dashboard.reconciliation.monthly
           : data.dashboard.reconciliation.daily;
-    pdf.section('Rapprochement caisse - comptabilité');
+    pdf.section(text(language, 'Rapprochement caisse - comptabilité', 'POS - accounting reconciliation'));
     pdf.cards(
       [
         {
-          label: 'Caisse consolidée',
-          value: formatMoney(reconciliation.cashRegisterRevenue, currency),
+          label: text(language, 'Caisse consolidée', 'Consolidated POS'),
+          value: money(reconciliation.cashRegisterRevenue),
         },
-        { label: 'Comptabilité', value: formatMoney(reconciliation.accountingRevenue, currency) },
+        { label: text(language, 'Comptabilité', 'Accounting'), value: money(reconciliation.accountingRevenue) },
         {
-          label: 'Écart à contrôler',
-          value: formatMoney(reconciliation.difference, currency),
+          label: text(language, 'Écart à contrôler', 'Variance to review'),
+          value: money(reconciliation.difference),
           tone: reconciliation.status === 'matched' ? 'good' : 'attention',
         },
       ],
@@ -894,40 +998,42 @@ export class FinanceExportService {
     if (data.dashboard.budget) {
       const budget = data.dashboard.budget;
       pdf.section(
-        'Budget de référence',
-        `${budget.name} - scénario ${budget.scenario || 'de référence'}`,
+        text(language, 'Budget de référence', 'Reference budget'),
+        `${budget.name} - ${text(language, 'scénario', 'scenario')} ${budget.scenario || text(language, 'de référence', 'reference')}`,
       );
       pdf.cards(
         [
-          { label: 'CA budgété annuel', value: formatMoney(budget.totals.revenue, currency) },
+          { label: text(language, 'CA budgété annuel', 'Annual budgeted revenue'), value: money(budget.totals.revenue) },
           {
-            label: 'Charges budgétées',
-            value: formatMoney(budget.totals.operatingExpenses, currency),
+            label: text(language, 'Charges budgétées', 'Budgeted expenses'),
+            value: money(budget.totals.operatingExpenses),
           },
-          { label: 'Masse salariale', value: formatMoney(budget.totals.payroll, currency) },
+          { label: text(language, 'Masse salariale', 'Payroll'), value: money(budget.totals.payroll) },
           {
-            label: 'Résultat d’exploitation',
-            value: formatMoney(budget.totals.operatingResult, currency),
+            label: text(language, 'Résultat d’exploitation', 'Operating result'),
+            value: money(budget.totals.operatingResult),
           },
         ],
         2,
       );
       if (budget.targets) {
         pdf.table(
-          `Repères budgétaires - ${budget.targets.label}`,
-          ['Objectif', 'Par jour', 'Par semaine', 'Sur le mois'],
+          `${text(language, 'Repères budgétaires', 'Budget benchmarks')} - ${budget.targets.label}`,
+          language === 'en'
+            ? ['Target', 'Per day', 'Per week', 'For the month']
+            : ['Objectif', 'Par jour', 'Par semaine', 'Sur le mois'],
           [
             [
-              'CA pour respecter l’objectif',
-              formatMoney(budget.targets.revenueDay, currency),
-              formatMoney(budget.targets.revenueWeek, currency),
-              formatMoney(budget.targets.revenueMonth, currency),
+              text(language, 'CA pour respecter l’objectif', 'Revenue required to meet target'),
+              money(budget.targets.revenueDay),
+              money(budget.targets.revenueWeek),
+              money(budget.targets.revenueMonth),
             ],
             [
-              'Seuil sans perte',
-              formatMoney(budget.targets.breakEvenDay, currency),
-              formatMoney(budget.targets.breakEvenWeek, currency),
-              formatMoney(budget.targets.breakEvenMonth, currency),
+              text(language, 'Seuil sans perte', 'Break-even point'),
+              money(budget.targets.breakEvenDay),
+              money(budget.targets.breakEvenWeek),
+              money(budget.targets.breakEvenMonth),
             ],
           ],
           [1.6, 1, 1, 1],
@@ -935,23 +1041,25 @@ export class FinanceExportService {
       }
     }
 
-    pdf.section('Qualité, périmètre et traçabilité');
+    pdf.section(text(language, 'Qualité, périmètre et traçabilité', 'Quality, scope and traceability'));
     pdf.cards(
       [
-        { label: 'Qualité des données', value: data.quality.label },
+        { label: text(language, 'Qualité des données', 'Data quality'), value: data.quality.label },
         {
-          label: 'Sources connectées',
+          label: text(language, 'Sources connectées', 'Connected sources'),
           value: `${data.quality.connectedSourceCount} / ${data.quality.sourceCount}`,
         },
-        { label: 'Dernière mise à jour', value: formatDate(data.quality.lastUpdatedAt, true) },
-        { label: 'Couverture', value: data.dashboard.context.actualCoverageLabel },
+        { label: text(language, 'Dernière mise à jour', 'Last update'), value: date(data.quality.lastUpdatedAt, true) },
+        { label: text(language, 'Couverture', 'Coverage'), value: data.dashboard.context.actualCoverageLabel },
       ],
       2,
     );
     pdf.note(data.scope.note, data.scope.accountingAllocated ? 'info' : 'warning');
     if (data.quality.pendingReviewCount > 0) {
       pdf.note(
-        `${data.quality.pendingReviewCount} import(s) nécessitent encore une validation avant consolidation.`,
+        language === 'en'
+          ? `${data.quality.pendingReviewCount} import(s) still require validation before consolidation.`
+          : `${data.quality.pendingReviewCount} import(s) nécessitent encore une validation avant consolidation.`,
         'warning',
       );
     }
@@ -967,22 +1075,29 @@ export class FinanceExportService {
         source.provider,
         source.site?.name ??
           (data.scope.site && data.scope.accountingSourceIds.includes(source.id)
-            ? `${data.scope.site.name} (attribution contrôlée)`
-            : 'Organisation'),
+            ? `${data.scope.site.name} ${text(language, '(attribution contrôlée)', '(verified allocation)')}`
+            : text(language, 'Organisation', 'Organization')),
         source.status,
-        formatDate(source.coverageStart),
-        formatDate(source.coverageEnd),
-        formatDate(source.lastSyncedAt, true),
+        date(source.coverageStart),
+        date(source.coverageEnd),
+        date(source.lastSyncedAt, true),
       ]);
     pdf.table(
-      'Sources utilisées',
-      ['Source', 'Type', 'Site', 'État', 'Début', 'Fin', 'Synchro'],
+      text(language, 'Sources utilisées', 'Sources used'),
+      language === 'en'
+        ? ['Source', 'Type', 'Location', 'Status', 'Start', 'End', 'Sync']
+        : ['Source', 'Type', 'Site', 'État', 'Début', 'Fin', 'Synchro'],
       sourceRows,
       [1.25, 0.7, 0.9, 0.65, 0.8, 0.8, 1.1],
     );
   }
 
-  private executiveBullets(data: BootstrapData, period: DashboardPeriod, currency: string) {
+  private executiveBullets(
+    data: BootstrapData,
+    period: DashboardPeriod,
+    currency: string,
+    language: ExportLanguage,
+  ) {
     const metric = (id: string) =>
       [...period.core, ...period.optional].find((item) => item.id === id);
     const revenue = metric('revenue');
@@ -991,50 +1106,71 @@ export class FinanceExportService {
     if (revenue?.value != null) {
       bullets.push(
         revenue.budget == null
-          ? `Le chiffre d’affaires atteint ${formatMoney(revenue.value, currency)} ; aucun objectif budgétaire comparable n’est disponible.`
-          : `Le chiffre d’affaires atteint ${formatMoney(revenue.value, currency)}, soit ${formatPercent(revenue.variancePercent, true)} par rapport au budget au même stade.`,
+          ? language === 'en'
+            ? `Revenue reached ${formatMoney(revenue.value, currency, language)}; no comparable budget target is available.`
+            : `Le chiffre d’affaires atteint ${formatMoney(revenue.value, currency, language)} ; aucun objectif budgétaire comparable n’est disponible.`
+          : language === 'en'
+            ? `Revenue reached ${formatMoney(revenue.value, currency, language)}, ${formatPercent(revenue.variancePercent, true, language)} versus budget at the same point.`
+            : `Le chiffre d’affaires atteint ${formatMoney(revenue.value, currency, language)}, soit ${formatPercent(revenue.variancePercent, true, language)} par rapport au budget au même stade.`,
       );
     }
     if (result?.value != null) {
       bullets.push(
-        `Le résultat d’exploitation comptable est de ${formatMoney(result.value, currency)} (${result.value >= 0 ? 'activité rentable sur la période' : 'perte d’exploitation à corriger'}).`,
+        language === 'en'
+          ? `The accounting operating result is ${formatMoney(result.value, currency, language)} (${result.value >= 0 ? 'profitable activity for the period' : 'operating loss requiring action'}).`
+          : `Le résultat d’exploitation comptable est de ${formatMoney(result.value, currency, language)} (${result.value >= 0 ? 'activité rentable sur la période' : 'perte d’exploitation à corriger'}).`,
       );
     }
     bullets.push(
       data.dashboard.context.coverageComplete
-        ? 'La couverture de l’exercice est complète au stade analysé.'
-        : `La lecture reste provisoire : ${data.dashboard.context.actualCoverageLabel.toLowerCase()}.`,
+        ? text(language, 'La couverture de l’exercice est complète au stade analysé.', 'Fiscal-year coverage is complete at the analyzed point.')
+        : language === 'en'
+          ? `This analysis remains provisional: ${data.dashboard.context.actualCoverageLabel.toLowerCase()}.`
+          : `La lecture reste provisoire : ${data.dashboard.context.actualCoverageLabel.toLowerCase()}.`,
     );
     return bullets;
   }
 
-  private renderSales(pdf: FinancePdf, data: SalesInsightsData, currency: string) {
+  private renderSales(
+    pdf: FinancePdf,
+    data: SalesInsightsData,
+    currency: string,
+    language: ExportLanguage,
+  ) {
     const summary = data.summary;
-    const money = (value: number | null | undefined) => formatMoney(value, currency);
+    const money = (value: number | null | undefined) => formatMoney(value, currency, language);
+    const number = (value: number | null | undefined, digits = 0) =>
+      formatNumber(value, digits, language);
+    const percent = (value: number | null | undefined, signed = false) =>
+      formatPercent(value, signed, language);
     pdf.summaryBanner(
       data.quality.productCoveragePercent >= 90
         ? 'good'
         : data.quality.transactionRows
           ? 'attention'
           : 'unknown',
-      data.quality.transactionRows ? 'Activité consolidée' : 'Données insuffisantes',
-      `${formatNumber(summary.transactions)} transaction(s), ${formatNumber(data.quality.crossSourceDuplicatesExcluded)} doublon(s) inter-caisses écarté(s), couverture produits ${formatPercent(data.quality.productCoveragePercent)}.`,
+      data.quality.transactionRows
+        ? text(language, 'Activité consolidée', 'Consolidated activity')
+        : text(language, 'Données insuffisantes', 'Insufficient data'),
+      language === 'en'
+        ? `${number(summary.transactions)} transaction(s), ${number(data.quality.crossSourceDuplicatesExcluded)} cross-register duplicate(s) excluded, product coverage ${percent(data.quality.productCoveragePercent)}.`
+        : `${number(summary.transactions)} transaction(s), ${number(data.quality.crossSourceDuplicatesExcluded)} doublon(s) inter-caisses écarté(s), couverture produits ${percent(data.quality.productCoveragePercent)}.`,
     );
-    pdf.section('Synthèse commerciale');
+    pdf.section(text(language, 'Synthèse commerciale', 'Sales summary'));
     pdf.cards(
       [
-        { label: 'Chiffre d’affaires', value: money(summary.revenue) },
-        { label: 'Transactions', value: formatNumber(summary.transactions) },
-        { label: 'Ticket moyen', value: money(summary.averageTicket) },
+        { label: text(language, 'Chiffre d’affaires', 'Revenue'), value: money(summary.revenue) },
+        { label: 'Transactions', value: number(summary.transactions) },
+        { label: text(language, 'Ticket moyen', 'Average ticket'), value: money(summary.averageTicket) },
         {
-          label: 'Remboursements',
+          label: text(language, 'Remboursements', 'Refunds'),
           value: money(summary.refunds),
           tone: summary.refunds ? 'attention' : 'good',
         },
-        { label: 'Remises', value: money(summary.discounts) },
+        { label: text(language, 'Remises', 'Discounts'), value: money(summary.discounts) },
         {
-          label: 'Annulations',
-          value: formatNumber(summary.cancellations),
+          label: text(language, 'Annulations', 'Cancellations'),
+          value: number(summary.cancellations),
           tone: summary.cancellations ? 'attention' : 'good',
         },
       ],
@@ -1042,23 +1178,25 @@ export class FinanceExportService {
     );
 
     pdf.table(
-      'Comparaison des périodes',
-      ['Référence', 'CA', 'Évol. CA', 'Transactions', 'Évol. transactions', 'Ticket moyen'],
+      text(language, 'Comparaison des périodes', 'Period comparison'),
+      language === 'en'
+        ? ['Reference', 'Revenue', 'Revenue change', 'Transactions', 'Transaction change', 'Average ticket']
+        : ['Référence', 'CA', 'Évol. CA', 'Transactions', 'Évol. transactions', 'Ticket moyen'],
       [
         [
-          `Période précédente\n${rangeLabel(data.comparisons.previousPeriod.from, data.comparisons.previousPeriod.to)}`,
+          `${text(language, 'Période précédente', 'Previous period')}\n${rangeLabel(data.comparisons.previousPeriod.from, data.comparisons.previousPeriod.to, language)}`,
           money(data.comparisons.previousPeriod.revenue),
-          formatPercent(data.comparisons.previousPeriod.revenueVariationPercent, true),
-          formatNumber(data.comparisons.previousPeriod.transactions),
-          formatPercent(data.comparisons.previousPeriod.transactionVariationPercent, true),
+          percent(data.comparisons.previousPeriod.revenueVariationPercent, true),
+          number(data.comparisons.previousPeriod.transactions),
+          percent(data.comparisons.previousPeriod.transactionVariationPercent, true),
           money(data.comparisons.previousPeriod.averageTicket),
         ],
         [
-          `Même période N-1\n${rangeLabel(data.comparisons.previousYear.from, data.comparisons.previousYear.to)}`,
+          `${text(language, 'Même période N-1', 'Same period last year')}\n${rangeLabel(data.comparisons.previousYear.from, data.comparisons.previousYear.to, language)}`,
           money(data.comparisons.previousYear.revenue),
-          formatPercent(data.comparisons.previousYear.revenueVariationPercent, true),
-          formatNumber(data.comparisons.previousYear.transactions),
-          formatPercent(data.comparisons.previousYear.transactionVariationPercent, true),
+          percent(data.comparisons.previousYear.revenueVariationPercent, true),
+          number(data.comparisons.previousYear.transactions),
+          percent(data.comparisons.previousYear.transactionVariationPercent, true),
           money(data.comparisons.previousYear.averageTicket),
         ],
       ],
@@ -1067,23 +1205,25 @@ export class FinanceExportService {
 
     if (data.daily.length) {
       pdf.chart(
-        'Évolution jour par jour',
+        text(language, 'Évolution jour par jour', 'Daily trend'),
         data.daily.map(({ date }) => date.slice(5)),
         [
           {
-            label: 'Chiffre d’affaires',
+            label: text(language, 'Chiffre d’affaires', 'Revenue'),
             values: data.daily.map(({ revenue }) => revenue),
             color: COLORS.emerald,
           },
         ],
       );
       pdf.table(
-        'Détail quotidien',
-        ['Date', 'Chiffre d’affaires', 'Transactions', 'Ticket moyen'],
+        text(language, 'Détail quotidien', 'Daily breakdown'),
+        language === 'en'
+          ? ['Date', 'Revenue', 'Transactions', 'Average ticket']
+          : ['Date', 'Chiffre d’affaires', 'Transactions', 'Ticket moyen'],
         data.daily.map((item) => [
-          formatCalendarDate(item.date),
+          formatCalendarDate(item.date, language),
           money(item.revenue),
-          formatNumber(item.transactions),
+          number(item.transactions),
           money(item.transactions ? item.revenue / item.transactions : null),
         ]),
         [1.4, 1, 1, 1],
@@ -1093,24 +1233,26 @@ export class FinanceExportService {
     const activeHours = data.hourly.filter((item) => item.transactions > 0 || item.revenue !== 0);
     if (activeHours.length) {
       pdf.chart(
-        'Affluence par heure',
+        text(language, 'Affluence par heure', 'Hourly footfall'),
         activeHours.map(({ label }) => label),
         [
           {
-            label: 'Chiffre d’affaires',
+            label: text(language, 'Chiffre d’affaires', 'Revenue'),
             values: activeHours.map(({ revenue }) => revenue),
             color: COLORS.blue,
           },
         ],
       );
       pdf.table(
-        'Heures de pointe et heures creuses',
-        ['Heure', 'CA', 'Transactions', 'Part du CA', 'Ticket moyen'],
+        text(language, 'Heures de pointe et heures creuses', 'Peak and off-peak hours'),
+        language === 'en'
+          ? ['Hour', 'Revenue', 'Transactions', 'Revenue share', 'Average ticket']
+          : ['Heure', 'CA', 'Transactions', 'Part du CA', 'Ticket moyen'],
         activeHours.map((item) => [
           item.label,
           money(item.revenue),
-          formatNumber(item.transactions),
-          formatPercent(item.sharePercent),
+          number(item.transactions),
+          percent(item.sharePercent),
           money(item.averageTicket),
         ]),
         [1, 1, 1, 1, 1],
@@ -1119,13 +1261,19 @@ export class FinanceExportService {
 
     if (data.weekdays.length) {
       pdf.table(
-        'Performance par jour de la semaine',
-        ['Jour', 'CA', 'Transactions', 'Part du CA', 'Ticket moyen'],
+        text(language, 'Performance par jour de la semaine', 'Performance by weekday'),
+        language === 'en'
+          ? ['Day', 'Revenue', 'Transactions', 'Revenue share', 'Average ticket']
+          : ['Jour', 'CA', 'Transactions', 'Part du CA', 'Ticket moyen'],
         data.weekdays.map((item) => [
-          item.label,
+          language === 'en'
+            ? ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][
+                item.weekday
+              ] ?? item.label
+            : item.label,
           money(item.revenue),
-          formatNumber(item.transactions),
-          formatPercent(item.sharePercent),
+          number(item.transactions),
+          percent(item.sharePercent),
           money(item.averageTicket),
         ]),
         [1.2, 1, 1, 1, 1],
@@ -1134,15 +1282,17 @@ export class FinanceExportService {
 
     if (data.topProducts.length) {
       pdf.table(
-        'Produits les plus vendus',
-        ['Produit', 'Catégorie', 'Qté', 'CA', 'Part', 'Évol. qté', 'Marge'],
+        text(language, 'Produits les plus vendus', 'Best-selling products'),
+        language === 'en'
+          ? ['Product', 'Category', 'Qty', 'Revenue', 'Share', 'Qty change', 'Margin']
+          : ['Produit', 'Catégorie', 'Qté', 'CA', 'Part', 'Évol. qté', 'Marge'],
         data.topProducts.map((item) => [
           item.name,
-          item.category || 'Non classé',
-          formatNumber(item.quantity, 1),
+          item.category || text(language, 'Non classé', 'Uncategorized'),
+          number(item.quantity, 1),
           money(item.gross),
-          formatPercent(item.sharePercent),
-          formatPercent(item.quantityVariationPercent, true),
+          percent(item.sharePercent),
+          percent(item.quantityVariationPercent, true),
           item.margin == null ? '-' : money(item.margin),
         ]),
         [1.45, 1, 0.6, 0.85, 0.7, 0.8, 0.8],
@@ -1151,14 +1301,16 @@ export class FinanceExportService {
 
     if (data.lowProducts.length) {
       pdf.table(
-        'Produits à faible rotation',
-        ['Produit', 'Catégorie', 'Quantité', 'CA', 'Part du CA'],
+        text(language, 'Produits à faible rotation', 'Low-rotation products'),
+        language === 'en'
+          ? ['Product', 'Category', 'Quantity', 'Revenue', 'Revenue share']
+          : ['Produit', 'Catégorie', 'Quantité', 'CA', 'Part du CA'],
         data.lowProducts.map((item) => [
           item.name,
-          item.category || 'Non classé',
-          formatNumber(item.quantity, 1),
+          item.category || text(language, 'Non classé', 'Uncategorized'),
+          number(item.quantity, 1),
           money(item.gross),
-          formatPercent(item.sharePercent),
+          percent(item.sharePercent),
         ]),
         [1.7, 1.2, 0.8, 0.9, 0.9],
       );
@@ -1166,67 +1318,75 @@ export class FinanceExportService {
 
     if (data.categories.length) {
       pdf.table(
-        'Mix des catégories',
-        ['Catégorie', 'Quantité', 'CA brut', 'CA net', 'Part du CA'],
+        text(language, 'Mix des catégories', 'Category mix'),
+        language === 'en'
+          ? ['Category', 'Quantity', 'Gross revenue', 'Net revenue', 'Revenue share']
+          : ['Catégorie', 'Quantité', 'CA brut', 'CA net', 'Part du CA'],
         data.categories.map((item) => [
           item.category,
-          formatNumber(item.quantity, 1),
+          number(item.quantity, 1),
           money(item.gross),
           money(item.net),
-          formatPercent(item.sharePercent),
+          percent(item.sharePercent),
         ]),
         [1.7, 0.9, 1, 1, 0.9],
       );
     }
 
-    pdf.section('Affluence et effectif planifié');
+    pdf.section(text(language, 'Affluence et effectif planifié', 'Footfall and scheduled staff'));
     if (data.staffing.available) {
       pdf.cards(
         [
-          { label: 'Heures planifiées', value: `${formatNumber(data.staffing.plannedHours, 1)} h` },
-          { label: 'CA / heure planifiée', value: money(data.staffing.revenuePerPlannedHour) },
-          { label: 'Services analysés', value: formatNumber(data.staffing.assignments) },
+          { label: text(language, 'Heures planifiées', 'Scheduled hours'), value: `${number(data.staffing.plannedHours, 1)} h` },
+          { label: text(language, 'CA / heure planifiée', 'Revenue / scheduled hour'), value: money(data.staffing.revenuePerPlannedHour) },
+          { label: text(language, 'Services analysés', 'Services analyzed'), value: number(data.staffing.assignments) },
         ],
         3,
       );
       const staffed = data.staffing.hourly.filter((item) => item.plannedHours > 0);
       pdf.table(
-        'Productivité par tranche horaire',
-        ['Heure', 'Heures planifiées', 'CA', 'Transactions', 'CA / h', 'Tickets / h'],
+        text(language, 'Productivité par tranche horaire', 'Productivity by time slot'),
+        language === 'en'
+          ? ['Hour', 'Scheduled hours', 'Revenue', 'Transactions', 'Revenue / h', 'Tickets / h']
+          : ['Heure', 'Heures planifiées', 'CA', 'Transactions', 'CA / h', 'Tickets / h'],
         staffed.map((item) => [
           `${String(item.hour).padStart(2, '0')}h`,
-          `${formatNumber(item.plannedHours, 1)} h`,
+          `${number(item.plannedHours, 1)} h`,
           money(item.revenue),
-          formatNumber(item.transactions),
+          number(item.transactions),
           money(item.revenuePerPlannedHour),
-          formatNumber(item.transactionsPerPlannedHour, 1),
+          number(item.transactionsPerPlannedHour, 1),
         ]),
         [0.7, 1.2, 1, 1, 1, 1],
       );
     } else {
       pdf.note(
-        'Aucun planning exploitable n’est disponible sur la période : la comparaison affluence/effectif est volontairement masquée.',
+        text(
+          language,
+          'Aucun planning exploitable n’est disponible sur la période : la comparaison affluence/effectif est volontairement masquée.',
+          'No usable schedule is available for this period, so the footfall/staffing comparison is hidden.',
+        ),
         'warning',
       );
     }
 
-    pdf.section('Qualité et traçabilité');
+    pdf.section(text(language, 'Qualité et traçabilité', 'Quality and traceability'));
     pdf.cards(
       [
-        { label: 'Tickets analysés', value: formatNumber(data.quality.transactionRows) },
+        { label: text(language, 'Tickets analysés', 'Tickets analyzed'), value: number(data.quality.transactionRows) },
         {
-          label: 'Doublons écartés',
-          value: formatNumber(data.quality.crossSourceDuplicatesExcluded),
+          label: text(language, 'Doublons écartés', 'Duplicates excluded'),
+          value: number(data.quality.crossSourceDuplicatesExcluded),
         },
-        { label: 'Lignes produits', value: formatNumber(data.quality.productRows) },
-        { label: 'Couverture produits', value: formatPercent(data.quality.productCoveragePercent) },
+        { label: text(language, 'Lignes produits', 'Product lines'), value: number(data.quality.productRows) },
+        { label: text(language, 'Couverture produits', 'Product coverage'), value: percent(data.quality.productCoveragePercent) },
       ],
       2,
     );
     if (data.quality.sources.length) {
       pdf.table(
-        'Sources de ventes retenues',
-        ['Source', 'Fournisseur', 'Identifiant'],
+        text(language, 'Sources de ventes retenues', 'Selected sales sources'),
+        language === 'en' ? ['Source', 'Provider', 'Identifier'] : ['Source', 'Fournisseur', 'Identifiant'],
         data.quality.sources.map((source) => [source.name, source.provider, source.id]),
         [1.5, 1, 2],
       );

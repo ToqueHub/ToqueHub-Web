@@ -1,3 +1,4 @@
+import { activeLocale } from '../i18n/runtime';
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
@@ -112,7 +113,7 @@ function monthGridStart(value: string) {
 
 function formatDay(value: string, compact = false) {
   return new Intl.DateTimeFormat(
-    'fr-FR',
+    activeLocale(),
     compact
       ? { weekday: 'short', day: 'numeric', month: 'short' }
       : { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' },
@@ -407,7 +408,7 @@ export function ProductionFabricationCalendar({
   const periodLabel = useMemo(
     () =>
       mode === 'month'
-        ? new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' }).format(
+        ? new Intl.DateTimeFormat(activeLocale(), { month: 'long', year: 'numeric' }).format(
             parseDay(anchor),
           )
         : mode === 'week'
@@ -501,8 +502,8 @@ export function ProductionFabricationCalendar({
           referenceLabel:
             referenceValue > 0
               ? isMass
-                ? `${referenceValue.toLocaleString('fr-FR')} kg`
-                : `${referenceValue.toLocaleString('fr-FR')} portions`
+                ? `${referenceValue.toLocaleString(activeLocale())} kg`
+                : `${referenceValue.toLocaleString(activeLocale())} portions`
               : null,
           durationMinutes: profileDurationMinutes(profile),
           contextLabel: profile.outputProduct?.name
@@ -1571,12 +1572,12 @@ export function ProductionFabricationCalendar({
                           <span>
                             <Clock3 size={12} /> {campaign.plannedTime || '08:00'}
                             {' · '}
-                            {target.value.toLocaleString('fr-FR', {
+                            {target.value.toLocaleString(activeLocale(), {
                               maximumFractionDigits: 3,
                             })}{' '}
                             {target.unit}
                             {recipeMultiplier > 0 &&
-                              ` · Recette ×${recipeMultiplier.toLocaleString('fr-FR', {
+                              ` · Recette ×${recipeMultiplier.toLocaleString(activeLocale(), {
                                 maximumFractionDigits: 2,
                               })}`}
                           </span>
@@ -1839,7 +1840,7 @@ export function ProductionFabricationCalendar({
                           className={`fabrication-recipe-yield${!recipeReady ? ' missing' : ''}`}
                         >
                           {recipeReady
-                            ? `Rendement de la fiche : ${referencePortions.toLocaleString('fr-FR')} portions`
+                            ? `Rendement de la fiche : ${referencePortions.toLocaleString(activeLocale())} portions`
                             : 'Rendement manquant dans la fiche technique'}
                         </span>
                       </div>
@@ -1869,13 +1870,13 @@ export function ProductionFabricationCalendar({
                       <div className="fabrication-catalog-quantity-result">
                         <span>
                           Fiche de base
-                          <strong>{referencePortions.toLocaleString('fr-FR')} portions</strong>
+                          <strong>{referencePortions.toLocaleString(activeLocale())} portions</strong>
                         </span>
                         <span>
                           Multiplicateur
                           <strong>
                             ×
-                            {recipeMultiplier.toLocaleString('fr-FR', {
+                            {recipeMultiplier.toLocaleString(activeLocale(), {
                               maximumFractionDigits: 2,
                             })}
                           </strong>
@@ -2117,7 +2118,7 @@ export function ProductionFabricationCalendar({
                           ? (editingCampaign.technicalSheet?.totalMassGrams ?? 0)
                           : (editingCampaign.technicalSheet?.referencePortions ?? 0),
                       ) / (editDraft.quantityMode === 'MASS' ? 1000 : 1)
-                    ).toLocaleString('fr-FR', {
+                    ).toLocaleString(activeLocale(), {
                       maximumFractionDigits: 3,
                     })}{' '}
                     {editDraft.quantityMode === 'MASS' ? 'kg' : 'portions'}
@@ -2135,7 +2136,7 @@ export function ProductionFabricationCalendar({
                         ),
                         0.001,
                       )
-                    ).toLocaleString('fr-FR', { maximumFractionDigits: 2 })}
+                    ).toLocaleString(activeLocale(), { maximumFractionDigits: 2 })}
                   </strong>
                 </div>
               </div>
@@ -2365,7 +2366,7 @@ export function ProductionFabricationCalendar({
                               ? 'Unité de stock incompatible'
                               : requirement.status === 'PRODUCT_ARCHIVED'
                                 ? 'Produit archivé'
-                                : `Il manque ${missing.toLocaleString('fr-FR', {
+                                : `Il manque ${missing.toLocaleString(activeLocale(), {
                                     maximumFractionDigits: 3,
                                   })} ${requirement.unitSymbolSnapshot}`}
                           </span>
@@ -2373,11 +2374,11 @@ export function ProductionFabricationCalendar({
                         <div>
                           <span>Disponible</span>
                           <strong>
-                            {available.toLocaleString('fr-FR', {
+                            {available.toLocaleString(activeLocale(), {
                               maximumFractionDigits: 3,
                             })}{' '}
                             /{' '}
-                            {required.toLocaleString('fr-FR', {
+                            {required.toLocaleString(activeLocale(), {
                               maximumFractionDigits: 3,
                             })}{' '}
                             {requirement.unitSymbolSnapshot}
@@ -2563,7 +2564,7 @@ export function ProductionFabricationCalendar({
                           {planned
                             ? ' · Déjà planifié'
                             : recipeReady
-                              ? ` · Rendement de la fiche : ${referencePortions.toLocaleString('fr-FR')} portions`
+                              ? ` · Rendement de la fiche : ${referencePortions.toLocaleString(activeLocale())} portions`
                               : ' · Rendement manquant dans la fiche technique'}
                         </span>
                       </div>
@@ -2827,14 +2828,14 @@ export function ProductionFabricationCalendar({
                         <span>Aperçu automatique des besoins</span>
                         <strong>
                           Recette ×{' '}
-                          {draftQuantityPlan.factor.toLocaleString('fr-FR', {
+                          {draftQuantityPlan.factor.toLocaleString(activeLocale(), {
                             maximumFractionDigits: 3,
                           })}
                         </strong>
                       </div>
                       <small>
                         {draftQuantityPlan.portions != null
-                          ? `${draftQuantityPlan.portions.toLocaleString('fr-FR', {
+                          ? `${draftQuantityPlan.portions.toLocaleString(activeLocale(), {
                               maximumFractionDigits: 2,
                             })} portions`
                           : ''}
@@ -2843,7 +2844,7 @@ export function ProductionFabricationCalendar({
                           ? ' · '
                           : ''}
                         {draftQuantityPlan.massKilograms != null
-                          ? `${draftQuantityPlan.massKilograms.toLocaleString('fr-FR', {
+                          ? `${draftQuantityPlan.massKilograms.toLocaleString(activeLocale(), {
                               maximumFractionDigits: 3,
                             })} kg`
                           : ''}
@@ -2856,7 +2857,7 @@ export function ProductionFabricationCalendar({
                           <strong>
                             {(
                               Number(ingredient.quantity ?? 0) * draftQuantityPlan.factor
-                            ).toLocaleString('fr-FR', {
+                            ).toLocaleString(activeLocale(), {
                               maximumFractionDigits: 3,
                             })}{' '}
                             {ingredient.unit?.symbol ?? ''}
@@ -3059,7 +3060,7 @@ export function ProductionFabricationCalendar({
                           <div key={`${ingredient.productId}:${ingredient.unitId}`}>
                             <span>{ingredient.productName}</span>
                             <strong>
-                              {Number(ingredient.quantity).toLocaleString('fr-FR', {
+                              {Number(ingredient.quantity).toLocaleString(activeLocale(), {
                                 maximumFractionDigits: 3,
                               })}{' '}
                               {ingredient.unitSymbol}
@@ -3109,7 +3110,7 @@ export function ProductionFabricationCalendar({
                               {(
                                 Number(order.referenceYield ?? order.referencePortions) /
                                 (order.quantityMode === 'MASS' ? 1000 : 1)
-                              ).toLocaleString('fr-FR', {
+                              ).toLocaleString(activeLocale(), {
                                 maximumFractionDigits: 3,
                               })}{' '}
                               {order.quantityMode === 'MASS' ? 'kg' : 'portions'}
@@ -3118,14 +3119,14 @@ export function ProductionFabricationCalendar({
                               {(
                                 Number(order.requestedQuantity ?? order.requestedPortions) /
                                 (order.quantityMode === 'MASS' ? 1000 : 1)
-                              ).toLocaleString('fr-FR', {
+                              ).toLocaleString(activeLocale(), {
                                 maximumFractionDigits: 3,
                               })}{' '}
                               {order.quantityMode === 'MASS' ? 'kg' : 'portions'}
                             </strong>
                             <em>
                               Recette ×
-                              {Number(order.recipeMultiplier).toLocaleString('fr-FR', {
+                              {Number(order.recipeMultiplier).toLocaleString(activeLocale(), {
                                 maximumFractionDigits: 2,
                               })}
                             </em>
@@ -3136,14 +3137,14 @@ export function ProductionFabricationCalendar({
                             <div key={`${order.id}:${ingredient.productId}`}>
                               <span>{ingredient.productName}</span>
                               <strong>
-                                {Number(ingredient.quantity).toLocaleString('fr-FR', {
+                                {Number(ingredient.quantity).toLocaleString(activeLocale(), {
                                   maximumFractionDigits: 3,
                                 })}{' '}
                                 {ingredient.unitSymbol}
                               </strong>
                               <small>
                                 Réservé :{' '}
-                                {Number(ingredient.reservedQuantity).toLocaleString('fr-FR', {
+                                {Number(ingredient.reservedQuantity).toLocaleString(activeLocale(), {
                                   maximumFractionDigits: 3,
                                 })}{' '}
                                 {ingredient.unitSymbol}

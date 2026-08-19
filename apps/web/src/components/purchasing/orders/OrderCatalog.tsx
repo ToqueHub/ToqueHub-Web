@@ -1,3 +1,4 @@
+import { activeLocale } from '../../../i18n/runtime';
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -135,7 +136,7 @@ export function DeliverySelection({
   const lastMonth = availableDates.at(-1)?.slice(0, 7) ?? visibleMonth;
   const available = new Set(availableDates);
   const monthDays = calendarMonthDays(visibleMonth);
-  const monthTitle = monthDate(visibleMonth).toLocaleDateString('fr-FR', {
+  const monthTitle = monthDate(visibleMonth).toLocaleDateString(activeLocale(), {
     month: 'long',
     year: 'numeric',
   });

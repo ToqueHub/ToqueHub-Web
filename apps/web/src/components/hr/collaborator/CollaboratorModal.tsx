@@ -1,3 +1,4 @@
+import { activeLocale } from '../../../i18n/runtime';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
 import { AlertCircle, ArrowLeft, BriefcaseBusiness, CalendarDays, CheckCircle2, FileText, GraduationCap, History, Info, NotebookText, Search, ShieldCheck, Sparkles, UploadCloud, UserRound, UsersRound, X, ChevronDown, Mail, Phone, MapPin, Globe, Languages, Hash } from 'lucide-react';
@@ -1142,7 +1143,7 @@ function isArchived(item: { isArchived?: boolean; archivedAt?: string | null }) 
 function normalizeLabel(value?: string | null) { return (value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim(); }
 function cleanLegacyHrNotes(value?: string | null) { return value && /Documents PDF à joindre|Documents PDF a joindre|Formations:/i.test(value) ? '' : value ?? ''; }
 function toInputDate(value?: string | null) { return value ? new Date(value).toISOString().slice(0, 10) : ''; }
-function formatDate(value?: string | null) { return value ? new Intl.DateTimeFormat('fr-FR').format(new Date(value)) : '-'; }
+function formatDate(value?: string | null) { return value ? new Intl.DateTimeFormat(activeLocale()).format(new Date(value)) : '-'; }
 function formatMinutes(value?: number | null) { if (value == null) return '-'; const hours = Math.floor(value / 60); const minutes = Math.round(value % 60); return `${hours}h${minutes.toString().padStart(2, '0')}`; }
 function hoursInputValue(minutes?: number | null) {
   if (minutes == null) return '';

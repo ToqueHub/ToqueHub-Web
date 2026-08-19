@@ -1,3 +1,4 @@
+import { activeLocale } from './i18n/runtime';
 export type StockCategoryVatOption = {
   rate: number;
   label: string;
@@ -60,5 +61,5 @@ export function stockCategoryVatPolicy(countryCode?: string | null): StockCatego
 }
 
 export function formatVatRate(rate: number) {
-  return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(rate);
+  return new Intl.NumberFormat(activeLocale(), { maximumFractionDigits: 2 }).format(rate);
 }

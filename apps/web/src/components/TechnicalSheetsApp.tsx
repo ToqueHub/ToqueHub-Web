@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { activeLocale } from '../i18n/runtime';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -87,7 +88,7 @@ const emptyRecipe: TechnicalSheetRecipePayload = {
 };
 
 const money = (value?: number | string | null) => `${Number(value ?? 0).toFixed(2)} €`;
-const date = (value?: string | null) => (value ? new Date(value).toLocaleDateString('fr-FR') : '—');
+const date = (value?: string | null) => (value ? new Date(value).toLocaleDateString(activeLocale()) : '—');
 const isArchived = (item?: { isArchived?: boolean; archivedAt?: string | null }) =>
   Boolean(item?.isArchived || item?.archivedAt);
 const recipeImportWorking = (status: TechnicalSheetRecipeImportStatus) =>
@@ -224,11 +225,11 @@ function ingredientCostEstimate(
 function formatMass(grams: number) {
   if (!Number.isFinite(grams) || grams <= 0) return 'Non calculable';
   if (grams >= 1_000) {
-    return `${(grams / 1_000).toLocaleString('fr-FR', {
+    return `${(grams / 1_000).toLocaleString(activeLocale(), {
       maximumFractionDigits: 3,
     })} kg`;
   }
-  return `${grams.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} g`;
+  return `${grams.toLocaleString(activeLocale(), { maximumFractionDigits: 1 })} g`;
 }
 
 function recipePayloadForSave(
@@ -4237,7 +4238,7 @@ function RecipeCompositionNode({
       >
         <span>{product?.name || line.productName || 'Produit'}</span>
         <strong>
-          {required.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} {unit?.symbol || ''}
+          {required.toLocaleString(activeLocale(), { maximumFractionDigits: 3 })} {unit?.symbol || ''}
         </strong>
       </div>
     );
@@ -4266,7 +4267,7 @@ function RecipeCompositionNode({
       >
         <strong>{source.name}</strong>
         <span>
-          {required.toLocaleString('fr-FR', { maximumFractionDigits: 3 })}{' '}
+          {required.toLocaleString(activeLocale(), { maximumFractionDigits: 3 })}{' '}
           {unit?.symbol || source.yieldUnit?.symbol || ''}
         </span>
       </div>
@@ -4364,7 +4365,7 @@ function RecipeDialog({
         referenceLabel:
           recipe.yieldMode === 'MASS'
             ? formatMass(Number(recipe.totalMassGrams ?? 0))
-            : `${Number(recipe.referencePortions ?? 1).toLocaleString('fr-FR')} portions`,
+            : `${Number(recipe.referencePortions ?? 1).toLocaleString(activeLocale())} portions`,
         durationMinutes: Number(recipe.totalTimeMinutes ?? 0) || null,
         contextLabel: 'Préparation active',
       })),
@@ -5306,7 +5307,7 @@ function RecipeDialog({
                         MULTIPLICATEUR
                       </span>
                       <strong>
-                        ×{previewRatio.toLocaleString('fr-FR', { maximumFractionDigits: 3 })}
+                        ×{previewRatio.toLocaleString(activeLocale(), { maximumFractionDigits: 3 })}
                       </strong>
                     </div>
                   </div>
@@ -5352,7 +5353,7 @@ function RecipeDialog({
                                 : product?.name || line.productName || 'Composant'}
                             </span>
                             <strong style={{ display: 'block', color: '#1e3a8a' }}>
-                              {(Number(line.quantity) * previewRatio).toLocaleString('fr-FR', {
+                              {(Number(line.quantity) * previewRatio).toLocaleString(activeLocale(), {
                                 maximumFractionDigits: 3,
                               })}{' '}
                               {unit?.symbol || ''}
@@ -5608,7 +5609,7 @@ function RecipeDialog({
                                                 )
                                               : `${Number(
                                                   selectedSubRecipe.referencePortions ?? 1,
-                                                ).toLocaleString('fr-FR')} portions`
+                                                ).toLocaleString(activeLocale())} portions`
                                           }`
                                         : `${subRecipeOptions.length} préparation(s) active(s)`}
                                     </small>

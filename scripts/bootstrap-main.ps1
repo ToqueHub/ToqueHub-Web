@@ -45,6 +45,13 @@ function New-RandomSecret {
   return (($Bytes | ForEach-Object { $_.ToString('x2') }) -join '')
 }
 
+function Convert-EnvToUtf8NoBom {
+  $EnvPath = Resolve-Path '.env'
+  $Content = [System.IO.File]::ReadAllText($EnvPath)
+  $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($EnvPath, $Content, $Utf8NoBom)
+}
+
 function Set-EnvIfPlaceholder([string]$Key, [string]$Value) {
   $Lines = @(Get-Content '.env')
   $Pattern = '^' + [regex]::Escape($Key) + '='
@@ -61,7 +68,11 @@ function Set-EnvIfPlaceholder([string]$Key, [string]$Value) {
   } else {
     $Lines = @($Lines | ForEach-Object { if ($_ -match $Pattern) { $Replacement } else { $_ } })
   }
-  Set-Content -Path '.env' -Value $Lines -Encoding utf8
+  # Windows PowerShell 5.1 writes a UTF-8 BOM with Set-Content -Encoding utf8.
+  # Node's loadEnvFile() treats that BOM as part of the first variable name,
+  # which makes DATABASE_URL look missing to Prisma.
+  $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllLines((Resolve-Path '.env'), $Lines, $Utf8NoBom)
 }
 
 foreach ($Arg in $args) {
@@ -168,9 +179,19 @@ function Prepare-PostgresWithPsql {
 }
 
 function Invoke-Docker([string[]] $Arguments) {
-  & docker @Arguments
-  if ($LASTEXITCODE -ne 0) {
-    throw "Docker command failed: docker $($Arguments -join ' ')"
+  # Docker writes normal progress (including image pulls) to stderr. With the
+  # script-wide Stop preference, Windows PowerShell can turn that output into a
+  # terminating NativeCommandError even when Docker succeeds.
+  $PreviousErrorActionPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    & docker @Arguments
+    $DockerExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $PreviousErrorActionPreference
+  }
+  if ($DockerExitCode -ne 0) {
+    throw "Docker command failed with exit code ${DockerExitCode}: docker $($Arguments -join ' ')"
   }
 }
 
@@ -180,6 +201,28 @@ function Test-DockerContainerExists([string] $Name) {
     throw 'Docker is installed but is not responding. Start Docker Desktop, then rerun this script.'
   }
   return @($Existing) -contains $Name
+}
+
+function Find-RunningDockerPostgres([string] $HostPort) {
+  $PreviousErrorActionPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    $Containers = & docker ps --filter "publish=$HostPort" --format '{{.Names}}|{{.Image}}'
+    $DockerExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $PreviousErrorActionPreference
+  }
+  if ($DockerExitCode -ne 0) {
+    throw 'Docker is installed but is not responding. Start Docker Desktop, then rerun this script.'
+  }
+
+  foreach ($Container in @($Containers)) {
+    $Parts = $Container -split '\|', 2
+    if (($Parts.Count -eq 2) -and ($Parts[1] -match '^postgres(?:\:|$)')) {
+      return $Parts[0]
+    }
+  }
+  return $null
 }
 
 function Wait-DockerPostgres([string] $ContainerName) {
@@ -216,9 +259,21 @@ function Prepare-PostgresWithDocker {
   $VolumeName = if ($env:TOQUEHUB_POSTGRES_VOLUME) { $env:TOQUEHUB_POSTGRES_VOLUME } else { 'toquehub-postgres-dev-data' }
   $Image = if ($env:POSTGRES_DOCKER_IMAGE) { $env:POSTGRES_DOCKER_IMAGE } else { 'postgres:15-alpine' }
 
+  if (-not $env:TOQUEHUB_POSTGRES_CONTAINER -and -not (Test-DockerContainerExists $ContainerName)) {
+    $RunningPostgres = Find-RunningDockerPostgres $script:DbPort
+    if ($RunningPostgres) {
+      $ContainerName = $RunningPostgres
+    }
+  }
+
   if (Test-DockerContainerExists $ContainerName) {
-    Write-Step "Starting PostgreSQL Docker container $ContainerName"
-    Invoke-Docker @('start', $ContainerName) *> $null
+    $IsRunning = (& docker inspect -f '{{.State.Running}}' $ContainerName).Trim() -eq 'true'
+    if ($IsRunning) {
+      Write-Step "Reusing PostgreSQL Docker container $ContainerName"
+    } else {
+      Write-Step "Starting PostgreSQL Docker container $ContainerName"
+      Invoke-Docker @('start', $ContainerName) *> $null
+    }
   } else {
     Write-Step "Creating PostgreSQL Docker container $ContainerName"
     Invoke-Docker @(
@@ -286,6 +341,10 @@ if (-not (Test-Path '.env')) {
 } else {
   Write-Step '.env already exists, keeping it'
 }
+
+# Repair .env files previously written by Windows PowerShell with a UTF-8 BOM.
+# Otherwise Node exposes the first key as an invisible-BOM-prefixed name.
+Convert-EnvToUtf8NoBom
 
 Set-EnvIfPlaceholder 'PURCHASING_RESEND_ENCRYPTION_KEY' (New-RandomSecret)
 Set-EnvIfPlaceholder 'PURCHASING_EMAIL_ENCRYPTION_KEY' (New-RandomSecret)

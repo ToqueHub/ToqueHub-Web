@@ -1,3 +1,4 @@
+import { activeLanguage } from '../i18n/runtime';
 import type {
   BootstrapAdminResponse,
   CompleteOnboardingPayload,
@@ -719,6 +720,7 @@ export const api = {
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== '') search.set(key, String(value));
     });
+    search.set('lang', activeLanguage());
     const response = await fetch(`${API_URL}/api/finance/exports/pdf?${search.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -1926,6 +1928,7 @@ export const api = {
           templateId: payload.templateId,
           startDate: payload.fromDate,
           endDate: payload.toDate,
+          language: activeLanguage(),
         }),
       },
       token,
@@ -2032,6 +2035,7 @@ export const api = {
     Object.entries(params).forEach(([key, value]) => {
       if (value) search.set(key, value);
     });
+    search.set('lang', activeLanguage());
     const response = await fetch(
       `${API_URL}/api/production/tasks/export.pdf?${search.toString()}`,
       { headers: { Authorization: `Bearer ${token}` } },
@@ -2042,7 +2046,8 @@ export const api = {
     const blob = await response.blob();
     const disposition = response.headers.get('Content-Disposition') ?? '';
     const filename =
-      disposition.match(/filename="?([^"]+)"?/)?.[1] ?? `planning-production-${params.date}.pdf`;
+      disposition.match(/filename="?([^"]+)"?/)?.[1] ??
+      `${activeLanguage() === 'en' ? 'production-schedule' : 'planning-production'}-${params.date}.pdf`;
     const url = URL.createObjectURL(blob);
     const link = globalThis.document.createElement('a');
     link.href = url;
@@ -2856,6 +2861,7 @@ export const api = {
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== '') search.set(key, String(value));
     });
+    search.set('lang', activeLanguage());
     const response = await fetch(`${API_URL}/api/planning/exports/pdf?${search.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -2880,6 +2886,7 @@ export const api = {
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== '') search.set(key, String(value));
     });
+    search.set('lang', activeLanguage());
     const response = await fetch(
       `${API_URL}/api/planning/exports/attendance/pdf?${search.toString()}`,
       {
@@ -2891,7 +2898,7 @@ export const api = {
     const disposition = response.headers.get('Content-Disposition') ?? '';
     const filename =
       disposition.match(/filename="?([^"]+)"?/)?.[1] ??
-      `feuilles-emargement-${params.year}-${String(params.month).padStart(2, '0')}.pdf`;
+      `${activeLanguage() === 'en' ? 'attendance-sheets' : 'feuilles-emargement'}-${params.year}-${String(params.month).padStart(2, '0')}.pdf`;
     const url = URL.createObjectURL(blob);
     const link = globalThis.document.createElement('a');
     link.href = url;
@@ -3695,7 +3702,7 @@ export const api = {
     );
   },
   async downloadProductImportTemplate(token: string) {
-    const response = await fetch(`${API_URL}/api/products/import/template.csv`, {
+    const response = await fetch(`${API_URL}/api/products/import/template.csv?lang=${activeLanguage()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!response.ok) throw new ApiError(await readApiErrorMessage(response), response.status);
@@ -3703,7 +3710,7 @@ export const api = {
     const url = URL.createObjectURL(blob);
     const link = globalThis.document.createElement('a');
     link.href = url;
-    link.download = 'modele-import-produits.csv';
+    link.download = activeLanguage() === 'en' ? 'product-import-template.csv' : 'modele-import-produits.csv';
     link.click();
     URL.revokeObjectURL(url);
   },
@@ -3773,7 +3780,7 @@ export const api = {
     token: string,
     rows: Array<{ rowNumber: number; fields: ProductImportPreviewFields; selected?: boolean }>,
   ) {
-    const response = await fetch(`${API_URL}/api/products/csv-creator/export`, {
+    const response = await fetch(`${API_URL}/api/products/csv-creator/export?lang=${activeLanguage()}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ rows }),
@@ -3782,7 +3789,7 @@ export const api = {
     const url = URL.createObjectURL(await response.blob());
     const link = globalThis.document.createElement('a');
     link.href = url;
-    link.download = 'produits-crees.csv';
+    link.download = activeLanguage() === 'en' ? 'created-products.csv' : 'produits-crees.csv';
     link.click();
     URL.revokeObjectURL(url);
   },
@@ -3934,7 +3941,7 @@ export const api = {
     );
   },
   async downloadMarginReportCsv(token: string, reportId: string, filename = 'rapport-marges.csv') {
-    const response = await fetch(`${API_URL}/api/stocks/margins/reports/${reportId}.csv`, {
+    const response = await fetch(`${API_URL}/api/stocks/margins/reports/${reportId}.csv?lang=${activeLanguage()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!response.ok) throw new ApiError(await response.text(), response.status);

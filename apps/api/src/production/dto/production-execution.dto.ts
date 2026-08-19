@@ -76,6 +76,7 @@ export class ProductionOperationalExportQueryDto {
   @IsString() date!: string;
   @IsUUID() serviceId!: string;
   @IsOptional() @IsUUID() siteId?: string;
+  @IsOptional() @IsIn(['fr', 'en']) lang?: 'fr' | 'en';
 }
 
 export class StartProductionBatchDto {

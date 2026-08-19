@@ -4,6 +4,7 @@ import {
   IsBoolean,
   IsDateString,
   IsEnum,
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
@@ -459,6 +460,7 @@ export class PrepareMenuExportDto {
   @IsOptional() @IsUUID() templateId?: string;
   @IsOptional() @IsString() startDate?: string;
   @IsOptional() @IsString() endDate?: string;
+  @IsOptional() @IsIn(['fr', 'en']) language?: 'fr' | 'en';
   @IsOptional() filters?: unknown;
 }
 

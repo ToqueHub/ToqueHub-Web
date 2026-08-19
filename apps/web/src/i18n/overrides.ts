@@ -1,0 +1,116 @@
+export const englishOverrides: Readonly<Record<string, string>> = {
+  créneaux: 'time slots',
+  'Document opérationnel': 'Operational document',
+  'Émargement mensuel': 'Monthly attendance sheet',
+  'jour(s)': 'day(s)',
+  'MEAL SERVICE': 'MEAL SERVICE',
+  'PRE-SERVICE CHECKS': 'PRE-SERVICE CHECKS',
+  'Repères budgétaires': 'Budget benchmarks',
+  scénario: 'scenario',
+  'Service type': 'Service type',
+  'Services analyzed': 'Services analyzed',
+  Déconnexion: 'Log out',
+  Réception: 'Goods receipt',
+  Réceptions: 'Goods receipts',
+  'Cours des Produits': 'Market Prices',
+  'Mes Documents': 'My Documents',
+  Général: 'General',
+  'Fiches Techniques': 'Technical Sheets',
+  'Fiche Technique': 'Technical Sheet',
+  'Cuisine Centrale': 'Central Kitchen',
+  Établissement: 'Establishment',
+  'Bon de livraison': 'Delivery note',
+  'Bons de livraison': 'Delivery notes',
+  'Bon de commande': 'Purchase order',
+  'Bons de commande': 'Purchase orders',
+  'Se connecter': 'Log in',
+  Connexion: 'Log in',
+  'Mot de passe': 'Password',
+  'Adresse e-mail': 'Email address',
+  'Tableau de bord': 'Dashboard',
+  'Aucune donnée': 'No data',
+  'Non renseigné': 'Not provided',
+  'Non renseignée': 'Not provided',
+  Fermer: 'Close',
+  Annuler: 'Cancel',
+  Confirmer: 'Confirm',
+  Enregistrer: 'Save',
+  Supprimer: 'Delete',
+  Modifier: 'Edit',
+  Ajouter: 'Add',
+  Rechercher: 'Search',
+  Réinitialiser: 'Reset',
+  Continuer: 'Continue',
+  Retour: 'Back',
+  Suivant: 'Next',
+  Terminer: 'Finish',
+  Français: 'French',
+  Anglais: 'English',
+  asparège: 'asparagus',
+  ASPARÈGE: 'ASPARAGUS',
+  'ex: commercial@fournisseur.fr': 'e.g. sales@supplier.example',
+  Langue: 'Language',
+  "Choisir la langue de l’application": 'Choose the application language',
+  'Passer en français': 'Switch to French',
+  'Passer en anglais': 'Switch to English',
+  'Accéder à la connexion': 'Open the login page',
+  'Un compte administrateur ou un établissement a déjà été configuré. Le protocole de démarrage guidé initial est verrouillé pour protéger votre base de données locale.':
+    'An administrator account or establishment has already been configured. The initial setup wizard is locked to protect your local database.',
+  'Fiabilité :': 'Strength:',
+  'À renforcer (10 car. requis + maj/min/chiffre/symb)':
+    'Needs improvement (10 characters with uppercase, lowercase, number and symbol)',
+  'ex: chef_mario': 'e.g. chef_mario',
+  'ex: Mario': 'e.g. Mario',
+  'ex: Rossi': 'e.g. Rossi',
+  "Date d'embauche": 'Hire date',
+  'Date d’export invalide.': 'Invalid export date.',
+  'Date de production invalide.': 'Invalid production date.',
+  'Date invalide': 'Invalid date',
+  'Date invalide.': 'Invalid date.',
+  'La date OCR est invalide.': 'The OCR date is invalid.',
+  'Une date est obligatoire pour planifier la production du menu.':
+    'A date is required to schedule menu production.',
+  'ToqueHub — Gestion professionnelle de cuisine':
+    'ToqueHub — Professional Kitchen Management',
+  'Ressources humaines': 'Human Resources',
+  'Rapports HACCP': 'HACCP Reports',
+  'Sauvegarde & Restauration': 'Backup & Restore',
+  'Continuité d’activité & Résilience': 'Business Continuity & Resilience',
+  'Gestion complète de vos données : sauvegardes manuelles nommées, automatisation programmée, réplication Cloud Google Drive et reprise après sinistre.':
+    'Complete control of your data: named manual backups, scheduled automation, Google Drive cloud replication and disaster recovery.',
+  'Souveraineté Locale & Chiffrement': 'Local Sovereignty & Encryption',
+  "Console d'administration locale et cloud souveraine. Vos applications partagent la même organisation, les mêmes utilisateurs et les mêmes données sécurisées.":
+    'Sovereign local and cloud administration console. Your applications share the same organization, users and secured data.',
+  'Vue d’ensemble du stock physique. Toute variation passe par un mouvement tracé ; le catalogue produit reste indépendant des quantités.':
+    'Overview of physical inventory. Every change is recorded as a traceable stock movement, while the product catalog remains independent of quantities.',
+  'Bibliothèque des factures, bons de livraison et tickets de caisse importés dans ToqueHub, classés par fournisseur et par date.':
+    'Library of invoices, delivery notes and receipts imported into ToqueHub, organized by supplier and date.',
+  'ToqueHub lit les cellules localement. Mistral peut seulement proposer une correspondance pour un nom ambigu à partir des noms candidats du catalogue ; il ne reçoit ni quantités, ni prix, ni totaux et ne met jamais le stock à jour.':
+    'ToqueHub reads spreadsheet cells locally. Mistral can only suggest a match for an ambiguous name from catalog candidates; it receives no quantities, prices or totals and never updates stock.',
+  'Sélectionnez les services présents dans votre établissement. Vous pourrez en ajouter d’autres plus tard.':
+    'Select the departments present at your location. You can add more later.',
+  "Sélectionnez les services présents dans votre établissement. Vous pourrez en ajouter d'autres plus tard.":
+    'Select the departments present at your location. You can add more later.',
+  'Si ce nom existe déjà, le fournisseur existant sera réutilisé. Sinon, il sera créé au moment de l’import.':
+    'If this name already exists, the existing supplier will be reused. Otherwise, it will be created during import.',
+  'Clés API & IA': 'API Keys & AI',
+  "Configurez vos services d'intelligence artificielle locale.":
+    'Configure your local artificial intelligence services.',
+  'Souveraineté Française': 'French Data Sovereignty',
+  "est le leader français de l'IA. En configurant votre clé API, vous activez l'OCR intelligent de ToqueHub pour déchiffrer instantanément vos factures et bons de commande. Vos données restent hébergées en France.":
+    'is a leading French AI company. Adding your API key enables ToqueHub intelligent OCR to process invoices and purchase orders instantly. Your data remains hosted in France.',
+  'API d’envoi des bons de commande du module Achats.':
+    'Email delivery API for purchase orders generated by the Purchasing module.',
+  'transmet les commandes fournisseurs générées par ToqueHub. La clé est enregistrée pour l’organisation, masquée dans l’interface et n’est jamais renvoyée au navigateur.':
+    'sends supplier orders generated by ToqueHub. The key is stored for the organization, masked in the interface and never returned to the browser.',
+  'API comptable du module Finance : comptes, écritures, exercices, soldes et budgets.':
+    'Accounting API for the Finance module: accounts, journal entries, fiscal years, balances and budgets.',
+  'Cours des Produits transforme ToqueHub en centre de veille économique alimentaire. Les données RNM FranceAgriMer sont consultées en temps réel via le backend ToqueHub, sans import ni duplication dans vos référentiels métier. Fonctionnalités clés : - Catalogue RNM, recherche, secteurs, catégories et pagination. - Fiches produits avec dernières cotations et historique graphique. - Favoris personnels persistés, conservés après désinstallation. - Historique global filtrable pour suivre les tendances de marché.':
+    'Market Prices turns ToqueHub into a food-market intelligence hub. RNM FranceAgriMer data is retrieved in real time through the ToqueHub backend without importing or duplicating your business records. Key features: RNM catalog and search, sectors, categories, pagination, product price histories, persistent favorites and filterable market trends.',
+  'Planning devient le centre opérationnel de ToqueHub sans dupliquer la RH. Il consomme collaborateurs, services, postes, roulements, absences et compétences pour générer des affectations déterministes, contrôler les conflits RH, proposer des remplacements et préparer exports PDF/Excel/impression.':
+    'Planning is ToqueHub’s operational scheduling hub. It uses employees, departments, positions, rotations, absences and skills to generate deterministic assignments, detect HR conflicts, suggest replacements and prepare PDF, Excel and print exports.',
+  'Si le résultat est directement présenté au client, choisissez « Plat ou produit fini ». S’il sert à fabriquer autre chose, choisissez « Préparation intermédiaire ».':
+    'If the result is served directly to the customer, choose “Dish or finished product”. If it is used to make something else, choose “Intermediate preparation”.',
+  Carte: 'Card',
+  'Carte & disponibilités': 'Card & Availability',
+};

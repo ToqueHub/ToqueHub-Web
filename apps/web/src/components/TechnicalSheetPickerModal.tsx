@@ -1,3 +1,4 @@
+import { activeLocale } from '../i18n/runtime';
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, ChefHat, Clock3, ListChecks, Search, Sparkles, X } from 'lucide-react';
@@ -41,7 +42,7 @@ function normalize(value: string) {
   return value
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
-    .toLocaleLowerCase('fr-FR')
+    .toLocaleLowerCase(activeLocale())
     .trim();
 }
 

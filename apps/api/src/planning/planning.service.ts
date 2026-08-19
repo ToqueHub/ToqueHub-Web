@@ -18,12 +18,14 @@ type OperationalNeedMetadata = { season: string; timeSlot: string; note?: string
 type PlanningTemplateKind = 'DAY_PRESET' | 'WEEKLY_ROTATION';
 type PlanningPeriodStatus = 'DRAFT' | 'CONTROLLED' | 'PUBLISHED' | 'MODIFIED_AFTER_PUBLICATION' | 'LOCKED';
 type PlanningPeriodEventType = 'CONTROLLED' | 'PUBLISHED' | 'MODIFIED_AFTER_PUBLICATION' | 'LOCKED';
-type PlanningPdfInput = { title: string; organizationName: string; mode: 'week' | 'month' | 'custom'; period: Period; assignments: AnyAssignment[] };
-type PersonalPlanningPdfInput = { organizationName: string; employee: { firstName: string; lastName: string; departmentName?: string | null; positionName?: string | null; siteName?: string | null }; period: Period; assignments: AnyAssignment[] };
+type ExportLanguage = 'fr' | 'en';
+type PlanningPdfInput = { title: string; organizationName: string; mode: 'week' | 'month' | 'custom'; period: Period; assignments: AnyAssignment[]; language: ExportLanguage };
+type PersonalPlanningPdfInput = { organizationName: string; employee: { firstName: string; lastName: string; departmentName?: string | null; positionName?: string | null; siteName?: string | null }; period: Period; assignments: AnyAssignment[]; language: ExportLanguage };
 type PlanningPdfRow = { employeeName: string; departmentName: string; assignmentsByDate: Map<string, AnyAssignment[]> };
 type PlanningPdfPage = { days: string[]; rows: PlanningPdfRow[]; rowHeights: number[] };
 type AttendanceExportRow = Record<string, any>;
 type AttendanceExportEmployee = { employeeId: string; employeeName: string; departmentName: string; positionName: string; siteName: string; rows: AttendanceExportRow[] };
+type AttendancePdfInput = { organizationName: string; month: number; year: number; employees: AttendanceExportEmployee[]; language: ExportLanguage };
 
 const NEED_SEASONS: Record<string, string> = { basse: 'Basse', normale: 'Normale', haute: 'Haute', 'evenement-brunch': 'Événement / brunch' };
 const NEED_TIME_SLOTS: Record<string, string> = { journee: 'Journée', matin: 'Matin', midi: 'Midi', soir: 'Soir', fermeture: 'Fermeture', personnalise: 'Personnalisé' };
@@ -205,6 +207,7 @@ export class PlanningService {
   }
 
   async exportPlanningPdf(organizationId: string, q: PlanningExportPdfQueryDto) {
+    const language = q.lang === 'en' ? 'en' : 'fr';
     const mode = q.mode === 'custom' ? 'custom' : q.mode === 'month' ? 'month' : 'week';
     const period = this.exportPeriod(mode, q);
     const where = this.assignmentWhere(organizationId, { ...q, startDate: this.iso(period.start), endDate: this.iso(period.end), pageSize: undefined }, period, true);
@@ -219,11 +222,14 @@ export class PlanningService {
       }),
     ]);
     const buffer = await this.buildPlanningPdf({
-      title: mode === 'custom' ? 'Planning personnalisé' : mode === 'month' ? 'Planning mensuel' : 'Planning hebdomadaire',
+      title: language === 'en'
+        ? mode === 'custom' ? 'Custom schedule' : mode === 'month' ? 'Monthly schedule' : 'Weekly schedule'
+        : mode === 'custom' ? 'Planning personnalisé' : mode === 'month' ? 'Planning mensuel' : 'Planning hebdomadaire',
       organizationName: organization?.name ?? 'ToqueHub',
       mode,
       period,
       assignments,
+      language,
     });
     return { buffer, filename: `planning-${this.iso(period.start)}-${this.iso(period.end)}.pdf` };
   }
@@ -248,13 +254,18 @@ export class PlanningService {
         })
         : Promise.resolve([]),
     ]);
+    const language = q.lang === 'en' ? 'en' : 'fr';
     const buffer = await this.buildPersonalMonthlyPlanningPdf({
       organizationName: organization?.name ?? 'ToqueHub',
       employee: schedule.employee,
       period,
       assignments,
+      language,
     });
-    return { buffer, filename: `mon-planning-${this.iso(period.start)}-${this.iso(period.end)}.pdf` };
+    return {
+      buffer,
+      filename: `${language === 'en' ? 'my-schedule' : 'mon-planning'}-${this.iso(period.start)}-${this.iso(period.end)}.pdf`,
+    };
   }
 
   async exportAttendancePdf(organizationId: string, q: PlanningAttendanceQueryDto) {
@@ -266,13 +277,18 @@ export class PlanningService {
     const organization = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } });
     const rows = (attendance.rows as AttendanceExportRow[]).filter(row => Number(row.plannedMinutes ?? 0) > 0);
     const employees = this.attendanceExportEmployees(rows);
+    const language = q.lang === 'en' ? 'en' : 'fr';
     const buffer = await this.buildAttendancePdf({
       organizationName: organization?.name ?? 'ToqueHub',
       month,
       year,
       employees,
+      language,
     });
-    return { buffer, filename: `feuilles-emargement-${year}-${String(month).padStart(2, '0')}.pdf` };
+    return {
+      buffer,
+      filename: `${language === 'en' ? 'attendance-sheets' : 'feuilles-emargement'}-${year}-${String(month).padStart(2, '0')}.pdf`,
+    };
   }
 
   async createAssignment(organizationId: string, actor: Actor, dto: UpsertPlanningAssignmentDto) {
@@ -936,7 +952,7 @@ export class PlanningService {
       }))
       .sort((a, b) => a.employeeName.localeCompare(b.employeeName, 'fr'));
   }
-  private async buildAttendancePdf(input: { organizationName: string; month: number; year: number; employees: AttendanceExportEmployee[] }) {
+  private async buildAttendancePdf(input: AttendancePdfInput) {
     return new Promise<Buffer>((resolve, reject) => {
       const doc = new PDFDocument({
         size: 'A4',
@@ -944,11 +960,11 @@ export class PlanningService {
         margin: 26,
         bufferPages: false,
         info: {
-          Title: `Feuilles d’émargement ${String(input.month).padStart(2, '0')}/${input.year}`,
+          Title: `${this.exportText(input.language, 'Feuilles d’émargement', 'Attendance sheets')} ${String(input.month).padStart(2, '0')}/${input.year}`,
           Author: 'ToqueHub',
           Creator: 'ToqueHub',
-          Subject: `Émargement mensuel - ${input.organizationName}`,
-          Keywords: 'émargement, planning, horaires, signatures',
+          Subject: `${this.exportText(input.language, 'Émargement mensuel', 'Monthly attendance')} - ${input.organizationName}`,
+          Keywords: input.language === 'en' ? 'attendance, schedule, hours, signatures' : 'émargement, planning, horaires, signatures',
         },
       });
       const chunks: Buffer[] = [];
@@ -959,7 +975,7 @@ export class PlanningService {
       doc.end();
     });
   }
-  private drawAttendancePdf(doc: PDFKit.PDFDocument, input: { organizationName: string; month: number; year: number; employees: AttendanceExportEmployee[] }) {
+  private drawAttendancePdf(doc: PDFKit.PDFDocument, input: AttendancePdfInput) {
     const rowsPerPage = 17;
     const pages = input.employees.flatMap(employee => {
       const pageCount = Math.max(1, Math.ceil(employee.rows.length / rowsPerPage));
@@ -974,36 +990,36 @@ export class PlanningService {
       this.drawAttendancePdfPage(doc, input, page.employee, page.rows, page.page, page.pageCount);
     });
   }
-  private drawEmptyAttendancePdf(doc: PDFKit.PDFDocument, input: { organizationName: string; month: number; year: number }) {
-    const monthLabel = new Date(input.year, input.month - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
-    doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(18).text('Feuilles d’émargement', { align: 'center' });
+  private drawEmptyAttendancePdf(doc: PDFKit.PDFDocument, input: AttendancePdfInput) {
+    const monthLabel = new Date(input.year, input.month - 1, 1).toLocaleDateString(this.exportLocale(input.language), { month: 'long', year: 'numeric' });
+    doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(18).text(this.exportText(input.language, 'Feuilles d’émargement', 'Attendance sheets'), { align: 'center' });
     doc.moveDown(0.4).fillColor('#64748b').font('Helvetica').fontSize(10).text(`${input.organizationName} · ${monthLabel}`, { align: 'center' });
-    doc.moveDown(4).fillColor('#475569').font('Helvetica-Bold').fontSize(13).text('Aucune heure planifiée sur ce mois.', { align: 'center' });
+    doc.moveDown(4).fillColor('#475569').font('Helvetica-Bold').fontSize(13).text(this.exportText(input.language, 'Aucune heure planifiée sur ce mois.', 'No scheduled hours for this month.'), { align: 'center' });
   }
-  private drawAttendancePdfPage(doc: PDFKit.PDFDocument, input: { organizationName: string; month: number; year: number }, employee: AttendanceExportEmployee, rows: AttendanceExportRow[], page: number, pageCount: number) {
+  private drawAttendancePdfPage(doc: PDFKit.PDFDocument, input: AttendancePdfInput, employee: AttendanceExportEmployee, rows: AttendanceExportRow[], page: number, pageCount: number) {
     const left = doc.page.margins.left;
     const right = doc.page.width - doc.page.margins.right;
     const width = right - left;
-    const monthLabel = new Date(input.year, input.month - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    const monthLabel = new Date(input.year, input.month - 1, 1).toLocaleDateString(this.exportLocale(input.language), { month: 'long', year: 'numeric' });
     const employeeMeta = [employee.positionName, employee.departmentName, employee.siteName].filter(Boolean).join(' · ');
     const totalMinutes = employee.rows.reduce((sum, row) => sum + Number(row.plannedMinutes ?? 0), 0);
 
-    doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(16).text('Feuille d’émargement', left, 27, { width: width * 0.55 });
+    doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(16).text(this.exportText(input.language, 'Feuille d’émargement', 'Attendance sheet'), left, 27, { width: width * 0.55 });
     doc.fillColor('#0f766e').font('Helvetica-Bold').fontSize(12).text(employee.employeeName, left, 49, { width: width * 0.55 });
-    doc.fillColor('#64748b').font('Helvetica').fontSize(7.5).text(employeeMeta || 'Collaborateur', left, 66, { width: width * 0.6 });
+    doc.fillColor('#64748b').font('Helvetica').fontSize(7.5).text(employeeMeta || this.exportText(input.language, 'Collaborateur', 'Employee'), left, 66, { width: width * 0.6 });
     doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(10).text(monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1), right - 220, 30, { width: 220, align: 'right' });
-    doc.fillColor('#64748b').font('Helvetica').fontSize(7.5).text(`${input.organizationName} · ${this.formatPdfMinutes(totalMinutes)} planifiées · Page ${page}/${pageCount}`, right - 300, 50, { width: 300, align: 'right' });
+    doc.fillColor('#64748b').font('Helvetica').fontSize(7.5).text(`${input.organizationName} · ${this.formatPdfMinutes(totalMinutes)} ${this.exportText(input.language, 'planifiées', 'scheduled')} · Page ${page}/${pageCount}`, right - 300, 50, { width: 300, align: 'right' });
 
     const tableY = 88;
     const headerHeight = 28;
     const rowHeight = 25;
     const columns = [
       { label: 'Date', width: 74 },
-      { label: 'Shift prévu', width: 96 },
-      { label: 'Durée', width: 60 },
-      { label: 'Affectation', width: 130 },
-      { label: 'Rectification demandée', width: 230 },
-      { label: 'Signature du salarié', width: width - 590 },
+      { label: this.exportText(input.language, 'Shift prévu', 'Scheduled shift'), width: 96 },
+      { label: this.exportText(input.language, 'Durée', 'Duration'), width: 60 },
+      { label: this.exportText(input.language, 'Affectation', 'Assignment'), width: 130 },
+      { label: this.exportText(input.language, 'Rectification demandée', 'Requested correction'), width: 230 },
+      { label: this.exportText(input.language, 'Signature du salarié', 'Employee signature'), width: width - 590 },
     ];
     let x = left;
     doc.fillColor('#ecfdf5').rect(left, tableY, width, headerHeight).fill();
@@ -1018,7 +1034,7 @@ export class PlanningService {
       const background = index % 2 ? '#f8fafc' : '#ffffff';
       doc.fillColor(background).rect(left, y, width, rowHeight).fill();
       const values = [
-        this.attendancePdfDate(row.date),
+        this.attendancePdfDate(row.date, input.language),
         `${this.timeLabel(row.plannedStartTime)} – ${this.timeLabel(row.plannedEndTime)}`,
         this.formatPdfMinutes(Number(row.plannedMinutes ?? 0)),
         [row.positionName, row.departmentName, row.siteName].filter(Boolean).join(' · ') || 'Planning',
@@ -1038,13 +1054,13 @@ export class PlanningService {
     });
 
     const footerY = doc.page.height - doc.page.margins.bottom - 24;
-    doc.fillColor('#64748b').font('Helvetica').fontSize(6.6).text('Signature : je confirme les horaires indiqués. En cas d’écart, je renseigne la correction souhaitée dans la case « Rectification demandée » avant de signer.', left, footerY, { width: width * 0.78 });
-    doc.fillColor('#94a3b8').text('Document généré par ToqueHub', right - 170, footerY, { width: 170, align: 'right' });
+    doc.fillColor('#64748b').font('Helvetica').fontSize(6.6).text(this.exportText(input.language, 'Signature : je confirme les horaires indiqués. En cas d’écart, je renseigne la correction souhaitée dans la case « Rectification demandée » avant de signer.', 'Signature: I confirm the hours shown. If there is a discrepancy, I enter the requested correction before signing.'), left, footerY, { width: width * 0.78 });
+    doc.fillColor('#94a3b8').text(this.exportText(input.language, 'Document généré par ToqueHub', 'Document generated by ToqueHub'), right - 170, footerY, { width: 170, align: 'right' });
   }
-  private attendancePdfDate(value: unknown) {
+  private attendancePdfDate(value: unknown, language: ExportLanguage) {
     const raw = value instanceof Date ? this.iso(value) : String(value ?? '').slice(0, 10);
     const date = this.parseDate(raw);
-    return date.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' }).replace('.', '');
+    return date.toLocaleDateString(this.exportLocale(language), { weekday: 'short', day: '2-digit', month: '2-digit' }).replace('.', '');
   }
   private async buildPlanningPdf(input: PlanningPdfInput) {
     return new Promise<Buffer>((resolve, reject) => {
@@ -1071,19 +1087,19 @@ export class PlanningService {
   }
   private async buildPersonalMonthlyPlanningPdf(input: PersonalPlanningPdfInput) {
     return new Promise<Buffer>((resolve, reject) => {
-      const employeeName = `${input.employee.firstName} ${input.employee.lastName}`.trim() || 'Collaborateur';
-      const monthLabel = input.period.start.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+      const employeeName = `${input.employee.firstName} ${input.employee.lastName}`.trim() || this.exportText(input.language, 'Collaborateur', 'Employee');
+      const monthLabel = input.period.start.toLocaleDateString(this.exportLocale(input.language), { month: 'long', year: 'numeric' });
       const doc = new PDFDocument({
         size: 'A4',
         layout: 'landscape',
         margin: 24,
         bufferPages: false,
         info: {
-          Title: `Mon planning - ${monthLabel}`,
+          Title: `${this.exportText(input.language, 'Mon planning', 'My schedule')} - ${monthLabel}`,
           Author: 'ToqueHub',
           Creator: 'ToqueHub',
-          Subject: `Planning mensuel de ${employeeName}`,
-          Keywords: 'planning, collaborateur, horaires, mois',
+          Subject: `${this.exportText(input.language, 'Planning mensuel de', 'Monthly schedule for')} ${employeeName}`,
+          Keywords: input.language === 'en' ? 'schedule, employee, hours, month' : 'planning, collaborateur, horaires, mois',
         },
       });
       const chunks: Buffer[] = [];
@@ -1098,19 +1114,21 @@ export class PlanningService {
     const left = doc.page.margins.left;
     const right = doc.page.width - doc.page.margins.right;
     const width = right - left;
-    const employeeName = `${input.employee.firstName} ${input.employee.lastName}`.trim() || 'Collaborateur';
+    const employeeName = `${input.employee.firstName} ${input.employee.lastName}`.trim() || this.exportText(input.language, 'Collaborateur', 'Employee');
     const employeeMeta = [input.employee.positionName, input.employee.departmentName, input.employee.siteName].filter(Boolean).join(' · ');
-    const monthLabel = input.period.start.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    const monthLabel = input.period.start.toLocaleDateString(this.exportLocale(input.language), { month: 'long', year: 'numeric' });
     const titleMonth = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
     const totalMinutes = input.assignments.reduce((sum, assignment) => sum + plannedMinutes(assignment), 0);
 
-    doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(20).text('Mon planning', left, 25, { width: width * 0.45 });
+    doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(20).text(this.exportText(input.language, 'Mon planning', 'My schedule'), left, 25, { width: width * 0.45 });
     doc.fillColor('#0f766e').font('Helvetica-Bold').fontSize(14).text(employeeName, left, 51, { width: width * 0.58 });
-    doc.fillColor('#64748b').font('Helvetica').fontSize(8).text(employeeMeta || 'Collaborateur', left, 70, { width: width * 0.62 });
+    doc.fillColor('#64748b').font('Helvetica').fontSize(8).text(employeeMeta || this.exportText(input.language, 'Collaborateur', 'Employee'), left, 70, { width: width * 0.62 });
     doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(17).text(titleMonth, right - 260, 28, { width: 260, align: 'right' });
-    doc.fillColor('#64748b').font('Helvetica').fontSize(8).text(`${input.organizationName} · ${input.assignments.length} créneau${input.assignments.length > 1 ? 'x' : ''} · ${this.formatPdfMinutes(totalMinutes)} nettes`, right - 330, 55, { width: 330, align: 'right' });
+    doc.fillColor('#64748b').font('Helvetica').fontSize(8).text(`${input.organizationName} · ${input.assignments.length} ${this.exportText(input.language, input.assignments.length > 1 ? 'créneaux' : 'créneau', input.assignments.length > 1 ? 'shifts' : 'shift')} · ${this.formatPdfMinutes(totalMinutes)} ${this.exportText(input.language, 'nettes', 'net')}`, right - 330, 55, { width: 330, align: 'right' });
 
-    const weekdays = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+    const weekdays = input.language === 'en'
+      ? ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+      : ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
     const headerY = 94;
     const weekdayHeight = 24;
     const footerY = doc.page.height - doc.page.margins.bottom - 14;
@@ -1155,27 +1173,27 @@ export class PlanningService {
       const visibleAssignments = assignments.slice(0, availableLines);
       visibleAssignments.forEach((assignment, assignmentIndex) => {
         const pause = Number(assignment.breakMinutes ?? 0) ? ` · P${assignment.breakMinutes}` : '';
-        const label = assignment.position?.name ?? assignment.department?.name ?? assignment.site?.name ?? 'Créneau';
+        const label = assignment.position?.name ?? assignment.department?.name ?? assignment.site?.name ?? this.exportText(input.language, 'Créneau', 'Shift');
         const site = assignment.site?.name ? ` · ${assignment.site.name}` : '';
         const blockY = y + 20 + assignmentIndex * assignmentHeight;
         doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(6.5).text(`${this.timeLabel(assignment.startTime)}–${this.timeLabel(assignment.endTime)}${pause}`, x + 6, blockY, { width: cellWidth - 12, height: 8, ellipsis: true });
         doc.fillColor('#64748b').font('Helvetica').fontSize(5.5).text(`${label}${site}`, x + 6, blockY + 8, { width: cellWidth - 12, height: 7, ellipsis: true });
       });
       if (assignments.length > visibleAssignments.length) {
-        doc.fillColor('#0f766e').font('Helvetica-Bold').fontSize(5.8).text(`+${assignments.length - visibleAssignments.length} autre${assignments.length - visibleAssignments.length > 1 ? 's' : ''}`, x + 6, y + cellHeight - 10, { width: cellWidth - 12, align: 'right' });
+        doc.fillColor('#0f766e').font('Helvetica-Bold').fontSize(5.8).text(`+${assignments.length - visibleAssignments.length} ${this.exportText(input.language, assignments.length - visibleAssignments.length > 1 ? 'autres' : 'autre', assignments.length - visibleAssignments.length > 1 ? 'others' : 'other')}`, x + 6, y + cellHeight - 10, { width: cellWidth - 12, align: 'right' });
       }
     });
 
     doc.strokeColor('#e2e8f0').lineWidth(0.4).moveTo(left, footerY - 4).lineTo(right, footerY - 4).stroke();
-    doc.fillColor('#64748b').font('Helvetica').fontSize(6.2).text('P = pause prévue déduite · Les durées correspondent aux heures planifiées nettes.', left, footerY, { width: width * 0.65 });
-    doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} · ToqueHub`, right - 210, footerY, { width: 210, align: 'right' });
+    doc.fillColor('#64748b').font('Helvetica').fontSize(6.2).text(this.exportText(input.language, 'P = pause prévue déduite · Les durées correspondent aux heures planifiées nettes.', 'P = scheduled break deducted · Durations are net scheduled hours.'), left, footerY, { width: width * 0.65 });
+    doc.text(`${this.exportText(input.language, 'Généré le', 'Generated on')} ${new Date().toLocaleDateString(this.exportLocale(input.language))} · ToqueHub`, right - 210, footerY, { width: 210, align: 'right' });
   }
   private drawPlanningPdf(doc: PDFKit.PDFDocument, input: PlanningPdfInput) {
     const weeks = this.exportWeeks(input.period);
     const pages: PlanningPdfPage[] = [];
     for (const week of weeks) {
       const rows = this.exportRows(input.assignments, week.days);
-      const printableRows = rows.length ? rows : [{ employeeName: 'Aucun créneau planifié', departmentName: '', assignmentsByDate: new Map<string, AnyAssignment[]>() }];
+      const printableRows = rows.length ? rows : [{ employeeName: this.exportText(input.language, 'Aucun créneau planifié', 'No scheduled shifts'), departmentName: '', assignmentsByDate: new Map<string, AnyAssignment[]>() }];
       pages.push(...this.paginatePlanningPdfRows(doc, printableRows, week.days));
     }
 
@@ -1188,7 +1206,7 @@ export class PlanningService {
         this.drawPlanningPdfRow(doc, row, page.days, y, page.rowHeights[rowIndex], rowIndex, startsDepartment);
         y += page.rowHeights[rowIndex];
       });
-      this.drawPlanningPdfFooter(doc, generatedAt);
+      this.drawPlanningPdfFooter(doc, generatedAt, input.language);
     });
   }
   private paginatePlanningPdfRows(doc: PDFKit.PDFDocument, rows: PlanningPdfRow[], days: string[]): PlanningPdfPage[] {
@@ -1227,17 +1245,17 @@ export class PlanningService {
   private drawPlanningPdfHeader(doc: PDFKit.PDFDocument, input: PlanningPdfInput, days: string[], pageNumber: number, totalPages: number) {
     const { left, right, tableWidth, nameWidth, dayWidth, tableY, headerHeight, bodyTop } = this.planningPdfDimensions(doc, days.length);
     const y = doc.page.margins.top;
-    const periodLabel = `${this.formatPdfDate(input.period.start)} - ${this.formatPdfDate(input.period.end)}`;
+    const periodLabel = `${this.formatPdfDate(input.period.start, input.language)} - ${this.formatPdfDate(input.period.end, input.language)}`;
     const totalMinutes = input.assignments.reduce((sum, assignment) => sum + plannedMinutes(assignment), 0);
 
     doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(15).text(input.title, left, y, { width: tableWidth * 0.5 });
-    doc.font('Helvetica').fontSize(8).fillColor('#64748b').text(`${input.organizationName} · ${periodLabel} · ${input.assignments.length} créneau${input.assignments.length > 1 ? 'x' : ''} · ${this.formatPdfMinutes(totalMinutes)}`, left, y + 18, { width: tableWidth * 0.74 });
-    doc.font('Helvetica-Bold').fontSize(7.2).fillColor('#0f766e').text(this.formatPdfDisplayedPeriod(days), right - 210, y + 1, { width: 210, align: 'right' });
+    doc.font('Helvetica').fontSize(8).fillColor('#64748b').text(`${input.organizationName} · ${periodLabel} · ${input.assignments.length} ${this.exportText(input.language, input.assignments.length > 1 ? 'créneaux' : 'créneau', input.assignments.length > 1 ? 'shifts' : 'shift')} · ${this.formatPdfMinutes(totalMinutes)}`, left, y + 18, { width: tableWidth * 0.74 });
+    doc.font('Helvetica-Bold').fontSize(7.2).fillColor('#0f766e').text(this.formatPdfDisplayedPeriod(days, input.language), right - 210, y + 1, { width: 210, align: 'right' });
     doc.font('Helvetica').fontSize(6.8).fillColor('#94a3b8').text(`Page ${pageNumber} / ${totalPages}`, right - 100, y + 17, { width: 100, align: 'right' });
 
     doc.lineWidth(0.6).strokeColor('#b8d9cd').fillColor('#ecfdf5').rect(left, tableY, tableWidth, headerHeight).fillAndStroke('#ecfdf5', '#b8d9cd');
-    doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(7.5).text('Collaborateur', left + 6, tableY + 5, { width: nameWidth - 12 });
-    doc.fillColor('#64748b').font('Helvetica').fontSize(5.8).text('Service · total affiché', left + 6, tableY + 15, { width: nameWidth - 12 });
+    doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(7.5).text(this.exportText(input.language, 'Collaborateur', 'Employee'), left + 6, tableY + 5, { width: nameWidth - 12 });
+    doc.fillColor('#64748b').font('Helvetica').fontSize(5.8).text(this.exportText(input.language, 'Service · total affiché', 'Department · displayed total'), left + 6, tableY + 15, { width: nameWidth - 12 });
     days.forEach((day, index) => {
       const x = left + nameWidth + index * dayWidth;
       const dayAssignments = input.assignments.filter(assignment => this.assignmentDateIso(assignment) === day);
@@ -1246,8 +1264,8 @@ export class PlanningService {
       const isWeekend = [0, 6].includes(this.parseDate(day).getDay());
       if (isWeekend) doc.fillColor('#fff7ed').rect(x, tableY, dayWidth, headerHeight).fill();
       doc.strokeColor('#b8d9cd').rect(x, tableY, dayWidth, headerHeight).stroke();
-      doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(7).text(this.formatPdfDayHeader(day), x + 3, tableY + 4, { width: dayWidth - 6, align: 'center' });
-      doc.fillColor('#64748b').font('Helvetica').fontSize(5.8).text(`${employeeCount} pers. · ${this.formatPdfMinutes(dayMinutes)}`, x + 3, tableY + 15, { width: dayWidth - 6, align: 'center' });
+      doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(7).text(this.formatPdfDayHeader(day, input.language), x + 3, tableY + 4, { width: dayWidth - 6, align: 'center' });
+      doc.fillColor('#64748b').font('Helvetica').fontSize(5.8).text(`${employeeCount} ${this.exportText(input.language, 'pers.', 'people')} · ${this.formatPdfMinutes(dayMinutes)}`, x + 3, tableY + 15, { width: dayWidth - 6, align: 'center' });
     });
     return bodyTop;
   }
@@ -1283,13 +1301,13 @@ export class PlanningService {
       });
     });
   }
-  private drawPlanningPdfFooter(doc: PDFKit.PDFDocument, generatedAt: Date) {
+  private drawPlanningPdfFooter(doc: PDFKit.PDFDocument, generatedAt: Date, language: ExportLanguage) {
     const left = doc.page.margins.left;
     const right = doc.page.width - doc.page.margins.right;
     const y = doc.page.height - doc.page.margins.bottom - 8;
     doc.strokeColor('#e2e8f0').lineWidth(0.4).moveTo(left, y - 3).lineTo(right, y - 3).stroke();
-    doc.fillColor('#64748b').font('Helvetica').fontSize(5.7).text('P = pause déduite · Les totaux correspondent aux heures planifiées nettes.', left, y, { width: (right - left) * 0.62 });
-    doc.text(`Généré le ${generatedAt.toLocaleDateString('fr-FR')} à ${generatedAt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, right - 180, y, { width: 180, align: 'right' });
+    doc.fillColor('#64748b').font('Helvetica').fontSize(5.7).text(this.exportText(language, 'P = pause déduite · Les totaux correspondent aux heures planifiées nettes.', 'P = break deducted · Totals are net scheduled hours.'), left, y, { width: (right - left) * 0.62 });
+    doc.text(`${this.exportText(language, 'Généré le', 'Generated on')} ${generatedAt.toLocaleDateString(this.exportLocale(language))} ${this.exportText(language, 'à', 'at')} ${generatedAt.toLocaleTimeString(this.exportLocale(language), { hour: '2-digit', minute: '2-digit' })}`, right - 180, y, { width: 180, align: 'right' });
   }
   private planningPdfDimensions(doc: PDFKit.PDFDocument, dayCount: number) {
     const left = doc.page.margins.left;
@@ -1377,19 +1395,25 @@ export class PlanningService {
     const date = new Date(raw);
     return Number.isNaN(date.getTime()) ? raw.slice(0, 5) : date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   }
-  private formatPdfDayHeader(day: string) {
+  private formatPdfDayHeader(day: string, language: ExportLanguage) {
     const date = this.parseDate(day);
-    return `${date.toLocaleDateString('fr-FR', { weekday: 'short' }).replace('.', '').toUpperCase()} ${date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}`;
+    const locale = this.exportLocale(language);
+    return `${date.toLocaleDateString(locale, { weekday: 'short' }).replace('.', '').toUpperCase()} ${date.toLocaleDateString(locale, { day: '2-digit', month: '2-digit' })}`;
   }
-  private formatPdfDisplayedPeriod(days: string[]) {
+  private formatPdfDisplayedPeriod(days: string[], language: ExportLanguage) {
     const start = this.parseDate(days[0]);
     const end = this.parseDate(days[days.length - 1]);
-    if (days.length === 1) return start.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-    return `Du ${start.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} au ${end.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}`;
+    const locale = this.exportLocale(language);
+    if (days.length === 1) return start.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    return language === 'en'
+      ? `From ${start.toLocaleDateString(locale, { day: 'numeric', month: 'long' })} to ${end.toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' })}`
+      : `Du ${start.toLocaleDateString(locale, { day: 'numeric', month: 'long' })} au ${end.toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' })}`;
   }
-  private formatPdfDate(date: Date) {
-    return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  private formatPdfDate(date: Date, language: ExportLanguage) {
+    return date.toLocaleDateString(this.exportLocale(language), { day: '2-digit', month: '2-digit', year: 'numeric' });
   }
+  private exportLocale(language: ExportLanguage) { return language === 'en' ? 'en-GB' : 'fr-FR'; }
+  private exportText(language: ExportLanguage, french: string, english: string) { return language === 'en' ? english : french; }
   private formatPdfMinutes(value: number) {
     const minutes = Math.max(0, Math.round(value));
     const hours = String(Math.floor(minutes / 60)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');

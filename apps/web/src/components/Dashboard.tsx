@@ -105,6 +105,7 @@ import {
   Activity,
   Landmark,
   Target,
+  Languages,
 } from 'lucide-react';
 import { ArchitectureCenter } from './ArchitectureCenter';
 import { UsersPage, UserForm } from './UsersPage';
@@ -124,6 +125,8 @@ import { GuidedWelcome } from './ui/GuidedWelcome';
 import { WorkspaceOnboarding } from './WorkspaceOnboarding';
 import { EquipmentForm, EquipmentPage, type EquipmentFormPayload } from './stocks/EquipmentPage';
 import { InventoryImportWizard } from './stocks/InventoryImportWizard';
+import { useLanguage } from '../i18n';
+import { activeLanguage, activeLocale } from '../i18n/runtime';
 
 const PurchasingApp = lazy(() =>
   import('./PurchasingApp').then((module) => ({ default: module.PurchasingApp })),
@@ -627,6 +630,7 @@ interface DashboardProps {
 
 export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps) {
   const token = session.accessToken;
+  const { language, setLanguage } = useLanguage();
 
   // Data State
   const [categories, setCategories] = useState<Category[]>([]);
@@ -847,7 +851,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   }
 
   function formatNotificationTime(date: Date) {
-    return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString(activeLocale(), { hour: '2-digit', minute: '2-digit' });
   }
 
   async function refresh() {
@@ -1972,7 +1976,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
     modularDashboard?.cockpit ?? ({} as NonNullable<ModularDashboard['cockpit']>);
   const dashboardWidgets = modularDashboard?.widgets ?? [];
   const dashboardRefreshLabel = modularDashboard?.generatedAt
-    ? new Date(modularDashboard.generatedAt).toLocaleTimeString('fr-FR', {
+    ? new Date(modularDashboard.generatedAt).toLocaleTimeString(activeLocale(), {
         hour: '2-digit',
         minute: '2-digit',
       })
@@ -4122,6 +4126,41 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
         {/* User Profile and Dropdown */}
         <div className="sidebar-footer">
+          <div
+            className="sidebar-language-switcher"
+            role="group"
+            aria-label="Choisir la langue de l’application"
+          >
+            <div className="sidebar-language-copy">
+              <span className="sidebar-language-icon">
+                <Languages size={17} aria-hidden="true" />
+              </span>
+              <span>
+                <strong>Langue</strong>
+                <small>{language === 'fr' ? 'Français' : 'English'}</small>
+              </span>
+            </div>
+            <div className="sidebar-language-segments">
+              <button
+                type="button"
+                className={language === 'fr' ? 'active' : ''}
+                onClick={() => setLanguage('fr')}
+                aria-pressed={language === 'fr'}
+                title="Passer en français"
+              >
+                FR
+              </button>
+              <button
+                type="button"
+                className={language === 'en' ? 'active' : ''}
+                onClick={() => setLanguage('en')}
+                aria-pressed={language === 'en'}
+                title="Passer en anglais"
+              >
+                EN
+              </button>
+            </div>
+          </div>
           <div className="sidebar-footer-profile-container">
             <AnimatePresence>
               {profileMenuOpen && (
@@ -5511,7 +5550,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                                       DLC{' '}
                                       {new Date(
                                         (stock.lot.expiresAt ?? stock.lot.expirationDate) as string,
-                                      ).toLocaleDateString('fr-FR')}
+                                      ).toLocaleDateString(activeLocale())}
                                     </span>
                                   ) : null}
                                 </td>
@@ -5648,7 +5687,7 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                               return (
                                 <tr key={m.id}>
                                   <td style={{ color: 'var(--text-muted)' }}>
-                                    {movementEffectiveDate(m).toLocaleDateString('fr-FR', {
+                                    {movementEffectiveDate(m).toLocaleDateString(activeLocale(), {
                                       day: '2-digit',
                                       month: '2-digit',
                                       year: 'numeric',
@@ -6785,13 +6824,13 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                 </div>
                 <div>
                   <span>Démarrée</span>
-                  <strong>{new Date(autoUpdateOperation.startedAt).toLocaleString('fr-FR')}</strong>
+                  <strong>{new Date(autoUpdateOperation.startedAt).toLocaleString(activeLocale())}</strong>
                 </div>
                 <div>
                   <span>Terminée</span>
                   <strong>
                     {autoUpdateOperation.finishedAt
-                      ? new Date(autoUpdateOperation.finishedAt).toLocaleString('fr-FR')
+                      ? new Date(autoUpdateOperation.finishedAt).toLocaleString(activeLocale())
                       : '-'}
                   </strong>
                 </div>
@@ -7147,7 +7186,7 @@ function InstanceInfoPanel({
     <div className="instance-info-panel">
       <div className="instance-info-toolbar">
         <div>
-          <p>Généré le {new Date(info.generatedAt).toLocaleString('fr-FR')}</p>
+          <p>Généré le {new Date(info.generatedAt).toLocaleString(activeLocale())}</p>
           {loading && <span>Actualisation...</span>}
           {error && <span className="instance-error">{error}</span>}
         </div>
@@ -7291,7 +7330,7 @@ function formatChangelogDate(value?: string | null) {
   if (!value) return '-';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+  return date.toLocaleDateString(activeLocale(), { day: '2-digit', month: 'long', year: 'numeric' });
 }
 
 function ChangelogPanel({
@@ -7337,7 +7376,7 @@ function ChangelogPanel({
           <strong>Releases stables GitHub</strong>
           <span>
             {changelog.repo} · version installée {changelog.currentVersion || '-'} · vérifié le{' '}
-            {new Date(changelog.checkedAt).toLocaleString('fr-FR')}
+            {new Date(changelog.checkedAt).toLocaleString(activeLocale())}
           </span>
         </div>
         <button type="button" className="btn btn-secondary" onClick={onRefresh} disabled={loading}>
@@ -8334,7 +8373,7 @@ function DashboardCockpitOverview({
   onOpenSiteAddress: () => void;
 }) {
   if (loading) return <DashboardCockpitLoading />;
-  const refreshedAt = new Date(cockpit.generatedAt).toLocaleTimeString('fr-FR', {
+  const refreshedAt = new Date(cockpit.generatedAt).toLocaleTimeString(activeLocale(), {
     hour: '2-digit',
     minute: '2-digit',
   });
@@ -12506,7 +12545,7 @@ function productImportCell(value: unknown) {
 function productImportCalculatedUnitPriceCell(value: unknown) {
   const price = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(price) || price <= 0) return '—';
-  return `${price.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} €`;
+  return `${price.toLocaleString(activeLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 4 })} €`;
 }
 
 function randomLocalId() {
@@ -13200,7 +13239,7 @@ function ArticleDrawer({
                       </strong>
                       <span className="lot-expiry">
                         {lot.expiresAt
-                          ? `DLC ${new Date(lot.expiresAt).toLocaleDateString('fr-FR')}`
+                          ? `DLC ${new Date(lot.expiresAt).toLocaleDateString(activeLocale())}`
                           : 'DLC non renseignée'}
                       </span>
                     </div>
@@ -13251,7 +13290,7 @@ function ArticleDrawer({
                 <strong className="row-value">
                   {new Date(
                     article.lastMovement.movementDate ?? article.lastMovement.createdAt,
-                  ).toLocaleString('fr-FR')}
+                  ).toLocaleString(activeLocale())}
                 </strong>
               </div>
             ) : (
@@ -13460,7 +13499,7 @@ function StocksDashboardPage({
         <div className="metrics-grid">
           <Metric
             icon={<Boxes size={20} />}
-            value={equipmentQuantity.toLocaleString('fr-FR')}
+            value={equipmentQuantity.toLocaleString(activeLocale())}
             label="Matériel"
             tone="blue"
             delay={1}
@@ -13513,7 +13552,7 @@ function StocksDashboardPage({
                   <div className="stocks-leasing-deadline-date">
                     <span>Fin du leasing</span>
                     <strong>
-                      {endDate.toLocaleDateString('fr-FR', {
+                      {endDate.toLocaleDateString(activeLocale(), {
                         day: '2-digit',
                         month: 'long',
                         year: 'numeric',
@@ -14510,7 +14549,7 @@ function StocksMarginsPage({
                               {String(supplier.supplierName ?? 'Fournisseur')}
                             </td>
                             <td>{formatCurrency(Number(supplier.averagePrice ?? 0))}</td>
-                            <td>{Number(supplier.volume ?? 0).toLocaleString('fr-FR')}</td>
+                            <td>{Number(supplier.volume ?? 0).toLocaleString(activeLocale())}</td>
                             <td>
                               <span className="badge badge-stock">
                                 {Number(supplier.score ?? 0)}/100
@@ -14627,7 +14666,7 @@ function StocksMarginsPage({
                           )}
                         </td>
                         <td style={{ fontWeight: 600 }}>
-                          {forecast.recommendedQuantity.toLocaleString('fr-FR', {
+                          {forecast.recommendedQuantity.toLocaleString(activeLocale(), {
                             maximumFractionDigits: 1,
                           })}{' '}
                           {forecast.unitSymbol}
@@ -15020,7 +15059,7 @@ function StocksMarginsPage({
                       </strong>
                       <small style={{ color: 'var(--text-muted)' }}>
                         {report.createdAt
-                          ? new Date(report.createdAt).toLocaleDateString('fr-FR')
+                          ? new Date(report.createdAt).toLocaleDateString(activeLocale())
                           : ''}
                       </small>
                     </div>
@@ -15160,11 +15199,11 @@ function MarginsBarList({ data }: { data: MarginChartPoint[] }) {
 }
 
 function formatCurrency(value?: number | null) {
-  return `${Number(value ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €`;
+  return `${Number(value ?? 0).toLocaleString(activeLocale(), { maximumFractionDigits: 0 })} €`;
 }
 
 function formatPct(value?: number | null) {
-  return `${Number(value ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`;
+  return `${Number(value ?? 0).toLocaleString(activeLocale(), { maximumFractionDigits: 1 })} %`;
 }
 
 function Metric({
@@ -15215,11 +15254,11 @@ function MiniMovements({ movements }: { movements: StockMovement[] }) {
     <div className="dashboard-activity-feed">
       {movements.map((m) => {
         const movementDate = movementEffectiveDate(m);
-        const dateStr = movementDate.toLocaleDateString('fr-FR', {
+        const dateStr = movementDate.toLocaleDateString(activeLocale(), {
           day: '2-digit',
           month: '2-digit',
         });
-        const timeStr = movementDate.toLocaleTimeString('fr-FR', {
+        const timeStr = movementDate.toLocaleTimeString(activeLocale(), {
           hour: '2-digit',
           minute: '2-digit',
         });
@@ -15374,7 +15413,7 @@ function InventoriesPage({
                     {inventory.inventoryDate || inventory.date
                       ? new Date(
                           (inventory.inventoryDate ?? inventory.date) as string,
-                        ).toLocaleDateString('fr-FR')
+                        ).toLocaleDateString(activeLocale())
                       : '—'}
                   </td>
                   <td>
@@ -15708,12 +15747,12 @@ function inventoryCsvNumber(value: unknown) {
   if (value === null || value === undefined || value === '') return '';
   const parsed = Number(value);
   return Number.isFinite(parsed)
-    ? parsed.toLocaleString('fr-FR', { useGrouping: false, maximumFractionDigits: 6 })
+    ? parsed.toLocaleString(activeLocale(), { useGrouping: false, maximumFractionDigits: 6 })
     : '';
 }
 
 function inventoryCsvMoney(value: number) {
-  return value.toLocaleString('fr-FR', {
+  return value.toLocaleString(activeLocale(), {
     useGrouping: false,
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -15752,33 +15791,51 @@ function addInventoryValuationTotal(
 }
 
 function inventoryValuationTotalRow(total: InventoryValuationTotal) {
+  const missingVat = activeLanguage() === 'en' ? 'VAT to be completed' : 'TVA à compléter';
   return [
     inventoryCsvMoney(total.excludingTax),
-    total.missingVat ? 'TVA à compléter' : inventoryCsvMoney(total.tax),
-    total.missingVat ? 'TVA à compléter' : inventoryCsvMoney(total.includingTax),
+    total.missingVat ? missingVat : inventoryCsvMoney(total.tax),
+    total.missingVat ? missingVat : inventoryCsvMoney(total.includingTax),
   ];
 }
 
 function exportValidatedInventoryCsv(inventory: Inventory) {
   if (inventory.status !== 'VALIDATED') return;
+  const english = activeLanguage() === 'en';
+  const exportText = (french: string, englishValue: string) => (english ? englishValue : french);
   const inventoryDate = inventory.inventoryDate ?? inventory.date;
   const dateLabel = inventoryDate
-    ? new Date(inventoryDate).toLocaleDateString('fr-FR')
+    ? new Date(inventoryDate).toLocaleDateString(activeLocale())
     : '';
-  const detailHeaders = [
-    'Référence',
-    'Produit',
-    'Catégorie',
-    'Unité',
-    'Quantité théorique',
-    'Quantité comptée',
-    'Écart',
-    'Prix unitaire HT (€)',
-    'TVA (%)',
-    'Valeur totale HT (€)',
-    'Montant TVA (€)',
-    'Valeur totale TTC (€)',
-  ];
+  const detailHeaders = english
+    ? [
+        'Reference',
+        'Product',
+        'Category',
+        'Unit',
+        'Theoretical quantity',
+        'Counted quantity',
+        'Variance',
+        'Unit price excl. tax (€)',
+        'VAT (%)',
+        'Total excl. tax (€)',
+        'VAT amount (€)',
+        'Total incl. tax (€)',
+      ]
+    : [
+        'Référence',
+        'Produit',
+        'Catégorie',
+        'Unité',
+        'Quantité théorique',
+        'Quantité comptée',
+        'Écart',
+        'Prix unitaire HT (€)',
+        'TVA (%)',
+        'Valeur totale HT (€)',
+        'Montant TVA (€)',
+        'Valeur totale TTC (€)',
+      ];
 
   const valuationLines = (inventory.lines ?? []).map((line) => {
     const theoretical = numeric(line.theoreticalQuantity);
@@ -15794,9 +15851,11 @@ function exportValidatedInventoryCsv(inventory: Inventory) {
     const excludingTax = counted * unitPrice;
     const tax = vatRate === null ? null : excludingTax * vatRate / 100;
     const includingTax = tax === null ? null : excludingTax + tax;
-    const documentLabel = line.financialSource?.documentLabel ?? "Sans document d'achat validé";
+    const documentLabel =
+      line.financialSource?.documentLabel ??
+      exportText("Sans document d'achat validé", 'No validated purchase document');
     const documentDate = line.financialSource?.documentDate
-      ? new Date(line.financialSource.documentDate).toLocaleDateString('fr-FR')
+      ? new Date(line.financialSource.documentDate).toLocaleDateString(activeLocale())
       : '';
 
     return {
@@ -15805,21 +15864,21 @@ function exportValidatedInventoryCsv(inventory: Inventory) {
       documentLabel,
       documentDate,
       supplierName: line.financialSource?.supplierName ?? '',
-      productName: line.product?.name ?? 'Produit supprimé',
+      productName: line.product?.name ?? exportText('Produit supprimé', 'Deleted product'),
       vatRate,
       excludingTax,
       tax,
       includingTax,
       cells: [
         line.product?.sku ?? line.product?.reference ?? '',
-        line.product?.name ?? 'Produit supprimé',
+        line.product?.name ?? exportText('Produit supprimé', 'Deleted product'),
         line.product?.category?.name ?? '',
         line.product?.unit?.symbol ?? '',
         inventoryCsvNumber(theoretical),
         inventoryCsvNumber(counted),
         inventoryCsvNumber(variance ?? counted - theoretical),
         inventoryCsvMoney(unitPrice),
-        vatRate === null ? 'Non renseignée' : inventoryCsvNumber(vatRate),
+        vatRate === null ? exportText('Non renseignée', 'Not provided') : inventoryCsvNumber(vatRate),
         inventoryCsvMoney(excludingTax),
         tax === null ? '' : inventoryCsvMoney(tax),
         includingTax === null ? '' : inventoryCsvMoney(includingTax),
@@ -15828,8 +15887,9 @@ function exportValidatedInventoryCsv(inventory: Inventory) {
   });
 
   valuationLines.sort((left, right) =>
-    left.documentLabel.localeCompare(right.documentLabel, 'fr')
-    || left.productName.localeCompare(right.productName, 'fr'));
+    left.documentLabel.localeCompare(right.documentLabel, activeLocale()) ||
+    left.productName.localeCompare(right.productName, activeLocale()),
+  );
 
   const documentGroups = new Map<string, typeof valuationLines>();
   for (const line of valuationLines) {
@@ -15839,10 +15899,10 @@ function exportValidatedInventoryCsv(inventory: Inventory) {
   }
 
   const rows: unknown[][] = [
-    ['INVENTAIRE', inventory.name],
-    ['Date de validation', dateLabel],
-    ['Site', inventory.site?.name ?? 'Tous sites'],
-    ['Emplacement', inventory.location?.name ?? ''],
+    [exportText('INVENTAIRE', 'INVENTORY'), inventory.name],
+    [exportText('Date de validation', 'Validation date'), dateLabel],
+    [exportText('Site', 'Location'), inventory.site?.name ?? exportText('Tous sites', 'All locations')],
+    [exportText('Emplacement', 'Storage location'), inventory.location?.name ?? ''],
     [],
   ];
   const globalTotals: InventoryValuationTotal = {
@@ -15864,8 +15924,13 @@ function exportValidatedInventoryCsv(inventory: Inventory) {
     const documentVatTotals = new Map<string, InventoryValuationTotal>();
 
     rows.push(
-      ['DOCUMENT', first.documentLabel],
-      ['Fournisseur', first.supplierName, 'Date du document', first.documentDate],
+      [exportText('DOCUMENT', 'DOCUMENT'), first.documentLabel],
+      [
+        exportText('Fournisseur', 'Supplier'),
+        first.supplierName,
+        exportText('Date du document', 'Document date'),
+        first.documentDate,
+      ],
       detailHeaders,
     );
 
@@ -15883,7 +15948,10 @@ function exportValidatedInventoryCsv(inventory: Inventory) {
         line.tax,
         line.includingTax,
       );
-      const vatKey = line.vatRate === null ? 'TVA non renseignée' : `${inventoryCsvNumber(line.vatRate)} %`;
+      const vatKey =
+        line.vatRate === null
+          ? exportText('TVA non renseignée', 'VAT not provided')
+          : `${inventoryCsvNumber(line.vatRate)} %`;
       const documentVatTotal = documentVatTotals.get(vatKey) ?? {
         excludingTax: 0,
         tax: 0,
@@ -15903,10 +15971,23 @@ function exportValidatedInventoryCsv(inventory: Inventory) {
     }
 
     rows.push(
-      ['', 'SOUS-TOTAL DU DOCUMENT', '', '', '', '', '', '', '', ...inventoryValuationTotalRow(documentTotals)],
+      [
+        '',
+        exportText('SOUS-TOTAL DU DOCUMENT', 'DOCUMENT SUBTOTAL'),
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        ...inventoryValuationTotalRow(documentTotals),
+      ],
       [],
-      ['SYNTHÈSE TVA DU DOCUMENT'],
-      ['Taux de TVA', 'Total HT (€)', 'Montant TVA (€)', 'Total TTC (€)'],
+      [exportText('SYNTHÈSE TVA DU DOCUMENT', 'DOCUMENT VAT SUMMARY')],
+      english
+        ? ['VAT rate', 'Total excl. tax (€)', 'VAT amount (€)', 'Total incl. tax (€)']
+        : ['Taux de TVA', 'Total HT (€)', 'Montant TVA (€)', 'Total TTC (€)'],
     );
     for (const [vatLabel, total] of documentVatTotals) {
       rows.push([vatLabel, ...inventoryValuationTotalRow(total)]);
@@ -15915,19 +15996,24 @@ function exportValidatedInventoryCsv(inventory: Inventory) {
   }
 
   rows.push(
-    ['SYNTHÈSE GLOBALE PAR TVA'],
-    ['Taux de TVA', 'Total HT (€)', 'Montant TVA (€)', 'Total TTC (€)'],
+    [exportText('SYNTHÈSE GLOBALE PAR TVA', 'GLOBAL VAT SUMMARY')],
+    english
+      ? ['VAT rate', 'Total excl. tax (€)', 'VAT amount (€)', 'Total incl. tax (€)']
+      : ['Taux de TVA', 'Total HT (€)', 'Montant TVA (€)', 'Total TTC (€)'],
   );
   for (const [vatLabel, total] of globalVatTotals) {
     rows.push([vatLabel, ...inventoryValuationTotalRow(total)]);
   }
   rows.push(
-    ['TOTAL INVENTAIRE', ...inventoryValuationTotalRow(globalTotals)],
+    [exportText('TOTAL INVENTAIRE', 'INVENTORY TOTAL'), ...inventoryValuationTotalRow(globalTotals)],
   );
   if (globalTotals.missingVat) {
     rows.push([
-      'Attention',
-      'Le total TTC reste à compléter pour les produits sans TVA de catégorie ni TVA issue d’un document d’achat validé.',
+      exportText('Attention', 'Warning'),
+      exportText(
+        'Le total TTC reste à compléter pour les produits sans TVA de catégorie ni TVA issue d’un document d’achat validé.',
+        'The total including tax must be completed for products without category VAT or VAT from a validated purchase document.',
+      ),
     ]);
   }
 
@@ -15942,9 +16028,9 @@ function exportValidatedInventoryCsv(inventory: Inventory) {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/gi, '-')
     .replace(/^-|-$/g, '')
-    .toLowerCase() || 'inventaire';
+    .toLowerCase() || exportText('inventaire', 'inventory');
   link.href = url;
-  link.download = `inventaire-${safeName}-${(inventoryDate ?? new Date().toISOString()).slice(0, 10)}.csv`;
+  link.download = `${exportText('inventaire', 'inventory')}-${safeName}-${(inventoryDate ?? new Date().toISOString()).slice(0, 10)}.csv`;
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -16059,7 +16145,7 @@ function AuditPage({
           <tbody>
             {entries.map((e) => (
               <tr key={e.id}>
-                <td>{new Date(e.createdAt).toLocaleString('fr-FR')}</td>
+                <td>{new Date(e.createdAt).toLocaleString(activeLocale())}</td>
                 <td>{e.action}</td>
                 <td>{e.entityType ?? '—'}</td>
                 <td>{e.user?.email ?? 'Système'}</td>
@@ -16784,7 +16870,7 @@ function statusLabel(status?: string) {
 
 function formatLastLogin(value?: string | null) {
   if (!value) return 'Jamais connecté';
-  return new Date(value).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
+  return new Date(value).toLocaleString(activeLocale(), { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 function normalizePermission(permission: CorePermission | string): CorePermission {
@@ -17248,7 +17334,7 @@ function BackupRestorePage({
                         {backup.mode === 'scheduled' ? 'Automatique' : 'Manuelle'}
                       </span>
                       <small style={{ color: '#64748b' }}>
-                        {backup.createdAt ? new Date(backup.createdAt).toLocaleString('fr-FR') : '—'}
+                        {backup.createdAt ? new Date(backup.createdAt).toLocaleString(activeLocale()) : '—'}
                       </small>
                     </div>
                   </td>
@@ -17729,7 +17815,7 @@ function BackupRestorePage({
               <div style={{ fontSize: '0.82rem', color: '#64748b' }}>
                 Dernière exécution automatique :{' '}
                 <strong>
-                  {schedule.lastRunAt ? new Date(schedule.lastRunAt).toLocaleString('fr-FR') : 'Aucune'}
+                  {schedule.lastRunAt ? new Date(schedule.lastRunAt).toLocaleString(activeLocale()) : 'Aucune'}
                 </strong>
               </div>
               <button
@@ -17885,7 +17971,7 @@ function BackupRestorePage({
             </div>
             <div className="info-card-premium-value" style={{ fontSize: '0.92rem' }}>
               {googleDrive?.lastSyncAt
-                ? new Date(googleDrive.lastSyncAt).toLocaleString('fr-FR')
+                ? new Date(googleDrive.lastSyncAt).toLocaleString(activeLocale())
                 : 'Jamais'}
             </div>
           </div>
@@ -17899,7 +17985,7 @@ function BackupRestorePage({
             </div>
             <div className="info-card-premium-value" style={{ fontSize: '0.92rem' }}>
               {googleDrive?.lastTestAt
-                ? new Date(googleDrive.lastTestAt).toLocaleString('fr-FR')
+                ? new Date(googleDrive.lastTestAt).toLocaleString(activeLocale())
                 : 'Jamais'}
             </div>
           </div>
@@ -18147,7 +18233,7 @@ function BackupRestorePage({
                   </span>
                 ) : null}
                 <span style={{ fontSize: '0.82rem', color: '#475569', display: 'block', marginTop: '0.2rem' }}>
-                  Créée le {new Date(inspection.manifest.createdAt).toLocaleString('fr-FR')} ·{' '}
+                  Créée le {new Date(inspection.manifest.createdAt).toLocaleString(activeLocale())} ·{' '}
                   {inspection.manifest.files.totalFileCount} fichier(s) ·{' '}
                   {formatBytes(inspection.sizeBytes)}
                 </span>
@@ -18869,7 +18955,7 @@ function SystemUpdatePanel({
                     <span>Démarrée</span>
                     <strong>
                       {operation?.startedAt
-                        ? new Date(operation.startedAt).toLocaleString('fr-FR')
+                        ? new Date(operation.startedAt).toLocaleString(activeLocale())
                         : '-'}
                     </strong>
                   </div>
@@ -18877,7 +18963,7 @@ function SystemUpdatePanel({
                     <span>Terminée</span>
                     <strong>
                       {operation?.finishedAt
-                        ? new Date(operation.finishedAt).toLocaleString('fr-FR')
+                        ? new Date(operation.finishedAt).toLocaleString(activeLocale())
                         : '-'}
                     </strong>
                   </div>
@@ -19039,13 +19125,13 @@ function SystemUpdateProgressModal({
             </div>
             <div>
               <span>Démarrée</span>
-              <strong>{new Date(operation.startedAt).toLocaleString('fr-FR')}</strong>
+              <strong>{new Date(operation.startedAt).toLocaleString(activeLocale())}</strong>
             </div>
             <div>
               <span>Terminée</span>
               <strong>
                 {operation.finishedAt
-                  ? new Date(operation.finishedAt).toLocaleString('fr-FR')
+                  ? new Date(operation.finishedAt).toLocaleString(activeLocale())
                   : '-'}
               </strong>
             </div>
@@ -22479,7 +22565,7 @@ type ProductPriceReference = {
 function normalizedProductUnitSymbol(symbol?: string | null) {
   return String(symbol ?? '')
     .trim()
-    .toLocaleLowerCase('fr-FR');
+    .toLocaleLowerCase(activeLocale());
 }
 
 function productUnitCanonicalFactor(unit?: Unit | null) {
@@ -23347,7 +23433,7 @@ function productNumberDisplay(
   if (value === null || value === undefined || value === '') return '—';
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return '—';
-  const formatted = parsed.toLocaleString('fr-FR', { maximumFractionDigits: maxFractionDigits });
+  const formatted = parsed.toLocaleString(activeLocale(), { maximumFractionDigits: maxFractionDigits });
   return unit ? `${formatted} ${unit}` : formatted;
 }
 
@@ -24224,7 +24310,7 @@ function ProductDetailModal({
                         <div key={movement.id}>
                           <span>
                             {movementLabels[movement.type] ?? movement.type} ·{' '}
-                            {movementEffectiveDate(movement).toLocaleDateString('fr-FR')}
+                            {movementEffectiveDate(movement).toLocaleDateString(activeLocale())}
                           </span>
                           <strong>
                             {movementSign(movement.type)}
@@ -25154,7 +25240,7 @@ function InventoryForm({
   onClose: () => void;
 }) {
   const activeSites = sites.filter((site) => !site.isArchived);
-  const [name, setName] = useState(`Inventaire ${new Date().toLocaleDateString('fr-FR')}`);
+  const [name, setName] = useState(`Inventaire ${new Date().toLocaleDateString(activeLocale())}`);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [comment, setComment] = useState('');
   const [siteId, setSiteId] = useState(activeSites.length === 1 ? activeSites[0].id : '');
@@ -27296,7 +27382,7 @@ function formatDocumentDate(value?: string | null) {
   if (!value) return 'Date inconnue';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'Date inconnue';
-  return new Intl.DateTimeFormat('fr-FR').format(date);
+  return new Intl.DateTimeFormat(activeLocale()).format(date);
 }
 
 function documentTypeLabel(type?: string | null) {

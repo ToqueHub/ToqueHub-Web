@@ -403,9 +403,9 @@ export class StocksController {
   @Get('products/import/template.csv')
   @Header('Content-Type', 'text/csv; charset=utf-8')
   @Header('Content-Disposition', 'attachment; filename="modele-import-produits.csv"')
-  productImportTemplate(@CurrentUser() u: AuthenticatedUser) {
+  productImportTemplate(@CurrentUser() u: AuthenticatedUser, @Query('lang') lang?: string) {
     this.org(u);
-    return this.stocksProductImportService.templateCsv();
+    return this.stocksProductImportService.templateCsv(lang === 'en' ? 'en' : 'fr');
   }
   @Post('products/import/analyze')
   @UseInterceptors(FileInterceptor('file', { limits: { files: 1, fileSize: 5 * 1024 * 1024 } }))
@@ -447,9 +447,13 @@ export class StocksController {
   @Post('products/csv-creator/export')
   @Header('Content-Type', 'text/csv; charset=utf-8')
   @Header('Content-Disposition', 'attachment; filename="produits-crees.csv"')
-  exportProductCreator(@CurrentUser() u: AuthenticatedUser, @Body() dto: ProductCreatorRowsDto) {
+  exportProductCreator(
+    @CurrentUser() u: AuthenticatedUser,
+    @Body() dto: ProductCreatorRowsDto,
+    @Query('lang') lang?: string,
+  ) {
     this.org(u);
-    return this.stocksProductImportService.creatorCsv(dto.rows);
+    return this.stocksProductImportService.creatorCsv(dto.rows, lang === 'en' ? 'en' : 'fr');
   }
 
   @Get('sites') listSites(@CurrentUser() u: AuthenticatedUser, @Query() q: ListQueryDto) {
@@ -567,8 +571,12 @@ export class StocksController {
   }
   @Get('stocks/margins/reports/:id.csv')
   @Header('Content-Type', 'text/csv; charset=utf-8')
-  marginReportCsv(@CurrentUser() u: AuthenticatedUser, @Param('id') id: string) {
-    return this.stocksMarginsService.reportCsv(this.org(u), id);
+  marginReportCsv(
+    @CurrentUser() u: AuthenticatedUser,
+    @Param('id') id: string,
+    @Query('lang') lang?: string,
+  ) {
+    return this.stocksMarginsService.reportCsv(this.org(u), id, lang === 'en' ? 'en' : 'fr');
   }
 
   @Get('inventories') listInventories(

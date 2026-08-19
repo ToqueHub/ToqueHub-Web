@@ -1,3 +1,4 @@
+import { activeLocale } from '../i18n/runtime';
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -2433,9 +2434,9 @@ function TechnicalSheetModalSelect({
           group: recipe.category?.name ?? 'Sans catégorie',
           referenceLabel:
             recipe.yieldMode === 'MASS' && mass > 0
-              ? `${mass.toLocaleString('fr-FR')} g`
+              ? `${mass.toLocaleString(activeLocale())} g`
               : portions > 0
-                ? `${portions.toLocaleString('fr-FR')} portions`
+                ? `${portions.toLocaleString(activeLocale())} portions`
                 : null,
           durationMinutes: Number(recipe.totalTimeMinutes ?? 0) || null,
           contextLabel:
@@ -3451,7 +3452,7 @@ function AvailabilityComponentRow({
   const hasChildren = Boolean(component.children?.length);
   const availabilityLabel =
     component.missingQuantity > 0
-      ? `Manque ${Number(component.missingQuantity).toLocaleString('fr-FR', {
+      ? `Manque ${Number(component.missingQuantity).toLocaleString(activeLocale(), {
           maximumFractionDigits: 3,
         })} ${component.unit ?? ''}`
       : 'Matière disponible';
@@ -3509,7 +3510,7 @@ function AvailabilityComponentRow({
           </span>
         </button>
         <strong style={{ color: '#334155', whiteSpace: 'nowrap' }}>
-          {Number(component.requiredQuantity).toLocaleString('fr-FR', {
+          {Number(component.requiredQuantity).toLocaleString(activeLocale(), {
             maximumFractionDigits: 3,
           })}{' '}
           {component.unit}
@@ -3813,7 +3814,7 @@ function averageCatalogPrice(catalogs: MenuPlan[]) {
   return prices.length ? prices.reduce((sum, price) => sum + price, 0) / prices.length : null;
 }
 function dateFr(value?: string | null) {
-  return value ? new Date(value).toLocaleDateString('fr-FR') : '—';
+  return value ? new Date(value).toLocaleDateString(activeLocale()) : '—';
 }
 function groupMenusForCalendar(menus: MenuPlan[], view: MenuCalendarView) {
   const datedMenus = menus.filter((menu) => menu.date);
@@ -3823,8 +3824,8 @@ function groupMenusForCalendar(menus: MenuPlan[], view: MenuCalendarView) {
     date.setDate(date.getDate() + index);
     const label =
       view === 'year'
-        ? date.toLocaleDateString('fr-FR', { month: 'long' })
-        : date.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' });
+        ? date.toLocaleDateString(activeLocale(), { month: 'long' })
+        : date.toLocaleDateString(activeLocale(), { weekday: 'short', day: '2-digit', month: '2-digit' });
     return {
       label,
       items: datedMenus.filter((m) =>

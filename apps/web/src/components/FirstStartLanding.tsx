@@ -1,3 +1,4 @@
+import { activeLocale } from '../i18n/runtime';
 import type { ChangeEvent, DragEvent } from 'react';
 import { useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -840,7 +841,7 @@ function BootstrapRestorePanel({
                         <Clock size={12} /> Créée le
                       </span>
                       <span className="restore-spec-value">
-                        {new Date(inspection.manifest.createdAt).toLocaleString('fr-FR')}
+                        {new Date(inspection.manifest.createdAt).toLocaleString(activeLocale())}
                       </span>
                     </div>
                     <div className="restore-spec-item">

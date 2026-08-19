@@ -1,3 +1,4 @@
+import { activeLocale } from '../i18n/runtime';
 import {
   useCallback,
   useEffect,
@@ -176,7 +177,7 @@ function minutesBetween(startTime: string, endTime: string) {
 
 function formatDay(value: string, options?: Intl.DateTimeFormatOptions) {
   return new Intl.DateTimeFormat(
-    'fr-FR',
+    activeLocale(),
     options ?? { weekday: 'long', day: 'numeric', month: 'long' },
   )
     .format(parseDay(value))
@@ -184,7 +185,7 @@ function formatDay(value: string, options?: Intl.DateTimeFormatOptions) {
 }
 
 function formatTime(value: string) {
-  return new Intl.DateTimeFormat('fr-FR', {
+  return new Intl.DateTimeFormat(activeLocale(), {
     hour: '2-digit',
     minute: '2-digit',
     hourCycle: 'h23',
@@ -712,7 +713,7 @@ export function ProductionApp({ token, session, tab, onNavigate }: ProductionApp
         category: sheet.isOnCurrentMenu ? 'Au menu actuellement' : 'Fiche active',
         group: sheet.isOnCurrentMenu ? 'Au menu actuellement' : 'Autres fiches actives',
         referenceLabel: sheet.referencePortions
-          ? `${Number(sheet.referencePortions).toLocaleString('fr-FR')} portions`
+          ? `${Number(sheet.referencePortions).toLocaleString(activeLocale())} portions`
           : null,
         durationMinutes: sheet.totalTimeMinutes,
         contextLabel: sheet.menuNames.length ? sheet.menuNames.join(', ') : null,
@@ -2500,7 +2501,7 @@ export function ProductionApp({ token, session, tab, onNavigate }: ProductionApp
                                         selectedSheet.referencePortions
                                           ? ` · ${Number(
                                               selectedSheet.referencePortions,
-                                            ).toLocaleString('fr-FR')} portions`
+                                            ).toLocaleString(activeLocale())} portions`
                                           : ''
                                       }`
                                     : `${taskOptions.technicalSheets.length} fiche(s) active(s) disponible(s)`}
@@ -3373,9 +3374,9 @@ function FabricationView({
             </div>
             <div>
               <div className="production-metric-val" style={{ color: '#7c3aed' }}>
-                {Math.round(portions).toLocaleString('fr-FR')} port.
+                {Math.round(portions).toLocaleString(activeLocale())} port.
                 {kilograms > 0
-                  ? ` · ${kilograms.toLocaleString('fr-FR', {
+                  ? ` · ${kilograms.toLocaleString(activeLocale(), {
                       maximumFractionDigits: 2,
                     })} kg`
                   : ''}
@@ -3615,7 +3616,7 @@ function FabricationView({
                         >
                           <Clock3 size={13} color="#94a3b8" />
                           <span>
-                            {new Date(campaign.productionDate).toLocaleDateString('fr-FR')}{' '}
+                            {new Date(campaign.productionDate).toLocaleDateString(activeLocale())}{' '}
                             {campaign.plannedTime ? `à ${campaign.plannedTime}` : ''}
                           </span>
                         </div>
@@ -3661,7 +3662,7 @@ function FabricationView({
                       </td>
                       <td>
                         <div style={{ fontWeight: 850, fontSize: '.95rem', color: '#0f172a' }}>
-                          {campaignQuantity(campaign).value.toLocaleString('fr-FR', {
+                          {campaignQuantity(campaign).value.toLocaleString(activeLocale(), {
                             maximumFractionDigits: 3,
                           })}{' '}
                           <span style={{ fontSize: '.78rem', color: '#64748b', fontWeight: 600 }}>
@@ -3881,7 +3882,7 @@ function FabricationView({
                           marginTop: '.1rem',
                         }}
                       >
-                        {campaignQuantity(campaign).value.toLocaleString('fr-FR', {
+                        {campaignQuantity(campaign).value.toLocaleString(activeLocale(), {
                           maximumFractionDigits: 3,
                         })}{' '}
                         {campaignQuantity(campaign).unit}
@@ -3906,7 +3907,7 @@ function FabricationView({
                           marginTop: '.1rem',
                         }}
                       >
-                        {new Date(campaign.productionDate).toLocaleDateString('fr-FR', {
+                        {new Date(campaign.productionDate).toLocaleDateString(activeLocale(), {
                           day: 'numeric',
                           month: 'short',
                         })}{' '}
@@ -4107,7 +4108,7 @@ function FabricationView({
                             >
                               <span>
                                 <strong>
-                                  {campaignQuantity(campaign).value.toLocaleString('fr-FR', {
+                                  {campaignQuantity(campaign).value.toLocaleString(activeLocale(), {
                                     maximumFractionDigits: 3,
                                   })}
                                 </strong>{' '}
@@ -4236,7 +4237,7 @@ function FabricationView({
                     }}
                   >
                     <Clock3 size={14} /> Planifiée pour le{' '}
-                    {new Date(selected.productionDate).toLocaleDateString('fr-FR', {
+                    {new Date(selected.productionDate).toLocaleDateString(activeLocale(), {
                       weekday: 'long',
                       day: 'numeric',
                       month: 'long',
@@ -4315,7 +4316,7 @@ function FabricationView({
                     />
                     <DetailCard
                       label="Quantité planifiée"
-                      value={`${campaignQuantity(selected).value.toLocaleString('fr-FR', {
+                      value={`${campaignQuantity(selected).value.toLocaleString(activeLocale(), {
                         maximumFractionDigits: 3,
                       })} ${campaignQuantity(selected).unit}`}
                     />
@@ -4404,7 +4405,7 @@ function FabricationView({
                               </td>
                               <td style={{ textAlign: 'right' }}>
                                 <strong style={{ color: '#047857', fontSize: '.95rem' }}>
-                                  {Number(req.requiredQuantity).toLocaleString('fr-FR')}{' '}
+                                  {Number(req.requiredQuantity).toLocaleString(activeLocale())}{' '}
                                   {req.unitSymbolSnapshot ?? req.unit?.symbol ?? ''}
                                 </strong>
                               </td>
@@ -5634,7 +5635,7 @@ function CatererProductionPlanner({
               <div style={{ display: 'grid' }}>
                 {prestationLines.map((line) => {
                   const draftLine = lines[line.menuItemId];
-                  const readyDateFormatted = new Date(line.readyAt).toLocaleString('fr-FR', {
+                  const readyDateFormatted = new Date(line.readyAt).toLocaleString(activeLocale(), {
                     dateStyle: 'short',
                     timeStyle: 'short',
                   });

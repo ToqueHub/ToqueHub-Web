@@ -16,6 +16,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { PrepareMenuExportDto } from './dto/menus.dto';
 
 type Actor = { id: string; role: string };
+type ExportLanguage = 'fr' | 'en';
 type UploadedTemplate = { originalname: string; mimetype: string; size: number; buffer: Buffer };
 type Zone = { x: number; y: number; width: number; height: number };
 type PublicLayout = {
@@ -58,6 +59,15 @@ const SECTION_LABELS: Record<string, string> = {
   DESSERT: 'Desserts',
   DRINK: 'Boissons',
   OTHER: 'Autres',
+};
+const SECTION_LABELS_EN: Record<string, string> = {
+  STARTER: 'Starters',
+  MAIN: 'Main courses',
+  SIDE: 'Side dishes',
+  CHEESE: 'Cheeses',
+  DESSERT: 'Desserts',
+  DRINK: 'Drinks',
+  OTHER: 'Other',
 };
 
 @Injectable()
@@ -233,15 +243,16 @@ export class MenuExportsService {
     if (!menu.items.length)
       throw new BadRequestException('Ce menu ne contient aucun article à exporter.');
 
+    const language: ExportLanguage = dto.language === 'en' ? 'en' : 'fr';
     const buffer =
       dto.audience === MenuExportAudience.KITCHEN
-        ? await this.kitchenPdf(menu, organization)
+        ? await this.kitchenPdf(menu, organization, language)
         : dto.audience === MenuExportAudience.DINING_ROOM
-          ? await this.diningRoomPdf(menu, organization)
-          : await this.publicToqueHubPdf(menu, organization);
+          ? await this.diningRoomPdf(menu, organization, language)
+          : await this.publicToqueHubPdf(menu, organization, language);
 
     const id = randomUUID();
-    const filename = `${this.slug(menu.name)}-${this.audienceSlug(dto.audience)}.pdf`;
+    const filename = `${this.slug(menu.name)}-${this.audienceSlug(dto.audience, language)}.pdf`;
     const storagePath = join(organizationId, `${id}.pdf`);
     await mkdir(join(EXPORT_ROOT, organizationId), { recursive: true });
     await writeFile(join(EXPORT_ROOT, storagePath), buffer);
@@ -249,7 +260,8 @@ export class MenuExportsService {
       generatedAt: new Date().toISOString(),
       storagePath,
       audience: dto.audience,
-      menu: this.menuSnapshot(menu),
+      language,
+      menu: this.menuSnapshot(menu, language),
       template: null,
     };
     const created = await this.prisma.menuExport.create({
@@ -274,7 +286,10 @@ export class MenuExportsService {
         menuId: menu.id,
         actorUserId: actor.id,
         action: MenuHistoryAction.EXPORT_GENERATED,
-        summary: `Export ${this.audienceLabel(dto.audience)} généré`,
+        summary:
+          language === 'en'
+            ? `${this.audienceLabel(dto.audience, language)} export generated`
+            : `Export ${this.audienceLabel(dto.audience, language)} généré`,
         details: { exportId: created.id, templateId: null },
       },
     });
@@ -427,11 +442,22 @@ export class MenuExportsService {
     return Buffer.from(await pdf.save());
   }
 
-  private async publicToqueHubPdf(menu: any, organization: any) {
-    const reference = this.menuReference(menu);
+  private async publicToqueHubPdf(
+    menu: any,
+    organization: any,
+    language: ExportLanguage = 'fr',
+  ) {
+    const reference = this.menuReference(menu, language);
+    const documentTitle = this.text(language, 'NOTRE MENU', 'OUR MENU');
     return this.pdfKitBuffer(
       (doc) => {
-        let y = this.drawRestaurantDocumentHeader(doc, organization, 'NOTRE MENU', reference, true);
+        let y = this.drawRestaurantDocumentHeader(
+          doc,
+          organization,
+          documentTitle,
+          reference,
+          true,
+        );
         const menuName = String(menu.name ?? 'Menu');
         doc
           .fillColor('#0f172a')
@@ -443,7 +469,10 @@ export class MenuExportsService {
           .fillColor('#0f766e')
           .font('Helvetica-Bold')
           .fontSize(11)
-          .text(this.menuLongDateLabel(menu), 58, y, { width: 479, align: 'center' });
+          .text(this.menuLongDateLabel(menu, language), 58, y, {
+            width: 479,
+            align: 'center',
+          });
         y += 27;
 
         const location = [menu.site?.name ?? organization?.mainSiteName, menu.site?.address]
@@ -464,7 +493,7 @@ export class MenuExportsService {
           .fillColor('#0f766e')
           .font('Helvetica-Bold')
           .fontSize(8)
-          .text(this.menuServiceLabel(menu.service).toUpperCase(), 58, y, {
+          .text(this.menuServiceLabel(menu.service, language).toUpperCase(), 58, y, {
             width: 479,
             align: 'center',
             characterSpacing: 1.2,
@@ -479,13 +508,13 @@ export class MenuExportsService {
           y += doc.heightOfString(String(menu.description), { width: 423 }) + 18;
         }
 
-        for (const group of this.publicGroups(menu)) {
+        for (const group of this.publicGroups(menu, language)) {
           y = this.ensureRestaurantDocumentSpace(
             doc,
             y,
             38 + group.items.length * 35,
             organization,
-            'NOTRE MENU',
+            documentTitle,
             reference,
             true,
           );
@@ -505,7 +534,7 @@ export class MenuExportsService {
               y,
               item.description ? 48 : 30,
               organization,
-              'NOTRE MENU',
+              documentTitle,
               reference,
               true,
             );
@@ -534,7 +563,7 @@ export class MenuExportsService {
           y + 7,
           76,
           organization,
-          'NOTRE MENU',
+          documentTitle,
           reference,
           true,
         );
@@ -545,13 +574,18 @@ export class MenuExportsService {
           .fillColor('#0f766e')
           .font('Helvetica-Bold')
           .fontSize(9)
-          .text('BON APPÉTIT', 72, y + 12, { width: 451, align: 'center' });
+          .text(this.text(language, 'BON APPÉTIT', 'ENJOY YOUR MEAL'), 72, y + 12, {
+            width: 451,
+            align: 'center',
+          });
         doc
           .fillColor('#475569')
           .font('Helvetica')
           .fontSize(8.5)
           .text(
-            `${organization?.name ?? 'Notre équipe'} vous souhaite un agréable moment.`,
+            language === 'en'
+              ? `${organization?.name ?? 'Our team'} wishes you a wonderful experience.`
+              : `${organization?.name ?? 'Notre équipe'} vous souhaite un agréable moment.`,
             72,
             y + 29,
             {
@@ -560,7 +594,7 @@ export class MenuExportsService {
             },
           );
       },
-      `Menu client — ${menu.name}`,
+      `${this.text(language, 'Menu client', 'Customer menu')} — ${menu.name}`,
       {
         author: organization?.name ?? 'ToqueHub',
         footer: (page, count) =>
@@ -569,11 +603,12 @@ export class MenuExportsService {
     );
   }
 
-  private async kitchenPdf(menu: any, organization: any) {
-    const reference = this.menuReference(menu);
+  private async kitchenPdf(menu: any, organization: any, language: ExportLanguage = 'fr') {
+    const reference = this.menuReference(menu, language);
+    const documentTitle = this.text(language, 'DOSSIER CUISINE', 'KITCHEN FILE');
     return this.pdfKitBuffer(
       (doc) => {
-        let y = this.drawRestaurantDocumentHeader(doc, organization, 'DOSSIER CUISINE', reference);
+        let y = this.drawRestaurantDocumentHeader(doc, organization, documentTitle, reference);
         const menuName = String(menu.name ?? 'Menu');
         doc
           .fillColor('#0f172a')
@@ -584,14 +619,26 @@ export class MenuExportsService {
 
         const volume = Number(menu.expectedGuests ?? 0);
         const metrics = [
-          ['DATE', this.menuDateLabel(menu)],
-          ['SITE', menu.site?.name ?? organization?.mainSiteName ?? 'Tous sites'],
-          ['SERVICE', this.menuServiceLabel(menu.service)],
+          ['DATE', this.menuDateLabel(menu, language)],
           [
-            'VOLUME',
+            this.text(language, 'SITE', 'LOCATION'),
+            menu.site?.name ??
+              organization?.mainSiteName ??
+              this.text(language, 'Tous sites', 'All locations'),
+          ],
+          [
+            this.text(language, 'SERVICE', 'MEAL SERVICE'),
+            this.menuServiceLabel(menu.service, language),
+          ],
+          [
+            this.text(language, 'VOLUME', 'VOLUME'),
             volume > 0
-              ? `${this.number(volume)} couverts`
-              : `${menu.items?.length ?? 0} composition${menu.items?.length === 1 ? '' : 's'}`,
+              ? `${this.number(volume, language)} ${this.text(language, 'couverts', 'covers')}`
+              : `${menu.items?.length ?? 0} ${this.text(
+                  language,
+                  `composition${menu.items?.length === 1 ? '' : 's'}`,
+                  `item${menu.items?.length === 1 ? '' : 's'}`,
+                )}`,
           ],
         ];
         metrics.forEach(([label, value], index) =>
@@ -604,21 +651,35 @@ export class MenuExportsService {
           y,
           124,
           organization,
-          'DOSSIER CUISINE',
+          documentTitle,
           reference,
         );
-        this.drawRestaurantSectionTitle(doc, 'ORGANISATION DU SERVICE', y);
+        this.drawRestaurantSectionTitle(
+          doc,
+          this.text(language, 'ORGANISATION DU SERVICE', 'SERVICE ORGANIZATION'),
+          y,
+        );
         y += 23;
         y = this.drawRestaurantDefinitionBlock(
           doc,
           [
-            ['Menu', menuName],
-            ['Type de service', this.menuServiceLabel(menu.service)],
+            [this.text(language, 'Menu', 'Menu'), menuName],
             [
-              'Lieu',
-              menu.site?.address ?? menu.site?.name ?? organization?.mainSiteName ?? 'À renseigner',
+              this.text(language, 'Type de service', 'Service type'),
+              this.menuServiceLabel(menu.service, language),
             ],
-            ['Consignes', menu.description ?? 'Aucune consigne particulière'],
+            [
+              this.text(language, 'Lieu', 'Location'),
+              menu.site?.address ??
+                menu.site?.name ??
+                organization?.mainSiteName ??
+                this.text(language, 'À renseigner', 'To be completed'),
+            ],
+            [
+              this.text(language, 'Consignes', 'Instructions'),
+              menu.description ??
+                this.text(language, 'Aucune consigne particulière', 'No special instructions'),
+            ],
           ],
           y,
         );
@@ -628,7 +689,7 @@ export class MenuExportsService {
           y + 14,
           Math.min(166 + (menu.items?.length ?? 0) * 38, 330),
           organization,
-          'DOSSIER CUISINE',
+          documentTitle,
           reference,
         );
         doc.roundedRect(42, y, 511, 38, 7).fill('#0f766e');
@@ -636,7 +697,7 @@ export class MenuExportsService {
           .fillColor('#ccfbf1')
           .font('Helvetica-Bold')
           .fontSize(8)
-          .text('MENU À PRODUIRE', 54, y + 8);
+          .text(this.text(language, 'MENU À PRODUIRE', 'MENU TO PRODUCE'), 54, y + 8);
         doc
           .fillColor('#ffffff')
           .font('Helvetica-Bold')
@@ -648,7 +709,9 @@ export class MenuExportsService {
           .font('Helvetica-Bold')
           .fontSize(10)
           .text(
-            volume > 0 ? `${this.number(volume)} couverts` : `${menu.items?.length ?? 0} éléments`,
+            volume > 0
+              ? `${this.number(volume, language)} ${this.text(language, 'couverts', 'covers')}`
+              : `${menu.items?.length ?? 0} ${this.text(language, 'éléments', 'items')}`,
             426,
             y + 14,
             {
@@ -659,9 +722,20 @@ export class MenuExportsService {
         y += 48;
 
         const serviceFacts = [
-          ['SERVICE', this.menuServiceLabel(menu.service)],
-          ['DATE DE PRODUCTION', this.menuDateLabel(menu)],
-          ['SITE DE PRODUCTION', menu.site?.name ?? organization?.mainSiteName ?? 'À renseigner'],
+          [
+            this.text(language, 'SERVICE', 'MEAL SERVICE'),
+            this.menuServiceLabel(menu.service, language),
+          ],
+          [
+            this.text(language, 'DATE DE PRODUCTION', 'PRODUCTION DATE'),
+            this.menuDateLabel(menu, language),
+          ],
+          [
+            this.text(language, 'SITE DE PRODUCTION', 'PRODUCTION LOCATION'),
+            menu.site?.name ??
+              organization?.mainSiteName ??
+              this.text(language, 'À renseigner', 'To be completed'),
+          ],
         ];
         serviceFacts.forEach(([label, value], index) => {
           const x = 42 + index * 170;
@@ -682,8 +756,11 @@ export class MenuExportsService {
           .fillColor('#334155')
           .font('Helvetica-Bold')
           .fontSize(7.5)
-          .text('COMPOSITION À PRODUIRE', 54, y + 7);
-        doc.text('QUANTITÉ', 413, y + 7, { width: 72, align: 'right' });
+          .text(this.text(language, 'COMPOSITION À PRODUIRE', 'ITEMS TO PRODUCE'), 54, y + 7);
+        doc.text(this.text(language, 'QUANTITÉ', 'QUANTITY'), 413, y + 7, {
+          width: 72,
+          align: 'right',
+        });
         doc.text('OK', 508, y + 7, { width: 28, align: 'center' });
         y += 22;
 
@@ -695,13 +772,21 @@ export class MenuExportsService {
             y,
             rowHeight + 2,
             organization,
-            'DOSSIER CUISINE',
+            documentTitle,
             reference,
           );
-          const name = item.technicalSheet?.name ?? item.product?.name ?? 'Article';
-          const category = item.menuCategory?.name ?? SECTION_LABELS[item.section] ?? 'Autres';
+          const name =
+            item.technicalSheet?.name ??
+            item.product?.name ??
+            this.text(language, 'Article', 'Item');
+          const category =
+            item.menuCategory?.name ??
+            (language === 'en' ? SECTION_LABELS_EN[item.section] : SECTION_LABELS[item.section]) ??
+            this.text(language, 'Autres', 'Other');
           const quantity = this.targetPortions(menu, item);
-          const unit = item.technicalSheet ? 'portions' : (item.product?.unit?.symbol ?? 'unités');
+          const unit = item.technicalSheet
+            ? 'portions'
+            : (item.product?.unit?.symbol ?? this.text(language, 'unités', 'units'));
           doc
             .rect(42, y, 511, rowHeight)
             .fillAndStroke(index % 2 ? '#ffffff' : '#f8fafc', '#e2e8f0');
@@ -715,10 +800,15 @@ export class MenuExportsService {
               .fillColor('#b45309')
               .font('Helvetica')
               .fontSize(7.5)
-              .text(`${category} · Allergènes : ${allergens.join(', ')}`, 54, y + 21, {
+              .text(
+                `${category} · ${this.text(language, 'Allergènes', 'Allergens')}: ${allergens.join(', ')}`,
+                54,
+                y + 21,
+                {
                 width: 330,
                 height: 12,
-              });
+                },
+              );
           } else {
             doc
               .fillColor('#64748b')
@@ -730,7 +820,7 @@ export class MenuExportsService {
             .fillColor('#0f172a')
             .font('Helvetica-Bold')
             .fontSize(10)
-            .text(`${this.number(quantity)} ${unit}`, 400, y + 8, {
+            .text(`${this.number(quantity, language)} ${unit}`, 400, y + 8, {
               width: 85,
               align: 'right',
             });
@@ -743,17 +833,29 @@ export class MenuExportsService {
           y + 16,
           96,
           organization,
-          'DOSSIER CUISINE',
+          documentTitle,
           reference,
         );
-        this.drawRestaurantSectionTitle(doc, 'CONTRÔLES AVANT SERVICE', y);
+        this.drawRestaurantSectionTitle(
+          doc,
+          this.text(language, 'CONTRÔLES AVANT SERVICE', 'PRE-SERVICE CHECKS'),
+          y,
+        );
         y += 24;
-        [
-          'Quantités et conditionnement contrôlés',
-          'Étiquetage et allergènes contrôlés',
-          'Températures relevées',
-          'Mise en place et matériel préparés',
-        ].forEach((label, index) =>
+        (language === 'en'
+          ? [
+              'Quantities and packaging checked',
+              'Labels and allergens checked',
+              'Temperatures recorded',
+              'Station and equipment prepared',
+            ]
+          : [
+              'Quantités et conditionnement contrôlés',
+              'Étiquetage et allergènes contrôlés',
+              'Températures relevées',
+              'Mise en place et matériel préparés',
+            ]
+        ).forEach((label, index) =>
           this.drawRestaurantChecklistLine(
             doc,
             label,
@@ -763,32 +865,37 @@ export class MenuExportsService {
           ),
         );
       },
-      `Dossier cuisine — ${menu.name}`,
+      `${this.text(language, 'Dossier cuisine', 'Kitchen file')} — ${menu.name}`,
       {
         author: organization?.name ?? 'ToqueHub',
         footer: (page, count) =>
-          `${reference} · Document opérationnel · Généré le ${new Date().toLocaleDateString('fr-FR')} · ${page}/${count}`,
+          `${reference} · ${this.text(language, 'Document opérationnel', 'Operational document')} · ${this.text(language, 'Généré le', 'Generated on')} ${new Date().toLocaleDateString(language === 'en' ? 'en-GB' : 'fr-FR')} · ${page}/${count}`,
       },
     );
   }
 
-  private async diningRoomPdf(menu: any, organization: any) {
+  private async diningRoomPdf(menu: any, organization: any, language: ExportLanguage = 'fr') {
+    const documentTitle = this.text(language, 'FICHE SALLE', 'DINING ROOM BRIEF');
     return this.pdfKitBuffer((doc) => {
-      this.drawBrandPage(doc, organization, menu.name, 'FICHE SALLE');
+      this.drawBrandPage(doc, organization, menu.name, documentTitle);
       let y = 140;
       doc
         .fillColor('#475569')
         .font('Helvetica')
         .fontSize(9.5)
         .text(
-          'Support de briefing: composition, allergènes, origine et arguments utiles pour présenter chaque article.',
+          this.text(
+            language,
+            'Support de briefing: composition, allergènes, origine et arguments utiles pour présenter chaque article.',
+            'Briefing guide: composition, allergens, origin and key points for presenting each item.',
+          ),
           48,
           y,
           { width: 499 },
         );
       y += 38;
-      for (const group of this.publicGroups(menu)) {
-        y = this.ensureSpace(doc, organization, menu.name, 'FICHE SALLE', y, 55);
+      for (const group of this.publicGroups(menu, language)) {
+        y = this.ensureSpace(doc, organization, menu.name, documentTitle, y, 55);
         doc
           .fillColor('#10b981')
           .font('Helvetica-Bold')
@@ -799,12 +906,19 @@ export class MenuExportsService {
           const allergens = this.itemAllergens(item.raw);
           const suppliers = this.itemSuppliers(item.raw);
           const description =
-            item.description || 'Présentation commerciale à compléter dans la fiche technique.';
+            item.description ||
+            this.text(
+              language,
+              'Présentation commerciale à compléter dans la fiche technique.',
+              'Commercial description to be completed in the technical sheet.',
+            );
           const meta = [
             allergens.length
-              ? `Allergènes: ${allergens.join(', ')}`
-              : 'Allergènes: aucun renseigné',
-            suppliers.length ? `Fournisseurs: ${suppliers.join(', ')}` : '',
+              ? `${this.text(language, 'Allergènes', 'Allergens')}: ${allergens.join(', ')}`
+              : this.text(language, 'Allergènes: aucun renseigné', 'Allergens: none provided'),
+            suppliers.length
+              ? `${this.text(language, 'Fournisseurs', 'Suppliers')}: ${suppliers.join(', ')}`
+              : '',
           ]
             .filter(Boolean)
             .join('  |  ');
@@ -814,7 +928,7 @@ export class MenuExportsService {
               doc.heightOfString(meta, { width: 455 }) +
               47,
           );
-          y = this.ensureSpace(doc, organization, menu.name, 'FICHE SALLE', y, cardHeight + 10);
+          y = this.ensureSpace(doc, organization, menu.name, documentTitle, y, cardHeight + 10);
           doc.roundedRect(48, y, 499, cardHeight, 10).fillAndStroke('#f8fafc', '#dbe4ee');
           doc
             .fillColor('#0f172a')
@@ -834,7 +948,7 @@ export class MenuExportsService {
           y += cardHeight + 12;
         }
       }
-    }, `Fiche salle - ${menu.name}`);
+    }, `${this.text(language, 'Fiche salle', 'Dining room brief')} - ${menu.name}`);
   }
 
   private pdfKitBuffer(
@@ -1063,13 +1177,19 @@ export class MenuExportsService {
       .text(value, x + 11, y + 31, { width: width - 22 });
   }
 
-  private publicGroups(menu: any) {
+  private publicGroups(menu: any, language: ExportLanguage = 'fr') {
     const groups = new Map<string, any[]>();
     for (const item of menu.items ?? []) {
-      const name = item.menuCategory?.name ?? SECTION_LABELS[item.section] ?? 'Autres';
+      const name =
+        item.menuCategory?.name ??
+        (language === 'en' ? SECTION_LABELS_EN[item.section] : SECTION_LABELS[item.section]) ??
+        this.text(language, 'Autres', 'Other');
       if (!groups.has(name)) groups.set(name, []);
       groups.get(name)!.push({
-        name: item.technicalSheet?.name ?? item.product?.name ?? 'Article',
+        name:
+          item.technicalSheet?.name ??
+          item.product?.name ??
+          this.text(language, 'Article', 'Item'),
         description: item.notes ?? item.technicalSheet?.description ?? null,
         raw: item,
       });
@@ -1108,13 +1228,13 @@ export class MenuExportsService {
     );
   }
 
-  private menuSnapshot(menu: any) {
+  private menuSnapshot(menu: any, language: ExportLanguage = 'fr') {
     return {
       id: menu.id,
       name: menu.name,
       date: menu.date,
       site: menu.site ? { id: menu.site.id, name: menu.site.name } : null,
-      items: this.publicGroups(menu).map((group) => ({
+      items: this.publicGroups(menu, language).map((group) => ({
         name: group.name,
         items: group.items.map((item) => ({ name: item.name, description: item.description })),
       })),
@@ -1433,27 +1553,31 @@ export class MenuExportsService {
     );
   }
 
-  private audienceSlug(value: MenuExportAudience) {
-    if (value === MenuExportAudience.KITCHEN) return 'dossier-cuisine';
-    if (value === MenuExportAudience.DINING_ROOM) return 'fiche-salle';
-    return 'menu-client';
+  private audienceSlug(value: MenuExportAudience, language: ExportLanguage = 'fr') {
+    if (value === MenuExportAudience.KITCHEN)
+      return language === 'en' ? 'kitchen-file' : 'dossier-cuisine';
+    if (value === MenuExportAudience.DINING_ROOM)
+      return language === 'en' ? 'dining-room-brief' : 'fiche-salle';
+    return language === 'en' ? 'customer-menu' : 'menu-client';
   }
 
-  private audienceLabel(value: MenuExportAudience) {
-    if (value === MenuExportAudience.KITCHEN) return 'Dossier cuisine';
-    if (value === MenuExportAudience.DINING_ROOM) return 'Fiche salle';
-    return 'Menu client';
+  private audienceLabel(value: MenuExportAudience, language: ExportLanguage = 'fr') {
+    if (value === MenuExportAudience.KITCHEN)
+      return this.text(language, 'Dossier cuisine', 'Kitchen file');
+    if (value === MenuExportAudience.DINING_ROOM)
+      return this.text(language, 'Fiche salle', 'Dining room brief');
+    return this.text(language, 'Menu client', 'Customer menu');
   }
 
-  private menuDateLabel(menu: any) {
-    if (!menu.date) return 'Carte permanente';
-    return new Date(menu.date).toLocaleDateString('fr-FR');
+  private menuDateLabel(menu: any, language: ExportLanguage = 'fr') {
+    if (!menu.date) return this.text(language, 'Carte permanente', 'Permanent menu');
+    return new Date(menu.date).toLocaleDateString(language === 'en' ? 'en-GB' : 'fr-FR');
   }
 
-  private menuLongDateLabel(menu: any) {
+  private menuLongDateLabel(menu: any, language: ExportLanguage = 'fr') {
     const value = menu.date ?? menu.activeFrom;
-    if (!value) return 'Carte permanente';
-    return new Date(value).toLocaleDateString('fr-FR', {
+    if (!value) return this.text(language, 'Carte permanente', 'Permanent menu');
+    return new Date(value).toLocaleDateString(language === 'en' ? 'en-GB' : 'fr-FR', {
       weekday: 'long',
       day: 'numeric',
       month: 'long',
@@ -1462,20 +1586,20 @@ export class MenuExportsService {
     });
   }
 
-  private menuReference(menu: any) {
+  private menuReference(menu: any, language: ExportLanguage = 'fr') {
     const date = menu.date
-      ? new Date(menu.date).toLocaleDateString('fr-FR', {
+      ? new Date(menu.date).toLocaleDateString(language === 'en' ? 'en-GB' : 'fr-FR', {
           day: '2-digit',
           month: '2-digit',
           year: 'numeric',
           timeZone: 'Europe/Paris',
         })
-      : 'CARTE PERMANENTE';
-    return `${this.menuServiceLabel(menu.service).toUpperCase()} · ${date}`;
+      : this.text(language, 'CARTE PERMANENTE', 'PERMANENT MENU');
+    return `${this.menuServiceLabel(menu.service, language).toUpperCase()} · ${date}`;
   }
 
-  private menuServiceLabel(value?: string) {
-    const labels: Record<string, string> = {
+  private menuServiceLabel(value?: string, language: ExportLanguage = 'fr') {
+    const labelsFr: Record<string, string> = {
       BREAKFAST: 'Petit-déjeuner',
       LUNCH: 'Déjeuner',
       DINNER: 'Dîner',
@@ -1483,11 +1607,25 @@ export class MenuExportsService {
       EVENT: 'Événement',
       BUFFET: 'Buffet',
     };
-    return labels[value ?? ''] ?? 'Service';
+    const labelsEn: Record<string, string> = {
+      BREAKFAST: 'Breakfast',
+      LUNCH: 'Lunch',
+      DINNER: 'Dinner',
+      SNACK: 'Snack',
+      EVENT: 'Event',
+      BUFFET: 'Buffet',
+    };
+    return (language === 'en' ? labelsEn : labelsFr)[value ?? ''] ?? 'Service';
   }
 
-  private number(value: unknown) {
-    return Number(value ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 3 });
+  private number(value: unknown, language: ExportLanguage = 'fr') {
+    return Number(value ?? 0).toLocaleString(language === 'en' ? 'en-GB' : 'fr-FR', {
+      maximumFractionDigits: 3,
+    });
+  }
+
+  private text(language: ExportLanguage, french: string, english: string) {
+    return language === 'en' ? english : french;
   }
 
   private logoBuffer(dataUrl?: string | null) {

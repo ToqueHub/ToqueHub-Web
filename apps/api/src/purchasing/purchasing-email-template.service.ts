@@ -13,8 +13,8 @@ export class PurchasingEmailTemplateService {
   }): RenderedPurchaseEmail {
     const order = input.order;
     const deliveryDate = order.expectedDeliveryDate
-      ? new Date(order.expectedDeliveryDate).toLocaleDateString('fr-FR')
-      : 'au plus tôt';
+      ? new Date(order.expectedDeliveryDate).toLocaleDateString('en-GB')
+      : 'as soon as possible';
     const contact = order.supplier?.contactName || order.supplierNameSnapshot || '';
     const values: Record<string, string> = {
       supplierContact: contact,
@@ -28,17 +28,17 @@ export class PurchasingEmailTemplateService {
       deliveryAddress: order.deliveryAddressSnapshot || '',
     };
     const replace = (template: string) => template.replace(/{{\s*([a-zA-Z]+)\s*}}/g, (_, key) => values[key] ?? '');
-    const subject = replace(input.subjectTemplate?.trim() || 'Commande {{orderNumber}} — {{organizationName}}');
+    const subject = replace(input.subjectTemplate?.trim() || 'Purchase order {{orderNumber}} — {{organizationName}}');
     const defaultBody = [
-      'Bonjour {{supplierContact}},',
+      'Hello {{supplierContact}},',
       '',
-      'Veuillez trouver en pièce jointe notre commande {{orderNumber}}.',
-      'Livraison souhaitée : {{deliveryDate}}.',
+      'Please find our purchase order {{orderNumber}} attached.',
+      'Requested delivery date: {{deliveryDate}}.',
       order.supplierMessage || '',
       '',
-      'Total TTC : {{total}}',
+      'Total including tax: {{total}}',
       '',
-      'Cordialement,',
+      'Kind regards,',
       '{{senderName}}',
     ].join('\n');
     const body = replace(input.bodyTemplate?.trim() || defaultBody).trim();
