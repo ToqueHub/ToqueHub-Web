@@ -1,8 +1,5 @@
 # Audit refonte module Planning ToqueHub
 
-Date: 2026-06-24
-Repo : racine locale du projet ToqueHub
-Portee: audit uniquement, aucun code applicatif modifie.
 
 ## 1. Resume de l'architecture actuelle
 
