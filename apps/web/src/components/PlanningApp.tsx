@@ -626,11 +626,9 @@ export function PlanningApp({ token, tab, session, collaborators, departments, p
           <p>Organisez les équipes, répartissez les affectations et anticipez les besoins de chaque établissement depuis un calendrier partagé.</p>
         </div>
         <div className="planning-hero-actions">
-          {tab === 'dashboard' ? (
-            <button className="btn btn-secondary btn-outline planning-hero-guide" type="button" onClick={() => openInitialSetup('services')}>
-              <Sparkles size={16} /> Guide de configuration
-            </button>
-          ) : null}
+          <button className="btn btn-secondary btn-outline planning-hero-guide" type="button" onClick={() => openInitialSetup('services')}>
+            <Sparkles size={16} /> Guide de configuration
+          </button>
           <button className="btn btn-primary" onClick={() => onNavigate('planning')}><CalendarDays size={16} /> Construire</button>
         </div>
       </div>

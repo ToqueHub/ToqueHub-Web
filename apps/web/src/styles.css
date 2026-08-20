@@ -5881,13 +5881,17 @@ a:hover {
   border: 1px solid transparent;
   border-radius: 10px;
   background: transparent;
-  color: rgba(148, 163, 184, 0.82);
+  color: rgba(203, 213, 225, 0.82);
   font: inherit;
   font-size: 0.68rem;
   font-weight: 800;
   letter-spacing: 0.04em;
   cursor: pointer;
-  transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+  box-shadow: none;
+  transition:
+    color 160ms ease,
+    opacity 160ms ease,
+    transform 160ms ease;
 }
 
 .sidebar-language-segments button:hover {
@@ -20434,6 +20438,42 @@ input:checked + .slider-round:before {
   background: #059669;
 }
 
+.menus-profile-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.menus-profile-hero-copy {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  max-width: 760px;
+}
+
+.menus-profile-hero-actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-self: flex-start;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+}
+
+.menus-profile-hero-actions .btn {
+  min-height: 42px;
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  white-space: nowrap;
+}
+
+.menus-profile-hero-actions .btn:hover {
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .technical-sheet-mode-overlay {
   position: absolute;
   inset: 72px 0 0;
@@ -20682,6 +20722,20 @@ input:checked + .slider-round:before {
 
   .technical-sheets-dashboard-hero-actions .btn {
     flex: 1 1 190px;
+  }
+
+  .menus-profile-hero {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .menus-profile-hero-actions {
+    align-self: stretch;
+  }
+
+  .menus-profile-hero-actions .btn {
+    width: 100%;
+    justify-content: center;
   }
 }
 
@@ -41044,6 +41098,7 @@ input:checked + .slider-round:before {
 
   .fabrication-calendar-actions {
     width: 100%;
+    margin-left: 0;
   }
 
   .fabrication-calendar-actions > * {

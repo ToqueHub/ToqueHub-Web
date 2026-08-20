@@ -803,31 +803,29 @@ export function MenusApp({
   return (
     <div className="menus-app" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       <motion.section
-        className="welcome-hero theme-blue"
+        className="welcome-hero theme-blue menus-profile-hero"
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <span className="welcome-tag">
-          <ChefHat size={14} /> Carte, Menus & Production
-        </span>
-        <h1 className="welcome-title">{restaurantExperience ? 'Ma carte' : 'Menus'}</h1>
-        <p className="welcome-desc">
-          Reliez ce que vous proposez aux fiches techniques, visualisez ce qui est disponible et
-          préparez uniquement les productions manquantes.
-        </p>
-        <button
-          type="button"
-          className="btn btn-secondary btn-sm"
-          onClick={() => setShowProfileSettings(true)}
-          style={{
-            marginTop: '0.85rem',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.35rem',
-          }}
-        >
-          <Settings size={14} /> Adapter le module à mon activité
-        </button>
+        <div className="menus-profile-hero-copy">
+          <span className="welcome-tag">
+            <ChefHat size={14} /> Carte, Menus & Production
+          </span>
+          <h1 className="welcome-title">{restaurantExperience ? 'Ma carte' : 'Menus'}</h1>
+          <p className="welcome-desc">
+            Reliez ce que vous proposez aux fiches techniques, visualisez ce qui est disponible et
+            préparez uniquement les productions manquantes.
+          </p>
+        </div>
+        <div className="menus-profile-hero-actions">
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => setShowProfileSettings(true)}
+          >
+            <Settings size={14} /> Adapter le module à mon activité
+          </button>
+        </div>
       </motion.section>
 
       {catalogWizardOpen ? (
@@ -2933,22 +2931,22 @@ function HybridActivityLanding({
   ];
   return (
     <div style={{ display: 'grid', gap: '1.5rem' }}>
-      <section className="welcome-hero theme-blue">
-        <span className="welcome-tag">
-          <Settings size={14} /> Organisation hybride
-        </span>
-        <h1 className="welcome-title">Choisissez votre espace d’activité</h1>
-        <p className="welcome-desc">
-          Les référentiels restent partagés, mais chaque activité conserve ses propres dossiers,
-          calendriers et outils opérationnels.
-        </p>
-        <button
-          className="btn btn-secondary btn-sm"
-          style={{ marginTop: '.8rem' }}
-          onClick={onProfileSettings}
-        >
-          <Settings size={14} /> Adapter le module à mon activité
-        </button>
+      <section className="welcome-hero theme-blue menus-profile-hero">
+        <div className="menus-profile-hero-copy">
+          <span className="welcome-tag">
+            <Settings size={14} /> Organisation hybride
+          </span>
+          <h1 className="welcome-title">Choisissez votre espace d’activité</h1>
+          <p className="welcome-desc">
+            Les référentiels restent partagés, mais chaque activité conserve ses propres dossiers,
+            calendriers et outils opérationnels.
+          </p>
+        </div>
+        <div className="menus-profile-hero-actions">
+          <button className="btn btn-secondary btn-sm" onClick={onProfileSettings}>
+            <Settings size={14} /> Adapter le module à mon activité
+          </button>
+        </div>
       </section>
       <div
         className="menus-grid"
