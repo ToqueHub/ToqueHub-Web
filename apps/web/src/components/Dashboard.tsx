@@ -3828,7 +3828,13 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
   );
 
   const renderStocksModuleNav = () => (
-    <StocksModuleTabs activeTab={activeTab} onNavigate={goToTab} />
+    <>
+      <StocksModuleHero
+        onStartOnboarding={() => setShowStocksOnboarding(true)}
+        onImportOcr={() => setShowAddImportModal(true)}
+      />
+      <StocksModuleTabs activeTab={activeTab} onNavigate={goToTab} />
+    </>
   );
 
   return (
@@ -12575,6 +12581,46 @@ function randomLocalId() {
   return `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function StocksModuleHero({
+  onStartOnboarding,
+  onImportOcr,
+}: {
+  onStartOnboarding: () => void;
+  onImportOcr: () => void;
+}) {
+  return (
+    <motion.section
+      className="welcome-hero stocks-hero stocks-dashboard-hero"
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35 }}
+    >
+      <div className="stocks-dashboard-hero-copy">
+        <span className="welcome-tag">
+          <Package size={14} /> Stocks
+        </span>
+        <h1 className="welcome-title">Stocks</h1>
+        <p className="welcome-desc">
+          Vue d’ensemble du stock physique. Toute variation passe par un mouvement tracé ; le
+          catalogue produit reste indépendant des quantités.
+        </p>
+      </div>
+      <div className="stocks-dashboard-hero-actions">
+        <button
+          type="button"
+          className="btn btn-secondary btn-outline"
+          onClick={onStartOnboarding}
+        >
+          <Sparkles size={16} /> Guide de configuration
+        </button>
+        <button type="button" className="btn btn-primary" onClick={onImportOcr}>
+          <Plus size={16} /> Ajouter / importer
+        </button>
+      </div>
+    </motion.section>
+  );
+}
+
 function StocksModuleTabs({
   activeTab,
   onNavigate,
@@ -13438,35 +13484,10 @@ function StocksDashboardPage({
     .slice(0, 5);
   return (
     <div className="stocks-dashboard-grid">
-      <motion.section
-        className="welcome-hero stocks-hero stocks-dashboard-hero"
-        initial={{ opacity: 0, y: 15 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35 }}
-      >
-        <div className="stocks-dashboard-hero-copy">
-          <span className="welcome-tag">
-            <Package size={14} /> Stocks
-          </span>
-          <h1 className="welcome-title">Stocks</h1>
-          <p className="welcome-desc">
-            Vue d’ensemble du stock physique. Toute variation passe par un mouvement tracé ; le
-            catalogue produit reste indépendant des quantités.
-          </p>
-        </div>
-        <div className="stocks-dashboard-hero-actions">
-          <button
-            type="button"
-            className="btn btn-secondary btn-outline"
-            onClick={onStartOnboarding}
-          >
-            <Sparkles size={16} /> Guide de configuration
-          </button>
-          <button type="button" className="btn btn-primary" onClick={onImportOcr}>
-            <Plus size={16} /> Ajouter / importer
-          </button>
-        </div>
-      </motion.section>
+      <StocksModuleHero
+        onStartOnboarding={onStartOnboarding}
+        onImportOcr={onImportOcr}
+      />
 
       <StocksModuleTabs activeTab={activeTab} onNavigate={onNavigate} />
 

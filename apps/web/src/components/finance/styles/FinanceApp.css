@@ -45,8 +45,11 @@
 .finance-hero-actions {
   display: flex;
   align-items: flex-end;
+  justify-content: flex-end;
   flex-wrap: wrap;
   gap: 0.55rem;
+  margin-left: auto;
+  transform: translateX(0.75rem);
 }
 .finance-period-control {
   display: grid;
@@ -4354,6 +4357,8 @@
   }
   .finance-hero-actions {
     align-self: stretch;
+    margin-left: 0;
+    transform: none;
   }
   .finance-period-control {
     flex: 1;

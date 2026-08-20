@@ -7259,15 +7259,6 @@
     ]
   },
   {
-    "text": "0.68rem !important",
-    "files": [
-      "apps/web/src/components/purchasing/PurchasingWorkspace.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
     "text": "0.6rem",
     "files": [
       "apps/web/src/components/CatererMenusApp.tsx",
@@ -13469,8 +13460,7 @@
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/ProductionApp.tsx",
-      "apps/web/src/components/finance/FinanceWorkspace.tsx",
-      "apps/web/src/components/purchasing/PurchasingWorkspace.tsx"
+      "apps/web/src/components/finance/FinanceWorkspace.tsx"
     ],
     "kinds": [
       "attribute",
@@ -26533,15 +26523,6 @@
     "text": "btn btn-secondary btn-outline planning-hero-guide",
     "files": [
       "apps/web/src/components/PlanningApp.tsx"
-    ],
-    "kinds": [
-      "attribute"
-    ]
-  },
-  {
-    "text": "btn btn-secondary btn-outline purchasing-icon-button",
-    "files": [
-      "apps/web/src/components/purchasing/PurchasingWorkspace.tsx"
     ],
     "kinds": [
       "attribute"
@@ -92908,15 +92889,6 @@
     ]
   },
   {
-    "text": "Planning des tâches",
-    "files": [
-      "apps/web/src/components/ProductionApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
-    ]
-  },
-  {
     "text": "Planning devient le centre opérationnel de ToqueHub sans dupliquer la RH. Il consomme collaborateurs, services, postes, roulements, absences et compétences pour générer des affectations déterministes, contrôler les conflits RH, proposer des remplacements et préparer exports PDF/Excel/impression.",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -97533,6 +97505,7 @@
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/MenusApp.tsx",
+      "apps/web/src/components/ProductionApp.tsx",
       "apps/web/src/components/WorkspaceOnboarding.tsx"
     ],
     "kinds": [
@@ -115196,8 +115169,7 @@
       "apps/web/src/components/WorkspaceOnboarding.tsx",
       "apps/web/src/components/finance/FinanceSalesInsights.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx",
-      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx",
-      "apps/web/src/components/purchasing/PurchasingWorkspace.tsx"
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "attribute",
@@ -131021,7 +130993,7 @@
     ]
   },
   {
-    "text": "welcome-hero theme-blue",
+    "text": "welcome-hero theme-blue menus-profile-hero",
     "files": [
       "apps/web/src/components/MenusApp.tsx"
     ],

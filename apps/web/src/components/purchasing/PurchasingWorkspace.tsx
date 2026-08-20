@@ -11,7 +11,6 @@ import {
   FileText,
   MailCheck,
   PackageCheck,
-  RefreshCw,
   ShoppingCart,
   Sparkles,
   X,
@@ -52,7 +51,6 @@ export function PurchasingWorkspace({ token, tab, onNavigate }: Props) {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [receipts, setReceipts] = useState<PurchaseReceipt[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string>();
   const [success, setSuccess] = useState<string>();
   const [orderSearch, setOrderSearch] = useState('');
@@ -120,14 +118,11 @@ export function PurchasingWorkspace({ token, tab, onNavigate }: Props) {
 
   const refresh = useCallback(
     async () => {
-      setRefreshing(true);
       setError(undefined);
       try {
         await loadTab(tab);
       } catch (err) {
         setError(messageOf(err, 'Impossible de charger le module Achats.'));
-      } finally {
-        setRefreshing(false);
       }
     },
     [loadTab, tab],
@@ -229,23 +224,12 @@ export function PurchasingWorkspace({ token, tab, onNavigate }: Props) {
               <MailCheck size={16} /> Messagerie
             </button>
           )}
-          {tab === 'dashboard' && (
-            <button
-              className="btn btn-secondary btn-outline"
-              style={{ background: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px' }}
-              onClick={() => setOnboardingOpen(true)}
-            >
-              <Sparkles size={16} /> Guide de configuration
-            </button>
-          )}
           <button
-            className="btn btn-secondary btn-outline purchasing-icon-button"
-            style={{ background: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', padding: '0.68rem !important' }}
-            aria-label="Actualiser"
-            disabled={refreshing}
-            onClick={() => void refresh()}
+            className="btn btn-secondary btn-outline"
+            style={{ background: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px' }}
+            onClick={() => setOnboardingOpen(true)}
           >
-            <RefreshCw size={17} className={refreshing ? 'spin' : ''} />
+            <Sparkles size={16} /> Guide de configuration
           </button>
           {can('purchasing.draft') && (
             <OrderComposerButton

@@ -206,7 +206,7 @@ export function HrApp({
           <p className="welcome-desc">Pilotez vos équipes en un seul endroit : collaborateurs, services, postes et responsabilités, avec une organisation claire et toujours à jour.</p>
         </div>
         <div className="hr-hero-actions">
-          {tab === 'dashboard' && canWrite ? (
+          {canWrite ? (
             <button className="btn btn-secondary btn-outline hr-hero-guide" type="button" onClick={() => setWizardOpen(true)}>
               <Sparkles size={16} /> Guide de configuration
             </button>
