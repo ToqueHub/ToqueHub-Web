@@ -1333,15 +1333,6 @@ export function ProductionFabricationCalendar({
                 </option>
               ))}
             </select>
-            <button
-              type="button"
-              className="production-btn-glass"
-              onClick={() => openCreate(anchor)}
-              disabled={allSitesReadOnly}
-              title={allSitesReadOnly ? 'Sélectionnez un site pour ajouter une recette' : undefined}
-            >
-              <Plus size={17} /> Ajouter une recette
-            </button>
             {mode === 'day' && (
               <>
                 <button

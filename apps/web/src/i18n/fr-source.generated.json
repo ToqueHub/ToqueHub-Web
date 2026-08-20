@@ -111707,15 +111707,6 @@
     ]
   },
   {
-    "text": "Sélectionnez un site pour ajouter une recette",
-    "files": [
-      "apps/web/src/components/ProductionFabricationCalendar.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
     "text": "Sélectionnez un site pour planifier",
     "files": [
       "apps/web/src/components/ProductionFabricationCalendar.tsx"
