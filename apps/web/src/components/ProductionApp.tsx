@@ -1404,6 +1404,10 @@ export function ProductionApp({ token, session, tab, onNavigate }: ProductionApp
   if (tab === 'fabrication') {
     return (
       <section className="fabrication-unified-workspace">
+        <ProductionFabricationHero
+          loading={campaignsLoading}
+          onRefresh={() => void refreshFabrication()}
+        />
         {catererPlan && (
           <div
             style={{
@@ -1566,7 +1570,7 @@ export function ProductionApp({ token, session, tab, onNavigate }: ProductionApp
               <Sparkles size={13} />
               <span>Organisation Opérationnelle</span>
             </div>
-            <h2 className="production-hero-title">Planning des tâches</h2>
+            <h2 className="production-hero-title">Production</h2>
             <p className="production-hero-desc">
               Cuisine, réception, ménage, salle ou maintenance : orchestrez vos équipes en temps
               réel en vous appuyant directement sur la structure RH.
@@ -3069,6 +3073,59 @@ const productionStatusCopy: Record<
   CANCELLED: { label: 'Annulée', color: '#64748b', background: '#f1f5f9', icon: X },
 };
 
+function ProductionFabricationHero({
+  loading,
+  onRefresh,
+}: {
+  loading: boolean;
+  onRefresh: () => void;
+}) {
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: -12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="production-hero-card"
+    >
+      <div className="production-hero-glow" />
+      <div
+        style={{
+          position: 'relative',
+          zIndex: 1,
+          display: 'flex',
+          justifyContent: 'space-between',
+          gap: '1.2rem',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+        }}
+      >
+        <div>
+          <div className="production-hero-badge">
+            <ChefHat size={13} /> FABRICATION & PRODUCTION
+          </div>
+          <h2 className="production-hero-title">Campagnes de production</h2>
+          <p className="production-hero-desc">
+            Retrouvez les fabrications générées depuis les événements Traiteur, les menus et les
+            fiches techniques. Les équipes RH restent facultatives.
+          </p>
+        </div>
+        <div className="production-hero-actions">
+          <button
+            type="button"
+            className="production-btn-glass"
+            onClick={onRefresh}
+            disabled={loading}
+            title="Rafraîchir les campagnes"
+            aria-label="Actualiser"
+          >
+            <RefreshCw size={17} className={loading ? 'spin' : undefined} />
+          </button>
+        </div>
+      </div>
+    </motion.section>
+  );
+}
+
 function FabricationView({
   token,
   campaigns,
@@ -3156,50 +3213,7 @@ function FabricationView({
   return (
     <div className={embedded ? 'fabrication-details embedded' : 'fabrication-details'}>
       {/* ─── HERO CARD MODERNISÉ ─── */}
-      {!embedded && (
-        <motion.section
-          initial={{ opacity: 0, y: -12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-          className="production-hero-card"
-        >
-          <div className="production-hero-glow" />
-          <div
-            style={{
-              position: 'relative',
-              zIndex: 1,
-              display: 'flex',
-              justifyContent: 'space-between',
-              gap: '1.2rem',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-            }}
-          >
-            <div>
-              <div className="production-hero-badge">
-                <ChefHat size={13} /> FABRICATION & PRODUCTION
-              </div>
-              <h2 className="production-hero-title">Campagnes de production</h2>
-              <p className="production-hero-desc">
-                Retrouvez les fabrications générées depuis les événements Traiteur, les menus et les
-                fiches techniques. Les équipes RH restent facultatives.
-              </p>
-            </div>
-            <div className="production-hero-actions">
-              <button
-                type="button"
-                className="production-btn-glass"
-                onClick={onRefresh}
-                disabled={loading}
-                title="Rafraîchir les campagnes"
-              >
-                <RefreshCw size={17} className={loading ? 'spin' : undefined} />
-                <span>Actualiser</span>
-              </button>
-            </div>
-          </div>
-        </motion.section>
-      )}
+      {!embedded && <ProductionFabricationHero loading={loading} onRefresh={onRefresh} />}
 
       {/* ─── ÉVÉNEMENT TRAITEUR ACTIF (Optionnel) ─── */}
       <AnimatePresence>

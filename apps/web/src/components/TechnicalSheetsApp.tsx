@@ -1404,26 +1404,24 @@ export function TechnicalSheetsApp({
             ingrédients, unités et prix d'achat directement synchronisés avec vos Stocks.
           </p>
         </div>
-        {tab === 'dashboard' ? (
-          <div className="technical-sheets-dashboard-hero-actions">
-            <button
-              type="button"
-              className="btn btn-secondary btn-outline"
-              disabled={loading}
-              onClick={() => setOnboardingVisible(true)}
-            >
-              <Sparkles size={16} /> Guide de configuration
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={loading}
-              onClick={() => queueFirstRecipeAction('manual')}
-            >
-              <Plus size={16} /> Ajouter une fiche technique
-            </button>
-          </div>
-        ) : null}
+        <div className="technical-sheets-dashboard-hero-actions">
+          <button
+            type="button"
+            className="btn btn-secondary btn-outline"
+            disabled={loading}
+            onClick={() => setOnboardingVisible(true)}
+          >
+            <Sparkles size={16} /> Guide de configuration
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={loading}
+            onClick={() => queueFirstRecipeAction('manual')}
+          >
+            <Plus size={16} /> Ajouter une fiche technique
+          </button>
+        </div>
       </motion.section>
 
       <TechnicalSheetAssistantPanel

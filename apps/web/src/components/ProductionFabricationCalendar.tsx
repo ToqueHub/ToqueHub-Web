@@ -1303,25 +1303,49 @@ export function ProductionFabricationCalendar({
   return (
     <>
       <section className="fabrication-calendar-panel">
-        <header className="fabrication-calendar-toolbar">
-          <div>
-            <span className="fabrication-calendar-eyebrow">
-              <CalendarDays size={15} /> Calendrier de fabrication
-            </span>
-            <h2>Recettes à fabriquer</h2>
-            <p>
-              Planifiez une recette depuis le menu ou librement. Une fois validée, elle arrive comme
-              recette complète dans le planning, puis peut être découpée en étapes.
-            </p>
-          </div>
-          <div className="fabrication-calendar-actions">
+        {mode === 'day' && (
+          <header className="fabrication-calendar-toolbar fabrication-calendar-day-toolbar">
+            <div className="fabrication-calendar-actions">
+              <button
+                type="button"
+                className="production-btn-glass"
+                onClick={() => void openClosure(anchor)}
+                disabled={allSitesReadOnly || closureLoading}
+              >
+                {closureLoading ? (
+                  <Loader2 size={17} className="spin" />
+                ) : (
+                  <CheckCircle2 size={17} />
+                )}
+                Clôturer la journée
+              </button>
+              <button
+                type="button"
+                className="production-btn-primary"
+                onClick={() => void openDayValidation(anchor)}
+                disabled={allSitesReadOnly || dayValidationLoading}
+              >
+                {dayValidationLoading ? (
+                  <Loader2 size={17} className="spin" />
+                ) : (
+                  <CheckCircle2 size={17} />
+                )}
+                Valider la journée de production
+              </button>
+            </div>
+          </header>
+        )}
+
+        <div className="fabrication-calendar-navigation">
+          <label className="fabrication-calendar-site-field">
+            <span>Site de fabrication</span>
             <select
+              className="fabrication-calendar-site-select"
               value={siteId}
               onChange={(event) => {
                 setSiteId(event.target.value);
                 setError('');
               }}
-              aria-label="Site de fabrication"
             >
               <option value="">Tous les sites</option>
               {sites.map((site) => (
@@ -1333,50 +1357,8 @@ export function ProductionFabricationCalendar({
                 </option>
               ))}
             </select>
-            <button
-              type="button"
-              className="production-btn-glass"
-              onClick={() => openCreate(anchor)}
-              disabled={allSitesReadOnly}
-              title={allSitesReadOnly ? 'Sélectionnez un site pour ajouter une recette' : undefined}
-            >
-              <Plus size={17} /> Ajouter une recette
-            </button>
-            {mode === 'day' && (
-              <>
-                <button
-                  type="button"
-                  className="production-btn-glass"
-                  onClick={() => void openClosure(anchor)}
-                  disabled={allSitesReadOnly || closureLoading}
-                >
-                  {closureLoading ? (
-                    <Loader2 size={17} className="spin" />
-                  ) : (
-                    <CheckCircle2 size={17} />
-                  )}
-                  Clôturer la journée
-                </button>
-                <button
-                  type="button"
-                  className="production-btn-primary"
-                  onClick={() => void openDayValidation(anchor)}
-                  disabled={allSitesReadOnly || dayValidationLoading}
-                >
-                  {dayValidationLoading ? (
-                    <Loader2 size={17} className="spin" />
-                  ) : (
-                    <CheckCircle2 size={17} />
-                  )}
-                  Valider la journée de production
-                </button>
-              </>
-            )}
-          </div>
-        </header>
-
-        <div className="fabrication-calendar-navigation">
-          <div className="fabrication-calendar-modes">
+          </label>
+          <div className="fabrication-calendar-modes" role="group" aria-label="Mode du calendrier">
             {(['day', 'week', 'month'] as CalendarMode[]).map((value) => (
               <button
                 type="button"

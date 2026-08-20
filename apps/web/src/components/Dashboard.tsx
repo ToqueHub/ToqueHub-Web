@@ -105,7 +105,6 @@ import {
   Activity,
   Landmark,
   Target,
-  Languages,
 } from 'lucide-react';
 import { ArchitectureCenter } from './ArchitectureCenter';
 import { UsersPage, UserForm } from './UsersPage';
@@ -4132,15 +4131,6 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
             role="group"
             aria-label="Choisir la langue de l’application"
           >
-            <div className="sidebar-language-copy">
-              <span className="sidebar-language-icon">
-                <Languages size={17} aria-hidden="true" />
-              </span>
-              <span>
-                <strong>Langue</strong>
-                <small>{language === 'fr' ? 'Français' : 'English'}</small>
-              </span>
-            </div>
             <div className="sidebar-language-segments">
               <button
                 type="button"
@@ -4149,7 +4139,14 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                 aria-pressed={language === 'fr'}
                 title="Passer en français"
               >
-                FR
+                <span className="sidebar-language-flag" aria-hidden="true">
+                  <svg viewBox="0 0 24 16" focusable="false">
+                    <rect width="8" height="16" fill="#1b45a1" />
+                    <rect x="8" width="8" height="16" fill="#ffffff" />
+                    <rect x="16" width="8" height="16" fill="#ef4135" />
+                  </svg>
+                </span>
+                <span>FR</span>
               </button>
               <button
                 type="button"
@@ -4158,7 +4155,20 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                 aria-pressed={language === 'en'}
                 title="Passer en anglais"
               >
-                EN
+                <span className="sidebar-language-flag" aria-hidden="true">
+                  <svg viewBox="0 0 24 16" focusable="false">
+                    <rect width="24" height="16" fill="#012169" />
+                    <rect x="-4" y="5.5" width="32" height="5" fill="#ffffff" transform="rotate(33 12 8)" />
+                    <rect x="-4" y="5.5" width="32" height="5" fill="#ffffff" transform="rotate(-33 12 8)" />
+                    <rect x="-4" y="6.5" width="32" height="3" fill="#c8102e" transform="rotate(33 12 8)" />
+                    <rect x="-4" y="6.5" width="32" height="3" fill="#c8102e" transform="rotate(-33 12 8)" />
+                    <rect x="9" width="6" height="16" fill="#ffffff" />
+                    <rect y="5" width="24" height="6" fill="#ffffff" />
+                    <rect x="10.5" width="3" height="16" fill="#c8102e" />
+                    <rect y="6.5" width="24" height="3" fill="#c8102e" />
+                  </svg>
+                </span>
+                <span>EN</span>
               </button>
             </div>
           </div>
