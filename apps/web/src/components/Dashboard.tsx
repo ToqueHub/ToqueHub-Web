@@ -105,7 +105,6 @@ import {
   Activity,
   Landmark,
   Target,
-  Languages,
 } from 'lucide-react';
 import { ArchitectureCenter } from './ArchitectureCenter';
 import { UsersPage, UserForm } from './UsersPage';
@@ -4127,41 +4126,18 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
 
         {/* User Profile and Dropdown */}
         <div className="sidebar-footer">
-          <div
+          <button
+            type="button"
             className="sidebar-language-switcher"
-            role="group"
-            aria-label="Choisir la langue de l’application"
+            onClick={() => setLanguage(language === 'fr' ? 'en' : 'fr')}
+            aria-label={language === 'fr' ? 'Passer en anglais' : 'Passer en français'}
+            title={language === 'fr' ? 'Passer en anglais' : 'Passer en français'}
           >
-            <div className="sidebar-language-copy">
-              <span className="sidebar-language-icon">
-                <Languages size={17} aria-hidden="true" />
-              </span>
-              <span>
-                <strong>Langue</strong>
-                <small>{language === 'fr' ? 'Français' : 'English'}</small>
-              </span>
-            </div>
-            <div className="sidebar-language-segments">
-              <button
-                type="button"
-                className={language === 'fr' ? 'active' : ''}
-                onClick={() => setLanguage('fr')}
-                aria-pressed={language === 'fr'}
-                title="Passer en français"
-              >
-                FR
-              </button>
-              <button
-                type="button"
-                className={language === 'en' ? 'active' : ''}
-                onClick={() => setLanguage('en')}
-                aria-pressed={language === 'en'}
-                title="Passer en anglais"
-              >
-                EN
-              </button>
-            </div>
-          </div>
+            <span className="sidebar-language-flag" aria-hidden="true">
+              {language === 'fr' ? '🇫🇷' : '🇬🇧'}
+            </span>
+            <span className="sidebar-language-code">{language.toUpperCase()}</span>
+          </button>
           <div className="sidebar-footer-profile-container">
             <AnimatePresence>
               {profileMenuOpen && (

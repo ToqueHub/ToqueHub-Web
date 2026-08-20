@@ -5862,103 +5862,53 @@ a:hover {
 }
 
 .sidebar-language-switcher {
-  position: relative;
-  min-height: 54px;
-  display: flex;
+  align-self: flex-start;
+  min-height: 34px;
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.7rem;
-  padding: 0.5rem;
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  border-radius: 14px;
-  background:
-    radial-gradient(circle at 12% 15%, rgba(16, 185, 129, 0.13), transparent 44%),
-    rgba(15, 23, 42, 0.66);
-  color: var(--dark-text-muted);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
-}
-
-.sidebar-language-copy {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-}
-
-.sidebar-language-icon {
-  width: 31px;
-  height: 31px;
-  flex: 0 0 31px;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(52, 211, 153, 0.22);
-  border-radius: 10px;
-  background: rgba(16, 185, 129, 0.1);
-  color: #6ee7b7;
-}
-
-.sidebar-language-copy > span:last-child {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  line-height: 1.15;
-}
-
-.sidebar-language-copy strong {
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 0.72rem;
-  font-weight: 750;
-  letter-spacing: 0.01em;
-}
-
-.sidebar-language-copy small {
-  max-width: 70px;
-  overflow: hidden;
-  color: rgba(148, 163, 184, 0.78);
-  font-size: 0.65rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sidebar-language-segments {
-  flex: 0 0 auto;
-  display: grid;
-  grid-template-columns: repeat(2, 34px);
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  border-radius: 10px;
-  background: rgba(2, 6, 23, 0.54);
-}
-
-.sidebar-language-segments button {
-  height: 27px;
-  padding: 0;
+  justify-content: flex-start;
+  gap: 0.45rem;
+  padding: 0.25rem 0.2rem;
   border: 0;
-  border-radius: 7px;
   background: transparent;
-  color: rgba(148, 163, 184, 0.82);
+  color: rgba(203, 213, 225, 0.82);
   font: inherit;
-  font-size: 0.64rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
   cursor: pointer;
-  transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+  box-shadow: none;
+  transition:
+    color 160ms ease,
+    opacity 160ms ease,
+    transform 160ms ease;
 }
 
-.sidebar-language-segments button:hover {
-  color: #f8fafc;
+.sidebar-language-flag {
+  font-family: 'Segoe UI Emoji', 'Apple Color Emoji', sans-serif;
+  font-size: 1.05rem;
+  line-height: 1;
 }
 
-.sidebar-language-segments button.active {
-  background: linear-gradient(135deg, #10b981, #059669);
+.sidebar-language-code {
+  font-size: 0.7rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  line-height: 1;
+}
+
+.sidebar-language-switcher:hover {
+  background: transparent;
   color: #ffffff;
-  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.26);
+  box-shadow: none;
+  transform: translateY(-1px);
 }
 
-.sidebar-language-segments button:focus-visible {
+.sidebar-language-switcher:active {
+  transform: translateY(0);
+}
+
+.sidebar-language-switcher:focus-visible {
   outline: 2px solid rgba(52, 211, 153, 0.7);
-  outline-offset: 2px;
+  outline-offset: 4px;
+  border-radius: 4px;
 }
 
 .sidebar-user {
