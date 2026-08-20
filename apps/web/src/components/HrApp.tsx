@@ -1,4 +1,5 @@
-import { activeLocale } from '../i18n/runtime';
+import { activeLanguage, activeLocale, type AppLanguage } from '../i18n/runtime';
+import { translateText } from '../i18n/translate';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -2232,64 +2233,131 @@ function formatLeaveNumber(value: number) { return new Intl.NumberFormat(activeL
 function formatShortDate(value: Date) { return new Intl.DateTimeFormat(activeLocale(), { day: '2-digit', month: '2-digit', year: 'numeric' }).format(value); }
 function jobDescriptionSummary(description?: string | null) {
   if (!description?.trim()) return '';
-  const missionIndex = description.indexOf('Mission generale');
-  const source = missionIndex >= 0 ? description.slice(missionIndex + 'Mission generale'.length) : description;
+  const missionHeading = ['General mission', 'Mission générale', 'Mission generale'].find((heading) =>
+    description.includes(heading),
+  ) ?? 'Mission generale';
+  const missionIndex = description.indexOf(missionHeading);
+  const source = missionIndex >= 0 ? description.slice(missionIndex + missionHeading.length) : description;
   return source.replace(/\s+/g, ' ').trim().slice(0, 220) + (source.trim().length > 220 ? '...' : '');
 }
-function buildJobDescription(positionName: string, departmentName?: string | null) {
+export function buildJobDescription(
+  positionName: string,
+  departmentName?: string | null,
+  language: AppLanguage = activeLanguage(),
+) {
   const catalog = HR_CATALOG.find((item) => normalizeLabel(item.name) === normalizeLabel(departmentName) || item.positions.some((position) => normalizeLabel(position) === normalizeLabel(positionName)));
   const service = departmentName || catalog?.name || 'Service RH';
-  const context = catalog?.description || `Activites rattachees au service ${service}.`;
+  const context = language === 'en'
+    ? `Activities attached to the ${service} department.`
+    : catalog?.description || `Activités rattachées au service ${service}.`;
   const normalized = normalizeLabel(`${positionName} ${service}`);
   const isManager = /responsable|directeur|chef|manager|maitre|coordinateur|gouvernant general/.test(normalized);
   const isProduction = /cuisine|patisserie|boulanger|production|commis|cuisinier|plongeur|preparateur|conditionneur|econome|magasinier/.test(normalized);
   const isService = /salle|serveur|bar|barista|accueil|reception|sommelier|runner|comptoir|hote|hotesse/.test(normalized);
   const isSupport = /administratif|comptable|rh|paie|achat|stock|maintenance|securite|logistique|entretien/.test(normalized);
-  const missions = isManager
-    ? ['Organiser et superviser l activite quotidienne du service.', 'Animer l equipe, repartir les priorites et accompagner la montee en competence.', 'Garantir la qualite de service, le respect des procedures internes et la bonne communication avec les autres services.', 'Suivre les indicateurs utiles et alerter la direction en cas d ecart.']
-    : isProduction
-      ? ['Preparer et realiser les productions selon les standards de l etablissement.', 'Respecter les fiches techniques, les quantites, les delais et les consignes d hygiene.', 'Participer a la mise en place, au rangement et a l entretien du poste de travail.', 'Signaler les besoins, anomalies, ruptures ou risques operationnels au responsable.']
-      : isService
-        ? ['Accueillir, conseiller et servir les clients avec professionnalisme.', 'Assurer la mise en place, le suivi du service et la fluidite de l experience client.', 'Appliquer les standards de presentation, d encaissement et de communication de l etablissement.', 'Transmettre les informations utiles aux equipes operationnelles et a la hierarchie.']
-        : isSupport
-          ? ['Assurer le traitement rigoureux des activites administratives ou support du service.', 'Tenir a jour les informations, documents et suivis necessaires au bon fonctionnement de l etablissement.', 'Collaborer avec les services internes et respecter les procedures de controle.', 'Identifier les anomalies et proposer des actions correctives simples.']
-          : ['Realiser les missions confiees dans le respect des standards de l etablissement.', 'Contribuer a la qualite de service et a la satisfaction client ou interne.', 'Appliquer les procedures, consignes de securite et regles d organisation.', 'Alerter le responsable en cas de difficulte, risque ou besoin particulier.'];
+  const missions = language === 'en'
+    ? isManager
+      ? ['Organise and supervise the department’s daily operations.', 'Lead the team, assign priorities and support skill development.', 'Ensure service quality, compliance with internal procedures and effective communication with other departments.', 'Monitor relevant indicators and alert management when targets are missed.']
+      : isProduction
+        ? ['Prepare and complete production according to the establishment’s standards.', 'Follow technical sheets, quantities, deadlines and hygiene instructions.', 'Help set up, tidy and maintain the workstation.', 'Report requirements, anomalies, shortages or operational risks to the manager.']
+        : isService
+          ? ['Welcome, advise and serve customers professionally.', 'Handle setup, service follow-up and a smooth customer experience.', 'Apply the establishment’s presentation, payment and communication standards.', 'Share useful information with operational teams and management.']
+          : isSupport
+            ? ['Handle the department’s administrative or support activities rigorously.', 'Keep the information, documents and monitoring required for smooth operations up to date.', 'Work with internal departments and follow control procedures.', 'Identify anomalies and suggest straightforward corrective actions.']
+            : ['Carry out assigned duties in line with the establishment’s standards.', 'Contribute to service quality and customer or internal satisfaction.', 'Follow procedures, safety instructions and organisational rules.', 'Alert the manager in the event of a difficulty, risk or specific requirement.']
+    : isManager
+      ? ["Organiser et superviser l’activité quotidienne du service.", "Animer l’équipe, répartir les priorités et accompagner la montée en compétence.", 'Garantir la qualité de service, le respect des procédures internes et la bonne communication avec les autres services.', "Suivre les indicateurs utiles et alerter la direction en cas d’écart."]
+      : isProduction
+        ? ["Préparer et réaliser les productions selon les standards de l’établissement.", "Respecter les fiches techniques, les quantités, les délais et les consignes d’hygiène.", "Participer à la mise en place, au rangement et à l’entretien du poste de travail.", 'Signaler les besoins, anomalies, ruptures ou risques opérationnels au responsable.']
+        : isService
+          ? ['Accueillir, conseiller et servir les clients avec professionnalisme.', "Assurer la mise en place, le suivi du service et la fluidité de l’expérience client.", "Appliquer les standards de présentation, d’encaissement et de communication de l’établissement.", 'Transmettre les informations utiles aux équipes opérationnelles et à la hiérarchie.']
+          : isSupport
+            ? ['Assurer le traitement rigoureux des activités administratives ou support du service.', "Tenir à jour les informations, documents et suivis nécessaires au bon fonctionnement de l’établissement.", 'Collaborer avec les services internes et respecter les procédures de contrôle.', 'Identifier les anomalies et proposer des actions correctives simples.']
+            : ["Réaliser les missions confiées dans le respect des standards de l’établissement.", 'Contribuer à la qualité de service et à la satisfaction client ou interne.', "Appliquer les procédures, consignes de sécurité et règles d’organisation.", 'Alerter le responsable en cas de difficulté, risque ou besoin particulier.'];
+
+  if (language === 'en') {
+    return [
+      `JOB DESCRIPTION - ${positionName}`,
+      '',
+      `Department: ${service}`,
+      `Department context: ${context}`,
+      '',
+      'General mission',
+      `${positionName} contributes to the smooth operation of the ${service} department by carrying out the operational, interpersonal and organisational duties associated with the role. The position follows ToqueHub standards for quality, traceability, hygiene, safety and cross-department collaboration.`,
+      '',
+      'Main duties',
+      ...missions.map((mission) => `- ${mission}`),
+      '',
+      'Expected skills',
+      '- Proficiency in the techniques, tools and procedures required for the role.',
+      '- Organisation, punctuality and reliability in execution.',
+      '- Clear communication with managers, colleagues and relevant contacts.',
+      '- Compliance with hygiene, safety, confidentiality and professional appearance rules.',
+      '',
+      'Responsibilities',
+      '- Follow instructions and report on progress.',
+      '- Maintain a clean, safe working environment that meets the establishment’s expectations.',
+      '- Contribute useful field feedback to the department’s continuous improvement.',
+      '',
+      'Monitoring indicators',
+      '- Quality of completed work and compliance with deadlines.',
+      '- Reliability of information shared.',
+      '- Customer or internal satisfaction, depending on the role.',
+      '- Compliance with procedures and absence of major incidents.',
+      '',
+      'Development and versatility',
+      'This description can be adapted by the user to the organisation, level of autonomy, exact responsibilities, working hours, mandatory training and the establishment’s specific requirements.',
+    ].join('\n');
+  }
+
   return [
     `FICHE DE POSTE - ${positionName}`,
     '',
-    `Service rattache : ${service}`,
+    `Service rattaché : ${service}`,
     `Contexte du service : ${context}`,
     '',
-    'Mission generale',
-    `${positionName} contribue au bon fonctionnement du service ${service} en assurant les missions operationnelles, relationnelles et organisationnelles liees a son metier. Le poste s exerce dans le respect des standards ToqueHub de qualite, de tracabilite, d hygiene, de securite et de collaboration interservices.`,
+    'Mission générale',
+    `${positionName} contribue au bon fonctionnement du service ${service} en assurant les missions opérationnelles, relationnelles et organisationnelles liées à son métier. Le poste s’exerce dans le respect des standards ToqueHub de qualité, de traçabilité, d’hygiène, de sécurité et de collaboration interservices.`,
     '',
     'Missions principales',
     ...missions.map((mission) => `- ${mission}`),
     '',
-    'Competences attendues',
-    '- Maitrise des gestes, outils et procedures propres au poste.',
-    '- Sens de l organisation, ponctualite et fiabilite dans l execution.',
-    '- Communication claire avec les responsables, collegues et interlocuteurs concernes.',
-    '- Respect des regles d hygiene, de securite, de confidentialite et de tenue professionnelle.',
+    'Compétences attendues',
+    '- Maîtrise des gestes, outils et procédures propres au poste.',
+    "- Sens de l’organisation, ponctualité et fiabilité dans l’exécution.",
+    '- Communication claire avec les responsables, collègues et interlocuteurs concernés.',
+    "- Respect des règles d’hygiène, de sécurité, de confidentialité et de tenue professionnelle.",
     '',
-    'Responsabilites',
-    '- Appliquer les consignes transmises et rendre compte de l avancement.',
-    '- Maintenir un environnement de travail propre, sur et conforme aux attentes de l etablissement.',
-    '- Participer a l amelioration continue du service par des retours terrain utiles.',
+    'Responsabilités',
+    "- Appliquer les consignes transmises et rendre compte de l’avancement.",
+    "- Maintenir un environnement de travail propre, sûr et conforme aux attentes de l’établissement.",
+    "- Participer à l’amélioration continue du service par des retours terrain utiles.",
     '',
     'Indicateurs de suivi',
-    '- Qualite du travail realise et respect des delais.',
-    '- Fiabilite des informations transmises.',
+    '- Qualité du travail réalisé et respect des délais.',
+    '- Fiabilité des informations transmises.',
     '- Satisfaction client ou satisfaction interne selon le poste.',
-    '- Respect des procedures et absence d incident majeur.',
+    "- Respect des procédures et absence d’incident majeur.",
     '',
-    'Evolution et polyvalence',
-    'Cette fiche peut etre adaptee par l utilisateur selon l organisation, le niveau d autonomie, les responsabilites exactes, les horaires, les formations obligatoires et les specificites de l etablissement.',
+    'Évolution et polyvalence',
+    "Cette fiche peut être adaptée par l’utilisateur selon l’organisation, le niveau d’autonomie, les responsabilités exactes, les horaires, les formations obligatoires et les spécificités de l’établissement.",
   ].join('\n');
 }
 function printJobDescriptionPdf({ name, departmentName, description }: { name: string; departmentName?: string | null; description?: string | null }) {
-  const content = description?.trim() || buildJobDescription(name, departmentName);
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Fiche de poste - ${escapeHtml(name)}</title><style>@page{margin:18mm}body{font-family:Arial,sans-serif;color:#172033;line-height:1.48}h1{font-size:24px;margin:0 0 4px;color:#00a878}h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin:0 0 24px}.sheet{max-width:760px;margin:0 auto}.content{white-space:pre-wrap;font-size:13px;border-top:2px solid #d9f6ed;padding-top:18px}.footer{margin-top:24px;font-size:11px;color:#64748b}.print-button{float:right;padding:10px 14px;border:1px solid #d7e3ee;background:#00a878;color:white;border-radius:8px;font-weight:700;cursor:pointer}@media print{.print-button{display:none}}</style></head><body><div class="sheet"><button class="print-button" onclick="window.print()">Telecharger en PDF</button><h1>Fiche de poste</h1><h2>${escapeHtml(name)}${departmentName ? ` - ${escapeHtml(departmentName)}` : ''}</h2><div class="content">${escapeHtml(content)}</div><div class="footer">Document RH genere depuis ToqueHub. Fiche modifiable dans la description du poste.</div></div><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),250))</script></body></html>`;
+  const language = activeLanguage();
+  const source = description?.trim();
+  const generatedDescription = Boolean(source && /^FICHE DE POSTE -/mu.test(source) && /Mission g[ée]n[ée]rale/mu.test(source));
+  const content = !source || (language === 'en' && generatedDescription)
+    ? buildJobDescription(name, departmentName, language)
+    : language === 'en'
+      ? translateText(source, 'en')
+      : source;
+  const title = language === 'en' ? 'Job description' : 'Fiche de poste';
+  const downloadLabel = language === 'en' ? 'Download PDF' : 'Télécharger en PDF';
+  const footer = language === 'en'
+    ? 'HR document generated from ToqueHub. This job description can be edited from the position description.'
+    : 'Document RH généré depuis ToqueHub. Fiche modifiable dans la description du poste.';
+  const html = `<!doctype html><html lang="${language}"><head><meta charset="utf-8"><title>${title} - ${escapeHtml(name)}</title><style>@page{margin:18mm}body{font-family:Arial,sans-serif;color:#172033;line-height:1.48}h1{font-size:24px;margin:0 0 4px;color:#00a878}h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin:0 0 24px}.sheet{max-width:760px;margin:0 auto}.content{white-space:pre-wrap;font-size:13px;border-top:2px solid #d9f6ed;padding-top:18px}.footer{margin-top:24px;font-size:11px;color:#64748b}.print-button{float:right;padding:10px 14px;border:1px solid #d7e3ee;background:#00a878;color:white;border-radius:8px;font-weight:700;cursor:pointer}@media print{.print-button{display:none}}</style></head><body><div class="sheet"><button class="print-button" onclick="window.print()">${downloadLabel}</button><h1>${title}</h1><h2>${escapeHtml(name)}${departmentName ? ` - ${escapeHtml(departmentName)}` : ''}</h2><div class="content">${escapeHtml(content)}</div><div class="footer">${footer}</div></div><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),250))</script></body></html>`;
   const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
   const win = window.open(url, '_blank', 'noopener,noreferrer,width=900,height=1200');
   window.setTimeout(() => URL.revokeObjectURL(url), 60000);

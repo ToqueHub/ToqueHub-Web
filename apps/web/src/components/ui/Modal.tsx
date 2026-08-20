@@ -1,9 +1,30 @@
-import type { ReactNode } from 'react';
+import { cloneElement, isValidElement, type ReactElement, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
+import { useLanguage } from '../../i18n';
 
 export type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | 'full' | 'product';
+
+const MODAL_TEXT_ATTRIBUTES = ['placeholder', 'title', 'aria-label', 'aria-description', 'alt'] as const;
+
+function translateModalNode(node: ReactNode, t: (value: string) => string): ReactNode {
+  if (typeof node === 'string') return t(node);
+  if (Array.isArray(node)) return node.map((child) => translateModalNode(child, t));
+  if (!isValidElement(node)) return node;
+
+  const element = node as ReactElement<Record<string, unknown>>;
+  if (element.props['data-i18n-ignore']) return element;
+  const translatedProps: Record<string, unknown> = {};
+  for (const attribute of MODAL_TEXT_ATTRIBUTES) {
+    const value = element.props[attribute];
+    if (typeof value === 'string') translatedProps[attribute] = t(value);
+  }
+  if (element.props.children !== undefined && element.type !== 'textarea') {
+    translatedProps.children = translateModalNode(element.props.children as ReactNode, t);
+  }
+  return cloneElement(element, translatedProps);
+}
 
 export function Modal({
   isOpen,
@@ -26,13 +47,19 @@ export function Modal({
   overlayClassName?: string;
   hideHeader?: boolean;
 }) {
+  const { language, t } = useLanguage();
   if (typeof document === 'undefined') return null;
+
+  const translatedTitle = translateModalNode(title, t);
+  const translatedSubtitle = translateModalNode(subtitle, t);
+  const translatedChildren = translateModalNode(children, t);
 
   return createPortal(
     <AnimatePresence>
       {isOpen && (
         <div
           className={`modal-overlay ${overlayClassName}`.trim()}
+          lang={language}
           onClick={onClose}
           style={{ pointerEvents: 'auto' }}
         >
@@ -47,20 +74,24 @@ export function Modal({
             {!hideHeader ? (
               <div className="modal-header">
                 <div>
-                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800 }}>{title}</h3>
-                  {subtitle ? <p className="modal-subtitle">{subtitle}</p> : null}
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800 }}>
+                    {translatedTitle}
+                  </h3>
+                  {translatedSubtitle ? (
+                    <p className="modal-subtitle">{translatedSubtitle}</p>
+                  ) : null}
                 </div>
                 <button
                   type="button"
                   className="modal-close-btn"
                   onClick={onClose}
-                  aria-label="Fermer"
+                  aria-label={t('Fermer')}
                 >
                   <X size={18} />
                 </button>
               </div>
             ) : null}
-            <div className={`modal-body ${bodyClassName}`.trim()}>{children}</div>
+            <div className={`modal-body ${bodyClassName}`.trim()}>{translatedChildren}</div>
           </motion.div>
         </div>
       )}

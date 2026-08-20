@@ -113,4 +113,91 @@ export const englishOverrides: Readonly<Record<string, string>> = {
     'If the result is served directly to the customer, choose “Dish or finished product”. If it is used to make something else, choose “Intermediate preparation”.',
   Carte: 'Card',
   'Carte & disponibilités': 'Card & Availability',
+  Postes: 'Positions',
+  'Postes RH': 'HR Positions',
+  ressenti: 'feels like',
+  'Ciel dégagé': 'Clear sky',
+  'Partiellement nuageux': 'Partly cloudy',
+  Brouillard: 'Fog',
+  Pluie: 'Rain',
+  Neige: 'Snow',
+  'Averses / orages': 'Showers / thunderstorms',
+  'Météo indisponible': 'Weather unavailable',
+  'Météo à configurer': 'Weather setup required',
+  'Ajoutez l’adresse du site principal pour activer la météo locale.':
+    'Add the primary site address to enable local weather.',
+  'Ville du site principal introuvable. Complétez son adresse.':
+    'The primary site city could not be found. Complete its address.',
+  'Complétez l’adresse du site': 'Complete the site address',
+  'Ajoutez un site principal': 'Add a primary site',
+  'Conformité HACCP': 'HACCP Compliance',
+  'Date du prochain événement': 'Next event date',
+  'À planifier': 'To be scheduled',
+  'Aucun événement à venir': 'No upcoming event',
+  'Activités rattachées au service': 'Activities attached to the department',
+  "Organiser et superviser l’activité quotidienne du service.":
+    "Organise and supervise the department’s daily operations.",
+  "Animer l’équipe, répartir les priorités et accompagner la montée en compétence.":
+    'Lead the team, assign priorities and support skill development.',
+  'Garantir la qualité de service, le respect des procédures internes et la bonne communication avec les autres services.':
+    'Ensure service quality, compliance with internal procedures and effective communication with other departments.',
+  "Suivre les indicateurs utiles et alerter la direction en cas d’écart.":
+    'Monitor relevant indicators and alert management when targets are missed.',
+  "Préparer et réaliser les productions selon les standards de l’établissement.":
+    "Prepare and complete production according to the establishment’s standards.",
+  "Respecter les fiches techniques, les quantités, les délais et les consignes d’hygiène.":
+    'Follow technical sheets, quantities, deadlines and hygiene instructions.',
+  "Participer à la mise en place, au rangement et à l’entretien du poste de travail.":
+    'Help set up, tidy and maintain the workstation.',
+  'Signaler les besoins, anomalies, ruptures ou risques opérationnels au responsable.':
+    'Report requirements, anomalies, shortages or operational risks to the manager.',
+  "Assurer la mise en place, le suivi du service et la fluidité de l’expérience client.":
+    'Handle setup, service follow-up and a smooth customer experience.',
+  "Appliquer les standards de présentation, d’encaissement et de communication de l’établissement.":
+    "Apply the establishment’s presentation, payment and communication standards.",
+  'Transmettre les informations utiles aux équipes opérationnelles et à la hiérarchie.':
+    'Share useful information with operational teams and management.',
+  'Assurer le traitement rigoureux des activités administratives ou support du service.':
+    "Handle the department’s administrative or support activities rigorously.",
+  "Tenir à jour les informations, documents et suivis nécessaires au bon fonctionnement de l’établissement.":
+    'Keep the information, documents and monitoring required for smooth operations up to date.',
+  'Collaborer avec les services internes et respecter les procédures de contrôle.':
+    'Work with internal departments and follow control procedures.',
+  "Réaliser les missions confiées dans le respect des standards de l’établissement.":
+    "Carry out assigned duties in line with the establishment’s standards.",
+  'Contribuer à la qualité de service et à la satisfaction client ou interne.':
+    'Contribute to service quality and customer or internal satisfaction.',
+  "Appliquer les procédures, consignes de sécurité et règles d’organisation.":
+    'Follow procedures, safety instructions and organisational rules.',
+  'Alerter le responsable en cas de difficulté, risque ou besoin particulier.':
+    'Alert the manager in the event of a difficulty, risk or specific requirement.',
+  'Mission générale': 'General mission',
+  'Compétences attendues': 'Expected skills',
+  Responsabilités: 'Responsibilities',
+  'Évolution et polyvalence': 'Development and versatility',
+  'Service rattaché :': 'Department:',
+  '- Maîtrise des gestes, outils et procédures propres au poste.':
+    '- Proficiency in the techniques, tools and procedures required for the role.',
+  "- Sens de l’organisation, ponctualité et fiabilité dans l’exécution.":
+    '- Organisation, punctuality and reliability in execution.',
+  '- Communication claire avec les responsables, collègues et interlocuteurs concernés.':
+    '- Clear communication with managers, colleagues and relevant contacts.',
+  "- Respect des règles d’hygiène, de sécurité, de confidentialité et de tenue professionnelle.":
+    '- Compliance with hygiene, safety, confidentiality and professional appearance rules.',
+  "- Maintenir un environnement de travail propre, sûr et conforme aux attentes de l’établissement.":
+    "- Maintain a clean, safe working environment that meets the establishment’s expectations.",
+  "- Participer à l’amélioration continue du service par des retours terrain utiles.":
+    "- Contribute useful field feedback to the department’s continuous improvement.",
+  '- Qualité du travail réalisé et respect des délais.':
+    '- Quality of completed work and compliance with deadlines.',
+  '- Fiabilité des informations transmises.': '- Reliability of information shared.',
+  "- Respect des procédures et absence d’incident majeur.":
+    '- Compliance with procedures and absence of major incidents.',
+  "Cette fiche peut être adaptée par l’utilisateur selon l’organisation, le niveau d’autonomie, les responsabilités exactes, les horaires, les formations obligatoires et les spécificités de l’établissement.":
+    "This description can be adapted by the user to the organisation, level of autonomy, exact responsibilities, working hours, mandatory training and the establishment’s specific requirements.",
+  'Télécharger en PDF': 'Download PDF',
+  'Document RH généré depuis ToqueHub. Fiche modifiable dans la description du poste.':
+    'HR document generated from ToqueHub. This job description can be edited from the position description.',
+  'en assurant les missions opérationnelles, relationnelles et organisationnelles liées à son métier. Le poste s’exerce dans le respect des standards ToqueHub de qualité, de traçabilité, d’hygiène, de sécurité et de collaboration interservices.':
+    'by carrying out the operational, interpersonal and organisational duties associated with the role. The position follows ToqueHub standards for quality, traceability, hygiene, safety and cross-department collaboration.',
 };

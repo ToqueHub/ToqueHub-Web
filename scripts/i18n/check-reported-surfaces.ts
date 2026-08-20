@@ -46,6 +46,10 @@ const checks: ReadonlyArray<readonly [string, string, string]> = [
     'Température, conditions de stockage, précautions après ouverture...',
     'Temperature, storage conditions, precautions after opening...',
   ],
+  ['HR positions tab', 'Postes', 'Positions'],
+  ['Cockpit weather condition', 'Partiellement nuageux', 'Partly cloudy'],
+  ['Cockpit apparent temperature', 'ressenti', 'feels like'],
+  ['Cockpit next-event card', 'Date du prochain événement', 'Next event date'],
 ];
 
 const failures: string[] = [];

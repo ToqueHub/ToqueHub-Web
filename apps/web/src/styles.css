@@ -33304,13 +33304,12 @@ input:checked + .slider-round:before {
 /* --- STOCKS PRODUCT PAGE REDESIGN --- */
 
 .stocks-products-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   width: 100%;
   box-sizing: border-box;
-  flex-wrap: wrap;
-  gap: 1.5rem;
+  gap: 1rem;
   padding: 1.1rem 1.25rem;
   border: 1px solid #e2e8f0;
   border-radius: 18px;
@@ -33322,7 +33321,6 @@ input:checked + .slider-round:before {
 .stocks-products-heading {
   display: flex;
   min-width: 0;
-  flex: 1 0 320px;
   flex-direction: column;
 }
 
@@ -33346,10 +33344,9 @@ input:checked + .slider-round:before {
 }
 
 .stocks-products-toolbar {
-  flex: 0 1 auto;
   max-width: 100%;
   margin-left: auto;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   min-width: 0;
   justify-content: flex-end;
 }
@@ -33562,10 +33559,10 @@ input:checked + .slider-round:before {
   white-space: nowrap;
 }
 
-@media (max-width: 1160px) {
+@media (max-width: 960px) {
   .stocks-products-header {
     align-items: flex-start;
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   .stocks-products-heading {

@@ -127,6 +127,7 @@ import { EquipmentForm, EquipmentPage, type EquipmentFormPayload } from './stock
 import { InventoryImportWizard } from './stocks/InventoryImportWizard';
 import { useLanguage } from '../i18n';
 import { activeLanguage, activeLocale } from '../i18n/runtime';
+import { translateText } from '../i18n/translate';
 
 const PurchasingApp = lazy(() =>
   import('./PurchasingApp').then((module) => ({ default: module.PurchasingApp })),
@@ -8437,10 +8438,12 @@ function DashboardCockpitOverview({
                   </div>
                   <div className="cockpit-weather-info">
                     <strong>
-                      {cockpit.weather.temperature}°C · {cockpit.weather.label}
+                      {cockpit.weather.temperature}°C ·{' '}
+                      {translateText(cockpit.weather.label ?? 'Météo indisponible')}
                     </strong>
                     <span>
-                      {cockpit.weather.city} · ressenti {cockpit.weather.apparentTemperature}°C
+                      {cockpit.weather.city} · {translateText('ressenti')}{' '}
+                      {cockpit.weather.apparentTemperature}°C
                     </span>
                   </div>
                 </>
@@ -8450,11 +8453,15 @@ function DashboardCockpitOverview({
                     <MapPin size={24} />
                   </div>
                   <div className="cockpit-weather-info">
-                    <strong>{cockpit.weather.label ?? 'Météo à configurer'}</strong>
+                    <strong>
+                      {translateText(cockpit.weather.label ?? 'Météo à configurer')}
+                    </strong>
                     <span>
-                      {cockpit.primarySite
-                        ? 'Complétez l’adresse du site'
-                        : 'Ajoutez un site principal'}
+                      {translateText(
+                        cockpit.primarySite
+                          ? 'Complétez l’adresse du site'
+                          : 'Ajoutez un site principal',
+                      )}
                     </span>
                   </div>
                 </>
@@ -8724,6 +8731,9 @@ function CockpitCard({
   movements?: StockMovement[];
 }) {
   const target = moduleTargetTab(card.module);
+  const translatedTitle = translateCockpitText(card.title);
+  const translatedValue = translateCockpitText(String(card.value));
+  const translatedDescription = translateCockpitText(card.description);
 
   // Icon mapping
   const getCardIcon = () => {
@@ -8965,19 +8975,56 @@ function CockpitCard({
     >
       <div className="cockpit-card-header">
         <div className={`cockpit-card-icon-wrapper tone-${tone}`}>{getCardIcon()}</div>
-        <span>{card.title}</span>
+        <span>{translatedTitle}</span>
       </div>
       <div className="cockpit-card-middle">
-        <strong className="cockpit-card-value">{card.value}</strong>
+        <strong className="cockpit-card-value">{translatedValue}</strong>
         {sectionType === 'overview' && renderSparkline()}
         {sectionType === 'insights' && renderInsightsChart()}
       </div>
       <div className="cockpit-card-bottom">
-        <p className="cockpit-card-desc">{card.description}</p>
+        <p className="cockpit-card-desc">{translatedDescription}</p>
         {renderCornerElement()}
       </div>
     </button>
   );
+}
+
+function translateCockpitText(value: string) {
+  if (activeLanguage() !== 'en' || !value.trim()) return value;
+
+  const translatedDynamicText = value
+    .replace(/^CA du jour ·/u, "Today's revenue ·")
+    .replace(/· en attente des ventes du jour$/u, "· awaiting today's sales")
+    .replace(/^TTC ·/u, 'Incl. tax ·')
+    .replace(/· màj /u, '· updated ')
+    .replace(/(\d+) ticket\(s\)/gu, '$1 transaction(s)')
+    .replace(/(\d+) contrôles? aujourd’hui/gu, '$1 checks today')
+    .replace(/(\d+) absent\(s\)/gu, '$1 absent')
+    .replace(/(\d+) remplacement\(s\)/gu, '$1 replacement(s) needed')
+    .replace(/(\d+) service\(s\)/gu, '$1 department(s)')
+    .replace(/(\d+) compte\(s\) lié\(s\)/gu, '$1 linked account(s)')
+    .replace(/(\d+) produits?/gu, '$1 product(s)')
+    .replace(/(\d+) fournisseurs?/gu, '$1 supplier(s)')
+    .replace(/(\d+) catégories?/gu, '$1 category/categories')
+    .replace(/coût moyen/gu, 'average cost')
+    .replace(/(\d+) fiche\(s\)/gu, '$1 sheet(s)')
+    .replace(/^À couvrir :/u, 'To cover:')
+    .replace(/^Grade /u, 'Grade ')
+    .replace(/\bjanv\./giu, 'Jan')
+    .replace(/\bfévr\./giu, 'Feb')
+    .replace(/\bmars\b/giu, 'Mar')
+    .replace(/\bavr\./giu, 'Apr')
+    .replace(/\bmai\b/giu, 'May')
+    .replace(/\bjuin\b/giu, 'Jun')
+    .replace(/\bjuil\./giu, 'Jul')
+    .replace(/\baoût\b/giu, 'Aug')
+    .replace(/\bsept\./giu, 'Sep')
+    .replace(/\boct\./giu, 'Oct')
+    .replace(/\bnov\./giu, 'Nov')
+    .replace(/\bdéc\./giu, 'Dec');
+
+  return translateText(translatedDynamicText, 'en');
 }
 
 function NewsCard({

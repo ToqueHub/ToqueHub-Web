@@ -20,7 +20,15 @@
   {
     "text": "- Appliquer les consignes transmises et rendre compte de l avancement.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "- Appliquer les consignes transmises et rendre compte de l’avancement.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -64,6 +72,15 @@
     ]
   },
   {
+    "text": "- Clear communication with managers, colleagues and relevant contacts.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "- commande",
     "files": [
       "apps/api/src/haccp/haccp.service.ts"
@@ -84,7 +101,51 @@
   {
     "text": "- Communication claire avec les responsables, collegues et interlocuteurs concernes.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "- Communication claire avec les responsables, collègues et interlocuteurs concernés.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "- Compliance with hygiene, safety, confidentiality and professional appearance rules.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "- Compliance with procedures and absence of major incidents.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "- Contribute useful field feedback to the department’s continuous improvement.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "- Customer or internal satisfaction, depending on the role.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -121,7 +182,24 @@
   {
     "text": "- Fiabilite des informations transmises.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "- Fiabilité des informations transmises.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "- Follow instructions and report on progress.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -156,9 +234,26 @@
     ]
   },
   {
+    "text": "- Maintain a clean, safe working environment that meets the establishment’s expectations.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "- Maintenir un environnement de travail propre, sur et conforme aux attentes de l etablissement.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "- Maintenir un environnement de travail propre, sûr et conforme aux attentes de l’établissement.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -168,7 +263,24 @@
   {
     "text": "- Maitrise des gestes, outils et procedures propres au poste.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "- Maîtrise des gestes, outils et procédures propres au poste.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "- Organisation, punctuality and reliability in execution.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -187,7 +299,15 @@
   {
     "text": "- Participer a l amelioration continue du service par des retours terrain utiles.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "- Participer à l’amélioration continue du service par des retours terrain utiles.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -204,9 +324,44 @@
     ]
   },
   {
+    "text": "- Proficiency in the techniques, tools and procedures required for the role.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "- Qualite du travail realise et respect des delais.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "- Qualité du travail réalisé et respect des délais.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "- Quality of completed work and compliance with deadlines.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "- Reliability of information shared.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -216,7 +371,15 @@
   {
     "text": "- Respect des procedures et absence d incident majeur.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "- Respect des procédures et absence d’incident majeur.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -226,7 +389,15 @@
   {
     "text": "- Respect des regles d hygiene, de securite, de confidentialite et de tenue professionnelle.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "- Respect des règles d’hygiène, de sécurité, de confidentialité et de tenue professionnelle.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -255,7 +426,15 @@
   {
     "text": "- Sens de l organisation, ponctualite et fiabilite dans l execution.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "- Sens de l’organisation, ponctualité et fiabilité dans l’exécution.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -2453,6 +2632,15 @@
     ]
   },
   {
+    "text": "· awaiting today's sales",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "· Bénévole",
     "files": [
       "apps/web/src/components/HumanSupportPane.tsx"
@@ -2870,15 +3058,6 @@
     ]
   },
   {
-    "text": "· ressenti",
-    "files": [
-      "apps/web/src/components/Dashboard.tsx"
-    ],
-    "kinds": [
-      "jsx"
-    ]
-  },
-  {
     "text": "· Résultat net",
     "files": [
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
@@ -2912,6 +3091,15 @@
     ],
     "kinds": [
       "template"
+    ]
+  },
+  {
+    "text": "· updated",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -3045,6 +3233,15 @@
     "text": "”. Voulez-vous parler de :",
     "files": [
       "apps/api/src/stock-assistant/stock-assistant.service.ts"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "\"><head><meta charset=\"utf-8\"><title>",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
       "template"
@@ -4465,6 +4662,15 @@
     ]
   },
   {
+    "text": "<!doctype html><html lang=\"",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "<!doctype html><html lang=\"fr\"><body style=\"font-family:system-ui;display:grid;place-items:center;min-height:100vh\"><main style=\"max-width:460px;text-align:center\"><h1>",
     "files": [
       "apps/api/src/purchasing/purchasing-email-oauth.controller.ts"
@@ -4474,7 +4680,7 @@
     ]
   },
   {
-    "text": "<!doctype html><html><head><meta charset=\"utf-8\"><title>Fiche de poste -",
+    "text": "</button><h1>",
     "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
@@ -4492,7 +4698,16 @@
     ]
   },
   {
-    "text": "</div><div class=\"footer\">Document RH genere depuis ToqueHub. Fiche modifiable dans la description du poste.</div></div><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),250))</script></body></html>",
+    "text": "</div></div><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),250))</script></body></html>",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "</div><div class=\"footer\">",
     "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
@@ -4504,6 +4719,15 @@
     "text": "</h1> <p>",
     "files": [
       "apps/api/src/backups/cloud/backup-cloud.controller.ts"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "</h1><h2>",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
       "template"
@@ -4564,7 +4788,7 @@
     ]
   },
   {
-    "text": "</title><style>@page{margin:18mm}body{font-family:Arial,sans-serif;color:#172033;line-height:1.48}h1{font-size:24px;margin:0 0 4px;color:#00a878}h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin:0 0 24px}.sheet{max-width:760px;margin:0 auto}.content{white-space:pre-wrap;font-size:13px;border-top:2px solid #d9f6ed;padding-top:18px}.footer{margin-top:24px;font-size:11px;color:#64748b}.print-button{float:right;padding:10px 14px;border:1px solid #d7e3ee;background:#00a878;color:white;border-radius:8px;font-weight:700;cursor:pointer}@media print{.print-button{display:none}}</style></head><body><div class=\"sheet\"><button class=\"print-button\" onclick=\"window.print()\">Telecharger en PDF</button><h1>Fiche de poste</h1><h2>",
+    "text": "</title><style>@page{margin:18mm}body{font-family:Arial,sans-serif;color:#172033;line-height:1.48}h1{font-size:24px;margin:0 0 4px;color:#00a878}h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin:0 0 24px}.sheet{max-width:760px;margin:0 auto}.content{white-space:pre-wrap;font-size:13px;border-top:2px solid #d9f6ed;padding-top:18px}.footer{margin-top:24px;font-size:11px;color:#64748b}.print-button{float:right;padding:10px 14px;border:1px solid #d7e3ee;background:#00a878;color:white;border-radius:8px;font-weight:700;cursor:pointer}@media print{.print-button{display:none}}</style></head><body><div class=\"sheet\"><button class=\"print-button\" onclick=\"window.print()\">",
     "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
@@ -4777,6 +5001,96 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "$1 absent",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "$1 category/categories",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "$1 checks today",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "$1 department(s)",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "$1 linked account(s)",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "$1 product(s)",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "$1 replacement(s) needed",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "$1 sheet(s)",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "$1 supplier(s)",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "$1 transaction(s)",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -12984,7 +13298,15 @@
   {
     "text": "Activites rattachees au service",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "Activités rattachées au service",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -12999,6 +13321,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Activities attached to the",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -15494,6 +15825,15 @@
     ]
   },
   {
+    "text": "Alert the manager in the event of a difficulty, risk or specific requirement.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "alert-modern error",
     "files": [
       "apps/web/src/components/ArchitectureCenter.tsx",
@@ -15790,7 +16130,15 @@
   {
     "text": "Alerter le responsable en cas de difficulte, risque ou besoin particulier.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Alerter le responsable en cas de difficulté, risque ou besoin particulier.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -16361,6 +16709,15 @@
     "text": "already exists",
     "files": [
       "apps/web/src/components/FirstStartLanding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "alt",
+    "files": [
+      "apps/web/src/components/ui/Modal.tsx"
     ],
     "kinds": [
       "literal"
@@ -17347,7 +17704,15 @@
   {
     "text": "Animer l equipe, repartir les priorites et accompagner la montee en competence.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Animer l’équipe, répartir les priorités et accompagner la montée en compétence.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -18073,7 +18438,15 @@
   {
     "text": "Appliquer les procedures, consignes de securite et regles d organisation.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Appliquer les procédures, consignes de sécurité et règles d’organisation.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -18083,7 +18456,24 @@
   {
     "text": "Appliquer les standards de presentation, d encaissement et de communication de l etablissement.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Appliquer les standards de présentation, d’encaissement et de communication de l’établissement.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Apply the establishment’s presentation, payment and communication standards.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -18328,6 +18718,15 @@
     "text": "apps/stocks/uninstall",
     "files": [
       "apps/api/src/auth/auth.controller.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Apr",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
     ],
     "kinds": [
       "literal"
@@ -19431,7 +19830,15 @@
   {
     "text": "Assurer la mise en place, le suivi du service et la fluidite de l experience client.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Assurer la mise en place, le suivi du service et la fluidité de l’expérience client.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -19450,7 +19857,15 @@
   {
     "text": "Assurer le traitement rigoureux des activites administratives ou support du service.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Assurer le traitement rigoureux des activités administratives ou support du service.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -22783,6 +23198,15 @@
     ]
   },
   {
+    "text": "Aug",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Augmenter la quantité",
     "files": [
       "apps/web/src/components/purchasing/orders/OrderCatalog.tsx"
@@ -23302,6 +23726,15 @@
     ],
     "kinds": [
       "jsx",
+      "literal"
+    ]
+  },
+  {
+    "text": "average cost",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
       "literal"
     ]
   },
@@ -28178,6 +28611,15 @@
     ]
   },
   {
+    "text": "Carry out assigned duties in line with the establishment’s standards.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Carte",
     "files": [
       "apps/web/src/components/Dashboard.tsx",
@@ -29970,7 +30412,15 @@
   {
     "text": "Cette fiche peut etre adaptee par l utilisateur selon l organisation, le niveau d autonomie, les responsabilites exactes, les horaires, les formations obligatoires et les specificites de l etablissement.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Cette fiche peut être adaptée par l’utilisateur selon l’organisation, le niveau d’autonomie, les responsabilités exactes, les horaires, les formations obligatoires et les spécificités de l’établissement.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -34037,7 +34487,15 @@
   {
     "text": "Collaborer avec les services internes et respecter les procedures de controle.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Collaborer avec les services internes et respecter les procédures de contrôle.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -34842,7 +35300,15 @@
   {
     "text": "Competences attendues",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Compétences attendues",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -38461,11 +38927,37 @@
   {
     "text": "Contribuer a la qualite de service et a la satisfaction client ou interne.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Contribuer à la qualité de service et à la satisfaction client ou interne.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Contribute to service quality and customer or internal satisfaction.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "contributes to the smooth operation of the",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -44176,6 +44668,15 @@
     ]
   },
   {
+    "text": "Dec",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "decimal",
     "files": [
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx"
@@ -44883,6 +45384,42 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "department by carrying out the operational, interpersonal and organisational duties associated with the role. The position follows ToqueHub standards for quality, traceability, hygiene, safety and cross-department collaboration.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "Department context:",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "Department:",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "department.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -46291,6 +46828,15 @@
     ]
   },
   {
+    "text": "Development and versatility",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Development user switch is disabled",
     "files": [
       "apps/api/src/users/users.service.ts"
@@ -47413,6 +47959,15 @@
     ]
   },
   {
+    "text": "Document RH généré depuis ToqueHub. Fiche modifiable dans la description du poste.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Document RH remplacé",
     "files": [
       "apps/api/src/hr/hr.service.ts"
@@ -48339,6 +48894,15 @@
     "text": "download",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Download PDF",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -50240,7 +50804,8 @@
       "apps/api/src/stocks/stocks-product-import.service.ts",
       "apps/api/src/stocks/stocks.controller.ts",
       "apps/web/src/api/client.ts",
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -50276,7 +50841,15 @@
   {
     "text": "en assurant les missions operationnelles, relationnelles et organisationnelles liees a son metier. Le poste s exerce dans le respect des standards ToqueHub de qualite, de tracabilite, d hygiene, de securite et de collaboration interservices.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "en assurant les missions opérationnelles, relationnelles et organisationnelles liées à son métier. Le poste s’exerce dans le respect des standards ToqueHub de qualité, de traçabilité, d’hygiène, de sécurité et de collaboration interservices.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -51493,6 +52066,15 @@
     "text": "Ensemble",
     "files": [
       "apps/web/src/components/ProductionApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Ensure service quality, compliance with internal procedures and effective communication with other departments.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -53869,7 +54451,15 @@
   {
     "text": "Evolution et polyvalence",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Évolution et polyvalence",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -54730,6 +55320,15 @@
     "text": "expanded",
     "files": [
       "apps/web/src/components/PlanningApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Expected skills",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -55895,6 +56494,15 @@
     ]
   },
   {
+    "text": "Feb",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Femme de chambre",
     "files": [
       "apps/api/src/hr/hr.catalog.ts",
@@ -56553,7 +57161,8 @@
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
-      "jsx"
+      "jsx",
+      "literal"
     ]
   },
   {
@@ -58283,6 +58892,24 @@
     ]
   },
   {
+    "text": "Follow procedures, safety instructions and organisational rules.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Follow technical sheets, quantities, deadlines and hygiene instructions.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Fondation du système.",
     "files": [
       "apps/api/src/architecture/architecture.service.ts",
@@ -59540,7 +60167,15 @@
   {
     "text": "Garantir la qualite de service, le respect des procedures internes et la bonne communication avec les autres services.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Garantir la qualité de service, le respect des procédures internes et la bonne communication avec les autres services.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -59627,6 +60262,15 @@
     ],
     "kinds": [
       "jsx",
+      "literal"
+    ]
+  },
+  {
+    "text": "General mission",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
       "literal"
     ]
   },
@@ -60709,9 +61353,11 @@
   {
     "text": "Grade",
     "files": [
-      "apps/api/src/dashboard/dashboard.service.ts"
+      "apps/api/src/dashboard/dashboard.service.ts",
+      "apps/web/src/components/Dashboard.tsx"
     ],
     "kinds": [
+      "literal",
       "template"
     ]
   },
@@ -61853,6 +62499,24 @@
     ]
   },
   {
+    "text": "Handle setup, service follow-up and a smooth customer experience.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Handle the department’s administrative or support activities rigorously.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "haricot",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -62075,6 +62739,15 @@
     ],
     "kinds": [
       "attribute",
+      "literal"
+    ]
+  },
+  {
+    "text": "Help set up, tidy and maintain the workstation.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
       "literal"
     ]
   },
@@ -63014,6 +63687,15 @@
     ]
   },
   {
+    "text": "HR document generated from ToqueHub. This job description can be edited from the position description.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "hr_absence:",
     "files": [
       "apps/api/src/hr/time-accounts/hr-time-account.service.ts"
@@ -63870,6 +64552,15 @@
     "text": "identifiers",
     "files": [
       "apps/api/src/stocks/stocks-ocr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Identify anomalies and suggest straightforward corrective actions.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -65488,6 +66179,15 @@
     "text": "Inattendu",
     "files": [
       "apps/web/src/components/purchasing/components/PurchasingUi.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Incl. tax ·",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
     ],
     "kinds": [
       "literal"
@@ -67907,6 +68607,15 @@
     ]
   },
   {
+    "text": "Jan",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Jardinier",
     "files": [
       "apps/api/src/hr/hr.catalog.ts",
@@ -68238,6 +68947,24 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Job description",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "JOB DESCRIPTION -",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -68665,6 +69392,24 @@
     ]
   },
   {
+    "text": "Jul",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Jun",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "jus",
     "files": [
       "apps/api/src/stocks/stocks-ocr.service.ts",
@@ -68791,6 +69536,15 @@
     "files": [
       "apps/api/src/stocks/stocks-product-import.service.ts",
       "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Keep the information, documents and monitoring required for smooth operations up to date.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -73389,6 +74143,15 @@
     ]
   },
   {
+    "text": "Lead the team, assign priorities and support skill development.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Leasing",
     "files": [
       "apps/web/src/components/Dashboard.tsx",
@@ -76722,6 +77485,15 @@
     ]
   },
   {
+    "text": "Main duties",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "maintenance",
     "files": [
       "apps/api/src/hr/hr.catalog.ts",
@@ -77754,6 +78526,15 @@
     "text": "maximumQuantity must be greater than or equal to minimumQuantity",
     "files": [
       "apps/api/src/production/production-calculations.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "May",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
     ],
     "kinds": [
       "literal"
@@ -78867,7 +79648,8 @@
   {
     "text": "Météo indisponible",
     "files": [
-      "apps/api/src/dashboard/dashboard-external.service.ts"
+      "apps/api/src/dashboard/dashboard-external.service.ts",
+      "apps/web/src/components/Dashboard.tsx"
     ],
     "kinds": [
       "literal"
@@ -79679,6 +80461,15 @@
     "text": "Mission generale",
     "files": [
       "apps/api/src/hr/hr.service.ts",
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Mission générale",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -81632,6 +82423,24 @@
     "files": [
       "apps/api/src/finance/finance-export.service.ts",
       "apps/api/src/planning/planning.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Monitor relevant indicators and alert management when targets are missed.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Monitoring indicators",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -85115,6 +85924,15 @@
     ]
   },
   {
+    "text": "Nov",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "nowrap",
     "files": [
       "apps/web/src/components/CatererMenusApp.tsx",
@@ -85731,6 +86549,15 @@
     ],
     "kinds": [
       "attribute"
+    ]
+  },
+  {
+    "text": "Oct",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -87044,6 +87871,15 @@
     ]
   },
   {
+    "text": "Organise and supervise the department’s daily operations.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Organiser dans le Planning opérationnel",
     "files": [
       "apps/web/src/components/ProductionApp.tsx"
@@ -87055,7 +87891,15 @@
   {
     "text": "Organiser et superviser l activite quotidienne du service.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Organiser et superviser l’activité quotidienne du service.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -88699,7 +89543,15 @@
   {
     "text": "Participer a la mise en place, au rangement et a l entretien du poste de travail.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Participer à la mise en place, au rangement et à l’entretien du poste de travail.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -90808,6 +91660,15 @@
     "text": "Place les conditions liées au matériel, au leasing ou au rachat dans equipmentNotes, en français concis, sans perdre le montant ni la devise.",
     "files": [
       "apps/api/src/stocks/stocks-ocr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "placeholder",
+    "files": [
+      "apps/web/src/components/ui/Modal.tsx"
     ],
     "kinds": [
       "literal"
@@ -94016,6 +94877,15 @@
     ]
   },
   {
+    "text": "Prepare and complete production according to the establishment’s standards.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Préparé par",
     "files": [
       "apps/api/src/menus/caterer-menus.service.ts"
@@ -94118,7 +94988,15 @@
   {
     "text": "Preparer et realiser les productions selon les standards de l etablissement.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Préparer et réaliser les productions selon les standards de l’établissement.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -100455,7 +101333,15 @@
   {
     "text": "Realiser les missions confiees dans le respect des standards de l etablissement.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Réaliser les missions confiées dans le respect des standards de l’établissement.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -104605,6 +105491,15 @@
     ]
   },
   {
+    "text": "Report requirements, anomalies, shortages or operational risks to the manager.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "reportDate",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -104924,7 +105819,15 @@
   {
     "text": "Respecter les fiches techniques, les quantites, les delais et les consignes d hygiene.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Respecter les fiches techniques, les quantités, les délais et les consignes d’hygiène.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -104943,7 +105846,15 @@
   {
     "text": "Responsabilites",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Responsabilités",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -105234,6 +106145,24 @@
     "text": "response",
     "files": [
       "apps/api/src/mistral/mistral-ocr-transport.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Responsibilities",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "ressenti",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
     ],
     "kinds": [
       "literal"
@@ -110327,6 +111256,15 @@
     ]
   },
   {
+    "text": "Sep",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Sépare si possible le nom commercial en brand (marque) et model (modèle). Conserve dans reference la référence fournisseur complète, y compris lorsque le code est coupé sur deux lignes.",
     "files": [
       "apps/api/src/stocks/stocks-ocr.service.ts"
@@ -110674,7 +111612,15 @@
   {
     "text": "Service rattache :",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "Service rattaché :",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -111498,6 +112444,15 @@
     ]
   },
   {
+    "text": "Share useful information with operational teams and management.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "sheet",
     "files": [
       "apps/api/src/architecture/architecture.service.ts",
@@ -111839,7 +112794,15 @@
   {
     "text": "Signaler les besoins, anomalies, ruptures ou risques operationnels au responsable.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Signaler les besoins, anomalies, ruptures ou risques opérationnels au responsable.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -114976,7 +115939,8 @@
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/MenusApp.tsx",
       "apps/web/src/components/PlanningApp.tsx",
-      "apps/web/src/components/UsersPage.tsx"
+      "apps/web/src/components/UsersPage.tsx",
+      "apps/web/src/components/ui/Modal.tsx"
     ],
     "kinds": [
       "literal"
@@ -115686,7 +116650,15 @@
   {
     "text": "Suivre les indicateurs utiles et alerter la direction en cas d ecart.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Suivre les indicateurs utiles et alerter la direction en cas d’écart.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -118476,6 +119448,15 @@
     ]
   },
   {
+    "text": "Télécharger en PDF",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Télécharger l'archive .tar.gz",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -118969,7 +119950,15 @@
   {
     "text": "Tenir a jour les informations, documents et suivis necessaires au bon fonctionnement de l etablissement.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Tenir à jour les informations, documents et suivis nécessaires au bon fonctionnement de l’établissement.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -119387,6 +120376,15 @@
     ]
   },
   {
+    "text": "textarea",
+    "files": [
+      "apps/web/src/components/ui/Modal.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "textColor",
     "files": [
       "apps/api/src/menus/menu-exports.service.ts"
@@ -119532,6 +120530,15 @@
     ],
     "kinds": [
       "template"
+    ]
+  },
+  {
+    "text": "This description can be adapted by the user to the organisation, level of autonomy, exact responsibilities, working hours, mandatory training and the establishment’s specific requirements.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -119828,7 +120835,8 @@
       "apps/api/src/dashboard/dashboard-external.service.ts",
       "apps/api/src/finance/fennoa-sync.service.ts",
       "apps/api/src/finance/finance-ai.service.ts",
-      "apps/api/src/technical-sheets/technical-sheets.service.ts"
+      "apps/api/src/technical-sheets/technical-sheets.service.ts",
+      "apps/web/src/components/ui/Modal.tsx"
     ],
     "kinds": [
       "literal"
@@ -119946,6 +120954,15 @@
     ]
   },
   {
+    "text": "To cover:",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "To do",
     "files": [
       "apps/api/src/production/production-operational-export.service.ts"
@@ -119963,6 +120980,15 @@
     ],
     "kinds": [
       "attribute",
+      "literal"
+    ]
+  },
+  {
+    "text": "Today's revenue ·",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
       "literal"
     ]
   },
@@ -122386,7 +123412,15 @@
   {
     "text": "Transmettre les informations utiles aux equipes operationnelles et a la hierarchie.",
     "files": [
-      "apps/api/src/hr/hr.service.ts",
+      "apps/api/src/hr/hr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Transmettre les informations utiles aux équipes opérationnelles et à la hiérarchie.",
+    "files": [
       "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
@@ -129138,6 +130172,15 @@
     ]
   },
   {
+    "text": "Welcome, advise and serve customers professionally.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Whether remote access through Tailscale is enabled for this organization.",
     "files": [
       "apps/api/src/auth/dto/remote-access.dto.ts"
@@ -129304,6 +130347,15 @@
       "apps/api/src/planning/planning-day-status.service.ts",
       "apps/api/src/planning/planning.service.ts",
       "apps/web/src/components/PlanningApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Work with internal departments and follow control procedures.",
+    "files": [
+      "apps/web/src/components/HrApp.tsx"
     ],
     "kinds": [
       "literal"
