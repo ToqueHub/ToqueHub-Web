@@ -11436,12 +11436,30 @@
     ]
   },
   {
+    "text": "À configurer plus tard",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "À confirmer",
     "files": [
       "apps/web/src/components/purchasing/orders/OrderCatalog.tsx"
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "À connecter",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -12439,6 +12457,15 @@
     ]
   },
   {
+    "text": "Accordez au minimum l’accès en lecture aux comptes, exercices, écritures, soldes et budgets.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "account",
     "files": [
       "apps/api/src/finance/fennoa-sync.service.ts",
@@ -12446,6 +12473,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "account(s) ·",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -13099,6 +13135,7 @@
       "apps/web/src/components/WorkspaceOnboarding.tsx",
       "apps/web/src/components/finance/FinanceSalesInsights.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx",
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx",
       "apps/web/src/components/purchasing/PurchasingWorkspace.tsx",
       "apps/web/src/components/purchasing/orders/OrderCatalog.tsx",
@@ -13506,7 +13543,8 @@
   {
     "text": "Adaptateur",
     "files": [
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "jsx"
@@ -15733,6 +15771,15 @@
     ]
   },
   {
+    "text": "Ajoutez votre vérité comptable",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Ajuster les effectifs du",
     "files": [
       "apps/web/src/components/CentralKitchenMenusApp.tsx"
@@ -15845,6 +15892,7 @@
       "apps/web/src/components/TechnicalSheetsApp.tsx",
       "apps/web/src/components/finance/FinanceSalesInsights.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx",
       "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx",
       "apps/web/src/components/stocks/EquipmentPage.tsx",
       "apps/web/src/components/ui/DocumentOcrUpload.tsx"
@@ -15955,7 +16003,8 @@
       "apps/web/src/components/FirstStartLanding.tsx",
       "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx",
-      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+      "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "attribute"
@@ -18180,6 +18229,15 @@
     ]
   },
   {
+    "text": "API comptable · Recommandé",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "API comptable du module Finance : comptes, écritures, exercices, soldes et budgets.",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -19667,6 +19725,15 @@
     ]
   },
   {
+    "text": "Assistant Finance",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Assistant gouvernant",
     "files": [
       "apps/api/src/hr/hr.catalog.ts",
@@ -19804,6 +19871,15 @@
     "text": "Associer les colonnes",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Associez le compte à un établissement et choisissez les horaires de récupération automatique.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "jsx"
@@ -21262,6 +21338,15 @@
     ]
   },
   {
+    "text": "Aucun pour le moment",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Aucun preset encore créé",
     "files": [
       "apps/web/src/components/PlanningApp.tsx"
@@ -21672,6 +21757,15 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "Aucun service pour le moment",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -23480,6 +23574,15 @@
     ]
   },
   {
+    "text": "Autorisez la lecture comptable",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "autre",
     "files": [
       "apps/api/src/hr/hr-task-presets.ts",
@@ -24866,6 +24969,7 @@
       "apps/web/src/components/HrApp.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx",
       "apps/web/src/components/WorkspaceOnboarding.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx",
       "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx"
     ],
     "kinds": [
@@ -26216,6 +26320,7 @@
       "apps/web/src/components/WorkspaceOnboarding.tsx",
       "apps/web/src/components/finance/FinanceSalesInsights.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx",
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx",
       "apps/web/src/components/purchasing/PurchasingWorkspace.tsx",
       "apps/web/src/components/purchasing/components/PurchasingUi.tsx",
@@ -26306,6 +26411,15 @@
     ]
   },
   {
+    "text": "btn btn-primary finance-onboarding-dashboard-button",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
     "text": "btn btn-primary menus-form-span",
     "files": [
       "apps/web/src/components/CentralKitchenMenusApp.tsx",
@@ -26349,6 +26463,7 @@
       "apps/web/src/components/TechnicalSheetsApp.tsx",
       "apps/web/src/components/WorkspaceOnboarding.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx",
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx",
       "apps/web/src/components/purchasing/components/PurchasingUi.tsx",
       "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx",
@@ -26511,6 +26626,15 @@
   },
   {
     "text": "btn btn-secondary finance-budget-import-trigger",
+    "files": [
+      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "btn btn-secondary finance-onboarding-trigger",
     "files": [
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
     ],
@@ -27029,6 +27153,7 @@
       "apps/web/src/components/WorkspaceOnboarding.tsx",
       "apps/web/src/components/finance/FinanceSalesInsights.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx",
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx",
       "apps/web/src/components/purchasing/components/PurchasingUi.tsx",
       "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx",
@@ -27420,6 +27545,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Caisses",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -31465,6 +31599,15 @@
     ]
   },
   {
+    "text": "check the API key permissions.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "checkbox",
     "files": [
       "apps/web/src/components/CatererMenusApp.tsx",
@@ -31945,15 +32088,6 @@
     ]
   },
   {
-    "text": "Choisir la langue de l’application",
-    "files": [
-      "apps/web/src/components/Dashboard.tsx"
-    ],
-    "kinds": [
-      "attribute"
-    ]
-  },
-  {
     "text": "Choisir la période",
     "files": [
       "apps/web/src/components/PlanningApp.tsx"
@@ -31981,6 +32115,15 @@
     ]
   },
   {
+    "text": "Choisir Loyverse, PayPal / Zettle et FlatPay selon vos établissements",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Choisir mon socle",
     "files": [
       "apps/web/src/components/WorkspaceOnboarding.tsx"
@@ -32001,7 +32144,8 @@
   {
     "text": "Choisir un établissement",
     "files": [
-      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+      "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "jsx"
@@ -32225,6 +32369,33 @@
     "text": "Choisissez Assemblage ou Fabrication.",
     "files": [
       "apps/web/src/components/TechnicalSheetsApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Choisissez au moins un horaire FlatPay.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Choisissez au moins un horaire Loyverse.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Choisissez au moins un horaire PayPal.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "literal"
@@ -32531,6 +32702,33 @@
     "text": "Choisissez soit un produit Stocks, soit une fiche technique.",
     "files": [
       "apps/api/src/menus/menus.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Choisissez un établissement pour FlatPay.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Choisissez un établissement pour Loyverse.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Choisissez un établissement pour PayPal / Zettle.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "literal"
@@ -32948,7 +33146,8 @@
   {
     "text": "Clé API Fennoa",
     "files": [
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "jsx"
@@ -32967,6 +33166,15 @@
     "text": "Clé API Mistral AI",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Clé API PayPal / Zettle",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "jsx"
@@ -32995,7 +33203,8 @@
   {
     "text": "Clé API signée",
     "files": [
-      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+      "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "literal"
@@ -33013,7 +33222,8 @@
   {
     "text": "Clé créée dans Fennoa",
     "files": [
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "literal"
@@ -33344,7 +33554,8 @@
   {
     "text": "Client ID du compte marchand",
     "files": [
-      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+      "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "attribute"
@@ -33354,6 +33565,15 @@
     "text": "Client ID Google Cloud",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Client ID PayPal / Zettle",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "jsx"
@@ -33729,6 +33949,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Cochez une ou plusieurs applications. Seules les configurations choisies seront ouvertes à l’étape suivante.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -34539,6 +34768,15 @@
     ]
   },
   {
+    "text": "Collez ci-dessous l’utilisateur ou alias API, puis la clé générée. La clé sera chiffrée côté serveur.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Colonne",
     "files": [
       "apps/api/src/stocks/stocks-product-spreadsheet.ts"
@@ -34930,6 +35168,15 @@
     ],
     "kinds": [
       "attribute"
+    ]
+  },
+  {
+    "text": "Comment obtenir une clé API Fennoa ?",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -35721,9 +35968,11 @@
     "text": "Comptabilité",
     "files": [
       "apps/api/src/finance/finance-export.service.ts",
-      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+      "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
+      "jsx",
       "literal"
     ]
   },
@@ -35824,7 +36073,8 @@
   {
     "text": "Compte FlatPay",
     "files": [
-      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+      "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "jsx"
@@ -35909,7 +36159,8 @@
   {
     "text": "compte(s) ·",
     "files": [
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "template"
@@ -36173,6 +36424,15 @@
     ]
   },
   {
+    "text": "Configuration",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Configuration à compléter",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -36410,6 +36670,15 @@
     ]
   },
   {
+    "text": "Configuration terminée",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Configuration universelle pour OVH, Infomaniak, Zoho Mail ou vos serveurs d'entreprise.",
     "files": [
       "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx"
@@ -36521,11 +36790,13 @@
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/PlanningApp.tsx",
-      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+      "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "jsx",
-      "literal"
+      "literal",
+      "template"
     ]
   },
   {
@@ -36605,6 +36876,7 @@
   {
     "text": "Configurer plus tard",
     "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx",
       "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx"
     ],
     "kinds": [
@@ -36650,9 +36922,11 @@
   {
     "text": "Configurez",
     "files": [
-      "apps/api/src/purchasing/purchasing-email-connection.service.ts"
+      "apps/api/src/purchasing/purchasing-email-connection.service.ts",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
+      "literal",
       "template"
     ]
   },
@@ -36750,6 +37024,15 @@
     "text": "Configurez vos services d'intelligence artificielle locale.",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Configurez votre",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "jsx"
@@ -37420,6 +37703,15 @@
     ]
   },
   {
+    "text": "Connecter Fennoa comme vérité comptable par API sécurisée",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Connecter l’assistant IA",
     "files": [
       "apps/web/src/components/FirstStartLanding.tsx"
@@ -37519,6 +37811,24 @@
     ]
   },
   {
+    "text": "Connectez-vous avec un compte autorisé à gérer les utilisateurs et les intégrations.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Connection verified ·",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "Connexion",
     "files": [
       "apps/api/src/purchasing/purchasing-email-oauth.controller.ts",
@@ -37613,6 +37923,15 @@
     "text": "Connexion Fennoa enregistrée de façon sécurisée.",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Connexion FlatPay et synchronisations enregistrées.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "literal"
@@ -37739,9 +38058,11 @@
   {
     "text": "Connexion sécurisée",
     "files": [
-      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+      "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
+      "jsx",
       "literal"
     ]
   },
@@ -37784,7 +38105,8 @@
   {
     "text": "Connexion validée ·",
     "files": [
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "template"
@@ -38691,7 +39013,8 @@
       "apps/web/src/components/FirstStartLanding.tsx",
       "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/PlanningApp.tsx",
-      "apps/web/src/components/ProductionApp.tsx"
+      "apps/web/src/components/ProductionApp.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "jsx"
@@ -40003,6 +40326,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Copiez les deux valeurs",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -42278,6 +42610,15 @@
     ]
   },
   {
+    "text": "Créez un utilisateur API",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Créez une première commande ou modifiez vos filtres.",
     "files": [
       "apps/web/src/components/purchasing/pages/PurchaseOrders.tsx"
@@ -43566,6 +43907,15 @@
     ]
   },
   {
+    "text": "Dans les paramètres Fennoa, ouvrez la gestion des utilisateurs ou des accès API, puis créez un accès dédié à ToqueHub.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "dans les réglages super-admin avant de connecter une boîte.",
     "files": [
       "apps/api/src/purchasing/purchasing-email-connection.service.ts"
@@ -43780,6 +44130,7 @@
       "apps/web/src/components/ProductionFabricationCalendar.tsx",
       "apps/web/src/components/finance/FinanceSalesInsights.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx",
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx",
       "apps/web/src/components/purchasing/pages/PurchaseHistory.tsx",
       "apps/web/src/components/purchasing/receipts/ReceiptReview.tsx",
@@ -44927,6 +45278,16 @@
     ],
     "kinds": [
       "template"
+    ]
+  },
+  {
+    "text": "Déjà configuré",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx",
+      "literal"
     ]
   },
   {
@@ -46557,6 +46918,15 @@
     ]
   },
   {
+    "text": "Détail opérationnel",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Détail quotidien",
     "files": [
       "apps/api/src/finance/finance-export.service.ts"
@@ -46788,6 +47158,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Deux jours sont rejoués à chaque passage pour intégrer les corrections tardives sans doublon.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -47470,6 +47849,15 @@
     "kinds": [
       "jsx",
       "literal"
+    ]
+  },
+  {
+    "text": "Disponible à tout moment dans Finance",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -48385,7 +48773,8 @@
     "files": [
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/PlanningApp.tsx",
-      "apps/web/src/components/WorkspaceOnboarding.tsx"
+      "apps/web/src/components/WorkspaceOnboarding.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "literal"
@@ -50805,7 +51194,8 @@
       "apps/api/src/stocks/stocks.controller.ts",
       "apps/web/src/api/client.ts",
       "apps/web/src/components/Dashboard.tsx",
-      "apps/web/src/components/HrApp.tsx"
+      "apps/web/src/components/HrApp.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "literal"
@@ -51538,15 +51928,6 @@
     ]
   },
   {
-    "text": "English",
-    "files": [
-      "apps/web/src/components/Dashboard.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
     "text": "ENJOY YOUR MEAL",
     "files": [
       "apps/api/src/menus/menu-exports.service.ts"
@@ -51766,6 +52147,15 @@
     ]
   },
   {
+    "text": "Enregistrer et continuer",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Enregistrer et fermer",
     "files": [
       "apps/web/src/components/purchasing/orders/OrderComposer.tsx"
@@ -51805,6 +52195,24 @@
     "text": "Enregistrer et tester Resend",
     "files": [
       "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Enregistrer et valider",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Enregistrer et vérifier",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "jsx"
@@ -53634,7 +54042,8 @@
   {
     "text": "Établissement ToqueHub",
     "files": [
-      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+      "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "jsx"
@@ -55246,7 +55655,8 @@
   {
     "text": "exercice(s).",
     "files": [
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "template"
@@ -56517,7 +56927,8 @@
     "files": [
       "apps/api/src/finance/finance-analytics.service.ts",
       "apps/api/src/finance/finance.service.ts",
-      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+      "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "literal"
@@ -56562,7 +56973,8 @@
   {
     "text": "Fennoa API v1",
     "files": [
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "jsx"
@@ -56571,7 +56983,8 @@
   {
     "text": "Fennoa API v2",
     "files": [
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "jsx"
@@ -56581,6 +56994,15 @@
     "text": "Fennoa configuré",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Fennoa connecté",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "literal"
@@ -56611,6 +57033,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Fennoa reste la source officielle pour les comptes, écritures, exercices, soldes et budgets. ToqueHub lit ces données, sans créer d’écriture comptable.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -58347,6 +58778,33 @@
     ]
   },
   {
+    "text": "finance-onboarding-heading service",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "finance-onboarding-logo fennoa",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "finance-onboarding-provider-heading compact",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
     "text": "finance-page finance-sales-page",
     "files": [
       "apps/web/src/components/finance/FinanceSalesInsights.tsx"
@@ -58456,6 +58914,24 @@
     ]
   },
   {
+    "text": "finance:onboarding-completed:",
+    "files": [
+      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "finance:onboarding-dismissed:",
+    "files": [
+      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "finance.",
     "files": [
       "apps/api/src/finance/finance.policy.ts"
@@ -58555,6 +59031,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "financial year(s).",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -58738,7 +59223,8 @@
   {
     "text": "flatpay",
     "files": [
-      "apps/api/src/finance/finance-analytics.service.ts"
+      "apps/api/src/finance/finance-analytics.service.ts",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "literal"
@@ -58787,6 +59273,15 @@
     "text": "flatpay:",
     "files": [
       "apps/api/src/finance/flatpay-credentials.service.ts"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "FLATPAY:",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "template"
@@ -59643,13 +60138,11 @@
     "text": "Français",
     "files": [
       "apps/web/src/components/CatererMenusApp.tsx",
-      "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx"
     ],
     "kinds": [
       "attribute",
-      "jsx",
-      "literal"
+      "jsx"
     ]
   },
   {
@@ -60791,6 +61284,15 @@
     ]
   },
   {
+    "text": "Gestion des sources",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Gestion des stocks",
     "files": [
       "apps/web/src/components/FirstStartLanding.tsx"
@@ -61615,7 +62117,8 @@
     "text": "group",
     "files": [
       "apps/web/src/components/Dashboard.tsx",
-      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+      "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "attribute"
@@ -61744,6 +62247,7 @@
       "apps/web/src/components/HrApp.tsx",
       "apps/web/src/components/PlanningApp.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx",
+      "apps/web/src/components/finance/FinanceWorkspace.tsx",
       "apps/web/src/components/purchasing/PurchasingWorkspace.tsx"
     ],
     "kinds": [
@@ -63444,10 +63948,12 @@
   {
     "text": "Horaires de synchronisation",
     "files": [
-      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+      "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
-      "attribute"
+      "attribute",
+      "jsx"
     ]
   },
   {
@@ -65514,6 +66020,15 @@
     ]
   },
   {
+    "text": "Impossible d’enregistrer ce service de caisse.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Impossible d’enregistrer ce site.",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -65544,6 +66059,15 @@
     "text": "Impossible d’enregistrer la clé Resend.",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Impossible d’enregistrer la connexion Fennoa.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "literal"
@@ -67276,6 +67800,7 @@
       "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/HrApp.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx",
       "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx"
     ],
     "kinds": [
@@ -68890,6 +69415,15 @@
     ]
   },
   {
+    "text": "Jeton d’accès personnel Loyverse",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Jeton de connexion chiffré dans votre base",
     "files": [
       "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx"
@@ -68901,7 +69435,8 @@
   {
     "text": "Jeton Loyverse",
     "files": [
-      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+      "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "literal"
@@ -70812,6 +71347,15 @@
     ]
   },
   {
+    "text": "La connexion est enregistrée, mais le test Fennoa a échoué :",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "La connexion FlatPay n’est pas configurée.",
     "files": [
       "apps/api/src/finance/flatpay-credentials.service.ts"
@@ -71729,6 +72273,15 @@
     ]
   },
   {
+    "text": "La vérité comptable et les services sélectionnés sont enregistrés. Les premières synchronisations peuvent maintenant alimenter le cockpit.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "La vision unifiée des enceintes, zones et contrôles réalisés depuis l’application mobile.",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -71800,11 +72353,30 @@
   {
     "text": "Laisser vide pour conserver",
     "files": [
-      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+      "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "literal",
       "template"
+    ]
+  },
+  {
+    "text": "Laisser vide pour conserver la clé",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Laisser vide pour conserver le jeton",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -72030,15 +72602,6 @@
     ],
     "kinds": [
       "literal"
-    ]
-  },
-  {
-    "text": "Langue",
-    "files": [
-      "apps/web/src/components/Dashboard.tsx"
-    ],
-    "kinds": [
-      "jsx"
     ]
   },
   {
@@ -74524,6 +75087,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Les clés et mots de passe ne sont jamais renvoyés au navigateur.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -77037,7 +77609,8 @@
     "files": [
       "apps/api/src/finance/finance-analytics.service.ts",
       "apps/api/src/finance/finance.service.ts",
-      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+      "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "literal"
@@ -77052,7 +77625,8 @@
       "apps/api/src/finance/pos-api-credentials.service.ts",
       "apps/api/src/finance/pos-api-normalizers.ts",
       "apps/api/src/finance/pos-api-sync.service.ts",
-      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+      "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "literal"
@@ -77082,6 +77656,15 @@
     "files": [
       "apps/api/src/finance/finance-import-parser.service.ts",
       "apps/api/src/finance/pos-api-normalizers.ts"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "LOYVERSE:",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "template"
@@ -82681,9 +83264,11 @@
   {
     "text": "Mot de passe FlatPay",
     "files": [
-      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+      "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
+      "jsx",
       "literal"
     ]
   },
@@ -86631,6 +87216,15 @@
     ]
   },
   {
+    "text": "of",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "off",
     "files": [
       "apps/web/src/components/Dashboard.tsx",
@@ -87003,7 +87597,8 @@
   {
     "text": "open",
     "files": [
-      "apps/web/src/components/HaccpApp.tsx"
+      "apps/web/src/components/HaccpApp.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "literal"
@@ -88588,6 +89183,15 @@
     ]
   },
   {
+    "text": "Ouvrez Fennoa",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Ouvrez une source pour gérer ses comptes par établissement. Les documents comptables sont contrôlés avant d’alimenter le grand livre ToqueHub.",
     "files": [
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
@@ -89720,7 +90324,7 @@
       "apps/web/src/components/Dashboard.tsx"
     ],
     "kinds": [
-      "attribute"
+      "literal"
     ]
   },
   {
@@ -89729,7 +90333,7 @@
       "apps/web/src/components/Dashboard.tsx"
     ],
     "kinds": [
-      "attribute"
+      "literal"
     ]
   },
   {
@@ -89758,6 +90362,7 @@
       "apps/web/src/components/LoginPage.tsx",
       "apps/web/src/components/UsersPage.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx",
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx",
       "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx"
     ],
@@ -90029,7 +90634,17 @@
     "text": "paypal",
     "files": [
       "apps/api/src/finance/finance-analytics.service.ts",
-      "apps/api/src/finance/finance.service.ts"
+      "apps/api/src/finance/finance.service.ts",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "PayPal / Zettle",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "literal"
@@ -90075,6 +90690,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "PAYPAL_POS:",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -91570,6 +92194,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "pilotage financier",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -93445,6 +94078,15 @@
     "text": "Portail",
     "files": [
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Portail FlatPay",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "jsx"
@@ -95951,6 +96593,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "primary",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "attribute"
     ]
   },
   {
@@ -100359,6 +101010,15 @@
     ]
   },
   {
+    "text": "Quels services de caisse utilisez-vous ?",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "query",
     "files": [
       "apps/api/src/purchasing/purchasing-email-connection.service.ts"
@@ -100918,6 +101578,15 @@
     ]
   },
   {
+    "text": "Rapports de caisse, commandes, ventes produits et affluence.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Rapports HACCP",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -101158,9 +101827,11 @@
       "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/PlanningApp.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx",
       "apps/web/src/components/purchasing/PurchasingWorkspace.tsx"
     ],
     "kinds": [
+      "attribute",
       "literal"
     ]
   },
@@ -103058,7 +103729,8 @@
   {
     "text": "Récupérer l’historique depuis",
     "files": [
-      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+      "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "jsx"
@@ -103068,6 +103740,15 @@
     "text": "Reçus de caisse",
     "files": [
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Reçus, ventes, TVA et détail des paiements PayPal POS.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "literal"
@@ -104349,6 +105030,15 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "Reliez la comptabilité qui fait foi, puis les caisses qui apportent le détail opérationnel. L’assistant vous accompagne sans remplacer votre logiciel comptable.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "attribute"
     ]
   },
   {
@@ -106851,6 +107541,7 @@
       "apps/web/src/components/ProductionApp.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx",
       "apps/web/src/components/WorkspaceOnboarding.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx",
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx",
       "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx"
     ],
@@ -106898,7 +107589,8 @@
   {
     "text": "Retour au dashboard",
     "files": [
-      "apps/web/src/components/WorkspaceOnboarding.tsx"
+      "apps/web/src/components/WorkspaceOnboarding.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "jsx"
@@ -108514,6 +109206,33 @@
     ]
   },
   {
+    "text": "Saisissez l’utilisateur ou l’alias API Fennoa.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Saisissez la clé API Fennoa pour la première connexion.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Saisissez la clé API PayPal / Zettle.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Saisissez la clé API PayPal POS/Zettle.",
     "files": [
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
@@ -108532,6 +109251,15 @@
     ]
   },
   {
+    "text": "Saisissez le Client ID PayPal / Zettle.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Saisissez le Client ID PayPal POS/Zettle.",
     "files": [
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
@@ -108541,9 +109269,36 @@
     ]
   },
   {
+    "text": "Saisissez le compte FlatPay.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Saisissez le jeton d’accès Loyverse.",
     "files": [
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Saisissez le jeton d’accès personnel Loyverse.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Saisissez le mot de passe FlatPay.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "literal"
@@ -110126,6 +110881,15 @@
     ]
   },
   {
+    "text": "Secrets chiffrés",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Secteur",
     "files": [
       "apps/web/src/components/CoursProduitsApp.tsx"
@@ -110363,6 +111127,7 @@
       "apps/web/src/components/TechnicalSheetPickerModal.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx",
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx",
       "apps/web/src/components/purchasing/orders/OrderCatalog.tsx"
     ],
@@ -111390,7 +112155,8 @@
     "files": [
       "apps/api/src/stocks/stocks-ocr.service.ts",
       "apps/web/src/components/Dashboard.tsx",
-      "apps/web/src/components/HrApp.tsx"
+      "apps/web/src/components/HrApp.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "jsx",
@@ -111407,11 +112173,13 @@
       "apps/web/src/components/MenusApp.tsx",
       "apps/web/src/components/PlanningApp.tsx",
       "apps/web/src/components/ProductionApp.tsx",
-      "apps/web/src/components/ProductionFabricationCalendar.tsx"
+      "apps/web/src/components/ProductionFabricationCalendar.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "jsx",
-      "literal"
+      "literal",
+      "template"
     ]
   },
   {
@@ -111783,7 +112551,8 @@
     "files": [
       "apps/api/src/hr/hr.service.ts",
       "apps/web/src/components/HrApp.tsx",
-      "apps/web/src/components/PlanningApp.tsx"
+      "apps/web/src/components/PlanningApp.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "literal"
@@ -111836,6 +112605,17 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "Services de caisse",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "attribute",
+      "jsx",
+      "literal"
     ]
   },
   {
@@ -112045,6 +112825,16 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Set up",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal",
+      "template"
     ]
   },
   {
@@ -113979,6 +114769,15 @@
     ]
   },
   {
+    "text": "Source de référence",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Source Finance",
     "files": [
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
@@ -114054,9 +114853,11 @@
   {
     "text": "Sources",
     "files": [
-      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+      "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
+      "jsx",
       "literal"
     ]
   },
@@ -114395,6 +115196,7 @@
       "apps/web/src/components/WorkspaceOnboarding.tsx",
       "apps/web/src/components/finance/FinanceSalesInsights.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx",
       "apps/web/src/components/purchasing/PurchasingWorkspace.tsx"
     ],
     "kinds": [
@@ -117333,7 +118135,8 @@
       "apps/web/src/components/ProductionFabricationCalendar.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx",
       "apps/web/src/components/WorkspaceOnboarding.tsx",
-      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+      "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "jsx",
@@ -120440,6 +121243,15 @@
     ]
   },
   {
+    "text": "The connection was saved, but the Fennoa test failed:",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "The French Café",
     "files": [
       "apps/api/src/auth/dto/organization-identity.dto.ts"
@@ -120692,7 +121504,8 @@
   {
     "text": "Tickets, produits, TVA, remboursements et moyens de paiement.",
     "files": [
-      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+      "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "literal"
@@ -121428,7 +122241,8 @@
   {
     "text": "ToqueHub Finance",
     "files": [
-      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+      "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "jsx"
@@ -123646,6 +124460,7 @@
       "apps/web/src/components/WorkspaceOnboarding.tsx",
       "apps/web/src/components/finance/FinanceSalesInsights.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx",
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx",
       "apps/web/src/components/purchasing/PurchasingWorkspace.tsx",
       "apps/web/src/components/purchasing/orders/OrderCatalog.tsx",
@@ -126365,7 +127180,8 @@
   {
     "text": "URL de l’API",
     "files": [
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "jsx"
@@ -126532,7 +127348,8 @@
     "files": [
       "apps/api/src/architecture/architecture.service.ts",
       "apps/web/src/components/FirstStartLanding.tsx",
-      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+      "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "attribute",
@@ -126650,7 +127467,8 @@
   {
     "text": "Utilisateur / alias API",
     "files": [
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "jsx"
@@ -126659,7 +127477,8 @@
   {
     "text": "Utilisateur API Fennoa",
     "files": [
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "attribute"
@@ -126904,7 +127723,8 @@
       "apps/api/src/finance/fennoa-sync.service.ts",
       "apps/api/src/hr/hr-sensitive-data-crypto.service.ts",
       "apps/api/src/purchasing/purchasing-mail-crypto.service.ts",
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "attribute",
@@ -126928,7 +127748,8 @@
       "apps/api/src/backups/cloud/google-drive-backup.provider.ts",
       "apps/api/src/finance/dto/finance.dto.ts",
       "apps/api/src/purchasing/purchasing-email-connection.service.ts",
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "attribute",
@@ -127162,6 +127983,15 @@
     "text": "validation",
     "files": [
       "apps/web/src/components/PlanningApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Validation",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "literal"
@@ -127449,6 +128279,15 @@
     "text": "Valider le matériel détecté",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Valider les accès et planifier les synchronisations automatiquement",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "literal"
@@ -128316,6 +129155,15 @@
     ]
   },
   {
+    "text": "vérifiez les droits de la clé API.",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Vérifiez les jours et le délai dans Stocks &gt; Fournisseurs.",
     "files": [
       "apps/web/src/components/purchasing/orders/OrderCatalog.tsx"
@@ -128331,6 +129179,16 @@
     ],
     "kinds": [
       "template"
+    ]
+  },
+  {
+    "text": "Vérité comptable",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx",
+      "literal"
     ]
   },
   {
@@ -129220,6 +130078,15 @@
     ]
   },
   {
+    "text": "Votre espace Finance est prêt",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "votre établissement",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -129497,6 +130364,15 @@
     ],
     "kinds": [
       "template"
+    ]
+  },
+  {
+    "text": "Vous pourrez ajouter, retirer ou rattacher un autre compte depuis l’onglet",
+    "files": [
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -130225,7 +131101,8 @@
   {
     "text": "wide",
     "files": [
-      "apps/web/src/components/finance/FinanceWorkspace.tsx"
+      "apps/web/src/components/finance/FinanceWorkspace.tsx",
+      "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
     "kinds": [
       "attribute",

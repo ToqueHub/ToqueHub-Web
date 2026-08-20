@@ -50,6 +50,7 @@ import {
   FinanceSalesInsightsView,
   prefetchFinanceSalesInsights,
 } from './FinanceSalesInsights';
+import { FinanceOnboarding } from './onboarding/FinanceOnboarding';
 
 export type FinanceTab =
   | 'cockpit'
@@ -280,6 +281,8 @@ export function FinanceWorkspace({ token, tab, onNavigate }: Props) {
   const [success, setSuccess] = useState<string>();
   const [sourceBusy, setSourceBusy] = useState<string>();
   const [budgetImportOpen, setBudgetImportOpen] = useState(false);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const onboardingHandled = useRef(false);
 
   const load = useCallback(
     async (silent = false, selectedDate?: string, siteId = selectedSiteId) => {
@@ -324,6 +327,29 @@ export function FinanceWorkspace({ token, tab, onNavigate }: Props) {
     }
     void load();
   }, [initialCache, load, selectedSiteId, token]);
+
+  useEffect(() => {
+    if (!data || onboardingHandled.current) return;
+    onboardingHandled.current = true;
+    const canManage = data.permissions.includes('finance.manage');
+    const hasConfiguredSource = Boolean(
+      data.settings.fennoa?.apiKeyConfigured ||
+      data.settings.flatpay?.configured ||
+      data.settings.flatpay?.connections?.some(({ configured }) => configured) ||
+      data.settings.pos.loyverse.configured ||
+      data.settings.pos.loyverse.connections?.some(({ configured }) => configured) ||
+      data.settings.pos.paypalPos.configured ||
+      data.settings.pos.paypalPos.connections?.some(({ configured }) => configured),
+    );
+    const completedKey = `finance:onboarding-completed:${data.organizationId}`;
+    const dismissedKey = `finance:onboarding-dismissed:${data.organizationId}`;
+    setOnboardingOpen(
+      canManage &&
+        !hasConfiguredSource &&
+        localStorage.getItem(completedKey) !== '1' &&
+        sessionStorage.getItem(dismissedKey) !== '1',
+    );
+  }, [data]);
 
   const importFiles = async (files: File[], siteId?: string) => {
     if (!files.length) return false;
@@ -477,6 +503,15 @@ export function FinanceWorkspace({ token, tab, onNavigate }: Props) {
           </p>
         </div>
         <div className="finance-hero-actions">
+          {data?.permissions.includes('finance.manage') ? (
+            <button
+              type="button"
+              className="btn btn-secondary finance-onboarding-trigger"
+              onClick={() => setOnboardingOpen(true)}
+            >
+              <Sparkles size={16} /> Guide de configuration
+            </button>
+          ) : null}
           <label className="finance-period-control">
             <span>Établissement</span>
             <select
@@ -527,6 +562,25 @@ export function FinanceWorkspace({ token, tab, onNavigate }: Props) {
           </button>
         </div>
       </motion.section>
+
+      {onboardingOpen && data ? (
+        <FinanceOnboarding
+          token={token}
+          data={data}
+          onChanged={() => load(true, asOf)}
+          onClose={() => {
+            sessionStorage.setItem(`finance:onboarding-dismissed:${data.organizationId}`, '1');
+            setOnboardingOpen(false);
+          }}
+          onComplete={async () => {
+            localStorage.setItem(`finance:onboarding-completed:${data.organizationId}`, '1');
+            sessionStorage.removeItem(`finance:onboarding-dismissed:${data.organizationId}`);
+            await load(true, asOf);
+            setOnboardingOpen(false);
+            onNavigate('cockpit');
+          }}
+        />
+      ) : null}
 
       <nav className="hr-tabs stocks-module-tabs finance-tabs" aria-label="Navigation Finance">
         {NAVIGATION.map(([id, label, Icon]) => (
@@ -4192,7 +4246,10 @@ function ImportHistory({ imports }: { imports: FinanceImportBatch[] }) {
               <span>
                 <strong>{batch.fileName}</strong>
                 <small>
-                  {(batch.fileSize / 1024).toLocaleString(activeLocale(), { maximumFractionDigits: 0 })} Ko
+                  {(batch.fileSize / 1024).toLocaleString(activeLocale(), {
+                    maximumFractionDigits: 0,
+                  })}{' '}
+                  Ko
                 </small>
               </span>
               <span>{batch.source?.name ?? PROVIDER_LABELS[batch.provider]}</span>
