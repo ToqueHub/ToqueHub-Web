@@ -1724,7 +1724,6 @@ export function ProductionApp({ token, session, tab, onNavigate }: ProductionApp
           </div>
           <div className="production-planning-filters">
             <label>
-              <Building2 size={18} />
               <span>Site</span>
               <select
                 value={siteFilter}
@@ -1740,7 +1739,6 @@ export function ProductionApp({ token, session, tab, onNavigate }: ProductionApp
               </select>
             </label>
             <label>
-              <Users size={18} />
               <span>Service</span>
               <select
                 value={departmentFilter}
@@ -3116,9 +3114,9 @@ function ProductionFabricationHero({
             onClick={onRefresh}
             disabled={loading}
             title="Rafraîchir les campagnes"
+            aria-label="Actualiser"
           >
             <RefreshCw size={17} className={loading ? 'spin' : undefined} />
-            <span>Actualiser</span>
           </button>
         </div>
       </div>

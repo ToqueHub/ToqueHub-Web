@@ -27726,15 +27726,6 @@
     ]
   },
   {
-    "text": "Calendrier de fabrication",
-    "files": [
-      "apps/web/src/components/ProductionFabricationCalendar.tsx"
-    ],
-    "kinds": [
-      "jsx"
-    ]
-  },
-  {
     "text": "Calendrier des événements",
     "files": [
       "apps/web/src/components/CatererMenusApp.tsx"
@@ -92690,15 +92681,6 @@
     ]
   },
   {
-    "text": "Planifiez une recette depuis le menu ou librement. Une fois validée, elle arrive comme recette complète dans le planning, puis peut être découpée en étapes.",
-    "files": [
-      "apps/web/src/components/ProductionFabricationCalendar.tsx"
-    ],
-    "kinds": [
-      "jsx"
-    ]
-  },
-  {
     "text": "planned",
     "files": [
       "apps/web/src/components/ProductionFabricationCalendar.tsx"
@@ -102758,15 +102740,6 @@
     ],
     "kinds": [
       "literal"
-    ]
-  },
-  {
-    "text": "Recettes à fabriquer",
-    "files": [
-      "apps/web/src/components/ProductionFabricationCalendar.tsx"
-    ],
-    "kinds": [
-      "jsx"
     ]
   },
   {

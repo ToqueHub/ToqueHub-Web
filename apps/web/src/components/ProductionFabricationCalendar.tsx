@@ -1304,16 +1304,6 @@ export function ProductionFabricationCalendar({
     <>
       <section className="fabrication-calendar-panel">
         <header className="fabrication-calendar-toolbar">
-          <div>
-            <span className="fabrication-calendar-eyebrow">
-              <CalendarDays size={15} /> Calendrier de fabrication
-            </span>
-            <h2>Recettes à fabriquer</h2>
-            <p>
-              Planifiez une recette depuis le menu ou librement. Une fois validée, elle arrive comme
-              recette complète dans le planning, puis peut être découpée en étapes.
-            </p>
-          </div>
           <div className="fabrication-calendar-actions">
             <select
               value={siteId}

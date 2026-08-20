@@ -39024,6 +39024,10 @@ input:checked + .slider-round:before {
   flex-wrap: wrap;
 }
 
+.fabrication-calendar-toolbar > .fabrication-calendar-actions {
+  margin-left: auto;
+}
+
 .fabrication-calendar-actions select,
 .fabrication-planner-form-grid select,
 .fabrication-planner-form-grid input,
@@ -41000,6 +41004,7 @@ input:checked + .slider-round:before {
 
   .fabrication-calendar-actions {
     width: 100%;
+    margin-left: 0;
   }
 
   .fabrication-calendar-actions > * {
