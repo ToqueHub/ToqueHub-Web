@@ -820,18 +820,22 @@
 }
 
 .haccp-register-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 22px 45px rgba(15, 23, 42, 0.09);
+  background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.085);
 }
 
 .haccp-register-card.blue:hover {
   border-color: #7dd3fc;
+  background: linear-gradient(145deg, #ffffff 0%, #f0f9ff 100%);
 }
 .haccp-register-card.violet:hover {
   border-color: #c4b5fd;
+  background: linear-gradient(145deg, #ffffff 0%, #faf5ff 100%);
 }
 .haccp-register-card.amber:hover {
   border-color: #fcd34d;
+  background: linear-gradient(145deg, #ffffff 0%, #fffbeb 100%);
 }
 
 .haccp-register-glow {
@@ -6200,6 +6204,12 @@ button,
   transition: all var(--transition-fast);
   background: linear-gradient(135deg, var(--primary) 0%, #059669 100%);
   color: white;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+}
+
+button.primary,
+.btn-primary,
+button[type='submit'] {
   box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
 }
 
@@ -6262,9 +6272,15 @@ button svg[fill='none'],
 
 button:hover,
 .btn:hover {
+  box-shadow: 0 7px 18px rgba(15, 23, 42, 0.11);
+  transform: translateY(-1px);
+}
+
+button.primary:hover,
+.btn-primary:hover,
+button[type='submit']:hover {
   background: linear-gradient(135deg, #059669 0%, #047857 100%);
   box-shadow: 0 6px 16px rgba(16, 185, 129, 0.3);
-  transform: translateY(-1px);
 }
 
 button:active,
@@ -39451,12 +39467,21 @@ input:checked + .slider-round:before {
   justify-content: center;
   gap: 0.4rem;
   min-height: 90px;
-  border: 1px dashed #a7f3d0;
+  border: 1px dashed #cbd5e1;
   border-radius: 12px;
-  background: #f0fdf8;
-  color: #047857;
+  background: #ffffff;
+  color: #334155;
   font-weight: 800;
   cursor: pointer;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.035);
+}
+
+.fabrication-calendar-empty:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+  color: #0f766e;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+  transform: translateY(-2px);
 }
 
 .fabrication-calendar-empty > span {
@@ -39486,16 +39511,23 @@ input:checked + .slider-round:before {
   align-items: center;
   justify-content: center;
   gap: 0.25rem;
-  border: 0;
+  padding: 0.36rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
   background: transparent;
   color: #64748b;
   font-size: 0.64rem;
   font-weight: 800;
   cursor: pointer;
+  box-shadow: none;
 }
 
 .fabrication-calendar-empty-secondary:hover {
+  border-color: #e2e8f0;
+  background: #f8fafc;
   color: #0f766e;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+  transform: translateY(-1px);
 }
 
 .fabrication-modal-overlay {
