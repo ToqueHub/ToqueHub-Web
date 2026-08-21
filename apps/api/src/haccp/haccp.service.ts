@@ -528,10 +528,10 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
       this.scoreModule('process', 'Processus froid/chaud', 15, completedProcess, processSessions.length, incompleteProcess, 'Refroidissement, congélation et remise en température terminés'),
       this.scoreModule('oil', 'Huiles', 10, oil.length, oilEquipment.length, oilMissing, 'Contrôle des friteuses actives'),
       this.scoreModule('production', 'Production', 5, completedProduction, production.length, incompleteProduction, 'Productions terminées'),
-      this.scoreModule('reports', 'Rapports', 5, reportToday ? 1 : 0, 1, reportToday ? 0 : 1, 'Rapport quotidien généré'),
     ];
 
-    const score = Math.round(modules.reduce((sum, item) => sum + item.scoreContribution, 0));
+    const totalOperationalWeight = modules.reduce((sum, item) => sum + item.weight, 0) || 1;
+    const score = Math.round((modules.reduce((sum, item) => sum + item.scoreContribution, 0) / totalOperationalWeight) * 100);
     const alerts = [
       ...this.alertIf(missingTemperatureEquipment > 0, 'temperature', 'critical', `${missingTemperatureEquipment} enceinte(s) sans relevé aujourd’hui.`),
       ...this.alertIf(missingCleaning > 0, 'cleaning', 'critical', `${missingCleaning} surface(s) prévues restent à nettoyer.`),
@@ -540,7 +540,6 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
       ...this.alertIf(receptionIssues > 0, 'receptions', 'warning', `${receptionIssues} réception(s) incomplète(s).`),
       ...this.alertIf(traceabilityIssues > 0, 'traceability', 'warning', `${traceabilityIssues} traçabilité(s) sans photo, lot ou produit.`),
       ...this.alertIf(oilMissing > 0, 'oil', 'warning', `${oilMissing} équipement(s) huile sans contrôle aujourd’hui.`),
-      ...this.alertIf(!reportToday, 'reports', 'info', 'Le rapport quotidien HACCP n’a pas encore été généré.'),
     ];
 
     const activities = [

@@ -193,6 +193,8 @@ describe('HaccpService', () => {
     expect(modules.process).toMatchObject({ completed: 0, expected: 1, issues: 1 });
     expect(modules.oil).toMatchObject({ completed: 0, expected: 1, issues: 1 });
     expect(modules.production).toMatchObject({ completed: 0, expected: 1, issues: 1 });
+    expect(modules.reports).toBeUndefined();
+    expect(response.data.alerts).not.toEqual(expect.arrayContaining([expect.objectContaining({ module: 'reports' })]));
     expect(response.data.alerts).toEqual(expect.arrayContaining([expect.objectContaining({ module: 'production', severity: 'warning' })]));
   });
 

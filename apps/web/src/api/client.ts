@@ -1399,8 +1399,12 @@ export const api = {
   haccpSensor(token: string, id: string) {
     return request<any>(`/haccp/sensors/${id}`, {}, token);
   },
-  haccpSensorReadings(token: string, id: string) {
-    return request<any[]>(`/haccp/sensors/${id}/readings?limit=200`, {}, token);
+  haccpSensorReadings(token: string, id: string, filters: { from?: string; to?: string; limit?: number } = {}) {
+    const params = new URLSearchParams();
+    if (filters.from) params.set('from', filters.from);
+    if (filters.to) params.set('to', filters.to);
+    params.set('limit', String(filters.limit ?? 200));
+    return request<any[]>(`/haccp/sensors/${id}/readings?${params.toString()}`, {}, token);
   },
   haccpSensorEvents(token: string, id: string) {
     return request<any[]>(`/haccp/sensors/${id}/events`, {}, token);
