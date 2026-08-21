@@ -1,7 +1,9 @@
-import { activeLocale } from '../i18n/runtime';
-import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { activeLanguage, activeLocale } from '../i18n/runtime';
+import { haccpEnglishCatalog } from '../i18n/haccp';
+import { registerEnglishTranslations, translateText } from '../i18n/translate';
+import './HaccpApp.css';
+import { ChangeEvent, FormEvent, ReactNode, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { io, Socket } from 'socket.io-client';
 import {
   Activity,
   Archive,
@@ -52,6 +54,8 @@ import {
   X,
 } from 'lucide-react';
 import { api } from '../api/client';
+
+registerEnglishTranslations(haccpEnglishCatalog);
 
 export type HaccpTab = 'dashboard' | 'setup' | 'sensors' | 'alerts' | 'temperatures' | 'cleaning' | 'traceability' | 'receptions' | 'process' | 'oil' | 'production' | 'products' | 'labels' | 'reports';
 
@@ -274,7 +278,7 @@ const DEFAULT_PROCESS_CATEGORIES = [
   { key: 'reheat-oven', defaultName: 'Four de remise en température', type: 'rechauffement' as const, temperatureRange: { min: 60, max: 85 }, description: 'Remise en température et maintien chaud' },
   { key: 'hot-cabinet', defaultName: 'Armoire chaude', type: 'rechauffement' as const, temperatureRange: { min: 60, max: 85 }, description: 'Liaison chaude et maintien avant service' },
   { key: 'cooling-cell', defaultName: 'Cellule de refroidissement', type: 'refroidissement' as const, temperatureRange: { min: 0, max: 4 }, description: 'Refroidissement rapide des préparations' },
-  { key: 'blast-chiller', defaultName: 'Refroidisseur rapide', type: 'refroidissement' as const, temperatureRange: { min: 0, max: 4 }, description: 'Alternative cellule / blast chiller' },
+  { key: 'blast-chiller', defaultName: 'Refroidisseur rapide', type: 'refroidissement' as const, temperatureRange: { min: 0, max: 4 }, description: 'Alternative à la cellule de refroidissement' },
   { key: 'freezing-cell', defaultName: 'Cellule de congélation', type: 'congelation' as const, temperatureRange: { min: -25, max: -18 }, description: 'Congélation ou surgélation contrôlée' },
   { key: 'freezer', defaultName: 'Congélateur de réserve', type: 'congelation' as const, temperatureRange: { min: -25, max: -18 }, description: 'Mise en réserve négative' },
 ];
@@ -363,7 +367,7 @@ const SECTIONS: Array<{ id: HaccpTab; label: string; icon: typeof Thermometer }>
   { id: 'cleaning', label: 'Nettoyage', icon: ShieldCheck },
   { id: 'traceability', label: 'Traçabilité', icon: ScanLine },
   { id: 'receptions', label: 'Réceptions', icon: Truck },
-  { id: 'process', label: 'Processus', icon: Snowflake },
+  { id: 'process', label: 'Procédés', icon: Snowflake },
   { id: 'oil', label: 'Huiles', icon: Droplets },
   { id: 'production', label: 'Production', icon: Factory },
   { id: 'products', label: 'Produits', icon: Package },
@@ -381,7 +385,7 @@ const HACCP_NAV_ITEMS: Array<{
 }> = [
   { id: 'dashboard', label: 'Tableau de bord', icon: LayoutGrid, target: 'dashboard', matches: ['dashboard'] },
   { id: 'controls', label: 'Contrôles', icon: ShieldCheck, target: 'temperatures', matches: ['temperatures', 'cleaning'] },
-  { id: 'process', label: 'Process', icon: Snowflake, target: 'process', matches: ['process'] },
+  { id: 'process', label: 'Procédés', icon: Snowflake, target: 'process', matches: ['process'] },
   { id: 'production', label: 'Production', icon: Factory, target: 'production', matches: ['production'] },
   { id: 'registers', label: 'Registres', icon: Archive, target: 'traceability', matches: ['traceability', 'receptions', 'oil', 'products', 'labels'] },
   { id: 'reports', label: 'Rapports', icon: FileText, target: 'reports', matches: ['reports'] },
@@ -459,6 +463,75 @@ const emptyConfigForm = {
 
 const emptySurfaceRows = [{ name: '', frequency: 'daily' }];
 
+const haccpText = (value: string) => translateText(value, activeLanguage());
+
+const haccpCopy = (french: string, english: string) =>
+  activeLanguage() === 'en' ? english : french;
+
+function haccpQuantity(
+  count: number,
+  frenchSingular: string,
+  frenchPlural: string,
+  englishSingular: string,
+  englishPlural: string,
+) {
+  if (activeLanguage() === 'en') {
+    return `${count} ${count === 1 ? englishSingular : englishPlural}`;
+  }
+  return `${count} ${count === 1 ? frenchSingular : frenchPlural}`;
+}
+
+function haccpMessage(value: string) {
+  if (activeLanguage() !== 'en') return value;
+  const patterns: Array<[RegExp, (count: string) => string]> = [
+    [/^(\d+) enceinte\(s\) sans relevé aujourd’hui\.$/u, (count) => `${count} unit${count === '1' ? '' : 's'} ${count === '1' ? 'has' : 'have'} no reading today.`],
+    [/^(\d+) surface\(s\) prévues restent à nettoyer\.$/u, (count) => `${count} scheduled surface${count === '1' ? '' : 's'} still need${count === '1' ? 's' : ''} cleaning.`],
+    [/^(\d+) session\(s\) froid\/chaud non terminée\(s\)\.$/u, (count) => `${count} cold/hot session${count === '1' ? '' : 's'} ${count === '1' ? 'is' : 'are'} incomplete.`],
+    [/^(\d+) production\(s\) non terminée\(s\)\.$/u, (count) => `${count} production run${count === '1' ? '' : 's'} ${count === '1' ? 'is' : 'are'} incomplete.`],
+    [/^(\d+) réception\(s\) incomplète\(s\)\.$/u, (count) => `${count} receipt${count === '1' ? '' : 's'} ${count === '1' ? 'is' : 'are'} incomplete.`],
+    [/^(\d+) traçabilité\(s\) sans photo, lot ou produit\.$/u, (count) => `${count} traceability record${count === '1' ? '' : 's'} ${count === '1' ? 'is' : 'are'} missing a photo, lot or product.`],
+    [/^(\d+) équipement\(s\) huile sans contrôle aujourd’hui\.$/u, (count) => `${count} oil unit${count === '1' ? '' : 's'} ${count === '1' ? 'has' : 'have'} no check today.`],
+  ];
+  for (const [pattern, format] of patterns) {
+    const match = value.match(pattern);
+    if (match) return format(match[1]);
+  }
+  return haccpText(value);
+}
+
+async function loadHaccpListSafely(token: string, endpoint: string) {
+  try {
+    return await api.haccpList(token, endpoint);
+  } catch (error) {
+    console.warn(`[HACCP] Chargement partiel impossible pour ${endpoint}`, error);
+    return { data: [] as HaccpItem[] };
+  }
+}
+
+async function loadHaccpValueSafely<T>(label: string, loader: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await loader();
+  } catch (error) {
+    console.warn(`[HACCP] Chargement partiel impossible pour ${label}`, error);
+    return fallback;
+  }
+}
+
+async function loadAllDailyReportsSafely(token: string) {
+  const firstPage = await loadHaccpListSafely(token, '/daily-reports?limit=200&page=1');
+  const pageCount = Number(firstPage.pagination?.pages ?? 1);
+  if (pageCount <= 1) return firstPage.data ?? [];
+  const remainingPages = await Promise.all(
+    Array.from({ length: pageCount - 1 }, (_, index) =>
+      loadHaccpListSafely(token, `/daily-reports?limit=200&page=${index + 2}`),
+    ),
+  );
+  return [
+    ...(firstPage.data ?? []),
+    ...remainingPages.flatMap((page) => page.data ?? []),
+  ];
+}
+
 export function HaccpApp({ token, tab, onNavigate }: Props) {
   const [dashboard, setDashboard] = useState<HaccpDashboard | null>(null);
   const [activeTab, setActiveTab] = useState<HaccpTab>(tab);
@@ -483,26 +556,42 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
   const [selectedSensorId, setSelectedSensorId] = useState<string | null>(null);
   const [activeCleaningSession, setActiveCleaningSession] = useState<HaccpCleaningSession | null>(null);
   const [todayCleaningSurfaces, setTodayCleaningSurfaces] = useState<TodayCleaningSurface[]>([]);
-  const [productionFlow, setProductionFlow] = useState<ProductionFlow | null>(null);
+  const activeLoadRequestRef = useRef(0);
+  const activeTokenRef = useRef(token);
+  activeTokenRef.current = token;
 
   useEffect(() => setActiveTab(tab), [tab]);
-  useEffect(() => { void refreshAll(); }, [token, processType]);
+  useEffect(() => { void refreshTabData(activeTab); }, [activeTab, token, processType]);
   useEffect(() => {
     if (activeTab !== 'dashboard' && activeTab !== 'temperatures') return;
-    const interval = window.setInterval(() => void refreshLiveDashboard(), 30_000);
+    const interval = window.setInterval(() => void refreshLiveData(activeTab), 30_000);
     return () => window.clearInterval(interval);
   }, [activeTab, token]);
   useEffect(() => {
     if (activeTab !== 'dashboard' && activeTab !== 'temperatures' && activeTab !== 'sensors' && activeTab !== 'alerts') return;
-    let socket: Socket | undefined;
+    let disposed = false;
+    let socket: import('socket.io-client').Socket | undefined;
     let connectTimer: number | undefined;
-    try {
+    let refreshTimer: number | undefined;
+    let lastDerivedRefreshAt = 0;
+    const scheduleDerivedDataRefresh = () => {
+      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
+      const elapsed = Date.now() - lastDerivedRefreshAt;
+      const delay = Math.max(750, 5_000 - elapsed);
+      refreshTimer = window.setTimeout(() => {
+        lastDerivedRefreshAt = Date.now();
+        if (activeTab === 'dashboard') void refreshDashboardOnly();
+        if (activeTab === 'sensors') void refreshSensorSummary();
+        if (activeTab === 'alerts' || activeTab === 'temperatures') void refreshTemperatureAlerts();
+      }, delay);
+    };
+
+    void import('socket.io-client').then(({ io }) => {
+      if (disposed) return;
       socket = io(api.haccpSensorSocketUrl(), { auth: { token }, autoConnect: false });
       const upsert = (sensor: HaccpSensor) => {
         setSensors((current) => upsertSensor(current, sensor));
-        void refreshSensorSummary();
-        if (activeTab === 'alerts') void refreshTemperatureAlerts();
-        if (activeTab === 'dashboard') void refreshLiveDashboard();
+        scheduleDerivedDataRefresh();
       };
       socket.on('sensor.discovered', (sensor: HaccpSensor) => {
         upsert(sensor);
@@ -525,20 +614,31 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
         // REST remains the source of truth if realtime is temporarily unavailable.
       });
       connectTimer = window.setTimeout(() => socket?.connect(), 0);
-    } catch {
-      // REST remains available if the socket cannot be opened.
-    }
+    }).catch(() => {
+      // REST remains available if the optional realtime client cannot be loaded.
+    });
+
     return () => {
-      if (connectTimer) window.clearTimeout(connectTimer);
+      disposed = true;
+      if (connectTimer !== undefined) window.clearTimeout(connectTimer);
+      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
       socket?.disconnect();
     };
   }, [activeTab, token]);
+  useEffect(() => {
+    if (showOnboarding) {
+      void refreshOnboardingData();
+      return;
+    }
+    if (showModuleGuide) void refreshConfigurationData();
+  }, [showModuleGuide, showOnboarding, token]);
 
   const products = items.products ?? [];
   const temperatureEquipment = items.temperatureEquipment ?? [];
   const processEquipment = items.processEquipment ?? [];
   const oilEquipment = items.oilEquipment ?? [];
   const cleaningZones = items.cleaningZones ?? [];
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const selectedSensor = selectedSensorId ? sensors.find((sensor) => sensor.id === selectedSensorId) ?? null : sensors[0] ?? null;
   const readiness = useMemo(
     () => computeHaccpReadiness(temperatureEquipment, processEquipment, cleaningZones),
@@ -557,129 +657,211 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
   }, [activeTab, items]);
 
   const visibleRows = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
+    const query = deferredSearchQuery.trim().toLowerCase();
     if (!query || activeTab === 'dashboard' || activeTab === 'setup' || activeTab === 'sensors' || activeTab === 'alerts' || activeTab === 'labels') return currentRows;
     return currentRows.filter((row) => JSON.stringify(row).toLowerCase().includes(query));
-  }, [activeTab, currentRows, searchQuery]);
+  }, [activeTab, currentRows, deferredSearchQuery]);
 
-  async function refreshAll() {
+  function mergeItems(nextItems: Record<string, HaccpItem[]>) {
+    setItems((current) => ({ ...current, ...nextItems }));
+  }
+
+  async function refreshConfigurationData() {
+    const [equipment, processEquipments, zones] = await Promise.all([
+      loadHaccpListSafely(token, '/temperature/equipment'),
+      loadHaccpListSafely(token, '/cooling-equipment'),
+      loadHaccpListSafely(token, '/cleaning/zones'),
+    ]);
+    if (activeTokenRef.current !== token) return;
+    mergeItems({
+      temperatureEquipment: equipment.data ?? [],
+      processEquipment: processEquipments.data ?? [],
+      cleaningZones: zones.data ?? [],
+    });
+  }
+
+  async function refreshOnboardingData() {
+    const [equipment, processEquipments, zones, gatewayStatus, sensorSummaryData, sensorList, pairingData] = await Promise.all([
+      loadHaccpListSafely(token, '/temperature/equipment'),
+      loadHaccpListSafely(token, '/cooling-equipment'),
+      loadHaccpListSafely(token, '/cleaning/zones'),
+      loadHaccpValueSafely('sensor gateway status', () => api.haccpSensorGatewayStatus(token), null),
+      loadHaccpValueSafely('sensors summary', () => api.haccpSensorsSummary(token), { total: 0, online: 0, offline: 0, unknown: 0, averageBattery: null, globalStatus: 'unknown' }),
+      loadHaccpValueSafely('sensors list', () => api.haccpSensors(token), []),
+      loadHaccpValueSafely('pairing current', () => api.haccpCurrentSensorPairing(token), null),
+    ]);
+    if (activeTokenRef.current !== token) return;
+    mergeItems({
+      temperatureEquipment: equipment.data ?? [],
+      processEquipment: processEquipments.data ?? [],
+      cleaningZones: zones.data ?? [],
+    });
+    setSensorGatewayStatus(gatewayStatus);
+    setSensorSummary(sensorSummaryData);
+    setSensors(sensorList);
+    setPairing(pairingData);
+  }
+
+  async function refreshTabData(targetTab: HaccpTab) {
+    const requestId = ++activeLoadRequestRef.current;
+    const isCurrentRequest = () => activeLoadRequestRef.current === requestId && activeTokenRef.current === token;
     setLoading(true);
     setError(null);
     try {
-      const safeList = async (endpoint: string) => {
-        try {
-          return await api.haccpList(token, endpoint);
-        } catch (err) {
-          console.warn(`[HACCP] Chargement partiel impossible pour ${endpoint}`, err);
-          return { data: [] };
-        }
-      };
-      const safeAllReports = async () => {
-        const firstPage = await safeList('/daily-reports?limit=200&page=1');
-        const pageCount = Number(firstPage.pagination?.pages ?? 1);
-        if (pageCount <= 1) return firstPage;
-        const remainingPages = await Promise.all(
-          Array.from({ length: pageCount - 1 }, (_, index) =>
-            safeList(`/daily-reports?limit=200&page=${index + 2}`),
-          ),
-        );
-        return {
-          ...firstPage,
-          data: [
-            ...(firstPage.data ?? []),
-            ...remainingPages.flatMap((page) => page.data ?? []),
-          ],
-        };
-      };
-      const safeValue = async <T,>(label: string, loader: () => Promise<T>, fallback: T) => {
-        try {
-          return await loader();
-        } catch (err) {
-          console.warn(`[HACCP] Chargement partiel impossible pour ${label}`, err);
-          return fallback;
-        }
-      };
-      const [
-        dashboardData,
-        productionFlowData,
-        equipment,
-        readings,
-        zones,
-        traceability,
-        receptions,
-        processEquipments,
-        processSessions,
-        coolingToday,
-        freezingToday,
-        reheatingToday,
-        oils,
-        oilSessions,
-        productionSessions,
-        productList,
-        reports,
-        gatewayStatus,
-        sensorSummaryData,
-        sensorList,
-        temperatureAlertData,
-        pairingData,
-        activeCleaningData,
-        todayCleaningData,
-      ] = await Promise.all([
-        safeValue('dashboard', () => api.haccpDashboard(token), null),
-        safeValue('production flow', () => api.haccpProductionFlow(token), null),
-        safeList('/temperature/equipment'),
-        safeList('/temperature/readings'),
-        safeList('/cleaning/zones'),
-        safeList('/traceability'),
-        safeList('/haccp/receptions'),
-        safeList('/cooling-equipment'),
-        safeList(`/cooling/${processType}/sessions`),
-        safeList('/cooling/refroidissement/sessions/today'),
-        safeList('/cooling/congelation/sessions/today'),
-        safeList('/cooling/rechauffement/sessions/today'),
-        safeList('/oil-equipment'),
-        safeList('/oil/sessions?limit=50'),
-        safeList('/production/sessions?limit=200'),
-        safeList('/haccp-products'),
-        safeAllReports(),
-        safeValue('sensor gateway status', () => api.haccpSensorGatewayStatus(token), null),
-        safeValue('sensors summary', () => api.haccpSensorsSummary(token), { total: 0, online: 0, offline: 0, unknown: 0, averageBattery: null, globalStatus: 'unknown' }),
-        safeValue('sensors list', () => api.haccpSensors(token), []),
-        safeValue('temperature alerts', () => api.haccpTemperatureAlerts(token), null),
-        safeValue('pairing current', () => api.haccpCurrentSensorPairing(token), null),
-        safeValue('cleaning active session', () => api.haccpList(token, '/cleaning/sessions/active') as Promise<{ data: HaccpCleaningSession | null }>, { data: null }),
-        safeList('/cleaning/today-surfaces'),
-      ]);
-      const temperatureEquipmentList = equipment.data ?? [];
-      if (dashboardData) setDashboard(dashboardData);
-      if (productionFlowData) setProductionFlow(productionFlowData);
-      setSensorGatewayStatus(gatewayStatus);
-      setSensorSummary(sensorSummaryData);
-      setSensors(sensorList);
-      setTemperatureAlerts(temperatureAlertData);
-      setPairing(pairingData);
-      setActiveCleaningSession(activeCleaningData.data ?? null);
-      setTodayCleaningSurfaces(todayCleaningData.data ?? []);
-      setItems({
-        temperatureEquipment: temperatureEquipmentList,
-        temperatureReadings: readings.data ?? [],
-        cleaningZones: zones.data ?? [],
-        cleaningSessions: activeCleaningData.data ? [activeCleaningData.data] : [],
-        traceability: traceability.data ?? [],
-        receptions: receptions.data ?? [],
-        processEquipment: processEquipments.data ?? [],
-        processSessions: processSessions.data ?? [],
-        processSessionsToday: [...(coolingToday.data ?? []), ...(freezingToday.data ?? []), ...(reheatingToday.data ?? [])],
-        oilEquipment: oils.data ?? [],
-        oilSessions: oilSessions.data ?? [],
-        productionSessions: productionSessions.data ?? [],
-        products: productList.data ?? [],
-        reports: reports.data ?? [],
-      });
+      if (targetTab === 'dashboard') {
+        const [dashboardData, equipment, processEquipments, zones] = await Promise.all([
+          loadHaccpValueSafely('dashboard', () => api.haccpDashboard(token), null),
+          loadHaccpListSafely(token, '/temperature/equipment'),
+          loadHaccpListSafely(token, '/cooling-equipment'),
+          loadHaccpListSafely(token, '/cleaning/zones'),
+        ]);
+        if (!isCurrentRequest()) return;
+        if (dashboardData) setDashboard(dashboardData);
+        mergeItems({
+          temperatureEquipment: equipment.data ?? [],
+          processEquipment: processEquipments.data ?? [],
+          cleaningZones: zones.data ?? [],
+        });
+        return;
+      }
+
+      if (targetTab === 'setup') {
+        await refreshConfigurationData();
+        return;
+      }
+
+      if (targetTab === 'sensors') {
+        const [equipment, gatewayStatus, sensorSummaryData, sensorList, pairingData] = await Promise.all([
+          loadHaccpListSafely(token, '/temperature/equipment'),
+          loadHaccpValueSafely('sensor gateway status', () => api.haccpSensorGatewayStatus(token), null),
+          loadHaccpValueSafely('sensors summary', () => api.haccpSensorsSummary(token), { total: 0, online: 0, offline: 0, unknown: 0, averageBattery: null, globalStatus: 'unknown' }),
+          loadHaccpValueSafely('sensors list', () => api.haccpSensors(token), []),
+          loadHaccpValueSafely('pairing current', () => api.haccpCurrentSensorPairing(token), null),
+        ]);
+        if (!isCurrentRequest()) return;
+        mergeItems({ temperatureEquipment: equipment.data ?? [] });
+        setSensorGatewayStatus(gatewayStatus);
+        setSensorSummary(sensorSummaryData);
+        setSensors(sensorList);
+        setPairing(pairingData);
+        return;
+      }
+
+      if (targetTab === 'alerts') {
+        const [temperatureAlertData, sensorList] = await Promise.all([
+          loadHaccpValueSafely('temperature alerts', () => api.haccpTemperatureAlerts(token), null),
+          loadHaccpValueSafely('sensors list', () => api.haccpSensors(token), []),
+        ]);
+        if (!isCurrentRequest()) return;
+        setTemperatureAlerts(temperatureAlertData);
+        setSensors(sensorList);
+        return;
+      }
+
+      if (targetTab === 'temperatures') {
+        const [equipment, readings, sensorList, temperatureAlertData] = await Promise.all([
+          loadHaccpListSafely(token, '/temperature/equipment'),
+          loadHaccpListSafely(token, '/temperature/readings'),
+          loadHaccpValueSafely('sensors list', () => api.haccpSensors(token), []),
+          loadHaccpValueSafely('temperature alerts', () => api.haccpTemperatureAlerts(token), null),
+        ]);
+        if (!isCurrentRequest()) return;
+        mergeItems({
+          temperatureEquipment: equipment.data ?? [],
+          temperatureReadings: readings.data ?? [],
+        });
+        setSensors(sensorList);
+        setTemperatureAlerts(temperatureAlertData);
+        return;
+      }
+
+      if (targetTab === 'cleaning') {
+        const [zones, activeCleaningData, todayCleaningData] = await Promise.all([
+          loadHaccpListSafely(token, '/cleaning/zones'),
+          loadHaccpValueSafely('cleaning active session', () => api.haccpList(token, '/cleaning/sessions/active') as Promise<{ data: HaccpCleaningSession | null }>, { data: null }),
+          loadHaccpListSafely(token, '/cleaning/today-surfaces'),
+        ]);
+        if (!isCurrentRequest()) return;
+        setActiveCleaningSession(activeCleaningData.data ?? null);
+        setTodayCleaningSurfaces(todayCleaningData.data ?? []);
+        mergeItems({
+          cleaningZones: zones.data ?? [],
+          cleaningSessions: activeCleaningData.data ? [activeCleaningData.data] : [],
+        });
+        return;
+      }
+
+      if (targetTab === 'traceability') {
+        const traceability = await loadHaccpListSafely(token, '/traceability');
+        if (!isCurrentRequest()) return;
+        mergeItems({ traceability: traceability.data ?? [] });
+        return;
+      }
+
+      if (targetTab === 'receptions') {
+        const receptions = await loadHaccpListSafely(token, '/haccp/receptions');
+        if (!isCurrentRequest()) return;
+        mergeItems({ receptions: receptions.data ?? [] });
+        return;
+      }
+
+      if (targetTab === 'process') {
+        const [processEquipments, processSessions, productList] = await Promise.all([
+          loadHaccpListSafely(token, '/cooling-equipment'),
+          loadHaccpListSafely(token, `/cooling/${processType}/sessions`),
+          loadHaccpListSafely(token, '/haccp-products'),
+        ]);
+        if (!isCurrentRequest()) return;
+        mergeItems({
+          processEquipment: processEquipments.data ?? [],
+          processSessions: processSessions.data ?? [],
+          products: productList.data ?? [],
+        });
+        return;
+      }
+
+      if (targetTab === 'oil') {
+        const [oilEquipmentData, oilSessions] = await Promise.all([
+          loadHaccpListSafely(token, '/oil-equipment'),
+          loadHaccpListSafely(token, '/oil/sessions?limit=50'),
+        ]);
+        if (!isCurrentRequest()) return;
+        mergeItems({
+          oilEquipment: oilEquipmentData.data ?? [],
+          oilSessions: oilSessions.data ?? [],
+        });
+        return;
+      }
+
+      if (targetTab === 'production') {
+        const [productionSessions, productList] = await Promise.all([
+          loadHaccpListSafely(token, '/production/sessions?limit=200'),
+          loadHaccpListSafely(token, '/haccp-products'),
+        ]);
+        if (!isCurrentRequest()) return;
+        mergeItems({
+          productionSessions: productionSessions.data ?? [],
+          products: productList.data ?? [],
+        });
+        return;
+      }
+
+      if (targetTab === 'products' || targetTab === 'labels') {
+        const productList = await loadHaccpListSafely(token, '/haccp-products');
+        if (!isCurrentRequest()) return;
+        mergeItems({ products: productList.data ?? [] });
+        return;
+      }
+
+      if (targetTab === 'reports') {
+        const reports = await loadAllDailyReportsSafely(token);
+        if (!isCurrentRequest()) return;
+        mergeItems({ reports });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Chargement HACCP impossible.');
     } finally {
-      setLoading(false);
+      if (activeLoadRequestRef.current === requestId) setLoading(false);
     }
   }
 
@@ -687,47 +869,32 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
     try {
       setSensorSummary(await api.haccpSensorsSummary(token));
     } catch {
-      // Keep the last summary; the full refresh surface will show errors.
+      // Keep the last summary; the next explicit refresh will retry.
     }
   }
 
-  async function refreshLiveDashboard() {
-    await Promise.all([
-      api.haccpDashboard(token)
-        .then((data) => setDashboard(data))
-        .catch((err) => console.warn('[HACCP] Actualisation dashboard impossible', err)),
-      api.haccpProductionFlow(token)
-        .then((data) => setProductionFlow(data))
-        .catch((err) => console.warn('[HACCP] Actualisation production impossible', err)),
-      api.haccpList(token, '/temperature/readings')
-        .then((result) => setItems((current) => ({ ...current, temperatureReadings: result.data ?? [] })))
-        .catch((err) => console.warn('[HACCP] Actualisation températures impossible', err)),
-      api.haccpList(token, '/cleaning/zones')
-        .then((result) => setItems((current) => ({ ...current, cleaningZones: result.data ?? [] })))
-        .catch((err) => console.warn('[HACCP] Actualisation zones impossible', err)),
-      api.haccpList(token, '/cleaning/sessions/active')
-        .then((result) => setActiveCleaningSession(result.data ?? null))
-        .catch((err) => console.warn('[HACCP] Actualisation session de nettoyage impossible', err)),
-      api.haccpList(token, '/cleaning/today-surfaces')
-        .then((result) => setTodayCleaningSurfaces(result.data ?? []))
-        .catch((err) => console.warn('[HACCP] Actualisation plan de nettoyage impossible', err)),
-      api.haccpSensors(token)
-        .then((data) => setSensors(data))
-        .catch((err) => console.warn('[HACCP] Actualisation capteurs impossible', err)),
-      api.haccpTemperatureAlerts(token)
-        .then((data) => setTemperatureAlerts(data))
-        .catch((err) => console.warn('[HACCP] Actualisation alertes impossible', err)),
-      Promise.all([
-        api.haccpList(token, '/cooling/refroidissement/sessions/today'),
-        api.haccpList(token, '/cooling/congelation/sessions/today'),
-        api.haccpList(token, '/cooling/rechauffement/sessions/today'),
-      ])
-        .then((results) => setItems((current) => ({
-          ...current,
-          processSessionsToday: results.flatMap((result) => result.data ?? []),
-        })))
-        .catch((err) => console.warn('[HACCP] Actualisation process impossible', err)),
+  async function refreshDashboardOnly() {
+    try {
+      setDashboard(await api.haccpDashboard(token));
+    } catch (err) {
+      console.warn('[HACCP] Actualisation dashboard impossible', err);
+    }
+  }
+
+  async function refreshTemperatureMonitoringOnly() {
+    const [readings, sensorList, temperatureAlertData] = await Promise.all([
+      loadHaccpListSafely(token, '/temperature/readings'),
+      loadHaccpValueSafely('sensors list', () => api.haccpSensors(token), sensors),
+      loadHaccpValueSafely('temperature alerts', () => api.haccpTemperatureAlerts(token), temperatureAlerts),
     ]);
+    mergeItems({ temperatureReadings: readings.data ?? [] });
+    setSensors(sensorList);
+    setTemperatureAlerts(temperatureAlertData);
+  }
+
+  async function refreshLiveData(targetTab: HaccpTab) {
+    if (targetTab === 'dashboard') await refreshDashboardOnly();
+    if (targetTab === 'temperatures') await refreshTemperatureMonitoringOnly();
   }
 
   async function refreshSensorsOnly() {
@@ -870,7 +1037,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
       }
       if (configModal === 'process') {
         const exists = processEquipment.some((item) => `${String(item.type || '').toLowerCase()}::${normalizeName(item.name)}` === `${configForm.type}::${normalizeName(name)}`);
-        if (exists) throw new Error('Cet équipement process existe déjà pour ce type.');
+        if (exists) throw new Error('Cet équipement de procédé existe déjà pour ce type.');
         await api.haccpCreate(token, '/cooling-equipment', {
           name,
           type: configForm.type || 'refroidissement',
@@ -885,7 +1052,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
         await api.haccpCreate(token, '/cleaning/zones', { name, description: configForm.description, surfaces });
       }
       setConfigModal(null);
-      await refreshAll();
+      await refreshTabData(activeTab);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Création impossible.');
     } finally {
@@ -936,7 +1103,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
         await api.haccpCreate(token, '/haccp-products', { name: form.name, type: form.type || 'preparation', dlcDays: form.dlcDays ? Number(form.dlcDays) : undefined, description: form.description, quantity: form.quantity ? Number(form.quantity) : undefined, unit: form.unit });
       }
       setModal(null);
-      await refreshAll();
+      await refreshTabData(activeTab);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Enregistrement impossible.');
     } finally {
@@ -961,7 +1128,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
     const endpoint = endpoints[section];
     if (!endpoint) return;
     await api.haccpDelete(token, endpoint);
-    await refreshAll();
+    await refreshTabData(activeTab);
   }
 
   async function hideOilSession(item: HaccpItem) {
@@ -995,7 +1162,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
       cleaning: `/cleaning/zones/${id}`,
     };
     await api.haccpDelete(token, endpoints[kind]);
-    await refreshAll();
+    await refreshTabData(activeTab);
   }
 
   async function refreshCleaningOnly() {
@@ -1179,7 +1346,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
         created.push(name);
       }
 
-      await refreshAll();
+      await refreshTabData(activeTab);
       return { created, skipped };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Configuration HACCP impossible.';
@@ -1197,7 +1364,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
     },
     setup: {
       title: 'Zones et matériels',
-      subtitle: 'Référentiel HACCP : équipements, process et plan de nettoyage.',
+      subtitle: 'Référentiel HACCP : équipements, procédés et plan de nettoyage.',
     },
     sensors: {
       title: 'Capteurs de température',
@@ -1224,7 +1391,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
       subtitle: 'Contrôle à la livraison : hygiène, températures et emballages.',
     },
     process: {
-      title: 'Processus froid et chaud',
+      title: 'Procédés froid et chaud',
       subtitle: 'Refroidissement rapide, réchauffement et congélation.',
     },
     oil: {
@@ -1391,7 +1558,7 @@ export function HaccpApp({ token, tab, onNavigate }: Props) {
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
             loading={loading}
-            onRefresh={refreshLiveDashboard}
+            onRefresh={() => refreshLiveData('temperatures')}
             onAddReading={() => openCreate('temperatures')}
             onConfigure={() => navigateToHaccpTab('setup')}
           />
@@ -1572,7 +1739,7 @@ function HaccpModuleGuide({
     { tab: 'temperatures', title: 'Températures', description: 'Relevés manuels et historique des enceintes.', icon: <Thermometer size={19} /> },
     { tab: 'sensors', title: 'Capteurs IoT', description: 'Mesures automatiques, batterie et connectivité.', icon: <Smartphone size={19} /> },
     { tab: 'cleaning', title: 'Nettoyage', description: 'Surfaces à réaliser et validation par zone.', icon: <Sparkles size={19} /> },
-    { tab: 'process', title: 'Process froid & chaud', description: 'Refroidissement, congélation et remise en température.', icon: <Snowflake size={19} /> },
+    { tab: 'process', title: 'Procédés froid & chaud', description: 'Refroidissement, congélation et remise en température.', icon: <Snowflake size={19} /> },
     { tab: 'production', title: 'Production', description: 'Fabrications planifiées, lots et preuves ingrédients.', icon: <Factory size={19} /> },
     { tab: 'traceability', title: 'Traçabilité', description: 'Lots, photos, code-barres et recherche des preuves.', icon: <ScanLine size={19} /> },
     { tab: 'receptions', title: 'Réceptions', description: 'Fournisseurs, températures et conformité des livraisons.', icon: <Truck size={19} /> },
@@ -1629,7 +1796,7 @@ function HaccpModuleGuide({
         <footer className="haccp-guide-footer">
           <div>
             <strong>Configuration initiale : {readiness.progress}%</strong>
-            <span>Définissez vos enceintes, vos équipements de process et votre plan de nettoyage.</span>
+            <span>Définissez vos enceintes, vos équipements de procédé et votre plan de nettoyage.</span>
           </div>
           <div>
             <button type="button" className="btn btn-secondary" onClick={onClose}>Fermer</button>
@@ -1712,10 +1879,10 @@ function ModuleCard({ module, onClick }: { module: HaccpDashboard['modules'][num
         </div>
 
         <h3 style={{ fontSize: '1.05rem', fontWeight: 800, margin: '0 0 0.25rem 0', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          {module.label}
+          {haccpText(module.label)}
         </h3>
         <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.35, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-          {module.description}
+          {haccpText(module.description)}
         </p>
       </div>
 
@@ -1757,7 +1924,7 @@ function HygieneOverviewCard({
   const score = expected
     ? Math.round((((temperature?.score ?? 100) * (temperature?.expected ?? 0)) + ((cleaning?.score ?? 100) * (cleaning?.expected ?? 0))) / expected)
     : 100;
-  const status = !expected ? 'À configurer' : issues > 0 ? score < 60 ? 'Action requise' : 'À surveiller' : 'À jour';
+  const status = haccpText(!expected ? 'À configurer' : issues > 0 ? score < 60 ? 'Action requise' : 'À surveiller' : 'À jour');
   const tone = !expected ? 'neutral' : issues > 0 ? score < 60 ? 'danger' : 'warning' : 'ok';
 
   return (
@@ -1776,7 +1943,7 @@ function HygieneOverviewCard({
           <span className="haccp-hygiene-icon"><Thermometer size={20} /></span>
           <span>
             <small>Températures</small>
-            <strong>{temperature?.expected ? temperature.completed : '—'}<em>{temperature?.expected ? `/ ${temperature.expected} enceintes` : 'Aucune enceinte active'}</em></strong>
+            <strong>{temperature?.expected ? temperature.completed : '—'}<em>{temperature?.expected ? `/ ${haccpQuantity(temperature.expected, 'enceinte', 'enceintes', 'unit', 'units')}` : haccpText('Aucune enceinte active')}</em></strong>
           </span>
           <span className="haccp-metric-score">{temperature?.expected ? `${temperature.score}%` : '—'}</span>
         </div>
@@ -1784,14 +1951,14 @@ function HygieneOverviewCard({
           <span className="haccp-hygiene-icon"><Sparkles size={20} /></span>
           <span>
             <small>Nettoyage</small>
-            <strong>{cleaning?.expected ? cleaning.completed : '—'}<em>{cleaning?.expected ? `/ ${cleaning.expected} surfaces` : 'Rien de prévu aujourd’hui'}</em></strong>
+            <strong>{cleaning?.expected ? cleaning.completed : '—'}<em>{cleaning?.expected ? `/ ${haccpQuantity(cleaning.expected, 'surface', 'surfaces', 'surface', 'surfaces')}` : haccpText('Rien de prévu aujourd’hui')}</em></strong>
           </span>
           <span className="haccp-metric-score">{cleaning?.expected ? `${cleaning.score}%` : '—'}</span>
         </div>
       </div>
 
       <div className="haccp-hygiene-card-footer">
-        <span>{expected ? `${completed}/${expected} contrôles couverts` : 'Configurez vos premières zones et enceintes'}</span>
+        <span>{expected ? haccpCopy(`${completed}/${expected} contrôles couverts`, `${completed}/${expected} checks covered`) : haccpText('Configurez vos premières zones et enceintes')}</span>
         <span className={`haccp-status-pill ${tone}`}><span className="status-dot" /> {status}</span>
       </div>
     </button>
@@ -1814,7 +1981,7 @@ function ProcessOverviewCard({
   const issues = module?.issues ?? sessions.filter((session) => session.status !== 'termine').length;
   const equipmentCount = equipment.length;
   const score = module?.score ?? (expected ? Math.round((completed / expected) * 100) : 100);
-  const status = !expected && !equipmentCount ? 'À configurer' : issues > 0 ? score < 60 ? 'Action requise' : 'En cours' : expected ? 'À jour' : 'Prêt';
+  const status = haccpText(!expected && !equipmentCount ? 'À configurer' : issues > 0 ? score < 60 ? 'Action requise' : 'En cours' : expected ? 'À jour' : 'Prêt');
   const tone = !expected && !equipmentCount ? 'neutral' : issues > 0 ? score < 60 ? 'danger' : 'warning' : 'ok';
 
   return (
@@ -1822,7 +1989,7 @@ function ProcessOverviewCard({
       <div className="haccp-hygiene-card-top">
         <div>
           <span className="haccp-live-kicker"><span className="haccp-live-dot" /> Suivi de production</span>
-          <h3>Process froid & chaud</h3>
+          <h3>Procédés froid & chaud</h3>
           <p>Refroidissement, congélation et remise en température suivis depuis l’application mobile.</p>
         </div>
         <span className="haccp-open-live">Voir le suivi <ChevronRight size={16} /></span>
@@ -1831,18 +1998,18 @@ function ProcessOverviewCard({
       <div className="haccp-hygiene-card-metrics">
         <div className="haccp-hygiene-metric process-cold">
           <span className="haccp-hygiene-icon"><Snowflake size={20} /></span>
-          <span><small>Sessions du jour</small><strong>{expected ? completed : '—'}<em>{expected ? `/ ${expected} terminées` : 'Aucun process lancé'}</em></strong></span>
+          <span><small>Sessions du jour</small><strong>{expected ? completed : '—'}<em>{expected ? `/ ${haccpQuantity(expected, 'terminée', 'terminées', 'completed', 'completed')}` : haccpText('Aucun procédé lancé')}</em></strong></span>
           <span className="haccp-metric-score">{expected ? `${score}%` : '—'}</span>
         </div>
         <div className="haccp-hygiene-metric process-hot">
           <span className="haccp-hygiene-icon"><Flame size={20} /></span>
-          <span><small>Matériel process</small><strong>{equipmentCount || '—'}<em>{equipmentCount ? 'équipement(s) actif(s)' : 'À configurer'}</em></strong></span>
-          <span className="haccp-metric-score">{issues ? `${issues} suivi(s)` : 'OK'}</span>
+          <span><small>Équipements de procédé</small><strong>{equipmentCount || '—'}<em>{equipmentCount ? haccpQuantity(equipmentCount, 'équipement actif', 'équipements actifs', 'active unit', 'active units') : haccpText('À configurer')}</em></strong></span>
+          <span className="haccp-metric-score">{issues ? haccpQuantity(issues, 'suivi', 'suivis', 'to monitor', 'to monitor') : 'OK'}</span>
         </div>
       </div>
 
       <div className="haccp-hygiene-card-footer">
-        <span>{expected ? `${completed}/${expected} cycles clôturés aujourd’hui` : 'Les saisies mobiles apparaîtront ici en direct'}</span>
+        <span>{expected ? haccpCopy(`${completed}/${expected} cycles clôturés aujourd’hui`, `${completed}/${expected} cycles completed today`) : haccpText('Les saisies mobiles apparaîtront ici en direct')}</span>
         <span className={`haccp-status-pill ${tone}`}><span className="status-dot" /> {status}</span>
       </div>
     </button>
@@ -1864,7 +2031,7 @@ function ProductionHaccpOverviewCard({
   const missing = Math.max(expected - completed, 0);
   const coverage = expected ? Math.round((completed / expected) * 100) : 100;
   const tone = missing > 0 && (summary?.inProgress ?? 0) > 0 ? 'warning' : 'ok';
-  const status = !summary?.planned ? 'Aucune production' : missing ? 'À compléter' : 'À jour';
+  const status = haccpText(!summary?.planned ? 'Aucune production' : missing ? 'À compléter' : 'À jour');
 
   return (
     <button
@@ -1898,8 +2065,11 @@ function ProductionHaccpOverviewCard({
               {summary?.planned ?? '—'}
               <em>
                 {summary?.planned
-                  ? `${summary.inProgress} en cours · ${summary.completed} terminée(s)`
-                  : 'Planning vide'}
+                  ? haccpCopy(
+                    `${summary.inProgress} en cours · ${summary.completed} terminée${summary.completed === 1 ? '' : 's'}`,
+                    `${summary.inProgress} in progress · ${summary.completed} completed`,
+                  )
+                  : haccpText('Planning vide')}
               </em>
             </strong>
           </span>
@@ -1922,7 +2092,10 @@ function ProductionHaccpOverviewCard({
       <div className="haccp-hygiene-card-footer">
         <span>
           {missing
-            ? `${missing} ingrédient(s) restent à documenter`
+            ? haccpCopy(
+              `${missing} ingrédient${missing === 1 ? '' : 's'} reste${missing === 1 ? '' : 'nt'} à documenter`,
+              `${missing} ingredient${missing === 1 ? '' : 's'} still need${missing === 1 ? 's' : ''} documentation`,
+            )
             : summary?.planned
               ? 'Toutes les preuves disponibles sont à jour'
               : 'Les fabrications planifiées apparaîtront ici'}
@@ -2069,7 +2242,7 @@ function ProductionFlowModal({
               <span className="haccp-live-dot" /> {enableDateNavigation ? 'Historique consultable' : 'Lecture seule'}
             </span>
             <h2 id="haccp-production-flow-title">
-              {enableDateNavigation ? `Production HACCP · ${selectedDateLabel}` : 'Production HACCP du jour'}
+              {enableDateNavigation ? haccpCopy(`Production HACCP · ${selectedDateLabel}`, `HACCP Production · ${selectedDateLabel}`) : haccpText('Production HACCP du jour')}
             </h2>
             <p>Planning et preuves de traçabilité des ingrédients.</p>
           </div>
@@ -2131,7 +2304,12 @@ function ProductionFlowModal({
               icon={<ClipboardList size={19} />}
               label="Planifiées"
               value={visibleFlow?.summary.planned ?? 0}
-              detail={enableDateNavigation ? `Fabrications du ${new Date(`${selectedDate}T12:00:00`).toLocaleDateString(activeLocale())}` : 'Fabrications prévues aujourd’hui'}
+              detail={enableDateNavigation
+                ? haccpCopy(
+                  `Fabrications du ${new Date(`${selectedDate}T12:00:00`).toLocaleDateString(activeLocale())}`,
+                  `Production runs on ${new Date(`${selectedDate}T12:00:00`).toLocaleDateString(activeLocale())}`,
+                )
+                : haccpText('Fabrications prévues aujourd’hui')}
               tone="blue"
             />
             <LiveKpi
@@ -2167,7 +2345,7 @@ function ProductionFlowModal({
               <div className="production-flow-section-title">
                 <div>
                   <h3>Planning de fabrication</h3>
-                  <p>{visibleFlow?.items.length ?? 0} lot(s) pour la journée</p>
+                  <p>{haccpQuantity(visibleFlow?.items.length ?? 0, 'lot pour la journée', 'lots pour la journée', 'batch for the day', 'batches for the day')}</p>
                 </div>
               </div>
               {loadingFlow ? (
@@ -2194,7 +2372,10 @@ function ProductionFlowModal({
                           {item.batch.unit?.symbol ?? ''}
                         </small>
                         <em>
-                          {item.summary.completed}/{item.summary.expected} preuves ·{' '}
+                          {haccpCopy(
+                            `${item.summary.completed}/${item.summary.expected} preuves`,
+                            `${item.summary.completed}/${item.summary.expected} evidence items`,
+                          )} ·{' '}
                           {statusLabel(item.batch.status)}
                         </em>
                       </span>
@@ -2243,7 +2424,7 @@ function ProductionFlowModal({
                     <span className={`badge-pill ${detail.summary.isComplete ? 'badge-emerald' : 'badge-amber'}`}>
                       {detail.summary.isComplete
                         ? 'Traçabilité complète'
-                        : `${detail.summary.missing} preuve(s) manquante(s)`}
+                        : haccpQuantity(detail.summary.missing, 'preuve manquante', 'preuves manquantes', 'missing evidence item', 'missing evidence items')}
                     </span>
                   </div>
                   <div className="production-evidence-list">
@@ -2417,7 +2598,7 @@ function TraceabilityHistoryModal({
               icon={<CalendarDays size={19} />}
               label="Jours couverts"
               value={visibleDays}
-              detail={`${availableDates.length} jour(s) dans l’historique`}
+              detail={haccpQuantity(availableDates.length, 'jour dans l’historique', 'jours dans l’historique', 'day in history', 'days in history')}
               tone="violet"
             />
             <LiveKpi
@@ -2656,7 +2837,7 @@ function ReceptionHistoryModal({
               <div className="haccp-trace-results-head"><div><span>Période sélectionnée</span><h3>{selectedDateLabel}</h3><p>{visibleRows.length} réception{visibleRows.length > 1 ? 's' : ''} trouvée{visibleRows.length > 1 ? 's' : ''}</p></div><div className="haccp-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Fournisseur, BL, produit…" />{query ? <button type="button" onClick={() => setQuery('')} aria-label="Effacer"><X size={14} /></button> : null}</div></div>
               {visibleRows.length ? <div className="haccp-trace-results-grid"><div className="haccp-trace-list">{visibleRows.map((row, index) => {
                 const selected = haccpItemId(selectedRow) === haccpItemId(row) && Boolean(haccpItemId(row)); const date = new Date(String(receptionDate(row)));
-                return <button type="button" key={haccpItemId(row) || `${receptionDate(row)}-${index}`} className={selected ? 'selected' : ''} onClick={() => setSelectedRow(row)}><span className={`haccp-trace-row-icon ${statusTone(row.controlStatus)}`}>{row.controlStatus === 'CONFORMING' ? <ShieldCheck size={18} /> : <AlertTriangle size={18} />}</span><span className="haccp-trace-row-copy"><strong>{String(row.supplier || 'Fournisseur non renseigné')}</strong><small>{String(row.deliveryNoteNumber || 'BL non renseigné')} · {statusLabel(row.controlStatus)}</small><em>{Number.isFinite(date.getTime()) ? date.toLocaleDateString(activeLocale(), { day: '2-digit', month: 'short', year: 'numeric' }) : 'Date inconnue'} · {allLines(row).length} ligne{allLines(row).length > 1 ? 's' : ''}</em></span><ChevronRight size={16} /></button>;
+        return <button type="button" key={haccpItemId(row) || `${receptionDate(row)}-${index}`} className={selected ? 'selected' : ''} onClick={() => setSelectedRow(row)}><span className={`haccp-trace-row-icon ${statusTone(row.controlStatus)}`}>{row.controlStatus === 'CONFORMING' ? <ShieldCheck size={18} /> : <AlertTriangle size={18} />}</span><span className="haccp-trace-row-copy"><strong>{String(row.supplier || haccpText('Fournisseur non renseigné'))}</strong><small>{String(row.deliveryNoteNumber || haccpText('BL non renseigné'))} · {statusLabel(row.controlStatus)}</small><em>{Number.isFinite(date.getTime()) ? date.toLocaleDateString(activeLocale(), { day: '2-digit', month: 'short', year: 'numeric' }) : haccpText('Date inconnue')} · {haccpQuantity(allLines(row).length, 'ligne', 'lignes', 'line', 'lines')}</em></span><ChevronRight size={16} /></button>;
               })}</div><div className="haccp-trace-detail">{selectedRow ? <><div className="haccp-trace-detail-head"><div><span>Contrôle de réception</span><h3>{String(selectedRow.supplier || 'Fournisseur non renseigné')}</h3></div><span className={statusTone(selectedRow.controlStatus)}>{statusLabel(selectedRow.controlStatus)}</span></div><div className="haccp-trace-detail-meta"><span><small>Bon de livraison</small><strong>{String(selectedRow.deliveryNoteNumber || 'Non renseigné')}</strong></span><span><small>Température</small><strong>{selectedRow.deliveryTemperature == null ? 'Non renseignée' : `${selectedRow.deliveryTemperature} °C`}</strong></span><span><small>Commande</small><strong>{String(selectedRow.purchaseOrderNumber || 'Réception libre')}</strong></span><span><small>Emplacement</small><strong>{String(selectedRow.location?.name || selectedRow.site?.name || 'Non renseigné')}</strong></span></div><div className="haccp-trace-detail-meta">{allLines(selectedRow).map((line: HaccpItem, index: number) => <span key={`${line.id ?? index}`}><small>{String(line.product?.name || line.label || line.ocrLabel || 'Produit')}</small><strong>Livré {String(line.deliveredQuantity ?? line.quantity ?? '—')} · Accepté {String(line.acceptedQuantity ?? line.quantity ?? '—')}</strong></span>)}</div>{selectedRow.controlNotes ? <p className="muted">{String(selectedRow.controlNotes)}</p> : null}</> : <div className="production-flow-placeholder"><Truck size={32} /><strong>Sélectionnez une réception</strong><p>Le contrôle, le BL et les quantités apparaîtront ici.</p></div>}</div></div> : <div className="haccp-trace-empty"><CalendarDays size={34} /><strong>Aucune réception pour cette sélection</strong><p>Choisissez une autre journée ou revenez à toutes les dates.</p><button type="button" onClick={() => setSelectedDate('all')}>Voir tout l’historique</button></div>}
             </section>
           </div>
@@ -2684,12 +2865,13 @@ function isHaccpToday(value: unknown) {
 
 function haccpFreshness(value: unknown) {
   const time = haccpDateValue(value);
-  if (!time) return 'Jamais relevé';
+  const english = activeLanguage() === 'en';
+  if (!time) return english ? 'Never recorded' : 'Jamais relevé';
   const minutes = Math.max(0, Math.round((Date.now() - time) / 60_000));
-  if (minutes < 1) return 'À l’instant';
-  if (minutes < 60) return `Il y a ${minutes} min`;
+  if (minutes < 1) return english ? 'Just now' : 'À l’instant';
+  if (minutes < 60) return english ? `${minutes} min ago` : `Il y a ${minutes} min`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `Il y a ${hours} h`;
+  if (hours < 24) return english ? `${hours} hr ago` : `Il y a ${hours} h`;
   return new Date(time).toLocaleDateString(activeLocale(), { day: '2-digit', month: 'short' });
 }
 
@@ -2799,16 +2981,18 @@ function HaccpLiveOperationsModal({
             <p>Températures et exécution du plan de nettoyage, zone par zone.</p>
           </div>
           <div className="haccp-live-header-actions">
-            <span className="haccp-last-sync"><RefreshCw size={14} /> {latestSync ? `Dernière activité ${haccpFreshness(latestSync)}` : 'Actualisation toutes les 30 s'}</span>
+        <span className="haccp-last-sync"><RefreshCw size={14} /> {latestSync
+          ? haccpCopy(`Dernière activité ${haccpFreshness(latestSync)}`, `Latest activity ${haccpFreshness(latestSync)}`)
+          : haccpText('Actualisation toutes les 30 s')}</span>
             <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Fermer"><X size={18} /></button>
           </div>
         </header>
 
         <div className="haccp-live-body">
           <div className="haccp-live-kpis">
-            <LiveKpi icon={<Thermometer size={19} />} label="Enceintes renseignées" value={temperatureEquipment.length ? `${currentTemperatureCount}/${temperatureEquipment.length}` : '—'} detail={temperatureEquipment.length ? `${temperatureModule?.completed ?? 0} relevé(s) aujourd’hui` : 'Aucune enceinte configurée'} tone="blue" />
+            <LiveKpi icon={<Thermometer size={19} />} label="Enceintes renseignées" value={temperatureEquipment.length ? `${currentTemperatureCount}/${temperatureEquipment.length}` : '—'} detail={temperatureEquipment.length ? haccpQuantity(temperatureModule?.completed ?? 0, 'relevé aujourd’hui', 'relevés aujourd’hui', 'reading today', 'readings today') : haccpText('Aucune enceinte configurée')} tone="blue" />
             <LiveKpi icon={<AlertTriangle size={19} />} label="Écarts température" value={anomalousTemperatureCount} detail={anomalousTemperatureCount ? 'À traiter maintenant' : 'Aucun écart détecté'} tone={anomalousTemperatureCount ? 'red' : 'green'} />
-            <LiveKpi icon={<MapPin size={19} />} label="Zones nettoyées" value={dueZoneCount ? `${cleanedZoneCount}/${dueZoneCount}` : '—'} detail={dueZoneCount ? `${completedSurfaces}/${dueSurfaces} surfaces prévues` : 'Rien de prévu aujourd’hui'} tone="violet" />
+            <LiveKpi icon={<MapPin size={19} />} label="Zones nettoyées" value={dueZoneCount ? `${cleanedZoneCount}/${dueZoneCount}` : '—'} detail={dueZoneCount ? haccpCopy(`${completedSurfaces}/${dueSurfaces} surfaces prévues`, `${completedSurfaces}/${dueSurfaces} scheduled surfaces`) : haccpText('Rien de prévu aujourd’hui')} tone="violet" />
             <LiveKpi icon={<ShieldCheck size={19} />} label="Couverture hygiène" value={hygieneCoverage == null ? '—' : `${hygieneCoverage}%`} detail={expectedControls ? activeCleaningSession ? 'Session mobile en cours' : 'Vue consolidée du jour' : 'Configuration à compléter'} tone="green" />
           </div>
 
@@ -2906,11 +3090,13 @@ function HaccpProcessOperationsModal({
         <header className="haccp-live-header">
           <div>
             <span className="haccp-live-kicker process"><span className="haccp-live-dot" /> Suivi des cycles</span>
-            <h2 id="haccp-process-live-title">Process froid & chaud</h2>
+            <h2 id="haccp-process-live-title">Procédés froid & chaud</h2>
             <p>Équipements, produits et courbes de température saisis sur le terrain.</p>
           </div>
           <div className="haccp-live-header-actions">
-            <span className="haccp-last-sync"><RefreshCw size={14} /> {latestActivity ? `Dernière activité ${haccpFreshness(latestActivity)}` : 'Aucun cycle aujourd’hui'}</span>
+        <span className="haccp-last-sync"><RefreshCw size={14} /> {latestActivity
+          ? haccpCopy(`Dernière activité ${haccpFreshness(latestActivity)}`, `Latest activity ${haccpFreshness(latestActivity)}`)
+          : haccpText('Aucun cycle aujourd’hui')}</span>
             <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Fermer"><X size={18} /></button>
           </div>
         </header>
@@ -2918,16 +3104,16 @@ function HaccpProcessOperationsModal({
         <div className="haccp-live-body">
           <div className="haccp-live-kpis">
             <LiveKpi icon={<Cpu size={19} />} label="Matériel actif" value={equipment.length || '—'} detail="Froid, congélation et chaud" tone="blue" />
-            <LiveKpi icon={<CheckCircle2 size={19} />} label="Cycles terminés" value={`${completedCount}/${sessions.length}`} detail={activeCount ? `${activeCount} encore en cours` : 'Tous les cycles sont clôturés'} tone="green" />
+            <LiveKpi icon={<CheckCircle2 size={19} />} label="Cycles terminés" value={`${completedCount}/${sessions.length}`} detail={activeCount ? haccpQuantity(activeCount, 'encore en cours', 'encore en cours', 'still in progress', 'still in progress') : haccpText('Tous les cycles sont clôturés')} tone="green" />
             <LiveKpi icon={<AlertTriangle size={19} />} label="Non-conformités" value={issueCount} detail={issueCount ? 'Température finale hors cible' : 'Aucun écart final'} tone={issueCount ? 'red' : 'green'} />
-            <LiveKpi icon={<Clock size={19} />} label="Durée moyenne" value={averageDuration == null ? '—' : `${averageDuration} min`} detail={score == null ? 'Aucun suivi aujourd’hui' : `${score}% de couverture`} tone="violet" />
+            <LiveKpi icon={<Clock size={19} />} label="Durée moyenne" value={averageDuration == null ? '—' : `${averageDuration} min`} detail={score == null ? haccpText('Aucun suivi aujourd’hui') : haccpCopy(`${score}% de couverture`, `${score}% coverage`)} tone="violet" />
           </div>
 
           <section className="haccp-live-section">
             <div className="haccp-live-section-heading">
               <div>
                 <span className="haccp-section-icon process"><Activity size={18} /></span>
-                <div><h3>Équipements & cycles du jour</h3><p>Le dernier suivi mobile associé à chaque matériel process.</p></div>
+                <div><h3>Équipements & cycles du jour</h3><p>Le dernier suivi mobile associé à chaque équipement de procédé.</p></div>
               </div>
             </div>
             {widgets.length ? (
@@ -2935,7 +3121,7 @@ function HaccpProcessOperationsModal({
                 {widgets.map((widget) => <ProcessLiveWidget key={haccpItemId(widget.equipment)} {...widget} />)}
               </div>
             ) : (
-              <LiveEmptyState icon={<Activity size={24} />} title="Aucun matériel process" detail="Configurez une cellule, un congélateur ou un équipement chaud pour suivre les cycles." />
+              <LiveEmptyState icon={<Activity size={24} />} title="Aucun équipement de procédé" detail="Configurez une cellule, un congélateur ou un équipement chaud pour suivre les cycles." />
             )}
           </section>
         </div>
@@ -2977,7 +3163,7 @@ function ProcessLiveWidget({
       </div>
       <div className="haccp-widget-title">
         <span className="haccp-widget-icon"><TypeIcon size={18} /></span>
-        <div><h4>{equipment.name || 'Équipement process'}</h4><p>{session?.product?.name || 'Aucun produit affecté'}</p></div>
+        <div><h4>{equipment.name || 'Équipement de procédé'}</h4><p>{session?.product?.name || 'Aucun produit affecté'}</p></div>
       </div>
       {session ? (
         <>
@@ -3078,7 +3264,7 @@ function CleaningLiveWidget({
     <article className={`haccp-live-widget cleaning ${state}`}>
       <div className="haccp-widget-topline">
         <span className={`haccp-widget-state ${state === 'pending' ? 'neutral' : state}`}><span /> {stateLabel}</span>
-        <span className="haccp-zone-count"><Layers size={12} /> {configured.length} surface(s)</span>
+        <span className="haccp-zone-count"><Layers size={12} /> {haccpQuantity(configured.length, 'surface', 'surfaces', 'surface', 'surfaces')}</span>
       </div>
       <div className="haccp-widget-title">
         <span className="haccp-widget-icon"><MapPin size={18} /></span>
@@ -3109,12 +3295,15 @@ function LiveEmptyState({ icon, title, detail }: { icon: ReactNode; title: strin
 function moduleStatusCopy(module: HaccpDashboard['modules'][number]) {
   const missing = Math.max(module.expected - module.completed, 0);
   const pending = Math.max(missing, module.issues);
+  const english = activeLanguage() === 'en';
   const base = {
     pending,
     expectedLabel: 'Contrôles attendus',
     completedLabel: 'Contrôles réalisés',
     pendingLabel: 'Éléments à traiter',
-    pendingDetail: pending > 0 ? `${pending} point(s) restent à traiter.` : 'Aucun point en attente sur ce module.',
+    pendingDetail: pending > 0
+      ? english ? `${pending} item${pending === 1 ? '' : 's'} still require${pending === 1 ? 's' : ''} action.` : `${pending} point${pending === 1 ? '' : 's'} reste${pending === 1 ? '' : 'nt'} à traiter.`
+      : 'Aucun point en attente sur ce module.',
     emptyDetail: 'Aucun contrôle attendu automatiquement pour ce module aujourd’hui.',
   };
 
@@ -3123,51 +3312,73 @@ function moduleStatusCopy(module: HaccpDashboard['modules'][number]) {
       expectedLabel: 'Enceintes actives à relever',
       completedLabel: 'Relevés saisis aujourd’hui',
       pendingLabel: 'Enceintes sans relevé',
-      pendingDetail: missing > 0 ? `${missing} enceinte(s) active(s) n’ont pas encore de relevé aujourd’hui.` : 'Toutes les enceintes attendues ont un relevé.',
+      pendingDetail: missing > 0
+        ? english ? `${missing} active unit${missing === 1 ? '' : 's'} ${missing === 1 ? 'does' : 'do'} not have a reading yet today.` : `${missing} enceinte${missing === 1 ? '' : 's'} active${missing === 1 ? '' : 's'} n’${missing === 1 ? 'a' : 'ont'} pas encore de relevé aujourd’hui.`
+        : 'Toutes les enceintes attendues ont un relevé.',
     },
     cleaning: {
       expectedLabel: 'Surfaces prévues au nettoyage',
       completedLabel: 'Surfaces nettoyées',
       pendingLabel: 'Surfaces restantes',
-      pendingDetail: missing > 0 ? `${missing} surface(s) prévues restent à nettoyer.` : 'Toutes les surfaces prévues sont nettoyées.',
+      pendingDetail: missing > 0
+        ? english ? `${missing} scheduled surface${missing === 1 ? '' : 's'} still need${missing === 1 ? 's' : ''} cleaning.` : `${missing} surface${missing === 1 ? '' : 's'} prévue${missing === 1 ? '' : 's'} reste${missing === 1 ? '' : 'nt'} à nettoyer.`
+        : 'Toutes les surfaces prévues sont nettoyées.',
     },
     traceability: {
       expectedLabel: 'Traçabilités créées',
       completedLabel: 'Traçabilités complètes',
       pendingLabel: 'Fiches incomplètes',
-      pendingDetail: module.issues > 0 ? `${module.issues} traçabilité(s) sont sans photo, lot ou produit.` : 'Les traçabilités enregistrées sont complètes.',
+      pendingDetail: module.issues > 0
+        ? english ? `${module.issues} traceability record${module.issues === 1 ? '' : 's'} ${module.issues === 1 ? 'is' : 'are'} missing a photo, lot or product.` : `${module.issues} traçabilité${module.issues === 1 ? '' : 's'} ${module.issues === 1 ? 'est' : 'sont'} sans photo, lot ou produit.`
+        : 'Les traçabilités enregistrées sont complètes.',
       emptyDetail: 'Aucune traçabilité n’est attendue automatiquement. Ajoutez-en si vous avez des lots à suivre.',
     },
     receptions: {
       expectedLabel: 'Réceptions enregistrées',
       completedLabel: 'Réceptions complètes',
       pendingLabel: 'Réceptions incomplètes',
-      pendingDetail: module.issues > 0 ? `${module.issues} réception(s) manquent de température, fournisseur ou produit.` : 'Les réceptions enregistrées sont complètes.',
+      pendingDetail: module.issues > 0
+        ? english ? `${module.issues} receipt${module.issues === 1 ? '' : 's'} ${module.issues === 1 ? 'is' : 'are'} missing a temperature, supplier or product.` : `${module.issues} réception${module.issues === 1 ? '' : 's'} manque${module.issues === 1 ? '' : 'nt'} de température, fournisseur ou produit.`
+        : 'Les réceptions enregistrées sont complètes.',
       emptyDetail: 'Aucune réception enregistrée aujourd’hui.',
     },
     process: {
       expectedLabel: 'Sessions froid/chaud lancées',
       completedLabel: 'Sessions terminées',
       pendingLabel: 'Sessions à clôturer',
-      pendingDetail: pending > 0 ? `${pending} session(s) froid/chaud doivent être terminées avec température finale.` : 'Toutes les sessions froid/chaud sont terminées.',
+      pendingDetail: pending > 0
+        ? english ? `${pending} cold/hot session${pending === 1 ? '' : 's'} must be completed with a final temperature.` : `${pending} session${pending === 1 ? '' : 's'} froid/chaud ${pending === 1 ? 'doit' : 'doivent'} être terminée${pending === 1 ? '' : 's'} avec température finale.`
+        : 'Toutes les sessions froid/chaud sont terminées.',
       emptyDetail: 'Aucune session de refroidissement, congélation ou remise en température lancée aujourd’hui.',
     },
     oil: {
       expectedLabel: 'Équipements huile actifs',
       completedLabel: 'Contrôles huile réalisés',
       pendingLabel: 'Équipements sans contrôle',
-      pendingDetail: missing > 0 ? `${missing} équipement(s) huile n’ont pas encore de contrôle.` : 'Tous les équipements huile actifs ont été contrôlés.',
+      pendingDetail: missing > 0
+        ? english ? `${missing} oil unit${missing === 1 ? '' : 's'} ${missing === 1 ? 'does' : 'do'} not have a check yet.` : `${missing} équipement${missing === 1 ? '' : 's'} huile n’${missing === 1 ? 'a' : 'ont'} pas encore de contrôle.`
+        : 'Tous les équipements huile actifs ont été contrôlés.',
     },
     production: {
       expectedLabel: 'Productions lancées',
       completedLabel: 'Productions terminées',
       pendingLabel: 'Productions à clôturer',
-      pendingDetail: pending > 0 ? `${pending} production(s) ne sont pas encore terminées.` : 'Toutes les productions lancées sont terminées.',
+      pendingDetail: pending > 0
+        ? english ? `${pending} production run${pending === 1 ? '' : 's'} ${pending === 1 ? 'is' : 'are'} not complete yet.` : `${pending} production${pending === 1 ? '' : 's'} n’${pending === 1 ? 'est' : 'sont'} pas encore terminée${pending === 1 ? '' : 's'}.`
+        : 'Toutes les productions lancées sont terminées.',
       emptyDetail: 'Aucune production HACCP lancée aujourd’hui.',
     },
   };
 
-  return { ...base, ...(byModule[module.id] || {}) };
+  const copy = { ...base, ...(byModule[module.id] || {}) };
+  return {
+    ...copy,
+    expectedLabel: haccpText(copy.expectedLabel),
+    completedLabel: haccpText(copy.completedLabel),
+    pendingLabel: haccpText(copy.pendingLabel),
+    pendingDetail: haccpText(copy.pendingDetail),
+    emptyDetail: haccpText(copy.emptyDetail),
+  };
 }
 
 function ModuleStatusModal({ module, alerts, onClose, onOpenModule }: { module: HaccpDashboard['modules'][number]; alerts: HaccpDashboard['alerts']; onClose: () => void; onOpenModule: () => void }) {
@@ -3181,8 +3392,8 @@ function ModuleStatusModal({ module, alerts, onClose, onOpenModule }: { module: 
       <div className="modal-content-wrapper modal-md" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>
-            <h2>{module.label}</h2>
-            <p className="muted" style={{ margin: '0.25rem 0 0' }}>{module.description}</p>
+            <h2>{haccpText(module.label)}</h2>
+            <p className="muted" style={{ margin: '0.25rem 0 0' }}>{haccpText(module.description)}</p>
           </div>
           <button type="button" className="modal-close-btn" onClick={onClose}><X size={18} /></button>
         </div>
@@ -3208,7 +3419,7 @@ function ModuleStatusModal({ module, alerts, onClose, onOpenModule }: { module: 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 {alerts.map((alert, index) => (
                   <div key={`${alert.module}-${index}`} className={`alert ${alert.severity === 'critical' ? 'error' : 'warning'}`} style={{ margin: 0 }}>
-                    <AlertTriangle size={15} /> {alert.message}
+                    <AlertTriangle size={15} /> {haccpMessage(alert.message)}
                   </div>
                 ))}
               </div>
@@ -3320,6 +3531,9 @@ function HaccpDashboardSummary({
     }))
     .filter((item) => item.pending > 0)
     .sort((a, b) => b.module.issues - a.module.issues || b.pending - a.pending);
+  const priorityDomainDetail = activeLanguage() === 'en'
+    ? `${priorityModules.length} affected area${priorityModules.length === 1 ? '' : 's'}`
+    : `${priorityModules.length} domaine${priorityModules.length > 1 ? 's' : ''} concerné${priorityModules.length > 1 ? 's' : ''}`;
   const targetForModule = (moduleId: string) => moduleId === 'temperature' ? 'temperatures' : moduleId;
   const openDomain = (moduleId: string) => {
     const target = targetForModule(moduleId);
@@ -3342,7 +3556,7 @@ function HaccpDashboardSummary({
           icon={<Clock size={20} />}
           label="À terminer"
           value={missingControls}
-          detail={`${priorityModules.length} domaine${priorityModules.length > 1 ? 's' : ''} concerné${priorityModules.length > 1 ? 's' : ''}`}
+          detail={priorityDomainDetail}
           tone="orange"
           delay={2}
           onClick={firstPriority ? () => openDomain(firstPriority) : undefined}
@@ -3351,7 +3565,7 @@ function HaccpDashboardSummary({
           icon={<AlertTriangle size={20} />}
           label="Alertes critiques"
           value={criticalCount}
-          detail={`${warningCount} à surveiller`}
+          detail={activeLanguage() === 'en' ? `${warningCount} to monitor` : `${warningCount} à surveiller`}
           tone="purple"
           delay={3}
           onClick={() => onSelectTab('alerts')}
@@ -3376,14 +3590,14 @@ function HaccpDashboardSummary({
           <div className="haccp-priority-panel">
             <div className="haccp-priority-heading">
               <div><strong>Actions prioritaires</strong><span>Accédez directement au contrôle qui demande une intervention.</span></div>
-              <small>{priorityModules.length} domaine{priorityModules.length > 1 ? 's' : ''} concerné{priorityModules.length > 1 ? 's' : ''}</small>
+              <small>{priorityDomainDetail}</small>
             </div>
             {priorityModules.length ? (
               <div className="haccp-priority-list">
                 {priorityModules.slice(0, 6).map(({ module, pending, copy }) => (
                   <button type="button" key={module.id} onClick={() => openDomain(module.id)}>
                     <span className={module.issues ? 'danger' : 'warning'}>{getModuleIcon(module.id)}</span>
-                    <div><strong>{module.label}</strong><small>{copy.pendingDetail}</small></div>
+                    <div><strong>{haccpText(module.label)}</strong><small>{copy.pendingDetail}</small></div>
                     <em>{pending}</em>
                     <ChevronRight size={17} />
                   </button>
@@ -3431,7 +3645,7 @@ function RegistryOverviewCard({
   const completed = module?.completed ?? 0;
   const score = module?.score ?? 100;
   const issues = module?.issues ?? 0;
-  const status = !expected ? 'Aucun contrôle prévu' : issues ? 'À vérifier' : 'Conforme';
+  const status = haccpText(!expected ? 'Aucun contrôle prévu' : issues ? 'À vérifier' : 'Conforme');
 
   return (
     <button type="button" className={`haccp-register-card ${accent}`} onClick={onClick}>
@@ -3515,17 +3729,17 @@ function OilOperationsModal({
   const changedCount = rows.filter((row) => row.action === 'change').length;
   const reusedCount = rows.filter((row) => row.action === 'reutilise' || row.action === 'filtre_reutilise').length;
 
-  const actionLabel = (action: unknown) => ({
+  const actionLabel = (action: unknown) => haccpText(({
     reutilise: 'Réutilisée',
     filtre_reutilise: 'Filtrée & réutilisée',
     change: 'Vidangée & changée',
     controle_ok: 'Contrôle conforme',
-  })[String(action)] ?? String(action || 'Contrôle');
-  const methodLabel = (method: unknown) => ({
+  })[String(action)] ?? String(action || 'Contrôle'));
+  const methodLabel = (method: unknown) => haccpText(({
     aucune: 'Contrôle visuel',
     testeur_huiles: 'Testeur d’huiles',
     bandelettes: 'Bandelettes',
-  })[String(method)] ?? String(method || 'Non renseignée');
+  })[String(method)] ?? String(method || 'Non renseignée'));
   const sessionDate = (row: HaccpItem) => new Date(String(row.sessionDate ?? row.createdAt ?? ''));
   const photoUrl = (row: HaccpItem | null) => {
     const photo = String(row?.photo ?? '');
@@ -3570,7 +3784,7 @@ function OilOperationsModal({
             <LiveKpi icon={<Droplets size={19} />} label="Contrôles visibles" value={rows.length} detail="Historique remonté du mobile" tone="blue" />
             <LiveKpi icon={<Clock size={19} />} label="Aujourd’hui" value={todayCount} detail="Contrôles de la journée" tone="violet" />
             <LiveKpi icon={<RefreshCw size={19} />} label="Huiles conservées" value={reusedCount} detail="Réutilisées ou filtrées" tone="green" />
-            <LiveKpi icon={<CheckCircle2 size={19} />} label="Renouvellements" value={changedCount} detail={`${module?.score ?? 100}% de conformité`} tone={module?.issues ? 'red' : 'green'} />
+            <LiveKpi icon={<CheckCircle2 size={19} />} label="Renouvellements" value={changedCount} detail={haccpCopy(`${module?.score ?? 100}% de conformité`, `${module?.score ?? 100}% compliance`)} tone={module?.issues ? 'red' : 'green'} />
           </div>
 
           <div className="haccp-oil-toolbar">
@@ -3596,7 +3810,7 @@ function OilOperationsModal({
           <div className="haccp-oil-workspace">
             <section className="haccp-oil-list">
               <div className="haccp-oil-list-heading">
-                <div><h3>Historique mobile</h3><p>{visibleRows.length} contrôle(s) affiché(s)</p></div>
+                <div><h3>Historique mobile</h3><p>{haccpQuantity(visibleRows.length, 'contrôle affiché', 'contrôles affichés', 'check displayed', 'checks displayed')}</p></div>
                 <Smartphone size={18} />
               </div>
               {visibleRows.length ? visibleRows.map((row, index) => {
@@ -3737,7 +3951,7 @@ function HaccpIllustration() {
 
           {[
             { label: 'Enceintes de température', val: 100, color: '#10b981' },
-            { label: 'Process chaud / froid', val: 100, color: '#3b82f6' },
+            { label: 'Procédés froid / chaud', val: 100, color: '#3b82f6' },
             { label: 'Zones & surfaces de nettoyage', val: 100, color: '#f59e0b' },
           ].map((item, idx) => (
             <div
@@ -3802,7 +4016,7 @@ function HaccpOnboardingWelcome({ onStart, onClose }: { onStart: () => void; onC
           Bienvenue sur le module <span style={{ color: '#10b981' }}>HACCP</span>
         </h1>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.98rem', lineHeight: 1.6, marginBottom: '2rem' }}>
-          ToqueHub main sert à installer le socle métier : équipements, zones et surfaces. Les relevés terrain, la traçabilité, le nettoyage et les rapports du quotidien passent ensuite par l’application ToqueHub.
+          ToqueHub principal sert à installer le socle métier : équipements, zones et surfaces. Les relevés terrain, la traçabilité, le nettoyage et les rapports du quotidien passent ensuite par l’application ToqueHub.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '2rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
@@ -3811,7 +4025,7 @@ function HaccpOnboardingWelcome({ onStart, onClose }: { onStart: () => void; onC
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', flexShrink: 0 }}><Snowflake size={16} /></div>
-            <span>Process chaud et froid (cuisson, refroidissement, congélation)</span>
+            <span>Procédés froid et chaud (cuisson, refroidissement, congélation)</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', flexShrink: 0 }}><ShieldCheck size={16} /></div>
@@ -3857,7 +4071,7 @@ function HaccpOnboardingAside({
   const steps = [
     { key: 'welcome', label: 'Bienvenue' },
     { key: 'temperatures', label: 'Équipements de température' },
-    { key: 'process', label: 'Processus HACCP' },
+    { key: 'process', label: 'Procédés HACCP' },
     { key: 'cleaning', label: 'Plan de nettoyage' },
     { key: 'sensors', label: 'Capteurs Sonoff (IoT)' },
     { key: 'review', label: 'Résumé & Validation' },
@@ -3928,7 +4142,11 @@ function HaccpOnboardingAside({
           <span style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.05em' }}>Statut initial</span>
           <div style={{ color: 'white', fontSize: '1rem', fontWeight: 800, marginTop: '0.2rem' }}>{readiness.progress}% Configuré</div>
           <p style={{ color: '#94a3b8', fontSize: '0.75rem', marginTop: '0.25rem', lineHeight: 1.4 }}>
-            {temperatures.filter((item) => item.selected).length} température(s), {processes.filter((item) => item.selected).length} process, {zones.filter((item) => item.selected).length} zone(s)
+            {[
+              haccpQuantity(temperatures.filter((item) => item.selected).length, 'température', 'températures', 'temperature unit', 'temperature units'),
+              haccpQuantity(processes.filter((item) => item.selected).length, 'procédé', 'procédés', 'process', 'processes'),
+              haccpQuantity(zones.filter((item) => item.selected).length, 'zone', 'zones', 'area', 'areas'),
+            ].join(', ')}
           </p>
         </div>
 
@@ -4148,7 +4366,12 @@ function HaccpOnboardingWizard({
 
                 <div className="hr-catalog-actions sticky" style={{ borderTop: '1px solid #eef2f7', background: 'rgba(255,255,255,0.9)', padding: '1rem 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
                   <span className="muted" style={{ fontSize: '0.85rem' }}>
-                    {summary ? `${summary.created.length} créé(s), ${summary.skipped.length} déjà présent(s)` : `Étape ${stepIndex + 1} / ${steps.length}`}
+                    {summary
+                      ? haccpCopy(
+                        `${summary.created.length} créé${summary.created.length === 1 ? '' : 's'}, ${summary.skipped.length} déjà présent${summary.skipped.length === 1 ? '' : 's'}`,
+                        `${summary.created.length} created, ${summary.skipped.length} already present`,
+                      )
+                      : haccpCopy(`Étape ${stepIndex + 1} / ${steps.length}`, `Step ${stepIndex + 1} / ${steps.length}`)}
                   </span>
                   <div className="haccp-onboarding-actions" style={{ display: 'flex', gap: '0.75rem' }}>
                     {stepIndex > 0 && !summary ? (
@@ -4199,7 +4422,8 @@ function HaccpSetupManager({
 }) {
   const [activeSubTab, setActiveSubTab] = useState<'all' | 'temperature' | 'process' | 'cleaning'>('all');
 
-  const query = searchQuery.trim().toLowerCase();
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const query = deferredSearchQuery.trim().toLowerCase();
   const filterRows = (rows: HaccpItem[]) => (!query ? rows : rows.filter((row) => JSON.stringify(row).toLowerCase().includes(query)));
 
   const filteredTemperatures = filterRows(temperatureEquipment);
@@ -4231,7 +4455,7 @@ function HaccpSetupManager({
             className={`haccp-subtab-btn ${activeSubTab === 'process' ? 'active' : ''}`}
             onClick={() => setActiveSubTab('process')}
           >
-            <Snowflake size={15} /> Process ({filteredProcess.length})
+            <Snowflake size={15} /> Procédés ({filteredProcess.length})
           </button>
           <button
             type="button"
@@ -4274,7 +4498,7 @@ function HaccpSetupManager({
         {(activeSubTab === 'all' || activeSubTab === 'process') && (
           <ConfigSectionRowList
             kind="process"
-            title="Équipements de Process HACCP"
+            title="Équipements de procédés HACCP"
             subtitle="Fours, cellules de refroidissement et matériel de congélation."
             icon={<Snowflake size={18} />}
             items={filteredProcess}
@@ -4482,12 +4706,12 @@ function ConfigRowCard({ kind, item, onDelete }: { kind: HaccpConfigKind; item: 
               )}
 
               {kind === 'cleaning' && (
-                <span className="haccp-spec-pill range">{surfaces.length} surface(s)</span>
+                <span className="haccp-spec-pill range">{haccpQuantity(surfaces.length, 'surface', 'surfaces', 'surface', 'surfaces')}</span>
               )}
             </div>
 
             <span className="haccp-equipment-desc">
-              {kind === 'cleaning' ? item.description || 'Zone de nettoyage' : kind === 'process' ? `${processLabel(item.type ?? '')} • Matériel HACCP` : `${formatTemperatureTypeLabel(item.type ?? '')} • Suivi de température`}
+              {kind === 'cleaning' ? item.description || 'Zone de nettoyage' : kind === 'process' ? `${processLabel(item.type ?? '')} • Équipement HACCP` : `${formatTemperatureTypeLabel(item.type ?? '')} • Suivi de température`}
             </span>
           </div>
         </div>
@@ -4514,7 +4738,7 @@ function ConfigRowCard({ kind, item, onDelete }: { kind: HaccpConfigKind; item: 
               <div key={idx} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', background: 'white', padding: '0.3rem 0.6rem', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.78rem', fontWeight: 650, color: '#0f172a' }}>
                 <span>{s.name}</span>
                 <span style={{ fontSize: '0.68rem', fontWeight: 750, color: '#047857', background: '#ecfdf5', padding: '0.1rem 0.4rem', borderRadius: '5px' }}>
-                  {s.frequency === 'daily' ? 'Quotidien' : s.frequency === 'weekly' ? 'Hebdo' : 'Mensuel'}
+                  {frequencyLabel(s.frequency)}
                 </span>
               </div>
             ))}
@@ -4540,7 +4764,8 @@ function ReportsArchiveView({
   onDelete: (item: HaccpItem) => void;
   onBack: () => void;
 }) {
-  const query = searchQuery.trim().toLocaleLowerCase(activeLocale());
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const query = deferredSearchQuery.trim().toLocaleLowerCase(activeLocale());
   const filteredRows = useMemo(
     () => rows.filter((row) => {
       if (!query) return true;
@@ -4698,7 +4923,7 @@ function ReportsArchiveView({
                                     <div className="haccp-report-file-copy">
                                       <strong>Rapport HACCP du {date.dayLabel}</strong>
                                       <span>
-                                        {row.summary?.totalActivities ?? 0} activité(s)
+                                        {haccpQuantity(row.summary?.totalActivities ?? 0, 'activité', 'activités', 'activity', 'activities')}
                                         {' · '}
                                         PDF {formatFileSize(row.fileSize)}
                                         {' · '}
@@ -4899,7 +5124,7 @@ function TemperatureMonitoringView({
 }) {
   const [selectedEquipmentId, setSelectedEquipmentId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const widgets = useMemo<TemperatureMonitorWidget[]>(() => {
+  const readingsByEquipment = useMemo(() => {
     const readingsByEquipment = new Map<string, HaccpSensorReading[]>();
     readings.forEach((reading, index) => {
       const equipmentId = temperatureReadingEquipmentId(reading);
@@ -4915,13 +5140,27 @@ function TemperatureMonitoringView({
       });
       readingsByEquipment.set(equipmentId, current);
     });
+    readingsByEquipment.forEach((equipmentReadings) => {
+      equipmentReadings.sort((left, right) => haccpDateValue(left.measuredAt) - haccpDateValue(right.measuredAt));
+    });
+    return readingsByEquipment;
+  }, [readings]);
 
+  const sensorsByEquipment = useMemo(() => new Map(
+    sensors
+      .filter((sensor) => sensor.assignedEquipment?.id)
+      .map((sensor) => [String(sensor.assignedEquipment!.id), sensor] as const),
+  ), [sensors]);
+  const alertsBySensor = useMemo(() => new Map(
+    (alerts?.sensors ?? []).map((sensor) => [sensor.id, sensor] as const),
+  ), [alerts?.sensors]);
+
+  const widgets = useMemo<TemperatureMonitorWidget[]>(() => {
     return equipment.map((item) => {
       const equipmentId = haccpItemId(item);
-      const manualReadings = (readingsByEquipment.get(equipmentId) ?? [])
-        .sort((a, b) => haccpDateValue(a.measuredAt) - haccpDateValue(b.measuredAt));
+      const manualReadings = readingsByEquipment.get(equipmentId) ?? [];
       const latestManual = manualReadings.at(-1);
-      const sensor = sensors.find((candidate) => String(candidate.assignedEquipment?.id ?? '') === equipmentId);
+      const sensor = sensorsByEquipment.get(equipmentId);
       const sensorValue = Number(sensor?.currentTemperature);
       const hasSensorValue = sensor?.currentTemperature != null && Number.isFinite(sensorValue);
       const sensorAt = haccpDateValue(sensor?.lastSeenAt);
@@ -4934,7 +5173,7 @@ function TemperatureMonitoringView({
       const min = threshold?.min == null ? null : Number(threshold.min);
       const max = threshold?.max == null ? null : Number(threshold.max);
       const temperatureStatus = localTemperatureStatus(hasValue ? value : null, threshold);
-      const alertSensor = alerts?.sensors?.find((candidate) => candidate.id === sensor?.id);
+      const alertSensor = sensor ? alertsBySensor.get(sensor.id) : undefined;
       const battery = sensor?.battery == null ? null : Number(sensor.battery);
       const staleAfter = useSensor ? 30 * 60 * 1000 : 24 * 60 * 60 * 1000;
       const isStale = haccpDateValue(measuredAt) > 0 && Date.now() - haccpDateValue(measuredAt) > staleAfter;
@@ -4974,17 +5213,35 @@ function TemperatureMonitoringView({
         manualReadings,
       };
     });
-  }, [alerts, equipment, readings, sensors]);
+  }, [alertsBySensor, equipment, readingsByEquipment, sensorsByEquipment]);
 
-  const normalizedQuery = searchQuery.trim().toLowerCase();
-  const visibleWidgets = widgets.filter((widget) => !normalizedQuery || `${widget.equipment.name ?? ''} ${widget.equipment.type ?? ''} ${widget.group} ${widget.sensor ? sensorDisplayName(widget.sensor) : ''}`.toLowerCase().includes(normalizedQuery));
-  const groupedWidgets = TEMPERATURE_GROUP_ORDER
-    .map((group) => ({ group, widgets: visibleWidgets.filter((widget) => widget.group === group) }))
-    .filter((entry) => entry.widgets.length);
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const normalizedQuery = deferredSearchQuery.trim().toLowerCase();
+  const visibleWidgets = useMemo(
+    () => widgets.filter((widget) => !normalizedQuery || `${widget.equipment.name ?? ''} ${widget.equipment.type ?? ''} ${widget.group} ${widget.sensor ? sensorDisplayName(widget.sensor) : ''}`.toLowerCase().includes(normalizedQuery)),
+    [normalizedQuery, widgets],
+  );
+  const groupedWidgets = useMemo(() => {
+    const groups = new Map<string, TemperatureMonitorWidget[]>();
+    visibleWidgets.forEach((widget) => {
+      const current = groups.get(widget.group) ?? [];
+      current.push(widget);
+      groups.set(widget.group, current);
+    });
+    return TEMPERATURE_GROUP_ORDER
+      .map((group) => ({ group, widgets: groups.get(group) ?? [] }))
+      .filter((entry) => entry.widgets.length);
+  }, [visibleWidgets]);
   const selectedWidget = widgets.find((widget) => widget.equipmentId === selectedEquipmentId) ?? null;
-  const latestSync = Math.max(...widgets.map((widget) => haccpDateValue(widget.measuredAt)), 0);
-  const dangerCount = widgets.filter((widget) => widget.state === 'danger').length;
-  const warningCount = widgets.filter((widget) => widget.state === 'warning').length;
+  const widgetSummary = useMemo(() => widgets.reduce(
+    (summary, widget) => ({
+      latestSync: Math.max(summary.latestSync, haccpDateValue(widget.measuredAt)),
+      dangerCount: summary.dangerCount + (widget.state === 'danger' ? 1 : 0),
+      warningCount: summary.warningCount + (widget.state === 'warning' ? 1 : 0),
+    }),
+    { latestSync: 0, dangerCount: 0, warningCount: 0 },
+  ), [widgets]);
+  const { latestSync, dangerCount, warningCount } = widgetSummary;
   const refresh = async () => {
     setRefreshing(true);
     try {
@@ -5000,7 +5257,9 @@ function TemperatureMonitoringView({
         <div>
           <span className="haccp-section-kicker"><span className="haccp-live-dot" /> Temps réel</span>
           <h2>Températures des équipements</h2>
-          <p>{widgets.length} équipement{widgets.length > 1 ? 's' : ''} suivi{widgets.length > 1 ? 's' : ''} · {latestSync ? `dernière synchronisation ${haccpFreshness(latestSync)}` : 'en attente de la première donnée'}</p>
+        <p>{haccpQuantity(widgets.length, 'équipement suivi', 'équipements suivis', 'monitored unit', 'monitored units')} · {latestSync
+          ? haccpCopy(`dernière synchronisation ${haccpFreshness(latestSync)}`, `last synchronisation ${haccpFreshness(latestSync)}`)
+          : haccpText('en attente de la première donnée')}</p>
         </div>
         <div className="haccp-temperature-monitor-summary" aria-label="État des températures">
           <span className={dangerCount ? 'danger' : 'ok'}><AlertTriangle size={14} /> {dangerCount} hors seuil</span>
@@ -5252,7 +5511,7 @@ function SectionView({ section, rows, products, searchQuery, setSearchQuery, pro
               {labelFor(section)}
             </span>
           </div>
-          <span className="section-tagline">{rows.length} entrée(s) enregistrée(s)</span>
+          <span className="section-tagline">{haccpQuantity(rows.length, 'entrée enregistrée', 'entrées enregistrées', 'saved entry', 'saved entries')}</span>
         </div>
         <div className="haccp-filter-right">
           {section === 'traceability' ? (
@@ -5319,7 +5578,8 @@ function CleaningChecklistView({
 }) {
   const [view, setView] = useState<'today' | 'all'>('today');
   const cleanedIds = new Set((activeSession?.cleanedSurfaces ?? []).map((surface) => surface.surfaceId));
-  const query = searchQuery.trim().toLowerCase();
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const query = deferredSearchQuery.trim().toLowerCase();
   const allSurfaces = zones.flatMap((zone) => {
     const zoneId = String(zone._id ?? zone.id ?? '');
     return (Array.isArray(zone.surfaces) ? zone.surfaces : [])
@@ -5354,7 +5614,10 @@ function CleaningChecklistView({
             </span>
           </div>
           <span className="section-tagline">
-            {remainingList.length} surface(s) en attente sur {view === 'today' ? 'le plan du jour' : 'toutes les zones'}
+            {haccpCopy(
+              `${remainingList.length} surface${remainingList.length === 1 ? '' : 's'} en attente sur ${view === 'today' ? 'le plan du jour' : 'toutes les zones'}`,
+              `${remainingList.length} pending surface${remainingList.length === 1 ? '' : 's'} in ${view === 'today' ? 'today’s plan' : 'all areas'}`,
+            )}
           </span>
         </div>
         <div className="haccp-filter-right">
@@ -5415,7 +5678,10 @@ function CleaningChecklistView({
                       <strong className="haccp-equipment-title">{surface.surfaceName}</strong>
                       <span className="haccp-equipment-desc">
                         {surface.zoneName} • {frequencyLabel(surface.frequency ?? 'daily')}
-                        {surface.lastCleaned ? ` • Dernier nettoyage ${new Date(surface.lastCleaned).toLocaleDateString(activeLocale())}` : ''}
+                        {surface.lastCleaned ? haccpCopy(
+                          ` • Dernier nettoyage ${new Date(surface.lastCleaned).toLocaleDateString(activeLocale())}`,
+                          ` • Last cleaned ${new Date(surface.lastCleaned).toLocaleDateString(activeLocale())}`,
+                        ) : ''}
                       </span>
                     </div>
                   </div>
@@ -5469,13 +5735,17 @@ function TemperatureAlertsView({
   const [notificationSettingsOverride, setNotificationSettingsOverride] = useState<HaccpTemperatureAlertData['notificationSettings'] | null>(null);
   const fallbackData = useMemo<HaccpTemperatureAlertData>(() => buildLocalTemperatureAlertData(sensors), [sensors]);
   const current = data ?? fallbackData;
-  const query = searchQuery.trim().toLowerCase();
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const query = deferredSearchQuery.trim().toLowerCase();
   const visibleSensors = current.sensors.filter((sensor) => !query || JSON.stringify(sensor).toLowerCase().includes(query));
   const mostRecent = current.recentReadings.slice(0, 8);
   const notificationSettings = notificationSettingsOverride ?? current.notificationSettings ?? { repeatEnabled: true, repeatIntervalMinutes: 60 };
   const notificationIntervalLabel = notificationSettings.repeatEnabled
-    ? `Rappel toutes les ${formatNotificationInterval(notificationSettings.repeatIntervalMinutes)} tant qu'une alerte reste ouverte`
-    : 'Rappels automatiques désactivés';
+    ? haccpCopy(
+      `Rappel toutes les ${formatNotificationInterval(notificationSettings.repeatIntervalMinutes)} tant qu'une alerte reste ouverte`,
+      `Reminder every ${formatNotificationInterval(notificationSettings.repeatIntervalMinutes)} while an alert remains open`,
+    )
+    : haccpText('Rappels automatiques désactivés');
 
   useEffect(() => {
     setNotificationRepeatEnabled(notificationSettings.repeatEnabled);
@@ -5514,13 +5784,22 @@ function TemperatureAlertsView({
       const activeTokens = Number(result?.activeTokens ?? sent);
       const firstError = Array.isArray(result?.errors) ? result.errors[0] : null;
       setPushTestMessage(sent > 0
-        ? `Push test envoyée (${sent}/${activeTokens} mobile(s)).`
+        ? haccpCopy(
+          `Notification test envoyée (${sent}/${activeTokens} mobile${activeTokens === 1 ? '' : 's'}).`,
+          `Test notification sent (${sent}/${activeTokens} mobile device${activeTokens === 1 ? '' : 's'}).`,
+        )
         : firstError
-          ? `Aucune push envoyée: ${firstError.error}${firstError.message ? ` - ${firstError.message}` : ''}.`
-          : `Aucune push envoyée: ${activeTokens} token mobile actif trouvé.`);
+          ? haccpCopy(
+            `Aucune notification envoyée : ${firstError.error}${firstError.message ? ` - ${firstError.message}` : ''}.`,
+            `No notification sent: ${firstError.error}${firstError.message ? ` - ${firstError.message}` : ''}.`,
+          )
+          : haccpCopy(
+            `Aucune notification envoyée : ${activeTokens} jeton mobile actif trouvé.`,
+            `No notification sent: ${activeTokens} active mobile token found.`,
+          ));
     } catch (error) {
-      console.warn('[HACCP] Test push alerte impossible', error);
-      setPushTestMessage(error instanceof Error ? error.message : 'Test push impossible.');
+      console.warn('[HACCP] Test de notification d’alerte impossible', error);
+      setPushTestMessage(error instanceof Error ? error.message : 'Test de notification impossible.');
     } finally {
       setPushTestingAlertId(null);
     }
@@ -5571,7 +5850,7 @@ function TemperatureAlertsView({
       </div>
 
       <div className="haccp-sensors-kpis">
-        <SensorMetric label="Enceintes suivies" value={current.summary.assignedSensors} detail={`${current.summary.totalSensors} capteur(s)`} tone="ok" />
+        <SensorMetric label="Enceintes suivies" value={current.summary.assignedSensors} detail={haccpQuantity(current.summary.totalSensors, 'capteur', 'capteurs', 'sensor', 'sensors')} tone="ok" />
         <SensorMetric label="Critiques" value={current.summary.critical} detail="Hors plage forte" tone={current.summary.critical > 0 ? 'danger' : 'ok'} />
         <SensorMetric label="À surveiller" value={current.summary.warning} detail="Écart léger" tone={current.summary.warning > 0 ? 'danger' : 'neutral'} />
         <SensorMetric label="Hors ligne" value={current.summary.offlineSensors} detail="Sans relevé récent" tone={current.summary.offlineSensors > 0 ? 'danger' : 'neutral'} />
@@ -5585,7 +5864,10 @@ function TemperatureAlertsView({
       {current.alerts.length ? (
         <div className="alert-modern error" style={{ margin: '1rem 0' }}>
           <AlertTriangle size={17} />
-          {current.alerts.length} alerte(s) température ouverte(s). Les relevés automatiques sont enregistrés dans l’onglet Températures et repris dans les rapports.
+          {haccpCopy(
+            `${current.alerts.length} alerte${current.alerts.length === 1 ? '' : 's'} température ouverte${current.alerts.length === 1 ? '' : 's'}. Les relevés automatiques sont enregistrés dans l’onglet Températures et repris dans les rapports.`,
+            `${current.alerts.length} open temperature alert${current.alerts.length === 1 ? '' : 's'}. Automatic readings are recorded under Temperatures and included in reports.`,
+          )}
         </div>
       ) : (
         <div className="alert-modern success" style={{ margin: '1rem 0' }}>
@@ -5599,11 +5881,11 @@ function TemperatureAlertsView({
           <div className="haccp-list-header">
             <div>
               <span className="card-title">Alertes ouvertes</span>
-              <p className="muted" style={{ margin: '0.25rem 0 0' }}>Utilisez le test push pour vérifier les notifications mobiles sans attendre l’anti-spam automatique.</p>
+              <p className="muted" style={{ margin: '0.25rem 0 0' }}>Utilisez le test de notification pour vérifier les alertes mobiles sans attendre l’anti-spam automatique.</p>
             </div>
           </div>
           {pushTestMessage ? (
-            <div className={`alert-modern ${pushTestMessage.startsWith('Push test envoyée') ? 'success' : 'warning'}`} style={{ margin: '0.75rem 0' }}>
+            <div className={`alert-modern ${pushTestMessage.startsWith('Notification test envoyée') || pushTestMessage.startsWith('Test notification sent') ? 'success' : 'warning'}`} style={{ margin: '0.75rem 0' }}>
               <Bell size={16} />
               {pushTestMessage}
             </div>
@@ -5619,7 +5901,7 @@ function TemperatureAlertsView({
                     <div>
                       <strong className="haccp-equipment-title">{alert.title ?? 'Alerte température'}</strong>
                       <span className="haccp-equipment-desc">
-                        {alert.message ?? 'Alerte capteur ouverte'} • {alert.detectedAt ? new Date(alert.detectedAt).toLocaleString(activeLocale()) : '-'}
+                        {haccpMessage(alert.message ?? 'Alerte capteur ouverte')} • {alert.detectedAt ? new Date(alert.detectedAt).toLocaleString(activeLocale()) : '-'}
                       </span>
                     </div>
                   </div>
@@ -5630,7 +5912,7 @@ function TemperatureAlertsView({
                     onClick={() => void testAlertPush(alert)}
                   >
                     <Smartphone size={14} />
-                    {pushTestingAlertId === String(alert.id) ? 'Envoi...' : 'Tester push'}
+                    {pushTestingAlertId === String(alert.id) ? 'Envoi...' : 'Tester la notification'}
                   </button>
                 </div>
               </div>
@@ -5645,7 +5927,9 @@ function TemperatureAlertsView({
           const threshold = sensor.threshold ?? sensor.temperatureThreshold ?? localTemperatureThreshold(sensor.assignedEquipment);
           const status = sensor.temperatureStatus ?? localTemperatureStatus(temp, threshold);
           const tone = status.status === 'critical' ? '#dc2626' : status.status === 'warning' ? '#d97706' : status.status === 'ok' ? '#059669' : '#64748b';
-          const thresholdLabel = threshold ? `Plage ${threshold.label}: ${threshold.min}°C à ${threshold.max}°C` : 'Seuil non défini';
+          const thresholdLabel = threshold
+            ? haccpCopy(`Plage ${threshold.label} : ${threshold.min}°C à ${threshold.max}°C`, `Range ${threshold.label}: ${threshold.min}°C to ${threshold.max}°C`)
+            : haccpText('Seuil non défini');
           return (
             <div key={sensor.id} className="haccp-equipment-row active" style={{ cursor: 'pointer' }} onClick={() => void openSensorHistory(sensor)}>
               <div className="haccp-equipment-row-main">
@@ -5748,7 +6032,7 @@ function TemperatureAlertsView({
                     <Bell size={18} />
                   </div>
                   <div>
-                    <strong style={{ display: 'block', color: 'var(--text-main)' }}>Rappels push des alertes capteurs</strong>
+                    <strong style={{ display: 'block', color: 'var(--text-main)' }}>Rappels mobiles des alertes capteurs</strong>
                     <span className="muted">Une première notification est envoyée à l’ouverture. Ce réglage définit les rappels tant que l’alerte reste ouverte.</span>
                   </div>
                 </div>
@@ -5850,7 +6134,10 @@ function SensorHistoryModal({
               Historique température capteur
             </h3>
             <p className="muted" style={{ margin: '0.25rem 0 0', fontSize: '0.82rem' }}>
-              {sensorDisplayName(sensor)} • <strong>{sensor.assignedEquipment?.name ?? 'Non affecté'}</strong> • relevés toutes les {intervalMinutes ? `${intervalMinutes} min` : '5 min'} env.
+              {sensorDisplayName(sensor)} • <strong>{sensor.assignedEquipment?.name ?? haccpText('Non affecté')}</strong> • {haccpCopy(
+                `relevés toutes les ${intervalMinutes ? `${intervalMinutes} min` : '5 min'} env.`,
+                `readings approximately every ${intervalMinutes ? `${intervalMinutes} min` : '5 min'}.`,
+              )}
             </p>
           </div>
           <button type="button" className="modal-close-btn-modern" onClick={onClose}>
@@ -6569,11 +6856,12 @@ function SensorsView({
   const [showDiagnosticModal, setShowDiagnosticModal] = useState(false);
   const [showScanModal, setShowScanModal] = useState(false);
 
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const filteredSensors = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
+    const query = deferredSearchQuery.trim().toLowerCase();
     if (!query) return sensors;
     return sensors.filter((sensor) => JSON.stringify(sensor).toLowerCase().includes(query));
-  }, [searchQuery, sensors]);
+  }, [deferredSearchQuery, sensors]);
 
   const activePairing = pairing?.status === 'ACTIVE';
   const selectedName = selectedSensor ? sensorDisplayName(selectedSensor) : '';
@@ -6683,7 +6971,7 @@ function SensorsView({
           </div>
           <span className="haccp-status-pill ok">
             <span className="status-dot" />
-            {pairing?.sensors?.length ?? pairing?.discoveredIds?.length ?? 0} capteur(s) trouvé(s)
+            {haccpQuantity(pairing?.sensors?.length ?? pairing?.discoveredIds?.length ?? 0, 'capteur trouvé', 'capteurs trouvés', 'sensor found', 'sensors found')}
           </span>
         </div>
       ) : null}
@@ -6752,7 +7040,7 @@ function SensorsView({
                         </span>
                       </div>
                       <span className="haccp-equipment-desc">
-                        {sensor.model ?? 'Capteur Sonoff'} • Batterie {sensor.battery == null ? '-' : `${Math.round(Number(sensor.battery))}%`} • Signal {sensor.linkQuality ? `${sensor.linkQuality} LQI` : '-'}
+                        {sensor.model ?? haccpText('Capteur Sonoff')} • {haccpText('Batterie')} {sensor.battery == null ? '-' : `${Math.round(Number(sensor.battery))}%`} • {haccpText('Signal')} {sensor.linkQuality ? `${sensor.linkQuality} LQI` : '-'}
                       </span>
                     </div>
                   </div>
@@ -6986,7 +7274,7 @@ function formatTemperatureTypeLabel(type: string): string {
     sechoir_charcuterie: 'Séchoir charcuterie',
     conservateur_chocolat: 'Conservateur chocolat',
   };
-  return map[type] || type.replace(/_/g, ' ');
+  return haccpText(map[type] || type.replace(/_/g, ' '));
 }
 
 function EditableTemperatureStep({ items, existing, onChange }: { items: TemperatureTemplate[]; existing: HaccpItem[]; onChange: (items: TemperatureTemplate[]) => void }) {
@@ -7042,7 +7330,7 @@ function EditableTemperatureStep({ items, existing, onChange }: { items: Tempera
         icon={<Thermometer size={22} />}
         title="Équipements de température"
         text="Ajoutez vos enceintes et personnalisez leurs noms (ex: CF Cuisine, Frigo Pâtisserie, Frigo Bar...)"
-        badge={`${selectedItems.length} enceinte(s) configurée(s)`}
+        badge={haccpQuantity(selectedItems.length, 'enceinte configurée', 'enceintes configurées', 'configured unit', 'configured units')}
       />
       <div className="haccp-equipment-list">
         {DEFAULT_TEMPERATURE_CATEGORIES.map((category) => {
@@ -7079,7 +7367,7 @@ function EditableTemperatureStep({ items, existing, onChange }: { items: Tempera
                     </button>
                   ) : (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span className="haccp-count-pill">{qty} configurée(s)</span>
+                      <span className="haccp-count-pill">{haccpQuantity(qty, 'configurée', 'configurées', 'configured', 'configured')}</span>
                       <button
                         type="button"
                         className="haccp-add-category-btn active"
@@ -7246,9 +7534,9 @@ function EditableProcessStep({ items, existing, onChange }: { items: ProcessTemp
     <div className="haccp-onboarding-step">
       <StepIntro
         icon={<Snowflake size={22} />}
-        title="Process HACCP"
+        title="Procédés HACCP"
         text="Ajoutez vos équipements de cuisson, refroidissement et congélation (ex: Four Pâtisserie, Cellule 1...)"
-        badge={`${selectedItems.length} équipement(s) configuré(s)`}
+        badge={haccpQuantity(selectedItems.length, 'équipement configuré', 'équipements configurés', 'configured unit', 'configured units')}
       />
       <div className="haccp-equipment-list">
         {DEFAULT_PROCESS_CATEGORIES.map((category) => {
@@ -7285,7 +7573,7 @@ function EditableProcessStep({ items, existing, onChange }: { items: ProcessTemp
                     </button>
                   ) : (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span className="haccp-count-pill">{qty} configuré(s)</span>
+                      <span className="haccp-count-pill">{haccpQuantity(qty, 'configuré', 'configurés', 'configured', 'configured')}</span>
                       <button
                         type="button"
                         className="haccp-add-category-btn active"
@@ -7347,19 +7635,19 @@ function EditableProcessStep({ items, existing, onChange }: { items: ProcessTemp
           className="haccp-add-custom-main-btn"
           onClick={() => setShowCustomForm(true)}
         >
-          <Plus size={16} /> Créer un équipement de process sur mesure
+          <Plus size={16} /> Créer un équipement de procédé sur mesure
         </button>
       ) : (
         <div className="haccp-custom-form-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong style={{ fontSize: '0.92rem', color: '#0f172a', fontWeight: 800 }}>
-              Nouveau matériel de process sur mesure
+              Nouvel équipement de procédé sur mesure
             </strong>
             <button type="button" className="haccp-instance-delete-btn" onClick={() => setShowCustomForm(false)}><X size={16} /></button>
           </div>
           <div className="haccp-custom-form-grid">
             <div className="haccp-custom-field">
-              <label>Nom du matériel / process</label>
+              <label>Nom de l’équipement</label>
               <input
                 type="text"
                 placeholder="Ex: Salamandre 1, Friteuse double..."
@@ -7368,9 +7656,9 @@ function EditableProcessStep({ items, existing, onChange }: { items: ProcessTemp
               />
             </div>
             <div className="haccp-custom-field">
-              <label>Type de process</label>
+              <label>Type de procédé</label>
               <select value={customProcessType} onChange={(e) => setCustomProcessType(e.target.value as any)}>
-                <option value="rechauffement">Maintien chaud / Rechauffement</option>
+                <option value="rechauffement">Maintien chaud / Réchauffement</option>
                 <option value="refroidissement">Refroidissement rapide</option>
                 <option value="congelation">Congélation rapide</option>
               </select>
@@ -7397,7 +7685,7 @@ function EditableProcessStep({ items, existing, onChange }: { items: ProcessTemp
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem', marginTop: '0.4rem' }}>
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowCustomForm(false)}>Annuler</button>
             <button type="button" className="btn btn-primary btn-sm" onClick={handleAddCustom} disabled={!customName.trim()}>
-              <Plus size={14} /> Ajouter ce process
+              <Plus size={14} /> Ajouter ce procédé
             </button>
           </div>
         </div>
@@ -7467,7 +7755,7 @@ function EditableCleaningStep({ items, existing, onChange }: { items: CleaningTe
         icon={<ShieldCheck size={22} />}
         title="Zones et surfaces de nettoyage"
         text="Activez les zones de votre établissement, personnalisez les surfaces à contrôler et ajustez leurs fréquences."
-        badge={`${selectedCount} zone(s) configurée(s)`}
+        badge={haccpQuantity(selectedCount, 'zone configurée', 'zones configurées', 'configured area', 'configured areas')}
       />
       <div className="haccp-equipment-list">
         {items.map((item, zoneIndex) => {
@@ -7484,7 +7772,7 @@ function EditableCleaningStep({ items, existing, onChange }: { items: CleaningTe
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
                       <strong className="haccp-equipment-title">{item.name}</strong>
-                      <span className="haccp-spec-pill range">{item.surfaces.length} surface(s)</span>
+                      <span className="haccp-spec-pill range">{haccpQuantity(item.surfaces.length, 'surface', 'surfaces', 'surface', 'surfaces')}</span>
                     </div>
                     <span className="haccp-equipment-desc">{item.description}</span>
                   </div>
@@ -7732,20 +8020,20 @@ function HaccpOnboardingReview({
         text="Validez la configuration. Les doublons sont ignorés automatiquement par nom."
       />
       <div className="haccp-review-grid">
-        <ReviewCard title="Températures" value={selectedTemperatures.length} detail={`${existing.temperatureEquipment.length} équipement(s) existant(s)`} />
-        <ReviewCard title="Process" value={selectedProcesses.length} detail={`${existing.processEquipment.length} équipement(s) existant(s)`} />
-        <ReviewCard title="Nettoyage" value={selectedZones.length} detail={`${existing.cleaningZones.length} zone(s) existante(s)`} />
+        <ReviewCard title="Températures" value={selectedTemperatures.length} detail={haccpQuantity(existing.temperatureEquipment.length, 'équipement existant', 'équipements existants', 'existing unit', 'existing units')} />
+        <ReviewCard title="Procédés" value={selectedProcesses.length} detail={haccpQuantity(existing.processEquipment.length, 'équipement existant', 'équipements existants', 'existing unit', 'existing units')} />
+        <ReviewCard title="Nettoyage" value={selectedZones.length} detail={haccpQuantity(existing.cleaningZones.length, 'zone existante', 'zones existantes', 'existing area', 'existing areas')} />
         <ReviewCard title="À créer" value={expectedCreates} detail="hors éléments déjà présents" />
       </div>
       <div className="haccp-mobile-note">
         <Smartphone size={18} />
-        <p>Après cette préparation dans ToqueHub main, les équipes réalisent les contrôles quotidiens HACCP depuis l’application ToqueHub : relevés, nettoyage, traçabilité et rapports.</p>
+        <p>Après cette préparation dans ToqueHub principal, les équipes réalisent les contrôles quotidiens HACCP depuis l’application ToqueHub : relevés, nettoyage, traçabilité et rapports.</p>
       </div>
       {error ? <div className="alert error"><AlertCircle size={16} /> {error}</div> : null}
       {summary ? (
         <div className="haccp-onboarding-result">
-          <div><strong>{summary.created.length}</strong><span>élément(s) créé(s)</span></div>
-          <div><strong>{summary.skipped.length}</strong><span>déjà présent(s)</span></div>
+          <div><strong>{summary.created.length}</strong><span>{haccpCopy(summary.created.length === 1 ? 'élément créé' : 'éléments créés', summary.created.length === 1 ? 'item created' : 'items created')}</span></div>
+          <div><strong>{summary.skipped.length}</strong><span>{haccpCopy(summary.skipped.length === 1 ? 'déjà présent' : 'déjà présents', 'already present')}</span></div>
           {summary.created.length ? <p>Créés : {summary.created.join(', ')}</p> : null}
           {summary.skipped.length ? <p>Ignorés : {summary.skipped.join(', ')}</p> : null}
         </div>
@@ -7847,7 +8135,7 @@ function ControlRow({ module }: { module: HaccpDashboard['modules'][number] }) {
   const badgeClass = !hasExpectedControls ? 'neutral' : status === 'Conforme' ? 'ok' : status === 'À vérifier' ? 'warning' : 'danger';
   return (
     <tr>
-      <td><strong>{module.label}</strong><small>{module.description}</small></td>
+      <td><strong>{haccpText(module.label)}</strong><small>{haccpText(module.description)}</small></td>
       <td>Contrôle HACCP</td>
       <td><span className={`haccp-score-pill ${badgeClass}`}>{hasExpectedControls ? `${module.score}%` : '-'}</span></td>
       <td>
@@ -7888,7 +8176,7 @@ function HaccpConfigForm({
     return (
       <div className="haccp-form-grid">
         <TextInput className="full-width" label="Nom du matériel" value={form.name} onChange={(value) => setField('name', value)} required placeholder="Ex : Four mixte production" />
-        <SelectInput label="Type de process" value={form.type} onChange={(value) => setField('type', value)} options={PROCESS_TYPES.map((type) => ({ value: type.id, label: type.label }))} />
+        <SelectInput label="Type de procédé" value={form.type} onChange={(value) => setField('type', value)} options={PROCESS_TYPES.map((type) => ({ value: type.id, label: type.label }))} />
       </div>
     );
   }
@@ -7968,7 +8256,7 @@ function FormFields({ section, form, setField, products, temperatureEquipment, p
   if (section === 'process') return (
     <div className="haccp-form-grid">
       <SelectInput className="full-width" label="Produit HACCP" value={form.productId} onChange={(value) => setField('productId', value)} options={products.map((item) => ({ value: item._id ?? item.id, label: item.name ?? 'Produit' }))} />
-      <SelectInput className="full-width" label={`Équipement ${processType}`} value={form.equipmentId} onChange={(value) => setField('equipmentId', value)} options={processEquipment.filter((item) => item.type === processType || item.type === 'mixte').map((item) => ({ value: item._id ?? item.id, label: item.name ?? 'Équipement' }))} />
+      <SelectInput className="full-width" label={`Équipement — ${processLabel(processType)}`} value={form.equipmentId} onChange={(value) => setField('equipmentId', value)} options={processEquipment.filter((item) => item.type === processType || item.type === 'mixte').map((item) => ({ value: item._id ?? item.id, label: item.name ?? 'Équipement' }))} />
       <TextInput label="Température départ" value={form.startTemperature} onChange={(value) => setField('startTemperature', value)} type="number" required />
       <TextInput label="Température fin" value={form.endTemperature} onChange={(value) => setField('endTemperature', value)} type="number" />
     </div>
@@ -8028,7 +8316,7 @@ function LabelsView({ products, onCreate }: { products: HaccpItem[]; onCreate: (
               <span className="haccp-label-title">{product.name}</span>
               <span className="haccp-label-subtitle">{product.type}</span>
             </div>
-            <span className="haccp-label-days">DLC : {product.dlcDays ?? '-'} jours</span>
+            <span className="haccp-label-days">{haccpCopy(`DLC : ${product.dlcDays ?? '-'} jours`, `Shelf life: ${product.dlcDays ?? '-'} days`)}</span>
             <div className="haccp-label-footer">
               <button type="button" className="btn btn-secondary" onClick={() => window.print()}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
@@ -8164,15 +8452,15 @@ function countMissingOnboardingItems(temperatures: TemperatureTemplate[], proces
 }
 
 function haccpStepLabel(step: HaccpOnboardingStep) {
-  return ({ welcome: 'Bienvenue', temperatures: 'Températures', process: 'Process', cleaning: 'Nettoyage', review: 'Résumé' } as Record<HaccpOnboardingStep, string>)[step];
+  return haccpText(({ welcome: 'Bienvenue', temperatures: 'Températures', process: 'Procédés', cleaning: 'Nettoyage', sensors: 'Capteurs', review: 'Résumé' } as Record<HaccpOnboardingStep, string>)[step]);
 }
 
 function processLabel(type: string) {
-  return PROCESS_TYPES.find((item) => item.id === type)?.label ?? type;
+  return haccpText(PROCESS_TYPES.find((item) => item.id === type)?.label ?? type);
 }
 
 function frequencyLabel(value: string) {
-  return FREQUENCY_OPTIONS.find((item) => item.value === value)?.label ?? value ?? '-';
+  return haccpText(FREQUENCY_OPTIONS.find((item) => item.value === value)?.label ?? value ?? '-');
 }
 
 function temperatureTypeOptions() {
@@ -8187,15 +8475,15 @@ function temperatureTypeOptions() {
 }
 
 function configModalTitle(kind: HaccpConfigKind) {
-  return ({
+  return haccpText(({
     temperature: 'Créer un matériel température',
-    process: 'Créer un matériel process',
+    process: 'Créer un équipement de procédé',
     cleaning: 'Créer une zone de nettoyage',
-  } as Record<HaccpConfigKind, string>)[kind];
+  } as Record<HaccpConfigKind, string>)[kind]);
 }
 
 function labelFor(section: HaccpTab) {
-  return ({ sensors: 'Capteurs', alerts: 'Alertes', temperatures: 'Températures', setup: 'Zones & matériels', cleaning: 'Nettoyage', traceability: 'Traçabilité', receptions: 'Réceptions', process: 'Processus', oil: 'Huiles', production: 'Production', products: 'Produits', labels: 'Étiquettes', reports: 'Rapports', dashboard: 'Tableau de bord' } as Record<HaccpTab, string>)[section];
+  return haccpText(({ sensors: 'Capteurs', alerts: 'Alertes', temperatures: 'Températures', setup: 'Zones & matériels', cleaning: 'Nettoyage', traceability: 'Traçabilité', receptions: 'Réceptions', process: 'Procédés', oil: 'Huiles', production: 'Production', products: 'Produits', labels: 'Étiquettes', reports: 'Rapports', dashboard: 'Tableau de bord' } as Record<HaccpTab, string>)[section]);
 }
 
 function columnsFor(section: HaccpTab) {
@@ -8216,12 +8504,100 @@ function columnsFor(section: HaccpTab) {
 
 function headerFor(column: string) {
   const labels: Record<string, string> = {
-    source: 'Origine', plannedQuantity: 'Prévue', quantity: 'Réalisée', lostQuantity: 'Pertes',
-    conservationState: 'Conservation', expiresAt: 'DLC', 'operator.name': 'Opérateur',
-    'finishedProduct.name': 'Produit fini', lotNumber: 'Lot', productionDate: 'Production', status: 'Statut', unit: 'Unité',
+    name: 'Nom',
+    type: 'Type',
+    description: 'Description',
+    'equipment.name': 'Équipement',
+    'equipment.type': 'Type d’équipement',
+    temperature: 'Température',
+    date: 'Date',
+    notes: 'Notes',
+    'surfaces.length': 'Surfaces',
+    updatedAt: 'Mise à jour',
+    productName: 'Produit',
+    'product.name': 'Produit',
+    supplier: 'Fournisseur',
+    lotNumber: 'Lot',
+    barcode: 'Code-barres',
+    quantity: 'Réalisée',
+    startTemperature: 'Température départ',
+    endTemperature: 'Température fin',
+    status: 'Statut',
+    sessionDate: 'Date',
+    testMethod: 'Méthode',
+    action: 'Action',
+    source: 'Origine',
+    plannedQuantity: 'Prévue',
+    lostQuantity: 'Pertes',
+    conservationState: 'Conservation',
+    expiresAt: 'DLC',
+    'operator.name': 'Opérateur',
+    'finishedProduct.name': 'Produit fini',
+    productionDate: 'Production',
+    unit: 'Unité',
+    dlcDays: 'DLC jours',
+    reportDate: 'Date du rapport',
+    generatedAt: 'Généré le',
+    createdAt: 'Créé le',
+    'sensor.assignedEquipment.name': 'Équipement',
+    'sensor.userName': 'Capteur',
+    humidity: 'Humidité',
+    measuredAt: 'Mesuré le',
   };
-  if (labels[column]) return labels[column];
-  return column.split('.').at(-1)?.replace(/([A-Z])/g, ' $1').replace(/^./, (value) => value.toUpperCase()) ?? column;
+  const label = labels[column] ?? column.split('.').at(-1)?.replace(/([A-Z])/g, ' $1').replace(/^./, (value) => value.toUpperCase()) ?? column;
+  return haccpText(label);
+}
+
+const HACCP_VALUE_LABELS: Readonly<Record<string, string>> = {
+  active: 'Actif',
+  ACTIVE: 'Actif',
+  completed: 'Terminé',
+  COMPLETED: 'Terminé',
+  pending: 'En attente',
+  PENDING: 'En attente',
+  en_cours: 'En cours',
+  termine: 'Terminé',
+  annule: 'Annulé',
+  OPEN: 'Ouverte',
+  ACKNOWLEDGED: 'Prise en compte',
+  RESOLVED: 'Résolue',
+  ONLINE: 'En ligne',
+  OFFLINE: 'Hors ligne',
+  UNKNOWN: 'Inconnu',
+  planning: 'Planning',
+  manual: 'Manuel',
+  AMBIENT: 'Ambiant',
+  CHILLED: 'Réfrigéré',
+  FROZEN: 'Congelé',
+  COOLING: 'Refroidissement',
+  refroidissement: 'Refroidissement',
+  congelation: 'Congélation',
+  rechauffement: 'Remise en température',
+  daily: 'Quotidien',
+  weekly: 'Hebdomadaire',
+  monthly: 'Mensuel',
+  yearly: 'Annuel',
+  enceinte_positive: 'Enceinte positive',
+  enceinte_negative: 'Enceinte négative',
+  chambre_froide: 'Chambre froide',
+  congelateur: 'Congélateur',
+  vitrine_froide: 'Vitrine froide',
+  preparation: 'Préparation',
+  produit_fini: 'Produit fini',
+  controle_ok: 'Contrôle conforme',
+  filtration: 'Huile filtrée',
+  changement_huile: 'Huile remplacée',
+  bandelette: 'Bandelette',
+  testeur_numerique: 'Testeur numérique',
+};
+
+function formatHaccpValue(value: unknown): string | number | null {
+  if (value == null) return null;
+  if (typeof value === 'number') return value;
+  if (typeof value === 'boolean') return haccpText(value ? 'Oui' : 'Non');
+  if (typeof value !== 'string') return String(value);
+  const label = HACCP_VALUE_LABELS[value];
+  return label ? haccpText(label) : value;
 }
 
 function formatCell(row: HaccpItem, column: string, section?: HaccpTab) {
@@ -8232,15 +8608,15 @@ function formatCell(row: HaccpItem, column: string, section?: HaccpTab) {
   }
   if (column === 'temperature' || column.includes('Temperature')) return value != null ? `${Number(value)}°C` : '-';
   if (column.toLowerCase().includes('date') || column.endsWith('At')) return value ? new Date(value).toLocaleString(activeLocale()) : '-';
-  if (section === 'reports' && column === 'status') return value === 'completed' ? 'Terminé' : value ?? '-';
-  if (section === 'production' && column === 'source') return <span className={`badge-pill ${value === 'planning' ? 'badge-purple' : 'badge-emerald'}`}>{value === 'planning' ? 'Planning' : 'Manuel'}</span>;
+  if (section === 'reports' && column === 'status') return value ? formatHaccpValue(value) : '-';
+  if (section === 'production' && column === 'source') return <span className={`badge-pill ${value === 'planning' ? 'badge-purple' : 'badge-emerald'}`}>{formatHaccpValue(value ?? 'manual')}</span>;
   if (section === 'production' && column === 'status') {
-    const statusLabel = ({ en_cours: 'En cours', termine: 'Terminée', annule: 'Annulée' } as Record<string, string>)[String(value)] ?? value ?? '-';
+    const statusLabel = formatHaccpValue(value) ?? '-';
     return <span className={`badge-pill ${value === 'termine' ? 'badge-emerald' : value === 'annule' ? 'badge-red' : 'badge-blue'}`}>{statusLabel}</span>;
   }
-  if (section === 'production' && column === 'conservationState') return ({ AMBIENT: 'Ambiant', CHILLED: 'Réfrigéré', FROZEN: 'Congelé', COOLING: 'Refroidissement' } as Record<string, string>)[String(value)] ?? value ?? '-';
+  if (section === 'production' && column === 'conservationState') return formatHaccpValue(value) ?? '-';
   if (typeof value === 'number') return value.toLocaleString(activeLocale());
-  return value ?? '-';
+  return formatHaccpValue(value) ?? '-';
 }
 
 function buildLocalTemperatureAlertData(sensors: HaccpSensor[]): HaccpTemperatureAlertData {
@@ -8259,8 +8635,11 @@ function buildLocalTemperatureAlertData(sensors: HaccpSensor[]): HaccpTemperatur
         type: 'TEMPERATURE_OUT_OF_RANGE',
         severity: sensor.temperatureStatus.status === 'critical' ? 'CRITICAL' : 'WARNING',
         status: 'OPEN',
-        title: sensor.temperatureStatus.status === 'critical' ? 'Température critique' : 'Température à surveiller',
-        message: `${sensor.assignedEquipment?.name ?? sensorDisplayName(sensor)}: ${temperature == null ? '-' : `${temperature.toFixed(1)}°C`} hors plage ${sensor.threshold?.min}°C / ${sensor.threshold?.max}°C`,
+        title: haccpText(sensor.temperatureStatus.status === 'critical' ? 'Température critique' : 'Température à surveiller'),
+        message: haccpCopy(
+          `${sensor.assignedEquipment?.name ?? sensorDisplayName(sensor)} : ${temperature == null ? '-' : `${temperature.toFixed(1)}°C`} hors plage ${sensor.threshold?.min}°C / ${sensor.threshold?.max}°C`,
+          `${sensor.assignedEquipment?.name ?? sensorDisplayName(sensor)}: ${temperature == null ? '-' : `${temperature.toFixed(1)}°C`} outside range ${sensor.threshold?.min}°C / ${sensor.threshold?.max}°C`,
+        ),
         detectedAt,
         sensor,
         payload: {
@@ -8277,8 +8656,11 @@ function buildLocalTemperatureAlertData(sensors: HaccpSensor[]): HaccpTemperatur
         type: 'SENSOR_OFFLINE',
         severity: 'WARNING',
         status: 'OPEN',
-        title: 'Capteur hors ligne',
-        message: `${sensorDisplayName(sensor)} ne remonte plus de relevé depuis ${sensor.lastSeenAt ? new Date(sensor.lastSeenAt).toLocaleString(activeLocale()) : 'un moment'}.`,
+        title: haccpText('Capteur hors ligne'),
+        message: haccpCopy(
+          `${sensorDisplayName(sensor)} ne remonte plus de relevé depuis ${sensor.lastSeenAt ? new Date(sensor.lastSeenAt).toLocaleString(activeLocale()) : 'un moment'}.`,
+          `${sensorDisplayName(sensor)} has not reported a reading since ${sensor.lastSeenAt ? new Date(sensor.lastSeenAt).toLocaleString(activeLocale()) : 'some time ago'}.`,
+        ),
         detectedAt,
         sensor,
         payload: { lastSeenAt: sensor.lastSeenAt ?? null },
@@ -8314,7 +8696,9 @@ function buildLocalTemperatureAlertData(sensors: HaccpSensor[]): HaccpTemperatur
 function formatNotificationInterval(minutes: number) {
   if (minutes >= 60 && minutes % 60 === 0) {
     const hours = minutes / 60;
-    return `${hours} heure${hours > 1 ? 's' : ''}`;
+    return activeLanguage() === 'en'
+      ? `${hours} hour${hours > 1 ? 's' : ''}`
+      : `${hours} heure${hours > 1 ? 's' : ''}`;
   }
   return `${minutes} minute${minutes > 1 ? 's' : ''}`;
 }
@@ -8323,21 +8707,21 @@ function localTemperatureThreshold(equipment?: { name?: string | null; temperatu
   const min = equipment?.temperatureRange?.min;
   const max = equipment?.temperatureRange?.max;
   if (min == null || max == null || min >= max) return null;
-  return { min, max, label: equipment?.name ? `Équipement ${equipment.name}` : 'Équipement lié' };
+  return { min, max, label: equipment?.name ? `${haccpText('Équipement')} ${equipment.name}` : haccpText('Équipement lié') };
 }
 
 function localTemperatureStatus(temperature: number | null, threshold?: { min: number; max: number } | null) {
-  if (!threshold) return { status: 'unknown', label: 'Seuil non défini', delta: null };
-  if (temperature == null) return { status: 'unknown', label: 'Sans relevé', delta: null };
+  if (!threshold) return { status: 'unknown', label: haccpText('Seuil non défini'), delta: null };
+  if (temperature == null) return { status: 'unknown', label: haccpText('Sans relevé'), delta: null };
   if (temperature < threshold.min) {
     const delta = threshold.min - temperature;
-    return { status: delta >= 3 ? 'critical' : 'warning', label: 'Trop froid', delta };
+    return { status: delta >= 3 ? 'critical' : 'warning', label: haccpText('Trop froid'), delta };
   }
   if (temperature > threshold.max) {
     const delta = temperature - threshold.max;
-    return { status: delta >= 3 ? 'critical' : 'warning', label: 'Trop chaud', delta };
+    return { status: delta >= 3 ? 'critical' : 'warning', label: haccpText('Trop chaud'), delta };
   }
-  return { status: 'ok', label: 'Conforme', delta: 0 };
+  return { status: 'ok', label: haccpText('Conforme'), delta: 0 };
 }
 
 function upsertSensor(items: HaccpSensor[], sensor: HaccpSensor) {
@@ -8356,9 +8740,9 @@ function sensorDisplayName(sensor: HaccpSensor) {
 }
 
 function sensorStatusLabel(status: string) {
-  if (status === 'ONLINE') return 'En ligne';
-  if (status === 'OFFLINE') return 'Hors ligne';
-  return 'Inconnu';
+  if (status === 'ONLINE') return haccpText('En ligne');
+  if (status === 'OFFLINE') return haccpText('Hors ligne');
+  return haccpText('Inconnu');
 }
 
 function sensorStatusClass(status: string) {
@@ -8368,17 +8752,17 @@ function sensorStatusClass(status: string) {
 }
 
 function sensorGlobalStatus(status: string) {
-  if (status === 'ok') return 'Parc nominal';
-  if (status === 'warning') return 'Attention requise';
-  return 'À initialiser';
+  if (status === 'ok') return haccpText('Parc nominal');
+  if (status === 'warning') return haccpText('Attention requise');
+  return haccpText('À initialiser');
 }
 
 function sensorGatewayLabel(status?: string) {
-  if (status === 'ready') return 'Prête';
-  if (status === 'missing_serial') return 'Clé absente';
-  if (status === 'mqtt_disconnected') return 'MQTT indisponible';
-  if (status === 'not_configured') return 'Non configurée';
-  return 'Diagnostic en cours';
+  if (status === 'ready') return haccpText('Prête');
+  if (status === 'missing_serial') return haccpText('Clé absente');
+  if (status === 'mqtt_disconnected') return haccpText('MQTT indisponible');
+  if (status === 'not_configured') return haccpText('Non configurée');
+  return haccpText('Diagnostic en cours');
 }
 
 function sensorGatewayTone(status?: string) {
@@ -8388,12 +8772,16 @@ function sensorGatewayTone(status?: string) {
 }
 
 function sensorGatewayMessage(status: HaccpSensorGatewayStatus | null) {
-  if (!status) return 'Statut passerelle indisponible.';
-  if (status.status === 'ready') return 'MQTT, Zigbee2MQTT et coordinateur Zigbee sont prêts.';
-  if (status.status === 'missing_serial') return 'Le broker MQTT répond, mais aucun coordinateur Zigbee USB n’est visible.';
-  if (status.status === 'mqtt_disconnected') return status.mqtt.lastError ? `Broker MQTT inaccessible: ${status.mqtt.lastError}` : 'Broker MQTT inaccessible.';
-  if (status.status === 'not_configured') return status.mqtt.url ? 'MQTT est configuré, mais la passerelle n’a pas encore établi la connexion.' : 'MQTT_URL n’est pas configuré côté API.';
-  return 'Diagnostic passerelle à vérifier.';
+  if (!status) return haccpText('Statut passerelle indisponible.');
+  if (status.status === 'ready') return haccpText('MQTT, Zigbee2MQTT et coordinateur Zigbee sont prêts.');
+  if (status.status === 'missing_serial') return haccpText('Le broker MQTT répond, mais aucun coordinateur Zigbee USB n’est visible.');
+  if (status.status === 'mqtt_disconnected') return status.mqtt.lastError
+    ? `${haccpText('Broker MQTT inaccessible :')} ${status.mqtt.lastError}`
+    : haccpText('Broker MQTT inaccessible.');
+  if (status.status === 'not_configured') return status.mqtt.url
+    ? haccpText('MQTT est configuré, mais la passerelle n’a pas encore établi la connexion.')
+    : haccpText('MQTT_URL n’est pas configuré côté API.');
+  return haccpText('Diagnostic passerelle à vérifier.');
 }
 
 function sensorGatewayBlockingMessage(status: HaccpSensorGatewayStatus) {

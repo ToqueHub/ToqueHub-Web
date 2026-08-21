@@ -483,31 +483,54 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
       traceability,
       receptions,
       production,
-      refroidissement,
-      congelation,
-      rechauffement,
+      processSessions,
       oilEquipment,
       oil,
       products,
       reports,
     ] = await Promise.all([
-      this.prisma.haccpTemperatureEquipment.findMany({ where: { organizationId, isActive: true, deletedAt: null } }),
-      this.prisma.haccpTemperatureReading.findMany({ where: { organizationId, deletedAt: null, date: { gte: start, lt: end } }, include: { equipment: true }, orderBy: { date: 'desc' } }),
+      this.prisma.haccpTemperatureEquipment.findMany({ where: { organizationId, isActive: true, deletedAt: null }, select: { id: true } }),
+      this.prisma.haccpTemperatureReading.findMany({
+        where: { organizationId, deletedAt: null, date: { gte: start, lt: end } },
+        select: { id: true, equipmentId: true, temperature: true, date: true, equipment: { select: { name: true } } },
+        orderBy: { date: 'desc' },
+      }),
       this.todayCleaningSurfaces(organizationId).then((response) => response.data ?? []),
       this.prisma.haccpCleaningSession.findMany({ where: { organizationId, deletedAt: null, sessionDate: { gte: start, lt: end } }, include: { cleanedSurfaces: true }, orderBy: { sessionDate: 'desc' } }),
-      this.prisma.haccpTraceability.findMany({ where: { organizationId, deletedAt: null, date: { gte: start, lt: end } }, orderBy: { date: 'desc' } }),
-      this.prisma.haccpReception.findMany({ where: { organizationId, deletedAt: null, date: { gte: start, lt: end } }, orderBy: { date: 'desc' } }),
-      this.prisma.haccpProductionSession.findMany({ where: { organizationId, deletedAt: null, productionDate: { gte: start, lt: end } }, include: { finishedProduct: true }, orderBy: { productionDate: 'desc' } }),
-      this.prisma.haccpProcessSession.findMany({ where: { organizationId, deletedAt: null, type: 'refroidissement', sessionDate: { gte: start, lt: end } }, include: { product: true, equipment: true }, orderBy: { sessionDate: 'desc' } }),
-      this.prisma.haccpProcessSession.findMany({ where: { organizationId, deletedAt: null, type: 'congelation', sessionDate: { gte: start, lt: end } }, include: { product: true, equipment: true }, orderBy: { sessionDate: 'desc' } }),
-      this.prisma.haccpProcessSession.findMany({ where: { organizationId, deletedAt: null, type: 'rechauffement', sessionDate: { gte: start, lt: end } }, include: { product: true, equipment: true }, orderBy: { sessionDate: 'desc' } }),
-      this.prisma.haccpOilEquipment.findMany({ where: { organizationId, isActive: true, deletedAt: null } }),
-      this.prisma.haccpOilSession.findMany({ where: { organizationId, deletedAt: null, sessionDate: { gte: start, lt: end } }, include: { equipment: true }, orderBy: { sessionDate: 'desc' } }),
+      this.prisma.haccpTraceability.findMany({
+        where: { organizationId, deletedAt: null, date: { gte: start, lt: end } },
+        select: { id: true, photo: true, lotNumber: true, productName: true, date: true },
+        orderBy: { date: 'desc' },
+      }),
+      this.prisma.haccpReception.findMany({
+        where: { organizationId, deletedAt: null, date: { gte: start, lt: end } },
+        select: { id: true, temperature: true, supplier: true, productName: true, date: true },
+        orderBy: { date: 'desc' },
+      }),
+      this.prisma.haccpProductionSession.findMany({
+        where: { organizationId, deletedAt: null, productionDate: { gte: start, lt: end } },
+        select: { id: true, status: true, productionDate: true, lotNumber: true, finishedProduct: { select: { name: true } } },
+        orderBy: { productionDate: 'desc' },
+      }),
+      this.prisma.haccpProcessSession.findMany({
+        where: { organizationId, deletedAt: null, type: { in: ['refroidissement', 'congelation', 'rechauffement'] }, sessionDate: { gte: start, lt: end } },
+        select: { id: true, type: true, status: true, endTime: true, endTemperature: true, sessionDate: true, product: { select: { name: true } } },
+        orderBy: { sessionDate: 'desc' },
+      }),
+      this.prisma.haccpOilEquipment.findMany({ where: { organizationId, isActive: true, deletedAt: null }, select: { id: true } }),
+      this.prisma.haccpOilSession.findMany({
+        where: { organizationId, deletedAt: null, sessionDate: { gte: start, lt: end } },
+        select: { id: true, equipmentId: true, action: true, sessionDate: true, equipment: { select: { name: true } } },
+        orderBy: { sessionDate: 'desc' },
+      }),
       this.prisma.haccpProduct.findMany({ where: { organizationId, isActive: true, deletedAt: null }, orderBy: { name: 'asc' }, take: 8 }),
-      this.prisma.haccpDailyReport.findMany({ where: { organizationId, deletedAt: null, reportDate: { gte: historyStart, lt: end } }, orderBy: { reportDate: 'asc' } }),
+      this.prisma.haccpDailyReport.findMany({
+        where: { organizationId, deletedAt: null, reportDate: { gte: historyStart, lt: end } },
+        select: { id: true, reportDate: true, summary: true, status: true },
+        orderBy: { reportDate: 'asc' },
+      }),
     ]);
 
-    const processSessions = [...refroidissement, ...congelation, ...rechauffement];
     const cleanedSurfaceIds = new Set(cleaningToday.flatMap((session) => (session.cleanedSurfaces ?? []).map((surface) => surface.surfaceId)));
     const completedProcess = processSessions.filter((session) => session.status === 'termine' && session.endTime && session.endTemperature != null).length;
     const completedProduction = production.filter((item) => item.status === 'termine').length;

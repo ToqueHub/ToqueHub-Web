@@ -1,0 +1,1671 @@
+/* ==========================================================================
+   HACCP — harmonisation avec les modules ToqueHub
+   ========================================================================== */
+
+.haccp-shell {
+  --haccp-surface: #ffffff;
+  --haccp-subtle: #f8fafc;
+  --haccp-border: rgba(226, 232, 240, 0.92);
+  width: 100%;
+  max-width: 1480px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.haccp-hero {
+  min-height: 220px;
+  margin: 0;
+  padding: 2.35rem 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+}
+
+.haccp-hero > div:first-child,
+.haccp-hero-actions {
+  position: relative;
+  z-index: 1;
+}
+
+.haccp-hero .welcome-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.7rem;
+  letter-spacing: 0.08em;
+}
+
+.haccp-hero .welcome-title {
+  margin: 0 0 0.5rem;
+  font-size: clamp(1.8rem, 3vw, 2.35rem);
+}
+
+.haccp-hero .welcome-desc {
+  max-width: 720px;
+  margin: 0;
+  font-size: 1rem;
+}
+
+.haccp-hero-summary {
+  display: flex;
+  align-items: stretch;
+  gap: 0.65rem;
+  margin-top: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.haccp-hero-summary > span {
+  min-width: 145px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.065);
+  backdrop-filter: blur(10px);
+}
+
+.haccp-hero-summary strong {
+  color: #f8fafc;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.haccp-hero-summary small {
+  color: #94a3b8;
+  font-size: 0.68rem;
+  font-weight: 650;
+}
+
+.haccp-hero-summary > span.success strong {
+  color: #6ee7b7;
+}
+
+.haccp-hero-summary > span.warning strong {
+  color: #fcd34d;
+}
+
+.haccp-hero-summary > span.danger strong {
+  color: #fda4af;
+}
+
+.haccp-hero-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.haccp-hero .haccp-hero-guide {
+  color: #f8fafc;
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.065);
+}
+
+.haccp-hero .haccp-hero-guide:hover:not(:disabled) {
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.haccp-shell .haccp-tabs.haccp-module-nav {
+  position: relative;
+  top: auto;
+  z-index: 2;
+  width: fit-content;
+  max-width: 100%;
+  margin: -0.25rem 0 0;
+  padding: 0.35rem;
+  gap: 0.35rem;
+  overflow-x: auto;
+  border: 1px solid var(--light-border);
+  border-radius: 16px;
+  background: rgba(226, 232, 240, 0.6);
+  box-shadow: none;
+  backdrop-filter: blur(8px);
+}
+
+.haccp-shell .haccp-tabs.haccp-module-nav button {
+  height: auto;
+  min-height: 38px;
+  padding: 0.55rem 1.05rem;
+  border-radius: 12px;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  font-weight: 650;
+}
+
+.haccp-shell .haccp-tabs.haccp-module-nav button:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.haccp-shell .haccp-tabs.haccp-module-nav button.active {
+  color: var(--primary);
+  border-color: rgba(16, 185, 129, 0.12);
+  background: #ffffff;
+  box-shadow: var(--shadow-sm);
+}
+
+.haccp-context-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: -0.9rem;
+  padding: 0 0 0.75rem;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--haccp-border);
+}
+
+.haccp-context-nav button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.48rem 0.7rem;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 650;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.haccp-context-nav button:hover {
+  color: var(--text-main);
+  background: #f8fafc;
+}
+
+.haccp-context-nav button.active {
+  border-color: rgba(16, 185, 129, 0.16);
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.haccp-standard-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.haccp-subnav-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--haccp-border);
+}
+
+.haccp-subnav-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.haccp-subnav-search {
+  flex: 0 1 330px;
+  min-width: 230px;
+}
+
+.haccp-report-summary-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 1rem 1.1rem;
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.haccp-report-summary-card .haccp-report-hero-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+}
+
+.haccp-report-summary-card .haccp-report-hero-copy h2 {
+  margin: 0.12rem 0 0.2rem;
+  font-size: 1.05rem;
+  letter-spacing: -0.015em;
+}
+
+.haccp-report-summary-card .haccp-report-hero-copy p {
+  font-size: 0.74rem;
+}
+
+.haccp-shell .haccp-dashboard {
+  gap: 1.4rem;
+}
+
+.haccp-dashboard-metrics {
+  margin-bottom: 0;
+}
+
+.haccp-dashboard-metrics .metric-card-modern {
+  min-height: 170px;
+}
+
+.haccp-dashboard-metrics .metric-badge-trend {
+  max-width: 145px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.haccp-dashboard-metrics .haccp-metric-static {
+  cursor: default;
+}
+
+.haccp-dashboard-metrics .haccp-metric-actionable:focus-visible,
+.haccp-context-nav button:focus-visible {
+  outline: 3px solid rgba(16, 185, 129, 0.22);
+  outline-offset: 2px;
+}
+
+.haccp-action-overview {
+  padding: 1.15rem;
+  border-radius: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.haccp-temperature-monitor {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.haccp-temperature-monitor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.2rem 1.35rem;
+  border-radius: 18px;
+  box-shadow: var(--shadow-sm);
+}
+
+.haccp-temperature-monitor-head h2 {
+  margin: 0.25rem 0 0;
+  color: var(--text-main);
+  font-family: var(--font-heading);
+  font-size: 1.25rem;
+}
+
+.haccp-temperature-monitor-head p {
+  margin: 0.25rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.haccp-temperature-monitor-summary,
+.haccp-temperature-toolbar > div:last-child {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.haccp-temperature-monitor-summary > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.42rem 0.6rem;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 0.68rem;
+  font-weight: 750;
+}
+
+.haccp-temperature-monitor-summary > span.warning {
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.haccp-temperature-monitor-summary > span.danger {
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.haccp-temperature-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.haccp-temperature-search {
+  width: min(420px, 100%);
+}
+
+.haccp-temperature-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 1.35rem;
+}
+
+.haccp-temperature-group {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.haccp-temperature-group > h3 {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.69rem;
+  font-weight: 850;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.haccp-temperature-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.haccp-temperature-card {
+  position: relative;
+  min-width: 0;
+  min-height: 235px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 1.05rem 1.15rem;
+  overflow: hidden;
+  border: 1px solid #dbe4ee;
+  border-radius: 18px;
+  background: #ffffff;
+  color: var(--text-main);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+  transition: transform var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.haccp-temperature-card::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  content: '';
+  background: #94a3b8;
+}
+
+.haccp-temperature-card.ok {
+  border-color: rgba(16, 185, 129, 0.25);
+  background: linear-gradient(135deg, #ffffff 40%, #f0fdf8 100%);
+}
+
+.haccp-temperature-card.ok::before {
+  background: #10b981;
+}
+
+.haccp-temperature-card.warning {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: linear-gradient(135deg, #ffffff 36%, #fffbeb 100%);
+}
+
+.haccp-temperature-card.warning::before {
+  background: #f59e0b;
+}
+
+.haccp-temperature-card.danger {
+  border-color: rgba(244, 63, 94, 0.34);
+  background: linear-gradient(135deg, #ffffff 34%, #fff1f2 100%);
+}
+
+.haccp-temperature-card.danger::before {
+  background: #f43f5e;
+}
+
+.haccp-temperature-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(16, 185, 129, 0.38);
+  box-shadow: 0 18px 35px rgba(15, 23, 42, 0.08);
+}
+
+.haccp-temperature-card:focus-visible {
+  outline: 3px solid rgba(16, 185, 129, 0.22);
+  outline-offset: 2px;
+}
+
+.haccp-temperature-card-top,
+.haccp-temperature-card-footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.haccp-temperature-card-top > span:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.haccp-temperature-card-top strong {
+  overflow: hidden;
+  font-size: 0.88rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.haccp-temperature-card-top small {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.haccp-temperature-card-top em {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.28rem 0.42rem;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 0.64rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.haccp-temperature-card-top em.low {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.haccp-temperature-card-value {
+  display: block;
+  margin: auto 0 0.15rem;
+  color: #0f172a;
+  text-align: center;
+  font-family: var(--font-heading);
+  font-size: clamp(2.65rem, 5vw, 3.8rem);
+  font-weight: 900;
+  letter-spacing: -0.055em;
+  line-height: 1;
+}
+
+.haccp-temperature-card-value small {
+  font-size: 0.7em;
+  letter-spacing: -0.03em;
+}
+
+.haccp-temperature-card-range {
+  display: block;
+  margin-bottom: auto;
+  color: #64748b;
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.haccp-temperature-card-footer {
+  align-items: flex-end;
+  margin-top: 0.9rem;
+  color: #64748b;
+  font-size: 0.66rem;
+  line-height: 1.35;
+}
+
+.haccp-temperature-card-footer > span {
+  min-width: 0;
+}
+
+.haccp-temperature-card-footer strong {
+  color: var(--text-main);
+}
+
+.haccp-temperature-card-footer > small {
+  flex: none;
+  font-size: 0.62rem;
+  white-space: nowrap;
+}
+
+.haccp-temperature-card-action {
+  position: absolute;
+  right: 0.85rem;
+  bottom: 0.75rem;
+  display: none;
+  align-items: center;
+  gap: 0.25rem;
+  color: #047857;
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.haccp-temperature-card:hover .haccp-temperature-card-action,
+.haccp-temperature-card:focus-visible .haccp-temperature-card-action {
+  display: inline-flex;
+}
+
+.haccp-temperature-card:hover .haccp-temperature-card-footer > small,
+.haccp-temperature-card:focus-visible .haccp-temperature-card-footer > small {
+  visibility: hidden;
+}
+
+.haccp-temperature-empty {
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 2rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.haccp-temperature-empty strong {
+  color: var(--text-main);
+}
+
+.haccp-temperature-empty p {
+  max-width: 540px;
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+.haccp-temperature-empty > button:not(.btn) {
+  border: 0;
+  background: transparent;
+  color: #047857;
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.haccp-temperature-history-overlay {
+  padding: 1.25rem;
+  background: rgba(2, 8, 23, 0.72);
+  backdrop-filter: blur(12px);
+}
+
+.haccp-temperature-history-modal {
+  width: min(1120px, 100%);
+  max-height: calc(100vh - 2.5rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 24px;
+  background: #f6f8fb;
+  box-shadow: 0 35px 100px rgba(2, 8, 23, 0.44);
+}
+
+.haccp-temperature-history-head {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.2rem 1.4rem;
+  border-bottom: 1px solid #e2e8f0;
+  background: #ffffff;
+}
+
+.haccp-temperature-history-head h2 {
+  margin: 0.35rem 0 0;
+  color: var(--text-main);
+  font-family: var(--font-heading);
+  font-size: 1.35rem;
+}
+
+.haccp-temperature-history-head p {
+  margin: 0.2rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+}
+
+.haccp-temperature-history-body {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.2rem 1.4rem 1.4rem;
+  overflow-y: auto;
+}
+
+.haccp-temperature-history-toolbar,
+.haccp-temperature-chart-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.haccp-period-selector {
+  display: inline-flex;
+  gap: 0.3rem;
+  padding: 0.3rem;
+  border: 1px solid var(--haccp-border);
+  border-radius: 13px;
+  background: #eaf0f6;
+}
+
+.haccp-period-selector button {
+  padding: 0.45rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.haccp-period-selector button.active {
+  border-color: rgba(16, 185, 129, 0.16);
+  background: #ffffff;
+  color: #047857;
+  box-shadow: var(--shadow-sm);
+}
+
+.haccp-period-selector button:focus-visible {
+  outline: 3px solid rgba(16, 185, 129, 0.22);
+  outline-offset: 1px;
+}
+
+.haccp-temperature-history-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.haccp-temperature-history-kpis > span {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--haccp-border);
+  border-radius: 13px;
+  background: #ffffff;
+}
+
+.haccp-temperature-history-kpis small {
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.haccp-temperature-history-kpis strong {
+  color: var(--text-main);
+  font-size: 1.15rem;
+}
+
+.haccp-temperature-chart-panel {
+  padding: 1rem;
+  border-radius: 18px;
+  box-shadow: var(--shadow-sm);
+}
+
+.haccp-temperature-chart-title {
+  margin-bottom: 0.75rem;
+}
+
+.haccp-temperature-chart-title > div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.haccp-temperature-chart-title strong {
+  color: var(--text-main);
+  font-size: 0.86rem;
+}
+
+.haccp-temperature-chart-title span,
+.haccp-temperature-chart-title small {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+}
+
+.haccp-temperature-chart-empty {
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.haccp-temperature-chart-empty strong {
+  color: var(--text-main);
+}
+
+.haccp-temperature-chart-empty span {
+  font-size: 0.75rem;
+}
+
+.haccp-daily-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+  padding: 1.4rem;
+  border-radius: 18px;
+  box-shadow: var(--shadow-sm);
+}
+
+.haccp-daily-header,
+.haccp-priority-heading,
+.haccp-guide-section-heading,
+.haccp-guide-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.haccp-daily-header h2 {
+  margin: 0.3rem 0 0;
+  color: var(--text-main);
+  font-family: var(--font-heading);
+  font-size: 1.28rem;
+  font-weight: 800;
+}
+
+.haccp-daily-header p {
+  margin: 0.25rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.haccp-section-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #047857;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.haccp-day-status {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.48rem 0.7rem;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.haccp-day-status > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+
+.haccp-day-status.success {
+  color: #047857;
+  background: #ecfdf5;
+}
+
+.haccp-day-status.success > span {
+  background: #10b981;
+}
+
+.haccp-day-status.warning {
+  color: #b45309;
+  background: #fffbeb;
+}
+
+.haccp-day-status.warning > span {
+  background: #f59e0b;
+}
+
+.haccp-day-status.danger {
+  color: #be123c;
+  background: #fff1f2;
+}
+
+.haccp-day-status.danger > span {
+  background: #f43f5e;
+}
+
+.haccp-daily-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.haccp-daily-metric {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.9rem;
+  border: 1px solid var(--haccp-border);
+  border-radius: 14px;
+  background: var(--haccp-subtle);
+}
+
+.haccp-daily-metric > span {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: #475569;
+  background: #e2e8f0;
+}
+
+.haccp-daily-metric > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.1rem;
+}
+
+.haccp-daily-metric small {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.haccp-daily-metric strong {
+  color: var(--text-main);
+  font-size: 1.35rem;
+  line-height: 1.1;
+}
+
+.haccp-daily-metric p {
+  overflow: hidden;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.67rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.haccp-daily-metric.success > span {
+  color: #047857;
+  background: #d1fae5;
+}
+
+.haccp-daily-metric.warning > span {
+  color: #b45309;
+  background: #fef3c7;
+}
+
+.haccp-daily-metric.danger > span {
+  color: #be123c;
+  background: #ffe4e6;
+}
+
+.haccp-priority-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.65fr);
+  gap: 0.85rem;
+}
+
+.haccp-priority-panel,
+.haccp-archive-summary {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--haccp-border);
+  border-radius: 15px;
+  background: #ffffff;
+}
+
+.haccp-priority-heading > div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.haccp-priority-heading strong {
+  color: var(--text-main);
+  font-size: 0.88rem;
+}
+
+.haccp-priority-heading span,
+.haccp-priority-heading small {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+
+.haccp-priority-heading > small {
+  padding: 0.3rem 0.5rem;
+  border-radius: 999px;
+  background: #f1f5f9;
+  font-weight: 750;
+}
+
+.haccp-priority-list {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.8rem;
+}
+
+.haccp-priority-list > button {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: var(--text-main);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.haccp-priority-list > button:hover {
+  border-color: rgba(16, 185, 129, 0.18);
+  background: #f0fdf4;
+}
+
+.haccp-priority-list > button > span {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: #b45309;
+  background: #fef3c7;
+}
+
+.haccp-priority-list > button > span.danger {
+  color: #be123c;
+  background: #ffe4e6;
+}
+
+.haccp-priority-list > button > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.haccp-priority-list strong {
+  font-size: 0.78rem;
+}
+
+.haccp-priority-list small {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.haccp-priority-list em {
+  min-width: 26px;
+  padding: 0.25rem 0.4rem;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #c2410c;
+  text-align: center;
+  font-size: 0.7rem;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.haccp-priority-empty {
+  min-height: 94px;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.8rem;
+  padding: 0.9rem;
+  border-radius: 12px;
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.haccp-priority-empty > div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.haccp-priority-empty strong {
+  font-size: 0.8rem;
+}
+
+.haccp-priority-empty span {
+  color: #047857;
+  font-size: 0.7rem;
+}
+
+.haccp-archive-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: start;
+  gap: 0.75rem;
+  background: #f8fafc;
+}
+
+.haccp-archive-summary > span {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: #047857;
+  background: #d1fae5;
+}
+
+.haccp-archive-summary > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.haccp-archive-summary small {
+  color: #047857;
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.haccp-archive-summary strong {
+  color: var(--text-main);
+  font-size: 0.82rem;
+}
+
+.haccp-archive-summary p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.69rem;
+  line-height: 1.45;
+}
+
+.haccp-archive-summary button {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  margin-top: auto;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--haccp-border);
+  border-radius: 10px;
+  background: #ffffff;
+  color: #047857;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.haccp-shell .haccp-dashboard-section-heading {
+  margin-top: 0.25rem;
+}
+
+.haccp-shell .haccp-dashboard-section-heading h2 {
+  font-size: 1.25rem;
+}
+
+.haccp-shell .haccp-primary-grid,
+.haccp-shell .haccp-register-grid {
+  gap: 0.85rem;
+}
+
+.haccp-shell .haccp-hygiene-card,
+.haccp-shell .haccp-hygiene-card.process,
+.haccp-shell .haccp-hygiene-card.production-haccp {
+  min-height: 250px;
+  padding: 1.2rem;
+  border: 1px solid var(--haccp-border);
+  border-radius: 18px;
+  background: #ffffff !important;
+  color: var(--text-main);
+  box-shadow: var(--shadow-sm);
+}
+
+.haccp-shell .haccp-hygiene-card::after {
+  display: none;
+}
+
+.haccp-shell .haccp-hygiene-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(16, 185, 129, 0.28);
+  box-shadow: var(--shadow-md);
+}
+
+.haccp-shell .haccp-hygiene-card h3,
+.haccp-shell .haccp-hygiene-metric strong {
+  color: var(--text-main);
+}
+
+.haccp-shell .haccp-hygiene-card-top p,
+.haccp-shell .haccp-hygiene-card-footer,
+.haccp-shell .haccp-hygiene-metric small,
+.haccp-shell .haccp-hygiene-metric strong em,
+.haccp-shell .haccp-metric-score {
+  color: var(--text-muted);
+}
+
+.haccp-shell .haccp-hygiene-card .haccp-live-kicker,
+.haccp-shell .haccp-hygiene-card.process .haccp-live-kicker,
+.haccp-shell .haccp-hygiene-card.production-haccp .haccp-live-kicker.production {
+  color: #047857;
+}
+
+.haccp-shell .haccp-open-live {
+  border-color: var(--haccp-border);
+  background: #f8fafc;
+  color: #047857;
+  backdrop-filter: none;
+}
+
+.haccp-shell .haccp-hygiene-metric {
+  border-color: var(--haccp-border);
+  background: #f8fafc;
+  backdrop-filter: none;
+}
+
+.haccp-shell .haccp-hygiene-card .haccp-status-pill {
+  border-color: var(--haccp-border);
+  background: #f8fafc;
+  color: #475569;
+}
+
+.haccp-shell .haccp-hygiene-card .haccp-status-pill.ok {
+  border-color: #a7f3d0;
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.haccp-shell .haccp-hygiene-card .haccp-status-pill.warning {
+  border-color: #fde68a;
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.haccp-shell .haccp-hygiene-card .haccp-status-pill.danger {
+  border-color: #fecdd3;
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.haccp-shell .haccp-register-card {
+  min-height: 280px;
+  padding: 1.1rem;
+  border-radius: 18px;
+  box-shadow: var(--shadow-sm);
+}
+
+.haccp-shell .haccp-register-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.haccp-shell .haccp-register-glow {
+  opacity: 0.65;
+}
+
+.haccp-shell .haccp-register-status,
+.haccp-shell .haccp-register-copy small,
+.haccp-shell .haccp-register-progress > span:first-child > small,
+.haccp-shell .haccp-register-latest small,
+.haccp-shell .haccp-register-latest strong,
+.haccp-shell .haccp-register-action {
+  font-size: 0.68rem;
+}
+
+.haccp-shell .haccp-register-copy em {
+  font-size: 0.76rem;
+}
+
+.haccp-guide-overlay {
+  padding: 1.25rem;
+  background: rgba(2, 8, 23, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.haccp-guide-modal {
+  --haccp-border: rgba(226, 232, 240, 0.92);
+  width: min(1180px, 100%);
+  max-height: calc(100vh - 2.5rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 24px;
+  background: #f8fafc;
+  box-shadow: 0 35px 100px rgba(2, 8, 23, 0.42);
+}
+
+.haccp-guide-header {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.25rem;
+  padding: 1.35rem 1.5rem;
+  border-bottom: 1px solid var(--haccp-border);
+  background: #ffffff;
+}
+
+.haccp-guide-header .welcome-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.35rem;
+  letter-spacing: 0.08em;
+}
+
+.haccp-guide-header h2 {
+  margin: 0;
+  color: var(--text-main);
+  font-family: var(--font-heading);
+  font-size: 1.5rem;
+}
+
+.haccp-guide-header p {
+  max-width: 840px;
+  margin: 0.35rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.haccp-guide-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1.25rem 1.5rem;
+}
+
+.haccp-guide-flow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.haccp-guide-flow > article {
+  min-height: 176px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  padding: 1rem;
+  border: 1px solid var(--haccp-border);
+  border-radius: 15px;
+  background: #ffffff;
+}
+
+.haccp-guide-flow > article > span {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 0.25rem;
+  border-radius: 12px;
+  color: #047857;
+  background: #d1fae5;
+}
+
+.haccp-guide-flow article small {
+  color: #047857;
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.haccp-guide-flow article strong {
+  color: var(--text-main);
+  font-size: 0.83rem;
+}
+
+.haccp-guide-flow article p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+
+.haccp-guide-flow > svg {
+  color: #94a3b8;
+}
+
+.haccp-guide-section-heading {
+  align-items: flex-end;
+  margin: 1.4rem 0 0.75rem;
+}
+
+.haccp-guide-section-heading > div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.haccp-guide-section-heading span {
+  color: #047857;
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.haccp-guide-section-heading h3 {
+  margin: 0;
+  color: var(--text-main);
+  font-size: 1.05rem;
+}
+
+.haccp-guide-section-heading small {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+
+.haccp-guide-domains {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.haccp-guide-domains > button {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--haccp-border);
+  border-radius: 13px;
+  background: #ffffff;
+  color: var(--text-main);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.haccp-guide-domains > button:hover {
+  border-color: rgba(16, 185, 129, 0.28);
+  background: #f0fdf4;
+}
+
+.haccp-priority-list > button:focus-visible,
+.haccp-archive-summary button:focus-visible,
+.haccp-guide-domains > button:focus-visible,
+.haccp-shell .haccp-tabs.haccp-module-nav button:focus-visible {
+  outline: 3px solid rgba(16, 185, 129, 0.22);
+  outline-offset: 2px;
+}
+
+.haccp-guide-domains > button > span {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  color: #047857;
+  background: #ecfdf5;
+}
+
+.haccp-guide-domains > button > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.haccp-guide-domains strong {
+  font-size: 0.78rem;
+}
+
+.haccp-guide-domains small {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.haccp-guide-footer {
+  flex: none;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--haccp-border);
+  background: #ffffff;
+}
+
+.haccp-guide-footer > div:first-child {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.haccp-guide-footer > div:first-child strong {
+  color: var(--text-main);
+  font-size: 0.8rem;
+}
+
+.haccp-guide-footer > div:first-child span {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+
+.haccp-guide-footer > div:last-child {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+@media (max-width: 1100px) {
+  .haccp-hero {
+    align-items: flex-start;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .haccp-hero-actions {
+    justify-content: flex-start;
+  }
+
+  .haccp-subnav-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .haccp-subnav-search {
+    flex-basis: auto;
+    width: min(100%, 420px);
+  }
+
+  .haccp-daily-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .haccp-dashboard-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .haccp-priority-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .haccp-guide-flow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .haccp-guide-flow > svg {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .haccp-shell {
+    gap: 1.15rem;
+  }
+
+  .haccp-hero {
+    padding: 1.5rem;
+    border-radius: 20px;
+  }
+
+  .haccp-hero .welcome-title {
+    font-size: 1.75rem;
+  }
+
+  .haccp-hero-actions,
+  .haccp-hero-actions .btn,
+  .haccp-guide-footer,
+  .haccp-guide-footer > div:last-child {
+    width: 100%;
+  }
+
+  .haccp-hero-actions .btn,
+  .haccp-guide-footer .btn {
+    justify-content: center;
+  }
+
+  .haccp-shell .haccp-tabs.haccp-module-nav {
+    width: 100%;
+  }
+
+  .haccp-context-nav {
+    margin-top: -0.65rem;
+  }
+
+  .haccp-temperature-monitor-head,
+  .haccp-temperature-toolbar,
+  .haccp-temperature-history-toolbar,
+  .haccp-temperature-chart-title {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .haccp-temperature-monitor-summary,
+  .haccp-temperature-toolbar > div:last-child,
+  .haccp-temperature-toolbar .btn {
+    width: 100%;
+  }
+
+  .haccp-temperature-toolbar .btn {
+    justify-content: center;
+  }
+
+  .haccp-temperature-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .haccp-temperature-card {
+    min-height: 220px;
+  }
+
+  .haccp-temperature-card-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .haccp-temperature-card-footer > small {
+    white-space: normal;
+  }
+
+  .haccp-temperature-history-overlay {
+    padding: 0.5rem;
+  }
+
+  .haccp-temperature-history-modal {
+    max-height: calc(100vh - 1rem);
+    border-radius: 18px;
+  }
+
+  .haccp-temperature-history-head,
+  .haccp-temperature-history-body {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .haccp-temperature-history-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .haccp-period-selector {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .haccp-period-selector button {
+    flex: 1;
+  }
+
+  .haccp-daily-header,
+  .haccp-guide-section-heading,
+  .haccp-guide-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .haccp-report-summary-card {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .haccp-report-summary-card .haccp-report-automation {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .haccp-subnav-search {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .haccp-daily-kpis,
+  .haccp-dashboard-metrics,
+  .haccp-shell .haccp-primary-grid,
+  .haccp-shell .haccp-register-grid,
+  .haccp-guide-flow,
+  .haccp-guide-domains {
+    grid-template-columns: 1fr;
+  }
+
+  .haccp-daily-metric p,
+  .haccp-priority-list small,
+  .haccp-guide-domains small {
+    white-space: normal;
+  }
+
+  .haccp-guide-overlay {
+    padding: 0.5rem;
+  }
+
+  .haccp-guide-modal {
+    max-height: calc(100vh - 1rem);
+    border-radius: 18px;
+  }
+
+  .haccp-guide-header,
+  .haccp-guide-body,
+  .haccp-guide-footer {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .haccp-guide-flow > article {
+    min-height: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .haccp-shell *,
+  .haccp-guide-modal * {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

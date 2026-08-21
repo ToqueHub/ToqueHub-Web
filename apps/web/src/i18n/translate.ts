@@ -6,7 +6,7 @@ export function normalizeTranslationSource(value: string): string {
   return value.replace(/\s+/gu, ' ').trim();
 }
 
-const english: Readonly<Record<string, string>> = Object.fromEntries(
+const english: Record<string, string> = Object.fromEntries(
   Object.entries({ ...englishCatalog, ...englishOverrides }).map(([source, target]) => [
     normalizeTranslationSource(source),
     normalizeTranslationSource(target),
@@ -16,18 +16,30 @@ const english: Readonly<Record<string, string>> = Object.fromEntries(
 const frenchSignal = /[àâçéèêëîïôùûüÿœ]|\b(?:accueil|achat|ajouter|annuler|aucun|avec|catégorie|choisir|commande|confirmer|connexion|créer|dans|depuis|document|donnée|enregistrer|établissement|fermer|fiche|fournisseur|français|général|historique|jour|langue|ligne|modifier|nouveau|paramètres|planning|produit|réception|rechercher|retour|sans|sélectionner|service|site|stock|suivant|supprimer|tableau|terminer|utilisateur|valider|votre|vous)\b/iu;
 
 const embeddedTranslationsByWord = new Map<string, Array<readonly [string, string]>>();
-for (const [source, target] of Object.entries(english)) {
+function indexEmbeddedTranslation(source: string, target: string) {
   if (source.length < 4 || source.length > 1_500 || source === target || !frenchSignal.test(source)) {
-    continue;
+    return;
   }
   const firstWord = source.match(/[A-Za-zÀ-ÖØ-öø-ÿŒœ]+/u)?.[0].toLocaleLowerCase('fr');
-  if (!firstWord) continue;
-  const candidates = embeddedTranslationsByWord.get(firstWord) ?? [];
+  if (!firstWord) return;
+  const candidates = (embeddedTranslationsByWord.get(firstWord) ?? [])
+    .filter(([candidateSource]) => candidateSource !== source);
   candidates.push([source, target]);
+  candidates.sort(([left], [right]) => right.length - left.length);
   embeddedTranslationsByWord.set(firstWord, candidates);
 }
-for (const candidates of embeddedTranslationsByWord.values()) {
-  candidates.sort(([left], [right]) => right.length - left.length);
+
+for (const [source, target] of Object.entries(english)) {
+  indexEmbeddedTranslation(source, target);
+}
+
+export function registerEnglishTranslations(catalog: Readonly<Record<string, string>>) {
+  for (const [rawSource, rawTarget] of Object.entries(catalog)) {
+    const source = normalizeTranslationSource(rawSource);
+    const target = normalizeTranslationSource(rawTarget);
+    english[source] = target;
+    indexEmbeddedTranslation(source, target);
+  }
 }
 
 const fallbackPhrases: ReadonlyArray<readonly [RegExp, string]> = [

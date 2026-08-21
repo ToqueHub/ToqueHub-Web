@@ -173,10 +173,9 @@ describe('HaccpService', () => {
     prisma.haccpTraceability.findMany.mockResolvedValue([]);
     prisma.haccpReception.findMany.mockResolvedValue([]);
     prisma.haccpProductionSession.findMany.mockResolvedValue([{ id: 'prod-1', status: 'en_cours', productionDate: now, finishedProduct: { name: 'Soupe' } }]);
-    prisma.haccpProcessSession.findMany
-      .mockResolvedValueOnce([{ id: 'process-1', type: 'refroidissement', status: 'en_cours', sessionDate: now, product: { name: 'Crème' }, equipment: { name: 'Cellule' } }])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
+    prisma.haccpProcessSession.findMany.mockResolvedValue([
+      { id: 'process-1', type: 'refroidissement', status: 'en_cours', sessionDate: now, product: { name: 'Crème' } },
+    ]);
     prisma.haccpOilEquipment.findMany.mockResolvedValue([{ id: 'oil-1' }]);
     prisma.haccpOilSession.findMany.mockResolvedValue([]);
     prisma.haccpProduct.findMany.mockResolvedValue([]);
@@ -193,6 +192,10 @@ describe('HaccpService', () => {
     expect(modules.process).toMatchObject({ completed: 0, expected: 1, issues: 1 });
     expect(modules.oil).toMatchObject({ completed: 0, expected: 1, issues: 1 });
     expect(modules.production).toMatchObject({ completed: 0, expected: 1, issues: 1 });
+    expect(prisma.haccpProcessSession.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.haccpProcessSession.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ type: { in: ['refroidissement', 'congelation', 'rechauffement'] } }),
+    }));
     expect(modules.reports).toBeUndefined();
     expect(response.data.alerts).not.toEqual(expect.arrayContaining([expect.objectContaining({ module: 'reports' })]));
     expect(response.data.alerts).toEqual(expect.arrayContaining([expect.objectContaining({ module: 'production', severity: 'warning' })]));

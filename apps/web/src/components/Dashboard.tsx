@@ -115,7 +115,6 @@ import { TechnicalSheetsApp } from './TechnicalSheetsApp';
 import { ProductionApp } from './ProductionApp';
 import { MenusApp } from './MenusApp';
 import { ClientsApp } from './CatererMenusApp';
-import { HaccpApp } from './HaccpApp';
 import { StockAssistantPanel } from './StockAssistantPanel';
 import { Modal } from './ui/Modal';
 import { GuidedWizard } from './ui/GuidedWizard';
@@ -133,6 +132,10 @@ const PurchasingApp = lazy(() =>
 );
 const FinanceApp = lazy(() =>
   import('./FinanceApp').then((module) => ({ default: module.FinanceApp })),
+);
+const loadHaccpApp = () => import('./HaccpApp');
+const HaccpApp = lazy(() =>
+  loadHaccpApp().then((module) => ({ default: module.HaccpApp })),
 );
 
 import { ApiError, api } from '../api/client';
@@ -4076,6 +4079,12 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
                   <div key={app.id} className="sidebar-app-group">
                     <div
                       className={`sidebar-item ${app.isActive ? 'active' : ''}`}
+                      onPointerEnter={() => {
+                        if (app.id === 'haccp') void loadHaccpApp();
+                      }}
+                      onFocus={() => {
+                        if (app.id === 'haccp') void loadHaccpApp();
+                      }}
                       onClick={() => {
                         app.setExpanded(!app.expanded);
                         if (!app.isActive) {
@@ -5096,39 +5105,41 @@ export function Dashboard({ session, onLogout, onSessionSwitch }: DashboardProps
               )}
 
               {isHaccpTab && haccpInstalled && (
-                <HaccpApp
-                  token={token}
-                  tab={
-                    activeTab === 'haccp-setup'
-                      ? 'setup'
-                      : activeTab === 'haccp-sensors'
-                        ? 'sensors'
-                        : activeTab === 'haccp-alerts'
-                          ? 'alerts'
-                          : activeTab === 'haccp-temperatures'
-                            ? 'temperatures'
-                            : activeTab === 'haccp-cleaning'
-                              ? 'cleaning'
-                              : activeTab === 'haccp-traceability'
-                                ? 'traceability'
-                                : activeTab === 'haccp-receptions'
-                                  ? 'receptions'
-                                  : activeTab === 'haccp-process'
-                                    ? 'process'
-                                    : activeTab === 'haccp-oil'
-                                      ? 'oil'
-                                      : activeTab === 'haccp-production'
-                                        ? 'production'
-                                        : activeTab === 'haccp-products'
-                                          ? 'products'
-                                          : activeTab === 'haccp-labels'
-                                            ? 'labels'
-                                            : activeTab === 'haccp-reports'
-                                              ? 'reports'
-                                              : 'dashboard'
-                  }
-                  onNavigate={(next) => setActiveTab(next as any)}
-                />
+                <Suspense fallback={<div className="dashboard-loading">Chargement du module HACCP…</div>}>
+                  <HaccpApp
+                    token={token}
+                    tab={
+                      activeTab === 'haccp-setup'
+                        ? 'setup'
+                        : activeTab === 'haccp-sensors'
+                          ? 'sensors'
+                          : activeTab === 'haccp-alerts'
+                            ? 'alerts'
+                            : activeTab === 'haccp-temperatures'
+                              ? 'temperatures'
+                              : activeTab === 'haccp-cleaning'
+                                ? 'cleaning'
+                                : activeTab === 'haccp-traceability'
+                                  ? 'traceability'
+                                  : activeTab === 'haccp-receptions'
+                                    ? 'receptions'
+                                    : activeTab === 'haccp-process'
+                                      ? 'process'
+                                      : activeTab === 'haccp-oil'
+                                        ? 'oil'
+                                        : activeTab === 'haccp-production'
+                                          ? 'production'
+                                          : activeTab === 'haccp-products'
+                                            ? 'products'
+                                            : activeTab === 'haccp-labels'
+                                              ? 'labels'
+                                              : activeTab === 'haccp-reports'
+                                                ? 'reports'
+                                                : 'dashboard'
+                    }
+                    onNavigate={(next) => setActiveTab(next as any)}
+                  />
+                </Suspense>
               )}
 
               {isPurchasingTab && purchasingInstalled && (

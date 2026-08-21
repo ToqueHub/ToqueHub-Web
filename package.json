@@ -21,6 +21,7 @@
     "i18n:translate": "node scripts/i18n/translate-web-catalog.mjs",
     "i18n:audit": "node scripts/i18n/extract-web-translations.mjs && node scripts/i18n/audit-web-translations.mjs",
     "i18n:check-surfaces": "node --import tsx scripts/i18n/check-reported-surfaces.ts",
+    "i18n:check-haccp": "node --import tsx scripts/i18n/check-haccp-translations.ts",
     "api:dev": "npm run prisma:ensure && npm run start:dev -w apps/api",
     "web:dev": "npm run dev -w apps/web",
     "landing:dev": "npm run dev -w apps/landing",

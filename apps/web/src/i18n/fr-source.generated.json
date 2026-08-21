@@ -1138,6 +1138,15 @@
     ]
   },
   {
+    "text": ". Automatic readings are recorded under Temperatures and included in reports.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": ". Il manque",
     "files": [
       "apps/web/src/components/purchasing/orders/OrderCatalog.tsx"
@@ -1207,6 +1216,15 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": ". Les relevés automatiques sont enregistrés dans l’onglet Températures et repris dans les rapports.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -3772,79 +3790,7 @@
     ]
   },
   {
-    "text": "[HACCP] Actualisation alertes impossible",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
-    "text": "[HACCP] Actualisation capteurs impossible",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
     "text": "[HACCP] Actualisation dashboard impossible",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
-    "text": "[HACCP] Actualisation plan de nettoyage impossible",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
-    "text": "[HACCP] Actualisation process impossible",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
-    "text": "[HACCP] Actualisation production impossible",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
-    "text": "[HACCP] Actualisation session de nettoyage impossible",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
-    "text": "[HACCP] Actualisation températures impossible",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
-    "text": "[HACCP] Actualisation zones impossible",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -3889,7 +3835,7 @@
     ]
   },
   {
-    "text": "[HACCP] Test push alerte impossible",
+    "text": "[HACCP] Test de notification d’alerte impossible",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -4230,12 +4176,30 @@
     ]
   },
   {
+    "text": "% compliance",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "% Configuré",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "% coverage",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -4411,15 +4375,6 @@
     ]
   },
   {
-    "text": "%, rgba(255,255,255,0.11) 0)",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "template"
-    ]
-  },
-  {
     "text": "%) diffère du dernier taux observé (",
     "files": [
       "apps/api/src/stocks/stocks-margins.service.ts"
@@ -4456,15 +4411,6 @@
     ]
   },
   {
-    "text": "• Batterie",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
-    ]
-  },
-  {
     "text": "• Dernier nettoyage",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -4483,6 +4429,15 @@
     ]
   },
   {
+    "text": "• Équipement HACCP",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "• Fournisseur :",
     "files": [
       "apps/web/src/components/StockAssistantPanel.tsx"
@@ -4492,30 +4447,12 @@
     ]
   },
   {
-    "text": "• Matériel HACCP",
+    "text": "• Last cleaned",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "template"
-    ]
-  },
-  {
-    "text": "• relevés toutes les",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
-    ]
-  },
-  {
-    "text": "• Signal",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
     ]
   },
   {
@@ -4554,10 +4491,12 @@
   {
     "text": "°C ·",
     "files": [
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "jsx"
+      "jsx",
+      "template"
     ]
   },
   {
@@ -4584,6 +4523,15 @@
     "text": "°C hors plage",
     "files": [
       "apps/api/src/haccp/iot/haccp-sensors.service.ts"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "°C to",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "template"
@@ -5968,15 +5916,6 @@
     "text": "0 4px 15px rgba(16, 185, 129, 0.25)",
     "files": [
       "apps/web/src/components/FirstStartLanding.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
-    "text": "0 4px 20px rgba(0, 0, 0, 0.03)",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -7947,6 +7886,15 @@
     ]
   },
   {
+    "text": "1. Terrain",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "1.02rem",
     "files": [
       "apps/web/src/components/PlanningApp.tsx",
@@ -8409,7 +8357,6 @@
     "text": "1.5px solid #e2e8f0",
     "files": [
       "apps/web/src/components/Dashboard.tsx",
-      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx"
     ],
     "kinds": [
@@ -8505,15 +8452,6 @@
     "text": "1.5rem 1.8rem",
     "files": [
       "apps/web/src/components/CatererMenusApp.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
-    "text": "1.5rem 2rem",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -9743,6 +9681,15 @@
     ]
   },
   {
+    "text": "2. Automatisation",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "2. Capteur Température Sonoff",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -10261,6 +10208,15 @@
     ]
   },
   {
+    "text": "3. Supervision",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "3. Validation",
     "files": [
       "apps/web/src/components/PlanningApp.tsx"
@@ -10590,6 +10546,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "4. Audit",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -11454,6 +11419,15 @@
     ]
   },
   {
+    "text": "À consolider",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "À contrôler",
     "files": [
       "apps/web/src/components/finance/FinanceWorkspace.tsx",
@@ -11467,7 +11441,8 @@
     "text": "À corriger",
     "files": [
       "apps/api/src/haccp/haccp.service.ts",
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -11524,6 +11499,15 @@
     "text": "a déjà une affectation qui chevauche ce créneau.",
     "files": [
       "apps/web/src/components/PlanningApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "à documenter",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "template"
@@ -11694,6 +11678,15 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "à nettoyer.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -11983,7 +11976,7 @@
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "jsx"
+      "template"
     ]
   },
   {
@@ -11996,6 +11989,15 @@
       "attribute",
       "jsx",
       "literal"
+    ]
+  },
+  {
+    "text": "À terminer",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
     ]
   },
   {
@@ -12018,6 +12020,15 @@
     "kinds": [
       "jsx",
       "literal"
+    ]
+  },
+  {
+    "text": "à traiter.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -12054,6 +12065,7 @@
     "text": "à vérifier",
     "files": [
       "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/PlanningApp.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx"
     ],
@@ -12284,6 +12296,24 @@
     "text": "Accéder à la connexion",
     "files": [
       "apps/web/src/components/FirstStartLanding.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Accéder directement à chaque fonction",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Accédez directement au contrôle qui demande une intervention.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "jsx"
@@ -12928,7 +12958,8 @@
     ],
     "kinds": [
       "attribute",
-      "jsx"
+      "jsx",
+      "literal"
     ]
   },
   {
@@ -13013,6 +13044,15 @@
     ]
   },
   {
+    "text": "action.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "action(s)",
     "files": [
       "apps/web/src/components/PlanningApp.tsx"
@@ -13063,6 +13103,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Actions prioritaires",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -13135,7 +13184,8 @@
     ],
     "kinds": [
       "jsx",
-      "literal"
+      "literal",
+      "template"
     ]
   },
   {
@@ -13154,6 +13204,34 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "active mobile token found.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "active unit",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal",
+      "template"
+    ]
+  },
+  {
+    "text": "active units",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -13248,6 +13326,15 @@
     ]
   },
   {
+    "text": "activité",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Activité",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -13263,6 +13350,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Activité du jour",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
     ]
   },
   {
@@ -13306,12 +13402,12 @@
     ]
   },
   {
-    "text": "activité(s)",
+    "text": "activités",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "jsx"
+      "literal"
     ]
   },
   {
@@ -13352,6 +13448,15 @@
     ]
   },
   {
+    "text": "activities",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Activities attached to the",
     "files": [
       "apps/web/src/components/HrApp.tsx"
@@ -13365,7 +13470,8 @@
     "files": [
       "apps/api/src/dashboard/dashboard.service.ts",
       "apps/api/src/menus/menus.controller.ts",
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "attribute",
@@ -13528,6 +13634,15 @@
     ],
     "kinds": [
       "template"
+    ]
+  },
+  {
+    "text": "Actuelle",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -14150,6 +14265,15 @@
     ]
   },
   {
+    "text": "affected area",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "Affecter",
     "files": [
       "apps/web/src/components/ProductionFabricationCalendar.tsx"
@@ -14324,15 +14448,6 @@
     "text": "Afficher plus de produits (",
     "files": [
       "apps/web/src/components/purchasing/orders/OrderCatalog.tsx"
-    ],
-    "kinds": [
-      "jsx"
-    ]
-  },
-  {
-    "text": "Afficher tous les contrôles",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "jsx"
@@ -14789,7 +14904,7 @@
     ]
   },
   {
-    "text": "Ajouter ce process",
+    "text": "Ajouter ce procédé",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -15066,6 +15181,15 @@
     "text": "Ajouter un régime",
     "files": [
       "apps/web/src/components/MenusApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Ajouter un relevé",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "jsx"
@@ -16011,6 +16135,15 @@
     ]
   },
   {
+    "text": "alert-modern warning",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
     "text": "alert-modern warning category-vat-warning",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -16040,22 +16173,21 @@
   {
     "text": "alerte",
     "files": [
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "jsx"
+      "jsx",
+      "template"
     ]
   },
   {
     "text": "Alerte",
     "files": [
-      "apps/web/src/components/ArchitectureCenter.tsx",
-      "apps/web/src/components/Dashboard.tsx",
-      "apps/web/src/components/HaccpApp.tsx"
+      "apps/web/src/components/ArchitectureCenter.tsx"
     ],
     "kinds": [
-      "attribute",
-      "literal"
+      "attribute"
     ]
   },
   {
@@ -16158,15 +16290,6 @@
     ]
   },
   {
-    "text": "alerte(s) température ouverte(s). Les relevés automatiques sont enregistrés dans l’onglet Températures et repris dans les rapports.",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
-    ]
-  },
-  {
     "text": "Alerter le responsable en cas de difficulte, risque ou besoin particulier.",
     "files": [
       "apps/api/src/hr/hr.service.ts"
@@ -16188,7 +16311,8 @@
     "text": "Alertes",
     "files": [
       "apps/api/src/haccp/haccp.service.ts",
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -16223,9 +16347,27 @@
     ]
   },
   {
+    "text": "Alertes critiques",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
     "text": "Alertes critiques et avertissements actifs.",
     "files": [
       "apps/api/src/dashboard/dashboard.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Alertes de température",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -16308,7 +16450,6 @@
   {
     "text": "Alertes Température",
     "files": [
-      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/WorkspaceOnboarding.tsx"
     ],
     "kinds": [
@@ -16522,6 +16663,15 @@
     "text": "all 0.3s",
     "files": [
       "apps/web/src/components/FirstStartLanding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "all areas",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -16754,6 +16904,16 @@
     ]
   },
   {
+    "text": "already present",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal",
+      "template"
+    ]
+  },
+  {
     "text": "alt",
     "files": [
       "apps/web/src/components/ui/Modal.tsx"
@@ -16763,7 +16923,7 @@
     ]
   },
   {
-    "text": "Alternative cellule / blast chiller",
+    "text": "Alternative à la cellule de refroidissement",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -17770,6 +17930,7 @@
   {
     "text": "Année",
     "files": [
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/MenusApp.tsx",
       "apps/web/src/components/PlanningApp.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
@@ -17878,6 +18039,7 @@
     "text": "Annuel",
     "files": [
       "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/PlanningApp.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
     ],
@@ -17963,6 +18125,7 @@
     "text": "Annulé",
     "files": [
       "apps/web/src/components/CatererMenusApp.tsx",
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/PlanningApp.tsx"
     ],
     "kinds": [
@@ -18781,7 +18944,7 @@
     ]
   },
   {
-    "text": "Après cette préparation dans ToqueHub main, les équipes réalisent les contrôles quotidiens HACCP depuis l’application ToqueHub : relevés, nettoyage, traçabilité et rapports.",
+    "text": "Après cette préparation dans ToqueHub principal, les équipes réalisent les contrôles quotidiens HACCP depuis l’application ToqueHub : relevés, nettoyage, traçabilité et rapports.",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -18922,6 +19085,15 @@
     ]
   },
   {
+    "text": "Archivage automatique",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Archivage automatique des rapports sanitaires quotidiens.",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -18964,15 +19136,6 @@
     ],
     "kinds": [
       "literal"
-    ]
-  },
-  {
-    "text": "Archivage HACCP",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "attribute"
     ]
   },
   {
@@ -19153,9 +19316,45 @@
     ]
   },
   {
+    "text": "Archives quotidiennes et exports pour les audits.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Archives, sauvegardes et reprise des données",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "are",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "area",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "areas",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -20510,24 +20709,6 @@
     ]
   },
   {
-    "text": "Aucun contrôle d’huile enregistré",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
-    "text": "Aucun contrôle ne correspond à “",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
-    ]
-  },
-  {
     "text": "Aucun contrôle prévu",
     "files": [
       "apps/api/src/haccp/haccp.service.ts",
@@ -20722,6 +20903,24 @@
     ]
   },
   {
+    "text": "Aucun équipement de procédé",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "Aucun équipement de température",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Aucun équipement de température disponible",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -20737,6 +20936,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Aucun équipement trouvé",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -21058,15 +21266,6 @@
     ]
   },
   {
-    "text": "Aucun matériel process",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "attribute"
-    ]
-  },
-  {
     "text": "Aucun matériel trouvé",
     "files": [
       "apps/web/src/components/stocks/EquipmentPage.tsx"
@@ -21374,7 +21573,7 @@
     ]
   },
   {
-    "text": "Aucun process lancé",
+    "text": "Aucun procédé lancé",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -21591,6 +21790,24 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Aucun relevé disponible",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Aucun relevé sur cette période",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -21949,6 +22166,15 @@
     "text": "Aucune action bloquante à traiter sur la période.",
     "files": [
       "apps/web/src/components/PlanningApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Aucune action prioritaire",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "jsx"
@@ -22792,6 +23018,15 @@
     ]
   },
   {
+    "text": "Aucune notification envoyée :",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "Aucune opération récente.",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -22900,24 +23135,6 @@
     ]
   },
   {
-    "text": "Aucune production planifiée aujourd’hui",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
-    "text": "Aucune push envoyée:",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "template"
-    ]
-  },
-  {
     "text": "Aucune quantité de stock ni mouvement ne sera créé depuis cet import.",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -22942,15 +23159,6 @@
     ],
     "kinds": [
       "attribute"
-    ]
-  },
-  {
-    "text": "Aucune réception enregistrée",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
     ]
   },
   {
@@ -23086,6 +23294,15 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "Aucune source",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -23693,6 +23910,15 @@
     ]
   },
   {
+    "text": "Autres équipements",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Autres fiches actives",
     "files": [
       "apps/web/src/components/ProductionApp.tsx"
@@ -23809,6 +24035,15 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "avec température finale.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -24345,6 +24580,15 @@
     ]
   },
   {
+    "text": "Bandelette",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Bandelettes",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -24600,6 +24844,24 @@
     ]
   },
   {
+    "text": "batch for the day",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "batches for the day",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "batches/:id/complete",
     "files": [
       "apps/api/src/production/production.controller.ts"
@@ -24660,7 +24922,17 @@
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "jsx"
+      "jsx",
+      "literal"
+    ]
+  },
+  {
+    "text": "Batterie capteur faible",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -25656,7 +25928,8 @@
       "apps/api/src/stock-assistant/stock-agent-harness.service.ts",
       "apps/api/src/stocks/stocks-ocr.service.ts",
       "apps/api/src/technical-sheet-assistant/technical-sheet-agent-harness.service.ts",
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -26065,12 +26338,12 @@
     ]
   },
   {
-    "text": "Broker MQTT inaccessible:",
+    "text": "Broker MQTT inaccessible :",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "template"
+      "literal"
     ]
   },
   {
@@ -26505,6 +26778,15 @@
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx",
       "apps/web/src/components/purchasing/PurchasingWorkspace.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "btn btn-secondary btn-outline haccp-hero-guide",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "attribute"
@@ -27990,6 +28272,15 @@
     ]
   },
   {
+    "text": "capteur",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Capteur",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -28135,27 +28426,8 @@
     ]
   },
   {
-    "text": "capteur(s)",
+    "text": "capteur trouvé",
     "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "template"
-    ]
-  },
-  {
-    "text": "capteur(s) trouvé(s)",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
-    ]
-  },
-  {
-    "text": "Capteurs",
-    "files": [
-      "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
@@ -28163,7 +28435,25 @@
     ]
   },
   {
-    "text": "Capteurs de Température (IoT)",
+    "text": "capteurs",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Capteurs",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Capteurs de température",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -28201,6 +28491,7 @@
   {
     "text": "Capteurs IoT",
     "files": [
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/WorkspaceOnboarding.tsx"
     ],
     "kinds": [
@@ -28218,6 +28509,15 @@
   },
   {
     "text": "Capteurs Sonoff (IoT)",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "capteurs trouvés",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -28427,7 +28727,43 @@
     ]
   },
   {
-    "text": "card-modern haccp-config-hero",
+    "text": "card-modern haccp-action-overview",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "card-modern haccp-report-summary-card",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "card-modern haccp-temperature-chart-panel",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "card-modern haccp-temperature-empty",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "card-modern haccp-temperature-monitor-head",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -29047,7 +29383,8 @@
   {
     "text": "Catalogue produits",
     "files": [
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "jsx",
@@ -29057,12 +29394,10 @@
   {
     "text": "Catalogue Produits",
     "files": [
-      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/WorkspaceOnboarding.tsx"
     ],
     "kinds": [
-      "jsx",
-      "literal"
+      "jsx"
     ]
   },
   {
@@ -30316,7 +30651,7 @@
     ]
   },
   {
-    "text": "Cet équipement de température existe déjà.",
+    "text": "Cet équipement de procédé existe déjà pour ce type.",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -30325,7 +30660,7 @@
     ]
   },
   {
-    "text": "Cet équipement process existe déjà pour ce type.",
+    "text": "Cet équipement de température existe déjà.",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -30705,6 +31040,15 @@
     ]
   },
   {
+    "text": "Chambre froide",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Chambre froide négative",
     "files": [
       "apps/api/src/auth/auth.service.ts",
@@ -30978,6 +31322,15 @@
     ]
   },
   {
+    "text": "Chaque domaine conserve ses données et ses actions actuelles.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Chaque donnée a une source unique",
     "files": [
       "apps/web/src/components/WorkspaceOnboarding.tsx"
@@ -31170,6 +31523,7 @@
   {
     "text": "Chargement de l’historique…",
     "files": [
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/purchasing/pages/PurchaseHistory.tsx"
     ],
     "kinds": [
@@ -31375,6 +31729,15 @@
     ]
   },
   {
+    "text": "Chargement du module HACCP…",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Chargement du module Marges impossible.",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -31571,6 +31934,15 @@
     ]
   },
   {
+    "text": "check displayed",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "check the API key permissions.",
     "files": [
       "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
@@ -31603,6 +31975,24 @@
     "text": "Checklists",
     "files": [
       "apps/web/src/components/WorkspaceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "checks covered",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "checks displayed",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -32833,6 +33223,15 @@
     ]
   },
   {
+    "text": "Choisissez une période plus longue ou attendez la prochaine synchronisation.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Choisissez une suggestion pour enregistrer automatiquement l’adresse complète.",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -33365,6 +33764,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "cleaning.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -34307,7 +34715,8 @@
     ],
     "kinds": [
       "attribute",
-      "jsx"
+      "jsx",
+      "literal"
     ]
   },
   {
@@ -34381,6 +34790,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "cold/hot session",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -35662,7 +36080,8 @@
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "literal"
+      "literal",
+      "template"
     ]
   },
   {
@@ -35916,6 +36335,24 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Comprendre HACCP",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Comprendre le module",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -36256,6 +36693,15 @@
     ]
   },
   {
+    "text": "concerné",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "Concierge",
     "files": [
       "apps/api/src/hr/hr.catalog.ts",
@@ -36579,6 +37025,15 @@
     ]
   },
   {
+    "text": "Configuration initiale :",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Configuration initiale à lancer. Les contrôles terrain passent ensuite par l’application ToqueHub.",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -36669,16 +37124,6 @@
     ]
   },
   {
-    "text": "Configuration Zones & Matériels",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx",
-      "literal"
-    ]
-  },
-  {
     "text": "Configuration…",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -36691,6 +37136,15 @@
     "text": "Configurations établissement des droits RH.",
     "files": [
       "apps/api/src/architecture/architecture.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "configuré",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -36725,19 +37179,56 @@
     ]
   },
   {
-    "text": "configuré(s)",
+    "text": "configured",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx",
+      "apps/web/src/components/TechnicalSheetsApp.tsx",
+      "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "configured area",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "jsx"
+      "literal"
     ]
   },
   {
-    "text": "configured",
+    "text": "configured areas",
     "files": [
-      "apps/web/src/components/TechnicalSheetsApp.tsx",
-      "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx"
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "configured unit",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "configured units",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "configurée",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -36757,12 +37248,12 @@
     ]
   },
   {
-    "text": "configurée(s)",
+    "text": "configurées",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "jsx"
+      "literal"
     ]
   },
   {
@@ -36824,6 +37315,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Configurer les équipements",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -36898,6 +37398,15 @@
     ],
     "kinds": [
       "attribute"
+    ]
+  },
+  {
+    "text": "configurés",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -36990,6 +37499,15 @@
     ],
     "kinds": [
       "attribute"
+    ]
+  },
+  {
+    "text": "Configurez vos chambres froides, réfrigérateurs et congélateurs pour commencer la supervision.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -37427,7 +37945,8 @@
     "text": "Congélateur",
     "files": [
       "apps/api/src/auth/auth.service.ts",
-      "apps/api/src/stocks/stocks.service.ts"
+      "apps/api/src/stocks/stocks.service.ts",
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -37435,6 +37954,15 @@
   },
   {
     "text": "Congélateur de réserve",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Congélateurs et enceintes négatives",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -37571,15 +38099,6 @@
     ],
     "kinds": [
       "literal"
-    ]
-  },
-  {
-    "text": "conic-gradient(#34d399",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "template"
     ]
   },
   {
@@ -39265,15 +39784,6 @@
     ]
   },
   {
-    "text": "contrôle",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
     "text": "Contrôle",
     "files": [
       "apps/web/src/components/CatererMenusApp.tsx",
@@ -39304,6 +39814,15 @@
   },
   {
     "text": "Contrôle à la livraison : hygiène, températures et emballages.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "contrôle affiché",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -39357,7 +39876,7 @@
     ]
   },
   {
-    "text": "Contrôle des Huiles de Friture",
+    "text": "Contrôle des huiles de friture",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -39480,15 +39999,6 @@
     ],
     "kinds": [
       "literal"
-    ]
-  },
-  {
-    "text": "contrôle(s) affiché(s)",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
     ]
   },
   {
@@ -39627,6 +40137,25 @@
     ]
   },
   {
+    "text": "Contrôles",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "contrôles affichés",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Contrôles appliqués avant la publication du planning",
     "files": [
       "apps/web/src/components/PlanningApp.tsx"
@@ -39690,6 +40219,15 @@
     ]
   },
   {
+    "text": "Contrôles des bains, décisions et preuves photo.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Contrôles des huiles",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -39724,24 +40262,6 @@
     ],
     "kinds": [
       "literal"
-    ]
-  },
-  {
-    "text": "contrôles manquants",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "template"
-    ]
-  },
-  {
-    "text": "Contrôles manquants",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
     ]
   },
   {
@@ -39810,15 +40330,6 @@
     ]
   },
   {
-    "text": "Contrôlez fournisseurs, températures et lots dès l’arrivée des produits.",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "attribute"
-    ]
-  },
-  {
     "text": "Contrôlez le brouillon puis cliquez sur « Valider l’inventaire » pour appliquer les écarts au stock.",
     "files": [
       "apps/api/src/stocks/stocks-inventory-import.service.ts"
@@ -39834,6 +40345,15 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "controls",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -41279,6 +41799,15 @@
     ]
   },
   {
+    "text": "created,",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "createdAt",
     "files": [
       "apps/api/src/architecture/architecture.service.ts",
@@ -41664,7 +42193,8 @@
   {
     "text": "créé",
     "files": [
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal",
@@ -41692,19 +42222,11 @@
   {
     "text": "Créé le",
     "files": [
-      "apps/api/src/stocks/stocks-margins.service.ts"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
-    "text": "créé(s),",
-    "files": [
+      "apps/api/src/stocks/stocks-margins.service.ts",
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "template"
+      "literal"
     ]
   },
   {
@@ -42146,7 +42668,16 @@
     ]
   },
   {
-    "text": "Créer un équipement de process sur mesure",
+    "text": "Créer un équipement de procédé",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Créer un équipement de procédé sur mesure",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -42206,15 +42737,6 @@
     ],
     "kinds": [
       "attribute"
-    ]
-  },
-  {
-    "text": "Créer un matériel process",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
     ]
   },
   {
@@ -42854,7 +43376,6 @@
       "apps/web/src/components/PlanningApp.tsx"
     ],
     "kinds": [
-      "attribute",
       "literal"
     ]
   },
@@ -42864,11 +43385,9 @@
       "apps/api/src/architecture/architecture.service.ts",
       "apps/api/src/planning/planning.service.ts",
       "apps/web/src/components/ArchitectureCenter.tsx",
-      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/PlanningApp.tsx"
     ],
     "kinds": [
-      "jsx",
       "literal"
     ]
   },
@@ -43533,6 +44052,15 @@
   },
   {
     "text": "cycles clôturés aujourd’hui",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "cycles completed today",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -44511,6 +45039,15 @@
     ]
   },
   {
+    "text": "Date du rapport",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Date du service",
     "files": [
       "apps/web/src/components/ProductionApp.tsx"
@@ -44658,6 +45195,15 @@
     ]
   },
   {
+    "text": "day in history",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "day-closures/carry-over",
     "files": [
       "apps/api/src/production/production.controller.ts"
@@ -44721,11 +45267,30 @@
     ]
   },
   {
+    "text": "days",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "days in history",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "de",
     "files": [
       "apps/api/src/stock-assistant/stock-assistant.service.ts",
       "apps/api/src/stocks/stocks-product-import.service.ts",
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "template"
@@ -44879,6 +45444,15 @@
     "text": "de synthèses comptables ne sont pas ajoutés car déjà couverts par la caisse.",
     "files": [
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "de température, fournisseur ou produit.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "template"
@@ -45226,6 +45800,15 @@
     ]
   },
   {
+    "text": "Définissez vos enceintes, vos équipements de procédé et votre plan de nettoyage.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "deg) scale(",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -45323,6 +45906,7 @@
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
+      "literal",
       "template"
     ]
   },
@@ -45336,13 +45920,12 @@
     ]
   },
   {
-    "text": "déjà présent(s)",
+    "text": "déjà présents",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "jsx",
-      "template"
+      "literal"
     ]
   },
   {
@@ -46214,6 +46797,15 @@
     ]
   },
   {
+    "text": "Dernière donnée à vérifier",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Dernière étape",
     "files": [
       "apps/web/src/components/HrApp.tsx"
@@ -46283,6 +46875,15 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "dernière synchronisation",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -47930,7 +48531,7 @@
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "jsx"
+      "template"
     ]
   },
   {
@@ -47939,7 +48540,8 @@
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "attribute"
+      "attribute",
+      "literal"
     ]
   },
   {
@@ -47953,6 +48555,15 @@
   },
   {
     "text": "dlcDays",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "do",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -48439,10 +49050,12 @@
   {
     "text": "documentation",
     "files": [
-      "apps/api/src/architecture/architecture.controller.ts"
+      "apps/api/src/architecture/architecture.controller.ts",
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "literal"
+      "literal",
+      "template"
     ]
   },
   {
@@ -48678,6 +49291,24 @@
     ]
   },
   {
+    "text": "does",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "doit",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "doit avoir un rendement renseigné dans sa fiche technique.",
     "files": [
       "apps/api/src/production/production-execution.service.ts"
@@ -48723,9 +49354,27 @@
     ]
   },
   {
+    "text": "doivent",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "doivent travailler sur ce créneau.",
     "files": [
       "apps/api/src/production/production-execution.service.ts"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "domaine",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "template"
@@ -48741,12 +49390,12 @@
     ]
   },
   {
-    "text": "domaines couverts aujourd’hui.",
+    "text": "Domaines couverts",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "jsx"
+      "attribute"
     ]
   },
   {
@@ -48867,15 +49516,6 @@
     ],
     "kinds": [
       "template"
-    ]
-  },
-  {
-    "text": "Données du jour consolidées",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
     ]
   },
   {
@@ -49539,6 +50179,15 @@
     ]
   },
   {
+    "text": "Du contrôle terrain à la preuve d’audit",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Du dossier client aux campagnes de production, pilotez chaque prestation, horaire et quantité sans mélanger vos autres activités.",
     "files": [
       "apps/web/src/components/CatererMenusApp.tsx"
@@ -50097,6 +50746,15 @@
     ]
   },
   {
+    "text": "Écarts de température et capteurs hors ligne.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Écarts température",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -50325,7 +50983,8 @@
       "apps/web/src/components/ProductPickerModal.tsx"
     ],
     "kinds": [
-      "attribute"
+      "attribute",
+      "jsx"
     ]
   },
   {
@@ -50481,21 +51140,21 @@
     ]
   },
   {
+    "text": "élément créé",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "élément(s)",
     "files": [
       "apps/web/src/components/PlanningApp.tsx"
     ],
     "kinds": [
       "template"
-    ]
-  },
-  {
-    "text": "élément(s) créé(s)",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
     ]
   },
   {
@@ -50518,6 +51177,15 @@
   },
   {
     "text": "Éléments à traiter",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "éléments créés",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -50771,6 +51439,7 @@
       "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/CoursProduitsApp.tsx",
       "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/HrApp.tsx",
       "apps/web/src/components/MenusApp.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx",
@@ -51175,6 +51844,7 @@
       "apps/api/src/stocks/stocks.controller.ts",
       "apps/web/src/api/client.ts",
       "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/HrApp.tsx",
       "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
     ],
@@ -51278,6 +51948,24 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "en attente de la première donnée",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "en attente sur",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -51545,6 +52233,16 @@
     ]
   },
   {
+    "text": "enceinte",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal",
+      "template"
+    ]
+  },
+  {
     "text": "Enceinte",
     "files": [
       "apps/api/src/haccp/iot/haccp-sensors.service.ts",
@@ -51564,7 +52262,34 @@
     ]
   },
   {
+    "text": "enceinte configurée",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Enceinte légumes",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Enceinte négative",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Enceinte positive",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -51600,24 +52325,6 @@
     ]
   },
   {
-    "text": "enceinte(s) active(s) n’ont pas encore de relevé aujourd’hui.",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "template"
-    ]
-  },
-  {
-    "text": "enceinte(s) configurée(s)",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "template"
-    ]
-  },
-  {
     "text": "enceinte(s) sans relevé aujourd’hui.",
     "files": [
       "apps/api/src/haccp/haccp.service.ts"
@@ -51641,11 +52348,20 @@
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "template"
+      "literal"
     ]
   },
   {
     "text": "Enceintes actives à relever",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "enceintes configurées",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -51704,7 +52420,7 @@
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "template"
+      "literal"
     ]
   },
   {
@@ -51739,6 +52455,7 @@
       "apps/web/src/components/TechnicalSheetsApp.tsx"
     ],
     "kinds": [
+      "attribute",
       "literal"
     ]
   },
@@ -52473,6 +53190,7 @@
     "text": "Enter",
     "files": [
       "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/HrApp.tsx",
       "apps/web/src/components/PlanningApp.tsx",
       "apps/web/src/components/ProductionApp.tsx",
@@ -52615,12 +53333,12 @@
     ]
   },
   {
-    "text": "entrée(s) enregistrée(s)",
+    "text": "entrée enregistrée",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "jsx"
+      "literal"
     ]
   },
   {
@@ -52645,12 +53363,12 @@
     ]
   },
   {
-    "text": "Entrées marchandises",
+    "text": "entrées enregistrées",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "attribute"
+      "literal"
     ]
   },
   {
@@ -52752,7 +53470,7 @@
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "jsx"
+      "template"
     ]
   },
   {
@@ -53114,6 +53832,15 @@
     ]
   },
   {
+    "text": "équipement",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "Équipement",
     "files": [
       "apps/api/src/haccp/haccp.service.ts",
@@ -53123,6 +53850,51 @@
     "kinds": [
       "literal",
       "template"
+    ]
+  },
+  {
+    "text": "Équipement —",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "équipement actif",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "équipement configuré",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Équipement de procédé",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "équipement existant",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -53191,48 +53963,12 @@
     ]
   },
   {
-    "text": "Équipement process",
+    "text": "équipement suivi",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
-    ]
-  },
-  {
-    "text": "équipement(s) actif(s)",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
-    "text": "équipement(s) configuré(s)",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "template"
-    ]
-  },
-  {
-    "text": "équipement(s) existant(s)",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "template"
-    ]
-  },
-  {
-    "text": "équipement(s) huile n’ont pas encore de contrôle.",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "template"
     ]
   },
   {
@@ -53263,7 +53999,34 @@
     ]
   },
   {
-    "text": "Équipements de Process HACCP",
+    "text": "équipements actifs",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "équipements configurés",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Équipements de procédé",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Équipements de procédés HACCP",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -53291,6 +54054,15 @@
     ]
   },
   {
+    "text": "équipements existants",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Équipements huile actifs",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -53301,6 +54073,15 @@
   },
   {
     "text": "Équipements sans contrôle",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "équipements suivis",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -53695,6 +54476,7 @@
   {
     "text": "est",
     "files": [
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx"
     ],
     "kinds": [
@@ -54323,6 +55105,15 @@
     ]
   },
   {
+    "text": "État des températures",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
     "text": "État du serveur et de la base de données",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -54420,6 +55211,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "être terminée",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -54749,6 +55549,15 @@
     ]
   },
   {
+    "text": "evidence items",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "Évier",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -54806,6 +55615,15 @@
     "text": "Évolution comparée des cours moyens",
     "files": [
       "apps/web/src/components/CoursProduitsApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Évolution de la température",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "jsx"
@@ -55516,15 +56334,6 @@
     ]
   },
   {
-    "text": "excellent",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
     "text": "Excellente",
     "files": [
       "apps/web/src/components/FirstStartLanding.tsx"
@@ -55693,6 +56502,42 @@
     "files": [
       "apps/api/src/stocks/stocks-product-import.service.ts",
       "apps/web/src/components/purchasing/onboarding/PurchasingOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "existing area",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "existing areas",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "existing unit",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "existing units",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -56207,7 +57052,6 @@
     "text": "eyebrow",
     "files": [
       "apps/web/src/App.tsx",
-      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/LoginPage.tsx"
     ],
     "kinds": [
@@ -56392,6 +57236,15 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "Fabrications planifiées, lots et preuves ingrédients.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -57181,6 +58034,15 @@
     "text": "Fermer la visite",
     "files": [
       "apps/web/src/components/WorkspaceOnboarding.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "Fermer le guide",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "attribute"
@@ -58480,6 +59342,15 @@
     ]
   },
   {
+    "text": "Filtrer les zones et matériels",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
     "text": "Filtrer par catégorie",
     "files": [
       "apps/web/src/components/finance/FinanceSalesInsights.tsx",
@@ -59397,6 +60268,15 @@
     ]
   },
   {
+    "text": "Fonctionnement général du module",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
     "text": "Fondation du système.",
     "files": [
       "apps/api/src/architecture/architecture.service.ts",
@@ -59996,6 +60876,15 @@
     ]
   },
   {
+    "text": "Fournisseurs, températures et conformité des livraisons.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Fournisseurs.",
     "files": [
       "apps/api/src/architecture/architecture.service.ts"
@@ -60294,25 +61183,7 @@
     ]
   },
   {
-    "text": "Friteuse",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
     "text": "Friteuse, méthode ou note…",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "attribute"
-    ]
-  },
-  {
-    "text": "Friture & polarité",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -60384,9 +61255,19 @@
     ]
   },
   {
+    "text": "froid/chaud",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "from",
     "files": [
-      "apps/api/src/purchasing/purchasing.controller.ts"
+      "apps/api/src/purchasing/purchasing.controller.ts",
+      "apps/web/src/api/client.ts"
     ],
     "kinds": [
       "literal"
@@ -60677,15 +61558,6 @@
     ]
   },
   {
-    "text": "Gardez un suivi lisible des tests, actions correctives et renouvellements.",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "attribute"
-    ]
-  },
-  {
     "text": "Garnitures et préparations complémentaires.",
     "files": [
       "apps/web/src/components/TechnicalSheetsApp.tsx"
@@ -60964,7 +61836,8 @@
     "files": [
       "apps/api/src/menus/menu-exports.service.ts",
       "apps/api/src/planning/planning.service.ts",
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "jsx",
@@ -62237,6 +63110,7 @@
     "text": "Guide de configuration",
     "files": [
       "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/HrApp.tsx",
       "apps/web/src/components/PlanningApp.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx",
@@ -62337,6 +63211,15 @@
     ]
   },
   {
+    "text": "HACCP Production ·",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "HACCP sensor maintenance skipped:",
     "files": [
       "apps/api/src/haccp/iot/haccp-sensors.service.ts"
@@ -62382,6 +63265,15 @@
     ]
   },
   {
+    "text": "haccp-config-page haccp-standard-page",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
     "text": "haccp-custom-surfaces full-width",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -62391,7 +63283,7 @@
     ]
   },
   {
-    "text": "haccp-dashboard-section-heading haccp-register-heading",
+    "text": "haccp-dashboard haccp-dashboard-summary",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -62697,7 +63589,7 @@
     ]
   },
   {
-    "text": "haccp-search haccp-dashboard-search",
+    "text": "haccp-search haccp-report-search",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -62706,7 +63598,16 @@
     ]
   },
   {
-    "text": "haccp-search haccp-report-search",
+    "text": "haccp-search haccp-subnav-search",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "haccp-search haccp-temperature-search",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -62771,15 +63672,6 @@
   },
   {
     "text": "haccp-status-pill ok",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "attribute"
-    ]
-  },
-  {
-    "text": "haccp-tabs haccp-module-nav",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -63023,6 +63915,24 @@
     ]
   },
   {
+    "text": "has",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "has not reported a reading since",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "Hausse détectée sur",
     "files": [
       "apps/api/src/stocks/stocks-margins.service.ts"
@@ -63048,6 +63958,15 @@
     ],
     "kinds": [
       "jsx",
+      "literal"
+    ]
+  },
+  {
+    "text": "have",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
       "literal"
     ]
   },
@@ -63093,15 +64012,6 @@
     "text": "healthcheck ok",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
-    "text": "Hebdo",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -63713,15 +64623,6 @@
     ]
   },
   {
-    "text": "Historique des lots, réceptions marchandises et contrôles des bains d’huile.",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
-    ]
-  },
-  {
     "text": "Historique des Mouvements",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -64068,6 +64969,15 @@
     ]
   },
   {
+    "text": "hors seuil",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Hors seuil",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -64123,6 +65033,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "hour",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -64183,6 +65102,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "hr ago",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -64451,6 +65379,15 @@
     ]
   },
   {
+    "text": "hr-tabs haccp-tabs haccp-module-nav",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
     "text": "hr-tabs menus-tabs",
     "files": [
       "apps/web/src/components/CentralKitchenMenusApp.tsx",
@@ -64608,13 +65545,39 @@
     ]
   },
   {
+    "text": "Huile filtrée",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "huile n’",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "Huile remplacée",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Huiles",
     "files": [
       "apps/api/src/haccp/haccp.service.ts",
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "attribute",
       "literal"
     ]
   },
@@ -64625,15 +65588,6 @@
     ],
     "kinds": [
       "attribute"
-    ]
-  },
-  {
-    "text": "huiles friteuses bains polarité friture",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
     ]
   },
   {
@@ -64718,7 +65672,8 @@
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "jsx"
+      "jsx",
+      "literal"
     ]
   },
   {
@@ -66628,7 +67583,7 @@
     ]
   },
   {
-    "text": "Impression d’Étiquettes",
+    "text": "Impression d’étiquettes",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -66657,10 +67612,12 @@
   {
     "text": "in",
     "files": [
-      "apps/api/src/finance/finance-analytics.service.ts"
+      "apps/api/src/finance/finance-analytics.service.ts",
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "literal"
+      "literal",
+      "template"
     ]
   },
   {
@@ -66670,6 +67627,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "in progress ·",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -66780,6 +67746,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "incomplete.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -67039,7 +68014,6 @@
     "files": [
       "apps/api/src/dashboard/dashboard.service.ts",
       "apps/api/src/finance/finance-export.service.ts",
-      "apps/api/src/haccp/haccp.service.ts",
       "apps/api/src/planning/planning.service.ts",
       "apps/web/src/components/ArchitectureCenter.tsx",
       "apps/web/src/components/Dashboard.tsx"
@@ -67219,21 +68193,25 @@
   {
     "text": "ingredient",
     "files": [
-      "apps/api/src/architecture/architecture.service.ts"
+      "apps/api/src/architecture/architecture.service.ts",
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "literal"
+      "literal",
+      "template"
     ]
   },
   {
     "text": "ingrédient",
     "files": [
       "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/ProductionApp.tsx"
     ],
     "kinds": [
       "jsx",
-      "literal"
+      "literal",
+      "template"
     ]
   },
   {
@@ -67306,15 +68284,6 @@
     "text": "ingrédient(s) rapproché(s) avec Stocks.",
     "files": [
       "apps/web/src/components/TechnicalSheetsApp.tsx"
-    ],
-    "kinds": [
-      "template"
-    ]
-  },
-  {
-    "text": "ingrédient(s) restent à documenter",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "template"
@@ -68761,6 +69730,15 @@
     ]
   },
   {
+    "text": "is",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "is-selected is-create",
     "files": [
       "apps/web/src/components/stocks/InventoryImportWizard.tsx"
@@ -68876,7 +69854,8 @@
     "text": "item",
     "files": [
       "apps/api/src/menus/menu-exports.service.ts",
-      "apps/web/src/components/CatererMenusApp.tsx"
+      "apps/web/src/components/CatererMenusApp.tsx",
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal",
@@ -68888,6 +69867,15 @@
     "files": [
       "apps/api/src/menus/menu-exports.service.ts",
       "apps/api/src/purchasing/purchase-order-pdf.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "item created",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -68910,6 +69898,15 @@
       "apps/api/src/menus/menu-exports.service.ts",
       "apps/api/src/rnm-prices/rnm-prices.service.ts",
       "apps/api/src/stocks/stocks-ocr.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "items created",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -69436,6 +70433,15 @@
     ]
   },
   {
+    "text": "jeton mobile actif trouvé.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "Jeu",
     "files": [
       "apps/web/src/components/CatererMenusApp.tsx",
@@ -69547,6 +70553,7 @@
     "files": [
       "apps/api/src/finance/finance-export.service.ts",
       "apps/web/src/components/CentralKitchenMenusApp.tsx",
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/MenusApp.tsx",
       "apps/web/src/components/PlanningApp.tsx",
       "apps/web/src/components/ProductionApp.tsx",
@@ -69556,6 +70563,15 @@
       "jsx",
       "literal",
       "template"
+    ]
+  },
+  {
+    "text": "jour dans l’historique",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -69635,15 +70651,6 @@
     "text": "jour(s) d’ouverture estimé(s).",
     "files": [
       "apps/api/src/finance/finance-analytics.service.ts"
-    ],
-    "kinds": [
-      "template"
-    ]
-  },
-  {
-    "text": "jour(s) dans l’historique",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "template"
@@ -69789,7 +70796,8 @@
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
     ],
     "kinds": [
-      "jsx"
+      "jsx",
+      "template"
     ]
   },
   {
@@ -69853,6 +70861,15 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "jours dans l’historique",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -69963,6 +70980,15 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "Just now",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -70863,6 +71889,15 @@
     ]
   },
   {
+    "text": "L’équipe réalise les contrôles",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "L'ERP de cuisine open source souverain pour gérer vos produits, vos fournisseurs, et tracer vos stocks locaux en toute simplicité. Configurez votre environnement de travail en moins d'une minute.",
     "files": [
       "apps/web/src/components/FirstStartLanding.tsx"
@@ -70956,6 +71991,15 @@
     "text": "L'heure de service est invalide.",
     "files": [
       "apps/api/src/production/operational-tasks.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "L’historique capteur n’a pas pu être actualisé. Les relevés HACCP restent affichés.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -72671,6 +73715,15 @@
     ]
   },
   {
+    "text": "last synchronisation",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "Last update",
     "files": [
       "apps/api/src/finance/finance-export.service.ts"
@@ -72727,6 +73780,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Latest activity",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -73172,7 +74234,7 @@
     ]
   },
   {
-    "text": "Le dernier suivi mobile associé à chaque matériel process.",
+    "text": "Le dernier suivi mobile associé à chaque équipement de procédé.",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -73715,6 +74777,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Le module rassemble les saisies de l’équipe, les capteurs et la production pour vous montrer ce qui est fait, ce qui manque et ce qui doit être corrigé.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -74266,15 +75337,6 @@
     ]
   },
   {
-    "text": "Le rapport quotidien HACCP n’a pas encore été généré.",
-    "files": [
-      "apps/api/src/haccp/haccp.service.ts"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
     "text": "Le rapprochement affluence/effectif n’est commenté que lorsque staffing.available vaut true.",
     "files": [
       "apps/api/src/finance/finance-ai.service.ts"
@@ -74639,6 +75701,15 @@
     "text": "Le stock sera modifié uniquement après validation du brouillon.",
     "files": [
       "apps/web/src/components/stocks/InventoryImportWizard.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Le tableau de bord calcule les contrôles manquants, les écarts et la couverture du jour.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "jsx"
@@ -75047,6 +76118,15 @@
     ]
   },
   {
+    "text": "Les capteurs et les modules Production transmettent leurs mesures et leurs preuves.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Les catégories courantes sont déjà sélectionnées. Décochez simplement celles que vous n’utilisez pas.",
     "files": [
       "apps/web/src/components/MenusApp.tsx"
@@ -75116,6 +76196,24 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Les contrôles attendus sont réalisés et aucune anomalie n’est ouverte.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Les contrôles, écarts et preuves sont consolidés dans le registre sanitaire.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -75218,6 +76316,15 @@
     ]
   },
   {
+    "text": "Les domaines",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Les données de départ sont créées à l’installation de RH et restent modifiables.",
     "files": [
       "apps/web/src/components/HrApp.tsx"
@@ -75248,6 +76355,15 @@
     "text": "Les données proviennent du **Réseau des Nouvelles des Marchés (RNM)** de FranceAgriMer, interrogé en temps réel via l'API sécurisée ToqueHub. Aucune donnée n'est importée dans vos référentiels de stocks sans votre action, garantissant la propreté de vos inventaires.",
     "files": [
       "apps/web/src/components/CoursProduitsApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Les données remontent",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "jsx"
@@ -75596,6 +76712,15 @@
     ]
   },
   {
+    "text": "Les opérations quotidiennes sont saisies depuis l’application ou le web en cas de correction.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Les personnes, services et postes alimentent les plannings.",
     "files": [
       "apps/web/src/components/WorkspaceOnboarding.tsx"
@@ -75665,6 +76790,24 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Les preuves sont archivées",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Les priorités sont regroupées",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -75761,6 +76904,15 @@
     "text": "Les quantités seront retirées des lots réservés en FEFO.",
     "files": [
       "apps/web/src/components/ProductionFabricationCalendar.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Les rapports quotidiens conservent l’historique nécessaire aux contrôles et aux audits.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "jsx"
@@ -75989,15 +77141,6 @@
     ],
     "kinds": [
       "literal"
-    ]
-  },
-  {
-    "text": "Les trois piliers HACCP",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
     ]
   },
   {
@@ -76351,6 +77494,7 @@
     ],
     "kinds": [
       "jsx",
+      "literal",
       "template"
     ]
   },
@@ -76577,6 +77721,15 @@
     ]
   },
   {
+    "text": "lignes",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Lignes",
     "files": [
       "apps/web/src/components/Dashboard.tsx",
@@ -76670,7 +77823,8 @@
   {
     "text": "limit",
     "files": [
-      "apps/api/src/finance/pos-api-sync.service.ts"
+      "apps/api/src/finance/pos-api-sync.service.ts",
+      "apps/web/src/api/client.ts"
     ],
     "kinds": [
       "literal"
@@ -76695,12 +77849,22 @@
     ]
   },
   {
+    "text": "line",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "lines",
     "files": [
       "apps/api/src/finance/fennoa-sync.service.ts",
       "apps/api/src/finance/finance-document-ocr.service.ts",
       "apps/api/src/stock-assistant/stock-assistant.service.ts",
       "apps/api/src/stocks/stocks-ocr.service.ts",
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/StockAssistantPanel.tsx"
     ],
     "kinds": [
@@ -77459,6 +78623,15 @@
     ]
   },
   {
+    "text": "lot pour la journée",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Lot sans numéro",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -77474,15 +78647,6 @@
     ],
     "kinds": [
       "template"
-    ]
-  },
-  {
-    "text": "lot(s) pour la journée",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
     ]
   },
   {
@@ -77566,6 +78730,24 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "lots pour la journée",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Lots, photos, code-barres et recherche des preuves.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -78130,7 +79312,7 @@
     ]
   },
   {
-    "text": "Maintien chaud / Rechauffement",
+    "text": "Maintien chaud / Réchauffement",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -78300,6 +79482,15 @@
     ]
   },
   {
+    "text": "manque",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "Manque",
     "files": [
       "apps/web/src/components/MenusApp.tsx"
@@ -78323,6 +79514,7 @@
       "apps/api/src/backups/backups.controller.ts",
       "apps/api/src/haccp/haccp.service.ts",
       "apps/web/src/components/CatererMenusApp.tsx",
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx",
       "apps/web/src/components/purchasing/receipts/ReceiptImport.tsx"
@@ -78943,15 +80135,6 @@
     ]
   },
   {
-    "text": "Matériel process",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
-    ]
-  },
-  {
     "text": "Matériel sans famille attribuée.",
     "files": [
       "apps/api/src/stocks/stocks.service.ts"
@@ -79096,6 +80279,15 @@
     ],
     "kinds": [
       "template"
+    ]
+  },
+  {
+    "text": "Maximum",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -80213,6 +81405,24 @@
     ]
   },
   {
+    "text": "Mesuré le",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Mesures automatiques, batterie et connectivité.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Météo à configurer",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -80238,7 +81448,8 @@
     ],
     "kinds": [
       "attribute",
-      "jsx"
+      "jsx",
+      "literal"
     ]
   },
   {
@@ -80273,6 +81484,7 @@
     "files": [
       "apps/web/src/components/CoursProduitsApp.tsx",
       "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/HrApp.tsx",
       "apps/web/src/components/MenusApp.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx"
@@ -80349,6 +81561,7 @@
     "files": [
       "apps/web/src/components/CoursProduitsApp.tsx",
       "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/HrApp.tsx",
       "apps/web/src/components/MenusApp.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx"
@@ -80364,6 +81577,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "metrics-grid haccp-dashboard-metrics",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
     ]
   },
   {
@@ -80617,6 +81839,15 @@
     ]
   },
   {
+    "text": "min ago",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "min couvert par le planning",
     "files": [
       "apps/web/src/components/ProductionFabricationCalendar.tsx"
@@ -80763,6 +81994,15 @@
     ]
   },
   {
+    "text": "Minimum",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Minimum : prénom, nom, date d'embauche, établissement si nécessaire, service et poste.",
     "files": [
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx"
@@ -80884,12 +82124,14 @@
     "text": "Mise à jour",
     "files": [
       "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/HrApp.tsx",
       "apps/web/src/components/MenusApp.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx"
     ],
     "kinds": [
-      "jsx"
+      "jsx",
+      "literal"
     ]
   },
   {
@@ -81019,6 +82261,42 @@
       "apps/web/src/components/PlanningApp.tsx",
       "apps/web/src/components/ProductionFabricationCalendar.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "missing a photo, lot or product.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "missing a temperature, supplier or product.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "missing evidence item",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "missing evidence items",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -81336,10 +82614,12 @@
   {
     "text": "mobile",
     "files": [
-      "apps/api/src/mobile/mobile.controller.ts"
+      "apps/api/src/mobile/mobile.controller.ts",
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "literal"
+      "literal",
+      "template"
     ]
   },
   {
@@ -81352,7 +82632,7 @@
     ]
   },
   {
-    "text": "mobile(s)).",
+    "text": "mobile device",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -81583,7 +82863,25 @@
     ]
   },
   {
+    "text": "modal-overlay haccp-modal-overlay haccp-guide-overlay",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
     "text": "modal-overlay haccp-modal-overlay haccp-live-overlay",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "modal-overlay haccp-modal-overlay haccp-temperature-history-overlay",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -82604,15 +83902,6 @@
     ]
   },
   {
-    "text": "module-page haccp-module",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "attribute"
-    ]
-  },
-  {
     "text": "module:",
     "files": [
       "apps/api/src/architecture/architecture.service.ts"
@@ -83017,6 +84306,24 @@
     "text": "Monitor relevant indicators and alert management when targets are missed.",
     "files": [
       "apps/web/src/components/HrApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "monitored unit",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "monitored units",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -83541,7 +84848,8 @@
   {
     "text": "Moyenne",
     "files": [
-      "apps/web/src/components/CoursProduitsApp.tsx"
+      "apps/web/src/components/CoursProduitsApp.tsx",
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "jsx"
@@ -83732,6 +85040,15 @@
     ]
   },
   {
+    "text": "must be completed with a final temperature.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "muted",
     "files": [
       "apps/web/src/App.tsx",
@@ -83813,6 +85130,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "n’",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -84038,6 +85364,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Navigation",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -84357,6 +85692,15 @@
     ]
   },
   {
+    "text": "Nettoyage et désinfection",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Nettoyage HACCP",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -84496,6 +85840,15 @@
     ]
   },
   {
+    "text": "Never recorded",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "new",
     "files": [
       "apps/web/src/components/Dashboard.tsx",
@@ -84598,6 +85951,15 @@
     ]
   },
   {
+    "text": "no check today.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "No feasible production plan covers the requirement",
     "files": [
       "apps/api/src/production/production-calculations.ts"
@@ -84610,6 +85972,24 @@
     "text": "No mobile push sent for HACCP sensor alert",
     "files": [
       "apps/api/src/haccp/iot/haccp-sensors.service.ts"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "No notification sent:",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "no reading today.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "template"
@@ -84859,6 +86239,15 @@
     ]
   },
   {
+    "text": "Nom de l’équipement",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Nom de l’établissement",
     "files": [
       "apps/web/src/App.tsx",
@@ -85035,15 +86424,6 @@
     "text": "Nom du matériel *",
     "files": [
       "apps/web/src/components/stocks/EquipmentPage.tsx"
-    ],
-    "kinds": [
-      "jsx"
-    ]
-  },
-  {
-    "text": "Nom du matériel / process",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "jsx"
@@ -85351,6 +86731,15 @@
     ]
   },
   {
+    "text": "Non",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Non activé",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -85556,6 +86945,15 @@
   },
   {
     "text": "Non configurée",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Non conforme",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -85940,6 +87338,33 @@
     ]
   },
   {
+    "text": "not complete yet.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "not have a check yet.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "not have a reading yet today.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "Not provided",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -86027,7 +87452,8 @@
     ],
     "kinds": [
       "attribute",
-      "jsx"
+      "jsx",
+      "literal"
     ]
   },
   {
@@ -86082,6 +87508,24 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Notification test envoyée",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Notification test envoyée (",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -86246,15 +87690,6 @@
     ]
   },
   {
-    "text": "Nouveau matériel de process sur mesure",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
-    ]
-  },
-  {
     "text": "Nouveau matériel de température sur mesure",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -86316,6 +87751,15 @@
     ],
     "kinds": [
       "template"
+    ]
+  },
+  {
+    "text": "Nouvel équipement de procédé sur mesure",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -86548,6 +87992,15 @@
     "text": "npm run iot:start",
     "files": [
       "apps/api/src/haccp/iot/haccp-sensors.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "nt",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -87295,6 +88748,15 @@
     ]
   },
   {
+    "text": "oil unit",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "oil-equipment/:id",
     "files": [
       "apps/api/src/haccp/haccp.controller.ts"
@@ -87578,6 +89040,15 @@
     ]
   },
   {
+    "text": "ont",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "OP-",
     "files": [
       "apps/api/src/menus/menus.service.ts",
@@ -87604,6 +89075,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "open temperature alert",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -87852,15 +89332,6 @@
     ]
   },
   {
-    "text": "Opérations essentielles",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
-    ]
-  },
-  {
     "text": "operations/:id",
     "files": [
       "apps/api/src/production/production.controller.ts"
@@ -87951,6 +89422,7 @@
       "apps/api/src/stocks/stocks-ocr.service.ts",
       "apps/web/src/components/CoursProduitsApp.tsx",
       "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/HrApp.tsx",
       "apps/web/src/components/MenusApp.tsx",
       "apps/web/src/components/purchasing/pages/PurchasingDashboard.tsx"
@@ -89056,6 +90528,15 @@
     ]
   },
   {
+    "text": "Oui",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Oui, j’ai trouvé",
     "files": [
       "apps/api/src/stock-assistant/stock-assistant.service.ts"
@@ -89176,6 +90657,24 @@
     ]
   },
   {
+    "text": "outside range",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "Ouverte",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Ouverture",
     "files": [
       "apps/web/src/components/PlanningApp.tsx"
@@ -89261,6 +90760,15 @@
     ]
   },
   {
+    "text": "Ouvrir la configuration",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Ouvrir la fiche actuelle et renseigner le profil, le poste, le contrat et les documents.",
     "files": [
       "apps/web/src/components/hr/collaborator/CollaboratorModal.tsx"
@@ -89286,15 +90794,6 @@
     ],
     "kinds": [
       "literal"
-    ]
-  },
-  {
-    "text": "Ouvrir le calendrier",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "attribute"
     ]
   },
   {
@@ -90049,15 +91548,6 @@
     ]
   },
   {
-    "text": "Parcourez le planning et les preuves ingrédients par jour, puis changez de mois.",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "attribute"
-    ]
-  },
-  {
     "text": "Parcourir le catalogue",
     "files": [
       "apps/web/src/components/CoursProduitsApp.tsx",
@@ -90254,6 +91744,33 @@
     "kinds": [
       "jsx",
       "literal"
+    ]
+  },
+  {
+    "text": "pas encore de contrôle.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "pas encore de relevé aujourd’hui.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "pas encore terminée",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -91086,6 +92603,15 @@
     ]
   },
   {
+    "text": "pending surface",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "people",
     "files": [
       "apps/api/src/planning/planning.service.ts"
@@ -91325,6 +92851,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Période du graphique",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
     ]
   },
   {
@@ -92181,15 +93716,6 @@
     ]
   },
   {
-    "text": "Pilotage du jour",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
-    ]
-  },
-  {
     "text": "Pilotage du jour, objectifs, sources, écarts et comparaison N-1.",
     "files": [
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
@@ -92328,6 +93854,15 @@
     ]
   },
   {
+    "text": "Plage attendue :",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Plage de",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -92370,15 +93905,6 @@
     ],
     "kinds": [
       "jsx"
-    ]
-  },
-  {
-    "text": "Plan de Nettoyage & Désinfection",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
     ]
   },
   {
@@ -93803,6 +95329,15 @@
     ]
   },
   {
+    "text": "point",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "Point mort simulé :",
     "files": [
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
@@ -93818,15 +95353,6 @@
     ],
     "kinds": [
       "jsx"
-    ]
-  },
-  {
-    "text": "point(s) restent à traiter.",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "template"
     ]
   },
   {
@@ -95306,7 +96832,8 @@
   {
     "text": "Préparation",
     "files": [
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -96390,6 +97917,15 @@
     ]
   },
   {
+    "text": "preuve manquante",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Preuve photo",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -96408,7 +97944,7 @@
     ]
   },
   {
-    "text": "preuve(s) manquante(s)",
+    "text": "preuves",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -96426,15 +97962,6 @@
     ]
   },
   {
-    "text": "preuves ·",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
-    ]
-  },
-  {
     "text": "Preuves ingrédients",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -96444,12 +97971,12 @@
     ]
   },
   {
-    "text": "preuves ingrédients aujourd’hui",
+    "text": "preuves manquantes",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "template"
+      "literal"
     ]
   },
   {
@@ -96527,10 +98054,12 @@
   {
     "text": "prévue",
     "files": [
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/PlanningApp.tsx"
     ],
     "kinds": [
-      "jsx"
+      "jsx",
+      "template"
     ]
   },
   {
@@ -96675,15 +98204,6 @@
     ]
   },
   {
-    "text": "Priorités à traiter",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
     "text": "priority",
     "files": [
       "apps/api/src/finance/finance-ai.service.ts"
@@ -96699,6 +98219,15 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "Prise en compte",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -97044,6 +98573,90 @@
     ]
   },
   {
+    "text": "procédé",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "procédés",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Procédés",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "attribute",
+      "literal"
+    ]
+  },
+  {
+    "text": "Procédés (",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Procédés froid / chaud",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Procédés froid & chaud",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx",
+      "literal"
+    ]
+  },
+  {
+    "text": "Procédés froid et chaud",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Procédés froid et chaud (cuisson, refroidissement, congélation)",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Procédés HACCP",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "attribute",
+      "literal"
+    ]
+  },
+  {
     "text": "process",
     "files": [
       "apps/api/src/haccp/haccp.service.ts",
@@ -97058,76 +98671,28 @@
   {
     "text": "Process",
     "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "attribute",
-      "literal"
-    ]
-  },
-  {
-    "text": "Process (",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
-    ]
-  },
-  {
-    "text": "Process chaud / froid",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
+      "apps/web/src/components/Dashboard.tsx"
     ],
     "kinds": [
       "literal"
-    ]
-  },
-  {
-    "text": "Process chaud et froid (cuisson, refroidissement, congélation)",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
     ]
   },
   {
     "text": "Process froid & chaud",
     "files": [
-      "apps/api/src/haccp/haccp.service.ts",
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx",
-      "literal"
-    ]
-  },
-  {
-    "text": "process froid chaud refroidissement congélation réchauffement équipements cycles",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
+      "apps/api/src/haccp/haccp.service.ts"
     ],
     "kinds": [
       "literal"
     ]
   },
   {
-    "text": "Process HACCP",
+    "text": "processes",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "attribute"
-    ]
-  },
-  {
-    "text": "process,",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
+      "literal"
     ]
   },
   {
@@ -97143,8 +98708,7 @@
   {
     "text": "Processus",
     "files": [
-      "apps/api/src/haccp/haccp.service.ts",
-      "apps/web/src/components/HaccpApp.tsx"
+      "apps/api/src/haccp/haccp.service.ts"
     ],
     "kinds": [
       "literal"
@@ -97162,8 +98726,7 @@
   {
     "text": "Processus HACCP",
     "files": [
-      "apps/web/src/components/Dashboard.tsx",
-      "apps/web/src/components/HaccpApp.tsx"
+      "apps/web/src/components/Dashboard.tsx"
     ],
     "kinds": [
       "literal"
@@ -97499,7 +99062,8 @@
       "apps/web/src/components/WorkspaceOnboarding.tsx"
     ],
     "kinds": [
-      "literal"
+      "literal",
+      "template"
     ]
   },
   {
@@ -97604,24 +99168,6 @@
     "files": [
       "apps/api/src/hr/hr.catalog.ts",
       "apps/web/src/hr-catalog.ts"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
-    "text": "production fabrication recette planning traçabilité ingrédients lots photos",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
-    "text": "production flow",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -97756,6 +99302,24 @@
     ]
   },
   {
+    "text": "production run",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "Production runs on",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "Production theorique",
     "files": [
       "apps/api/src/technical-sheets/technical-sheets.service.ts"
@@ -97858,15 +99422,6 @@
     "text": "production:",
     "files": [
       "apps/api/src/production/production-execution.service.ts"
-    ],
-    "kinds": [
-      "template"
-    ]
-  },
-  {
-    "text": "production(s) ne sont pas encore terminées.",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "template"
@@ -100194,6 +101749,7 @@
       "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/CoursProduitsApp.tsx",
       "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/HrApp.tsx",
       "apps/web/src/components/MenusApp.tsx",
       "apps/web/src/components/WorkspaceOnboarding.tsx",
@@ -100202,24 +101758,6 @@
     "kinds": [
       "attribute",
       "literal"
-    ]
-  },
-  {
-    "text": "Push test envoyée",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
-    "text": "Push test envoyée (",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "template"
     ]
   },
   {
@@ -100353,13 +101891,20 @@
     ]
   },
   {
-    "text": "Qualité & Hygiène",
+    "text": "Qualité & hygiène",
     "files": [
-      "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "jsx",
+      "jsx"
+    ]
+  },
+  {
+    "text": "Qualité & Hygiène",
+    "files": [
+      "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
       "literal"
     ]
   },
@@ -100986,15 +102531,6 @@
     ]
   },
   {
-    "text": "Quelques actions à terminer",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
     "text": "Quels services de caisse utilisez-vous ?",
     "files": [
       "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
@@ -101282,6 +102818,15 @@
     ]
   },
   {
+    "text": "Range",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "Ranger et contrôler la salle après service",
     "files": [
       "apps/api/src/hr/hr-task-presets.ts"
@@ -101345,7 +102890,7 @@
     ]
   },
   {
-    "text": "Rappels push des alertes capteurs",
+    "text": "Rappels mobiles des alertes capteurs",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -101498,21 +103043,12 @@
     ]
   },
   {
-    "text": "Rapport quotidien archivé automatiquement à minuit",
+    "text": "Rapport quotidien à minuit",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "jsx"
-    ]
-  },
-  {
-    "text": "Rapport quotidien généré",
-    "files": [
-      "apps/api/src/haccp/haccp.service.ts"
-    ],
-    "kinds": [
-      "literal"
     ]
   },
   {
@@ -101536,17 +103072,7 @@
   {
     "text": "Rapports",
     "files": [
-      "apps/api/src/haccp/haccp.service.ts",
       "apps/web/src/components/Dashboard.tsx",
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
-    "text": "Rapports & Audits HACCP",
-    "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
@@ -101566,6 +103092,15 @@
     "text": "Rapports de caisse, commandes, ventes produits et affluence.",
     "files": [
       "apps/web/src/components/finance/onboarding/FinanceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Rapports et audits HACCP",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -101795,6 +103330,33 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "reading today",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "readings approximately every",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "readings today",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -102142,11 +103704,13 @@
       "apps/api/src/stock-assistant/stock-assistant.service.ts",
       "apps/api/src/stocks/stocks-ocr.service.ts",
       "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/StockAssistantPanel.tsx"
     ],
     "kinds": [
       "attribute",
-      "literal"
+      "literal",
+      "template"
     ]
   },
   {
@@ -102216,7 +103780,8 @@
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "jsx"
+      "jsx",
+      "template"
     ]
   },
   {
@@ -102271,7 +103836,7 @@
     ]
   },
   {
-    "text": "Réception des Marchandises",
+    "text": "Réception des marchandises",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -102367,15 +103932,6 @@
     "text": "réception(s) incomplète(s).",
     "files": [
       "apps/api/src/haccp/haccp.service.ts"
-    ],
-    "kinds": [
-      "template"
-    ]
-  },
-  {
-    "text": "réception(s) manquent de température, fournisseur ou produit.",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "template"
@@ -102533,15 +104089,6 @@
     "text": "Réceptions et écarts",
     "files": [
       "apps/web/src/components/purchasing/components/PurchasingUi.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
-    "text": "réceptions fournisseurs marchandises livraisons température",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -103006,7 +104553,7 @@
     ]
   },
   {
-    "text": "Rechercher un contrôle…",
+    "text": "Rechercher un équipement…",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -103036,6 +104583,24 @@
     "text": "Rechercher un fournisseur Stocks",
     "files": [
       "apps/web/src/components/purchasing/orders/OrderCatalog.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "Rechercher un matériel ou une zone",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
+    "text": "Rechercher un matériel ou une zone…",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "attribute"
@@ -104142,21 +105707,12 @@
     ]
   },
   {
-    "text": "Référentiel HACCP : équipements, process et plan de nettoyage.",
+    "text": "Référentiel HACCP : équipements, procédés et plan de nettoyage.",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
-    ]
-  },
-  {
-    "text": "Référentiel HACCP partagé avec l’application ToqueHub mobile : équipements, process et plan de nettoyage.",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
     ]
   },
   {
@@ -104199,6 +105755,15 @@
     "text": "Refreshes Tailscale remote access status through the host agent.",
     "files": [
       "apps/api/src/system/system.controller.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Réfrigérateurs et chambres froides",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -104276,6 +105841,15 @@
     "text": "Refroidissement, congélation et remise en température terminés",
     "files": [
       "apps/api/src/haccp/haccp.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Refroidissement, congélation et remise en température.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -104415,21 +105989,21 @@
     ]
   },
   {
-    "text": "Registers or refreshes an Expo push token for the authenticated mobile user.",
+    "text": "registers",
     "files": [
-      "apps/api/src/mobile/mobile.controller.ts"
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
     ]
   },
   {
-    "text": "Registre des lots",
+    "text": "Registers or refreshes an Expo push token for the authenticated mobile user.",
     "files": [
-      "apps/web/src/components/HaccpApp.tsx"
+      "apps/api/src/mobile/mobile.controller.ts"
     ],
     "kinds": [
-      "attribute"
+      "literal"
     ]
   },
   {
@@ -104451,12 +106025,13 @@
     ]
   },
   {
-    "text": "Registres & contrôles",
+    "text": "Registres",
     "files": [
+      "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "jsx"
+      "literal"
     ]
   },
   {
@@ -104508,7 +106083,8 @@
   {
     "text": "Réglages",
     "files": [
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -104856,6 +106432,24 @@
     ]
   },
   {
+    "text": "relevé",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "relevé aujourd’hui",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Relevé automatique",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -104871,15 +106465,6 @@
     ],
     "kinds": [
       "template"
-    ]
-  },
-  {
-    "text": "Relevé des Températures",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
     ]
   },
   {
@@ -104919,15 +106504,6 @@
     ]
   },
   {
-    "text": "relevé(s) aujourd’hui",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "template"
-    ]
-  },
-  {
     "text": "relevé(s) température manquant(s).",
     "files": [
       "apps/api/src/dashboard/dashboard.service.ts"
@@ -104964,6 +106540,15 @@
     ]
   },
   {
+    "text": "relevés aujourd’hui",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Relevés chargés",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -104982,9 +106567,27 @@
     ]
   },
   {
+    "text": "Relevés de température",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Relevés de températures automatiques 24/7 par capteurs sans fil, alertes instantanées et traçabilité hygiène.",
     "files": [
       "apps/web/src/components/WorkspaceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Relevés manuels et historique des enceintes.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -104997,6 +106600,24 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Relevés terrain",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "relevés toutes les",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -105060,6 +106681,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Reminder every",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -106177,7 +107807,6 @@
   {
     "text": "reports",
     "files": [
-      "apps/api/src/haccp/haccp.service.ts",
       "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -106458,6 +108087,15 @@
     "text": "resize",
     "files": [
       "apps/web/src/components/WorkspaceOnboarding.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Résolue",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -107128,6 +108766,15 @@
     ]
   },
   {
+    "text": "reste",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "Reste après",
     "files": [
       "apps/web/src/components/purchasing/receipts/ReceiptImport.tsx"
@@ -107659,15 +109306,6 @@
     "text": "Retrait par le client",
     "files": [
       "apps/web/src/components/CatererMenusApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
-    ]
-  },
-  {
-    "text": "Retrouvez chaque preuve sans perdre le fil",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "jsx"
@@ -109832,6 +111470,7 @@
   {
     "text": "Sans donnée",
     "files": [
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/finance/FinanceWorkspace.tsx"
     ],
     "kinds": [
@@ -109946,6 +111585,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "sans photo, lot ou produit.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -110390,6 +112038,24 @@
     ]
   },
   {
+    "text": "saved entries",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "saved entry",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "saving",
     "files": [
       "apps/web/src/components/TechnicalSheetsApp.tsx",
@@ -110493,6 +112159,24 @@
     ]
   },
   {
+    "text": "scheduled surface",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "scheduled surfaces",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "schema",
     "files": [
       "apps/api/src/architecture/architecture.controller.ts",
@@ -110548,7 +112232,7 @@
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "jsx",
+      "attribute",
       "literal"
     ]
   },
@@ -111840,6 +113524,7 @@
     "files": [
       "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/CentralKitchenMenusApp.tsx",
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/MenusApp.tsx",
       "apps/web/src/components/PlanningApp.tsx",
       "apps/web/src/components/ProductionApp.tsx",
@@ -111932,6 +113617,24 @@
     ]
   },
   {
+    "text": "sensor",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "sensor found",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "sensor gateway status",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -111954,6 +113657,15 @@
     "text": "sensors",
     "files": [
       "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "sensors found",
+    "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
@@ -112669,6 +114381,15 @@
     ]
   },
   {
+    "text": "session",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "Session administrateur introuvable",
     "files": [
       "apps/web/src/App.tsx"
@@ -112729,15 +114450,6 @@
     ],
     "kinds": [
       "literal"
-    ]
-  },
-  {
-    "text": "session(s) froid/chaud doivent être terminées avec température finale.",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "template"
     ]
   },
   {
@@ -112811,6 +114523,7 @@
       "apps/api/src/menus/menus.controller.ts",
       "apps/api/src/purchasing/purchasing.controller.ts",
       "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/PlanningApp.tsx"
     ],
     "kinds": [
@@ -113002,6 +114715,15 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "Seuils & alertes",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -113236,6 +114958,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Shelf life:",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -113527,7 +115258,8 @@
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "jsx"
+      "jsx",
+      "literal"
     ]
   },
   {
@@ -114297,6 +116029,15 @@
     ]
   },
   {
+    "text": "Situation HACCP du jour",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
     "text": "skill",
     "files": [
       "apps/api/src/architecture/architecture.service.ts"
@@ -114424,6 +116165,15 @@
     "text": "Snack",
     "files": [
       "apps/api/src/menus/menu-exports.service.ts"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "socket.io-client",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -114633,6 +116383,15 @@
     ]
   },
   {
+    "text": "some time ago",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Sommelier",
     "files": [
       "apps/api/src/hr/hr.catalog.ts",
@@ -114653,6 +116412,15 @@
   },
   {
     "text": "Sonoff",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "sont",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -115797,6 +117565,15 @@
     ]
   },
   {
+    "text": "Step",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
     "text": "steps",
     "files": [
       "apps/api/src/technical-sheets/technical-sheets.service.ts"
@@ -115812,6 +117589,33 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "still in progress",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "still need",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "still require",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -116706,6 +118510,7 @@
       "apps/web/src/api/client.ts",
       "apps/web/src/components/CoursProduitsApp.tsx",
       "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/MenusApp.tsx",
       "apps/web/src/components/PlanningApp.tsx",
       "apps/web/src/components/UsersPage.tsx",
@@ -117226,10 +119031,12 @@
     "files": [
       "apps/web/src/components/CoursProduitsApp.tsx",
       "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/TechnicalSheetsApp.tsx"
     ],
     "kinds": [
       "jsx",
+      "literal",
       "template"
     ]
   },
@@ -117266,15 +119073,7 @@
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "jsx"
-    ]
-  },
-  {
-    "text": "Suivi de Production",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
+      "jsx",
       "literal"
     ]
   },
@@ -117345,30 +119144,12 @@
     ]
   },
   {
-    "text": "Suivi des Processus HACCP",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
     "text": "Suivi désactivé",
     "files": [
       "apps/api/src/menus/menus.service.ts"
     ],
     "kinds": [
       "literal"
-    ]
-  },
-  {
-    "text": "Suivi en direct des contrôles, process et productions du jour.",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
     ]
   },
   {
@@ -117408,12 +119189,12 @@
     ]
   },
   {
-    "text": "suivi(s)",
+    "text": "suivis",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "template"
+      "literal"
     ]
   },
   {
@@ -118129,6 +119910,15 @@
     ]
   },
   {
+    "text": "sur la période",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "sur la période chargée",
     "files": [
       "apps/web/src/components/PlanningApp.tsx"
@@ -118206,6 +119996,16 @@
     ]
   },
   {
+    "text": "surface",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal",
+      "template"
+    ]
+  },
+  {
     "text": "Surface",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -118226,30 +120026,12 @@
     ]
   },
   {
-    "text": "surface(s)",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
-    ]
-  },
-  {
     "text": "surface(s) à nettoyer.",
     "files": [
       "apps/api/src/dashboard/dashboard.service.ts"
     ],
     "kinds": [
       "template"
-    ]
-  },
-  {
-    "text": "surface(s) en attente sur",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
     ]
   },
   {
@@ -118264,8 +120046,7 @@
   {
     "text": "surface(s) prévues restent à nettoyer.",
     "files": [
-      "apps/api/src/haccp/haccp.service.ts",
-      "apps/web/src/components/HaccpApp.tsx"
+      "apps/api/src/haccp/haccp.service.ts"
     ],
     "kinds": [
       "template"
@@ -118288,7 +120069,8 @@
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "attribute"
+      "attribute",
+      "literal"
     ]
   },
   {
@@ -118316,6 +120098,15 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "Surfaces à réaliser et validation par zone.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -120341,19 +122132,38 @@
     ]
   },
   {
+    "text": "température",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Température",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "attribute",
-      "jsx"
+      "jsx",
+      "literal"
     ]
   },
   {
     "text": "Température à surveiller",
     "files": [
       "apps/api/src/haccp/iot/haccp-sensors.service.ts",
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Température actuelle conforme",
+    "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
@@ -120403,7 +122213,8 @@
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "attribute"
+      "attribute",
+      "literal"
     ]
   },
   {
@@ -120412,7 +122223,8 @@
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "attribute"
+      "attribute",
+      "literal"
     ]
   },
   {
@@ -120443,21 +122255,39 @@
     ]
   },
   {
+    "text": "température ouverte",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
+    ]
+  },
+  {
+    "text": "temperature unit",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "temperature units",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Température, conditions de stockage, précautions après ouverture...",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
     ],
     "kinds": [
       "attribute"
-    ]
-  },
-  {
-    "text": "température(s),",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
     ]
   },
   {
@@ -120516,6 +122346,15 @@
     ]
   },
   {
+    "text": "températures",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Températures",
     "files": [
       "apps/api/src/haccp/haccp.service.ts",
@@ -120546,6 +122385,15 @@
     ]
   },
   {
+    "text": "Températures des équipements",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
     "text": "Températures et exécution du plan de nettoyage, zone par zone.",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -120567,15 +122415,6 @@
     "text": "Températures HACCP",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
-    "text": "températures nettoyage hygiène enceintes zones surfaces relevés",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -120693,9 +122532,11 @@
   {
     "text": "Temps réel",
     "files": [
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
+      "jsx",
       "literal"
     ]
   },
@@ -120804,6 +122645,16 @@
     ]
   },
   {
+    "text": "terminée",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal",
+      "template"
+    ]
+  },
+  {
     "text": "Terminée",
     "files": [
       "apps/api/src/production/production-operational-export.service.ts",
@@ -120828,21 +122679,12 @@
     ]
   },
   {
-    "text": "terminée(s)",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "template"
-    ]
-  },
-  {
     "text": "terminées",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "template"
+      "literal"
     ]
   },
   {
@@ -120971,6 +122813,15 @@
     ]
   },
   {
+    "text": "Test de notification impossible.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Test Fennoa échoué.",
     "files": [
       "apps/api/src/finance/fennoa-sync.service.ts"
@@ -120980,12 +122831,21 @@
     ]
   },
   {
-    "text": "Test push impossible.",
+    "text": "Test notification sent",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "Test notification sent (",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -121035,7 +122895,7 @@
     ]
   },
   {
-    "text": "Tester push",
+    "text": "Tester la notification",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -121045,6 +122905,15 @@
   },
   {
     "text": "Testeur d’huiles",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Testeur numérique",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -121752,6 +123621,16 @@
     ]
   },
   {
+    "text": "to monitor",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal",
+      "template"
+    ]
+  },
+  {
     "text": "today",
     "files": [
       "apps/api/src/production/production.controller.ts",
@@ -121760,6 +123639,15 @@
     ],
     "kinds": [
       "attribute",
+      "literal"
+    ]
+  },
+  {
+    "text": "today’s plan",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
       "literal"
     ]
   },
@@ -121870,15 +123758,6 @@
     ],
     "kinds": [
       "literal"
-    ]
-  },
-  {
-    "text": "token mobile actif trouvé.",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "template"
     ]
   },
   {
@@ -122252,15 +124131,6 @@
     ]
   },
   {
-    "text": "ToqueHub main sert à installer le socle métier : équipements, zones et surfaces. Les relevés terrain, la traçabilité, le nettoyage et les rapports du quotidien passent ensuite par l’application ToqueHub.",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "jsx"
-    ]
-  },
-  {
     "text": "ToqueHub OS",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -122285,6 +124155,15 @@
     ],
     "kinds": [
       "template"
+    ]
+  },
+  {
+    "text": "ToqueHub principal sert à installer le socle métier : équipements, zones et surfaces. Les relevés terrain, la traçabilité, le nettoyage et les rapports du quotidien passent ensuite par l’application ToqueHub.",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
     ]
   },
   {
@@ -123475,19 +125354,18 @@
     ]
   },
   {
-    "text": "Traçabilité",
+    "text": "traçabilité",
     "files": [
-      "apps/api/src/haccp/haccp.service.ts",
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "attribute",
-      "literal"
+      "template"
     ]
   },
   {
-    "text": "Traçabilité & Étiquetage",
+    "text": "Traçabilité",
     "files": [
+      "apps/api/src/haccp/haccp.service.ts",
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
@@ -123519,6 +125397,15 @@
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "Traçabilité et étiquetage",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -123559,15 +125446,6 @@
     ]
   },
   {
-    "text": "traçabilité lots produits photos étiquettes historique calendrier",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "literal"
-    ]
-  },
-  {
     "text": "Traçabilité par date",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
@@ -123598,15 +125476,6 @@
     "text": "traçabilité(s) sans photo, lot ou produit.",
     "files": [
       "apps/api/src/haccp/haccp.service.ts"
-    ],
-    "kinds": [
-      "template"
-    ]
-  },
-  {
-    "text": "traçabilité(s) sont sans photo, lot ou produit.",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "template"
@@ -123660,6 +125529,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "traceability record",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -124963,6 +126841,15 @@
     ]
   },
   {
+    "text": "Type d’équipement",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Type d’établissement",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
@@ -125089,7 +126976,7 @@
     ]
   },
   {
-    "text": "Type de process",
+    "text": "Type de procédé",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -126143,7 +128030,8 @@
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "literal"
+      "literal",
+      "template"
     ]
   },
   {
@@ -126685,7 +128573,8 @@
       "apps/api/src/catalog/catalog.controller.ts",
       "apps/api/src/menus/menu-exports.service.ts",
       "apps/api/src/stocks/stocks.controller.ts",
-      "apps/web/src/components/Dashboard.tsx"
+      "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "literal"
@@ -127646,7 +129535,7 @@
     ]
   },
   {
-    "text": "Utilisez le test push pour vérifier les notifications mobiles sans attendre l’anti-spam automatique.",
+    "text": "Utilisez le test de notification pour vérifier les alertes mobiles sans attendre l’anti-spam automatique.",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -129578,6 +131467,24 @@
     ]
   },
   {
+    "text": "Vitrine froide",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
+    "text": "Vitrines et enceintes sensibles",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "void",
     "files": [
       "apps/api/src/finance/finance-sales-insights.service.ts"
@@ -129625,6 +131532,15 @@
   },
   {
     "text": "Voir l'appairage en cours (",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Voir la courbe",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
@@ -129724,15 +131640,6 @@
     ]
   },
   {
-    "text": "Voir les contrôles",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "attribute"
-    ]
-  },
-  {
     "text": "Voir les étapes",
     "files": [
       "apps/web/src/components/TechnicalSheetPickerModal.tsx"
@@ -129756,6 +131663,15 @@
     "text": "Voir les produits",
     "files": [
       "apps/web/src/components/Dashboard.tsx"
+    ],
+    "kinds": [
+      "jsx"
+    ]
+  },
+  {
+    "text": "Voir les rapports",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "jsx"
@@ -130075,15 +131991,6 @@
     "text": "Votre instance démarre en local. Vous gardez la propriété et la maîtrise complète de vos fiches et stocks.",
     "files": [
       "apps/web/src/components/FirstStartLanding.tsx"
-    ],
-    "kinds": [
-      "jsx"
-    ]
-  },
-  {
-    "text": "Votre maîtrise sanitaire, en un coup d’œil.",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "jsx"
@@ -130691,7 +132598,6 @@
       "apps/web/src/components/ui/GuidedWelcome.tsx"
     ],
     "kinds": [
-      "attribute",
       "literal"
     ]
   },
@@ -130819,6 +132725,7 @@
       "apps/api/src/stocks/stocks-margins.service.ts",
       "apps/web/src/components/CatererMenusApp.tsx",
       "apps/web/src/components/Dashboard.tsx",
+      "apps/web/src/components/HaccpApp.tsx",
       "apps/web/src/components/MenusApp.tsx",
       "apps/web/src/components/PlanningApp.tsx",
       "apps/web/src/components/ProductionApp.tsx",
@@ -130997,6 +132904,15 @@
     ]
   },
   {
+    "text": "welcome-hero theme-emerald haccp-hero",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "attribute"
+    ]
+  },
+  {
     "text": "welcome-hero theme-emerald technical-sheets-dashboard-hero",
     "files": [
       "apps/web/src/components/TechnicalSheetsApp.tsx"
@@ -131030,6 +132946,15 @@
     ],
     "kinds": [
       "literal"
+    ]
+  },
+  {
+    "text": "while an alert remains open",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "template"
     ]
   },
   {
@@ -131657,6 +133582,15 @@
     ]
   },
   {
+    "text": "zone",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Zone",
     "files": [
       "apps/web/src/components/Dashboard.tsx",
@@ -131666,6 +133600,15 @@
       "attribute",
       "literal",
       "template"
+    ]
+  },
+  {
+    "text": "zone configurée",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -131751,6 +133694,15 @@
     ]
   },
   {
+    "text": "zone existante",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Zone introuvable",
     "files": [
       "apps/api/src/haccp/haccp.service.ts"
@@ -131805,36 +133757,17 @@
     ]
   },
   {
-    "text": "zone(s)",
+    "text": "zones",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
-      "jsx"
-    ]
-  },
-  {
-    "text": "zone(s) configurée(s)",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "template"
-    ]
-  },
-  {
-    "text": "zone(s) existante(s)",
-    "files": [
-      "apps/web/src/components/HaccpApp.tsx"
-    ],
-    "kinds": [
-      "template"
+      "literal"
     ]
   },
   {
     "text": "Zones & matériels",
     "files": [
-      "apps/web/src/components/Dashboard.tsx",
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
@@ -131869,12 +133802,30 @@
     ]
   },
   {
+    "text": "zones configurées",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Zones de nettoyage",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "jsx"
+    ]
+  },
+  {
+    "text": "Zones et matériels",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
@@ -131887,12 +133838,30 @@
     ]
   },
   {
+    "text": "zones existantes",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
+    ]
+  },
+  {
     "text": "Zones nettoyées",
     "files": [
       "apps/web/src/components/HaccpApp.tsx"
     ],
     "kinds": [
       "attribute"
+    ]
+  },
+  {
+    "text": "Zones réfrigérées",
+    "files": [
+      "apps/web/src/components/HaccpApp.tsx"
+    ],
+    "kinds": [
+      "literal"
     ]
   },
   {
