@@ -1,5 +1,5 @@
 # Benchmark PDF/OCR ToqueHub
-
+ 
 Ce dossier compare la lecture PDF locale de `@firecrawl/pdf-inspector` à la classe
 `MistralClientService.ocrMarkdown` déjà utilisée par ToqueHub.
 
