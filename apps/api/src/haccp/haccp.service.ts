@@ -1,7 +1,8 @@
 // @ts-nocheck
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit, StreamableFile } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createReadStream, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, extname, join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
@@ -42,9 +43,19 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
     if (this.dailyCloseTimer) clearTimeout(this.dailyCloseTimer);
   }
 
+  private pagination(q: any = {}) {
+    const requestedPage = Number(q.page ?? 1);
+    const requestedLimit = Number(q.limit ?? q.pageSize ?? 20);
+    const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+    const limit = Number.isInteger(requestedLimit) && requestedLimit > 0
+      ? Math.min(requestedLimit, 200)
+      : 20;
+    return { page, limit, take: limit, skip: (page - 1) * limit };
+  }
+
   private page(q: any = {}) {
-    const take = Math.min(Number(q.limit ?? q.pageSize ?? 20), 200);
-    return { take, skip: ((Number(q.page ?? 1) - 1) * take) };
+    const { take, skip } = this.pagination(q);
+    return { take, skip };
   }
 
   private dayRange(date = new Date()) {
@@ -327,6 +338,62 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
     return {
       clientUpdatedAt: dto.clientUpdatedAt ? this.parseDate(dto.clientUpdatedAt) : undefined,
       syncVersion: { increment: 1 },
+    };
+  }
+
+  private receptionUpdateData(dto: any = {}) {
+    return {
+      supplier: dto.supplier,
+      productName: dto.productName,
+      productType: dto.productType,
+      temperature: dto.temperature,
+      lotNumber: dto.lotNumber,
+      quantity: dto.quantity,
+      unit: dto.unit,
+      unitPrice: dto.unitPrice,
+      photo: dto.photo,
+      date: dto.date ? this.parseDate(dto.date) : undefined,
+      ...this.syncUpdateData(dto),
+    };
+  }
+
+  private traceabilityUpdateData(dto: any = {}) {
+    return {
+      photo: dto.photo,
+      productName: dto.productName,
+      lotNumber: dto.lotNumber,
+      barcode: dto.barcode,
+      date: dto.date ? this.parseDate(dto.date) : undefined,
+      ...this.syncUpdateData(dto),
+    };
+  }
+
+  private productUpdateData(dto: any = {}) {
+    return {
+      name: dto.name,
+      type: dto.type,
+      dlc: dto.dlc ? this.parseDate(dto.dlc) : undefined,
+      dlcDays: dto.dlcDays,
+      description: dto.description,
+      price: dto.price,
+      quantity: dto.quantity,
+      unit: dto.unit,
+      ...this.syncUpdateData(dto),
+    };
+  }
+
+  private oilEquipmentUpdateData(dto: any = {}) {
+    return {
+      name: dto.name,
+      type: dto.type,
+      brand: dto.brand,
+      model: dto.model,
+      serialNumber: dto.serialNumber,
+      location: dto.location,
+      capacity: dto.capacity,
+      notes: dto.notes,
+      isActive: dto.isActive,
+      ...this.syncUpdateData(dto),
     };
   }
 
@@ -675,7 +742,7 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
     const [stock, legacy] = await Promise.all([
       this.prisma.stockReception.findMany({
         where: { organizationId, status: { in: ['VALIDATED', 'CANCELLED'] } },
-        include: { supplier: true, document: true, site: true, location: true, lines: { include: { product: true, unitModel: true } }, purchaseReceipt: { include: { order: true } } },
+        include: this.unifiedStockReceptionInclude(),
         orderBy: { deliveryDate: 'desc' },
       }),
       this.prisma.haccpReception.findMany({ where: { organizationId, deletedAt: null }, orderBy: { date: 'desc' } }),
@@ -688,10 +755,56 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async unifiedReceptionDetail(organizationId: string, id: string) {
-    const rows = await this.listUnifiedReceptions(organizationId);
-    const row = rows?.data?.find((item: any) => item.id === id);
-    if (!row) throw new NotFoundException('Réception introuvable');
-    return this.ok(row);
+    const [source, sourceId] = id.includes(':') ? id.split(':', 2) : [null, id];
+    if (!sourceId) throw new NotFoundException('Réception introuvable');
+
+    if (source !== 'legacy') {
+      const stock = await this.prisma.stockReception.findFirst({
+        where: { id: sourceId, organizationId, status: { in: ['VALIDATED', 'CANCELLED'] } },
+        include: this.unifiedStockReceptionInclude(),
+      });
+      if (stock) return this.ok(this.serializeUnifiedStockReception(stock));
+      if (source === 'stock') throw new NotFoundException('Réception introuvable');
+    }
+
+    const legacy = await this.prisma.haccpReception.findFirst({
+      where: { id: sourceId, organizationId, deletedAt: null },
+    });
+    if (!legacy) throw new NotFoundException('Réception introuvable');
+    return this.ok({
+      id: `legacy:${legacy.id}`,
+      source: 'LEGACY',
+      status: 'UNCONTROLLED',
+      supplierName: legacy.supplier,
+      deliveryDate: legacy.date,
+      deliveryTemperature: legacy.temperature,
+      controlNotes: null,
+      deliveryNoteNumber: null,
+      document: null,
+      site: null,
+      location: null,
+      lines: [{
+        id: legacy.id,
+        label: legacy.productName,
+        lotNumber: legacy.lotNumber,
+        unit: legacy.unit,
+        documentedQuantity: legacy.quantity,
+        deliveredQuantity: legacy.quantity,
+        acceptedQuantity: legacy.quantity,
+        unitPrice: legacy.unitPrice,
+      }],
+    });
+  }
+
+  private unifiedStockReceptionInclude() {
+    return {
+      supplier: true,
+      document: true,
+      site: true,
+      location: true,
+      lines: { include: { product: true, unitModel: true } },
+      purchaseReceipt: { include: { order: true } },
+    };
   }
 
   private serializeUnifiedStockReception(item: any) {
@@ -718,14 +831,14 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getReception(organizationId: string, id: string) {
-    const item = await this.prisma.haccpReception.findFirst({ where: { id, organizationId } });
+    const item = await this.prisma.haccpReception.findFirst({ where: { id, organizationId, deletedAt: null } });
     if (!item) throw new NotFoundException('Réception introuvable');
     return this.ok(this.withId(item));
   }
 
   async updateReception(organizationId: string, id: string, dto: any) {
     await this.ensure('haccpReception', organizationId, id, 'Réception introuvable');
-    const item = await this.prisma.haccpReception.update({ where: { id }, data: { ...dto, ...this.syncUpdateData(dto), quantity: dto.quantity == null ? undefined : dto.quantity, unitPrice: dto.unitPrice == null ? undefined : dto.unitPrice, date: dto.date ? this.parseDate(dto.date) : undefined } });
+    const item = await this.prisma.haccpReception.update({ where: { id }, data: this.receptionUpdateData(dto) });
     return this.ok(this.withId(item));
   }
 
@@ -745,14 +858,14 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getTraceability(organizationId: string, id: string) {
-    const item = await this.prisma.haccpTraceability.findFirst({ where: { id, organizationId } });
+    const item = await this.prisma.haccpTraceability.findFirst({ where: { id, organizationId, deletedAt: null } });
     if (!item) throw new NotFoundException('Traçabilité introuvable');
     return this.ok(this.withId(item));
   }
 
   async updateTraceability(organizationId: string, id: string, dto: any) {
     await this.ensure('haccpTraceability', organizationId, id, 'Traçabilité introuvable');
-    const item = await this.prisma.haccpTraceability.update({ where: { id }, data: { ...dto, ...this.syncUpdateData(dto), date: dto.date ? this.parseDate(dto.date) : undefined } });
+    const item = await this.prisma.haccpTraceability.update({ where: { id }, data: this.traceabilityUpdateData(dto) });
     return this.ok(this.withId(item));
   }
 
@@ -809,7 +922,7 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getProduct(organizationId: string, id: string) {
-    const item = await this.prisma.haccpProduct.findFirst({ where: { id, organizationId } });
+    const item = await this.prisma.haccpProduct.findFirst({ where: { id, organizationId, deletedAt: null } });
     if (!item) throw new NotFoundException('Produit HACCP introuvable');
     return this.ok(this.serializeProduct(item));
   }
@@ -855,7 +968,7 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
 
   async updateProduct(organizationId: string, id: string, dto: any) {
     await this.ensure('haccpProduct', organizationId, id, 'Produit HACCP introuvable');
-    const item = await this.prisma.haccpProduct.update({ where: { id }, data: { ...dto, ...this.syncUpdateData(dto), dlc: dto.dlc ? this.parseDate(dto.dlc) : undefined } });
+    const item = await this.prisma.haccpProduct.update({ where: { id }, data: this.productUpdateData(dto) });
     return this.ok(this.serializeProduct(item));
   }
 
@@ -871,7 +984,7 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getProcessEquipment(organizationId: string, id: string) {
-    const item = await this.prisma.haccpProcessEquipment.findFirst({ where: { id, organizationId } });
+    const item = await this.prisma.haccpProcessEquipment.findFirst({ where: { id, organizationId, deletedAt: null } });
     if (!item) throw new NotFoundException('Équipement introuvable');
     return this.ok(this.serializeProcessEquipment(item));
   }
@@ -947,7 +1060,10 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
       if (existing) throw new ConflictException('Cette production est déjà affectée à ce processus.');
     }
     const productId = production?.finishedProductId ?? dto.productId;
-    await Promise.all([this.ensure('haccpProduct', organizationId, productId, 'Produit introuvable'), this.ensure('haccpProcessEquipment', organizationId, dto.equipmentId, 'Équipement introuvable')]);
+    await Promise.all([
+      this.ensure('haccpProduct', organizationId, productId, 'Produit introuvable', { isActive: true }),
+      this.ensure('haccpProcessEquipment', organizationId, dto.equipmentId, 'Équipement introuvable', { isActive: true }),
+    ]);
     const start = new Date();
     const end = dto.endTime ? this.parseDate(dto.endTime) : null;
     const status = dto.endTemperature != null || end ? 'termine' : 'en_cours';
@@ -963,13 +1079,13 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getProcessSession(organizationId: string, id: string) {
-    const item = await this.prisma.haccpProcessSession.findFirst({ where: { id, organizationId }, include: this.processSessionInclude() });
+    const item = await this.prisma.haccpProcessSession.findFirst({ where: { id, organizationId, deletedAt: null }, include: this.processSessionInclude() });
     if (!item) throw new NotFoundException('Session introuvable');
     return this.ok(this.serializeProcessSession(item));
   }
 
   async updateProcessSession(organizationId: string, id: string, dto: any) {
-    const current = await this.prisma.haccpProcessSession.findFirst({ where: { id, organizationId } });
+    const current = await this.prisma.haccpProcessSession.findFirst({ where: { id, organizationId, deletedAt: null } });
     if (!current) throw new NotFoundException('Session introuvable');
     const endTime = dto.endTime ? this.parseDate(dto.endTime) : current.endTime;
     const endTemperature = dto.endTemperature ?? current.endTemperature;
@@ -978,7 +1094,7 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async completeProcessSession(organizationId: string, id: string, endTemperature: number) {
-    const current = await this.prisma.haccpProcessSession.findFirst({ where: { id, organizationId } });
+    const current = await this.prisma.haccpProcessSession.findFirst({ where: { id, organizationId, deletedAt: null } });
     if (!current) throw new NotFoundException('Session introuvable');
     const endTime = new Date();
     const item = await this.prisma.haccpProcessSession.update({ where: { id }, data: { endTemperature, endTime, status: 'termine', duration: this.duration(current.startTime, endTime), syncVersion: { increment: 1 } }, include: this.processSessionInclude() });
@@ -1004,14 +1120,14 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getOilEquipment(organizationId: string, id: string) {
-    const item = await this.prisma.haccpOilEquipment.findFirst({ where: { id, organizationId } });
+    const item = await this.prisma.haccpOilEquipment.findFirst({ where: { id, organizationId, deletedAt: null } });
     if (!item) throw new NotFoundException('Équipement huile introuvable');
     return this.ok(this.serializeOilEquipment(item));
   }
 
   async updateOilEquipment(organizationId: string, id: string, dto: any) {
     await this.ensure('haccpOilEquipment', organizationId, id, 'Équipement huile introuvable');
-    const item = await this.prisma.haccpOilEquipment.update({ where: { id }, data: { ...dto, ...this.syncUpdateData(dto) } });
+    const item = await this.prisma.haccpOilEquipment.update({ where: { id }, data: this.oilEquipmentUpdateData(dto) });
     return this.ok(this.serializeOilEquipment(item));
   }
 
@@ -1021,11 +1137,12 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async listOilSessions(organizationId: string, q: any = {}) {
+    const { page, limit } = this.pagination(q);
     const [items, total] = await Promise.all([
       this.prisma.haccpOilSession.findMany({ where: { organizationId, deletedAt: null }, include: { equipment: true }, orderBy: { sessionDate: 'desc' }, ...this.page(q) }),
       this.prisma.haccpOilSession.count({ where: { organizationId, deletedAt: null } }),
     ]);
-    return this.ok(items.map((item) => this.serializeOilSession(item)), { pagination: { page: Number(q.page ?? 1), limit: Number(q.limit ?? 20), total, pages: Math.ceil(total / Number(q.limit ?? 20)) } });
+    return this.ok(items.map((item) => this.serializeOilSession(item)), { pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
   }
 
   async listTodayOilSessions(organizationId: string) {
@@ -1035,13 +1152,13 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async createOilSession(organizationId: string, actor: Actor, dto: any) {
-    await this.ensure('haccpOilEquipment', organizationId, dto.equipmentId, 'Équipement huile introuvable');
+    await this.ensure('haccpOilEquipment', organizationId, dto.equipmentId, 'Équipement huile introuvable', { isActive: true });
     const item = await this.prisma.haccpOilSession.create({ data: { organizationId, createdById: actor.id, ...this.syncData(dto), equipmentId: dto.equipmentId, testMethod: dto.testMethod, action: dto.action, notes: dto.notes, sessionDate: new Date() }, include: { equipment: true } });
     return this.ok(this.serializeOilSession(item));
   }
 
   async getOilSession(organizationId: string, id: string) {
-    const item = await this.prisma.haccpOilSession.findFirst({ where: { id, organizationId }, include: { equipment: true } });
+    const item = await this.prisma.haccpOilSession.findFirst({ where: { id, organizationId, deletedAt: null }, include: { equipment: true } });
     if (!item) throw new NotFoundException('Session huile introuvable');
     return this.ok(this.serializeOilSession(item));
   }
@@ -1052,15 +1169,15 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async uploadOilPhoto(organizationId: string, actor: Actor, id: string, file: any) {
-    const session = await this.prisma.haccpOilSession.findFirst({ where: { id, organizationId } });
+    const session = await this.prisma.haccpOilSession.findFirst({ where: { id, organizationId, deletedAt: null } });
     if (!session) throw new NotFoundException('Session huile introuvable');
     if (!file) throw new BadRequestException('Photo manquante');
     const originalName = file.originalname || 'oil-photo.jpg';
     const internalFilename = `${randomUUID()}${extname(originalName) || '.jpg'}`;
     const storagePath = join(String(organizationId), 'oil', internalFilename);
     const absolutePath = join(HACCP_UPLOAD_ROOT, storagePath);
-    mkdirSync(dirname(absolutePath), { recursive: true });
-    writeFileSync(absolutePath, file.buffer);
+    await mkdir(dirname(absolutePath), { recursive: true });
+    await writeFile(absolutePath, file.buffer);
     const document = await this.prisma.document.create({ data: { organizationId, uploadedById: actor.id, internalFilename, originalName, mimeType: file.mimetype || 'image/jpeg', sizeBytes: file.size ?? file.buffer?.length ?? 0, storagePath, sourceModule: 'haccp', sourceType: 'oil-session', sourceId: id } });
     const updated = await this.prisma.haccpOilSession.update({ where: { id }, data: { photo: `/uploads/haccp/${storagePath}`, photoDocumentId: document.id, syncVersion: { increment: 1 } }, include: { equipment: true } });
     return this.ok(this.serializeOilSession(updated));
@@ -1128,16 +1245,56 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async markSurfaceCleaned(organizationId: string, actor: Actor, dto: any) {
-    const session = await this.prisma.haccpCleaningSession.findFirst({ where: { organizationId, status: 'active', deletedAt: null } });
-    if (!session) throw new BadRequestException('Aucune session de nettoyage active');
-    await Promise.all([this.ensure('haccpCleaningSurface', organizationId, dto.surfaceId, 'Surface introuvable'), this.ensure('haccpCleaningZone', organizationId, dto.zoneId, 'Zone introuvable')]);
-    const cleanedAt = new Date();
-    await this.prisma.haccpCleanedSurface.upsert({ where: { sessionId_surfaceId: { sessionId: session.id, surfaceId: dto.surfaceId } }, update: { notes: dto.notes, cleanedAt, syncVersion: { increment: 1 } }, create: { organizationId, createdById: actor.id, ...this.syncData(dto), sessionId: session.id, surfaceId: dto.surfaceId, surfaceName: dto.surfaceName, zoneId: dto.zoneId, zoneName: dto.zoneName, cleanedAt, notes: dto.notes } });
-    await this.prisma.haccpCleaningSurface.update({ where: { id: dto.surfaceId }, data: { lastCleaned: cleanedAt } });
-    const completedSurfaces = await this.prisma.haccpCleanedSurface.count({ where: { sessionId: session.id } });
-    const totalSurfaces = await this.prisma.haccpCleaningSurface.count({ where: { organizationId, isActive: true, deletedAt: null, zone: { isActive: true, deletedAt: null } } });
-    const item = await this.prisma.haccpCleaningSession.update({ where: { id: session.id }, data: { completedSurfaces, totalSurfaces, syncVersion: { increment: 1 } }, include: { cleanedSurfaces: { orderBy: { cleanedAt: 'asc' } } } });
-    return this.ok(this.serializeCleaningSession(item));
+    return this.prisma.$transaction(async (tx) => {
+      const session = await tx.haccpCleaningSession.findFirst({
+        where: { organizationId, status: 'active', deletedAt: null },
+      });
+      if (!session) throw new BadRequestException('Aucune session de nettoyage active');
+
+      const surface = await tx.haccpCleaningSurface.findFirst({
+        where: {
+          id: dto.surfaceId,
+          organizationId,
+          isActive: true,
+          deletedAt: null,
+          zone: { isActive: true, deletedAt: null },
+        },
+        include: { zone: true },
+      });
+      if (!surface) throw new NotFoundException('Surface introuvable');
+      if (dto.zoneId && dto.zoneId !== surface.zoneId) {
+        throw new BadRequestException('La surface ne correspond pas à la zone indiquée');
+      }
+
+      const cleanedAt = new Date();
+      await tx.haccpCleanedSurface.upsert({
+        where: { sessionId_surfaceId: { sessionId: session.id, surfaceId: surface.id } },
+        update: { notes: dto.notes, cleanedAt, syncVersion: { increment: 1 } },
+        create: {
+          organizationId,
+          createdById: actor.id,
+          ...this.syncData(dto),
+          sessionId: session.id,
+          surfaceId: surface.id,
+          surfaceName: surface.name,
+          zoneId: surface.zoneId,
+          zoneName: surface.zone.name,
+          cleanedAt,
+          notes: dto.notes,
+        },
+      });
+      await tx.haccpCleaningSurface.update({ where: { id: surface.id }, data: { lastCleaned: cleanedAt } });
+      const [completedSurfaces, totalSurfaces] = await Promise.all([
+        tx.haccpCleanedSurface.count({ where: { sessionId: session.id } }),
+        tx.haccpCleaningSurface.count({ where: { organizationId, isActive: true, deletedAt: null, zone: { isActive: true, deletedAt: null } } }),
+      ]);
+      const item = await tx.haccpCleaningSession.update({
+        where: { id: session.id },
+        data: { completedSurfaces, totalSurfaces, syncVersion: { increment: 1 } },
+        include: { cleanedSurfaces: { orderBy: { cleanedAt: 'asc' } } },
+      });
+      return this.ok(this.serializeCleaningSession(item));
+    });
   }
 
   async completeCleaningSession(organizationId: string, dto: any = {}) {
@@ -1150,12 +1307,12 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async listCleaningHistory(organizationId: string, q: any = {}) {
+    const { page, limit } = this.pagination(q);
     const [items, total] = await Promise.all([
       this.prisma.haccpCleaningSession.findMany({ where: { organizationId, deletedAt: null, status: { not: 'active' } }, include: { cleanedSurfaces: true }, orderBy: { sessionDate: 'desc' }, ...this.page(q) }),
       this.prisma.haccpCleaningSession.count({ where: { organizationId, deletedAt: null, status: { not: 'active' } } }),
     ]);
-    const limit = Number(q.limit ?? 20);
-    return { data: items.map((item) => this.serializeCleaningSession(item)), pagination: { page: Number(q.page ?? 1), limit, total, pages: Math.ceil(total / limit) } };
+    return { data: items.map((item) => this.serializeCleaningSession(item)), pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
   }
 
   async deleteCleaningSession(organizationId: string, id: string) {
@@ -1209,20 +1366,20 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async createProductionSession(organizationId: string, actor: Actor, dto: any) {
-    await this.ensure('haccpProduct', organizationId, dto.finishedProductId, 'Produit fini introuvable');
+    await this.ensure('haccpProduct', organizationId, dto.finishedProductId, 'Produit fini introuvable', { isActive: true });
     const now = new Date();
     const item = await this.prisma.haccpProductionSession.create({ data: { organizationId, createdById: actor.id, ...this.syncData(dto), source: 'manual', lotNumber: dto.lotNumber, finishedProductId: dto.finishedProductId, quantity: dto.quantity, unit: dto.unit || 'kg', notes: dto.notes, photos: Array.isArray(dto.photos) ? dto.photos : [], productionDate: now, startTime: now }, include: this.productionSessionInclude() });
     return this.ok(this.serializeProductionSession(item));
   }
 
   async getProductionSession(organizationId: string, id: string) {
-    const item = await this.prisma.haccpProductionSession.findFirst({ where: { id, organizationId }, include: this.productionSessionInclude() });
+    const item = await this.prisma.haccpProductionSession.findFirst({ where: { id, organizationId, deletedAt: null }, include: this.productionSessionInclude() });
     if (!item) throw new NotFoundException('Production HACCP introuvable');
     return this.ok(this.serializeProductionSession(item));
   }
 
   async completeProductionSession(organizationId: string, id: string) {
-    const current = await this.prisma.haccpProductionSession.findFirst({ where: { id, organizationId } });
+    const current = await this.prisma.haccpProductionSession.findFirst({ where: { id, organizationId, deletedAt: null } });
     if (!current) throw new NotFoundException('Production HACCP introuvable');
     if (current.productionBatchId) throw new BadRequestException('Cette production doit être clôturée depuis la recette planifiée.');
     const endTime = new Date();
@@ -1239,19 +1396,20 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async addProductionPhotos(organizationId: string, actor: Actor, id: string, files: any[] = []) {
-    const current = await this.prisma.haccpProductionSession.findFirst({ where: { id, organizationId } });
+    const current = await this.prisma.haccpProductionSession.findFirst({ where: { id, organizationId, deletedAt: null } });
     if (!current) throw new NotFoundException('Production HACCP introuvable');
     const photos = [...(Array.isArray(current.photos) ? current.photos : [])];
-    for (const file of files) {
+    const uploadedPhotos = await Promise.all(files.map(async (file) => {
       const originalName = file.originalname || 'production-photo.jpg';
       const internalFilename = `${randomUUID()}${extname(originalName) || '.jpg'}`;
       const storagePath = join(String(organizationId), 'production', internalFilename);
       const absolutePath = join(HACCP_UPLOAD_ROOT, storagePath);
-      mkdirSync(dirname(absolutePath), { recursive: true });
-      writeFileSync(absolutePath, file.buffer);
+      await mkdir(dirname(absolutePath), { recursive: true });
+      await writeFile(absolutePath, file.buffer);
       const document = await this.prisma.document.create({ data: { organizationId, uploadedById: actor.id, internalFilename, originalName, mimeType: file.mimetype || 'image/jpeg', sizeBytes: file.size ?? file.buffer?.length ?? 0, storagePath, sourceModule: 'haccp', sourceType: 'production-session', sourceId: id } });
-      photos.push({ documentId: document.id, filename: storagePath, originalName, path: `/uploads/haccp/${storagePath}`, size: file.size ?? file.buffer?.length ?? 0, mimetype: file.mimetype || 'image/jpeg', uploadDate: new Date().toISOString() });
-    }
+      return { documentId: document.id, filename: storagePath, originalName, path: `/uploads/haccp/${storagePath}`, size: file.size ?? file.buffer?.length ?? 0, mimetype: file.mimetype || 'image/jpeg', uploadDate: new Date().toISOString() };
+    }));
+    photos.push(...uploadedPhotos);
     const item = await this.prisma.haccpProductionSession.update({ where: { id }, data: { photos, syncVersion: { increment: 1 } }, include: { finishedProduct: true } });
     return this.ok(this.serializeProductionSession(item));
   }
@@ -1260,10 +1418,18 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
     const dailyData = await this.buildDailyReportData(organizationId, date);
     const { start, modules, summary } = dailyData;
     const createdById = actor?.id ?? null;
-    const report = await this.prisma.haccpDailyReport.upsert({ where: { organizationId_reportDate: { organizationId, reportDate: start } }, update: { createdById, modules, summary, generatedAt: new Date(), status: 'completed', errorMessage: null, syncVersion: { increment: 1 } }, create: { organizationId, createdById, reportDate: start, modules, summary, status: 'completed' } });
-    const pdf = await this.writeDailyReportPdf(organizationId, report.id, start, modules, summary);
-    const updated = await this.prisma.haccpDailyReport.update({ where: { id: report.id }, data: { pdfPath: pdf.path, fileSize: pdf.size, status: 'completed', errorMessage: null } });
-    return this.ok(this.serializeReport(updated));
+    const report = await this.prisma.haccpDailyReport.upsert({ where: { organizationId_reportDate: { organizationId, reportDate: start } }, update: { createdById, modules, summary, generatedAt: new Date(), status: 'generating', errorMessage: null, syncVersion: { increment: 1 } }, create: { organizationId, createdById, reportDate: start, modules, summary, status: 'generating' } });
+    try {
+      const pdf = await this.writeDailyReportPdf(organizationId, report.id, start, modules, summary);
+      const updated = await this.prisma.haccpDailyReport.update({ where: { id: report.id }, data: { pdfPath: pdf.path, fileSize: pdf.size, status: 'completed', errorMessage: null } });
+      return this.ok(this.serializeReport(updated));
+    } catch (error: any) {
+      await this.prisma.haccpDailyReport.update({
+        where: { id: report.id },
+        data: { status: 'failed', errorMessage: error?.message || 'Génération PDF impossible' },
+      });
+      throw error;
+    }
   }
 
   private async buildDailyReportData(organizationId: string, date = new Date()) {
@@ -1302,9 +1468,7 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
       reception,
       stockReceptions,
       production,
-      refroidissement,
-      congelation,
-      rechauffement,
+      processSessions,
       oilEquipment,
       oil,
     ] = await Promise.all([
@@ -1316,9 +1480,7 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
       this.prisma.haccpReception.findMany({ where: { organizationId, deletedAt: null, date: { gte: start, lt: end } } }),
       (this.prisma as any).stockReception?.findMany?.({ where: { organizationId, deliveryDate: { gte: start, lt: end }, status: { in: ['VALIDATED', 'CANCELLED'] } }, include: { supplier: true, lines: { include: { product: true, unitModel: true } }, purchaseReceipt: { include: { order: true } } } }) ?? Promise.resolve([]),
       this.prisma.haccpProductionSession.findMany({ where: { organizationId, deletedAt: null, productionDate: { gte: start, lt: end } }, include: { finishedProduct: true } }),
-      this.prisma.haccpProcessSession.findMany({ where: { organizationId, deletedAt: null, type: 'refroidissement', sessionDate: { gte: start, lt: end } }, include: { product: true, equipment: true } }),
-      this.prisma.haccpProcessSession.findMany({ where: { organizationId, deletedAt: null, type: 'congelation', sessionDate: { gte: start, lt: end } }, include: { product: true, equipment: true } }),
-      this.prisma.haccpProcessSession.findMany({ where: { organizationId, deletedAt: null, type: 'rechauffement', sessionDate: { gte: start, lt: end } }, include: { product: true, equipment: true } }),
+      this.prisma.haccpProcessSession.findMany({ where: { organizationId, deletedAt: null, type: { in: ['refroidissement', 'congelation', 'rechauffement'] }, sessionDate: { gte: start, lt: end } }, include: { product: true, equipment: true } }),
       this.prisma.haccpOilEquipment.findMany({ where: { organizationId, isActive: true, deletedAt: null } }),
       this.prisma.haccpOilSession.findMany({ where: { organizationId, deletedAt: null, sessionDate: { gte: start, lt: end } }, include: { equipment: true } }),
     ]);
@@ -1343,7 +1505,9 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
         });
       }
     }
-    const processSessions = [...refroidissement, ...congelation, ...rechauffement];
+    const refroidissement = processSessions.filter((session) => session.type === 'refroidissement');
+    const congelation = processSessions.filter((session) => session.type === 'congelation');
+    const rechauffement = processSessions.filter((session) => session.type === 'rechauffement');
     const cleanedSurfaceIds = new Set(cleaning.flatMap((session) => (session.cleanedSurfaces ?? []).map((surface) => surface.surfaceId)));
     const completedProcess = processSessions.filter((session) => session.status === 'termine' && session.endTime && session.endTemperature != null).length;
     const completedProduction = production.filter((item) => item.status === 'termine').length;
@@ -1418,24 +1582,24 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
 
   async todayReport(organizationId: string) {
     const { start } = this.dayRange();
-    const item = await this.prisma.haccpDailyReport.findUnique({ where: { organizationId_reportDate: { organizationId, reportDate: start } } });
+    const item = await this.prisma.haccpDailyReport.findFirst({ where: { organizationId, reportDate: start, deletedAt: null } });
     if (!item) throw new NotFoundException('Aucun rapport trouvé pour aujourd’hui');
     return this.ok(this.serializeReport(item));
   }
 
   async listReports(organizationId: string, q: any = {}) {
+    const { page, limit } = this.pagination(q);
     const where: any = { organizationId, deletedAt: null };
     if (q.startDate || q.endDate) where.reportDate = { gte: q.startDate ? this.parseDate(q.startDate) : undefined, lt: q.endDate ? this.parseDate(q.endDate) : undefined };
     const [items, total] = await Promise.all([
       this.prisma.haccpDailyReport.findMany({ where, orderBy: { reportDate: 'desc' }, ...this.page(q) }),
       this.prisma.haccpDailyReport.count({ where }),
     ]);
-    const limit = Number(q.limit ?? 20);
-    return { success: true, data: items.map((item) => this.serializeReport(item)), pagination: { current: Number(q.page ?? 1), pages: Math.ceil(total / limit), total, limit } };
+    return { success: true, data: items.map((item) => this.serializeReport(item)), pagination: { current: page, pages: Math.ceil(total / limit), total, limit } };
   }
 
   async getReport(organizationId: string, id: string) {
-    const item = await this.prisma.haccpDailyReport.findFirst({ where: { id, organizationId } });
+    const item = await this.prisma.haccpDailyReport.findFirst({ where: { id, organizationId, deletedAt: null } });
     if (!item) throw new NotFoundException('Rapport introuvable');
     return this.ok(this.serializeReport(item));
   }
@@ -1446,7 +1610,7 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async regenerateReport(organizationId: string, actor: Actor, id: string) {
-    const report = await this.prisma.haccpDailyReport.findFirst({ where: { id, organizationId } });
+    const report = await this.prisma.haccpDailyReport.findFirst({ where: { id, organizationId, deletedAt: null } });
     if (!report) throw new NotFoundException('Rapport introuvable');
     return this.generateDailyReport(organizationId, actor, report.reportDate);
   }
@@ -1459,7 +1623,11 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async reportStats(organizationId: string) {
-    const reports = await this.prisma.haccpDailyReport.findMany({ where: { organizationId, deletedAt: null }, orderBy: { reportDate: 'desc' } });
+    const reports = await this.prisma.haccpDailyReport.findMany({
+      where: { organizationId, deletedAt: null },
+      select: { reportDate: true, summary: true },
+      orderBy: { reportDate: 'desc' },
+    });
     const recentCutoff = new Date();
     recentCutoff.setDate(recentCutoff.getDate() - 30);
     const totalActivities = reports.reduce((sum, report) => sum + Number(report.summary?.totalActivities ?? 0), 0);
@@ -1467,7 +1635,7 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async downloadReport(organizationId: string, id: string) {
-    const report = await this.prisma.haccpDailyReport.findFirst({ where: { id, organizationId } });
+    const report = await this.prisma.haccpDailyReport.findFirst({ where: { id, organizationId, deletedAt: null } });
     if (!report) throw new NotFoundException('Rapport introuvable');
     if (report.pdfPath && existsSync(report.pdfPath)) return { stream: new StreamableFile(createReadStream(report.pdfPath)), filename: `rapport_haccp_${this.formatReportDate(report.reportDate)}.pdf`, contentType: 'application/pdf' };
     const payload = Buffer.from(JSON.stringify(this.serializeReport(report), null, 2), 'utf8');
@@ -1523,7 +1691,7 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
       for (const organization of organizations) {
         try {
           const existing = await this.prisma.haccpDailyReport.findUnique({ where: { organizationId_reportDate: { organizationId: organization.id, reportDate: start } } });
-          if (existing?.generatedAt && existing.generatedAt >= currentDayStart) continue;
+          if (existing?.status === 'completed' && existing.generatedAt && existing.generatedAt >= currentDayStart) continue;
           await this.generateDailyReport(organization.id, null, start);
           this.logger.log(`Rapport HACCP journalier clôturé pour ${organization.name} (${this.formatReportDate(start)})`);
         } catch (error: any) {
@@ -1543,7 +1711,7 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
     summary: any,
   ) {
     const dir = join(REPORTS_ROOT, organizationId);
-    mkdirSync(dir, { recursive: true });
+    await mkdir(dir, { recursive: true });
     const filename = `rapport-haccp-${this.formatReportDate(reportDate)}-${reportId}.pdf`;
     const path = join(dir, filename);
     const doc = new PDFDocument({
@@ -1913,7 +2081,7 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
     }
     doc.end();
     const pdf = await finished;
-    writeFileSync(path, pdf);
+    await writeFile(path, pdf);
     return { path, size: pdf.byteLength };
   }
 
@@ -2036,13 +2204,13 @@ export class HaccpService implements OnModuleInit, OnModuleDestroy {
     return `${this.formatReportDate(date)} ${hours}:${minutes}`;
   }
 
-  private async ensure(model: string, organizationId: string, id: string, message: string) {
-    const item = await this.prisma[model].findFirst({ where: { id, organizationId } });
+  private async ensure(model: string, organizationId: string, id: string, message: string, extraWhere: Record<string, any> = {}) {
+    const item = await this.prisma[model].findFirst({ where: { id, organizationId, deletedAt: null, ...extraWhere } });
     if (!item) throw new NotFoundException(message);
     return item;
   }
 
   private async ensureTemperatureEquipment(organizationId: string, id: string) {
-    return this.ensure('haccpTemperatureEquipment', organizationId, id, 'Équipement introuvable');
+    return this.ensure('haccpTemperatureEquipment', organizationId, id, 'Équipement introuvable', { isActive: true });
   }
 }

@@ -6,7 +6,7 @@ const actor = { id: '11111111-1111-1111-1111-111111111111', role: 'Administrateu
 const orgId = '22222222-2222-2222-2222-222222222222';
 
 function createPrismaMock() {
-  return {
+  const prisma = {
     haccpProduct: {
       findMany: jest.fn(),
       findFirst: jest.fn(),
@@ -14,10 +14,11 @@ function createPrismaMock() {
       update: jest.fn(),
     },
     product: { findFirst: jest.fn() },
-    haccpTemperatureEquipment: { findMany: jest.fn() },
+    stockReception: { findMany: jest.fn(), findFirst: jest.fn() },
+    haccpTemperatureEquipment: { findMany: jest.fn(), findFirst: jest.fn() },
     haccpTemperatureReading: { findMany: jest.fn() },
-    haccpTraceability: { findMany: jest.fn() },
-    haccpReception: { findMany: jest.fn() },
+    haccpTraceability: { findMany: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
+    haccpReception: { findMany: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
     haccpProductionSession: { findMany: jest.fn(), findFirst: jest.fn() },
     haccpProcessEquipment: { findFirst: jest.fn() },
     haccpProcessSession: {
@@ -26,8 +27,8 @@ function createPrismaMock() {
       create: jest.fn(),
       update: jest.fn(),
     },
-    haccpOilEquipment: { findMany: jest.fn() },
-    haccpOilSession: { findMany: jest.fn() },
+    haccpOilEquipment: { findMany: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
+    haccpOilSession: { findMany: jest.fn(), count: jest.fn() },
     haccpCleaningZone: { findMany: jest.fn() },
     haccpCleaningSession: {
       findMany: jest.fn(),
@@ -35,8 +36,8 @@ function createPrismaMock() {
       create: jest.fn(),
       update: jest.fn(),
     },
-    haccpCleaningSurface: { count: jest.fn() },
-    haccpCleanedSurface: { count: jest.fn() },
+    haccpCleaningSurface: { findFirst: jest.fn(), update: jest.fn(), count: jest.fn() },
+    haccpCleanedSurface: { upsert: jest.fn(), count: jest.fn() },
     haccpDailyReport: {
       findMany: jest.fn(),
       findUnique: jest.fn(),
@@ -48,6 +49,8 @@ function createPrismaMock() {
       findMany: jest.fn(),
     },
   } as any;
+  prisma.$transaction = jest.fn(async (callback: (tx: any) => unknown) => callback(prisma));
+  return prisma;
 }
 
 describe('HaccpService', () => {
@@ -74,6 +77,47 @@ describe('HaccpService', () => {
     expect(response.data).toMatchObject({ _id: 'p2', user: actor.id, unit: 'L' });
   });
 
+  it('loads one unified reception directly instead of scanning the complete history', async () => {
+    const prisma = createPrismaMock();
+    prisma.stockReception.findFirst.mockResolvedValue({
+      id: 'stock-1',
+      status: 'VALIDATED',
+      deliveryDate: new Date('2026-08-20T10:00:00.000Z'),
+      supplier: { name: 'Primeur' },
+      lines: [{ id: 'line-1', ocrLabel: 'Tomates', quantity: '4', unit: 'kg' }],
+    });
+    const service = new HaccpService(prisma);
+
+    const response = await service.unifiedReceptionDetail(orgId, 'stock:stock-1');
+
+    expect(prisma.stockReception.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 'stock-1', organizationId: orgId }),
+    }));
+    expect(prisma.stockReception.findMany).not.toHaveBeenCalled();
+    expect(prisma.haccpReception.findMany).not.toHaveBeenCalled();
+    expect(response.data).toMatchObject({ id: 'stock:stock-1', supplierName: 'Primeur' });
+  });
+
+  it('keeps synchronization updates inside the HACCP business fields', async () => {
+    const prisma = createPrismaMock();
+    prisma.haccpReception.findFirst.mockResolvedValue({ id: 'reception-1', organizationId: orgId });
+    prisma.haccpReception.update.mockImplementation(async ({ data }: any) => ({ id: 'reception-1', organizationId: orgId, ...data }));
+    const service = new HaccpService(prisma);
+
+    await service.updateReception(orgId, 'reception-1', {
+      supplier: 'Primeur local',
+      organizationId: 'another-organization',
+      createdById: 'another-user',
+      deletedAt: new Date(),
+    });
+
+    const data = prisma.haccpReception.update.mock.calls[0][0].data;
+    expect(data).toMatchObject({ supplier: 'Primeur local', syncVersion: { increment: 1 } });
+    expect(data.organizationId).toBeUndefined();
+    expect(data.createdById).toBeUndefined();
+    expect(data.deletedAt).toBeUndefined();
+  });
+
   it('links a Stocks product to the HACCP catalogue when selected by the mobile app', async () => {
     const prisma = createPrismaMock();
     prisma.product.findFirst.mockResolvedValue({ id: 'stock-1', organizationId: orgId, name: 'Velouté', description: 'Fait maison', unit: { symbol: 'L' } });
@@ -97,6 +141,39 @@ describe('HaccpService', () => {
 
     expect(prisma.haccpCleaningSession.create).not.toHaveBeenCalled();
     expect(response.data).toMatchObject({ _id: 's1', status: 'active' });
+  });
+
+  it('records cleaning with authoritative surface and zone data in one transaction', async () => {
+    const prisma = createPrismaMock();
+    prisma.haccpCleaningSession.findFirst.mockResolvedValue({ id: 'session-1', organizationId: orgId, status: 'active' });
+    prisma.haccpCleaningSurface.findFirst.mockResolvedValue({
+      id: 'surface-1',
+      name: 'Plan de travail',
+      zoneId: 'zone-1',
+      zone: { id: 'zone-1', name: 'Cuisine' },
+    });
+    prisma.haccpCleanedSurface.count.mockResolvedValue(1);
+    prisma.haccpCleaningSurface.count.mockResolvedValue(3);
+    prisma.haccpCleaningSession.update.mockResolvedValue({
+      id: 'session-1',
+      completedSurfaces: 1,
+      totalSurfaces: 3,
+      cleanedSurfaces: [],
+    });
+    const service = new HaccpService(prisma);
+
+    const response = await service.markSurfaceCleaned(orgId, actor, {
+      surfaceId: 'surface-1',
+      surfaceName: 'Nom falsifié',
+      zoneId: 'zone-1',
+      zoneName: 'Zone falsifiée',
+    });
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.haccpCleanedSurface.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ surfaceName: 'Plan de travail', zoneId: 'zone-1', zoneName: 'Cuisine' }),
+    }));
+    expect(response.data).toMatchObject({ _id: 'session-1', completedSurfaces: 1, totalSurfaces: 3 });
   });
 
   it('completes process sessions with backend end time, status, and duration', async () => {
@@ -233,6 +310,10 @@ describe('HaccpService', () => {
       expect.objectContaining({ id: 'temperature', label: 'Températures', completed: 1, expected: 1, statusLabel: 'Conforme' }),
       expect.objectContaining({ id: 'cleaning', completed: 0, expected: 0, statusLabel: 'Aucun prévu' }),
     ]));
+    expect(prisma.haccpProcessSession.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.haccpProcessSession.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ type: { in: ['refroidissement', 'congelation', 'rechauffement'] } }),
+    }));
     expect(response.data.fileSize).toBeGreaterThan(0);
     const pdf = await PDFDocument.load(readFileSync(response.data.pdfPath));
     expect(pdf.getPageCount()).toBeGreaterThanOrEqual(1);
@@ -303,7 +384,7 @@ describe('HaccpService', () => {
       const service = new HaccpService(prisma);
 
       await (service as any).runAutomaticDailyClosure();
-      prisma.haccpDailyReport.findUnique.mockResolvedValue({ id: 'auto-report', organizationId: orgId, reportDate: new Date('2026-06-29T22:00:00.000Z'), generatedAt: new Date('2026-06-30T22:03:00.000Z') });
+      prisma.haccpDailyReport.findUnique.mockResolvedValue({ id: 'auto-report', organizationId: orgId, reportDate: new Date('2026-06-29T22:00:00.000Z'), generatedAt: new Date('2026-06-30T22:03:00.000Z'), status: 'completed' });
       await (service as any).runAutomaticDailyClosure();
 
       expect(prisma.haccpDailyReport.upsert).toHaveBeenCalledTimes(1);

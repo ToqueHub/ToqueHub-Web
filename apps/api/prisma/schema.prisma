@@ -6960,6 +6960,7 @@ model HaccpTemperatureReading {
   @@index([createdById])
   @@index([equipmentId])
   @@index([date])
+  @@index([organizationId, deletedAt, date], map: "haccp_temp_org_deleted_date_idx")
   @@map("haccp_temperature_readings")
 }
 
@@ -6993,6 +6994,7 @@ model HaccpReception {
   @@index([date])
   @@index([supplier])
   @@index([lotNumber])
+  @@index([organizationId, deletedAt, date], map: "haccp_reception_org_deleted_date_idx")
   @@map("haccp_receptions")
 }
 
@@ -7021,6 +7023,7 @@ model HaccpTraceability {
   @@index([date])
   @@index([lotNumber])
   @@index([barcode])
+  @@index([organizationId, deletedAt, date], map: "haccp_trace_org_deleted_date_idx")
   @@map("haccp_traceability")
 }
 
@@ -7101,6 +7104,7 @@ model HaccpProcessSession {
   @@index([status])
   @@index([productId])
   @@index([equipmentId])
+  @@index([organizationId, deletedAt, type, sessionDate], map: "haccp_process_org_deleted_type_date_idx")
   @@map("haccp_process_sessions")
 }
 
@@ -7166,6 +7170,7 @@ model HaccpOilSession {
   @@index([equipmentId])
   @@index([sessionDate])
   @@index([action])
+  @@index([organizationId, deletedAt, sessionDate], map: "haccp_oil_org_deleted_date_idx")
   @@map("haccp_oil_sessions")
 }
 
@@ -7224,6 +7229,7 @@ model HaccpCleaningSurface {
   @@index([zoneId])
   @@index([frequency])
   @@index([isActive])
+  @@index([organizationId, deletedAt, isActive], map: "haccp_clean_surface_org_deleted_active_idx")
   @@map("haccp_cleaning_surfaces")
 }
 
@@ -7254,6 +7260,8 @@ model HaccpCleaningSession {
   @@index([createdById])
   @@index([sessionDate])
   @@index([status])
+  @@index([organizationId, deletedAt, sessionDate], map: "haccp_clean_session_org_deleted_date_idx")
+  @@index([organizationId, deletedAt, status], map: "haccp_clean_session_org_deleted_status_idx")
   @@map("haccp_cleaning_sessions")
 }
 
@@ -7335,6 +7343,7 @@ model HaccpProductionSession {
   @@index([finishedProductId])
   @@index([productionDate])
   @@index([status])
+  @@index([organizationId, deletedAt, productionDate], map: "haccp_prod_org_deleted_date_idx")
   @@map("haccp_production_sessions")
 }
 
@@ -7396,6 +7405,7 @@ model HaccpDailyReport {
   @@index([organizationId])
   @@index([createdById])
   @@index([status])
+  @@index([organizationId, deletedAt, reportDate], map: "haccp_report_org_deleted_date_idx")
   @@map("haccp_daily_reports")
 }
 

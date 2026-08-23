@@ -10,6 +10,7 @@ describe('OperationalTasksService', () => {
     technicalSheet: { findFirst: jest.fn(), findMany: jest.fn() },
     technicalSheetStep: { findFirst: jest.fn(), findMany: jest.fn() },
     productionBatch: { findFirst: jest.fn(), findMany: jest.fn() },
+    haccpProductionIngredientTraceability: { findMany: jest.fn() },
     productionOperation: { findFirst: jest.fn(), update: jest.fn() },
     productionProfile: { findFirst: jest.fn() },
     product: { findMany: jest.fn() },
@@ -41,6 +42,7 @@ describe('OperationalTasksService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     prisma.$transaction.mockImplementation((callback) => callback(prisma));
+    prisma.haccpProductionIngredientTraceability.findMany.mockResolvedValue([]);
   });
 
   it('returns only the RH services inside the manager hierarchy', async () => {
