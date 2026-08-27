@@ -115,4 +115,36 @@ describe('MistralClientService OCR markdown', () => {
     expect(secondRequest.response_format).toEqual({ type: 'json_object' });
     expect(secondRequest.messages[0].content).toContain('conforme à ce schéma');
   });
+
+  it('reports the configured timeout instead of a generic aborted operation', async () => {
+    jest.useFakeTimers();
+    const prisma = {
+      organization: { findUnique: jest.fn().mockResolvedValue({ mistralApiKey: 'test-key' }) },
+    };
+    global.fetch = jest.fn((_url, init: RequestInit) => {
+      return new Promise((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => {
+          const error = new Error('This operation was aborted');
+          error.name = 'AbortError';
+          reject(error);
+        });
+      });
+    }) as any;
+
+    try {
+      const result = new MistralClientService(prisma as any).chatJson(
+        'org-1',
+        [{ role: 'user', content: 'Retourne la valeur.' }],
+        'test_schema',
+        { type: 'object' },
+        { timeoutMs: 25 },
+      );
+      const expectation = expect(result).rejects.toThrow('Délai Mistral dépassé après 25 ms');
+      await jest.advanceTimersByTimeAsync(25);
+
+      await expectation;
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });
