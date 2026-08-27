@@ -4778,6 +4778,22 @@
   gap: 0.5rem;
 }
 
+.ocr-status-card-remove {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+}
+
+.ocr-status-card-remove:hover:not(:disabled) {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.ocr-status-card-remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
 .stocks-ocr-review {
   display: grid;
   gap: 1.5rem;

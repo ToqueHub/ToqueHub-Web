@@ -860,6 +860,8 @@ export function TechnicalSheetsApp({
   const [importFiles, setImportFiles] = useState<File[]>([]);
   const [importStatuses, setImportStatuses] = useState<TechnicalSheetRecipeImportStatus[]>([]);
   const [importSubmitting, setImportSubmitting] = useState(false);
+  const [retryingFailedImports, setRetryingFailedImports] = useState(false);
+  const [removingImportDocumentIds, setRemovingImportDocumentIds] = useState<string[]>([]);
   const [reviewingImportDocumentId, setReviewingImportDocumentId] = useState<string | null>(null);
   const [kokkiOpen, setKokkiOpen] = useState(false);
   const [reviewingKokkiDraftId, setReviewingKokkiDraftId] = useState<string | null>(null);
@@ -1322,6 +1324,50 @@ export function TechnicalSheetsApp({
     }
   }
 
+  async function retryFailedRecipeImports() {
+    if (retryingFailedImports) return;
+    setRetryingFailedImports(true);
+    setError(undefined);
+    try {
+      const response = await api.retryFailedTechnicalSheetRecipeImports(token);
+      const replacements = new Map(
+        (response.statuses ?? []).map((status) => [status.document.id, status]),
+      );
+      setImportStatuses((current) =>
+        current.map((status) => replacements.get(status.document.id) ?? status),
+      );
+      if (response.retried) {
+        setSuccess(
+          `${response.retried} analyse${response.retried > 1 ? 's' : ''} OCR relancée${response.retried > 1 ? 's' : ''}.`,
+        );
+      } else {
+        setSuccess('Aucune analyse OCR en erreur à relancer.');
+        await refreshImportStatuses();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Relance des analyses OCR impossible.');
+    } finally {
+      setRetryingFailedImports(false);
+    }
+  }
+
+  async function dismissRecipeImport(documentId: string) {
+    if (removingImportDocumentIds.includes(documentId)) return;
+    setRemovingImportDocumentIds((current) => [...current, documentId]);
+    setError(undefined);
+    try {
+      await api.dismissTechnicalSheetRecipeImport(token, documentId);
+      setImportStatuses((current) =>
+        current.filter((status) => status.document.id !== documentId),
+      );
+      setSuccess('Analyse OCR retirée du suivi.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Suppression du suivi OCR impossible.');
+    } finally {
+      setRemovingImportDocumentIds((current) => current.filter((id) => id !== documentId));
+    }
+  }
+
   function showImportedRecipe(status: TechnicalSheetRecipeImportStatus, announce = true) {
     const result = status.result;
     if (!result) return;
@@ -1597,8 +1643,12 @@ export function TechnicalSheetsApp({
           files={importFiles}
           statuses={importStatuses}
           submitting={importSubmitting}
+          retryingFailed={retryingFailedImports}
+          removingDocumentIds={removingImportDocumentIds}
           onFiles={setImportFiles}
           onSubmit={submitRecipeImports}
+          onRetryFailed={retryFailedRecipeImports}
+          onRemoveStatus={dismissRecipeImport}
           onOpenResult={openImportedRecipe}
         />
       </Modal>
@@ -3210,17 +3260,26 @@ function RecipeImportPanel({
   files,
   statuses,
   submitting,
+  retryingFailed,
+  removingDocumentIds,
   onFiles,
   onSubmit,
+  onRetryFailed,
+  onRemoveStatus,
   onOpenResult,
 }: {
   files: File[];
   statuses: TechnicalSheetRecipeImportStatus[];
   submitting: boolean;
+  retryingFailed: boolean;
+  removingDocumentIds: string[];
   onFiles: (files: File[]) => void;
   onSubmit: () => Promise<void>;
+  onRetryFailed: () => Promise<void>;
+  onRemoveStatus: (documentId: string) => Promise<void>;
   onOpenResult: (status: TechnicalSheetRecipeImportStatus) => void;
 }) {
+  const failedStatuses = statuses.filter((status) => status.state === 'erreur');
   const addFiles = (next: File[]) => {
     const unique = [...files, ...next]
       .filter(
@@ -3307,8 +3366,26 @@ function RecipeImportPanel({
           padding: '1.1rem 1.5rem',
           background: '#fafbfe',
           borderTop: '1px solid var(--light-border)',
+          justifyContent: 'space-between',
+          gap: '0.75rem',
+          flexWrap: 'wrap',
         }}
       >
+        {failedStatuses.length ? (
+          <button
+            type="button"
+            className="production-btn-primary"
+            disabled={retryingFailed || submitting}
+            onClick={() => void onRetryFailed()}
+          >
+            <RefreshCw size={17} className={retryingFailed ? 'spin' : undefined} />
+            {retryingFailed
+              ? 'Relance en cours…'
+              : `Actualiser les analyses en erreur (${failedStatuses.length})`}
+          </button>
+        ) : (
+          <span />
+        )}
         <button
           className="btn btn-primary"
           disabled={!files.length || submitting}
@@ -3374,16 +3451,37 @@ function RecipeImportPanel({
                       />
                     </div>
                   </div>
-                  {status.result ? (
-                    <div className="ocr-status-card-actions">
+                  <div className="ocr-status-card-actions">
+                    {status.result ? (
                       <button
                         className="btn btn-primary btn-sm"
                         onClick={() => onOpenResult(status)}
                       >
                         Vérifier <ArrowRight size={12} />
                       </button>
-                    </div>
-                  ) : null}
+                    ) : null}
+                    <button
+                      type="button"
+                      className="modal-close-btn ocr-status-card-remove"
+                      onClick={() => void onRemoveStatus(status.document.id)}
+                      disabled={
+                        recipeImportWorking(status) ||
+                        removingDocumentIds.includes(status.document.id)
+                      }
+                      aria-label={`Retirer ${status.document.originalName} du suivi`}
+                      title={
+                        recipeImportWorking(status)
+                          ? 'L’analyse en cours ne peut pas être retirée.'
+                          : 'Retirer cette analyse du suivi'
+                      }
+                    >
+                      {removingDocumentIds.includes(status.document.id) ? (
+                        <RefreshCw size={14} className="spin" />
+                      ) : (
+                        <X size={15} />
+                      )}
+                    </button>
+                  </div>
                 </div>
               );
             })}

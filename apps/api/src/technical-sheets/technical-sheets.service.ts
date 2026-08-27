@@ -1043,6 +1043,126 @@ export class TechnicalSheetsService {
     };
   }
 
+  async retryFailedRecipeImports(organizationId: string) {
+    await this.assertInstalled(organizationId);
+    const failedDocuments = await this.prisma.document.findMany({
+      where: {
+        organizationId,
+        sourceModule: 'technical-sheets',
+        sourceType: RECIPE_IMPORT_SOURCE,
+        status: DocumentStatus.FAILED,
+      },
+      include: {
+        ocrDocuments: {
+          include: { extractions: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    const retriedDocumentIds: string[] = [];
+
+    for (const document of failedDocuments) {
+      const reset = await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.document.updateMany({
+          where: {
+            id: document.id,
+            organizationId,
+            sourceModule: 'technical-sheets',
+            sourceType: RECIPE_IMPORT_SOURCE,
+            status: DocumentStatus.FAILED,
+          },
+          data: { status: DocumentStatus.UPLOADED, sourceId: null },
+        });
+        if (!updated.count) return false;
+
+        const ocrDocument = document.ocrDocuments[0];
+        if (ocrDocument) {
+          await tx.ocrBusinessExtraction.deleteMany({
+            where: { ocrDocumentId: ocrDocument.id },
+          });
+          await tx.ocrDocument.updateMany({
+            where: { id: ocrDocument.id, organizationId, documentId: document.id },
+            data: {
+              status: OcrProcessingStatus.PENDING,
+              rawText: null,
+              rawMarkdown: null,
+              rawJson: Prisma.DbNull,
+              pageCount: null,
+              processingDurationMs: null,
+              errorCode: null,
+              errorMessage: null,
+            },
+          });
+        }
+        return true;
+      });
+      if (reset) retriedDocumentIds.push(document.id);
+    }
+
+    if (!retriedDocumentIds.length) return { retried: 0, statuses: [] };
+    const resetDocuments = await this.prisma.document.findMany({
+      where: { organizationId, id: { in: retriedDocumentIds } },
+      include: {
+        ocrDocuments: {
+          include: { extractions: { orderBy: { updatedAt: 'desc' }, take: 1 } },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    setImmediate(() => {
+      void this.processRecipeImportBatch(organizationId, retriedDocumentIds);
+    });
+    return {
+      retried: retriedDocumentIds.length,
+      statuses: resetDocuments.map((document) => {
+        const ocr = document.ocrDocuments[0] ?? null;
+        return this.recipeImportStatus(document, ocr, ocr?.extractions[0] ?? null);
+      }),
+    };
+  }
+
+  async dismissRecipeImport(organizationId: string, documentId: string) {
+    await this.assertInstalled(organizationId);
+    const document = await this.prisma.document.findFirst({
+      where: {
+        id: documentId,
+        organizationId,
+        sourceModule: 'technical-sheets',
+        sourceType: RECIPE_IMPORT_SOURCE,
+      },
+      include: { ocrDocuments: { orderBy: { createdAt: 'desc' }, take: 1 } },
+    });
+    if (!document) throw new NotFoundException('Import de fiche technique introuvable.');
+    const ocrStatus = document.ocrDocuments[0]?.status;
+    if (
+      document.status === DocumentStatus.UPLOADED ||
+      document.status === DocumentStatus.PROCESSING ||
+      ocrStatus === OcrProcessingStatus.PENDING ||
+      ocrStatus === OcrProcessingStatus.PROCESSING
+    ) {
+      throw new BadRequestException('Impossible de retirer une analyse OCR en cours.');
+    }
+
+    const removed = await this.prisma.document.updateMany({
+      where: {
+        id: documentId,
+        organizationId,
+        sourceModule: 'technical-sheets',
+        sourceType: RECIPE_IMPORT_SOURCE,
+        status: { in: [DocumentStatus.FAILED, DocumentStatus.PROCESSED] },
+      },
+      data: { sourceType: `${RECIPE_IMPORT_SOURCE}-dismissed` },
+    });
+    if (!removed.count)
+      throw new BadRequestException('Impossible de retirer une analyse OCR en cours.');
+    return { removed: true };
+  }
+
   async reviewRecipeImport(organizationId: string, documentId: string) {
     await this.assertInstalled(organizationId);
     await this.prisma.$transaction((tx) =>

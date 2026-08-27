@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -145,6 +146,17 @@ export class TechnicalSheetsController {
   @Get('recipes/imports/statuses')
   listRecipeImportStatuses(@CurrentUser() user: AuthenticatedUser) {
     return this.service.listRecipeImportStatuses(this.org(user));
+  }
+  @Post('recipes/imports/retry-failed')
+  retryFailedRecipeImports(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.retryFailedRecipeImports(this.org(user));
+  }
+  @Delete('recipes/imports/:documentId')
+  dismissRecipeImport(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('documentId') documentId: string,
+  ) {
+    return this.service.dismissRecipeImport(this.org(user), documentId);
   }
   @Post('recipes/imports/:documentId/reviewed')
   reviewRecipeImport(

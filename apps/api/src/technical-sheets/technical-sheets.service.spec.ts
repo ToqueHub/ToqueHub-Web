@@ -690,6 +690,119 @@ describe('TechnicalSheetsService Kespro recipe import', () => {
     ).rejects.toThrow('Vous pouvez importer 10 fiches techniques maximum.');
   });
 
+  it('resets failed recipe imports and schedules them again as one sequential batch', async () => {
+    const failedDocument = {
+      id: 'document-failed',
+      organizationId: 'org-1',
+      originalName: 'macaron.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 61_371,
+      status: 'FAILED',
+      ocrDocuments: [{ id: 'ocr-failed', status: 'FAILED', extractions: [] }],
+    };
+    const resetDocument = {
+      ...failedDocument,
+      status: 'UPLOADED',
+      ocrDocuments: [{ id: 'ocr-failed', status: 'PENDING', extractions: [] }],
+    };
+    const tx = {
+      document: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      ocrBusinessExtraction: { deleteMany: jest.fn() },
+      ocrDocument: { updateMany: jest.fn() },
+    };
+    const prisma = {
+      organization: {
+        findUnique: jest.fn().mockResolvedValue({
+          stocksInstalledAt: new Date(),
+          technicalSheetsInstalledAt: new Date(),
+        }),
+      },
+      document: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([failedDocument])
+          .mockResolvedValueOnce([resetDocument]),
+      },
+      $transaction: jest.fn(async (callback: any) => callback(tx)),
+    };
+    const retryingService = new TechnicalSheetsService(prisma as any, {} as any);
+    const processBatch = jest
+      .spyOn(retryingService as any, 'processRecipeImportBatch')
+      .mockResolvedValue(undefined);
+
+    await expect(retryingService.retryFailedRecipeImports('org-1')).resolves.toEqual(
+      expect.objectContaining({
+        retried: 1,
+        statuses: [expect.objectContaining({ state: 'en attente' })],
+      }),
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(tx.document.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: failedDocument.id, status: 'FAILED' }),
+        data: expect.objectContaining({ status: 'UPLOADED', sourceId: null }),
+      }),
+    );
+    expect(tx.ocrDocument.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ documentId: failedDocument.id }),
+        data: expect.objectContaining({ status: 'PENDING', errorMessage: null }),
+      }),
+    );
+    expect(processBatch).toHaveBeenCalledWith('org-1', [failedDocument.id]);
+  });
+
+  it('dismisses a completed recipe import from tracking without deleting its document', async () => {
+    const prisma = {
+      organization: {
+        findUnique: jest.fn().mockResolvedValue({
+          stocksInstalledAt: new Date(),
+          technicalSheetsInstalledAt: new Date(),
+        }),
+      },
+      document: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ id: 'document-1', status: 'FAILED', ocrDocuments: [] }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    const dismissingService = new TechnicalSheetsService(prisma as any, {} as any);
+
+    await expect(dismissingService.dismissRecipeImport('org-1', 'document-1')).resolves.toEqual({
+      removed: true,
+    });
+    expect(prisma.document.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({ id: 'document-1', status: { in: ['FAILED', 'PROCESSED'] } }),
+      data: { sourceType: 'recipe-import-dismissed' },
+    });
+    expect(prisma.document).not.toHaveProperty('delete');
+  });
+
+  it('keeps an active recipe import visible while processing', async () => {
+    const prisma = {
+      organization: {
+        findUnique: jest.fn().mockResolvedValue({
+          stocksInstalledAt: new Date(),
+          technicalSheetsInstalledAt: new Date(),
+        }),
+      },
+      document: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ id: 'document-1', status: 'PROCESSING', ocrDocuments: [] }),
+        updateMany: jest.fn(),
+      },
+    };
+    const dismissingService = new TechnicalSheetsService(prisma as any, {} as any);
+
+    await expect(dismissingService.dismissRecipeImport('org-1', 'document-1')).rejects.toThrow(
+      'Impossible de retirer une analyse OCR en cours.',
+    );
+    expect(prisma.document.updateMany).not.toHaveBeenCalled();
+  });
+
   it('retries only the structured recipe extraction when Mistral briefly rate-limits a batch', async () => {
     const mistral = {
       chatJson: jest
