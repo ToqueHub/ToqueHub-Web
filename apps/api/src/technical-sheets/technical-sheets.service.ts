@@ -538,7 +538,17 @@ export class TechnicalSheetsService {
 
   async createRecipe(organizationId: string, actor: Actor, dto: UpsertTechnicalSheetDto) {
     await this.assertInstalled(organizationId);
-    if (dto.categoryId) await this.ensureCategory(organizationId, dto.categoryId);
+    if (!dto.categoryId) {
+      throw new BadRequestException(
+        'Veuillez créer une catégorie avant de créer une fiche technique.',
+      );
+    }
+    const category = await this.ensureCategory(organizationId, dto.categoryId);
+    if (category.isArchived) {
+      throw new BadRequestException(
+        'Veuillez créer une catégorie avant de créer une fiche technique.',
+      );
+    }
     const name = dto.name.trim();
     const existing = await this.prisma.technicalSheet.findFirst({
       where: { organizationId, name: { equals: name, mode: 'insensitive' } },
