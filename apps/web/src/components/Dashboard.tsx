@@ -22512,6 +22512,8 @@ const PRODUCT_ALLERGEN_OPTIONS = [
   'Moutarde',
   'Lupin',
   'Sulfites',
+  'Lactose',
+  'Cacao',
 ];
 
 const PRODUCT_DIETARY_TAG_OPTIONS = [
@@ -22524,6 +22526,13 @@ const PRODUCT_DIETARY_TAG_OPTIONS = [
   'Végétarien',
   'Surgelé',
   'Bio',
+  'Faible en FODMAP',
+  'Halal',
+  'Casher',
+  'Pauvre en glucides',
+  'Sans bœuf',
+  'Sans porc',
+  'Diététique',
 ];
 const PRODUCT_STORAGE_OPTIONS = ['Température ambiante', 'Réfrigéré', 'Surgelé', 'Sec', 'Autre'];
 
@@ -22562,6 +22571,7 @@ type ProductFormPayload = {
   priceDisplayUnit?: string | null;
   minimumStock?: number;
   gtin?: string | null;
+  productUrl?: string | null;
   originCountry?: string | null;
   packageLabel?: string | null;
   unitsPerPackage?: number | null;
@@ -22826,6 +22836,7 @@ function ProductForm({
     ),
   );
   const [gtin, setGtin] = useState(initialProduct?.gtin ?? '');
+  const [productUrl, setProductUrl] = useState(initialProduct?.productUrl ?? '');
   const [originCountry, setOriginCountry] = useState(initialProduct?.originCountry ?? '');
   const [packageLabel, setPackageLabel] = useState(initialProduct?.packageLabel ?? '');
   const [unitsPerPackage, setUnitsPerPackage] = useState(
@@ -22921,6 +22932,7 @@ function ProductForm({
       ),
     );
     setGtin(initialProduct?.gtin ?? '');
+    setProductUrl(initialProduct?.productUrl ?? '');
     setOriginCountry(initialProduct?.originCountry ?? '');
     setPackageLabel(initialProduct?.packageLabel ?? '');
     setUnitsPerPackage(productFieldString(initialProduct?.unitsPerPackage));
@@ -22965,6 +22977,7 @@ function ProductForm({
         priceDisplayUnit: priceDisplayUnit || null,
         minimumStock: productOptionalNumber(minimumStock),
         gtin: productNullableText(gtin, clearWhenEmpty),
+        productUrl: productNullableText(productUrl, clearWhenEmpty),
         originCountry: productNullableText(originCountry, clearWhenEmpty),
         packageLabel: productNullableText(packageLabel, clearWhenEmpty),
         unitsPerPackage: productNullableNumber(unitsPerPackage, clearWhenEmpty),
@@ -23060,6 +23073,15 @@ function ProductForm({
                   placeholder="ex: Finlande, France, UE..."
                   value={originCountry}
                   onChange={(e) => setOriginCountry(e.target.value)}
+                />
+              </label>
+              <label className="product-sheet-wide">
+                URL du produit fournisseur
+                <input
+                  type="url"
+                  placeholder="https://www.kespro.fi/..."
+                  value={productUrl}
+                  onChange={(e) => setProductUrl(e.target.value)}
                 />
               </label>
               <label className="product-sheet-wide">
@@ -23534,7 +23556,10 @@ function productCalculatedNetWeight(product: Product) {
 function computeProductCompletion(product: Product) {
   const supplierId = productSupplierId(product);
   const sectionInputs = [
-    { label: 'Identification', values: [product.name, product.gtin, product.originCountry] },
+    {
+      label: 'Identification',
+      values: [product.name, product.gtin, product.productUrl, product.originCountry],
+    },
     { label: 'Fournisseur', values: [supplierId, product.sku ?? product.reference] },
     {
       label: 'Conditionnement',
@@ -24207,6 +24232,18 @@ function ProductDetailModal({
                   <div>
                     <dt>Pays d'origine / origine</dt>
                     <dd>{productTextDisplay(product.originCountry)}</dd>
+                  </div>
+                  <div>
+                    <dt>URL du produit fournisseur</dt>
+                    <dd>
+                      {product.productUrl ? (
+                        <a href={product.productUrl} target="_blank" rel="noreferrer">
+                          Ouvrir la fiche produit
+                        </a>
+                      ) : (
+                        '—'
+                      )}
+                    </dd>
                   </div>
                 </dl>
                 {product.description ? (

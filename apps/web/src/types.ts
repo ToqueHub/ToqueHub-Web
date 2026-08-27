@@ -1797,6 +1797,7 @@ export interface Product {
   minimumStock?: string | number | null;
   minStock?: string | number | null;
   gtin?: string | null;
+  productUrl?: string | null;
   originCountry?: string | null;
   packageLabel?: string | null;
   unitsPerPackage?: string | number | null;

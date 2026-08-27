@@ -1720,6 +1720,7 @@ model Product {
   priceDisplayUnit        String?
   minimumStock            Decimal     @default(0) @db.Decimal(12, 3)
   gtin                    String?
+  productUrl              String?
   originCountry           String?
   packageLabel            String?
   unitsPerPackage         Decimal?    @db.Decimal(12, 3)

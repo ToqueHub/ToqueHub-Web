@@ -313,6 +313,11 @@ export class UpsertProductDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(2000)
+  productUrl?: string | null;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(120)
   originCountry?: string | null;
 
