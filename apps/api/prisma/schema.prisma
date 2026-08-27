@@ -6277,6 +6277,8 @@ model CatererClient {
   organizationId        String    @db.Uuid
   name                  String
   name2                 String?
+  firstName             String?
+  lastName              String?
   contactName           String?
   email                 String?
   phone                 String?
@@ -6328,6 +6330,7 @@ model CatererClient {
   fennoaSyncedAt        DateTime?
   fennoaPayload         Json?
   source                String    @default("MANUAL")
+  allergies             String?   @db.Text
   notes                 String?   @db.Text
   isArchived            Boolean   @default(false)
   archivedAt            DateTime?

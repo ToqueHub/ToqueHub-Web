@@ -151,6 +151,8 @@ import type {
   MenuUsageProfile,
   CatererClient,
   CatererClientInput,
+  CatererClientImportPreview,
+  CatererClientImportCommitResult,
   CatererEvent,
   CatererEventPayload,
   CatererEventStatus,
@@ -1672,6 +1674,34 @@ export const api = {
     return request<CatererClient>(
       `/menus/caterer/clients/${id}`,
       { method: 'PATCH', body: JSON.stringify(payload) },
+      token,
+    );
+  },
+  analyzeCatererClientImport(token: string, file: File) {
+    const body = new FormData();
+    body.append('file', file);
+    return request<CatererClientImportPreview>(
+      '/menus/caterer/clients/import/analyze',
+      { method: 'POST', body },
+      token,
+    );
+  },
+  commitCatererClientImport(
+    token: string,
+    rows: CatererClientImportPreview['rows'],
+  ) {
+    return request<CatererClientImportCommitResult>(
+      '/menus/caterer/clients/import/commit',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          rows: rows.map((row) => ({
+            rowNumber: row.rowNumber,
+            selected: row.selected,
+            ...row.fields,
+          })),
+        }),
+      },
       token,
     );
   },

@@ -102,6 +102,8 @@ export class CatererMenusService {
     const data = {
       name,
       name2: clean(dto.name2),
+      firstName: clean(dto.firstName),
+      lastName: clean(dto.lastName),
       contactName: clean(dto.contactName),
       email: clean(dto.email),
       phone: clean(dto.phone),
@@ -141,6 +143,7 @@ export class CatererMenusService {
       autoReminderLastStep:
         dto.autoReminderLastStep == null ? null : Number(dto.autoReminderLastStep),
       salesIsRefused: dto.salesIsRefused ?? null,
+      allergies: clean(dto.allergies),
       notes: clean(dto.notes),
       isArchived: dto.isArchived ?? false,
       archivedAt: dto.isArchived ? new Date() : null,

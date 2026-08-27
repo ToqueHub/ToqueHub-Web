@@ -259,6 +259,8 @@ export class CatererClientQueryDto {
 export class UpsertCatererClientDto {
   @IsString() @MaxLength(160) name!: string;
   @IsOptional() @IsString() @MaxLength(160) name2?: string;
+  @IsOptional() @IsString() @MaxLength(160) firstName?: string;
+  @IsOptional() @IsString() @MaxLength(160) lastName?: string;
   @IsOptional() @IsString() @MaxLength(160) contactName?: string;
   @IsOptional() @IsString() @MaxLength(200) email?: string;
   @IsOptional() @IsString() @MaxLength(60) phone?: string;
@@ -309,10 +311,31 @@ export class UpsertCatererClientDto {
   @IsBoolean()
   salesIsRefused?: boolean;
   @IsOptional() @IsString() @MaxLength(4000) notes?: string;
+  @IsOptional() @IsString() @MaxLength(4000) allergies?: string;
   @IsOptional()
   @Transform(({ value }) => value === true || value === 'true')
   @IsBoolean()
   isArchived?: boolean;
+}
+
+export class CatererClientImportRowDto {
+  @Type(() => Number) @IsInt() @Min(1) rowNumber!: number;
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  selected?: boolean;
+  @IsOptional() @IsString() @MaxLength(160) firstName?: string;
+  @IsOptional() @IsString() @MaxLength(160) lastName?: string;
+  @IsOptional() @IsString() @MaxLength(200) email?: string;
+  @IsOptional() @IsString() @MaxLength(60) phone?: string;
+  @IsOptional() @IsString() @MaxLength(4000) allergies?: string;
+}
+
+export class CommitCatererClientImportDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CatererClientImportRowDto)
+  rows!: CatererClientImportRowDto[];
 }
 
 export class CatererPrestationDto {
