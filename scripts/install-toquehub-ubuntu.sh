@@ -345,6 +345,7 @@ configure_toquehub() {
   set_env_if_placeholder PURCHASING_RESEND_ENCRYPTION_KEY "$(secret)"
   set_env_if_placeholder PURCHASING_EMAIL_ENCRYPTION_KEY "$(secret)"
   set_env_if_placeholder HR_SENSITIVE_DATA_ENCRYPTION_KEY "$(secret)"
+  set_env_if_placeholder FINANCE_SECRETS_ENCRYPTION_KEY "$(secret)"
   set_env_if_placeholder TOQUEHUB_UPDATER_SECRET "$(secret)"
   set_env_if_placeholder TOQUEHUB_REMOTE_AGENT_SECRET "$(secret)"
   set_env TOQUEHUB_REMOTE_AGENT_URL "${TOQUEHUB_REMOTE_AGENT_URL:-http://host.docker.internal:3101}"
